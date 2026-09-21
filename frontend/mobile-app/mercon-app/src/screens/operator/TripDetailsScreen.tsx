@@ -359,7 +359,7 @@ const TripDetailsScreen = () => {
               <View style={styles.routePoint}>
                 <View style={styles.routeDotGreen} />
                 <Text style={styles.routeCity} numberOfLines={2}>
-                  {pickupStop ? `${pickupStop.location_lat.toFixed(3)}, ${pickupStop.location_lng.toFixed(3)}` : '—'}
+                  {pickupStop ? (pickupStop.location_name || `${pickupStop.location_lat.toFixed(2)}, ${pickupStop.location_lng.toFixed(2)}`) : 'Origin'}
                 </Text>
               </View>
               <View style={styles.routeArrow}>
@@ -369,7 +369,7 @@ const TripDetailsScreen = () => {
               <View style={styles.routePoint}>
                 <View style={styles.routeDotOrange} />
                 <Text style={styles.routeCity} numberOfLines={2}>
-                  {dropoffStop ? `${dropoffStop.location_lat.toFixed(3)}, ${dropoffStop.location_lng.toFixed(3)}` : '—'}
+                  {dropoffStop ? (dropoffStop.location_name || `${dropoffStop.location_lat.toFixed(2)}, ${dropoffStop.location_lng.toFixed(2)}`) : 'Destination'}
                 </Text>
               </View>
             </View>
@@ -378,6 +378,12 @@ const TripDetailsScreen = () => {
                 <Text style={styles.headerStatLabel}>Distance</Text>
                 <Text style={styles.headerStatValue}>
                   {trip.planned_distance ? `${Math.round(trip.planned_distance)} km` : '—'}
+                </Text>
+              </View>
+              <View style={styles.headerStat}>
+                <Text style={styles.headerStatLabel}>Customer</Text>
+                <Text style={styles.headerStatValue} numberOfLines={1}>
+                  {trip.customer?.name || '—'}
                 </Text>
               </View>
               <View style={styles.headerStat}>
