@@ -23,7 +23,7 @@ const DEFAULT_FAB_ROUTE = '/operator/create-trip';
 const LEFT_TABS:  { label: 'Home' | 'Trips'; Icon: LucideIcon }[]   = [{ label: 'Home', Icon: House }, { label: 'Trips', Icon: Truck }];
 const RIGHT_TABS: { label: 'Drivers' | 'More'; Icon: LucideIcon }[] = [{ label: 'Drivers', Icon: User }, { label: 'More', Icon: Ellipsis }];
 
-const INACTIVE = 'rgba(255,255,255,0.55)';
+const INACTIVE = 'rgba(238, 241, 246, 0.65)'; // Light Cool Gray (#EEF1F6) matching web dashboard sidebar text
 
 export function OperatorBottomNav({ activeTab: explicitActive, onTabPress, onFabPress }: OperatorBottomNavProps = {}) {
   const router = useRouter();
@@ -71,7 +71,7 @@ export function OperatorBottomNav({ activeTab: explicitActive, onTabPress, onFab
 
   return (
     <View style={styles.wrapper}>
-      <View style={[styles.pill, Shadows.nav]}>
+      <View style={styles.pill}>
         {LEFT_TABS.map(renderTab)}
 
         {/* FAB */}
@@ -79,9 +79,9 @@ export function OperatorBottomNav({ activeTab: explicitActive, onTabPress, onFab
           <TouchableOpacity
             onPress={onFabPress ?? (() => router.push(DEFAULT_FAB_ROUTE as any))}
             activeOpacity={0.85}
-            style={[styles.fab, Shadows.sm]}
+            style={styles.fab}
           >
-            <Plus size={26} color={Colors.primary} strokeWidth={2.6} />
+            <Plus size={26} color={Colors.white} strokeWidth={2.8} />
           </TouchableOpacity>
         </View>
 
@@ -101,10 +101,12 @@ const styles = StyleSheet.create({
   pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.navBg,
+    backgroundColor: Colors.charcoal, // #3E3C3D Dark Charcoal matching web sidebar
     borderRadius: Radius.full,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm + 2,
+    borderWidth: 1,
+    borderColor: 'rgba(238, 241, 246, 0.15)', // border-white/10 equivalent
   },
   tab: {
     flex: 1,
@@ -115,7 +117,7 @@ const styles = StyleSheet.create({
   capsule: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.primary, // #FA634E Coral Red accent (flat, no glow)
     borderRadius: Radius.full,
     paddingHorizontal: Spacing.base,
     paddingVertical: Spacing.sm + 2,
@@ -125,9 +127,9 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: Colors.white,
+    backgroundColor: Colors.primary, // #FA634E Coral Red accent (flat, no glow)
     borderWidth: 2,
-    borderColor: Colors.primary,
+    borderColor: Colors.charcoal, // #3E3C3D Dark Charcoal ring border
     alignItems: 'center',
     justifyContent: 'center',
   },

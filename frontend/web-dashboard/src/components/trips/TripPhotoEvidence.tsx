@@ -33,6 +33,8 @@ interface TripPhotoEvidenceProps {
   trip?: any;
   onPreview: (img: PhotoPreviewItem) => void;
   onUpload?: () => void;
+  /** Called after an operator confirms/corrects an evidence time, so the parent can refetch. */
+  onEvidenceUpdated?: () => void;
 }
 
 function resolveDocUrl(url?: string | null): string {
@@ -90,6 +92,7 @@ interface PhotoCardItem {
   isVideo?: boolean;
   isDelayEvidence?: boolean;
   aiVerification?: LightboxPhotoItem['aiVerification'];
+  timeReview?: LightboxPhotoItem['timeReview'];
 }
 
 export const checkIsVideo = (doc?: any, url?: string): boolean => {
@@ -135,6 +138,26 @@ function extractAiVerification(doc: any): LightboxPhotoItem['aiVerification'] | 
     isWrongTrip: Boolean(extracted.is_wrong_trip),
     validationReason: extracted.validation_reason || null,
     docStatus: doc?.status || null,
+  };
+}
+
+/**
+ * Only populated for a PendingReview screenshot from the driver's
+ * EXTERNAL_APP tap-to-advance flow (tagged `source: 'external_app_screenshot'`
+ * at upload — see mobileTripController.ts's uploadTripPhoto). The driver's
+ * tap already advanced the trip using "now" as a provisional timestamp; this
+ * flags the evidence for an operator to confirm or correct the stop's real
+ * arrival/departure time against what the screenshot actually shows.
+ */
+function extractTimeReview(doc: any, st: any): LightboxPhotoItem['timeReview'] | undefined {
+  const extracted = doc?.ai_extracted_json;
+  if (extracted?.source !== 'external_app_screenshot') return undefined;
+  if (doc?.status !== 'PendingReview') return undefined;
+  return {
+    documentId: doc.id,
+    stopId: st?.id || extracted?.stop_id || null,
+    recordedArrival: st?.actual_arrival || null,
+    recordedDeparture: st?.actual_departure || null,
   };
 }
 
@@ -211,6 +234,7 @@ export default function TripPhotoEvidence({
   trip,
   onPreview,
   onUpload,
+  onEvidenceUpdated,
 }: TripPhotoEvidenceProps) {
   const [selectedLocation, setSelectedLocation] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'stacks' | 'timeline'>('grid');
@@ -232,6 +256,7 @@ export default function TripPhotoEvidence({
         isVideo: p.isVideo,
         isDelayEvidence: p.isDelayEvidence,
         aiVerification: p.aiVerification,
+        timeReview: p.timeReview,
         geotag: p.geotag ? {
           latitude: p.geotag.latitude,
           longitude: p.geotag.longitude,
@@ -557,6 +582,7 @@ export default function TripPhotoEvidence({
             isVideo: checkIsVideo(arrivalDoc),
             isDelayEvidence: checkIsDelay(arrivalDoc),
             aiVerification: extractAiVerification(arrivalDoc),
+            timeReview: extractTimeReview(arrivalDoc, st),
           });
         }
 
@@ -576,6 +602,7 @@ export default function TripPhotoEvidence({
             isVideo: checkIsVideo(doc),
             isDelayEvidence: checkIsDelay(doc),
             aiVerification: extractAiVerification(doc),
+            timeReview: extractTimeReview(doc, st),
           });
         });
       } else if (role === 'stop' || role === 'return_stop') {
@@ -620,6 +647,7 @@ export default function TripPhotoEvidence({
             isVideo: checkIsVideo(arrivalDoc),
             isDelayEvidence: checkIsDelay(arrivalDoc),
             aiVerification: extractAiVerification(arrivalDoc),
+            timeReview: extractTimeReview(arrivalDoc, st),
           });
         }
 
@@ -638,6 +666,7 @@ export default function TripPhotoEvidence({
             isVideo: checkIsVideo(doc),
             isDelayEvidence: checkIsDelay(doc),
             aiVerification: extractAiVerification(doc),
+            timeReview: extractTimeReview(doc, st),
           });
         });
       } else {
@@ -697,6 +726,7 @@ export default function TripPhotoEvidence({
             isVideo: checkIsVideo(arrivalDoc),
             isDelayEvidence: checkIsDelay(arrivalDoc),
             aiVerification: extractAiVerification(arrivalDoc),
+            timeReview: extractTimeReview(arrivalDoc, st),
           });
         }
 
@@ -716,6 +746,7 @@ export default function TripPhotoEvidence({
             isVideo: checkIsVideo(doc),
             isDelayEvidence: checkIsDelay(doc),
             aiVerification: extractAiVerification(doc),
+            timeReview: extractTimeReview(doc, st),
           });
         });
       }
@@ -1089,10 +1120,19 @@ export default function TripPhotoEvidence({
                                 <div
                                   key={photo.id || pIdx}
                                   onClick={() => handleOpenLightbox(photosToDisplay, pIdx)}
-                                  className="group bg-white border border-slate-200 hover:border-[#FA634E] rounded-xl overflow-hidden shadow-2xs transition-all cursor-pointer flex flex-col justify-between min-w-0"
+                                  className={`group bg-white border rounded-xl overflow-hidden shadow-2xs transition-all cursor-pointer flex flex-col justify-between min-w-0 ${
+                                    photo.timeReview
+                                      ? 'border-amber-400 ring-2 ring-amber-300/60 hover:border-amber-500'
+                                      : 'border-slate-200 hover:border-[#FA634E]'
+                                  }`}
                                 >
                                   {/* Image Box */}
                                   <div className="relative w-full aspect-[4/3] bg-slate-900 overflow-hidden shrink-0">
+                                    {photo.timeReview && (
+                                      <Badge className="absolute top-1.5 right-1.5 z-10 bg-amber-500 text-black border-0 text-[8.5px] font-extrabold px-1.5 py-0.5 shadow-sm animate-pulse">
+                                        Needs Time
+                                      </Badge>
+                                    )}
                                     {photo.sampleImg ? (
                                       photo.isVideo ? (
                                         <video
@@ -1360,6 +1400,8 @@ export default function TripPhotoEvidence({
         onClose={() => setLightboxOpen(false)}
         photos={lightboxPhotos}
         initialIndex={lightboxIndex}
+        tripId={trip?.id}
+        onEvidenceUpdated={onEvidenceUpdated}
         tripRef={trip?.ref_id || 'TRIP'}
         customerName={trip?.customer?.name}
         customerPhone={trip?.customer?.contact_phone || trip?.customer?.whatsapp_number}

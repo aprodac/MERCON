@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { generateRefId } from '../utils/refId';
 import { createDriverNotification, notifyOperatorsOfDelay } from './notificationController';
-import { Prisma, TripStatus, StopType, DriverStatus, AssetStatus, AssignmentEntityType } from '@prisma/client';
+import { Prisma, TripStatus, StopType, DriverStatus, AssetStatus, AssignmentEntityType, DocStatus } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { isValidTransition, completeTripAndInvoice, stampStopTransition, type DelayDetection } from '../services/tripLifecycle';
 import { findRateForLane, findPricingRuleForLane, findQuotationForLane } from '../services/rateLookup';
@@ -571,8 +571,24 @@ export const getTripById = async (req: Request, res: Response) => {
 
     const fin = calculateBackendTripFinancials(trip as any);
 
+    const stopIds = (trip.stops || []).map((s: any) => s.id);
+    const targetEntityIds = Array.from(new Set([trip.id, trip.ref_id, ...stopIds].filter(Boolean)));
+
+    const tripDocuments = await prisma.document.findMany({
+      where: {
+        OR: [
+          { entity_id: { in: targetEntityIds as string[] } },
+          { entity_type: 'Trip', entity_id: { in: targetEntityIds as string[] } },
+          { entity_type: 'TripStop', entity_id: { in: stopIds } },
+        ],
+        deletedAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
     const tripData = {
       ...trip,
+      documents: tripDocuments,
       paid_amount: fin.paidAmount,
       balance_due: fin.balanceDue,
       total_amount: fin.totalCustomerBilling,
@@ -1844,6 +1860,69 @@ export const logStopDelay = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Confirm or correct the real-world time an EXTERNAL_APP evidence screenshot
+ * actually happened at. The driver's tap already advanced the trip using
+ * "now" as a provisional timestamp so status visibility stays live; an
+ * operator later reads the true time off the screenshot itself (customer
+ * apps show their own arrive/departure times) and corrects the stop record
+ * here if it drifted.
+ *
+ * Deliberately has no frozen-trip guard, unlike updateTripStop — a timestamp
+ * correction doesn't relitigate pricing/lane the way a location edit would,
+ * and the final delivery milestone completes the trip immediately, so its
+ * evidence is exactly the case that needs review *after* completion. Mirrors
+ * logStopDelay, which edits TripStop post-completion for the same reason.
+ */
+export const confirmEvidenceTime = async (req: Request, res: Response) => {
+  try {
+    const { id: rawTripId, stopId } = req.params as { id: string; stopId: string };
+    const tripId = isUuid(rawTripId) ? rawTripId : (await resolveTripId(rawTripId));
+    if (!tripId) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+    const { document_id, actual_arrival, actual_departure } = req.body;
+
+    const stop = await prisma.tripStop.findFirst({
+      where: { id: stopId, tripId, deletedAt: null },
+    });
+    if (!stop) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Stop not found on this trip' } });
+    }
+
+    const document = await prisma.document.findFirst({
+      where: { id: document_id, entity_type: 'Trip', entity_id: tripId, deletedAt: null },
+    });
+    if (!document) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Evidence document not found on this trip' } });
+    }
+    if ((document.ai_extracted_json as any)?.source !== 'external_app_screenshot') {
+      return res.status(400).json({ success: false, error: { code: 'NOT_EXTERNAL_APP_EVIDENCE', message: 'This document is not an external-app evidence screenshot' } });
+    }
+    if (document.status !== DocStatus.PendingReview) {
+      return res.status(409).json({ success: false, error: { code: 'ALREADY_REVIEWED', message: `This evidence is already ${document.status}` } });
+    }
+
+    const [updatedStop] = await prisma.$transaction([
+      prisma.tripStop.update({
+        where: { id: stopId },
+        data: {
+          ...(actual_arrival ? { actual_arrival: new Date(actual_arrival) } : {}),
+          ...(actual_departure ? { actual_departure: new Date(actual_departure) } : {}),
+        },
+      }),
+      prisma.document.update({
+        where: { id: document.id },
+        data: { status: DocStatus.Verified, verified_by: (req as any).user?.id ?? null },
+      }),
+    ]);
+
+    res.json({ success: true, data: updatedStop });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to confirm evidence time');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to confirm evidence time' } });
+  }
+};
 
 /**
  * Correct where a stop actually is — its label, its full address, the lane

@@ -18,8 +18,8 @@ import {
   useDashboardSummary, useDelayedDeliveries, useNotifications,
 } from '../hooks';
 import {
-  ActiveVehiclesSection, AppHeader, ContextSelector, DashboardMetricCard,
-  DocumentExpirySection, ScannerButton, SearchBar,
+  ActiveTripsSection, AppHeader, DashboardMetricCard,
+  ScannerButton, SearchBar,
 } from '../components';
 import { ErrorState, SkeletonMetricCard } from '@/shared/components';
 
@@ -50,14 +50,12 @@ export default function DashboardHomeScreen() {
           logoSource={require('@/assets/images/mercon-logo.png')}
           greeting="Welcome back,"
           userName={firstName}
+          role={role ?? 'Operator'}
           unreadNotifications={unreadCount}
           onNotificationPress={() => router.push('/notifications')}
         />
 
-        {/* 2. Context Selector Row */}
-        <ContextSelector role={role ?? 'Operator'} />
-
-        {/* 3. Search Row */}
+        {/* 2. Search Row */}
         <View className="flex-row items-center gap-2">
           <SearchBar value={search} onChangeText={setSearch} onSubmit={() => router.push('/operator/trips')} />
           <ScannerButton />
@@ -87,15 +85,10 @@ export default function DashboardHomeScreen() {
           </View>
         )}
 
-        {/* 5-6. Active Vehicles — header, carousel, pagination */}
-        <ActiveVehiclesSection
-          onViewAll={() => router.push('/operator/vehicles')}
-          onVehiclePress={(v) => router.push({ pathname: '/operator/trip-details', params: { id: v.tripId } })}
-        />
-
-        {/* 7. Document Expiry — replaces Fleet Utilization */}
-        <DocumentExpirySection
-          onViewAll={() => router.push('/operator/vehicle-renewals')}
+        {/* 5. Active Trips — compact vertically stacked list with WhatsApp status sharing */}
+        <ActiveTripsSection
+          onViewAll={() => router.push('/operator/trips')}
+          onTripPress={(trip) => router.push({ pathname: '/operator/trip-details', params: { id: trip.id } })}
         />
       </ScrollView>
     </SafeAreaView>

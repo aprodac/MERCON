@@ -51,8 +51,13 @@ export const Colors = {
   purple:         '#7C3AED',
   purpleLight:    '#F5F3FF',
 
+  // Brand Charcoal & Neutrals
+  charcoal:       '#3E3C3D',
+  charcoalDark:   '#2D2B2C',
+  coolGray:       '#EEF1F6',
+
   // Navigation
-  navBg:          '#000000',
+  navBg:          '#3E3C3D',
 
   // Status chips
   statusCompleted:   '#16A34A',

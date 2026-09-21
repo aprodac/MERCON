@@ -131,7 +131,7 @@ export default function TripDetailsPage() {
   const tripEntityId = trip?.id || id;
 
   // Trip documents
-  const { data: docsRes } = useQuery({
+  const { data: docsRes, refetch: refetchDocuments } = useQuery({
     queryKey: ['documents', 'Trip', tripEntityId],
     queryFn: () => documentService.getAll({ entity_type: 'Trip', entity_id: tripEntityId, per_page: 50 }),
     enabled: !!tripEntityId && !!trip,
@@ -683,6 +683,10 @@ export default function TripDetailsPage() {
               onUpload={() => {
                 setUploadDocType(undefined);
                 setIsUploadModalOpen(true);
+              }}
+              onEvidenceUpdated={() => {
+                refetch();
+                refetchDocuments();
               }}
             />
           </div>

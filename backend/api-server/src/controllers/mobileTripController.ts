@@ -321,6 +321,11 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
     const trip = await prisma.trip.findFirst({ where: { id, driverId, deletedAt: null } });
     if (!trip) return res.status(404).json({ success: false, error: { message: 'Trip not found or not assigned to you' } });
 
+    // Tags evidence from the EXTERNAL_APP workflow so the web dashboard can
+    // surface exactly these for operator time confirmation, without also
+    // picking up ordinary NATIVE-workflow cargo/POD photos.
+    const isExternalAppEvidence = trip.driver_workflow === 'EXTERNAL_APP';
+
     const { location_lat, location_lng, captured_at, leg_index, operation, stop_id } = req.body || {};
     const notes = (location_lat && location_lng)
       ? `📍 [GPS: ${location_lat}, ${location_lng}] Captured: ${captured_at || new Date().toISOString()}`
@@ -353,6 +358,7 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
           leg_index: leg_index !== undefined ? Number(leg_index) : undefined,
           operation: operation || undefined,
           stop_id: stop_id || undefined,
+          source: isExternalAppEvidence ? 'external_app_screenshot' : undefined,
         },
         created_by: isValidUuid ? userId : undefined,
       },

@@ -13,12 +13,23 @@ export const login = async (req: Request, res: Response) => {
 
   try {
     const identifier = String(username).trim();
+    const phoneVariants = [identifier];
+    if (identifier.startsWith('+966')) {
+      const local = identifier.slice(4);
+      phoneVariants.push(`0${local}`, local);
+    } else if (identifier.startsWith('+91')) {
+      const local = identifier.slice(3);
+      phoneVariants.push(`0${local}`, local);
+    } else if (identifier.startsWith('0')) {
+      phoneVariants.push(`+966${identifier.slice(1)}`, `+91${identifier.slice(1)}`, identifier.slice(1));
+    }
+
     const user = await prisma.user.findFirst({
       where: {
         OR: [
           { username: identifier },
-          { phone: identifier },
           { email: identifier },
+          ...phoneVariants.map((p) => ({ phone: p })),
         ],
       },
       include: { driver: true },

@@ -123,12 +123,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (identifier: string, secret: string) => {
     const id = identifier.trim();
-    // Driver identifiers are phone numbers (digits / +); operators use a username.
+    // Driver identifiers are phone numbers (digits / +); operators can use username or phone number.
     const looksLikePhone = /^\+?[\d\s()-]+$/.test(id);
     if (looksLikePhone) {
-      // Direct driver login without falling through to operator on credential failure
-      await signInDriver(id, secret.trim());
-      return;
+      try {
+        await signInDriver(id, secret.trim());
+        return;
+      } catch (driverErr) {
+        // Fallback to operator login if driver login fails (e.g. operator logging in with phone number)
+        try {
+          await signInOperator(id, secret);
+          return;
+        } catch {
+          throw driverErr;
+        }
+      }
     }
     // Operator login
     await signInOperator(id, secret);

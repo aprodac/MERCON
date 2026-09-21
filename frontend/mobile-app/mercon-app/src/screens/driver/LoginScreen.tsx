@@ -9,10 +9,10 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Image, ImageBackground,
-  StyleSheet, StatusBar,
+  StyleSheet, StatusBar, Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User, Lock, Eye, EyeOff, ArrowRight, Headset, Globe } from 'lucide-react-native';
+import { User, Lock, Eye, EyeOff, ArrowRight, Headset, Globe, ChevronDown, Check } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
 import { Button, Input } from '../../components';
 import { useAuth } from '../../lib/auth-context';
@@ -26,22 +26,37 @@ const logo = require('../../../assets/images/mercon-logo.png');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const heroBg = require('../../../assets/images/login-hero.png');
 
-const formatPhoneForAuth = (raw: string): string => {
+interface CountryOption {
+  code: string;
+  flag: string;
+  name: string;
+}
+
+const COUNTRIES: CountryOption[] = [
+  { code: '+966', flag: '🇸🇦', name: 'Saudi Arabia (+966)' },
+  { code: '+91', flag: '🇮🇳', name: 'India (+91)' },
+];
+
+const formatPhoneForAuth = (raw: string, defaultCode: string = '+966'): string => {
   let cleaned = raw.trim().replace(/\s+/g, '');
   if (!cleaned) return '';
   // If non-numeric (e.g. username login fallback), return as is
   if (/^[a-zA-Z]/.test(cleaned)) return cleaned;
   if (cleaned.startsWith('+')) return cleaned;
-  if (cleaned.startsWith('00966')) return '+' + cleaned.slice(2);
+  if (cleaned.startsWith('00')) return '+' + cleaned.slice(2);
   if (cleaned.startsWith('966')) return '+' + cleaned;
+  if (cleaned.startsWith('91')) return '+' + cleaned;
   if (cleaned.startsWith('0')) cleaned = cleaned.slice(1);
-  return `+966${cleaned}`;
+  return `${defaultCode}${cleaned}`;
 };
 
 const LoginScreen = () => {
   const router = useRouter();
   const { signIn } = useAuth();
   const { language, openLanguageModal, t } = useLanguage();
+
+  const [selectedCountry, setSelectedCountry] = useState<CountryOption>(COUNTRIES[0]);
+  const [showCountryModal, setShowCountryModal] = useState(false);
 
   const [identifier, setIdentifier] = useState('');
   const [secret, setSecret] = useState('');
@@ -58,7 +73,7 @@ const LoginScreen = () => {
       setError(t('err_enter_phone_first', 'Enter your phone number first, then tap "Can\'t log in?" again.'));
       return;
     }
-    const formattedPhone = formatPhoneForAuth(identifier);
+    const formattedPhone = formatPhoneForAuth(identifier, selectedCountry.code);
     try {
       // Notifies all operators/admins that this user needs a reset.
       await api.post('/auth/request-reset', { identifier: formattedPhone });
@@ -76,7 +91,7 @@ const LoginScreen = () => {
     setError(null);
     setNotice(null);
     setLoading(true);
-    const formattedPhone = formatPhoneForAuth(identifier);
+    const formattedPhone = formatPhoneForAuth(identifier, selectedCountry.code);
     try {
       await signIn(formattedPhone, secret);
       // Navigate explicitly to authenticated root
@@ -114,15 +129,20 @@ const LoginScreen = () => {
               label={t('label_phone', 'Phone Number')}
               value={identifier}
               onChangeText={setIdentifier}
-              placeholder={t('placeholder_phone', '50 000 0001')}
+              placeholder={selectedCountry.code === '+91' ? '98765 43210' : t('placeholder_phone', '50 000 0001')}
               keyboardType="phone-pad"
               autoCapitalize="none"
               iconLeft={
-                <View style={styles.countryCodeBadge}>
-                  <Text style={styles.flag}>🇸🇦</Text>
-                  <Text style={styles.countryCodeText}>+966</Text>
+                <TouchableOpacity
+                  style={styles.countryCodeBadge}
+                  activeOpacity={0.7}
+                  onPress={() => setShowCountryModal(true)}
+                >
+                  <Text style={styles.flag}>{selectedCountry.flag}</Text>
+                  <Text style={styles.countryCodeText}>{selectedCountry.code}</Text>
+                  <ChevronDown size={14} color={Colors.gray500} />
                   <View style={styles.badgeDivider} />
-                </View>
+                </TouchableOpacity>
               }
             />
             <Input
@@ -165,6 +185,44 @@ const LoginScreen = () => {
           {t('label_help_support', 'Having trouble? Contact support@mercon.sa')}
         </Text>
       </ScrollView>
+
+      {/* Country Code Picker Modal */}
+      <Modal
+        visible={showCountryModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCountryModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowCountryModal(false)}
+        >
+          <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
+            <Text style={styles.modalTitle}>Select Country Code</Text>
+            {COUNTRIES.map((item) => {
+              const isSelected = item.code === selectedCountry.code;
+              return (
+                <TouchableOpacity
+                  key={item.code}
+                  style={[styles.modalOption, isSelected && styles.modalOptionSelected]}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    setSelectedCountry(item);
+                    setShowCountryModal(false);
+                  }}
+                >
+                  <View style={styles.modalOptionLeft}>
+                    <Text style={styles.modalFlag}>{item.flag}</Text>
+                    <Text style={styles.modalOptionText}>{item.name}</Text>
+                  </View>
+                  {isSelected && <Check size={18} color={Colors.primary} strokeWidth={2.5} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </TouchableOpacity>
+      </Modal>
       </SafeAreaView>
     </ImageBackground>
   );
@@ -281,6 +339,55 @@ const styles = StyleSheet.create({
     height: 18,
     backgroundColor: Colors.gray300,
     marginLeft: 6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing.lg,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: Colors.white,
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
+    gap: Spacing.sm,
+    ...Shadows.lg,
+  },
+  modalTitle: {
+    fontSize: Typography.md,
+    fontWeight: '700',
+    color: Colors.gray900,
+    marginBottom: Spacing.xs,
+  },
+  modalOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.gray50,
+  },
+  modalOptionSelected: {
+    backgroundColor: '#FEF2F2',
+    borderColor: Colors.primary,
+    borderWidth: 1,
+  },
+  modalOptionLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  modalFlag: {
+    fontSize: 20,
+  },
+  modalOptionText: {
+    fontSize: Typography.sm,
+    fontWeight: '600',
+    color: Colors.gray900,
   },
 });
 

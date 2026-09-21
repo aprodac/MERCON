@@ -117,7 +117,7 @@ export function toAssignedVehicle(raw: RawVehicle): AssignedVehicle {
 
 /** The driver's live trip, or null when they are not currently assigned. */
 export function findActiveTrip(trips: RawDriverTrip[]): RawDriverTrip | null {
-  return trips.find((t) => (ACTIVE_TRIP_STATUSES as readonly string[]).includes(t.status)) ?? null;
+  return trips?.find((t) => (ACTIVE_TRIP_STATUSES as readonly string[]).includes(t.status)) ?? null;
 }
 
 function toAssignmentStop(stop: RawTripDetail['stops'][number]): AssignmentStop {
