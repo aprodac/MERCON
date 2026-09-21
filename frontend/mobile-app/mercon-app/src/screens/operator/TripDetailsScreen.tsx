@@ -18,9 +18,6 @@ import {
 import { statusLabel, type TripStatus } from '../../lib/trips';
 import { chooseMedia } from '../../lib/camera';
 
-import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
-
 export async function shareMediaToWhatsApp(trip: OperatorTripDetail, doc: any) {
   const truck = (trip.vehicle?.ref_id || trip.vehicle?.plate_number || 'N/A').toUpperCase();
   const driverName = trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name}`.toUpperCase() : 'UNASSIGNED';
@@ -34,49 +31,61 @@ export async function shareMediaToWhatsApp(trip: OperatorTripDetail, doc: any) {
     ? doc.file_url
     : `https://dev.mercon.tech${doc.file_url.startsWith('/') ? '' : '/'}${doc.file_url}`;
 
-  // 1. Download & share actual image/video file asset directly to WhatsApp / native share sheet
+  let sharedViaNativeFile = false;
+
+  // 1. Safely attempt expo-file-system download + expo-sharing native file asset share
   try {
-    let localUri = mediaUrl;
+    const FileSystem = require('expo-file-system/legacy');
+    const expoSharing = require('expo-sharing');
 
-    if (!mediaUrl.startsWith('file://')) {
-      let ext = 'jpg';
-      const cleanUrl = mediaUrl.split('?')[0];
-      const urlExt = cleanUrl.substring(cleanUrl.lastIndexOf('.') + 1).toLowerCase();
-      if (['jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov', 'pdf'].includes(urlExt)) {
-        ext = urlExt;
-      } else if (doc.mime_type?.includes('png')) {
-        ext = 'png';
-      } else if (doc.mime_type?.includes('video') || doc.mime_type?.includes('mp4')) {
-        ext = 'mp4';
+    if (expoSharing && typeof expoSharing.isAvailableAsync === 'function') {
+      const isAvailable = await expoSharing.isAvailableAsync().catch(() => false);
+      if (isAvailable && typeof expoSharing.shareAsync === 'function') {
+        let localUri = mediaUrl;
+
+        if (!mediaUrl.startsWith('file://') && FileSystem) {
+          let ext = 'jpg';
+          const cleanUrl = mediaUrl.split('?')[0];
+          const urlExt = cleanUrl.substring(cleanUrl.lastIndexOf('.') + 1).toLowerCase();
+          if (['jpg', 'jpeg', 'png', 'webp', 'mp4', 'mov', 'pdf'].includes(urlExt)) {
+            ext = urlExt;
+          } else if (doc.mime_type?.includes('png')) {
+            ext = 'png';
+          } else if (doc.mime_type?.includes('video') || doc.mime_type?.includes('mp4')) {
+            ext = 'mp4';
+          }
+
+          const fileId = doc.id || `media_${Date.now()}`;
+          const targetPath = `${FileSystem.cacheDirectory}trip_evidence_${fileId}.${ext}`;
+
+          const info = await FileSystem.getInfoAsync(targetPath).catch(() => null);
+          if (info && info.exists) {
+            localUri = targetPath;
+          } else {
+            const downloadRes = await FileSystem.downloadAsync(mediaUrl, targetPath).catch(() => null);
+            if (downloadRes?.uri) {
+              localUri = downloadRes.uri;
+            }
+          }
+        }
+
+        const mimeType = doc.mime_type || (localUri.endsWith('.mp4') ? 'video/mp4' : localUri.endsWith('.png') ? 'image/png' : 'image/jpeg');
+        await expoSharing.shareAsync(localUri, {
+          mimeType,
+          dialogTitle: `Share MERCON ${categoryLabel} - Truck #${truck}`,
+          UTI: localUri.endsWith('.mp4') ? 'public.mpeg-4' : 'public.jpeg',
+        });
+        sharedViaNativeFile = true;
+        return;
       }
-
-      const fileId = doc.id || `media_${Date.now()}`;
-      const targetPath = `${FileSystem.cacheDirectory}trip_evidence_${fileId}.${ext}`;
-
-      const info = await FileSystem.getInfoAsync(targetPath);
-      if (info.exists) {
-        localUri = targetPath;
-      } else {
-        const downloadRes = await FileSystem.downloadAsync(mediaUrl, targetPath);
-        localUri = downloadRes.uri;
-      }
-    }
-
-    const isAvailable = await Sharing.isAvailableAsync();
-    if (isAvailable) {
-      const mimeType = doc.mime_type || (localUri.endsWith('.mp4') ? 'video/mp4' : localUri.endsWith('.png') ? 'image/png' : 'image/jpeg');
-      await Sharing.shareAsync(localUri, {
-        mimeType,
-        dialogTitle: `Share MERCON ${categoryLabel} - Truck #${truck}`,
-        UTI: localUri.endsWith('.mp4') ? 'public.mpeg-4' : 'public.jpeg',
-      });
-      return;
     }
   } catch (err) {
-    console.warn('Direct file sharing error, falling back to text link:', err);
+    console.warn('Native file sharing unavailable or dev client mismatch:', err);
   }
 
-  // 2. Fallback to WhatsApp text link if file download/share fails
+  if (sharedViaNativeFile) return;
+
+  // 2. Fallback to WhatsApp text link if native sharing module is missing or fails
   const notesStr = doc.ocr_raw_text ? `\nNotes: ${doc.ocr_raw_text}` : '';
   const message = `📸 MERCON Trip Evidence Update\n\nTruck: ${truck}\nDriver: ${driverName}\nCategory: ${categoryLabel}${notesStr}\n\nMedia Link:\n${mediaUrl}`;
 
