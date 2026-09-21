@@ -29,9 +29,18 @@ export const getDocuments = async (req: Request, res: Response) => {
     const limit = parseInt(per_page as string);
     const skip = (pageNumber - 1) * limit;
 
+    const isUuid = (str: string | null | undefined): boolean =>
+      typeof str === 'string' && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(str);
+
     const whereClause: any = { deletedAt: null };
     if (entity_type) whereClause.entity_type = entity_type as string;
-    if (entity_id)   whereClause.entity_id = entity_id as string;
+    if (entity_id) {
+      if (isUuid(entity_id as string)) {
+        whereClause.entity_id = entity_id as string;
+      } else {
+        return res.json({ success: true, data: [], meta: { page: pageNumber, per_page: limit, total: 0 } });
+      }
+    }
     if (doc_type)    whereClause.doc_type = doc_type as DocType;
     if (document_type_id) whereClause.documentTypeId = document_type_id as string;
     if (status)      whereClause.status = status as DocStatus;

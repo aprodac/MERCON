@@ -571,14 +571,14 @@ export const getTripById = async (req: Request, res: Response) => {
 
     const fin = calculateBackendTripFinancials(trip as any);
 
-    const stopIds = (trip.stops || []).map((s: any) => s.id);
-    const targetEntityIds = Array.from(new Set([trip.id, trip.ref_id, ...stopIds].filter(Boolean)));
+    const stopIds = (trip.stops || []).map((s: any) => s.id).filter(isUuid);
+    const validUuidEntityIds = Array.from(new Set([trip.id, ...stopIds].filter(isUuid)));
 
     const tripDocuments = await prisma.document.findMany({
       where: {
         OR: [
-          { entity_id: { in: targetEntityIds as string[] } },
-          { entity_type: 'Trip', entity_id: { in: targetEntityIds as string[] } },
+          { entity_id: { in: validUuidEntityIds } },
+          { entity_type: 'Trip', entity_id: trip.id },
           { entity_type: 'TripStop', entity_id: { in: stopIds } },
         ],
         deletedAt: null,
