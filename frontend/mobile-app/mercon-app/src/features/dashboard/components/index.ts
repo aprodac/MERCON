@@ -8,6 +8,7 @@ export * from './ScannerButton';
 export * from './DashboardMetricCard';
 export * from './SectionHeader';
 export * from './ActiveVehiclesSection';
+export * from './ActiveTripsSection';
 export * from './VehicleCard';
 export * from './DriverAvatar';
 export * from './DriverStatus';

@@ -7,6 +7,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { openPhotoEvidenceWhatsapp } from '@/utils/whatsappFormatter';
+import { tripService } from '@/services/tripService';
 import { toast } from 'sonner';
 
 export interface LightboxPhotoItem {
@@ -40,6 +41,19 @@ export interface LightboxPhotoItem {
     /** The Document's actual status (Verified/PendingReview/Rejected) — distinct from `status` above, which this component uses for a generic "Received" badge, not the real review state. */
     docStatus?: string | null;
   };
+  /**
+   * Populated for a PendingReview screenshot from the driver's EXTERNAL_APP
+   * tap-to-advance flow. The driver's tap already advanced the trip using
+   * "now" as a provisional timestamp — this is what lets an operator confirm
+   * or correct the stop's real arrival/departure against what the
+   * screenshot actually shows.
+   */
+  timeReview?: {
+    documentId: string;
+    stopId: string | null;
+    recordedArrival?: string | null;
+    recordedDeparture?: string | null;
+  };
 }
 
 interface EvidenceLightboxModalProps {
@@ -47,6 +61,9 @@ interface EvidenceLightboxModalProps {
   onClose: () => void;
   photos: LightboxPhotoItem[];
   initialIndex?: number;
+  tripId?: string;
+  /** Called after a successful confirm/correct so the parent can refetch. */
+  onEvidenceUpdated?: () => void;
   tripRef?: string;
   customerName?: string;
   customerPhone?: string;
@@ -57,15 +74,29 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
   onClose,
   photos,
   initialIndex = 0,
+  tripId,
+  onEvidenceUpdated,
   tripRef = 'TRIP',
   customerName,
   customerPhone,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [arrivalInput, setArrivalInput] = useState('');
+  const [departureInput, setDepartureInput] = useState('');
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     setCurrentIndex(initialIndex);
   }, [initialIndex, isOpen]);
+
+  // datetime-local wants "YYYY-MM-DDTHH:mm" with no timezone/seconds.
+  const toDatetimeLocal = (iso?: string | null): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -78,10 +109,36 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, currentIndex, photos.length]);
 
+  const activePhoto = photos[currentIndex] || photos[0];
+
+  useEffect(() => {
+    setArrivalInput(toDatetimeLocal(activePhoto?.timeReview?.recordedArrival));
+    setDepartureInput(toDatetimeLocal(activePhoto?.timeReview?.recordedDeparture));
+  }, [activePhoto?.id]);
+
   if (!isOpen || photos.length === 0) return null;
 
-  const currentPhoto = photos[currentIndex] || photos[0];
+  const currentPhoto = activePhoto;
   const hasMultiple = photos.length > 1;
+
+  const handleConfirmTime = async () => {
+    if (!tripId || !currentPhoto.timeReview?.stopId) return;
+    setConfirming(true);
+    try {
+      const payload: { document_id: string; actual_arrival?: string; actual_departure?: string } = {
+        document_id: currentPhoto.timeReview.documentId,
+      };
+      if (arrivalInput) payload.actual_arrival = new Date(arrivalInput).toISOString();
+      if (departureInput) payload.actual_departure = new Date(departureInput).toISOString();
+      await tripService.confirmEvidenceTime(tripId, currentPhoto.timeReview.stopId, payload);
+      toast.success('Evidence time confirmed');
+      onEvidenceUpdated?.();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'Failed to confirm evidence time');
+    } finally {
+      setConfirming(false);
+    }
+  };
 
   const handlePrev = () => {
     setCurrentIndex((prev) => (prev > 0 ? prev - 1 : photos.length - 1));
@@ -141,6 +198,11 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
                   Delay Evidence
                 </Badge>
               )}
+              {currentPhoto.timeReview && (
+                <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-[10px] uppercase font-bold animate-pulse">
+                  Needs Time Confirmation
+                </Badge>
+              )}
             </div>
             <p className="text-[11px] text-slate-400 truncate">
               {tripRef} • {currentPhoto.location || 'Operational Location'}
@@ -176,6 +238,49 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* ── EXTERNAL APP TIME CONFIRMATION (needs operator review) ── */}
+      {currentPhoto.timeReview && (
+        <div className="px-4 sm:px-6 py-3 border-b bg-amber-950/40 border-amber-500/30 text-amber-100 shrink-0">
+          <div className="flex items-start gap-2.5 text-xs mb-2.5">
+            <AlertTriangle size={15} className="mt-0.5 shrink-0 text-amber-300" />
+            <div>
+              <span className="font-bold">Needs Time Confirmation</span>
+              <span className="ml-2 opacity-90">
+                The driver's tap set a provisional time — check the screenshot's real time and confirm or correct it below.
+              </span>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-end gap-3 pl-6">
+            <label className="flex flex-col gap-1 text-[11px] text-amber-200/80">
+              Actual Arrival
+              <input
+                type="datetime-local"
+                value={arrivalInput}
+                onChange={(e) => setArrivalInput(e.target.value)}
+                className="bg-black/30 border border-amber-500/30 rounded-md px-2 py-1.5 text-xs text-white [color-scheme:dark]"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[11px] text-amber-200/80">
+              Actual Departure
+              <input
+                type="datetime-local"
+                value={departureInput}
+                onChange={(e) => setDepartureInput(e.target.value)}
+                className="bg-black/30 border border-amber-500/30 rounded-md px-2 py-1.5 text-xs text-white [color-scheme:dark]"
+              />
+            </label>
+            <Button
+              size="sm"
+              onClick={handleConfirmTime}
+              disabled={confirming || !tripId}
+              className="bg-amber-500 hover:bg-amber-600 text-black font-bold text-xs h-8 px-3 rounded-lg"
+            >
+              {confirming ? 'Saving...' : 'Confirm Time'}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* ── AI VERIFICATION BANNER (external-app screenshots only) ── */}
       {currentPhoto.aiVerification && (
@@ -301,9 +406,11 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
               <button
                 key={p.id || idx}
                 onClick={() => setCurrentIndex(idx)}
-                className={`w-10 h-10 rounded-md overflow-hidden border-2 transition-all cursor-pointer shrink-0 ${
+                className={`relative w-10 h-10 rounded-md overflow-hidden border-2 transition-all cursor-pointer shrink-0 ${
                   idx === currentIndex
                     ? 'border-[#FA634E] scale-105 shadow-md'
+                    : p.timeReview
+                    ? 'border-amber-400'
                     : 'border-white/20 opacity-60 hover:opacity-100'
                 }`}
               >
@@ -313,6 +420,9 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
                   </div>
                 ) : (
                   <img src={p.url} alt="" className="w-full h-full object-cover" />
+                )}
+                {p.timeReview && (
+                  <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-amber-400 shadow" />
                 )}
               </button>
             ))}

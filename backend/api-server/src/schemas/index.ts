@@ -410,6 +410,16 @@ export const logStopDelayBody = z.object({
   delay_note: z.string().trim().max(500).optional(),
 });
 
+export const confirmEvidenceTimeBody = z.object({
+  document_id: z.string().uuid(),
+  // Neither is required — an operator confirming the recorded time is
+  // already correct submits with both omitted. Not strict ISO validation
+  // since a <input type="datetime-local"> sends "YYYY-MM-DDTHH:mm" with no
+  // offset; the controller parses with `new Date(...)`.
+  actual_arrival: z.string().min(1).optional(),
+  actual_departure: z.string().min(1).optional(),
+});
+
 /* ─── Drivers ────────────────────────────────────────────────────────────── */
 export const createDriverBody = z.object({
   first_name: nonEmpty('First name'),

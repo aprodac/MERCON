@@ -46,6 +46,16 @@ export interface OperatorTripStop {
   actual_departure: string | null;
 }
 
+export interface OperatorTripDocument {
+  id: string;
+  doc_type: string | null;
+  file_url: string;
+  mime_type?: string | null;
+  ocr_raw_text?: string | null;
+  ai_extracted_json?: any;
+  createdAt: string;
+}
+
 export interface OperatorTripDetail {
   id: string;
   ref_id: string | null;
@@ -60,6 +70,7 @@ export interface OperatorTripDetail {
   driver: { id: string; first_name: string; last_name: string; phone_primary: string | null; ref_id: string | null } | null;
   vehicle: { id: string; plate_number: string; asset_type: string; ref_id: string | null } | null;
   stops: OperatorTripStop[];
+  documents?: OperatorTripDocument[];
 }
 
 export interface CreateTripStopInput {
@@ -142,7 +153,43 @@ export const operatorService = {
 
   async tripById(id: string): Promise<OperatorTripDetail> {
     const { data } = await api.get(`/trips/${id}`);
-    return data.data as OperatorTripDetail;
+    const tripDetail = data.data as OperatorTripDetail;
+
+    if (!tripDetail.documents || tripDetail.documents.length === 0) {
+      try {
+        const docRes = await api.get('/documents', {
+          params: { entity_type: 'Trip', entity_id: tripDetail.id || id, per_page: 50 },
+        });
+        const docs = docRes.data?.data || [];
+        if (docs.length > 0) {
+          tripDetail.documents = docs;
+        }
+      } catch {
+        // silent fallback
+      }
+    }
+
+    return tripDetail;
+  },
+
+  async uploadTripPhoto(tripId: string, uri: string, kind: 'pod' | 'cargo' | 'delay' = 'pod'): Promise<any> {
+    const formData = new FormData();
+    const filename = uri.split('/').pop() || 'media.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const isVideo = /\.(mp4|mov|webm|avi|mkv|3gp)$/i.test(filename);
+    const type = isVideo ? 'video/mp4' : (match ? `image/${match[1]}` : 'image/jpeg');
+
+    formData.append('file', {
+      uri,
+      name: filename,
+      type,
+    } as any);
+    formData.append('kind', kind);
+
+    const { data } = await api.post(`/trips/${tripId}/photo`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
   },
 
   async customers(): Promise<OperatorCustomer[]> {

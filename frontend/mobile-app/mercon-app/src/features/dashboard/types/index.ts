@@ -56,18 +56,32 @@ export interface CustomerRef {
   name: string;
 }
 
+export interface TripStop {
+  id?: string;
+  stop_type: 'Pickup' | 'Dropoff' | 'Stop' | string;
+  location_name?: string | null;
+  location_address?: string | null;
+  location_lat?: number | null;
+  location_lng?: number | null;
+  stop_sequence?: number;
+  actual_arrival?: string | null;
+  actual_departure?: string | null;
+}
+
 export interface Trip {
   id: string;
   ref_id: string | null;
   status: TripStatus;
   planned_start: string | null;
   planned_end: string | null;
+  planned_distance?: number | null;
   actual_start: string | null;
   actual_end: string | null;
   createdAt: string;
   customer: CustomerRef | null;
   driver: DriverRef | null;
   vehicle: VehicleRef | null;
+  stops?: TripStop[];
 }
 
 export interface Notification {

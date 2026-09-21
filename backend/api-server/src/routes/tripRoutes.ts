@@ -3,13 +3,13 @@ import {
   getTrips, getTripById, createTrip, updateTripStatus,
   dispatchTrip, replaceDriver, pickupArrive, pickupVerify, deliveryVerify,
   bulkDeleteTrips, bulkUpdateTripStatus, bulkAssignTrips, getUnsettledCompletedTrips, updateTripFinancials,
-  logStopDelay, bulkImportTrips, updateTripStop, getMonthlyTripBoard, shareTripMediaToWhatsApp
+  logStopDelay, confirmEvidenceTime, bulkImportTrips, updateTripStop, getMonthlyTripBoard, shareTripMediaToWhatsApp
 } from '../controllers/tripController';
 import { exportTrips } from '../controllers/tripExportController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
-import { createTripBody, listQuery, logStopDelayBody, bulkImportTripsBody, updateTripStopBody } from '../schemas';
+import { createTripBody, listQuery, logStopDelayBody, confirmEvidenceTimeBody, bulkImportTripsBody, updateTripStopBody } from '../schemas';
 
 import { getDriverRecommendations, getVehicleRecommendations } from '../controllers/fleetDispatchController';
 
@@ -43,6 +43,10 @@ router.post('/:id/replace-driver', replaceDriver);
 
 // Why a stop ran late — operator-filled, drivers never see this.
 router.patch('/:id/stops/:stopId/delay', validate({ body: logStopDelayBody }), logStopDelay);
+
+// Confirm/correct the real time an EXTERNAL_APP evidence screenshot happened
+// at. No frozen-trip restriction — see confirmEvidenceTime's own comment.
+router.patch('/:id/stops/:stopId/confirm-time', validate({ body: confirmEvidenceTimeBody }), confirmEvidenceTime);
 
 // Correct where a stop is (label, address, lane endpoint, pin). Allowed while
 // the trip is still running — a wrong address is exactly what needs fixing

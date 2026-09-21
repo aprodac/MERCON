@@ -514,6 +514,21 @@ export const tripService = {
     return res.data.data;
   },
 
+  /**
+   * Confirm or correct the real time an EXTERNAL_APP evidence screenshot
+   * happened at. Omit whichever of actual_arrival/actual_departure the
+   * operator didn't change — submitting with both omitted is a pure
+   * confirmation that the recorded time is already correct.
+   */
+  async confirmEvidenceTime(
+    tripId: string,
+    stopId: string,
+    payload: { document_id: string; actual_arrival?: string; actual_departure?: string }
+  ): Promise<TripStop> {
+    const res = await api.patch<ApiResponse<TripStop>>(`/trips/${tripId}/stops/${stopId}/confirm-time`, payload);
+    return res.data.data;
+  },
+
   /** Assign a driver and/or vehicle to a trip that was created with "assign later". */
   async dispatch(id: string, payload: { driver_id?: string; vehicle_id?: string }): Promise<Trip> {
     const res = await api.post<ApiResponse<Trip>>(`/trips/${id}/dispatch`, payload);
