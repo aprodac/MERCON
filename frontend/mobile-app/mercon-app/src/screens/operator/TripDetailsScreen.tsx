@@ -352,7 +352,14 @@ const TripDetailsScreen = () => {
           </TouchableOpacity>
           <View style={styles.headerBody}>
             <View style={styles.headerTop}>
-              <Text style={styles.tripId}>#{trip.ref_id ?? trip.id.slice(0, 8)}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Image
+                  source={require('../../../assets/images/mercon-logo.png')}
+                  style={{ width: 30, height: 30, borderRadius: 8 }}
+                  resizeMode="contain"
+                />
+                <Text style={styles.tripId}>#{trip.ref_id ?? trip.id.slice(0, 8)}</Text>
+              </View>
               <StatusBadge status={statusLabel(trip.status)} />
             </View>
             <View style={styles.routeRow}>
