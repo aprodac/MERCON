@@ -346,9 +346,18 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
                     )}
 
                     <View className="flex-1">
-                      <Text className="text-xs font-black text-gray-900 truncate">
-                        {truck}
-                      </Text>
+                      <View className="flex-row items-center gap-1.5 flex-wrap">
+                        <Text className="text-xs font-black text-gray-900">
+                          {truck}
+                        </Text>
+                        {trip.customer?.name ? (
+                          <View className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                            <Text className="text-[10px] font-extrabold text-slate-700 uppercase" numberOfLines={1}>
+                              🏢 {trip.customer.name}
+                            </Text>
+                          </View>
+                        ) : null}
+                      </View>
                       <Text className="text-[11px] font-medium text-gray-500 truncate">
                         {driverName}
                       </Text>
