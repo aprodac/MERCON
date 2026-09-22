@@ -114,17 +114,17 @@ export async function recordAdvance(payload: RecordAdvancePayload, userId?: stri
     // 6. Build double-entry GL lines:
     // Received (Customer): Money In -> Dr Bank/Cash, Cr Customer-Advance Liability
     // Paid (Provider/Employee): Money Out -> Dr Provider/Employee Advance Asset, Cr Bank/Cash
-    let lines: Prisma.JournalLineUncheckedCreateWithoutJournalEntryInput[] = [];
+    let lines: Prisma.JournalLineCreateWithoutJournalEntryInput[] = [];
     if (payload.direction === 'Received') {
       lines = [
         {
-          accountId: payload.accountId,
+          account: { connect: { id: payload.accountId } },
           debit: advanceAmount,
           credit: 0,
           description: `Advance received via ${bankOrCashAccount.account_code}`,
         },
         {
-          accountId: advanceAccountId,
+          account: { connect: { id: advanceAccountId } },
           debit: 0,
           credit: advanceAmount,
           description: `Customer advance liability (${payload.party_id || 'General'})`,
@@ -133,13 +133,13 @@ export async function recordAdvance(payload: RecordAdvancePayload, userId?: stri
     } else {
       lines = [
         {
-          accountId: advanceAccountId,
+          account: { connect: { id: advanceAccountId } },
           debit: advanceAmount,
           credit: 0,
           description: `${payload.party_type} advance asset (${payload.party_id || 'General'})`,
         },
         {
-          accountId: payload.accountId,
+          account: { connect: { id: payload.accountId } },
           debit: 0,
           credit: advanceAmount,
           description: `Advance paid out via ${bankOrCashAccount.account_code}`,

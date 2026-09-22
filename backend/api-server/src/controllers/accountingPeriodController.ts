@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
+import { closeAccountingPeriodWithSnapshot } from '../utils/periodClosingEngine';
+import { AccountingError } from '../utils/accountingEngine';
 
 const createPeriodSchema = z.object({
   name: z.string().min(1, 'Period name is required'),

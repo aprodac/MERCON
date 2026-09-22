@@ -14,6 +14,7 @@ export * from './DriverTrips';
 export * from './DriverActionButton';
 export * from './DriverActionGroup';
 export * from './FilterBottomSheet';
+export * from './DriverPagination';
 export * from './LoadingSkeleton';
 
 // Driver Details
