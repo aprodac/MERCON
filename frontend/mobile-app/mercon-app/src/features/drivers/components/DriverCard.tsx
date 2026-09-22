@@ -1,10 +1,12 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
-import { ShieldCheck, Truck, Navigation, FileText } from 'lucide-react-native';
+import { Truck, Navigation, TriangleAlert } from 'lucide-react-native';
+import { Colors, Radius, Shadows, Spacing } from '@/theme/tokens';
 import { DriverAvatar } from './DriverAvatar';
 import { DriverStatusBadge } from './DriverStatusBadge';
 import { DriverTrips } from './DriverTrips';
 import { DriverActionGroup } from './DriverActionGroup';
+import { EXPIRY_SOON_DAYS, formatDaysLeft } from '../services/driverDetailsService';
 import { driverFullName, driverInitials } from '../services/driversService';
 import type { DriverListItem } from '../types';
 
@@ -18,23 +20,21 @@ interface DriverCardProps {
 
 export function DriverCard({ driver, onCall, onTrack, onView, className }: DriverCardProps) {
   const onTrip = driver.status === 'OnTrip' && !!driver.activeTrip;
+  const licenseExpired = driver.licenseDaysLeft !== null && driver.licenseDaysLeft < 0;
+  const licenseExpiringSoon = driver.licenseDaysLeft !== null && !licenseExpired && driver.licenseDaysLeft <= EXPIRY_SOON_DAYS;
+  const vehiclePlate = driver.activeTrip?.vehiclePlate ?? driver.assignedVehicle?.plateNumber ?? null;
 
   return (
     <View
-      className={`rounded-2xl border border-[#EEF1F6] bg-white p-4.5 ${className ?? ''}`}
-      style={{
-        shadowColor: '#3E3C3D',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.04,
-        shadowRadius: 10,
-        elevation: 2,
-      }}
+      className={`bg-white p-4 ${className ?? ''}`}
+      style={{ borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.coolGray, ...Shadows.sm }}
     >
-      {/* Header — avatar, name + status, total trips badge */}
+      {/* Header — avatar, name + status/phone, total trips */}
       <TouchableOpacity
         activeOpacity={onView ? 0.7 : 1}
         onPress={onView ? () => onView(driver) : undefined}
-        className="flex-row items-center gap-3.5"
+        className="flex-row items-center"
+        style={{ gap: Spacing.md }}
       >
         <DriverAvatar
           initials={driverInitials(driver)}
@@ -43,73 +43,72 @@ export function DriverCard({ driver, onCall, onTrack, onView, className }: Drive
           size={52}
         />
 
-        <View className="flex-1 gap-1">
-          <Text numberOfLines={1} className="text-[16px] font-bold text-[#3E3C3D]">
+        <View className="flex-1" style={{ gap: 4 }}>
+          <Text numberOfLines={1} style={{ color: Colors.charcoal }} className="text-[16px] font-bold">
             {driverFullName(driver)}
           </Text>
-          <View className="flex-row items-center gap-2">
+          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
             <DriverStatusBadge status={driver.status} />
             {driver.phone && (
-              <Text numberOfLines={1} className="text-[12px] font-medium text-gray-400">
-                • {driver.phone}
+              <Text numberOfLines={1} style={{ color: Colors.gray400 }} className="flex-1 text-[12px] font-medium">
+                {driver.phone}
               </Text>
             )}
           </View>
         </View>
 
-        {driver.totalTrips !== null && (
-          <View className="items-end">
-            <DriverTrips totalTrips={driver.totalTrips} />
-          </View>
-        )}
+        {driver.totalTrips !== null && <DriverTrips totalTrips={driver.totalTrips} />}
       </TouchableOpacity>
 
-      {/* Operational Details Container */}
-      <View className="mt-3.5 border-t border-[#EEF1F6] pt-3">
+      {/* Operational details — vehicle assignment + (only when it matters) license expiry */}
+      <View style={{ marginTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.coolGray, paddingTop: Spacing.sm, gap: Spacing.xs }}>
         {onTrip && driver.activeTrip ? (
-          /* Active Trip Live Banner */
           <TouchableOpacity
             activeOpacity={onTrack ? 0.7 : 1}
             onPress={onTrack ? () => onTrack(driver) : undefined}
-            className="flex-row items-center justify-between rounded-xl bg-[#FFF5F3] px-3.5 py-2.5 border border-[#FDE3DF]"
+            className="flex-row items-center justify-between"
+            style={{ borderRadius: Radius.md, backgroundColor: Colors.accentLight, borderWidth: 1, borderColor: '#FDE3DF', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm }}
           >
-            <View className="flex-row items-center gap-2.5">
-              <View className="h-7 w-7 items-center justify-center rounded-lg bg-[#FA634E]">
-                <Truck size={14} color="#FFFFFF" strokeWidth={2.2} />
+            <View className="flex-row items-center flex-1" style={{ gap: Spacing.sm }}>
+              <View className="items-center justify-center" style={{ width: 28, height: 28, borderRadius: Radius.sm, backgroundColor: Colors.primary }}>
+                <Truck size={14} color={Colors.white} strokeWidth={2.2} />
               </View>
-              <View>
-                <Text className="text-[11px] font-bold uppercase tracking-wider text-[#FA634E]">
-                  Active Trip ({driver.activeTrip.status})
+              <View className="flex-1">
+                <Text style={{ color: Colors.primary }} className="text-[11px] font-bold uppercase tracking-wider">
+                  On Trip · {driver.activeTrip.status}
                 </Text>
-                <Text numberOfLines={1} className="text-[13px] font-semibold text-[#3E3C3D]">
-                  Vehicle: {driver.activeTrip.vehiclePlate ?? 'Assigned Vehicle'}
+                <Text numberOfLines={1} style={{ color: Colors.charcoal }} className="text-[13px] font-semibold">
+                  {vehiclePlate ?? 'Assigned vehicle'}
                 </Text>
               </View>
             </View>
-            <Navigation size={16} color="#FA634E" strokeWidth={2} />
+            <Navigation size={16} color={Colors.primary} strokeWidth={2} />
           </TouchableOpacity>
         ) : (
-          /* Idle / Available Status Summary */
-          <View className="flex-row items-center justify-between px-1 py-1">
-            <View className="flex-row items-center gap-2">
-              <Truck size={14} color="#71717A" strokeWidth={2} />
-              <Text numberOfLines={1} className="text-[13px] font-medium text-gray-600">
-                Vehicle: {driver.activeTrip?.vehiclePlate ?? 'Default Unassigned'}
-              </Text>
-            </View>
+          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
+            <Truck size={14} color={Colors.gray500} strokeWidth={2} />
+            <Text numberOfLines={1} style={{ color: Colors.gray600 }} className="flex-1 text-[13px] font-medium">
+              {vehiclePlate ?? 'No vehicle assigned'}
+            </Text>
+          </View>
+        )}
 
-            <View className="flex-row items-center gap-1.5">
-              <FileText size={13} color="#71717A" strokeWidth={2} />
-              <Text numberOfLines={1} className="text-[12px] font-medium text-gray-500">
-                Lic: {driver.licenseNumber ? driver.licenseNumber.slice(0, 10) : 'Recorded'}
-              </Text>
-            </View>
+        {(licenseExpired || licenseExpiringSoon) && (
+          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
+            <TriangleAlert size={13} color={licenseExpired ? Colors.danger : Colors.warning} strokeWidth={2} />
+            <Text
+              numberOfLines={1}
+              style={{ color: licenseExpired ? Colors.danger : Colors.warning }}
+              className="flex-1 text-[12px] font-semibold"
+            >
+              License {formatDaysLeft(driver.licenseDaysLeft)}
+            </Text>
           </View>
         )}
       </View>
 
       {/* Actions */}
-      <View className="mt-3">
+      <View style={{ marginTop: Spacing.sm }}>
         <DriverActionGroup
           onTrip={onTrip}
           canCall={!!driver.phone}
