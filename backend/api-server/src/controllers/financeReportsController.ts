@@ -191,8 +191,17 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
     const { as_of } = req.query;
     const asOfDate = as_of ? new Date(String(as_of)) : new Date();
 
+    const assets: { account_code: string; name: string; amount: number }[] = [];
+    const liabilities: { account_code: string; name: string; amount: number }[] = [];
+    const equity: { account_code: string; name: string; amount: number }[] = [];
+
+    let totalAssets = new Prisma.Decimal(0);
+    let totalLiabilities = new Prisma.Decimal(0);
+    let totalEquity = new Prisma.Decimal(0);
+    let using_snapshot = false;
+
     // Check if as_of matches a Closed accounting period's end_date for snapshot optimization
-    let matchedClosedPeriod = await prisma.accountingPeriod.findFirst({
+    const matchedClosedPeriod = await prisma.accountingPeriod.findFirst({
       where: {
         status: 'Closed',
         end_date: {
@@ -201,43 +210,77 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
         },
       },
       include: {
-        closingBalances: {
-          include: { account: true },
-        },
+        closingBalances: { include: { account: true } },
       },
     });
 
-    let using_snapshot = false;
-    const assets: { account_code: string; name: string; amount: number }[] = [];
-    const liabilities: { account_code: string; name: string; amount: number }[] = [];
-    const equity: { account_code: string; name: string; amount: number }[] = [];
-
-    let totalAssets = new Prisma.Decimal(0);
-    let totalLiabilities = new Prisma.Decimal(0);
-    let totalEquity = new Prisma.Decimal(0);
-
     if (matchedClosedPeriod && matchedClosedPeriod.closingBalances.length > 0) {
       using_snapshot = true;
-      for (const cb of matchedClosedPeriod.closingBalances) {
+      // Fetch AccountClosingBalance snapshot records for all closed periods up to matchedClosedPeriod.end_date
+      const closingBalances = await prisma.accountClosingBalance.findMany({
+        where: {
+          period: {
+            status: 'Closed',
+            end_date: { lte: matchedClosedPeriod.end_date },
+          },
+        },
+        include: { account: true },
+      });
+
+      const accountBalMap = new Map<string, { account_code: string; name: string; account_type: string; amount: Prisma.Decimal }>();
+      let cumulativeRevenue = new Prisma.Decimal(0);
+      let cumulativeExpense = new Prisma.Decimal(0);
+
+      for (const cb of closingBalances) {
         const acc = cb.account;
         const bal = new Prisma.Decimal(cb.closing_balance);
 
-        const item = {
+        if (acc.account_type === 'Revenue') {
+          cumulativeRevenue = cumulativeRevenue.plus(bal);
+          continue;
+        }
+        if (acc.account_type === 'Expense') {
+          cumulativeExpense = cumulativeExpense.plus(bal);
+          continue;
+        }
+
+        const current = accountBalMap.get(acc.id) || {
           account_code: acc.account_code,
           name: acc.name,
-          amount: bal.toNumber(),
+          account_type: acc.account_type,
+          amount: new Prisma.Decimal(0),
+        };
+        current.amount = current.amount.plus(bal);
+        accountBalMap.set(acc.id, current);
+      }
+
+      for (const val of accountBalMap.values()) {
+        const item = {
+          account_code: val.account_code,
+          name: val.name,
+          amount: val.amount.toNumber(),
         };
 
-        if (acc.account_type === 'Asset') {
+        if (val.account_type === 'Asset') {
           assets.push(item);
-          totalAssets = totalAssets.plus(bal);
-        } else if (acc.account_type === 'Liability') {
+          totalAssets = totalAssets.plus(val.amount);
+        } else if (val.account_type === 'Liability') {
           liabilities.push(item);
-          totalLiabilities = totalLiabilities.plus(bal);
-        } else if (acc.account_type === 'Equity') {
+          totalLiabilities = totalLiabilities.plus(val.amount);
+        } else if (val.account_type === 'Equity') {
           equity.push(item);
-          totalEquity = totalEquity.plus(bal);
+          totalEquity = totalEquity.plus(val.amount);
         }
+      }
+
+      const retainedEarnings = cumulativeRevenue.minus(cumulativeExpense);
+      if (!retainedEarnings.equals(0)) {
+        equity.push({
+          account_code: '3999',
+          name: 'Retained Earnings (Unclosed Net Income)',
+          amount: retainedEarnings.toNumber(),
+        });
+        totalEquity = totalEquity.plus(retainedEarnings);
       }
     } else {
       // Raw calculation from Posted journal lines up to asOfDate
@@ -248,9 +291,6 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
             status: 'Posted',
             entry_date: { lte: asOfDate },
           },
-          account: {
-            account_type: { in: ['Asset', 'Liability', 'Equity'] },
-          },
         },
         include: {
           account: true,
@@ -258,11 +298,22 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
       });
 
       const accountBalMap = new Map<string, { account_code: string; name: string; account_type: string; amount: Prisma.Decimal }>();
+      let cumulativeRevenue = new Prisma.Decimal(0);
+      let cumulativeExpense = new Prisma.Decimal(0);
 
       for (const line of lines) {
         const acc = line.account;
         const debit = new Prisma.Decimal(line.debit || 0);
         const credit = new Prisma.Decimal(line.credit || 0);
+
+        if (acc.account_type === 'Revenue') {
+          cumulativeRevenue = cumulativeRevenue.plus(credit.minus(debit));
+          continue;
+        }
+        if (acc.account_type === 'Expense') {
+          cumulativeExpense = cumulativeExpense.plus(debit.minus(credit));
+          continue;
+        }
 
         const current = accountBalMap.get(acc.id) || {
           account_code: acc.account_code,
@@ -298,6 +349,17 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
           equity.push(item);
           totalEquity = totalEquity.plus(val.amount);
         }
+      }
+
+      // Retained Earnings = Cumulative Revenue - Cumulative Expense up to asOfDate
+      const retainedEarnings = cumulativeRevenue.minus(cumulativeExpense);
+      if (!retainedEarnings.equals(0)) {
+        equity.push({
+          account_code: '3999',
+          name: 'Retained Earnings (Unclosed Net Income)',
+          amount: retainedEarnings.toNumber(),
+        });
+        totalEquity = totalEquity.plus(retainedEarnings);
       }
     }
 

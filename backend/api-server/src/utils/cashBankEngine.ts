@@ -147,6 +147,13 @@ export async function reconcileBankAccount(
           400,
         );
       }
+      if (line.reconciled) {
+        throw new AccountingError(
+          `Journal line '${line.id}' is already reconciled`,
+          'ALREADY_RECONCILED',
+          400,
+        );
+      }
     }
 
     const statementDate = new Date(statement_date);

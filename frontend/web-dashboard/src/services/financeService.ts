@@ -1,4 +1,4 @@
-import { api } from '@/lib/api';
+import { api, type ApiResponse } from '@/lib/api';
 import type {
   Account,
   AccountingPeriod,
@@ -297,4 +297,67 @@ export const financeService = {
     const response = await api.post(`/bills/${id}/void`);
     return response.data;
   },
+
+  // Finance Reports
+  getTrialBalance: async (params?: { period_id?: string }): Promise<ApiResponse<TrialBalanceData>> => {
+    const response = await api.get('/finance/reports/trial-balance', { params });
+    return response.data;
+  },
+
+  getProfitAndLoss: async (params?: { date_from?: string; date_to?: string }): Promise<ApiResponse<ProfitAndLossData>> => {
+    const response = await api.get('/finance/reports/profit-and-loss', { params });
+    return response.data;
+  },
+
+  getBalanceSheet: async (params?: { as_of?: string }): Promise<ApiResponse<BalanceSheetData>> => {
+    const response = await api.get('/finance/reports/balance-sheet', { params });
+    return response.data;
+  },
 };
+
+export interface TrialBalanceItem {
+  account_code: string;
+  name: string;
+  account_type: AccountType;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+export interface TrialBalanceData {
+  period_id?: string;
+  period_name?: string;
+  items: TrialBalanceItem[];
+  total_debit: number;
+  total_credit: number;
+  is_balanced: boolean;
+}
+
+export interface ReportLineItem {
+  account_code: string;
+  name: string;
+  amount: number;
+}
+
+export interface ProfitAndLossData {
+  date_from?: string;
+  date_to?: string;
+  revenues: ReportLineItem[];
+  expenses: ReportLineItem[];
+  total_revenue: number;
+  total_expense: number;
+  net_profit: number;
+}
+
+export interface BalanceSheetData {
+  as_of: string;
+  using_snapshot: boolean;
+  assets: ReportLineItem[];
+  liabilities: ReportLineItem[];
+  equity: ReportLineItem[];
+  total_assets: number;
+  total_liabilities: number;
+  total_equity: number;
+  is_balanced: boolean;
+}
+

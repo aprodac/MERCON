@@ -92,6 +92,9 @@ const AccountingPeriodsPage   = lazyWithRetry(() => import('@/pages/finance/Acco
 const JournalEntriesPage      = lazyWithRetry(() => import('@/pages/finance/JournalEntriesPage'));
 const InvoicesPage            = lazyWithRetry(() => import('@/pages/finance/InvoicesPage'));
 const BillsPage                = lazyWithRetry(() => import('@/pages/finance/BillsPage'));
+const TrialBalancePage        = lazyWithRetry(() => import('@/pages/finance/TrialBalancePage'));
+const ProfitAndLossPage       = lazyWithRetry(() => import('@/pages/finance/ProfitAndLossPage'));
+const BalanceSheetPage        = lazyWithRetry(() => import('@/pages/finance/BalanceSheetPage'));
 
 // Documents
 const DocumentsCenterPage     = lazyWithRetry(() => import('@/pages/documents/DocumentsCenterPage'));
@@ -280,6 +283,9 @@ export default function AppRouter() {
             <Route path="/finance/journal-entries"   element={<RequireModule moduleKey="finance"><JournalEntriesPage /></RequireModule>} />
             <Route path="/finance/invoices"          element={<RequireModule moduleKey="finance"><InvoicesPage /></RequireModule>} />
             <Route path="/finance/bills"             element={<RequireModule moduleKey="finance"><BillsPage /></RequireModule>} />
+            <Route path="/finance/trial-balance"     element={<RequireModule moduleKey="finance"><TrialBalancePage /></RequireModule>} />
+            <Route path="/finance/profit-and-loss"    element={<RequireModule moduleKey="finance"><ProfitAndLossPage /></RequireModule>} />
+            <Route path="/finance/balance-sheet"     element={<RequireModule moduleKey="finance"><BalanceSheetPage /></RequireModule>} />
             <Route path="/finance"                   element={<Navigate to="/finance/chart-of-accounts" replace />} />
 
             {/* Documents */}

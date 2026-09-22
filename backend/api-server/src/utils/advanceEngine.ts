@@ -405,18 +405,34 @@ export async function applyAdvance(
       },
     });
 
-    // 6. Update Advance amounts and status
+    // 6. Update Advance amounts and status (atomic update check)
     const newApplied = new Prisma.Decimal(advance.applied_amount).plus(applyAmount);
     const newRemaining = new Prisma.Decimal(advance.amount).minus(newApplied);
     const newAdvanceStatus = newRemaining.equals(0) ? 'FullyApplied' : 'PartiallyApplied';
 
-    const updatedAdvance = await tx.advance.update({
-      where: { id: advance.id },
+    const advanceUpdate = await tx.advance.updateMany({
+      where: {
+        id: advance.id,
+        remaining_amount: { gte: applyAmount },
+        status: { in: ['Open', 'PartiallyApplied'] },
+      },
       data: {
         applied_amount: newApplied,
         remaining_amount: newRemaining,
         status: newAdvanceStatus,
       },
+    });
+
+    if (advanceUpdate.count === 0) {
+      throw new AccountingError(
+        'Advance balance was modified concurrently by another transaction',
+        'CONCURRENCY_ERROR',
+        409,
+      );
+    }
+
+    const updatedAdvance = await tx.advance.findUnique({
+      where: { id: advance.id },
       include: {
         account: true,
         journalEntry: true,

@@ -4,7 +4,7 @@ import {
   Home, Bell, Truck, Users, Car, Building2,
   CreditCard, ReceiptText, Calculator, Files, FileBarChart,
   Settings, User, LogOut, Wrench, X, MapPin, TrendingUp, Trash2,
-  CalendarRange, Wallet, SlidersHorizontal, ChevronsLeft, ChevronsRight, FolderArchive, Lock, ShieldCheck, GraduationCap, AlertTriangle, FolderTree, BookOpen
+  CalendarRange, Wallet, SlidersHorizontal, ChevronsLeft, ChevronsRight, FolderArchive, Lock, ShieldCheck, GraduationCap, AlertTriangle, FolderTree, BookOpen, Scale, BarChart3
 } from 'lucide-react';
 
 import { authStore } from '@/store/authStore';
@@ -110,6 +110,9 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
         { icon: BookOpen, label: 'Journal Entries', path: '/finance/journal-entries', moduleKey: 'finance' },
         { icon: ReceiptText, label: 'Invoices', path: '/finance/invoices', moduleKey: 'finance' },
         { icon: CreditCard, label: 'Bills', path: '/finance/bills', moduleKey: 'finance' },
+        { icon: Scale, label: 'Trial Balance', path: '/finance/trial-balance', moduleKey: 'finance' },
+        { icon: BarChart3, label: 'Profit & Loss', path: '/finance/profit-and-loss', moduleKey: 'finance' },
+        { icon: FileBarChart, label: 'Balance Sheet', path: '/finance/balance-sheet', moduleKey: 'finance' },
         { icon: TrendingUp, label: 'Vehicle P&L', path: '/vehicles/financials', moduleKey: 'vehicles', permissionKey: 'fleet.financials' },
       ],
     },
