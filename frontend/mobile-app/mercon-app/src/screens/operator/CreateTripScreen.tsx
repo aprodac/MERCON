@@ -5,14 +5,17 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Check, Truck } from 'lucide-react-native';
+import { ArrowLeft, Check, Truck, Clock, MapPin } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography } from '../../theme/tokens';
 import { Button, Card, Input, StatusBadge } from '../../components';
 import { getApiErrorMessage } from '../../lib/api';
 import {
   operatorService, invalidateOperatorTrips,
   type OperatorCustomer, type OperatorDriver, type OperatorVehicle,
+  type OperatorLocation, type QuotationLookupMatch,
 } from '../../lib/operator';
+
+const ASSIGN_LATER = 'assign_later';
 
 const CreateTripScreen = () => {
   const router = useRouter();
@@ -40,6 +43,26 @@ const CreateTripScreen = () => {
   const [selectedDriver, setSelectedDriver] = useState('');
   const [selectedVehicle, setSelectedVehicle] = useState('');
 
+  // Set when the operator picks a saved Location via search, instead of
+  // typing raw coordinates blind. Cleared whenever the name is hand-edited
+  // after a pick, so a stale id is never sent for coordinates that no
+  // longer match it.
+  const [pickupLocationId, setPickupLocationId] = useState<string | undefined>(undefined);
+  const [dropoffLocationId, setDropoffLocationId] = useState<string | undefined>(undefined);
+  const [pickupResults, setPickupResults] = useState<OperatorLocation[]>([]);
+  const [dropoffResults, setDropoffResults] = useState<OperatorLocation[]>([]);
+  const [showPickupResults, setShowPickupResults] = useState(false);
+  const [showDropoffResults, setShowDropoffResults] = useState(false);
+
+  // Rate & Billing — auto-filled from a matching quotation when one exists,
+  // otherwise the operator enters both manually. Same fields the web
+  // dashboard's create-trip wizard sends.
+  const [quotationMatch, setQuotationMatch] = useState<QuotationLookupMatch | null>(null);
+  const [lookingUpRate, setLookingUpRate] = useState(false);
+  const [manualRateOverride, setManualRateOverride] = useState(false);
+  const [billingAmountInput, setBillingAmountInput] = useState('');
+  const [driverPayoutInput, setDriverPayoutInput] = useState('');
+
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -63,6 +86,94 @@ const CreateTripScreen = () => {
     })();
   }, []);
 
+  // Debounced saved-location search — lets the operator pick a known
+  // Location instead of typing raw coordinates, without losing the ability
+  // to just type coordinates manually.
+  useEffect(() => {
+    if (!customerId || !pickupName.trim() || pickupLocationId) {
+      setPickupResults([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      try {
+        const results = await operatorService.searchLocations(customerId, pickupName);
+        setPickupResults(results);
+        setShowPickupResults(true);
+      } catch {
+        setPickupResults([]);
+      }
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [customerId, pickupName, pickupLocationId]);
+
+  useEffect(() => {
+    if (!customerId || !dropoffName.trim() || dropoffLocationId) {
+      setDropoffResults([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      try {
+        const results = await operatorService.searchLocations(customerId, dropoffName);
+        setDropoffResults(results);
+        setShowDropoffResults(true);
+      } catch {
+        setDropoffResults([]);
+      }
+    }, 350);
+    return () => clearTimeout(handle);
+  }, [customerId, dropoffName, dropoffLocationId]);
+
+  const handlePickPickupLocation = (loc: OperatorLocation) => {
+    setPickupLocationId(loc.id);
+    setPickupName(loc.name);
+    if (loc.lat != null) setPickupLat(String(loc.lat));
+    if (loc.lng != null) setPickupLng(String(loc.lng));
+    setShowPickupResults(false);
+  };
+
+  const handlePickDropoffLocation = (loc: OperatorLocation) => {
+    setDropoffLocationId(loc.id);
+    setDropoffName(loc.name);
+    if (loc.lat != null) setDropoffLat(String(loc.lat));
+    if (loc.lng != null) setDropoffLng(String(loc.lng));
+    setShowDropoffResults(false);
+  };
+
+  const selectedVehicleObj = vehicles.find((v) => v.id === selectedVehicle);
+
+  // Auto rate lookup — re-runs whenever the lane or vehicle changes. A
+  // failed/no-match lookup falls back to manual entry rather than blocking
+  // the form (see operatorService.lookupQuotation).
+  useEffect(() => {
+    if (!customerId || manualRateOverride) return;
+    let cancelled = false;
+    (async () => {
+      setLookingUpRate(true);
+      const match = await operatorService.lookupQuotation({
+        customer_id: customerId,
+        origin_location_id: pickupLocationId,
+        destination_location_id: dropoffLocationId,
+        vehicle_type: selectedVehicleObj?.asset_type,
+        rate_category: 'SINGLE_TRIP',
+        billing_type: 'EXTRA',
+      });
+      if (!cancelled) {
+        setQuotationMatch(match);
+        setLookingUpRate(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [customerId, pickupLocationId, dropoffLocationId, selectedVehicleObj?.asset_type, manualRateOverride]);
+
+  const effectiveBillingAmount = quotationMatch && !manualRateOverride
+    ? quotationMatch.rate
+    : parseFloat(billingAmountInput);
+  const effectiveDriverPayout = quotationMatch && !manualRateOverride
+    ? quotationMatch.driverPayout
+    : parseFloat(driverPayoutInput);
+  const hasValidRate = Number.isFinite(effectiveBillingAmount) && effectiveBillingAmount > 0
+    && Number.isFinite(effectiveDriverPayout) && effectiveDriverPayout > 0;
+
   const pickupLatNum = parseFloat(pickupLat);
   const pickupLngNum = parseFloat(pickupLng);
   const dropoffLatNum = parseFloat(dropoffLat);
@@ -71,8 +182,10 @@ const CreateTripScreen = () => {
     !Number.isNaN(pickupLatNum) && !Number.isNaN(pickupLngNum) &&
     !Number.isNaN(dropoffLatNum) && !Number.isNaN(dropoffLngNum);
 
-  const isValid = !!customerId && !!selectedDriver && !!selectedVehicle && hasValidCoords &&
-    !!pickupName.trim() && !!dropoffName.trim();
+  // Driver/vehicle are no longer required — "Assign Later" is a valid choice,
+  // same as the web dashboard's create-trip wizard.
+  const isValid = !!customerId && hasValidCoords &&
+    !!pickupName.trim() && !!dropoffName.trim() && hasValidRate;
 
   // date: DD/MM/YYYY, time: HH:MM — both optional, best-effort parse.
   function parseDateTime(dateStr: string, timeStr: string): string | undefined {
@@ -103,22 +216,31 @@ const CreateTripScreen = () => {
     try {
       await operatorService.createTrip({
         customer_id: customerId,
-        driver_id: selectedDriver,
-        vehicle_id: selectedVehicle,
+        driver_id: selectedDriver && selectedDriver !== ASSIGN_LATER ? selectedDriver : undefined,
+        vehicle_id: selectedVehicle && selectedVehicle !== ASSIGN_LATER ? selectedVehicle : undefined,
         planned_start: plannedPickup,
         // Both planned times are what every delay figure is measured against.
         // Omitting them (as this screen used to) creates a trip that can never
         // be counted as late, so it silently vanishes from the delay reports.
+        planned_end: plannedDropoff,
+        billing_amount: effectiveBillingAmount,
+        trip_charges: effectiveDriverPayout,
+        rate_card_id: quotationMatch && !manualRateOverride ? quotationMatch.quotationId : undefined,
+        vehicle_type: selectedVehicleObj?.asset_type,
+        rate_category: 'SINGLE_TRIP',
+        billing_type: 'EXTRA',
         stops: [
           {
             stop_type: 'Pickup', lat: pickupLatNum, lng: pickupLngNum,
             planned_arrival: plannedPickup,
             location_name: pickupName.trim() || undefined,
+            location_id: pickupLocationId,
           },
           {
             stop_type: 'Dropoff', lat: dropoffLatNum, lng: dropoffLngNum,
             planned_arrival: plannedDropoff,
             location_name: dropoffName.trim() || undefined,
+            location_id: dropoffLocationId,
           },
         ],
       });
@@ -175,6 +297,38 @@ const CreateTripScreen = () => {
           <Text style={styles.sectionTitle}>Route</Text>
           <Card style={styles.formCard}>
             <View style={styles.formGroup}>
+              <Input
+                label="Pickup Location name *"
+                value={pickupName}
+                onChangeText={(t) => { setPickupName(t); setPickupLocationId(undefined); setShowPickupResults(true); }}
+                placeholder="Search a saved location, or type a name"
+                maxLength={120}
+              />
+              {pickupLocationId ? (
+                <View style={styles.savedLocationChip}>
+                  <MapPin size={11} color={Colors.primary} strokeWidth={2.4} />
+                  <Text style={styles.savedLocationChipText}>Saved location — coordinates auto-filled</Text>
+                </View>
+              ) : (
+                showPickupResults && pickupResults.length > 0 && (
+                  <View style={styles.searchResults}>
+                    {pickupResults.map((loc) => (
+                      <TouchableOpacity
+                        key={loc.id}
+                        style={styles.searchResultRow}
+                        activeOpacity={0.8}
+                        onPress={() => handlePickPickupLocation(loc)}
+                      >
+                        <MapPin size={13} color={Colors.gray500} strokeWidth={2} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.searchResultName}>{loc.name}</Text>
+                          {loc.address ? <Text style={styles.searchResultAddress} numberOfLines={1}>{loc.address}</Text> : null}
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )
+              )}
               <Text style={styles.label}>Pickup Coordinates (lat, lng)</Text>
               <View style={styles.rowFields}>
                 <Input
@@ -183,6 +337,7 @@ const CreateTripScreen = () => {
                   onChangeText={setPickupLat}
                   placeholder="Latitude"
                   keyboardType="numeric"
+                  state={pickupLocationId ? 'disabled' : 'default'}
                 />
                 <Input
                   style={{ flex: 1 }}
@@ -190,18 +345,44 @@ const CreateTripScreen = () => {
                   onChangeText={setPickupLng}
                   placeholder="Longitude"
                   keyboardType="numeric"
+                  state={pickupLocationId ? 'disabled' : 'default'}
                 />
               </View>
-              <Input
-                label="Location name *"
-                value={pickupName}
-                onChangeText={setPickupName}
-                placeholder="e.g. Khamis Sorting Center"
-                maxLength={120}
-              />
             </View>
             <View style={styles.formDivider} />
             <View style={styles.formGroup}>
+              <Input
+                label="Dropoff Location name *"
+                value={dropoffName}
+                onChangeText={(t) => { setDropoffName(t); setDropoffLocationId(undefined); setShowDropoffResults(true); }}
+                placeholder="Search a saved location, or type a name"
+                maxLength={120}
+              />
+              {dropoffLocationId ? (
+                <View style={styles.savedLocationChip}>
+                  <MapPin size={11} color={Colors.primary} strokeWidth={2.4} />
+                  <Text style={styles.savedLocationChipText}>Saved location — coordinates auto-filled</Text>
+                </View>
+              ) : (
+                showDropoffResults && dropoffResults.length > 0 && (
+                  <View style={styles.searchResults}>
+                    {dropoffResults.map((loc) => (
+                      <TouchableOpacity
+                        key={loc.id}
+                        style={styles.searchResultRow}
+                        activeOpacity={0.8}
+                        onPress={() => handlePickDropoffLocation(loc)}
+                      >
+                        <MapPin size={13} color={Colors.gray500} strokeWidth={2} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.searchResultName}>{loc.name}</Text>
+                          {loc.address ? <Text style={styles.searchResultAddress} numberOfLines={1}>{loc.address}</Text> : null}
+                        </View>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )
+              )}
               <Text style={styles.label}>Dropoff Coordinates (lat, lng)</Text>
               <View style={styles.rowFields}>
                 <Input
@@ -210,6 +391,7 @@ const CreateTripScreen = () => {
                   onChangeText={setDropoffLat}
                   placeholder="Latitude"
                   keyboardType="numeric"
+                  state={dropoffLocationId ? 'disabled' : 'default'}
                 />
                 <Input
                   style={{ flex: 1 }}
@@ -217,15 +399,9 @@ const CreateTripScreen = () => {
                   onChangeText={setDropoffLng}
                   placeholder="Longitude"
                   keyboardType="numeric"
+                  state={dropoffLocationId ? 'disabled' : 'default'}
                 />
               </View>
-              <Input
-                label="Location name *"
-                value={dropoffName}
-                onChangeText={setDropoffName}
-                placeholder="e.g. Baish"
-                maxLength={120}
-              />
             </View>
           </Card>
 
@@ -275,9 +451,73 @@ const CreateTripScreen = () => {
             </View>
           </Card>
 
+          {/* Section: Rate & Billing — auto-filled from a matching quotation
+              when the customer/route/vehicle match one on file, otherwise
+              entered manually. Same fields the web dashboard sends. */}
+          <Text style={styles.sectionTitle}>Rate & Billing</Text>
+          <Card style={styles.formCard}>
+            {lookingUpRate ? (
+              <ActivityIndicator color={Colors.primary} />
+            ) : quotationMatch && !manualRateOverride ? (
+              <View>
+                <View style={styles.rateMatchedRow}>
+                  <Text style={styles.label}>Customer Billing Rate</Text>
+                  <Text style={styles.rateValue}>SAR {quotationMatch.rate.toLocaleString()}</Text>
+                </View>
+                <View style={styles.rateMatchedRow}>
+                  <Text style={styles.label}>Driver Payout</Text>
+                  <Text style={styles.rateValue}>SAR {quotationMatch.driverPayout.toLocaleString()}</Text>
+                </View>
+                <Text style={styles.rateSourceHint}>Matched an existing quotation for this customer & route.</Text>
+                <TouchableOpacity onPress={() => setManualRateOverride(true)}>
+                  <Text style={styles.rateOverrideLink}>Use a different rate</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View>
+                {quotationMatch === null && !lookingUpRate && customerId ? (
+                  <Text style={styles.rateSourceHint}>No matching quotation found — enter the rate manually.</Text>
+                ) : null}
+                <Input
+                  label="Customer Billing Rate (SAR) *"
+                  value={billingAmountInput}
+                  onChangeText={setBillingAmountInput}
+                  placeholder="0.00"
+                  keyboardType="numeric"
+                />
+                <Input
+                  label="Driver Payout (SAR) *"
+                  value={driverPayoutInput}
+                  onChangeText={setDriverPayoutInput}
+                  placeholder="0.00"
+                  keyboardType="numeric"
+                />
+                {quotationMatch && (
+                  <TouchableOpacity onPress={() => setManualRateOverride(false)}>
+                    <Text style={styles.rateOverrideLink}>Use matched quotation rate instead</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </Card>
+
           {/* Section: Driver */}
           <Text style={styles.sectionTitle}>Assign Driver</Text>
           <Card style={styles.pickerCard}>
+            <TouchableOpacity
+              style={[styles.driverItem, selectedDriver === ASSIGN_LATER ? styles.driverItemActive : null]}
+              activeOpacity={0.8}
+              onPress={() => setSelectedDriver(ASSIGN_LATER)}
+            >
+              <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
+                <Clock size={20} color={Colors.gray600} strokeWidth={2} />
+              </View>
+              <View style={styles.driverInfo}>
+                <Text style={styles.driverName}>Assign Later</Text>
+                <Text style={styles.driverId}>Create the trip without a driver for now</Text>
+              </View>
+              {selectedDriver === ASSIGN_LATER && <Check size={18} color={Colors.primary} strokeWidth={3} />}
+            </TouchableOpacity>
             {drivers.length === 0 ? (
               <Text style={styles.emptyHint}>No available drivers</Text>
             ) : (
@@ -306,6 +546,20 @@ const CreateTripScreen = () => {
           {/* Section: Vehicle */}
           <Text style={styles.sectionTitle}>Assign Vehicle</Text>
           <Card style={styles.pickerCard}>
+            <TouchableOpacity
+              style={[styles.driverItem, selectedVehicle === ASSIGN_LATER ? styles.driverItemActive : null]}
+              activeOpacity={0.8}
+              onPress={() => setSelectedVehicle(ASSIGN_LATER)}
+            >
+              <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
+                <Clock size={20} color={Colors.gray600} strokeWidth={2} />
+              </View>
+              <View style={styles.driverInfo}>
+                <Text style={styles.driverName}>Assign Later</Text>
+                <Text style={styles.driverId}>Create the trip without a truck for now</Text>
+              </View>
+              {selectedVehicle === ASSIGN_LATER && <Check size={18} color={Colors.primary} strokeWidth={3} />}
+            </TouchableOpacity>
             {vehicles.length === 0 ? (
               <Text style={styles.emptyHint}>No available vehicles</Text>
             ) : (
@@ -338,7 +592,7 @@ const CreateTripScreen = () => {
 
           {!isValid && (
             <Text style={styles.validationHint}>
-              Fill in customer, cargo, pickup/dropoff coordinates, driver and vehicle to create the trip.
+              Fill in customer, pickup/dropoff details, and the billing rate & driver payout to create the trip. Driver and truck can be Assigned Later.
             </Text>
           )}
         </ScrollView>
@@ -488,6 +742,68 @@ const styles = StyleSheet.create({
     color: Colors.gray400,
     textAlign: 'center',
     marginTop: -Spacing.xs,
+  },
+  savedLocationChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 4,
+    marginBottom: Spacing.xs,
+  },
+  savedLocationChipText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  searchResults: {
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+    borderRadius: Radius.md,
+    marginTop: 4,
+    marginBottom: Spacing.xs,
+    overflow: 'hidden',
+  },
+  searchResultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray100,
+    backgroundColor: Colors.white,
+  },
+  searchResultName: {
+    fontSize: Typography.sm,
+    fontWeight: '600',
+    color: Colors.gray900,
+  },
+  searchResultAddress: {
+    fontSize: 11,
+    color: Colors.gray500,
+  },
+  rateMatchedRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Spacing.xs,
+  },
+  rateValue: {
+    fontSize: Typography.sm,
+    fontWeight: '800',
+    color: Colors.gray900,
+  },
+  rateSourceHint: {
+    fontSize: 11,
+    color: Colors.gray500,
+    marginTop: 2,
+    marginBottom: Spacing.xs,
+  },
+  rateOverrideLink: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.primary,
+    marginTop: Spacing.xs,
   },
 });
 

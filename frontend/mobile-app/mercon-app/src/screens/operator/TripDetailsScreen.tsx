@@ -1,22 +1,32 @@
 import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, Modal, FlatList,
-  StyleSheet, StatusBar, Linking, Alert, ActivityIndicator, Share, Image,
+  StyleSheet, StatusBar, Linking, Alert, ActivityIndicator, Share, Image, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import {
-  ArrowLeft, ArrowRight, Check, Phone, Truck, MapPin, X,
+  ArrowLeft, ArrowRight, Check, Phone, Truck, MapPin, X, Building2,
   Share2, Film, Image as ImageIcon, Play, FileText, AlertCircle, ExternalLink, Plus, Camera,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography } from '../../theme/tokens';
 import { StatusBadge, Avatar, Card, Button } from '../../components';
-import { getApiErrorMessage } from '../../lib/api';
+import { getApiErrorMessage, API_URL } from '../../lib/api';
 import {
-  operatorService, useOperatorTripById, type OperatorTripDetail, type OperatorDriver,
+  operatorService, useOperatorTripById, type OperatorTripDetail, type OperatorDriver, type OperatorVehicle,
 } from '../../lib/operator';
 import { statusLabel, type TripStatus } from '../../lib/trips';
 import { chooseMedia } from '../../lib/camera';
+
+function resolveMediaUrl(url?: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  const base = API_URL.replace(/\/api(\/v\d+)?\/?$/, '');
+  const cleanPath = url.startsWith('/') ? url : `/${url}`;
+  return `${base}${cleanPath}`;
+}
 
 export async function shareMediaToWhatsApp(trip: OperatorTripDetail, doc: any) {
   const truck = (trip.vehicle?.ref_id || trip.vehicle?.plate_number || 'N/A').toUpperCase();
@@ -33,7 +43,6 @@ export async function shareMediaToWhatsApp(trip: OperatorTripDetail, doc: any) {
 
   let sharedViaNativeFile = false;
 
-  // 1. Safely attempt expo-file-system download + expo-sharing native file asset share
   try {
     const FileSystem = require('expo-file-system/legacy');
     const expoSharing = require('expo-sharing');
@@ -80,12 +89,11 @@ export async function shareMediaToWhatsApp(trip: OperatorTripDetail, doc: any) {
       }
     }
   } catch (err) {
-    console.warn('Native file sharing unavailable or dev client mismatch:', err);
+    console.warn('Native file sharing unavailable:', err);
   }
 
   if (sharedViaNativeFile) return;
 
-  // 2. Fallback to WhatsApp text link if native sharing module is missing or fails
   const notesStr = doc.ocr_raw_text ? `\nNotes: ${doc.ocr_raw_text}` : '';
   const message = `📸 MERCON Trip Evidence Update\n\nTruck: ${truck}\nDriver: ${driverName}\nCategory: ${categoryLabel}${notesStr}\n\nMedia Link:\n${mediaUrl}`;
 
@@ -118,38 +126,17 @@ export async function shareMediaToWhatsApp(trip: OperatorTripDetail, doc: any) {
   }
 }
 
-const mockMediaDocs = [
-  {
-    id: 'mock-pod-1',
-    doc_type: 'POD',
-    title: 'Signed Proof of Delivery (POD)',
-    file_url: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=800&q=80',
-    mime_type: 'image/jpeg',
-    ocr_raw_text: '📍 [GPS: 24.713, 46.675] Consignment verified & signed at yard.',
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: 'mock-delay-1',
-    doc_type: 'Delay',
-    title: 'Traffic & Route Delay Inspection Video',
-    file_url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    mime_type: 'video/mp4',
-    ocr_raw_text: '⚠️ Highway maintenance blockage. 45 min delay logged.',
-    createdAt: new Date().toISOString(),
-  },
-];
-
 function getCategoryBadge(docType?: string | null) {
   switch (docType) {
     case 'POD':
       return { bg: '#ECFDF5', border: '#A7F3D0', text: '#047857', label: 'Proof of Delivery (POD)' };
     case 'Delay':
     case 'Emergency':
-      return { bg: '#FEF2F2', border: '#FECACA', text: '#B91C1C', label: 'Delay / Incident' };
+      return { bg: '#FEF2F2', border: '#FECACA', text: '#FA634E', label: 'Delay / Incident' };
     case 'Waybill':
       return { bg: '#EFF6FF', border: '#BFDBFE', text: '#1D4ED8', label: 'Cargo Waybill' };
     default:
-      return { bg: '#F3F4F6', border: '#E5E7EB', text: '#374151', label: docType || 'Attachment' };
+      return { bg: '#EEF1F6', border: '#E5E7EB', text: '#3E3C3D', label: docType || 'Attachment' };
   }
 }
 
@@ -176,7 +163,7 @@ const STATUS_STEPS: { status: TripStatus; label: string }[] = [
 
 function stepIndex(status: TripStatus): number {
   const i = STATUS_STEPS.findIndex((s) => s.status === status);
-  return i === -1 ? STATUS_STEPS.length - 1 : i; // Invoiced/Cancelled treated as terminal
+  return i === -1 ? STATUS_STEPS.length - 1 : i;
 }
 
 function formatDateTime(iso?: string | null): string {
@@ -213,8 +200,33 @@ function buildTimeline(trip: OperatorTripDetail) {
   }));
 }
 
-const driverName = (trip: OperatorTripDetail) =>
-  trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name}` : 'Unassigned';
+const driverName = (trip: OperatorTripDetail) => {
+  if (trip.is_third_party) return trip.third_party_driver_name || 'Subcontracted Driver';
+  return trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name}` : 'Unassigned';
+};
+
+function deriveTripType(trip: OperatorTripDetail): string {
+  const raw = trip.quotation_line_type || trip.rateCard?.rate_category;
+  if (raw) {
+    const s = String(raw).trim();
+    if (/round/i.test(s)) return 'Round Trip';
+    if (/single/i.test(s) || /one.?way/i.test(s)) return 'Single Trip';
+    return s;
+  }
+  const stops = trip.stops ?? [];
+  if (stops.some((s) => (s.leg_index ?? 0) === 1)) return 'Round Trip';
+  if (stops.length >= 3) {
+    const first = (stops[0].location_name || '').toLowerCase().trim();
+    const last = (stops[stops.length - 1].location_name || '').toLowerCase().trim();
+    if (first && last && first === last) return 'Round Trip';
+  }
+  return 'Single Trip';
+}
+
+function formatSAR(val?: number | null): string {
+  const n = Number(val ?? 0);
+  return `SAR ${n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+}
 
 const TripDetailsScreen = () => {
   const router = useRouter();
@@ -226,8 +238,16 @@ const TripDetailsScreen = () => {
   const [availableDrivers, setAvailableDrivers] = useState<OperatorDriver[]>([]);
   const [loadingDrivers, setLoadingDrivers] = useState(false);
   const [replacingId, setReplacingId] = useState<string | null>(null);
+  const [showReplaceVehicle, setShowReplaceVehicle] = useState(false);
+  const [availableVehicles, setAvailableVehicles] = useState<OperatorVehicle[]>([]);
+  const [loadingVehicles, setLoadingVehicles] = useState(false);
+  const [replacingVehicleId, setReplacingVehicleId] = useState<string | null>(null);
   const [previewMediaDoc, setPreviewMediaDoc] = useState<any>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [timeConfirmDoc, setTimeConfirmDoc] = useState<any>(null);
+  const [arrivalInput, setArrivalInput] = useState('');
+  const [departureInput, setDepartureInput] = useState('');
+  const [confirmingTime, setConfirmingTime] = useState(false);
 
   const handleUploadMedia = async () => {
     if (!id || !trip) return;
@@ -317,20 +337,113 @@ const TripDetailsScreen = () => {
       .finally(() => setReplacingId(null));
   };
 
+  const openReplaceVehicle = async () => {
+    setShowReplaceVehicle(true);
+    setLoadingVehicles(true);
+    try {
+      const vehicles = await operatorService.availableVehicles();
+      setAvailableVehicles(vehicles);
+    } catch (e) {
+      Alert.alert('Could not load trucks', getApiErrorMessage(e));
+    } finally {
+      setLoadingVehicles(false);
+    }
+  };
+
+  const handleReplaceVehicle = (newVehicleId: string) => {
+    if (!id) return;
+    setReplacingVehicleId(newVehicleId);
+    operatorService.replaceVehicle(id, newVehicleId)
+      .then(async () => {
+        setShowReplaceVehicle(false);
+        await refetch();
+      })
+      .catch((e) => Alert.alert('Could not replace truck', getApiErrorMessage(e)))
+      .finally(() => setReplacingVehicleId(null));
+  };
+
+  const openTimeConfirm = (doc: any, stop: OperatorTripDetail['stops'][number] | undefined) => {
+    setTimeConfirmDoc(doc);
+    setArrivalInput(stop?.actual_arrival ? formatDateTime(stop.actual_arrival) : '');
+    setDepartureInput(stop?.actual_departure ? formatDateTime(stop.actual_departure) : '');
+  };
+
+  const handleConfirmTime = async () => {
+    if (!trip || !timeConfirmDoc) return;
+    const stopId = timeConfirmDoc.ai_extracted_json?.stop_id;
+    if (!stopId) {
+      Alert.alert('Cannot confirm', 'This evidence is not linked to a specific stop.');
+      return;
+    }
+    setConfirmingTime(true);
+    try {
+      const payload: { document_id: string; actual_arrival?: string; actual_departure?: string } = {
+        document_id: timeConfirmDoc.id,
+      };
+      const parsedArrival = arrivalInput.trim() ? new Date(arrivalInput.trim()) : null;
+      const parsedDeparture = departureInput.trim() ? new Date(departureInput.trim()) : null;
+      if (parsedArrival && !Number.isNaN(parsedArrival.getTime())) payload.actual_arrival = parsedArrival.toISOString();
+      if (parsedDeparture && !Number.isNaN(parsedDeparture.getTime())) payload.actual_departure = parsedDeparture.toISOString();
+
+      await operatorService.confirmEvidenceTime(trip.id, stopId, payload);
+      setTimeConfirmDoc(null);
+      await refetch();
+      Alert.alert('Confirmed', 'Evidence time confirmed.');
+    } catch (e) {
+      Alert.alert('Could not confirm time', getApiErrorMessage(e));
+    } finally {
+      setConfirmingTime(false);
+    }
+  };
+
+  const handleShareTripStatus = (trip: OperatorTripDetail, pickupStop?: OperatorTripDetail['stops'][number], dropoffStop?: OperatorTripDetail['stops'][number]) => {
+    const driverLabel = trip.is_third_party
+      ? (trip.third_party_driver_name || 'Assigned Driver')
+      : driverName(trip);
+    const vehicleLabel = trip.is_third_party
+      ? (trip.third_party_vehicle_plate || 'Assigned Vehicle')
+      : (trip.vehicle?.plate_number || 'Assigned Vehicle');
+
+    const text = [
+      `*MERCON Logistics - Trip Status Update*`,
+      ``,
+      `*Trip ID:* ${trip.ref_id || trip.id}`,
+      `*Customer:* ${trip.customer?.name || 'Customer'}`,
+      `*Status:* ${statusLabel(trip.status)}`,
+      `*Planned Start:* ${formatDateTime(trip.planned_start)}`,
+      `*Planned End:* ${formatDateTime(trip.planned_end)}`,
+      ``,
+      `*Pickup:* ${pickupStop?.location_name || 'Origin'}`,
+      `*Drop-off:* ${dropoffStop?.location_name || 'Destination'}`,
+      ``,
+      `*Driver:* ${driverLabel}`,
+      `*Vehicle:* ${vehicleLabel}`,
+      ``,
+      `Thank you for shipping with MERCON Logistics!`,
+    ].join('\n');
+
+    const encodedText = encodeURIComponent(text);
+    Linking.openURL(`whatsapp://send?text=${encodedText}`).catch(() => {
+      Linking.openURL(`https://wa.me/?text=${encodedText}`).catch(() => {
+        Share.share({ message: text, title: 'Trip Status Update' }).catch(() => {});
+      });
+    });
+  };
+
   if (loading && !trip) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100, justifyContent: 'center' }}>
-        <ActivityIndicator color={Colors.primary} />
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#EEF1F6', justifyContent: 'center' }}>
+        <ActivityIndicator color="#FA634E" size="large" />
       </SafeAreaView>
     );
   }
 
   if (!trip) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100, justifyContent: 'center', alignItems: 'center' }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: '#EEF1F6', justifyContent: 'center', alignItems: 'center' }}>
         <Text style={styles.emptyText}>{error ?? 'Trip not found'}</Text>
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: Spacing.lg }}>
-          <Text style={{ color: Colors.primary, fontWeight: '700' }}>Go Back</Text>
+          <Text style={{ color: '#FA634E', fontWeight: '800' }}>Go Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -341,27 +454,71 @@ const TripDetailsScreen = () => {
   const dropoffStop = stops.find((s) => s.stop_type === 'Dropoff');
   const timeline = buildTimeline(trip);
 
+  const tripType = deriveTripType(trip);
+  const quotationName = trip.quotation?.name || trip.rateCard?.name || null;
+  const hasCoDriver = !trip.is_third_party && !!trip.coDriver && Number(trip.co_driver_payout ?? 0) > 0;
+  const driverPayoutVal = Number(trip.driver_payout ?? trip.driver_charge ?? trip.trip_charges ?? 0);
+  const billingVal = Number(trip.billing_amount ?? trip.applied_rate ?? 0);
+  const chargesList = trip.charges ?? [];
+  const chargesTotal = chargesList.reduce((sum, c) => sum + Number(c.amount || 0), 0);
+  const totalInvoice = billingVal + chargesTotal;
+  const paidAmount = Number(trip.paid_amount ?? 0);
+  const balanceDue = Number(trip.balance_due ?? (totalInvoice - paidAmount));
+  const vehicleTonClass = trip.vehicle?.capacity_kg ? `${Math.round(trip.vehicle.capacity_kg / 1000)} TON` : (trip.rateCard?.vehicle_type ?? null);
+  const sortedStops = [...stops].sort((a, b) => a.stop_sequence - b.stop_sequence);
+  const delayedStops = sortedStops.filter((s) => !!s.delay_reason);
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }}>
-      <StatusBar barStyle="light-content" backgroundColor={Colors.darkCard} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#EEF1F6' }}>
+      <StatusBar barStyle="light-content" backgroundColor="#3E3C3D" />
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Dark Header Card */}
+        
+        {/* MERCON Dark Charcoal Hero Header */}
         <View style={styles.darkHeader}>
-          <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-            <ArrowLeft size={22} color={Colors.white} strokeWidth={2.2} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: Spacing.md }}>
+            <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
+              <ArrowLeft size={20} color="#FFFFFF" strokeWidth={2.5} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => handleShareTripStatus(trip, pickupStop, dropoffStop)}
+              style={styles.shareHeaderBtn}
+            >
+              <Share2 size={15} color="#FFFFFF" strokeWidth={2.2} />
+              <Text style={styles.shareHeaderBtnText}>Share Status</Text>
+            </TouchableOpacity>
+          </View>
+
           <View style={styles.headerBody}>
             <View style={styles.headerTop}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Image
-                  source={require('../../../assets/images/mercon-logo.png')}
-                  style={{ width: 30, height: 30, borderRadius: 8 }}
-                  resizeMode="contain"
-                />
+                {resolveMediaUrl(trip.customer?.logo_url) ? (
+                  <Image
+                    source={{ uri: resolveMediaUrl(trip.customer?.logo_url)! }}
+                    style={styles.customerLogoHeader}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <Image
+                    source={require('../../../assets/images/mercon-logo.png')}
+                    style={styles.customerLogoHeader}
+                    resizeMode="contain"
+                  />
+                )}
                 <Text style={styles.tripId}>#{trip.ref_id ?? trip.id.slice(0, 8)}</Text>
               </View>
               <StatusBadge status={statusLabel(trip.status)} />
             </View>
+
+            {trip.driver_workflow === 'EXTERNAL_APP' && (
+              <View style={styles.workflowChip}>
+                <ExternalLink size={11} color="#FA634E" strokeWidth={2.4} />
+                <Text style={styles.workflowChipText}>External App Workflow</Text>
+              </View>
+            )}
+
+            {/* Route Bar */}
             <View style={styles.routeRow}>
               <View style={styles.routePoint}>
                 <View style={styles.routeDotGreen} />
@@ -371,7 +528,10 @@ const TripDetailsScreen = () => {
               </View>
               <View style={styles.routeArrow}>
                 <View style={styles.dashedLine} />
-                <ArrowRight size={16} color={Colors.gray400} strokeWidth={2.2} />
+                <View style={styles.arrowCapsule}>
+                  <ArrowRight size={13} color="#FFFFFF" strokeWidth={2.5} />
+                </View>
+                <View style={styles.dashedLine} />
               </View>
               <View style={styles.routePoint}>
                 <View style={styles.routeDotOrange} />
@@ -380,6 +540,8 @@ const TripDetailsScreen = () => {
                 </Text>
               </View>
             </View>
+
+            {/* Header Metrics Row */}
             <View style={styles.headerStats}>
               <View style={styles.headerStat}>
                 <Text style={styles.headerStatLabel}>Distance</Text>
@@ -401,9 +563,9 @@ const TripDetailsScreen = () => {
           </View>
         </View>
 
-        {/* Timeline */}
+        {/* Lifecycle Stepper */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Trip Timeline</Text>
+          <Text style={styles.sectionTitle}>Trip Progress</Text>
           <Card style={styles.timeline}>
             {timeline.map((step, i) => (
               <View key={step.id} style={styles.timelineItem}>
@@ -413,7 +575,7 @@ const TripDetailsScreen = () => {
                     step.done ? styles.timelineCircleDone : null,
                     step.active ? styles.timelineCircleActive : null,
                   ]}>
-                    {step.done && !step.active && <Check size={14} color={Colors.white} strokeWidth={3} />}
+                    {step.done && !step.active && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
                     {step.active && <View style={styles.timelinePulse} />}
                   </View>
                   {i < timeline.length - 1 && (
@@ -431,13 +593,35 @@ const TripDetailsScreen = () => {
           </Card>
         </View>
 
-        {/* Trip Details */}
+        {/* Delay Alerts Banner */}
+        {delayedStops.length > 0 && (
+          <View style={styles.section}>
+            <Card style={styles.delayCard}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <AlertCircle size={18} color="#FA634E" strokeWidth={2.2} />
+                <Text style={styles.delayTitle}>
+                  {delayedStops.length} Delay {delayedStops.length === 1 ? 'Alert' : 'Alerts'}
+                </Text>
+              </View>
+              {delayedStops.map((s) => (
+                <Text key={s.id} style={styles.delayText}>
+                  {s.location_name || 'Stop'}: {s.delay_note || s.delay_reason}
+                </Text>
+              ))}
+            </Card>
+          </View>
+        )}
+
+        {/* Trip Metadata Details */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Trip Details</Text>
           <Card style={styles.detailCard}>
             {[
               { label: 'Customer', value: trip.customer?.name ?? '—' },
+              { label: 'Trip Type', value: tripType },
+              ...(quotationName ? [{ label: 'Quotation', value: quotationName }] : []),
               { label: 'Planned Start', value: formatDateTime(trip.planned_start) },
+              { label: 'Created', value: formatDateTime(trip.createdAt) },
             ].map((row, i, arr) => (
               <View
                 key={row.label}
@@ -450,7 +634,59 @@ const TripDetailsScreen = () => {
           </Card>
         </View>
 
-        {/* Assignment Info */}
+        {/* Route & Stops Ledger */}
+        {sortedStops.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Route & Stops</Text>
+            <Card style={styles.detailCard}>
+              {sortedStops.map((s, i) => (
+                <View
+                  key={s.id}
+                  style={[styles.stopRow, i < sortedStops.length - 1 ? styles.detailRowBorder : null]}
+                >
+                  <View style={{ flex: 1, paddingRight: 8 }}>
+                    <Text style={styles.stopName} numberOfLines={1}>
+                      {i + 1}. {s.location_name || `${s.stop_type} Stop`}
+                      {(s.leg_index ?? 0) === 1 ? ' (Return)' : ''}
+                    </Text>
+                    <Text style={styles.stopType}>{s.stop_type}</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.stopTime}>Arr: {formatDateTime(s.actual_arrival ?? s.planned_arrival)}</Text>
+                    <Text style={styles.stopTime}>Dep: {formatDateTime(s.actual_departure)}</Text>
+                  </View>
+                </View>
+              ))}
+            </Card>
+          </View>
+        )}
+
+        {/* Financial Summary */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Financial Summary</Text>
+          <Card style={styles.detailCard}>
+            {[
+              { label: 'Customer Billing', value: formatSAR(billingVal) },
+              { label: trip.is_third_party ? '3PL Payout' : 'Driver Payout', value: `- ${formatSAR(driverPayoutVal)}` },
+              ...(hasCoDriver ? [{ label: 'Co-Driver Payout', value: `- ${formatSAR(trip.co_driver_payout)}` }] : []),
+              ...(trip.is_third_party && trip.third_party_cost ? [{ label: 'Subcontractor Cost', value: `- ${formatSAR(trip.third_party_cost)}` }] : []),
+              { label: `Additional Charges${chargesList.length ? ` (${chargesList.length})` : ''}`, value: chargesTotal > 0 ? `+ ${formatSAR(chargesTotal)}` : formatSAR(0) },
+              { label: 'Total Invoice', value: formatSAR(totalInvoice) },
+              { label: 'Paid', value: formatSAR(paidAmount) },
+              { label: 'Balance Due', value: formatSAR(balanceDue) },
+            ].map((row, i, arr) => (
+              <View
+                key={row.label}
+                style={[styles.detailRow, i < arr.length - 1 ? styles.detailRowBorder : null]}
+              >
+                <Text style={styles.detailLabel}>{row.label}</Text>
+                <Text style={styles.detailValue}>{row.value}</Text>
+              </View>
+            ))}
+          </Card>
+        </View>
+
+        {/* Resource Assignment Info */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Assignment</Text>
           <Card style={styles.assignCard}>
@@ -465,24 +701,72 @@ const TripDetailsScreen = () => {
                   Driver{trip.driver?.ref_id ? ` · ${trip.driver.ref_id}` : ''}
                 </Text>
               </View>
-              {trip.driver?.phone_primary ? (
+              {!trip.is_third_party && trip.driver?.phone_primary ? (
                 <TouchableOpacity
                   style={styles.callBtn}
                   activeOpacity={0.8}
                   onPress={() => Linking.openURL(`tel:${trip.driver!.phone_primary}`).catch(() => {})}
                 >
-                  <Phone size={20} color={Colors.white} strokeWidth={2.2} />
+                  <Phone size={18} color="#FFFFFF" strokeWidth={2.2} />
+                </TouchableOpacity>
+              ) : null}
+              {trip.is_third_party && trip.third_party_driver_phone ? (
+                <TouchableOpacity
+                  style={styles.callBtn}
+                  activeOpacity={0.8}
+                  onPress={() => Linking.openURL(`tel:${trip.third_party_driver_phone}`).catch(() => {})}
+                >
+                  <Phone size={18} color="#FFFFFF" strokeWidth={2.2} />
                 </TouchableOpacity>
               ) : null}
             </View>
-            {trip.vehicle ? (
+
+            {trip.coDriver ? (
+              <>
+                <View style={styles.assignDivider} />
+                <View style={styles.assignRow}>
+                  <Avatar initials={`${trip.coDriver.first_name[0] ?? ''}${trip.coDriver.last_name[0] ?? ''}`} size={40} />
+                  <View style={styles.assignInfo}>
+                    <Text style={styles.assignName}>{trip.coDriver.first_name} {trip.coDriver.last_name}</Text>
+                    <Text style={styles.assignRole}>
+                      Co-Driver{trip.coDriver.ref_id ? ` · ${trip.coDriver.ref_id}` : ''}
+                    </Text>
+                  </View>
+                  {trip.coDriver.phone_primary ? (
+                    <TouchableOpacity
+                      style={styles.callBtn}
+                      activeOpacity={0.8}
+                      onPress={() => Linking.openURL(`tel:${trip.coDriver!.phone_primary}`).catch(() => {})}
+                    >
+                      <Phone size={18} color="#FFFFFF" strokeWidth={2.2} />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+              </>
+            ) : null}
+
+            {trip.is_third_party ? (
               <>
                 <View style={styles.assignDivider} />
                 <View style={styles.vehicleRow}>
-                  <Truck size={22} color={Colors.gray600} strokeWidth={2} />
+                  <Truck size={22} color="#6E6E80" strokeWidth={2} />
+                  <View>
+                    <Text style={styles.vehicleName}>
+                      3PL: {trip.third_party_vehicle_plate || 'Subcontractor'}
+                    </Text>
+                    {trip.third_party_vehicle_type ? <Text style={styles.vehiclePlate}>{trip.third_party_vehicle_type}</Text> : null}
+                  </View>
+                </View>
+              </>
+            ) : trip.vehicle ? (
+              <>
+                <View style={styles.assignDivider} />
+                <View style={styles.vehicleRow}>
+                  <Truck size={22} color="#6E6E80" strokeWidth={2} />
                   <View>
                     <Text style={styles.vehicleName}>
                       {trip.vehicle.plate_number} · {trip.vehicle.asset_type}
+                      {vehicleTonClass ? ` (${vehicleTonClass})` : ''}
                     </Text>
                     {trip.vehicle.ref_id ? <Text style={styles.vehiclePlate}>{trip.vehicle.ref_id}</Text> : null}
                   </View>
@@ -492,11 +776,11 @@ const TripDetailsScreen = () => {
           </Card>
         </View>
 
-        {/* Uploaded Media & Documents (POD, Delays, Cargo, Videos) */}
+        {/* Uploaded Media & Proof Attachments */}
         <View style={styles.section}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: Spacing.md }}>
             <Text style={styles.sectionTitle}>
-              Trip Media & Documents {trip.documents && trip.documents.length > 0 ? `(${trip.documents.length})` : ''}
+              Trip Media & Evidence {trip.documents && trip.documents.length > 0 ? `(${trip.documents.length})` : ''}
             </Text>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -504,14 +788,14 @@ const TripDetailsScreen = () => {
                 activeOpacity={0.7}
                 disabled={uploadingMedia}
                 onPress={handleUploadMedia}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.darkCard, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#FA634E', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 }}
               >
                 {uploadingMedia ? (
-                  <ActivityIndicator size="small" color={Colors.white} />
+                  <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <>
-                    <Plus size={12} color={Colors.white} strokeWidth={2.5} />
-                    <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.white }}>Add Evidence</Text>
+                    <Plus size={12} color="#FFFFFF" strokeWidth={2.5} />
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>Add Evidence</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -520,60 +804,69 @@ const TripDetailsScreen = () => {
                 <TouchableOpacity
                   activeOpacity={0.7}
                   onPress={() => shareMediaToWhatsApp(trip, trip.documents![0])}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#25D3661A', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: '#25D36640' }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#25D3661F', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: '#25D36640' }}
                 >
                   <Share2 size={12} color="#25D366" strokeWidth={2.5} />
-                  <Text style={{ fontSize: 11, fontWeight: '700', color: '#128C7E' }}>Share Media</Text>
+                  <Text style={{ fontSize: 11, fontWeight: '800', color: '#128C7E' }}>Share Media</Text>
                 </TouchableOpacity>
               )}
             </View>
           </View>
 
           {(!trip.documents || trip.documents.length === 0) ? (
-            <Card style={{ borderRadius: Radius.xl, padding: Spacing.lg, alignItems: 'center', gap: 8 }}>
-              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.gray100, alignItems: 'center', justifyContent: 'center' }}>
-                <ImageIcon size={20} color={Colors.gray400} />
+            <Card style={{ borderRadius: Radius.xl, padding: Spacing.lg, alignItems: 'center', gap: 8, backgroundColor: '#FFFFFF', borderColor: '#EEF1F6' }}>
+              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: '#EEF1F6', alignItems: 'center', justifyContent: 'center' }}>
+                <ImageIcon size={20} color="#9898A4" />
               </View>
-              <Text style={{ fontSize: Typography.xs, fontWeight: '700', color: Colors.gray700 }}>
+              <Text style={{ fontSize: Typography.xs, fontWeight: '700', color: '#3E3C3D' }}>
                 No Media or POD Uploaded Yet
               </Text>
-              <Text style={{ fontSize: 11, color: Colors.gray500, textAlign: 'center' }}>
-                Photos & videos uploaded by the driver during pickup/delivery or delay reports will appear here.
+              <Text style={{ fontSize: 11, color: '#6E6E80', textAlign: 'center' }}>
+                Photos & videos uploaded by driver or operator will appear here.
               </Text>
               <TouchableOpacity
                 activeOpacity={0.8}
                 disabled={uploadingMedia}
                 onPress={handleUploadMedia}
-                style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.lg }}
+                style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FA634E', paddingHorizontal: 14, paddingVertical: 8, borderRadius: Radius.lg }}
               >
                 {uploadingMedia ? (
-                  <ActivityIndicator color={Colors.white} size="small" />
+                  <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
                   <>
-                    <Camera size={14} color={Colors.white} />
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: Colors.white }}>Upload Photo / Video Evidence</Text>
+                    <Camera size={14} color="#FFFFFF" />
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: '#FFFFFF' }}>Upload Photo / Video Evidence</Text>
                   </>
                 )}
               </TouchableOpacity>
             </Card>
           ) : (
-            <Card style={{ borderRadius: Radius.xl, padding: Spacing.md, gap: Spacing.sm }}>
+            <Card style={{ borderRadius: Radius.xl, padding: Spacing.md, gap: Spacing.sm, backgroundColor: '#FFFFFF', borderColor: '#EEF1F6' }}>
               {trip.documents.map((doc) => {
                 const isVideo = doc.mime_type?.startsWith('video') || /\.(mp4|mov|webm|avi|mkv|3gp)$/i.test(doc.file_url);
                 const isImage = doc.mime_type?.startsWith('image') || /\.(jpg|jpeg|png|webp)$/i.test(doc.file_url);
                 const categoryBadge = getCategoryBadge(doc.doc_type);
+                const needsTimeReview = doc.ai_extracted_json?.source === 'external_app_screenshot' && doc.status === 'PendingReview';
+                const relatedStop = needsTimeReview
+                  ? stops.find((s) => s.id === doc.ai_extracted_json?.stop_id)
+                  : undefined;
 
                 const fullUrl = doc.file_url.startsWith('http')
                   ? doc.file_url
                   : `https://dev.mercon.tech${doc.file_url.startsWith('/') ? '' : '/'}${doc.file_url}`;
 
                 return (
-                  <View key={doc.id} style={{ backgroundColor: Colors.gray100, borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, borderColor: Colors.gray200, gap: 10 }}>
-                    {/* Header */}
+                  <View
+                    key={doc.id}
+                    style={[
+                      { backgroundColor: '#EEF1F6', borderRadius: Radius.lg, padding: Spacing.md, borderWidth: 1, borderColor: '#D8D8DC', gap: 10 },
+                      needsTimeReview ? styles.evidenceNeedsReview : null,
+                    ]}
+                  >
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, paddingRight: 8 }}>
-                        {isVideo ? <Film size={16} color={Colors.primary} /> : <ImageIcon size={16} color={Colors.success} />}
-                        <Text style={{ fontSize: Typography.xs, fontWeight: '800', color: Colors.gray900 }} numberOfLines={1}>
+                        {isVideo ? <Film size={16} color="#FA634E" /> : <ImageIcon size={16} color="#16A34A" />}
+                        <Text style={{ fontSize: Typography.xs, fontWeight: '800', color: '#3E3C3D' }} numberOfLines={1}>
                           {doc.doc_type === 'POD' ? 'Proof of Delivery (POD)' :
                            doc.doc_type === 'Waybill' ? 'Waybill Cargo Photo' :
                            doc.doc_type === 'Emergency' ? 'Incident / Delay Report' :
@@ -587,45 +880,55 @@ const TripDetailsScreen = () => {
                       </View>
                     </View>
 
-                    {/* Real Image Thumbnail Preview */}
+                    {needsTimeReview && (
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={() => openTimeConfirm(doc, relatedStop)}
+                        style={styles.needsTimeBanner}
+                      >
+                        <AlertCircle size={13} color="#B45309" strokeWidth={2.2} />
+                        <Text style={styles.needsTimeText}>
+                          Needs Time Confirmation — tap to confirm/correct
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
                     {isImage && (
                       <TouchableOpacity activeOpacity={0.85} onPress={() => setPreviewMediaDoc(doc)}>
                         <Image
                           source={{ uri: fullUrl }}
-                          style={{ width: '100%', height: 160, borderRadius: Radius.md, backgroundColor: Colors.gray200 }}
+                          style={{ width: '100%', height: 160, borderRadius: Radius.md, backgroundColor: '#D8D8DC' }}
                         />
                       </TouchableOpacity>
                     )}
 
-                    {/* Real Video Card Preview */}
                     {isVideo && (
                       <TouchableOpacity
                         activeOpacity={0.85}
                         onPress={() => setPreviewMediaDoc(doc)}
-                        style={{ width: '100%', height: 120, borderRadius: Radius.md, backgroundColor: Colors.darkCard, alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                        style={{ width: '100%', height: 120, borderRadius: Radius.md, backgroundColor: '#3E3C3D', alignItems: 'center', justifyContent: 'center', gap: 6 }}
                       >
-                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' }}>
-                          <Play size={20} color={Colors.white} fill={Colors.white} style={{ marginLeft: 2 }} />
+                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#FA634E', alignItems: 'center', justifyContent: 'center' }}>
+                          <Play size={20} color="#FFFFFF" fill="#FFFFFF" style={{ marginLeft: 2 }} />
                         </View>
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.white }}>Tap to Play Video Evidence</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#FFFFFF' }}>Tap to Play Video Evidence</Text>
                       </TouchableOpacity>
                     )}
 
                     {doc.ocr_raw_text ? (
-                      <Text style={{ fontSize: 11, color: Colors.gray600, fontWeight: '500' }}>
+                      <Text style={{ fontSize: 11, color: '#52525B', fontWeight: '500' }}>
                         {doc.ocr_raw_text}
                       </Text>
                     ) : null}
 
-                    {/* Action Bar */}
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6, borderTopWidth: 1, borderTopColor: Colors.gray200 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 6, borderTopWidth: 1, borderTopColor: '#D8D8DC' }}>
                       <TouchableOpacity
                         activeOpacity={0.8}
                         onPress={() => setPreviewMediaDoc(doc)}
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
                       >
-                        {isVideo ? <Play size={12} color={Colors.primary} fill={Colors.primary} /> : <ImageIcon size={12} color={Colors.gray600} />}
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>
+                        {isVideo ? <Play size={12} color="#FA634E" fill="#FA634E" /> : <ImageIcon size={12} color="#52525B" />}
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#FA634E' }}>
                           {isVideo ? 'Play Video' : 'View Full Image'}
                         </Text>
                       </TouchableOpacity>
@@ -636,7 +939,7 @@ const TripDetailsScreen = () => {
                         style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#25D36620', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 }}
                       >
                         <Share2 size={12} color="#25D366" strokeWidth={2.5} />
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#128C7E' }}>Share WhatsApp</Text>
+                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#128C7E' }}>Share WhatsApp</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -646,57 +949,92 @@ const TripDetailsScreen = () => {
           )}
         </View>
 
-        {/* Actions */}
+        {/* Primary Action Button */}
         {NEXT_STEP[trip.status] && (
           <View style={styles.actionsSection}>
-            <Button
-              variant="primary"
-              label={advancing ? 'Updating…' : NEXT_STEP[trip.status]!.label}
-              loading={advancing}
+            <TouchableOpacity
               onPress={handleAdvance}
-            />
+              disabled={advancing}
+              style={{ backgroundColor: '#FA634E', paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}
+            >
+              {advancing ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={{ fontSize: 14, fontWeight: '900', color: '#FFFFFF', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  {NEXT_STEP[trip.status]!.label}
+                </Text>
+              )}
+            </TouchableOpacity>
           </View>
         )}
 
-        {ACTIVE_STATUSES.includes(trip.status) && (
+        {/* Quick Replacements */}
+        {ACTIVE_STATUSES.includes(trip.status) && !trip.is_third_party && (
           <View style={styles.actionsRow}>
-            <Button
-              variant="outline"
-              label="Replace Driver"
+            <TouchableOpacity
               onPress={openReplaceDriver}
-              style={styles.actionBtn}
-            />
-            <Button
-              variant="danger"
-              label={cancelling ? 'Cancelling…' : 'Cancel Trip'}
-              loading={cancelling}
-              onPress={handleCancelTrip}
-              style={styles.actionBtn}
-            />
+              style={{ flex: 1, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#D8D8DC', paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#3E3C3D' }}>Replace Driver</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={openReplaceVehicle}
+              style={{ flex: 1, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#D8D8DC', paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}
+            >
+              <Text style={{ fontSize: 12, fontWeight: '800', color: '#3E3C3D' }}>Replace Truck</Text>
+            </TouchableOpacity>
           </View>
         )}
 
-        <View style={styles.actionsSection}>
-          <Button
-            variant="outline"
-            label="Track Live"
-            iconLeft={<MapPin size={16} color={Colors.primary} strokeWidth={2.2} />}
-            onPress={() => Alert.alert('Coming Soon', 'Live tracking will be available in a future update.')}
-          />
+        {/* Cancel Trip Button */}
+        {ACTIVE_STATUSES.includes(trip.status) && (
+          <View style={styles.actionsSection}>
+            <TouchableOpacity
+              onPress={handleCancelTrip}
+              disabled={cancelling}
+              style={{ backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA', paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}
+            >
+              {cancelling ? (
+                <ActivityIndicator color="#DC2626" size="small" />
+              ) : (
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#DC2626' }}>Cancel Trip</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Secondary Action Row */}
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            onPress={() => handleShareTripStatus(trip, pickupStop, dropoffStop)}
+            style={{ flex: 1, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#D8D8DC', paddingVertical: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+          >
+            <Share2 size={15} color="#FA634E" strokeWidth={2.2} />
+            <Text style={{ fontSize: 12, fontWeight: '800', color: '#FA634E' }}>Share Trip Status</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            onPress={() => Alert.alert('Live Track', 'GPS real-time stream active.')}
+            style={{ flex: 1, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#D8D8DC', paddingVertical: 12, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+          >
+            <MapPin size={15} color="#3E3C3D" strokeWidth={2.2} />
+            <Text style={{ fontSize: 12, fontWeight: '800', color: '#3E3C3D' }}>Track Live</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
+      {/* Replace Driver Modal */}
       <Modal visible={showReplaceDriver} animationType="slide" transparent onRequestClose={() => setShowReplaceDriver(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Replace Driver</Text>
               <TouchableOpacity onPress={() => setShowReplaceDriver(false)} style={styles.modalClose}>
-                <X size={20} color={Colors.gray900} strokeWidth={2.2} />
+                <X size={20} color="#3E3C3D" strokeWidth={2.2} />
               </TouchableOpacity>
             </View>
             {loadingDrivers ? (
-              <ActivityIndicator color={Colors.primary} style={{ marginVertical: Spacing.xl }} />
+              <ActivityIndicator color="#FA634E" style={{ marginVertical: Spacing.xl }} />
             ) : availableDrivers.length === 0 ? (
               <Text style={styles.emptyText}>No available drivers right now.</Text>
             ) : (
@@ -716,7 +1054,7 @@ const TripDetailsScreen = () => {
                       <Text style={styles.driverRowName}>{item.first_name} {item.last_name}</Text>
                       <Text style={styles.driverRowId}>{item.ref_id ?? item.license_number}</Text>
                     </View>
-                    {replacingId === item.id && <ActivityIndicator color={Colors.primary} />}
+                    {replacingId === item.id && <ActivityIndicator color="#FA634E" />}
                   </TouchableOpacity>
                 )}
               />
@@ -725,7 +1063,89 @@ const TripDetailsScreen = () => {
         </View>
       </Modal>
 
-      {/* Media & Evidence Full-Screen Viewer Modal */}
+      {/* Replace Truck Modal */}
+      <Modal visible={showReplaceVehicle} animationType="slide" transparent onRequestClose={() => setShowReplaceVehicle(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Replace Truck</Text>
+              <TouchableOpacity onPress={() => setShowReplaceVehicle(false)} style={styles.modalClose}>
+                <X size={20} color="#3E3C3D" strokeWidth={2.2} />
+              </TouchableOpacity>
+            </View>
+            {loadingVehicles ? (
+              <ActivityIndicator color="#FA634E" style={{ marginVertical: Spacing.xl }} />
+            ) : availableVehicles.length === 0 ? (
+              <Text style={styles.emptyText}>No available trucks right now.</Text>
+            ) : (
+              <FlatList
+                data={availableVehicles}
+                keyExtractor={(v) => v.id}
+                style={{ maxHeight: 360 }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.driverRow}
+                    activeOpacity={0.8}
+                    disabled={replacingVehicleId !== null}
+                    onPress={() => handleReplaceVehicle(item.id)}
+                  >
+                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#EEF1F6', alignItems: 'center', justifyContent: 'center' }}>
+                      <Truck size={18} color="#3E3C3D" strokeWidth={2} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.driverRowName}>{item.plate_number} · {item.asset_type}</Text>
+                      <Text style={styles.driverRowId}>{item.ref_id ?? `${Math.round(item.capacity_kg / 1000)} TON`}</Text>
+                    </View>
+                    {replacingVehicleId === item.id && <ActivityIndicator color="#FA634E" />}
+                  </TouchableOpacity>
+                )}
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Confirm Evidence Time Modal */}
+      <Modal visible={timeConfirmDoc !== null} animationType="slide" transparent onRequestClose={() => setTimeConfirmDoc(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Confirm Evidence Time</Text>
+              <TouchableOpacity onPress={() => setTimeConfirmDoc(null)} style={styles.modalClose}>
+                <X size={20} color="#3E3C3D" strokeWidth={2.2} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.timeModalHint}>
+              Check the screenshot's real timestamp and confirm below (format: YYYY-MM-DD HH:mm).
+            </Text>
+            <Text style={styles.timeInputLabel}>Actual Arrival</Text>
+            <TextInput
+              value={arrivalInput}
+              onChangeText={setArrivalInput}
+              placeholder="YYYY-MM-DD HH:mm"
+              placeholderTextColor="#9898A4"
+              style={styles.timeInput}
+            />
+            <Text style={styles.timeInputLabel}>Actual Departure</Text>
+            <TextInput
+              value={departureInput}
+              onChangeText={setDepartureInput}
+              placeholder="YYYY-MM-DD HH:mm"
+              placeholderTextColor="#9898A4"
+              style={styles.timeInput}
+            />
+            <Button
+              variant="primary"
+              label={confirmingTime ? 'Saving…' : 'Confirm Time'}
+              loading={confirmingTime}
+              onPress={handleConfirmTime}
+              style={{ marginTop: Spacing.md }}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Full Screen Viewer Modal */}
       <Modal
         visible={previewMediaDoc !== null}
         animationType="fade"
@@ -733,13 +1153,12 @@ const TripDetailsScreen = () => {
         onRequestClose={() => setPreviewMediaDoc(null)}
       >
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'space-between', paddingVertical: Spacing.xl }}>
-          {/* Top Bar */}
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: Spacing.lg, paddingTop: Spacing.md }}>
             <View>
-              <Text style={{ fontSize: Typography.sm, fontWeight: '800', color: Colors.white }}>
+              <Text style={{ fontSize: Typography.sm, fontWeight: '800', color: '#FFFFFF' }}>
                 {previewMediaDoc?.doc_type || previewMediaDoc?.title || 'Trip Evidence'}
               </Text>
-              <Text style={{ fontSize: 11, color: Colors.gray400 }}>
+              <Text style={{ fontSize: 11, color: '#D8D8DC' }}>
                 Uploaded for #{trip?.ref_id ?? trip?.id.slice(0, 8)}
               </Text>
             </View>
@@ -748,19 +1167,18 @@ const TripDetailsScreen = () => {
               onPress={() => setPreviewMediaDoc(null)}
               style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}
             >
-              <X size={20} color={Colors.white} />
+              <X size={20} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
 
-          {/* Media View */}
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: Spacing.md }}>
             {previewMediaDoc && (
               (previewMediaDoc.mime_type?.startsWith('video') || previewMediaDoc.file_url?.endsWith('.mp4')) ? (
-                <View style={{ width: '100%', height: 260, backgroundColor: Colors.darkCard, borderRadius: Radius.xl, alignItems: 'center', justifyContent: 'center', gap: Spacing.md, borderWidth: 1, borderColor: Colors.gray800 }}>
-                  <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' }}>
-                    <Play size={32} color={Colors.white} fill={Colors.white} style={{ marginLeft: 4 }} />
+                <View style={{ width: '100%', height: 260, backgroundColor: '#3E3C3D', borderRadius: Radius.xl, alignItems: 'center', justifyContent: 'center', gap: Spacing.md, borderWidth: 1, borderColor: '#52525B' }}>
+                  <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#FA634E', alignItems: 'center', justifyContent: 'center' }}>
+                    <Play size={32} color="#FFFFFF" fill="#FFFFFF" style={{ marginLeft: 4 }} />
                   </View>
-                  <Text style={{ fontSize: Typography.sm, fontWeight: '700', color: Colors.white }}>
+                  <Text style={{ fontSize: Typography.sm, fontWeight: '700', color: '#FFFFFF' }}>
                     Recorded Delay / Incident Video
                   </Text>
                   <TouchableOpacity
@@ -768,8 +1186,8 @@ const TripDetailsScreen = () => {
                     onPress={() => Linking.openURL(previewMediaDoc.file_url).catch(() => {})}
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.15)', paddingHorizontal: 16, paddingVertical: 8, borderRadius: Radius.full }}
                   >
-                    <ExternalLink size={14} color={Colors.white} />
-                    <Text style={{ fontSize: Typography.xs, fontWeight: '700', color: Colors.white }}>Open Video Player</Text>
+                    <ExternalLink size={14} color="#FFFFFF" />
+                    <Text style={{ fontSize: Typography.xs, fontWeight: '700', color: '#FFFFFF' }}>Open Video Player</Text>
                   </TouchableOpacity>
                 </View>
               ) : (
@@ -781,12 +1199,11 @@ const TripDetailsScreen = () => {
             )}
           </View>
 
-          {/* Footer Controls */}
           {previewMediaDoc && (
             <View style={{ paddingHorizontal: Spacing.lg, gap: Spacing.sm }}>
               {previewMediaDoc.ocr_raw_text ? (
                 <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', padding: Spacing.sm, borderRadius: Radius.lg }}>
-                  <Text style={{ fontSize: 11, color: Colors.gray300 }}>{previewMediaDoc.ocr_raw_text}</Text>
+                  <Text style={{ fontSize: 11, color: '#D8D8DC' }}>{previewMediaDoc.ocr_raw_text}</Text>
                 </View>
               ) : null}
 
@@ -798,8 +1215,8 @@ const TripDetailsScreen = () => {
                 }}
                 style={{ backgroundColor: '#25D366', paddingVertical: 14, borderRadius: Radius.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}
               >
-                <Share2 size={16} color={Colors.white} strokeWidth={2.5} />
-                <Text style={{ fontSize: Typography.sm, fontWeight: '800', color: Colors.white }}>
+                <Share2 size={16} color="#FFFFFF" strokeWidth={2.5} />
+                <Text style={{ fontSize: Typography.sm, fontWeight: '800', color: '#FFFFFF' }}>
                   Share Attachment to WhatsApp
                 </Text>
               </TouchableOpacity>
@@ -816,19 +1233,34 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing['3xl'],
   },
   darkHeader: {
-    backgroundColor: Colors.darkCard,
+    backgroundColor: '#3E3C3D',
     paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
-    paddingBottom: Spacing['2xl'],
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xl,
+    borderBottomLeftRadius: 24,
+    borderBottomRightRadius: 24,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.full,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.15)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: Spacing.lg,
+  },
+  shareHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#FA634E',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+  },
+  shareHeaderBtnText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   headerBody: {
     gap: Spacing.md,
@@ -841,13 +1273,39 @@ const styles = StyleSheet.create({
   tripId: {
     fontSize: Typography.xl,
     fontWeight: '800',
-    color: Colors.white,
-    letterSpacing: 1,
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  customerLogoHeader: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  workflowChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(250,99,78,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(250,99,78,0.35)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+  },
+  workflowChipText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FA634E',
   },
   routeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    padding: Spacing.md,
+    borderRadius: 16,
   },
   routePoint: {
     flex: 1,
@@ -855,36 +1313,46 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   routeDotGreen: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.success,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#16A34A',
   },
   routeDotOrange: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.primary,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FA634E',
   },
   routeCity: {
     fontSize: Typography.xs,
-    color: Colors.gray300,
+    fontWeight: '700',
+    color: '#FFFFFF',
     textAlign: 'center',
   },
   routeArrow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flex: 0.5,
+    flex: 0.4,
   },
   dashedLine: {
     flex: 1,
     height: 1,
-    backgroundColor: Colors.gray600,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  arrowCapsule: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FA634E',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 4,
   },
   headerStats: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderTopColor: Colors.gray800,
+    borderTopColor: 'rgba(255,255,255,0.12)',
     paddingTop: Spacing.md,
   },
   headerStat: {
@@ -893,27 +1361,31 @@ const styles = StyleSheet.create({
   },
   headerStatLabel: {
     fontSize: Typography.xs,
-    color: Colors.gray500,
+    color: '#9898A4',
     marginBottom: 2,
   },
   headerStatValue: {
     fontSize: Typography.sm,
-    fontWeight: '700',
-    color: Colors.white,
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   section: {
-    padding: Spacing.lg,
-    paddingBottom: 0,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.lg,
   },
   sectionTitle: {
-    fontSize: Typography.base,
-    fontWeight: '700',
-    color: Colors.gray900,
-    marginBottom: Spacing.md,
+    fontSize: Typography.sm,
+    fontWeight: '900',
+    color: '#3E3C3D',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: Spacing.sm,
   },
   timeline: {
     borderRadius: Radius.xl,
     padding: Spacing.lg,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EEF1F6',
   },
   timelineItem: {
     flexDirection: 'row',
@@ -924,38 +1396,38 @@ const styles = StyleSheet.create({
     width: 24,
   },
   timelineCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 2,
-    borderColor: Colors.gray300,
+    borderColor: '#D8D8DC',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.white,
+    backgroundColor: '#FFFFFF',
   },
   timelineCircleDone: {
-    backgroundColor: Colors.success,
-    borderColor: Colors.success,
+    backgroundColor: '#16A34A',
+    borderColor: '#16A34A',
   },
   timelineCircleActive: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.white,
+    borderColor: '#FA634E',
+    backgroundColor: '#FFFFFF',
   },
   timelinePulse: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.primary,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#FA634E',
   },
   timelineLine: {
     width: 2,
     flex: 1,
     minHeight: 24,
-    backgroundColor: Colors.gray200,
+    backgroundColor: '#EEF1F6',
     marginVertical: 2,
   },
   timelineLineDone: {
-    backgroundColor: Colors.success,
+    backgroundColor: '#16A34A',
   },
   timelineContent: {
     flex: 1,
@@ -963,20 +1435,22 @@ const styles = StyleSheet.create({
   },
   timelineLabel: {
     fontSize: Typography.sm,
-    fontWeight: '600',
-    color: Colors.gray700,
+    fontWeight: '700',
+    color: '#6E6E80',
   },
   timelineLabelActive: {
-    color: Colors.primary,
-    fontWeight: '700',
+    color: '#FA634E',
+    fontWeight: '800',
   },
   timelineTime: {
     fontSize: Typography.xs,
-    color: Colors.gray400,
+    color: '#9898A4',
     marginTop: 2,
   },
   detailCard: {
     borderRadius: Radius.xl,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EEF1F6',
   },
   detailRow: {
     flexDirection: 'row',
@@ -986,52 +1460,116 @@ const styles = StyleSheet.create({
   },
   detailRowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
+    borderBottomColor: '#EEF1F6',
   },
   detailLabel: {
     fontSize: Typography.sm,
-    color: Colors.gray500,
+    fontWeight: '600',
+    color: '#6E6E80',
   },
   detailValue: {
     fontSize: Typography.sm,
+    fontWeight: '800',
+    color: '#3E3C3D',
+  },
+  delayCard: {
+    borderRadius: Radius.xl,
+    padding: Spacing.lg,
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+    gap: 6,
+  },
+  delayTitle: {
+    fontSize: Typography.sm,
+    fontWeight: '900',
+    color: '#FA634E',
+  },
+  delayText: {
+    fontSize: Typography.xs,
     fontWeight: '700',
-    color: Colors.gray900,
+    color: '#991B1B',
+  },
+  evidenceNeedsReview: {
+    borderColor: '#FBBF24',
+    borderWidth: 1.5,
+    backgroundColor: '#FFFBEB',
+  },
+  needsTimeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#FEF3C7',
+    borderWidth: 1,
+    borderColor: '#FBBF24',
+    borderRadius: Radius.md,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  needsTimeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#92400E',
+    flex: 1,
+  },
+  stopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+  },
+  stopName: {
+    fontSize: Typography.sm,
+    fontWeight: '800',
+    color: '#3E3C3D',
+  },
+  stopType: {
+    fontSize: Typography.xs,
+    color: '#6E6E80',
+    marginTop: 2,
+  },
+  stopTime: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#3E3C3D',
   },
   assignCard: {
     borderRadius: Radius.xl,
     padding: Spacing.lg,
+    backgroundColor: '#FFFFFF',
+    borderColor: '#EEF1F6',
   },
   assignRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
-    marginBottom: Spacing.md,
   },
   assignInfo: {
     flex: 1,
   },
   assignName: {
     fontSize: Typography.base,
-    fontWeight: '700',
-    color: Colors.gray900,
+    fontWeight: '800',
+    color: '#3E3C3D',
   },
   assignRole: {
     fontSize: Typography.xs,
-    color: Colors.gray500,
-    marginBottom: 3,
+    color: '#6E6E80',
+    marginTop: 2,
   },
   callBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.primary,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#FA634E',
     alignItems: 'center',
     justifyContent: 'center',
   },
   assignDivider: {
     height: 1,
-    backgroundColor: Colors.gray100,
-    marginBottom: Spacing.md,
+    backgroundColor: '#EEF1F6',
+    marginVertical: Spacing.md,
   },
   vehicleRow: {
     flexDirection: 'row',
@@ -1040,12 +1578,12 @@ const styles = StyleSheet.create({
   },
   vehicleName: {
     fontSize: Typography.sm,
-    fontWeight: '700',
-    color: Colors.gray900,
+    fontWeight: '800',
+    color: '#3E3C3D',
   },
   vehiclePlate: {
     fontSize: Typography.xs,
-    color: Colors.gray500,
+    color: '#6E6E80',
     marginTop: 2,
   },
   actionsRow: {
@@ -1058,20 +1596,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
   },
-  actionBtn: {
-    flex: 1,
-  },
   emptyText: {
     fontSize: Typography.base,
-    color: Colors.gray500,
+    color: '#6E6E80',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   modalSheet: {
-    backgroundColor: Colors.white,
+    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: Radius['2xl'],
     borderTopRightRadius: Radius['2xl'],
     padding: Spacing.lg,
@@ -1085,14 +1620,14 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     fontSize: Typography.lg,
-    fontWeight: '700',
-    color: Colors.gray900,
+    fontWeight: '800',
+    color: '#3E3C3D',
   },
   modalClose: {
     width: 32,
     height: 32,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.gray100,
+    borderRadius: 16,
+    backgroundColor: '#EEF1F6',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1102,16 +1637,39 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
+    borderBottomColor: '#EEF1F6',
   },
   driverRowName: {
     fontSize: Typography.sm,
-    fontWeight: '700',
-    color: Colors.gray900,
+    fontWeight: '800',
+    color: '#3E3C3D',
   },
   driverRowId: {
     fontSize: Typography.xs,
-    color: Colors.gray500,
+    color: '#6E6E80',
+  },
+  timeModalHint: {
+    fontSize: Typography.xs,
+    color: '#6E6E80',
+    marginBottom: Spacing.md,
+    lineHeight: 16,
+  },
+  timeInputLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#3E3C3D',
+    marginBottom: 4,
+    marginTop: Spacing.sm,
+  },
+  timeInput: {
+    borderWidth: 1,
+    borderColor: '#D8D8DC',
+    borderRadius: Radius.md,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: Typography.sm,
+    color: '#3E3C3D',
+    backgroundColor: '#FFFFFF',
   },
 });
 

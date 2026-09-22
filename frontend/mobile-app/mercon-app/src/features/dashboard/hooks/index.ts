@@ -5,3 +5,5 @@ export * from './useDocumentExpiry';
 export * from './useNotifications';
 export * from './useCurrentUser';
 export * from './useDashboardRefresh';
+export * from './useOperatorCommandQueue';
+

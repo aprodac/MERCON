@@ -19,7 +19,7 @@ import {
 } from '../hooks';
 import {
   ActiveTripsSection, AppHeader, DashboardMetricCard,
-  ScannerButton, SearchBar,
+  OperatorCommandCenterSection, ScannerButton, SearchBar,
 } from '../components';
 import { ErrorState, SkeletonMetricCard } from '@/shared/components';
 
@@ -43,7 +43,7 @@ export default function DashboardHomeScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }} edges={['top']}>
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 20 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#E8450F" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#FA634E" />}
       >
         {/* 1. AppHeader */}
         <AppHeader
@@ -61,7 +61,7 @@ export default function DashboardHomeScreen() {
           <ScannerButton />
         </View>
 
-        {/* 4. Dashboard Metrics */}
+        {/* 3. Dashboard Metrics */}
         {summary.isLoading || activeTrips.isLoading || delayedDeliveries.isLoading ? (
           <View className="flex-row gap-3">
             <SkeletonMetricCard />
@@ -85,6 +85,11 @@ export default function DashboardHomeScreen() {
           </View>
         )}
 
+        {/* 4. OPERATOR COMMAND CENTER */}
+        <OperatorCommandCenterSection
+          onTripPress={(tripId) => router.push({ pathname: '/operator/trip-details', params: { id: tripId } })}
+        />
+
         {/* 5. Active Trips — compact vertically stacked list with WhatsApp status sharing */}
         <ActiveTripsSection
           onViewAll={() => router.push('/operator/trips')}
@@ -94,3 +99,4 @@ export default function DashboardHomeScreen() {
     </SafeAreaView>
   );
 }
+

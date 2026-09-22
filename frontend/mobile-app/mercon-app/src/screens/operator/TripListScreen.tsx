@@ -1,16 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
-  StatusBar, FlatList, ActivityIndicator, RefreshControl,
+  StatusBar, FlatList, ActivityIndicator, RefreshControl, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { User, Calendar, Truck } from 'lucide-react-native';
+import { User, Calendar, Truck, ArrowRight, Building2, MapPin } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
 import { StatusBadge, SearchInput, FilterChip } from '../../components';
 import { useOperatorTrips, type OperatorTrip } from '../../lib/operator';
 import { statusLabel, type TripStatus } from '../../lib/trips';
 import { matchesSearch } from '../../lib/search';
+import { API_URL } from '../../lib/api';
 
 const FILTERS: { label: string; statuses: string[] | null }[] = [
   { label: 'All', statuses: null },
@@ -27,28 +28,87 @@ function formatDate(iso?: string | null): string {
   return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+function resolveMediaUrl(url?: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:')) {
+    return url;
+  }
+  const base = API_URL.replace(/\/api(\/v\d+)?\/?$/, '');
+  const cleanPath = url.startsWith('/') ? url : `/${url}`;
+  return `${base}${cleanPath}`;
+}
+
 const driverName = (t: OperatorTrip) =>
   t.driver ? `${t.driver.first_name} ${t.driver.last_name}` : 'Unassigned';
 
-const TripCard = ({ item, onPress }: { item: OperatorTrip; onPress: () => void }) => (
-  <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={onPress}>
-    <View style={styles.cardTop}>
-      <Text style={styles.tripId}>#{item.ref_id ?? item.id.slice(0, 8)}</Text>
-      <StatusBadge status={statusLabel(item.status as TripStatus)} />
-    </View>
-    <Text style={styles.tripRoute}>{item.customer?.name ?? 'Customer'}</Text>
-    <View style={styles.cardMeta}>
-      <View style={styles.metaItem}>
-        <User size={13} color={Colors.gray500} strokeWidth={2} />
-        <Text style={styles.metaText}>{driverName(item)}</Text>
+const TripCard = ({ item, onPress }: { item: OperatorTrip; onPress: () => void }) => {
+  const stops = item.stops || [];
+  const pickupStop = stops.find((s: any) => s.stop_type === 'Pickup') || stops[0];
+  const dropoffStop = [...stops].reverse().find((s: any) => s.stop_type === 'Dropoff') || stops[stops.length - 1];
+
+  const origin = pickupStop?.location_name
+    ? pickupStop.location_name.split(',')[0].replace(/\]+$/, '').trim()
+    : 'Origin';
+  const destination = dropoffStop?.location_name
+    ? dropoffStop.location_name.split(',')[0].replace(/\]+$/, '').trim()
+    : 'Destination';
+
+  const customerLogo = resolveMediaUrl(item.customer?.logo_url);
+
+  return (
+    <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={onPress}>
+      {/* Top Bar: Trip ID + Status Badge */}
+      <View style={styles.cardTop}>
+        <Text style={styles.tripId}>#{item.ref_id ?? item.id.slice(0, 8)}</Text>
+        <StatusBadge status={statusLabel(item.status as TripStatus)} />
       </View>
-    </View>
-    <View style={styles.metaItem}>
-      <Calendar size={13} color={Colors.gray400} strokeWidth={2} />
-      <Text style={styles.tripDate}>{formatDate(item.planned_start ?? item.createdAt)}</Text>
-    </View>
-  </TouchableOpacity>
-);
+
+      {/* Customer Row */}
+      <View style={styles.customerRow}>
+        {customerLogo ? (
+          <Image source={{ uri: customerLogo }} style={styles.customerLogo} resizeMode="cover" />
+        ) : (
+          <View style={styles.customerAvatarFallback}>
+            <Building2 size={13} color={Colors.primary} strokeWidth={2.2} />
+          </View>
+        )}
+        <Text style={styles.customerName} numberOfLines={1}>
+          {item.customer?.name ?? 'Mercon Client'}
+        </Text>
+      </View>
+
+      {/* Route Row */}
+      <View style={styles.routeContainer}>
+        <View style={styles.routePoint}>
+          <View style={[styles.routeDot, { backgroundColor: '#10B981' }]} />
+          <Text style={styles.routeText} numberOfLines={1}>{origin}</Text>
+        </View>
+
+        <View style={styles.arrowCapsule}>
+          <ArrowRight size={12} color={Colors.white} strokeWidth={2.5} />
+        </View>
+
+        <View style={[styles.routePoint, { alignItems: 'flex-end' }]}>
+          <Text style={styles.routeText} numberOfLines={1}>{destination}</Text>
+          <View style={[styles.routeDot, { backgroundColor: Colors.primary }]} />
+        </View>
+      </View>
+
+      {/* Meta Footer (Driver + Vehicle + Date) */}
+      <View style={styles.cardFooter}>
+        <View style={styles.metaItem}>
+          <User size={13} color={Colors.gray500} strokeWidth={2} />
+          <Text style={styles.metaText} numberOfLines={1}>{driverName(item)}</Text>
+        </View>
+
+        <View style={styles.metaItem}>
+          <Calendar size={13} color={Colors.gray400} strokeWidth={2} />
+          <Text style={styles.tripDate}>{formatDate(item.planned_start ?? item.createdAt)}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 const TripListScreen = () => {
   const router = useRouter();
@@ -59,7 +119,11 @@ const TripListScreen = () => {
   const count = (statuses: string[] | null) =>
     statuses ? trips.filter((t) => statuses.includes(t.status)).length : trips.length;
 
-  const KPI_CHIPS = FILTERS.map((f) => ({ label: f.label, value: String(count(f.statuses)) }));
+  const FILTER_PILLS = FILTERS.map((f) => ({
+    label: `${f.label} (${count(f.statuses)})`,
+    key: f.label,
+    statuses: f.statuses,
+  }));
 
   const filtered = useMemo(() => {
     const active = FILTERS.find((f) => f.label === filter) ?? FILTERS[0];
@@ -71,22 +135,18 @@ const TripListScreen = () => {
   }, [trips, filter, search]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.gray100} />
+
+      {/* Integrated Header Bar */}
       <View style={styles.headerRow}>
-        <Text style={styles.headerTitle}>Trips</Text>
+        <View>
+          <Text style={styles.headerTitle}>Trips</Text>
+          <Text style={styles.headerSubtitle}>{filtered.length} {filtered.length === 1 ? 'Trip' : 'Trips'} listed</Text>
+        </View>
       </View>
 
-      {/* KPI Chips */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.kpiRow}>
-        {KPI_CHIPS.map((chip) => (
-          <View key={chip.label} style={styles.kpiChip}>
-            <Text style={styles.kpiValue}>{chip.value}</Text>
-            <Text style={styles.kpiLabel}>{chip.label}</Text>
-          </View>
-        ))}
-      </ScrollView>
-
+      {/* Search Input */}
       <SearchInput
         value={search}
         onChangeText={setSearch}
@@ -94,18 +154,25 @@ const TripListScreen = () => {
         style={styles.search}
       />
 
-      {/* Filter Pills */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersRow}>
-        {FILTERS.map((f) => (
-          <FilterChip
-            key={f.label}
-            label={f.label}
-            active={filter === f.label}
-            onPress={() => setFilter(f.label)}
-          />
-        ))}
-      </ScrollView>
+      {/* Unified Filter Pills Row with Counts */}
+      <View style={styles.filtersWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filtersRow}
+        >
+          {FILTER_PILLS.map((p) => (
+            <FilterChip
+              key={p.key}
+              label={p.label}
+              active={filter === p.key}
+              onPress={() => setFilter(p.key)}
+            />
+          ))}
+        </ScrollView>
+      </View>
 
+      {/* Trip Cards List */}
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
@@ -133,87 +200,133 @@ const TripListScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: Colors.gray100, // Seamless Light Cool Gray surface
+  },
   headerRow: {
-    backgroundColor: Colors.white,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xs,
   },
   headerTitle: {
-    fontSize: Typography.xl,
+    fontSize: Typography['2xl'],
     fontWeight: '800',
     color: Colors.gray900,
   },
-  kpiRow: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    gap: Spacing.sm,
-    alignItems: 'center',
-  },
-  kpiChip: {
-    backgroundColor: Colors.white,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    alignItems: 'center',
-    minWidth: 70,
-    ...Shadows.sm,
-  },
-  kpiValue: {
-    fontSize: Typography.lg,
-    fontWeight: '800',
-    color: Colors.gray900,
-  },
-  kpiLabel: {
+  headerSubtitle: {
     fontSize: Typography.xs,
+    fontWeight: '600',
     color: Colors.gray500,
+    marginTop: 2,
   },
   search: {
     marginHorizontal: Spacing.lg,
-    marginBottom: Spacing.sm,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  filtersWrapper: {
+    paddingVertical: Spacing.xs,
   },
   filtersRow: {
     paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.sm,
     gap: Spacing.xs,
     alignItems: 'center',
   },
   list: {
     padding: Spacing.lg,
     gap: Spacing.md,
-    paddingBottom: 80,
+    paddingBottom: 90,
     flexGrow: 1,
   },
   card: {
     backgroundColor: Colors.white,
     borderRadius: Radius.xl,
     padding: Spacing.lg,
+    borderWidth: 1,
+    borderColor: '#EEF1F6',
     ...Shadows.sm,
-    gap: Spacing.xs,
+    gap: Spacing.sm,
   },
   cardTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 2,
   },
   tripId: {
     fontSize: Typography.sm,
-    fontWeight: '700',
+    fontWeight: '800',
     color: Colors.gray900,
   },
-  tripRoute: {
-    fontSize: Typography.base,
-    fontWeight: '700',
-    color: Colors.gray900,
-  },
-  cardMeta: {
+  customerRow: {
     flexDirection: 'row',
-    gap: Spacing.lg,
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.gray50,
+    padding: Spacing.sm,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.gray100,
+  },
+  customerLogo: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+  },
+  customerAvatarFallback: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: 'rgba(250, 99, 78, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  customerName: {
+    fontSize: Typography.xs,
+    fontWeight: '800',
+    color: Colors.gray900,
+    flex: 1,
+  },
+  routeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(238, 241, 246, 0.5)',
+    padding: Spacing.sm + 2,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: '#EEF1F6',
+    gap: Spacing.xs,
+  },
+  routePoint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  routeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  routeText: {
+    fontSize: Typography.xs,
+    fontWeight: '800',
+    color: Colors.gray900,
+    flex: 1,
+  },
+  arrowCapsule: {
+    backgroundColor: Colors.primary,
+    padding: 4,
+    borderRadius: Radius.full,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray100,
   },
   metaItem: {
     flexDirection: 'row',
@@ -222,19 +335,18 @@ const styles = StyleSheet.create({
   },
   metaText: {
     fontSize: Typography.xs,
-    color: Colors.gray500,
+    fontWeight: '700',
+    color: Colors.gray700,
   },
   tripDate: {
     fontSize: Typography.xs,
+    fontWeight: '600',
     color: Colors.gray400,
   },
   emptyState: {
     alignItems: 'center',
     paddingTop: Spacing['3xl'],
     gap: Spacing.sm,
-  },
-  emptyIcon: {
-    fontSize: 40,
   },
   emptyText: {
     fontSize: Typography.base,

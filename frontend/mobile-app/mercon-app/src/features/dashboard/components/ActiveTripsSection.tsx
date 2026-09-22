@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, FlatList, useWindowDimensions, Linking, A
 import { Share2, ArrowRight, Truck, Clock, MapPin, Check, Layers, X, Send, CheckCircle2 } from 'lucide-react-native';
 import { EmptyState, ErrorState, SkeletonVehicleCard } from '@/shared/components';
 import { SectionHeader } from './SectionHeader';
-import { VehicleCard } from './VehicleCard';
+import { VehicleCard, resolveMediaUrl } from './VehicleCard';
 import { CarouselPagination } from './CarouselPagination';
 import { useActiveTrips } from '../hooks';
 import type { Trip } from '../types';
@@ -209,9 +209,22 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
     const originLabel = pickupStop?.location_name
       ? pickupStop.location_name.split(',')[0].replace(/\]+$/, '').trim()
       : 'Origin';
+
     const destinationLabel = dropoffStop?.location_name
       ? dropoffStop.location_name.split(',')[0].replace(/\]+$/, '').trim()
       : 'Destination';
+
+    const originSublabel = pickupStop?.location_address
+      ? pickupStop.location_address.split(',')[0]
+      : pickupStop?.location_name?.includes(',')
+      ? pickupStop.location_name.split(',').slice(1).join(',').trim()
+      : undefined;
+
+    const destinationSublabel = dropoffStop?.location_address
+      ? dropoffStop.location_address.split(',')[0]
+      : dropoffStop?.location_name?.includes(',')
+      ? dropoffStop.location_name.split(',').slice(1).join(',').trim()
+      : undefined;
 
     const distanceStr = item.planned_distance
       ? `${Math.round(item.planned_distance)} KM`
@@ -234,6 +247,9 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
       false
     );
 
+    const rawDriverPicture = item.driver?.avatar_url || item.driver?.profile_picture;
+    const resolvedDriverPicture = resolveMediaUrl(rawDriverPicture);
+
     return (
       <VehicleCard
         width={cardWidth}
@@ -241,9 +257,7 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
           initials: driverInitials,
           name: driverName,
           online: item.driver?.status === 'Available' || item.driver?.status === 'OnTrip',
-          imageUri: (item.driver?.avatar_url || item.driver?.profile_picture)
-            ? { uri: item.driver.avatar_url || item.driver.profile_picture! }
-            : undefined,
+          imageUri: resolvedDriverPicture ? { uri: resolvedDriverPicture } : undefined,
         }}
         vehicle={{
           truckId: truck,
@@ -252,7 +266,9 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
         }}
         route={{
           originLabel,
+          originSublabel,
           destinationLabel,
+          destinationSublabel,
           distanceStr,
           etaStr,
           stopsCount: stops.length,
@@ -267,32 +283,12 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
 
   return (
     <View className={`gap-3 ${className ?? ''}`}>
-      {/* Header + Actions */}
-      <View className="flex-row items-center justify-between">
-        <SectionHeader
-          title="Active Trips"
-          actionLabel="View all →"
-          onActionPress={onViewAll}
-        />
-
-        {trips.length > 0 && (
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={() => {
-              setIsSelectionMode(!isSelectionMode);
-              if (isSelectionMode) setSelectedIds(new Set());
-            }}
-            className={`flex-row items-center gap-1 px-3 py-1 rounded-full border ${
-              isSelectionMode ? 'bg-gray-900 border-gray-900' : 'bg-white border-gray-200'
-            }`}
-          >
-            <Layers size={12} color={isSelectionMode ? '#FFFFFF' : '#3E3C3D'} />
-            <Text className={`text-[11px] font-bold ${isSelectionMode ? 'text-white' : 'text-gray-800'}`}>
-              {isSelectionMode ? 'Done' : 'Select'}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      {/* Header: Clean Title on Left, View all → on Right */}
+      <SectionHeader
+        title="Active Trips"
+        actionLabel="View all →"
+        onActionPress={onViewAll}
+      />
 
       {/* Multi-Select Bar */}
       {isSelectionMode && visibleTrips.length > 0 && (

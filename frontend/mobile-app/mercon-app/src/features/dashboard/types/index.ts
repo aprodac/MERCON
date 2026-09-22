@@ -69,6 +69,11 @@ export interface TripStop {
   stop_sequence?: number;
   actual_arrival?: string | null;
   actual_departure?: string | null;
+  status?: string | null;
+  delay_note?: string | null;
+  delay_reason?: string | null;
+  delay_logged_at?: string | null;
+  location_coordinate_precision?: string | null;
 }
 
 export interface Trip {
@@ -198,3 +203,30 @@ export interface DocumentExpirySummary {
   expired: number;
   valid: number;
 }
+
+export type CommandActionItemCategory = 'all' | 'delay' | 'unassigned' | 'pod' | 'doc' | 'location';
+export type PriorityLevel = 'critical' | 'attention' | 'other';
+export type CommandEntityType = 'company' | 'driver' | 'vehicle';
+
+export interface CommandActionItem {
+  id: string;
+  category: 'delay' | 'unassigned' | 'pod' | 'doc' | 'location';
+  priority: PriorityLevel;
+  badgeLabel: string;
+  entityType: CommandEntityType;
+  entityName: string;
+  initials: string;
+  avatarUrl?: string;
+  tripRef?: string;
+  subtitle: string;
+  trip?: Trip;
+  doc?: DocumentRef & { expiry_date?: string | null; [key: string]: any };
+  driver?: DriverRef;
+  vehicle?: VehicleRef;
+  delayReason?: string;
+  delayTimeAgo?: string;
+  hasVideo?: boolean;
+  videoUrl?: string;
+  daysRemaining?: number;
+}
+

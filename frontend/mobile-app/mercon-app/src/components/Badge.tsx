@@ -59,25 +59,28 @@ export function SolidBadge({ label, color = Colors.danger, style }: { label: str
   );
 }
 
-/** Filter chip — toggleable */
+import { TouchableOpacity } from 'react-native';
+
+/** Filter chip — toggleable button */
 export function FilterChip({
   label, active, onPress, style,
 }: { label: string; active?: boolean; onPress?: () => void; style?: ViewStyle }) {
   return (
-    <View
-      onTouchEnd={onPress}
+    <TouchableOpacity
+      activeOpacity={0.75}
+      onPress={onPress}
       style={[
         styles.chip,
         active
-          ? { backgroundColor: Colors.primary }
-          : { backgroundColor: Colors.gray100 },
+          ? { backgroundColor: Colors.primary, borderColor: Colors.primary }
+          : { backgroundColor: Colors.gray100, borderColor: Colors.gray200 },
         style,
       ]}
     >
-      <Text style={[styles.chipText, { color: active ? Colors.white : Colors.dark }]}>
+      <Text style={[styles.chipText, { color: active ? Colors.white : Colors.gray900 }]}>
         {label}
       </Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -104,12 +107,15 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   chip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs + 1,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
     borderRadius: Radius.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   chipText: {
-    ...Typography.bodySmall,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '800',
   },
 });

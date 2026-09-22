@@ -33,3 +33,6 @@ export * from './DocumentStatusBadge';
 export * from './DocumentTypeIcon';
 export * from './ExpiryProgressBar';
 export * from './DocumentExpirySkeletons';
+export * from './OperatorCommandCenterSection';
+export * from './OperatorCommandInspectorModal';
+
