@@ -47,6 +47,34 @@ export async function approveBill(billId: string, userId: string) {
       );
     }
 
+    // Check SOURCE_ALREADY_BILLED guard: reject if any line item references a source_type + source_id
+    // already claimed by another Approved, PartiallyPaid, or Paid bill.
+    for (const line of bill.lines) {
+      if (line.source_type && line.source_id) {
+        const existingClaimedLine = await tx.billLine.findFirst({
+          where: {
+            source_type: line.source_type,
+            source_id: line.source_id,
+            billId: { not: bill.id },
+            bill: {
+              status: { in: ['Approved', 'PartiallyPaid', 'Paid'] },
+            },
+          },
+          include: {
+            bill: { select: { id: true, ref_id: true, status: true } },
+          },
+        });
+
+        if (existingClaimedLine) {
+          throw new AccountingError(
+            `Source item '${line.source_type}' (${line.source_id}) has already been billed in Bill '${existingClaimedLine.bill.ref_id || existingClaimedLine.bill.id}' (status: ${existingClaimedLine.bill.status})`,
+            'SOURCE_ALREADY_BILLED',
+            400,
+          );
+        }
+      }
+    }
+
     // 1. Check default payable account in Settings
     const settings = await tx.settings.findUnique({ where: { id: 'singleton' } });
     if (!settings || !settings.defaultPayableAccountId) {

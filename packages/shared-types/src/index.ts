@@ -669,6 +669,138 @@ export interface BillPayment {
   createdAt: string;
 }
 
+// ─── Phase 4 Finance Types ──────────────────────────────────────────
+export type ReconciliationStatus = 'Draft' | 'Completed';
+export type AdvancePartyType = 'Customer' | 'Provider' | 'Employee';
+export type AdvanceDirection = 'Received' | 'Paid';
+export type AdvanceStatus = 'Open' | 'PartiallyApplied' | 'FullyApplied' | 'Void';
+
+export interface BankAccount {
+  id: string;
+  accountId: string;
+  account?: Account;
+  bank_name?: string | null;
+  account_number?: string | null;
+  iban?: string | null;
+  swift_code?: string | null;
+  is_cash: boolean;
+  opening_balance: number | string;
+  opening_date?: string | null;
+  currency: string;
+  reconciliations?: BankReconciliation[];
+  created_by?: string | null;
+  updated_by?: string | null;
+  deletedAt?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BankReconciliation {
+  id: string;
+  bankAccountId: string;
+  bankAccount?: BankAccount;
+  statement_date: string;
+  statement_closing_balance: number | string;
+  status: ReconciliationStatus;
+  lines?: JournalLine[];
+  reconciled_by?: string | null;
+  reconciled_at?: string | null;
+  createdAt: string;
+}
+
+export interface Advance {
+  id: string;
+  ref_id?: string | null;
+  party_type: AdvancePartyType;
+  party_id?: string | null;
+  direction: AdvanceDirection;
+  amount: number | string;
+  applied_amount: number | string;
+  remaining_amount: number | string;
+  advance_date: string;
+  status: AdvanceStatus;
+  currency: string;
+  memo?: string | null;
+  accountId: string;
+  account?: Account;
+  journalEntryId?: string | null;
+  journalEntry?: JournalEntry | null;
+  applications?: AdvanceApplication[];
+  created_by?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdvanceApplication {
+  id: string;
+  advanceId: string;
+  advance?: Advance;
+  invoiceId?: string | null;
+  invoice?: Invoice | null;
+  billId?: string | null;
+  bill?: Bill | null;
+  amount: number | string;
+  applied_date: string;
+  journalEntryId?: string | null;
+  journalEntry?: JournalEntry | null;
+  created_by?: string | null;
+  createdAt: string;
+}
+
+export interface AccountClosingBalance {
+  id: string;
+  periodId: string;
+  period?: AccountingPeriod;
+  accountId: string;
+  account?: Account;
+  closing_debit_total: number | string;
+  closing_credit_total: number | string;
+  closing_balance: number | string;
+  computed_at: string;
+}
+
+export interface TrialBalanceItem {
+  account_code: string;
+  name: string;
+  account_type: string;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+export interface TrialBalanceReport {
+  period_id?: string;
+  period_name?: string;
+  items: TrialBalanceItem[];
+  total_debit: number;
+  total_credit: number;
+  is_balanced: boolean;
+}
+
+export interface ProfitAndLossReport {
+  date_from?: string;
+  date_to?: string;
+  revenues: { account_code: string; name: string; amount: number }[];
+  expenses: { account_code: string; name: string; amount: number }[];
+  total_revenue: number;
+  total_expense: number;
+  net_profit: number;
+}
+
+export interface BalanceSheetReport {
+  as_of?: string;
+  using_snapshot: boolean;
+  assets: { account_code: string; name: string; amount: number }[];
+  liabilities: { account_code: string; name: string; amount: number }[];
+  equity: { account_code: string; name: string; amount: number }[];
+  total_assets: number;
+  total_liabilities: number;
+  total_equity: number;
+  is_balanced: boolean;
+}
+
+
 
 
 

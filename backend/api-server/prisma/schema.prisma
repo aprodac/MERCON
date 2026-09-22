@@ -1217,6 +1217,9 @@ model Account {
   invoicePayments InvoicePayment[]
   billPayments BillPayment[]
   billLines BillLine[]
+  bankAccount BankAccount?
+  advances Advance[]
+  accountClosingBalances AccountClosingBalance[]
 
   created_by String?   @db.Uuid
   updated_by String?   @db.Uuid
@@ -1246,6 +1249,7 @@ model AccountingPeriod {
   status     PeriodStatus @default(Open)
 
   journalEntries JournalEntry[]
+  closingBalances AccountClosingBalance[]
 
   closed_by String?   @db.Uuid
   closed_at DateTime? @db.Timestamptz
@@ -1287,6 +1291,8 @@ model JournalEntry {
   invoicePayments InvoicePayment[]
   bills Bill[]
   billPayments BillPayment[]
+  advances Advance[]
+  advanceApplications AdvanceApplication[]
 
   created_by String?   @db.Uuid
   posted_by  String?   @db.Uuid
@@ -1313,6 +1319,10 @@ model JournalLine {
   credit      Decimal @default(0.0) @db.Decimal(12, 2)
   currency    String  @default("SAR")
   description String?
+
+  reconciled     Boolean             @default(false)
+  reconciliationId String?           @db.Uuid
+  reconciliation BankReconciliation? @relation(fields: [reconciliationId], references: [id])
 
   createdAt DateTime @default(now()) @db.Timestamptz
 
@@ -1352,6 +1362,7 @@ model Invoice {
 
   lines    InvoiceLine[]
   payments InvoicePayment[]
+  advanceApplications AdvanceApplication[]
   trips    Trip[]
 
   // Set when Issued: the AR/Revenue JournalEntry this invoice created.
@@ -1442,6 +1453,7 @@ model Bill {
 
   lines    BillLine[]
   payments BillPayment[]
+  advanceApplications AdvanceApplication[]
 
   journalEntryId String?       @db.Uuid
   journalEntry   JournalEntry? @relation(fields: [journalEntryId], references: [id])
@@ -1499,6 +1511,143 @@ model BillPayment {
 
   @@index([billId])
   @@index([accountId])
+}
+
+// -----------------------------------------
+// CASH & BANK, ADVANCES & PERIOD CLOSING
+// -----------------------------------------
+
+model BankAccount {
+  id              String   @id @default(uuid()) @db.Uuid
+  accountId       String   @unique @db.Uuid
+  account         Account  @relation(fields: [accountId], references: [id])
+
+  bank_name       String?
+  account_number  String?
+  iban            String?
+  swift_code      String?
+  is_cash         Boolean  @default(false)
+  opening_balance Decimal  @default(0.0) @db.Decimal(12, 2)
+  opening_date    DateTime? @db.Timestamptz
+  currency        String   @default("SAR")
+
+  reconciliations BankReconciliation[]
+
+  created_by String?   @db.Uuid
+  updated_by String?   @db.Uuid
+  deletedAt  DateTime? @db.Timestamptz
+  isActive   Boolean   @default(true)
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+  updatedAt  DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  @@index([deletedAt])
+}
+
+enum ReconciliationStatus {
+  Draft
+  Completed
+}
+
+model BankReconciliation {
+  id                      String               @id @default(uuid()) @db.Uuid
+  bankAccountId           String               @db.Uuid
+  bankAccount             BankAccount          @relation(fields: [bankAccountId], references: [id])
+  statement_date          DateTime             @db.Timestamptz
+  statement_closing_balance Decimal            @db.Decimal(12, 2)
+  status                  ReconciliationStatus @default(Draft)
+  lines                   JournalLine[]
+
+  reconciled_by String?   @db.Uuid
+  reconciled_at DateTime? @db.Timestamptz
+  createdAt     DateTime  @default(now()) @db.Timestamptz
+
+  @@index([bankAccountId])
+}
+
+enum AdvancePartyType {
+  Customer
+  Provider
+  Employee
+}
+
+enum AdvanceDirection {
+  Received
+  Paid
+}
+
+enum AdvanceStatus {
+  Open
+  PartiallyApplied
+  FullyApplied
+  Void
+}
+
+model Advance {
+  id           String           @id @default(uuid()) @db.Uuid
+  ref_id       String?          @unique
+  party_type   AdvancePartyType
+  party_id     String?          @db.Uuid
+  direction    AdvanceDirection
+  amount       Decimal          @db.Decimal(12, 2)
+  applied_amount Decimal        @default(0.0) @db.Decimal(12, 2)
+  remaining_amount Decimal      @db.Decimal(12, 2)
+  advance_date DateTime         @db.Timestamptz
+  status       AdvanceStatus    @default(Open)
+  currency     String           @default("SAR")
+  memo         String?          @db.Text
+
+  accountId      String        @db.Uuid
+  account        Account       @relation(fields: [accountId], references: [id])
+  journalEntryId String?       @db.Uuid
+  journalEntry   JournalEntry? @relation(fields: [journalEntryId], references: [id])
+
+  applications AdvanceApplication[]
+
+  created_by String?  @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  @@index([party_type, party_id])
+  @@index([status])
+}
+
+model AdvanceApplication {
+  id         String   @id @default(uuid()) @db.Uuid
+  advanceId  String   @db.Uuid
+  advance    Advance  @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+
+  invoiceId  String?  @db.Uuid
+  invoice    Invoice? @relation(fields: [invoiceId], references: [id])
+  billId     String?  @db.Uuid
+  bill       Bill?    @relation(fields: [billId], references: [id])
+
+  amount         Decimal       @db.Decimal(12, 2)
+  applied_date   DateTime      @db.Timestamptz
+  journalEntryId String?       @db.Uuid
+  journalEntry   JournalEntry? @relation(fields: [journalEntryId], references: [id])
+
+  created_by String?  @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz
+
+  @@index([advanceId])
+  @@index([invoiceId])
+  @@index([billId])
+}
+
+model AccountClosingBalance {
+  id         String   @id @default(uuid()) @db.Uuid
+  periodId   String   @db.Uuid
+  period     AccountingPeriod @relation(fields: [periodId], references: [id])
+  accountId  String   @db.Uuid
+  account    Account  @relation(fields: [accountId], references: [id])
+
+  closing_debit_total  Decimal @db.Decimal(14, 2)
+  closing_credit_total Decimal @db.Decimal(14, 2)
+  closing_balance      Decimal @db.Decimal(14, 2)
+  computed_at          DateTime @default(now()) @db.Timestamptz
+
+  @@unique([periodId, accountId])
+  @@index([periodId])
 }
 
 
@@ -1578,6 +1727,9 @@ model Settings {
   defaultReceivableAccountId String? @db.Uuid
   defaultRevenueAccountId    String? @db.Uuid
   defaultPayableAccountId   String? @db.Uuid
+  defaultCustomerAdvanceAccountId String? @db.Uuid
+  defaultProviderAdvanceAccountId String? @db.Uuid
+  defaultEmployeeAdvanceAccountId String? @db.Uuid
 
   // Module keys this deployment shows/allows.
   enabledModules        String[] @default([])

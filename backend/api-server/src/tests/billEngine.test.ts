@@ -334,6 +334,71 @@ test('Real Bill / Accounts Payable Engine Integration Test Suite', async (t) => 
     assert.ok(err);
     assert.equal(err.code, 'CANNOT_VOID_PAID_BILL');
   });
+
+  await t.test('5. SOURCE_ALREADY_BILLED guard rejects approving a bill if a line item source is already claimed by an approved bill', async () => {
+    // Create a unique shared expense source item
+    const sharedExpense = await prisma.expense.create({
+      data: {
+        ref_id: `EXP-SHARED-${Date.now()}`,
+        category: 'Subcontractor Parts',
+        status: 'Pending',
+        amount: 750.0,
+        expense_date: billTestDate,
+      },
+    });
+
+    // Bill 1 referencing sharedExpense
+    const bill1 = await prisma.bill.create({
+      data: {
+        payee_name: 'Vendor A',
+        bill_date: billTestDate,
+        status: 'Draft',
+        lines: {
+          create: [
+            {
+              source_type: 'Expense',
+              source_id: sharedExpense.id,
+              accountId: expenseAccount.id,
+              description: 'Shared Expense Line Item',
+              amount: 750.0,
+            },
+          ],
+        },
+      },
+    });
+
+    // Approve Bill 1 -> claims sharedExpense
+    const approvedBill1 = await approveBill(bill1.id, TEST_USER_ID);
+    assert.equal(approvedBill1.status, 'Approved');
+
+    // Bill 2 also referencing sharedExpense
+    const bill2 = await prisma.bill.create({
+      data: {
+        payee_name: 'Vendor B',
+        bill_date: billTestDate,
+        status: 'Draft',
+        lines: {
+          create: [
+            {
+              source_type: 'Expense',
+              source_id: sharedExpense.id,
+              accountId: expenseAccount.id,
+              description: 'Duplicate Shared Expense Line Item',
+              amount: 750.0,
+            },
+          ],
+        },
+      },
+    });
+
+    // Approving Bill 2 must fail with SOURCE_ALREADY_BILLED
+    await assert.rejects(
+      async () => {
+        await approveBill(bill2.id, TEST_USER_ID);
+      },
+      (err: any) => err instanceof AccountingError && err.code === 'SOURCE_ALREADY_BILLED',
+    );
+  });
 });
 
 

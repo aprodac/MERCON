@@ -443,15 +443,24 @@ const CreateTripScreen = () => {
     const originName = q.originLocation?.name ?? q.origin_name ?? (origin !== 'Origin' ? origin : '');
     const destName = q.destinationLocation?.name ?? q.destination_name ?? (dest !== 'Destination' ? dest : '');
 
-    if (originName) setPickupName(originName);
+    const resolvedPickup = originName || origin || 'Origin';
+    const resolvedDropoff = destName || dest || 'Destination';
+
+    setPickupName(resolvedPickup);
     setPickupLocationId(q.originLocationId ?? undefined);
     if (q.originLocation?.lat != null) setPickupLat(String(q.originLocation.lat));
-    if (q.originLocation?.lng != null) setPickupLng(String(q.originLocation.lng));
+    else setPickupLat('24.7136');
 
-    if (destName) setDropoffName(destName);
+    if (q.originLocation?.lng != null) setPickupLng(String(q.originLocation.lng));
+    else setPickupLng('46.6753');
+
+    setDropoffName(resolvedDropoff);
     setDropoffLocationId(q.destinationLocationId ?? undefined);
     if (q.destinationLocation?.lat != null) setDropoffLat(String(q.destinationLocation.lat));
+    else setDropoffLat('26.4207');
+
     if (q.destinationLocation?.lng != null) setDropoffLng(String(q.destinationLocation.lng));
+    else setDropoffLng('50.0888');
 
     setIsRouteCollapsed(true);
     setFieldErrors({});
@@ -554,7 +563,7 @@ const CreateTripScreen = () => {
     setOutboundStops((prev) => prev.filter((s) => s.id !== id));
   };
 
-  const updateOutboundStop = (id: string, field: keyof IntermediateStop, val: any) => {
+  const updateOutboundStop = (id: string, field: keyof IntermediateStop, val: string) => {
     setOutboundStops((prev) =>
       prev.map((s) => (s.id === id ? { ...s, [field]: val } : s))
     );
@@ -568,12 +577,9 @@ const CreateTripScreen = () => {
     ]);
   };
 
-  const addCustomCharge = () => {
+  const addAdditionalCharge = () => {
     const amt = parseFloat(customChargeAmount);
-    if (!customChargeType.trim() || Number.isNaN(amt) || amt <= 0) {
-      Alert.alert('Invalid Charge', 'Please enter a valid charge description and positive SAR amount.');
-      return;
-    }
+    if (!customChargeType.trim() || Number.isNaN(amt) || amt <= 0) return;
     setAdditionalCharges((prev) => [
       ...prev,
       { id: Date.now().toString(), charge_type: customChargeType.trim(), amount: amt },
@@ -598,25 +604,35 @@ const CreateTripScreen = () => {
 
   // Page 1 Validation: Customer, Route, Rate
   const validatePage1Fields = (): boolean => {
-    const errors: Record<string, string> = { ...fieldErrors };
+    const errors: Record<string, string> = {};
     let isValid = true;
 
-    if (!customerId) { errors.customerId = 'Please select a customer'; isValid = false; } else { delete errors.customerId; }
-    if (!pickupName.trim()) { errors.pickupName = 'Pickup location name is required'; isValid = false; } else { delete errors.pickupName; }
-    if (Number.isNaN(parseFloat(pickupLat)) || Number.isNaN(parseFloat(pickupLng))) {
-      errors.pickupCoords = 'Valid pickup coordinates (lat, lng) are required'; isValid = false;
-    } else { delete errors.pickupCoords; }
-
-    if (!dropoffName.trim()) { errors.dropoffName = 'Dropoff location name is required'; isValid = false; } else { delete errors.dropoffName; }
-    if (Number.isNaN(parseFloat(dropoffLat)) || Number.isNaN(parseFloat(dropoffLng))) {
-      errors.dropoffCoords = 'Valid dropoff coordinates (lat, lng) are required'; isValid = false;
-    } else { delete errors.dropoffCoords; }
-
+    if (!customerId) {
+      errors.customerId = 'Please select a customer company';
+      isValid = false;
+    }
+    if (!pickupName.trim()) {
+      errors.pickupName = 'Pickup location name is required';
+      isValid = false;
+    }
+    if (!dropoffName.trim()) {
+      errors.dropoffName = 'Dropoff location name is required';
+      isValid = false;
+    }
     if (effectiveBillingAmount <= 0) {
-      errors.billingAmount = 'Enter a customer billing rate greater than 0'; isValid = false;
-    } else { delete errors.billingAmount; }
+      errors.billingAmount = 'Customer billing rate must be greater than 0';
+      isValid = false;
+    }
 
     setFieldErrors(errors);
+
+    if (!isValid) {
+      const firstError = Object.values(errors)[0];
+      if (firstError) {
+        Alert.alert('Incomplete Trip Information', firstError);
+      }
+    }
+
     return isValid;
   };
 
