@@ -11,15 +11,10 @@ interface DriverChargePillProps {
   style?: ViewStyle;
 }
 
-export function DriverChargePill({ amount, style }: DriverChargePillProps) {
+function DriverChargePillContent({ amount, style }: { amount: number; style?: ViewStyle }) {
   const router = useRouter();
   const { t, language, formatCurrency } = useLanguage();
-  const { trips: historyList } = useTripHistory();
 
-  const totalEarnings = useMemo(() => {
-    if (typeof amount === 'number') return amount;
-    return getMonthlyDriverPayout(historyList);
-  }, [amount, historyList]);
 
   return (
     <TouchableOpacity
@@ -32,7 +27,7 @@ export function DriverChargePill({ amount, style }: DriverChargePillProps) {
       </View>
       <View style={styles.chargeTextCol}>
         <Text style={[styles.chargeAmount, { writingDirection: 'ltr' }]}>
-          {formatCurrency(totalEarnings)}
+          {formatCurrency(amount)}
         </Text>
         <Text style={styles.chargeLabel}>{t('label_driver_charge', 'Driver Charge')}</Text>
       </View>
@@ -43,6 +38,23 @@ export function DriverChargePill({ amount, style }: DriverChargePillProps) {
       )}
     </TouchableOpacity>
   );
+}
+
+function DriverChargePillWithFetchedHistory({ style }: { style?: ViewStyle }) {
+  const { trips: historyList } = useTripHistory();
+
+  const totalEarnings = useMemo(() => {
+    return getMonthlyDriverPayout(historyList);
+  }, [historyList]);
+
+  return <DriverChargePillContent amount={totalEarnings} style={style} />;
+}
+
+export function DriverChargePill({ amount, style }: DriverChargePillProps) {
+  if (typeof amount === 'number') {
+    return <DriverChargePillContent amount={amount} style={style} />;
+  }
+  return <DriverChargePillWithFetchedHistory style={style} />;
 }
 
 const styles = StyleSheet.create({

@@ -175,9 +175,11 @@ const HomeScreen = () => {
     }
   }, [trip]);
 
-  // Load secondary data (scheduled trips) strictly after primary trip resolves, avoiding connection storms
+  // Load secondary data (scheduled trips) strictly once after primary trip resolves on initial load
+  const secondaryLoadedRef = useRef(false);
   useEffect(() => {
-    if (!loading) {
+    if (!loading && !secondaryLoadedRef.current) {
+      secondaryLoadedRef.current = true;
       fetchScheduled();
     }
   }, [loading, fetchScheduled]);

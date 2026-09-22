@@ -80,24 +80,10 @@ export function DriverNotificationManager() {
   };
 
   /**
-   * Navigate to trip details screen with stale-trip verification.
+   * Navigate to trip details screen.
    */
-  const navigateToTripDetails = async (targetTripId: string) => {
-    try {
-      const trip = await tripService.getTripDetails(targetTripId);
-      if (!trip) {
-        Alert.alert('Trip Unavailable', 'The requested trip could not be found.');
-        return;
-      }
-      if (trip.status === 'Cancelled') {
-        Alert.alert('Trip Cancelled', 'This trip has been cancelled.');
-        return;
-      }
-      router.push({ pathname: '/trip/details', params: { tripId: targetTripId } } as any);
-    } catch {
-      // Fallback navigation
-      router.push({ pathname: '/trip/details', params: { tripId: targetTripId } } as any);
-    }
+  const navigateToTripDetails = (targetTripId: string) => {
+    router.push({ pathname: '/trip/details', params: { tripId: targetTripId } } as any);
   };
 
   /**
