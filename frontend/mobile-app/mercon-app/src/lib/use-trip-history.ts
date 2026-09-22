@@ -16,7 +16,7 @@ export function useTripHistory() {
     if (showLoading) setLoading(true);
     setError(null);
     try {
-      const data = await tripService.getHistory();
+      const data = await tripService.getHistory(100);
       cachedHistory = data;
       isHistoryFetched = true;
       setTrips(data);

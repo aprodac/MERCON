@@ -1,20 +1,20 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, StatusBar, ActivityIndicator, Image, Linking, Dimensions, Modal,
+  StyleSheet, StatusBar, ActivityIndicator, Image, Linking, Dimensions, Modal, Platform, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Svg, { Path, G, Circle } from 'react-native-svg';
 import {
   FileText, Truck, Settings, IdCard, Globe, ShieldCheck,
-  ChevronRight, ChevronLeft, ChevronDown, Camera, CheckCircle2, Award, Check, Wallet, X,
+  ChevronRight, ChevronLeft, ChevronDown, Camera, CheckCircle2, Award, Check, Wallet, X, Lock, ExternalLink,
 } from 'lucide-react-native';
-import { Avatar } from '../../components';
+import { Avatar, DriverChargePill } from '../../components';
 import { useAuth } from '../../lib/auth-context';
 import { useProfile } from '../../lib/use-profile';
 import { initialsOf } from '../../lib/profile';
-import { useCargoPodPhotos, docTypeLabel } from '../../lib/documents';
+import { useDocuments, docTypeLabel, docStatus } from '../../lib/documents';
 import { API_URL } from '../../lib/api';
 import { useLanguage, formatCurrency } from '../../lib/language-context';
 
@@ -27,10 +27,77 @@ function openFile(fileUrl: string) {
 }
 
 function formatDate(iso?: string | null): string {
-  if (!iso) return '04 Jul 2026';
+  if (!iso) return '—';
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '04 Jul 2026';
+  if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function docIcon(type?: string) {
+  const t = (type || '').toLowerCase();
+  if (t.includes('license')) return IdCard;
+  if (t.includes('insurance')) return ShieldCheck;
+  if (t.includes('registration') || t.includes('rc')) return FileText;
+  if (t.includes('pollution') || t.includes('puc')) return CheckCircle2;
+  if (t.includes('fitness')) return Award;
+  return FileText;
+}
+
+function WhatsAppIcon({ size = 18, color = '#FFFFFF' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414-.074-.124-.272-.198-.57-.347z"
+        fill={color}
+      />
+      <Path
+        d="M12 2a10 10 0 0 0-8.47 15.35L2 22l4.79-1.26A10 10 0 1 0 12 2zm0 18a7.95 7.95 0 0 1-4.05-1.11l-.29-.17-3 0.79 0.8-2.93-.19-.3A7.957 7.957 0 0 1 4 12a8 8 0 1 1 8 8z"
+        fill={color}
+      />
+    </Svg>
+  );
+}
+
+async function shareDocToWhatsApp(
+  doc: {
+    defaultTitle: string;
+    subText: string;
+    expiry: string;
+    statusLabel: string;
+    fileUrl?: string | null;
+  },
+  driverName: string,
+  vehiclePlate?: string | null
+) {
+  const text = [
+    `📄 *MERCON Logistics — Driver Document*`,
+    ``,
+    `*Document:* ${doc.defaultTitle}`,
+    `*Driver Name:* ${driverName}`,
+    `*Doc / Policy No:* ${doc.subText}`,
+    vehiclePlate ? `*Assigned Vehicle:* ${vehiclePlate}` : null,
+    `*Expiry Date:* ${doc.expiry}`,
+    `*Status:* ${doc.statusLabel}`,
+    doc.fileUrl ? `*Document Link:* ${doc.fileUrl.startsWith('http') ? doc.fileUrl : `${FILE_BASE}${doc.fileUrl}`}` : null,
+  ].filter(Boolean).join('\n');
+
+  const encodedText = encodeURIComponent(text);
+  const whatsappAppUrl = `whatsapp://send?text=${encodedText}`;
+  const whatsappUniversalUrl = `https://wa.me/?text=${encodedText}`;
+
+  try {
+    const canOpenScheme = await Linking.canOpenURL(whatsappAppUrl).catch(() => false);
+    if (canOpenScheme) {
+      await Linking.openURL(whatsappAppUrl);
+      return;
+    }
+  } catch {}
+
+  try {
+    await Linking.openURL(whatsappUniversalUrl);
+  } catch {
+    Linking.openURL(`https://api.whatsapp.com/send?text=${encodedText}`).catch(() => {});
+  }
 }
 
 /** Balanced Branded Header SVG (230px tall) — matches HomeScreen parallelogram layout */
@@ -48,9 +115,7 @@ function HeaderWaveBg({ width = SCREEN_WIDTH, height = 230 }: { width?: number; 
       {/* 1. Base Coral Red (#FA634E) fills entire background */}
       <Path d={`M -10 -${topExtension + 10} L 410 -${topExtension + 10} L 410 ${height + 10} L -10 ${height + 10} Z`} fill="#FA634E" />
 
-      {/* 2. Dark Charcoal (#3E3C3D) parallelogram — covers full left/top, diagonal edge slopes right
-          x(y=0)=140 → x(y=height)=590, using slope so slope=(590-140)/height
-          This passes through x=140 at y=0 (bottom edge of header) */}
+      {/* 2. Dark Charcoal (#3E3C3D) parallelogram — covers full left/top, diagonal edge slopes right */}
       <Path
         d={`M -10 -${topExtension + 10} L 590 -${topExtension + 10} L 140 ${height + 10} L -10 ${height + 10} Z`}
         fill="#3E3C3D"
@@ -73,23 +138,24 @@ function HeaderWaveBg({ width = SCREEN_WIDTH, height = 230 }: { width?: number; 
   );
 }
 
-const ProfileScreen = () => {
+export default function ProfileScreen() {
   const router = useRouter();
-  const { profile: authProfile } = useAuth();
-  const { profile, refetch: refetchProfile } = useProfile();
-  const { photos: uploadedPhotos, loading: docsLoading, refetch: refetchPhotos } = useCargoPodPhotos();
-  const { language, openLanguageModal, t } = useLanguage();
+  const { t, language, openLanguageModal } = useLanguage();
+  const { profile: authProfile, signOut } = useAuth();
+  const { profile, loading, refetch } = useProfile();
+  const { documents: backendDocs, refetch: refetchDocs } = useDocuments();
   const [avatarZoomed, setAvatarZoomed] = useState(false);
+  const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      refetchProfile();
-      refetchPhotos();
-    }, [refetchProfile, refetchPhotos])
+      refetch();
+      refetchDocs();
+    }, [refetch, refetchDocs])
   );
 
-  const name = profile?.name ?? authProfile?.name ?? 'Abu Bakar Siddique Jamsheed';
-  const rawAvatar = profile?.avatar_url ?? (authProfile as any)?.avatar_url ?? null;
+  const name = profile?.name || authProfile?.name || 'Driver Profile';
+  const rawAvatar = profile?.avatar_url || (authProfile as any)?.avatar_url;
   const avatarUrl = useMemo(() => {
     if (!rawAvatar) return null;
     return rawAvatar.startsWith('http') || rawAvatar.startsWith('data:')
@@ -97,73 +163,112 @@ const ProfileScreen = () => {
       : `${FILE_BASE}${rawAvatar}`;
   }, [rawAvatar]);
 
-  const totalEarnings = 29.00;
   const langTag = language === 'ur' ? 'اردو / EN' : 'EN / اردو';
 
-  // Performance metrics
-  const totalTrips = (profile as any)?.stats?.total_trips ?? 142;
-  const tripsOnTime = (profile as any)?.stats?.on_time_rate ?? '96%';
-  const totalDistance = (profile as any)?.stats?.total_distance ?? '18,560 km';
+  // Performance metrics — read strictly from backend driver stats
+  const totalTrips = (profile as any)?.stats?.total_trips != null ? String((profile as any).stats.total_trips) : '—';
+  const tripsOnTime = (profile as any)?.stats?.on_time_rate != null ? String((profile as any).stats.on_time_rate) : '—';
+  const totalDistance = (profile as any)?.stats?.total_distance != null ? String((profile as any).stats.total_distance) : '—';
 
-  // Vehicle details
+  // Vehicle details — read strictly from active vehicle assignment
   const vehicle = profile?.current_vehicle as any;
-  const plateNumber = vehicle?.plate_number ?? 'ESA-4244';
-  const vehicleModel = vehicle?.model ?? vehicle?.make ?? 'Tata 407';
-  const fuelType = vehicle?.fuel_type ?? 'Diesel';
+  const plateNumber = vehicle?.plate_number || 'Unassigned';
+  const vehicleModel = vehicle?.model || vehicle?.make || vehicle?.asset_type || 'No Assigned Vehicle';
+  const fuelType = vehicle?.fuel_type || '—';
 
-  // Documents List
-  const docList = [
-    {
-      id: 'doc-dl',
-      titleKey: 'label_driving_license',
-      defaultTitle: 'Driving License',
-      subText: profile?.license_number ? `DL No. ${profile.license_number}` : 'DL No. DL-88492048',
-      expiry: formatDate(profile?.license_expiry ?? '2026-07-04'),
-      status: 'valid',
-      statusLabel: 'Valid',
-      Icon: IdCard,
-    },
-    {
-      id: 'doc-ins',
-      titleKey: 'label_vehicle_insurance',
-      defaultTitle: 'Vehicle Insurance',
-      subText: vehicle?.insurance_number ? `Policy #${vehicle.insurance_number}` : 'Policy #INS-904281',
-      expiry: '12 Dec 2026',
-      status: 'valid',
-      statusLabel: 'Valid',
-      Icon: ShieldCheck,
-    },
-    {
-      id: 'doc-rc',
-      titleKey: 'label_vehicle_registration',
-      defaultTitle: 'Vehicle Registration',
-      subText: vehicle?.rc_number ? `RC #${vehicle.rc_number}` : 'RC #RC-589201',
-      expiry: '18 Aug 2027',
-      status: 'valid',
-      statusLabel: 'Valid',
-      Icon: FileText,
-    },
-    {
-      id: 'doc-puc',
-      titleKey: 'label_pollution_cert',
-      defaultTitle: 'Pollution Certificate',
-      subText: 'PUC #PUC-30291',
-      expiry: '15 Sep 2026',
-      status: 'expiring',
-      statusLabel: 'Expiring',
-      Icon: CheckCircle2,
-    },
-    {
-      id: 'doc-fit',
-      titleKey: 'label_fitness_cert',
-      defaultTitle: 'Fitness Certificate',
-      subText: 'FC #FIT-88492',
-      expiry: '22 Nov 2026',
-      status: 'valid',
-      statusLabel: 'Valid',
-      Icon: Award,
-    },
-  ];
+  // Documents List built strictly from real backend documents & driver/vehicle records
+  const docList = useMemo(() => {
+    const findBackendDoc = (typeKey: string) => {
+      return backendDocs.find(
+        (d) => d.doc_type === typeKey || d.doc_type?.toLowerCase() === typeKey.toLowerCase()
+      );
+    };
+
+    const list: Array<{
+      id: string;
+      docType: string;
+      titleKey: string;
+      defaultTitle: string;
+      subText: string;
+      expiry: string;
+      status: 'valid' | 'expiring' | 'expired';
+      statusLabel: string;
+      Icon: any;
+      fileUrl: string | null;
+    }> = [];
+
+    // 1. Driving License (if profile has license number or backend has DriverLicense document)
+    const dlDoc = findBackendDoc('DriverLicense');
+    if (profile?.license_number || dlDoc) {
+      list.push({
+        id: 'doc-dl',
+        docType: 'DriverLicense',
+        titleKey: 'label_driving_license',
+        defaultTitle: 'Driving License',
+        subText: profile?.license_number ? `DL No. ${profile.license_number}` : (dlDoc ? `DL No. ${dlDoc.id.slice(-8)}` : 'DL No. —'),
+        expiry: formatDate(dlDoc?.expiry_date || profile?.license_expiry),
+        status: dlDoc ? (docStatus(dlDoc).kind === 'expired' ? 'expired' : docStatus(dlDoc).kind === 'expiring' ? 'expiring' : 'valid') : 'valid',
+        statusLabel: dlDoc ? docStatus(dlDoc).label : 'Valid',
+        Icon: IdCard,
+        fileUrl: dlDoc?.file_url ?? null,
+      });
+    }
+
+    // 2. Vehicle Insurance (if vehicle has insurance number or backend has Insurance document)
+    const insDoc = findBackendDoc('Insurance');
+    if (vehicle?.insurance_number || insDoc) {
+      list.push({
+        id: 'doc-ins',
+        docType: 'Insurance',
+        titleKey: 'label_vehicle_insurance',
+        defaultTitle: 'Vehicle Insurance',
+        subText: vehicle?.insurance_number ? `Policy #${vehicle.insurance_number}` : (insDoc ? `Policy #${insDoc.id.slice(-8)}` : 'Policy #—'),
+        expiry: formatDate(insDoc?.expiry_date),
+        status: insDoc ? (docStatus(insDoc).kind === 'expired' ? 'expired' : docStatus(insDoc).kind === 'expiring' ? 'expiring' : 'valid') : 'valid',
+        statusLabel: insDoc ? docStatus(insDoc).label : 'Valid',
+        Icon: ShieldCheck,
+        fileUrl: insDoc?.file_url ?? null,
+      });
+    }
+
+    // 3. Vehicle Registration (if vehicle has RC number or backend has VehicleRegistration document)
+    const rcDoc = findBackendDoc('VehicleRegistration');
+    if (vehicle?.rc_number || rcDoc) {
+      list.push({
+        id: 'doc-rc',
+        docType: 'VehicleRegistration',
+        titleKey: 'label_vehicle_registration',
+        defaultTitle: 'Vehicle Registration',
+        subText: vehicle?.rc_number ? `RC #${vehicle.rc_number}` : (rcDoc ? `RC #${rcDoc.id.slice(-8)}` : 'RC #—'),
+        expiry: formatDate(rcDoc?.expiry_date),
+        status: rcDoc ? (docStatus(rcDoc).kind === 'expired' ? 'expired' : docStatus(rcDoc).kind === 'expiring' ? 'expiring' : 'valid') : 'valid',
+        statusLabel: rcDoc ? docStatus(rcDoc).label : 'Valid',
+        Icon: FileText,
+        fileUrl: rcDoc?.file_url ?? null,
+      });
+    }
+
+    // 4. Any other backend uploaded documents
+    backendDocs.forEach((d) => {
+      if (d.doc_type !== 'DriverLicense' && d.doc_type !== 'Insurance' && d.doc_type !== 'VehicleRegistration') {
+        const st = docStatus(d);
+        list.push({
+          id: d.id,
+          docType: d.doc_type,
+          titleKey: d.doc_type,
+          defaultTitle: docTypeLabel(d.doc_type),
+          subText: d.trip_ref_id ? `Trip ${d.trip_ref_id}` : `Ref #${d.id.slice(-8)}`,
+          expiry: formatDate(d.expiry_date),
+          status: st.kind === 'expired' ? 'expired' : st.kind === 'expiring' ? 'expiring' : 'valid',
+          statusLabel: st.label,
+          Icon: docIcon(d.doc_type),
+          fileUrl: d.file_url ?? null,
+        });
+      }
+    });
+
+    return list;
+  }, [profile, vehicle, backendDocs]);
 
   return (
     <View style={styles.container}>
@@ -200,26 +305,7 @@ const ProfileScreen = () => {
               </View>
 
               {/* Top-Right: Driver Charge Pill */}
-              <TouchableOpacity
-                style={styles.driverChargePill}
-                activeOpacity={0.85}
-                onPress={() => router.push('/driver-charges' as any)}
-              >
-                <View style={styles.walletIconCircle}>
-                  <Wallet size={12} color="#FA634E" strokeWidth={2.2} />
-                </View>
-                <View style={styles.chargeTextCol}>
-                  <Text style={[styles.chargeAmount, { writingDirection: 'ltr' }]}>
-                    {formatCurrency(totalEarnings, language)}
-                  </Text>
-                  <Text style={styles.chargeLabel}>{t('label_driver_charge', 'Driver Charge')}</Text>
-                </View>
-                {language === 'ur' ? (
-                  <ChevronLeft size={12} color="#9898A4" strokeWidth={2.2} />
-                ) : (
-                  <ChevronRight size={12} color="#9898A4" strokeWidth={2.2} />
-                )}
-              </TouchableOpacity>
+              <DriverChargePill />
             </View>
 
             {/* Elegant Driver Identity Row */}
@@ -320,7 +406,7 @@ const ProfileScreen = () => {
                   key={doc.id}
                   style={[styles.docRowItem, !isLast && styles.docRowBorder]}
                   activeOpacity={0.8}
-                  onPress={() => router.push('/documents' as any)}
+                  onPress={() => setSelectedDoc(doc)}
                 >
                   <View style={styles.docIconBox}>
                     <doc.Icon size={16} color="#FA634E" strokeWidth={2.2} />
@@ -366,53 +452,170 @@ const ProfileScreen = () => {
           </View>
         </View>
 
-        {/* ── SECTION D: UPLOADED PHOTOS ── */}
-        <View style={styles.sectionGroup}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitleText}>
-              {t('title_uploaded_photos', 'My Uploaded Photos')} ({uploadedPhotos.length || 24})
-            </Text>
-            <TouchableOpacity activeOpacity={0.8} onPress={() => router.push('/cargo-pod-photos' as any)}>
-              <Text style={styles.viewAllText}>{t('action_view_all', 'View All')} {language === 'ur' ? '<' : '>'}</Text>
-            </TouchableOpacity>
-          </View>
+        {/* Account Controls */}
+        <TouchableOpacity
+          style={styles.signOutBtn}
+          activeOpacity={0.8}
+          onPress={() => {
+            signOut();
+            router.replace('/login');
+          }}
+        >
+          <Text style={styles.signOutBtnText}>{t('action_sign_out', 'Sign Out')}</Text>
+        </TouchableOpacity>
+      </ScrollView>
 
-          {docsLoading ? (
-            <ActivityIndicator color="#FA634E" style={{ marginVertical: 8 }} />
-          ) : uploadedPhotos.length === 0 ? (
-            <View style={styles.emptyPhotosContainer}>
-              <Camera size={22} color="#9898A4" strokeWidth={1.8} />
-              <Text style={styles.emptyPhotosText}>
-                {t('msg_no_photos', 'No cargo or POD photos uploaded yet.')}
-              </Text>
+      {/* ── Document Preview & WhatsApp Share Modal ── */}
+      <Modal
+        visible={selectedDoc !== null}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setSelectedDoc(null)}
+      >
+        <TouchableOpacity
+          style={styles.docModalOverlay}
+          activeOpacity={1}
+          onPress={() => setSelectedDoc(null)}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={styles.docModalCard}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* Top Header */}
+            <View style={styles.docModalHeader}>
+              <View style={styles.docModalHeaderLeft}>
+                <View style={styles.docModalIconCircle}>
+                  {selectedDoc?.Icon && <selectedDoc.Icon size={20} color="#FA634E" strokeWidth={2.2} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.docModalTitle} numberOfLines={1}>
+                    {selectedDoc ? t(selectedDoc.titleKey, selectedDoc.defaultTitle) : ''}
+                  </Text>
+                  <Text style={styles.docModalSubTitle}>{selectedDoc?.subText}</Text>
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.docModalCloseBtn}
+                activeOpacity={0.8}
+                onPress={() => setSelectedDoc(null)}
+              >
+                <X size={18} color="#3E3C3D" strokeWidth={2.2} />
+              </TouchableOpacity>
             </View>
-          ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.photosScroll}>
-              {uploadedPhotos.map((doc) => {
-                const fullUrl = doc.file_url.startsWith('http') ? doc.file_url : `${FILE_BASE}${doc.file_url}`;
-                return (
-                  <TouchableOpacity
-                    key={doc.id}
-                    style={styles.photoCard}
-                    activeOpacity={0.85}
-                    onPress={() => openFile(doc.file_url)}
+
+            {/* Visual Document Card Preview */}
+            <View style={styles.docPreviewCard}>
+              <View style={styles.docPreviewHeaderRow}>
+                <View style={styles.docPreviewBrandBadge}>
+                  <Lock size={12} color="#15803D" strokeWidth={2} />
+                  <Text style={styles.docPreviewBrandText}>MERCON REGISTRY</Text>
+                </View>
+                <View
+                  style={[
+                    styles.statusChip,
+                    selectedDoc?.status === 'valid' && styles.statusChipValid,
+                    selectedDoc?.status === 'expiring' && styles.statusChipExpiring,
+                    selectedDoc?.status === 'expired' && styles.statusChipExpired,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusChipText,
+                      selectedDoc?.status === 'valid' && styles.statusTextValid,
+                      selectedDoc?.status === 'expiring' && styles.statusTextExpiring,
+                      selectedDoc?.status === 'expired' && styles.statusTextExpired,
+                    ]}
                   >
-                    <Image source={{ uri: fullUrl }} style={styles.photoImg} resizeMode="cover" />
-                    <View style={styles.photoMeta}>
-                      <Text style={styles.photoTitle} numberOfLines={1}>
-                        {docTypeLabel(doc.doc_type)}
-                      </Text>
-                      <Text style={styles.photoSub} numberOfLines={1}>
-                        {doc.trip_ref_id ? `TRP-${doc.trip_ref_id}` : formatDate(doc.createdAt)}
-                      </Text>
+                    {selectedDoc?.statusLabel}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Main Doc Details */}
+              <View style={styles.docPreviewBody}>
+                <Text style={styles.docPreviewMainTitle}>
+                  {selectedDoc ? t(selectedDoc.titleKey, selectedDoc.defaultTitle).toUpperCase() : ''}
+                </Text>
+                <Text style={styles.docPreviewRefNum}>{selectedDoc?.subText}</Text>
+
+                <View style={styles.docPreviewMetaGrid}>
+                  <View style={styles.docPreviewMetaCol}>
+                    <Text style={styles.docPreviewMetaLabel}>{t('label_driver_name', 'Driver')}</Text>
+                    <Text style={styles.docPreviewMetaValue}>{name}</Text>
+                  </View>
+                  <View style={styles.docPreviewMetaCol}>
+                    <Text style={styles.docPreviewMetaLabel}>{t('label_vehicle', 'Vehicle')}</Text>
+                    <Text style={styles.docPreviewMetaValue}>{plateNumber}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.docPreviewExpiryRow}>
+                  <Text style={styles.docPreviewExpiryLabel}>{t('label_expiry_date', 'Expiry Date')}</Text>
+                  <Text style={styles.docPreviewExpiryValue}>{selectedDoc?.expiry}</Text>
+                </View>
+
+                {/* Real image preview if fileUrl exists */}
+                {selectedDoc?.fileUrl ? (
+                  <TouchableOpacity
+                    activeOpacity={0.85}
+                    style={styles.docImagePreviewBox}
+                    onPress={() => openFile(selectedDoc.fileUrl!)}
+                  >
+                    <Image
+                      source={{ uri: selectedDoc.fileUrl.startsWith('http') ? selectedDoc.fileUrl : `${FILE_BASE}${selectedDoc.fileUrl}` }}
+                      style={styles.docImagePreviewImg}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.docImageOverlayPill}>
+                      <ExternalLink size={12} color="#FFFFFF" strokeWidth={2} />
+                      <Text style={styles.docImageOverlayText}>{t('action_view_file', 'Tap to View File')}</Text>
                     </View>
                   </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          )}
-        </View>
-      </ScrollView>
+                ) : null}
+              </View>
+            </View>
+
+            {/* Action Buttons */}
+            <View style={styles.docModalActions}>
+              <TouchableOpacity
+                style={styles.whatsappShareBtn}
+                activeOpacity={0.85}
+                onPress={() => {
+                  if (selectedDoc) {
+                    shareDocToWhatsApp(
+                      {
+                        defaultTitle: t(selectedDoc.titleKey, selectedDoc.defaultTitle),
+                        subText: selectedDoc.subText,
+                        expiry: selectedDoc.expiry,
+                        statusLabel: selectedDoc.statusLabel,
+                        fileUrl: selectedDoc.fileUrl,
+                      },
+                      name,
+                      plateNumber
+                    );
+                  }
+                }}
+              >
+                <WhatsAppIcon size={20} color="#FFFFFF" />
+                <Text style={styles.whatsappShareBtnText}>{t('action_share_whatsapp', 'Share via WhatsApp')}</Text>
+              </TouchableOpacity>
+
+              {selectedDoc?.fileUrl ? (
+                <TouchableOpacity
+                  style={styles.viewFileBtn}
+                  activeOpacity={0.8}
+                  onPress={() => openFile(selectedDoc.fileUrl!)}
+                >
+                  <ExternalLink size={16} color="#3E3C3D" strokeWidth={2} />
+                  <Text style={styles.viewFileBtnText}>{t('action_open_document', 'Open Document File')}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* ── 5. Avatar Zoom Lightbox Modal ── */}
       <Modal
@@ -936,6 +1139,222 @@ const styles = StyleSheet.create({
     marginTop: 20,
     textAlign: 'center',
   },
-});
 
-export default ProfileScreen;
+  /* Document Preview & WhatsApp Share Modal */
+  docModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    justifyContent: 'flex-end',
+  },
+  docModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 38 : 24,
+    gap: 16,
+    maxHeight: '90%',
+  },
+  docModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  docModalHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  docModalIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFF0ED',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docModalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#3E3C3D',
+  },
+  docModalSubTitle: {
+    fontSize: 12,
+    color: '#9898A4',
+    marginTop: 2,
+  },
+  docModalCloseBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#EEF1F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docPreviewCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    padding: 16,
+    gap: 12,
+  },
+  docPreviewHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  docPreviewBrandBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  docPreviewBrandText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    color: '#15803D',
+    letterSpacing: 0.5,
+  },
+  docPreviewBody: {
+    gap: 8,
+  },
+  docPreviewMainTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#3E3C3D',
+    letterSpacing: 0.5,
+  },
+  docPreviewRefNum: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FA634E',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  docPreviewMetaGrid: {
+    flexDirection: 'row',
+    marginTop: 4,
+    gap: 16,
+  },
+  docPreviewMetaCol: {
+    flex: 1,
+  },
+  docPreviewMetaLabel: {
+    fontSize: 10,
+    color: '#9898A4',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  docPreviewMetaValue: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#3E3C3D',
+    marginTop: 1,
+  },
+  docPreviewExpiryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    marginTop: 4,
+  },
+  docPreviewExpiryLabel: {
+    fontSize: 11,
+    color: '#9898A4',
+    fontWeight: '600',
+  },
+  docPreviewExpiryValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#3E3C3D',
+  },
+  docImagePreviewBox: {
+    height: 140,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginTop: 8,
+    position: 'relative',
+    backgroundColor: '#EEF1F6',
+  },
+  docImagePreviewImg: {
+    width: '100%',
+    height: '100%',
+  },
+  docImageOverlayPill: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  docImageOverlayText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  docModalActions: {
+    gap: 10,
+    marginTop: 4,
+  },
+  whatsappShareBtn: {
+    height: 46,
+    borderRadius: 14,
+    backgroundColor: '#25D366',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    shadowColor: '#25D366',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  whatsappShareBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  viewFileBtn: {
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#EEF1F6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  viewFileBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#3E3C3D',
+  },
+  signOutBtn: {
+    marginHorizontal: 16,
+    marginTop: 18,
+    marginBottom: 24,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#FFF0ED',
+    borderWidth: 1,
+    borderColor: 'rgba(250, 99, 78, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  signOutBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FA634E',
+  },
+});

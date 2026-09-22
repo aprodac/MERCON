@@ -15,7 +15,7 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens
 import { Badge, DelayReportModal, DriverChargePill, BilingualText } from '../../components';
 import { useAuth } from '../../lib/auth-context';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getNextExternalAppAction, getTripChargeValue, type TripStatus, type MobileTrip } from '../../lib/trips';
+import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getNextExternalAppAction, getTripChargeValue, getMonthlyDriverPayout, type TripStatus, type MobileTrip } from '../../lib/trips';
 import { getApiErrorMessage } from '../../lib/api';
 import { useLanguage, getLocalizedStatus } from '../../lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, type TimelineStop } from '../../lib/routeParser';
@@ -122,7 +122,6 @@ const HomeScreen = () => {
   const [delayModalVisible, setDelayModalVisible] = useState(false);
   const [scheduledTrips, setScheduledTrips] = useState<MobileTrip[]>([]);
   const [scheduledLoading, setScheduledLoading] = useState(true);
-  const [totalEarnings, setTotalEarnings] = useState(0);
   const router = useRouter();
 
   // Restore current trip workflow screen on mount
@@ -164,21 +163,6 @@ const HomeScreen = () => {
     }
   }, [trip, loading]);
 
-  const fetchEarnings = useCallback(async () => {
-    try {
-      const history = await tripService.getHistory(100);
-      const total = history.reduce((sum, t) => {
-        if (t.status === 'Completed' || t.status === 'Invoiced') {
-          return sum + getTripChargeValue(t);
-        }
-        return sum;
-      }, 0);
-      setTotalEarnings(total);
-    } catch {
-      // silently fail
-    }
-  }, []);
-
   const fetchScheduled = useCallback(async () => {
     setScheduledLoading(true);
     try {
@@ -191,12 +175,12 @@ const HomeScreen = () => {
     }
   }, [trip]);
 
-  // Load secondary data (scheduled trips & earnings) strictly after primary trip resolves, avoiding connection storms
+  // Load secondary data (scheduled trips) strictly after primary trip resolves, avoiding connection storms
   useEffect(() => {
     if (!loading) {
-      Promise.allSettled([fetchScheduled(), fetchEarnings()]);
+      fetchScheduled();
     }
-  }, [loading, fetchScheduled, fetchEarnings]);
+  }, [loading, fetchScheduled]);
 
   // Refresh the trip whenever Home regains focus
   const displayTrip = trip || (scheduledTrips.length > 0 ? scheduledTrips[0] : null);
@@ -416,7 +400,7 @@ const HomeScreen = () => {
             refreshing={loading}
             onRefresh={async () => {
               await refetch();
-              await Promise.allSettled([fetchScheduled(), fetchEarnings()]);
+              await fetchScheduled();
             }}
             tintColor="#FFFFFF"
             progressBackgroundColor="#FA634E"
@@ -439,7 +423,7 @@ const HomeScreen = () => {
               </TouchableOpacity>
 
               {/* Driver Charge on Top-Right */}
-              <DriverChargePill amount={totalEarnings} />
+              <DriverChargePill />
             </View>
 
             {/* Welcome back / Greeting below Language on the Left */}

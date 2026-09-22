@@ -111,7 +111,7 @@ export interface OperatorTripDetail {
 }
 
 export interface CreateTripStopInput {
-  stop_type: 'Pickup' | 'Dropoff';
+  stop_type: 'Pickup' | 'Dropoff' | 'Stop' | 'Rest' | 'Refuel';
   lat: number;
   lng: number;
   planned_arrival?: string;
@@ -127,6 +127,7 @@ export interface CreateTripInput {
   // afterward, same as the web dashboard's "Assign Later" option.
   driver_id?: string;
   vehicle_id?: string;
+  co_driver_id?: string;
   planned_start?: string;
   /** What every delay/lateness figure is measured against — must be sent, not just stamped on the dropoff stop. */
   planned_end?: string;
@@ -138,7 +139,22 @@ export interface CreateTripInput {
   vehicle_type?: string;
   rate_category?: string;
   billing_type?: string;
+  // Subcontractor / 3PL fields
+  is_third_party?: boolean;
+  third_party_provider_id?: string;
+  third_party_driver_name?: string;
+  third_party_driver_phone?: string;
+  third_party_vehicle_plate?: string;
+  third_party_cost?: number;
+  charges?: { charge_type: string; rate: number; quantity: number; amount: number }[];
   stops: CreateTripStopInput[];
+}
+
+export interface OperatorThirdPartyProvider {
+  id: string;
+  name: string;
+  contact_person?: string | null;
+  phone?: string | null;
 }
 
 export interface OperatorLocation {
@@ -153,6 +169,26 @@ export interface QuotationLookupMatch {
   quotationId: string;
   rate: number;
   driverPayout: number;
+}
+
+/** A customer's quotation, as picked from a list — same fields the web
+ * dashboard's quotation cards use to auto-fill a trip's route + rate. */
+export interface OperatorQuotation {
+  id: string;
+  name: string;
+  rate: number;
+  driver_payout?: number | null;
+  vehicle_type?: string | null;
+  vehicle_class?: string | null;
+  line_type?: string | null;
+  rate_category?: string | null;
+  billing_type?: string | null;
+  origin_name?: string | null;
+  destination_name?: string | null;
+  originLocationId?: string | null;
+  destinationLocationId?: string | null;
+  originLocation?: { id: string; name: string; lat?: number | null; lng?: number | null } | null;
+  destinationLocation?: { id: string; name: string; lat?: number | null; lng?: number | null } | null;
 }
 
 export interface OperatorCustomer {
@@ -298,6 +334,37 @@ export const operatorService = {
     if (!customerId || !query.trim()) return [];
     const { data } = await api.get('/locations', { params: { customerId, search: query.trim(), active_only: true } });
     return (data.data ?? []) as OperatorLocation[];
+  },
+
+  async thirdPartyProviders(): Promise<OperatorThirdPartyProvider[]> {
+    const { data } = await api.get('/third-party-providers', { params: { per_page: 100 } });
+    return (data.data ?? []) as OperatorThirdPartyProvider[];
+  },
+
+  /** Same `/quotations` list endpoint the web dashboard's create-trip wizard
+   * uses to show a customer's quotations as pickable cards — selecting one
+   * fills the whole route + rate in one action, same as the web flow's
+   * `onApplyRateCard`. */
+  async getQuotationsForCustomer(customerId: string): Promise<OperatorQuotation[]> {
+    if (!customerId) return [];
+    const { data } = await api.get('/quotations', { params: { customerId, active_only: 'true', per_page: 50 } });
+    return (data.data ?? []) as OperatorQuotation[];
+  },
+
+  async createQuotation(payload: {
+    customer_id: string;
+    origin_name?: string;
+    origin_location_id?: string;
+    destination_name?: string;
+    destination_location_id?: string;
+    rate: number;
+    driver_payout?: number;
+    vehicle_type?: string;
+    rate_category?: string;
+    billing_type?: string;
+  }): Promise<OperatorQuotation> {
+    const { data } = await api.post('/quotations', payload);
+    return data.data as OperatorQuotation;
   },
 
   /** Same `/quotations/lookup` endpoint the web dashboard's create-trip

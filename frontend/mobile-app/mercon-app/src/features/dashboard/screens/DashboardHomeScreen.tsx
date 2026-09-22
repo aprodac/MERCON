@@ -18,7 +18,7 @@ import {
   useDashboardSummary, useDelayedDeliveries, useNotifications,
 } from '../hooks';
 import {
-  ActiveTripsSection, AppHeader, DashboardMetricCard,
+  AppHeader, DashboardMetricCard,
   OperatorCommandCenterSection, ScannerButton, SearchBar,
 } from '../components';
 import { ErrorState, SkeletonMetricCard } from '@/shared/components';

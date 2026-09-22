@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-nativ
 import { Wallet, ChevronRight, ChevronLeft } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTripHistory } from '../lib/use-trip-history';
-import { getTripChargeValue } from '../lib/trips';
+import { getTripChargeValue, getMonthlyDriverPayout } from '../lib/trips';
 import { useLanguage } from '../lib/language-context';
 
 interface DriverChargePillProps {
@@ -18,12 +18,7 @@ export function DriverChargePill({ amount, style }: DriverChargePillProps) {
 
   const totalEarnings = useMemo(() => {
     if (typeof amount === 'number') return amount;
-    return historyList.reduce((sum, t) => {
-      if (t.status === 'Completed' || t.status === 'Invoiced') {
-        return sum + getTripChargeValue(t);
-      }
-      return sum;
-    }, 0);
+    return getMonthlyDriverPayout(historyList);
   }, [amount, historyList]);
 
   return (

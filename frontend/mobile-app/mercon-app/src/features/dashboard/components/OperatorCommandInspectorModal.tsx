@@ -27,6 +27,28 @@ import {
 import type { CommandActionItem, DriverRef, VehicleRef } from '../types';
 import { api } from '@/lib/api';
 
+/* ─── Category visual config ────────────────────────────────────────────── */
+
+const CATEGORY_CONFIG: Record<string, { bg: string; color: string; label: string }> = {
+  delay: { bg: '#FEF2F2', color: '#FA634E', label: 'Delay' },
+  unassigned: { bg: '#F5F3FF', color: '#7C3AED', label: 'Unassigned' },
+  pod: { bg: '#EFF6FF', color: '#2563EB', label: 'POD' },
+  doc: { bg: '#FFFBEB', color: '#D97706', label: 'Document' },
+  location: { bg: '#FFFBEB', color: '#D97706', label: 'Location' },
+};
+
+function getCategoryIcon(category: string, size: number, color: string) {
+  switch (category) {
+    case 'delay': return <AlertTriangle size={size} color={color} />;
+    case 'unassigned': return <UserX size={size} color={color} />;
+    case 'pod': return <FileText size={size} color={color} />;
+    case 'location': return <MapPin size={size} color={color} />;
+    default: return <Calendar size={size} color={color} />;
+  }
+}
+
+/* ─── Component ──────────────────────────────────────────────────────────── */
+
 interface OperatorCommandInspectorModalProps {
   visible: boolean;
   item: CommandActionItem | null;
@@ -54,13 +76,11 @@ export function OperatorCommandInspectorModal({
 
   if (!item) return null;
 
-  const isDelay = item.category === 'delay';
-  const isUnassigned = item.category === 'unassigned';
-  const isPod = item.category === 'pod';
-  const isDoc = item.category === 'doc';
-  const isLocation = item.category === 'location';
-
+  const category = item.category;
+  const config = CATEGORY_CONFIG[category] || CATEGORY_CONFIG.doc;
   const driverPhone = (item.trip?.driver as any)?.phone || (item.driver as any)?.phone || '';
+
+  /* ─── Actions ──────────────────────────────────────────────────────────── */
 
   const handleCallDriver = () => {
     if (driverPhone) {
@@ -134,280 +154,462 @@ export function OperatorCommandInspectorModal({
     }
   };
 
+  /* ─── Render ───────────────────────────────────────────────────────────── */
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <View className="flex-1 justify-end bg-black/50">
-        <View className="bg-white rounded-t-3xl p-5 max-h-[85%] min-h-[420px] flex-col justify-between">
-          
-          {/* Header */}
-          <View className="flex-row items-center justify-between pb-3 border-b border-gray-100">
-            <View className="flex-row items-center gap-2.5">
-              <View
-                className={`w-9 h-9 rounded-full items-center justify-center ${
-                  isDelay
-                    ? 'bg-rose-100 text-[#FA634E]'
-                    : isUnassigned
-                    ? 'bg-purple-100 text-purple-700'
-                    : isPod
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'bg-amber-100 text-amber-700'
-                }`}
-              >
-                {isDelay ? (
-                  <AlertTriangle size={20} color="#FA634E" />
-                ) : isUnassigned ? (
-                  <UserX size={20} color="#7E22CE" />
-                ) : isPod ? (
-                  <FileText size={20} color="#1D4ED8" />
-                ) : isLocation ? (
-                  <MapPin size={20} color="#D97706" />
-                ) : (
-                  <Calendar size={20} color="#D97706" />
-                )}
-              </View>
+      <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+        <View
+          style={{
+            backgroundColor: '#FFFFFF',
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+            paddingHorizontal: 20,
+            paddingTop: 16,
+            paddingBottom: 24,
+            maxHeight: '80%',
+            minHeight: 360,
+          }}
+        >
+          {/* ── Handle bar ────────────────────────────────────────────── */}
+          <View
+            style={{
+              width: 36,
+              height: 4,
+              borderRadius: 2,
+              backgroundColor: '#D1D5DB',
+              alignSelf: 'center',
+              marginBottom: 16,
+            }}
+          />
 
-              <View className="flex-1">
-                <Text className="text-base font-extrabold text-[#3E3C3D]" numberOfLines={1}>
+          {/* ── Header ───────────────────────────────────────────────── */}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingBottom: 14,
+              borderBottomWidth: 1,
+              borderBottomColor: '#F5F5F7',
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, paddingRight: 8 }}>
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  backgroundColor: config.bg,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {getCategoryIcon(category, 18, config.color)}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: '#3E3C3D' }}>
                   {item.entityName}
                 </Text>
-                <Text className="text-xs font-semibold text-gray-500" numberOfLines={1}>
-                  {item.badgeLabel} • {item.subtitle}
+                <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '500', color: '#6E6E80', marginTop: 1 }}>
+                  {item.badgeLabel} · {item.tripRef || ''}
                 </Text>
               </View>
             </View>
 
-            <TouchableOpacity onPress={onClose} className="p-2 rounded-full bg-gray-100">
-              <X size={18} color="#3E3C3D" />
+            <TouchableOpacity
+              onPress={onClose}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                backgroundColor: '#F5F5F7',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <X size={16} color="#3E3C3D" />
             </TouchableOpacity>
           </View>
 
-          {/* Body Content */}
-          <ScrollView className="flex-1 my-3" showsVerticalScrollIndicator={false}>
-            {/* Status Message alert */}
+          {/* ── Body ─────────────────────────────────────────────────── */}
+          <ScrollView
+            style={{ flex: 1, marginTop: 14 }}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ gap: 14, paddingBottom: 8 }}
+          >
+            {/* Status message */}
             {statusMessage && (
-              <View className="p-3 mb-3 bg-emerald-50 border border-emerald-200 rounded-xl flex-row items-center gap-2">
-                <CheckCircle2 size={16} color="#059669" />
-                <Text className="text-xs font-bold text-emerald-800 flex-1">{statusMessage}</Text>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: 10,
+                  backgroundColor: '#F0FDF4',
+                  borderRadius: 10,
+                  borderWidth: 1,
+                  borderColor: '#BBF7D0',
+                }}
+              >
+                <CheckCircle2 size={14} color="#16A34A" />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#166534', flex: 1 }}>
+                  {statusMessage}
+                </Text>
               </View>
             )}
 
-            {/* Delay Details */}
-            {isDelay && (
-              <View className="bg-rose-50/70 border border-rose-100 p-3.5 rounded-2xl gap-2">
-                <Text className="text-xs font-black uppercase text-[#FA634E] tracking-wider">
-                  Operational Delay Details
+            {/* ── DELAY Details ──────────────────────────────────────── */}
+            {category === 'delay' && (
+              <View
+                style={{
+                  backgroundColor: '#FEF2F2',
+                  borderRadius: 12,
+                  padding: 12,
+                  gap: 6,
+                  borderWidth: 1,
+                  borderColor: '#FECACA',
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#FA634E' }}>
+                  Delay Details
                 </Text>
-                <Text className="text-sm font-bold text-[#3E3C3D]">
+                <Text style={{ fontSize: 13, fontWeight: '600', color: '#3E3C3D' }}>
                   {item.delayReason || 'Schedule overrun — delay reported'}
                 </Text>
                 {item.delayTimeAgo && (
-                  <Text className="text-xs font-semibold text-gray-500">
-                    Logged: {item.delayTimeAgo}
+                  <Text style={{ fontSize: 11, fontWeight: '500', color: '#6E6E80' }}>
+                    Logged {item.delayTimeAgo}
                   </Text>
                 )}
               </View>
             )}
 
-            {/* Unassigned Details */}
-            {isUnassigned && (
-              <View className="gap-3">
-                <View className="bg-purple-50 border border-purple-100 p-3.5 rounded-2xl">
-                  <Text className="text-xs font-black uppercase text-purple-700 tracking-wider mb-1">
-                    Resource Allocation Needed
-                  </Text>
-                  <Text className="text-xs font-semibold text-gray-600">
-                    Select an available driver and vehicle below to dispatch this trip.
+            {/* ── UNASSIGNED Details ─────────────────────────────────── */}
+            {category === 'unassigned' && (
+              <View style={{ gap: 14 }}>
+                <View
+                  style={{
+                    backgroundColor: '#F5F3FF',
+                    borderRadius: 12,
+                    padding: 12,
+                    borderWidth: 1,
+                    borderColor: '#E9D5FF',
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#7C3AED' }}>
+                    Assign driver and vehicle to dispatch this trip.
                   </Text>
                 </View>
 
-                {/* Driver Selector */}
-                <View>
-                  <Text className="text-xs font-extrabold text-[#3E3C3D] mb-1">Assign Driver</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-2">
-                    {drivers.map((d) => {
-                      const isSelected = selectedDriverId === d.id;
-                      return (
-                        <TouchableOpacity
-                          key={d.id}
-                          onPress={() => setSelectedDriverId(isSelected ? '' : d.id)}
-                          className={`px-3 py-2 rounded-xl border flex-row items-center gap-1.5 ${
-                            isSelected ? 'bg-[#FA634E] border-[#FA634E]' : 'bg-gray-50 border-gray-200'
-                          }`}
+                {/* Driver selector */}
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#3E3C3D' }}>Driver</Text>
+                  {drivers.map((d) => {
+                    const isSelected = selectedDriverId === d.id;
+                    return (
+                      <TouchableOpacity
+                        key={d.id}
+                        onPress={() => setSelectedDriverId(isSelected ? '' : d.id)}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: 10,
+                          borderRadius: 10,
+                          backgroundColor: isSelected ? '#FA634E' : '#FAFAFA',
+                          borderWidth: 1,
+                          borderColor: isSelected ? '#FA634E' : '#EBEBED',
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 14,
+                            backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : '#EEF1F6',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
                         >
                           <User size={14} color={isSelected ? '#FFFFFF' : '#3E3C3D'} />
-                          <Text
-                            className={`text-xs font-bold ${
-                              isSelected ? 'text-white' : 'text-[#3E3C3D]'
-                            }`}
-                          >
-                            {d.first_name} {d.last_name}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
+                        </View>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: '600',
+                            color: isSelected ? '#FFFFFF' : '#3E3C3D',
+                            flex: 1,
+                          }}
+                        >
+                          {d.first_name} {d.last_name}
+                        </Text>
+                        {isSelected && <CheckCircle2 size={16} color="#FFFFFF" />}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
-                {/* Vehicle Selector */}
-                <View>
-                  <Text className="text-xs font-extrabold text-[#3E3C3D] mb-1">Assign Vehicle</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-2">
-                    {vehicles.map((v) => {
-                      const isSelected = selectedVehicleId === v.id;
-                      return (
-                        <TouchableOpacity
-                          key={v.id}
-                          onPress={() => setSelectedVehicleId(isSelected ? '' : v.id)}
-                          className={`px-3 py-2 rounded-xl border flex-row items-center gap-1.5 ${
-                            isSelected ? 'bg-[#FA634E] border-[#FA634E]' : 'bg-gray-50 border-gray-200'
-                          }`}
+                {/* Vehicle selector */}
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#3E3C3D' }}>Vehicle</Text>
+                  {vehicles.map((v) => {
+                    const isSelected = selectedVehicleId === v.id;
+                    return (
+                      <TouchableOpacity
+                        key={v.id}
+                        onPress={() => setSelectedVehicleId(isSelected ? '' : v.id)}
+                        style={{
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 10,
+                          padding: 10,
+                          borderRadius: 10,
+                          backgroundColor: isSelected ? '#FA634E' : '#FAFAFA',
+                          borderWidth: 1,
+                          borderColor: isSelected ? '#FA634E' : '#EBEBED',
+                        }}
+                      >
+                        <View
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 14,
+                            backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : '#EEF1F6',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
                         >
                           <Truck size={14} color={isSelected ? '#FFFFFF' : '#3E3C3D'} />
-                          <Text
-                            className={`text-xs font-bold ${
-                              isSelected ? 'text-white' : 'text-[#3E3C3D]'
-                            }`}
-                          >
-                            {v.plate_number || v.ref_id} ({v.asset_type})
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
+                        </View>
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: '600',
+                            color: isSelected ? '#FFFFFF' : '#3E3C3D',
+                            flex: 1,
+                          }}
+                        >
+                          {v.plate_number || v.ref_id} · {v.asset_type}
+                        </Text>
+                        {isSelected && <CheckCircle2 size={16} color="#FFFFFF" />}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
             )}
 
-            {/* POD Details */}
-            {isPod && (
-              <View className="bg-blue-50 border border-blue-100 p-3.5 rounded-2xl gap-2">
-                <Text className="text-xs font-black uppercase text-blue-700 tracking-wider">
+            {/* ── POD Details ────────────────────────────────────────── */}
+            {category === 'pod' && (
+              <View
+                style={{
+                  backgroundColor: '#EFF6FF',
+                  borderRadius: 12,
+                  padding: 12,
+                  gap: 4,
+                  borderWidth: 1,
+                  borderColor: '#BFDBFE',
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#2563EB' }}>
                   Proof of Delivery Received
                 </Text>
-                <Text className="text-xs font-semibold text-gray-600">
-                  Driver uploaded POD proof photos for {item.tripRef || item.entityName}. Tap below to view full trip documents.
+                <Text style={{ fontSize: 12, fontWeight: '400', color: '#6E6E80' }}>
+                  Driver uploaded POD for {item.tripRef || item.entityName}. View full trip to review documents.
                 </Text>
               </View>
             )}
 
-            {/* Document Expiry Details */}
-            {isDoc && (
-              <View className="gap-3">
-                <View className="bg-amber-50 border border-amber-100 p-3.5 rounded-2xl gap-1">
-                  <Text className="text-xs font-black uppercase text-amber-800 tracking-wider">
-                    Document Expiry Warning
+            {/* ── DOCUMENT Expiry Details ─────────────────────────────── */}
+            {category === 'doc' && (
+              <View style={{ gap: 12 }}>
+                <View
+                  style={{
+                    backgroundColor: '#FFFBEB',
+                    borderRadius: 12,
+                    padding: 12,
+                    gap: 4,
+                    borderWidth: 1,
+                    borderColor: '#FDE68A',
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#D97706' }}>
+                    Expiry Warning
                   </Text>
-                  <Text className="text-sm font-extrabold text-[#3E3C3D]">
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#3E3C3D' }}>
                     {item.entityName}
                   </Text>
-                  <Text className="text-xs font-semibold text-gray-600">
+                  <Text style={{ fontSize: 11, fontWeight: '400', color: '#6E6E80' }}>
                     {item.subtitle}
                   </Text>
                 </View>
 
-                <View>
-                  <Text className="text-xs font-extrabold text-[#3E3C3D] mb-1">
-                    Update Expiry Date (YYYY-MM-DD)
+                <View style={{ gap: 6 }}>
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#3E3C3D' }}>
+                    New Expiry Date
                   </Text>
                   <TextInput
                     value={newExpiryDate}
                     onChangeText={setNewExpiryDate}
-                    placeholder="2026-12-31"
-                    placeholderTextColor="#9CA3AF"
-                    className="border border-gray-300 rounded-xl px-3 py-2.5 text-xs font-bold text-[#3E3C3D] bg-white"
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor="#9898A4"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#EBEBED',
+                      borderRadius: 10,
+                      paddingHorizontal: 12,
+                      paddingVertical: 10,
+                      fontSize: 13,
+                      fontWeight: '500',
+                      color: '#3E3C3D',
+                      backgroundColor: '#FAFAFA',
+                    }}
                   />
                 </View>
               </View>
             )}
 
-            {/* Location Details */}
-            {isLocation && (
-              <View className="bg-amber-50 border border-amber-100 p-3.5 rounded-2xl gap-2">
-                <Text className="text-xs font-black uppercase text-amber-800 tracking-wider">
-                  Location Precision Review
+            {/* ── LOCATION Details ───────────────────────────────────── */}
+            {category === 'location' && (
+              <View
+                style={{
+                  backgroundColor: '#FFFBEB',
+                  borderRadius: 12,
+                  padding: 12,
+                  gap: 4,
+                  borderWidth: 1,
+                  borderColor: '#FDE68A',
+                }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#D97706' }}>
+                  Location Review
                 </Text>
-                <Text className="text-xs font-semibold text-gray-600">
-                  Destination coordinates for {item.tripRef || item.entityName} are approximate. Verify pin in trip details.
+                <Text style={{ fontSize: 12, fontWeight: '400', color: '#6E6E80' }}>
+                  Coordinates for {item.tripRef || item.entityName} are approximate. Verify pin in trip details.
                 </Text>
               </View>
             )}
           </ScrollView>
 
-          {/* Action Buttons Footer */}
-          <View className="pt-3 border-t border-gray-100 gap-2">
-            {/* Contextual actions: Call & WhatsApp for delays or trips */}
-            {(isDelay || (item.trip && !isUnassigned)) && (
-              <View className="flex-row gap-2">
+          {/* ── Footer Actions ───────────────────────────────────────── */}
+          <View style={{ gap: 8, paddingTop: 14, borderTopWidth: 1, borderTopColor: '#F5F5F7' }}>
+            {/* Call & WhatsApp for delays or trip-linked items */}
+            {(category === 'delay' || (item.trip && category !== 'unassigned')) && (
+              <View style={{ flexDirection: 'row', gap: 8 }}>
                 <TouchableOpacity
                   onPress={handleCallDriver}
-                  className="flex-1 bg-gray-100 py-3 rounded-xl flex-row items-center justify-center gap-2 border border-gray-200"
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    backgroundColor: '#F5F5F7',
+                    borderWidth: 1,
+                    borderColor: '#EBEBED',
+                  }}
                 >
-                  <Phone size={15} color="#3E3C3D" />
-                  <Text className="text-xs font-extrabold text-[#3E3C3D]">Call Driver</Text>
+                  <Phone size={14} color="#3E3C3D" />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#3E3C3D' }}>Call</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   onPress={handleWhatsAppDriver}
-                  className="flex-1 bg-emerald-600 py-3 rounded-xl flex-row items-center justify-center gap-2"
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    backgroundColor: '#25D366',
+                  }}
                 >
-                  <MessageCircle size={15} color="#FFFFFF" />
-                  <Text className="text-xs font-extrabold text-white">WhatsApp</Text>
+                  <MessageCircle size={14} color="#FFFFFF" />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: '#FFFFFF' }}>WhatsApp</Text>
                 </TouchableOpacity>
               </View>
             )}
 
             {/* Assign button */}
-            {isUnassigned && (
+            {category === 'unassigned' && (
               <TouchableOpacity
                 onPress={handleAssignTrip}
                 disabled={isSubmitting || (!selectedDriverId && !selectedVehicleId)}
-                className={`py-3.5 rounded-xl flex-row items-center justify-center gap-2 ${
-                  !selectedDriverId && !selectedVehicleId ? 'bg-gray-300' : 'bg-[#FA634E]'
-                }`}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 13,
+                  borderRadius: 12,
+                  backgroundColor: !selectedDriverId && !selectedVehicleId ? '#D1D5DB' : '#FA634E',
+                }}
               >
                 {isSubmitting ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <>
-                    <CheckCircle2 size={16} color="#FFFFFF" />
-                    <Text className="text-xs font-black uppercase tracking-wider text-white">
-                      Assign & Dispatch Trip
+                    <CheckCircle2 size={14} color="#FFFFFF" />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
+                      Assign & Dispatch
                     </Text>
                   </>
                 )}
               </TouchableOpacity>
             )}
 
-            {/* Document Renewal Button */}
-            {isDoc && (
+            {/* Document renewal button */}
+            {category === 'doc' && (
               <TouchableOpacity
                 onPress={handleUpdateExpiry}
                 disabled={isSubmitting || !newExpiryDate}
-                className={`py-3.5 rounded-xl flex-row items-center justify-center gap-2 ${
-                  !newExpiryDate ? 'bg-gray-300' : 'bg-[#FA634E]'
-                }`}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 13,
+                  borderRadius: 12,
+                  backgroundColor: !newExpiryDate ? '#D1D5DB' : '#FA634E',
+                }}
               >
                 {isSubmitting ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />
                 ) : (
                   <>
-                    <CheckCircle2 size={16} color="#FFFFFF" />
-                    <Text className="text-xs font-black uppercase tracking-wider text-white">
-                      Save Expiry Date
+                    <CheckCircle2 size={14} color="#FFFFFF" />
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFFFF' }}>
+                      Save Expiry
                     </Text>
                   </>
                 )}
               </TouchableOpacity>
             )}
 
-            {/* Primary Open Trip Button */}
+            {/* Open Trip */}
             {item.trip && (
               <TouchableOpacity
                 onPress={handleOpenTrip}
-                className="bg-[#EEF1F6] py-3 rounded-xl flex-row items-center justify-center gap-2 border border-slate-200"
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  backgroundColor: '#F5F5F7',
+                  borderWidth: 1,
+                  borderColor: '#EBEBED',
+                }}
               >
-                <Text className="text-xs font-extrabold text-[#3E3C3D]">Open Full Trip Details</Text>
-                <ExternalLink size={14} color="#3E3C3D" />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#3E3C3D' }}>Open Trip</Text>
+                <ExternalLink size={13} color="#3E3C3D" />
               </TouchableOpacity>
             )}
           </View>

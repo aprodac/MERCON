@@ -200,6 +200,27 @@ export function getTripChargeValue(t: MobileTrip | null | undefined): number {
   return extractChargeNumber(t.driver_payout ?? t.driver_charge ?? t.trip_charges);
 }
 
+/** Check whether a trip's completion date falls in the specified month (defaults to current month). */
+export function isTripInMonth(t: MobileTrip | null | undefined, refDate: Date = new Date()): boolean {
+  if (!t) return false;
+  const dateStr = t.actual_end ?? t.planned_end ?? t.actual_start ?? t.planned_start ?? (t as any).createdAt;
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getMonth() === refDate.getMonth() && d.getFullYear() === refDate.getFullYear();
+}
+
+/** Calculates total driver payout for completed/invoiced trips completed in the specified month. */
+export function getMonthlyDriverPayout(trips: (MobileTrip | null | undefined)[], refDate: Date = new Date()): number {
+  if (!Array.isArray(trips)) return 0;
+  return trips.reduce((sum, t) => {
+    if (t && (t.status === 'Completed' || t.status === 'Invoiced') && isTripInMonth(t, refDate)) {
+      return sum + getTripChargeValue(t);
+    }
+    return sum;
+  }, 0);
+}
+
 /** Check whether a trip is genuinely a Round Trip */
 export function isRoundTrip(trip: MobileTrip | null | undefined): boolean {
   if (!trip) return false;

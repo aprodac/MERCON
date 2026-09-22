@@ -14,7 +14,7 @@ import { SearchInput, DriverChargePill } from '../../components';
 import { useCurrentTrip } from '../../lib/use-current-trip';
 import { useScheduledTrips } from '../../lib/use-scheduled-trips';
 import { useTripHistory } from '../../lib/use-trip-history';
-import { statusLabel, stopLabel, getTripChargeValue, type MobileTrip, type TripStatus } from '../../lib/trips';
+import { statusLabel, stopLabel, getTripChargeValue, getMonthlyDriverPayout, type MobileTrip, type TripStatus } from '../../lib/trips';
 import { matchesSearch } from '../../lib/search';
 import { useLanguage, formatCurrency, getLocalizedStatus, LanguageMode } from '../../lib/language-context';
 import { API_URL } from '../../lib/api';
@@ -233,14 +233,9 @@ const TripsScreen = ({ navigation }: any) => {
   const loading = loadingCurrent || loadingScheduled || loadingHistory;
   const error = selectedTab === 'Scheduled' ? errorScheduled : errorHistory;
 
-  // Compute Driver Charge total earnings from history (only completed/invoiced trips)
+  // Compute Driver Charge total earnings from current month's completed/invoiced trips
   const totalEarnings = useMemo(() => {
-    return historyList.reduce((sum, t) => {
-      if (t.status === 'Completed' || t.status === 'Invoiced') {
-        return sum + getTripChargeValue(t);
-      }
-      return sum;
-    }, 0);
+    return getMonthlyDriverPayout(historyList);
   }, [historyList]);
 
   // Combine scheduled list with active trip

@@ -18,12 +18,9 @@ import {
   UserX,
   MapPin,
   CheckCircle2,
-  ChevronRight,
-  Truck,
   ArrowRight,
   Clock,
   Camera,
-  Film,
 } from 'lucide-react-native';
 import { useOperatorCommandQueue } from '../hooks/useOperatorCommandQueue';
 import type { CommandActionItem, CommandActionItemCategory, VehicleCardStatus } from '../types';
@@ -33,6 +30,8 @@ import { StatusBadge } from './StatusBadge';
 import { WhatsAppIcon, resolveMediaUrl } from './VehicleCard';
 import { CarouselPagination } from './CarouselPagination';
 import { deriveVehicleCardStatus } from '../services/dashboardService';
+
+/* ─── WhatsApp sharing utils ─────────────────────────────────────────────── */
 
 interface OperatorCommandCenterSectionProps {
   onTripPress?: (tripId: string) => void;
@@ -107,9 +106,31 @@ export async function shareItemToWhatsApp(item: CommandActionItem) {
   }
 }
 
+/* ─── Priority stripe colors ────────────────────────────────────────────── */
+
+const STRIPE_COLORS: Record<string, string> = {
+  delay: '#FA634E',
+  unassigned: '#7C3AED',
+  pod: '#2563EB',
+  doc: '#D97706',
+  location: '#D97706',
+};
+
+const CATEGORY_ICON_CONFIG: Record<string, { bg: string; color: string }> = {
+  delay: { bg: '#FEF2F2', color: '#FA634E' },
+  unassigned: { bg: '#F5F3FF', color: '#7C3AED' },
+  pod: { bg: '#EFF6FF', color: '#2563EB' },
+  doc: { bg: '#FFFBEB', color: '#D97706' },
+  location: { bg: '#FFFBEB', color: '#D97706' },
+};
+
+/* ─── Constants ──────────────────────────────────────────────────────────── */
+
 const GAP = 14;
-const MIN_CARD_WIDTH = 275;
+const MIN_CARD_WIDTH = 280;
 const MAX_CARD_WIDTH = 320;
+
+/* ─── Main Component ─────────────────────────────────────────────────────── */
 
 export function OperatorCommandCenterSection({ onTripPress, className }: OperatorCommandCenterSectionProps) {
   const { width: windowWidth } = useWindowDimensions();
@@ -141,9 +162,11 @@ export function OperatorCommandCenterSection({ onTripPress, className }: Operato
     { id: 'all', label: 'All', count: counts.all },
     { id: 'delay', label: 'Delays', count: counts.delay },
     { id: 'unassigned', label: 'Unassigned', count: counts.unassigned },
-    { id: 'pod', label: 'POD Ready', count: counts.pod },
-    { id: 'doc', label: 'Documents', count: counts.doc },
+    { id: 'pod', label: 'POD', count: counts.pod },
+    { id: 'doc', label: 'Docs', count: counts.doc },
   ];
+
+  /* ─── Card Renderer ────────────────────────────────────────────────────── */
 
   const renderCardItem = useCallback(
     ({ item }: { item: CommandActionItem }) => {
@@ -151,22 +174,40 @@ export function OperatorCommandCenterSection({ onTripPress, className }: Operato
       const isDelay = item.category === 'delay';
       const isUnassigned = item.category === 'unassigned';
       const isPod = item.category === 'pod';
-      const isDoc = item.category === 'doc';
 
       const driverName = item.driver
         ? `${item.driver.first_name} ${item.driver.last_name}`
         : trip?.driver
         ? `${trip.driver.first_name} ${trip.driver.last_name}`
-        : 'Unassigned Driver';
+        : 'Unassigned';
 
-      const driverInitials = item.initials || 'MC';
+      const driverInitials = (() => {
+        const dn = item.driver
+          ? `${item.driver.first_name} ${item.driver.last_name}`
+          : trip?.driver
+          ? `${trip.driver.first_name} ${trip.driver.last_name}`
+          : '';
+        if (!dn) return 'DR';
+        const parts = dn.trim().split(/\s+/);
+        return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : dn.slice(0, 2).toUpperCase();
+      })();
+
+      const customerName = trip?.customer?.name
+        || (item.entityType === 'company' ? item.entityName : '')
+        || '';
+      const customerInitials = (() => {
+        if (!customerName) return 'CO';
+        const parts = customerName.trim().split(/\s+/);
+        return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : customerName.slice(0, 2).toUpperCase();
+      })();
+      const customerLogoUrl = resolveMediaUrl((trip?.customer as any)?.logo_url || null);
 
       const truckId =
         trip?.vehicle?.ref_id ||
         trip?.vehicle?.plate_number ||
-        (item.entityType === 'vehicle' ? item.entityName : 'Truck');
+        (item.entityType === 'vehicle' ? item.entityName : '—');
 
-      const vehicleModel = trip?.vehicle?.asset_type ?? 'Flatbed';
+      const vehicleModel = trip?.vehicle?.asset_type ?? '';
 
       const cardStatus: VehicleCardStatus = trip
         ? deriveVehicleCardStatus(trip.status, trip.vehicle?.status ?? 'Available', isDelay)
@@ -186,203 +227,216 @@ export function OperatorCommandCenterSection({ onTripPress, className }: Operato
         ? dropoffStop.location_name.split(',')[0].replace(/\]+$/, '').trim()
         : 'Destination';
 
-      const distanceStr = trip?.planned_distance ? `${Math.round(trip.planned_distance)} KM` : undefined;
+      const distanceStr = trip?.planned_distance ? `${Math.round(trip.planned_distance)} km` : '—';
 
-      let etaStr: string | undefined = undefined;
+      let etaStr = '—';
       if (trip?.planned_end) {
         const diffMs = new Date(trip.planned_end).getTime() - Date.now();
         if (diffMs > 0) {
           const hours = (diffMs / (1000 * 60 * 60)).toFixed(1);
-          etaStr = `${hours} HRS`;
+          etaStr = `${hours}h`;
         } else {
-          etaStr = 'ARRIVING SOON';
+          etaStr = 'Now';
         }
       }
 
-      const rawAvatar = item.avatarUrl || (trip?.driver as any)?.avatar_url || (trip?.driver as any)?.profile_picture;
-      const resolvedAvatar = resolveMediaUrl(rawAvatar);
+      const rawDriverAvatar = (item.driver as any)?.avatar_url
+        || (trip?.driver as any)?.avatar_url
+        || (trip?.driver as any)?.profile_picture;
+      const resolvedDriverAvatar = resolveMediaUrl(rawDriverAvatar);
+
+      const stripeColor = STRIPE_COLORS[item.category] || '#D1D5DB';
+      const iconConfig = CATEGORY_ICON_CONFIG[item.category] || { bg: '#F5F5F7', color: '#6E6E80' };
+
+      const truckSuffix = vehicleModel ? ` · ${vehicleModel}` : '';
 
       return (
-        <View
-          style={{ width: cardWidth, borderWidth: 1, borderColor: '#EEF1F6' }}
-          className="rounded-3xl bg-white p-3.5 gap-3 shadow-md shadow-slate-200/50"
+        <TouchableOpacity
+          activeOpacity={0.88}
+          onPress={() => setSelectedItem(item)}
+          style={{
+            width: cardWidth,
+            borderWidth: 1,
+            borderColor: '#EBEBED',
+            borderRadius: 16,
+            backgroundColor: '#FFFFFF',
+            padding: 12,
+            gap: 10,
+          }}
         >
-          {/* 1. Header: Driver / Entity Avatar + Specs + Status Badge */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => setSelectedItem(item)}
-            className="flex-row items-center justify-between gap-2 border-b border-slate-100 pb-2.5"
-          >
-            <View className="flex-row items-center gap-2.5 flex-1 pr-1">
-              <DriverAvatar
-                initials={driverInitials}
-                imageUri={resolvedAvatar ? { uri: resolvedAvatar } : undefined}
-                size={40}
-                online={item.driver?.status === 'OnTrip' || (trip?.driver as any)?.status === 'OnTrip'}
-              />
-              <View className="flex-1">
-                <Text numberOfLines={1} className="text-sm font-black text-slate-900 tracking-tight">
-                  {driverName}
+          {/* ── Row 1: Driver + Customer Info + Status ─────────────── */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <DriverAvatar
+              initials={driverInitials}
+              imageUri={resolvedDriverAvatar ? { uri: resolvedDriverAvatar } : undefined}
+              size={36}
+              online={item.driver?.status === 'OnTrip' || (trip?.driver as any)?.status === 'OnTrip'}
+            />
+
+            {/* Driver name + truck & customer info */}
+            <View style={{ flex: 1 }}>
+              <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '700', color: '#3E3C3D' }}>
+                {driverName}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 }}>
+                <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '500', color: '#9898A4', flexShrink: 1 }}>
+                  {truckId}{truckSuffix}
                 </Text>
-                <Text numberOfLines={1} className="text-[11px] font-bold text-slate-500 mt-0.5">
-                  {truckId} • {vehicleModel}
-                </Text>
+                {customerName ? (
+                  <>
+                    <Text style={{ fontSize: 11, fontWeight: '500', color: '#D1D5DB' }}>•</Text>
+                    {customerLogoUrl ? (
+                      <Image
+                        source={{ uri: customerLogoUrl }}
+                        style={{ width: 14, height: 14, borderRadius: 3 }}
+                        resizeMode="cover"
+                      />
+                    ) : null}
+                    <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '600', color: '#6E6E80', flexShrink: 1 }}>
+                      {customerName}
+                    </Text>
+                  </>
+                ) : null}
               </View>
             </View>
-
             <StatusBadge status={cardStatus} />
-          </TouchableOpacity>
-
-          {/* 2. Customer & Evidence Indicator Row with Instant WhatsApp Share Button */}
-          <View
-            className="flex-row items-center justify-between bg-slate-50/90 p-2.5 rounded-2xl"
-            style={{ borderWidth: 1, borderColor: '#EEF1F6' }}
-          >
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => setSelectedItem(item)}
-              className="flex-row items-center gap-2 flex-1 pr-2"
-            >
-              {/* Evidence / Alert Tag Indicator */}
-              <View
-                className={`px-2 py-1 rounded-lg flex-row items-center gap-1 ${
-                  isDelay
-                    ? 'bg-rose-100 border border-rose-200'
-                    : isUnassigned
-                    ? 'bg-purple-100 border border-purple-200'
-                    : isPod
-                    ? 'bg-blue-100 border border-blue-200'
-                    : 'bg-amber-100 border border-amber-200'
-                }`}
-              >
-                {isDelay ? (
-                  <AlertTriangle size={12} color="#FA634E" />
-                ) : isUnassigned ? (
-                  <UserX size={12} color="#7E22CE" />
-                ) : isPod ? (
-                  <FileText size={12} color="#1D4ED8" />
-                ) : (
-                  <Camera size={12} color="#D97706" />
-                )}
-                <Text
-                  className={`text-[10px] font-black uppercase ${
-                    isDelay
-                      ? 'text-[#FA634E]'
-                      : isUnassigned
-                      ? 'text-purple-700'
-                      : isPod
-                      ? 'text-blue-700'
-                      : 'text-amber-800'
-                  }`}
-                >
-                  {item.badgeLabel}
-                </Text>
-              </View>
-
-              <Text numberOfLines={1} className="text-xs font-black text-slate-900 flex-1">
-                {item.entityName}
-              </Text>
-            </TouchableOpacity>
-
-            {/* Instant WhatsApp Share Button */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => shareItemToWhatsApp(item)}
-              className="h-8 px-2.5 rounded-xl bg-[#25D366] flex-row items-center gap-1.5 shadow-2xs"
-            >
-              <WhatsAppIcon size={14} color="#FFFFFF" />
-              <Text className="text-[10px] font-black text-white uppercase">WhatsApp</Text>
-            </TouchableOpacity>
           </View>
 
-          {/* 3. Operational Route Container */}
-          <TouchableOpacity
-            activeOpacity={0.85}
-            onPress={() => setSelectedItem(item)}
-            className="bg-orange-50/50 rounded-2xl p-3 gap-2"
-            style={{ borderWidth: 1, borderColor: '#EEF1F6' }}
+          {/* ── Row 2: Route ──────────────────────────────────────────── */}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              paddingTop: 8,
+              borderTopWidth: 1,
+              borderTopColor: '#F5F5F7',
+            }}
           >
-            <View className="flex-row items-center justify-between gap-1.5">
-              {/* Origin */}
-              <View className="flex-1 pr-1">
-                <View className="flex-row items-center gap-1 mb-0.5">
-                  <View className="h-2 w-2 rounded-full bg-emerald-500" />
-                  <Text className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">ORIGIN</Text>
-                </View>
-                <Text numberOfLines={1} className="text-xs font-black text-slate-900">
-                  {originLabel}
-                </Text>
-              </View>
-
-              <View className="bg-[#FA634E] p-1.5 rounded-full shadow-2xs">
-                <ArrowRight size={12} color="#FFFFFF" strokeWidth={2.8} />
-              </View>
-
-              {/* Destination */}
-              <View className="flex-1 pl-1 items-end">
-                <View className="flex-row items-center gap-1 mb-0.5">
-                  <Text className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">DESTINATION</Text>
-                  <View className="h-2 w-2 rounded-full bg-[#FA634E]" />
-                </View>
-                <Text numberOfLines={1} className="text-xs font-black text-slate-900 text-right">
-                  {destinationLabel}
-                </Text>
-              </View>
-            </View>
-
-            {/* Subtitle / Evidence Context */}
-            <Text numberOfLines={1} className="text-[10.5px] font-bold text-slate-500 mt-1">
-              {item.subtitle}
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#16A34A' }} />
+            <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: '#3E3C3D', flex: 1 }}>
+              {originLabel}
             </Text>
+            <ArrowRight size={12} color="#9898A4" strokeWidth={2} />
+            <Text numberOfLines={1} style={{ fontSize: 12, fontWeight: '600', color: '#3E3C3D', flex: 1, textAlign: 'right' }}>
+              {destinationLabel}
+            </Text>
+            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#FA634E' }} />
+          </View>
 
-            {/* Distance & ETA Row */}
+          {/* ── Row 3: Context subtitle (delay reason, POD info, etc.) ── */}
+          <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '500', color: '#6E6E80' }}>
+            {item.subtitle}
+          </Text>
+
+          {/* ── Row 4: Footer — Category + Meta + WhatsApp ───────────── */}
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingTop: 8,
+              borderTopWidth: 1,
+              borderTopColor: '#F5F5F7',
+              gap: 8,
+            }}
+          >
+            {/* Category pill */}
             <View
-              className="flex-row items-center justify-between pt-2 mt-1"
-              style={{ borderTopWidth: 1, borderTopColor: 'rgba(62, 60, 61, 0.08)' }}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: iconConfig.bg,
+                paddingHorizontal: 6,
+                paddingVertical: 3,
+                borderRadius: 6,
+                gap: 3,
+              }}
             >
-              <View className="flex-row items-center gap-1">
-                <MapPin size={11} color="#64748B" />
-                <Text className="text-[11px] font-medium text-slate-500">
-                  Distance: <Text className="font-extrabold text-slate-900">{distanceStr || '—'}</Text>
-                </Text>
-              </View>
-              <View className="flex-row items-center gap-1">
-                <Clock size={11} color="#64748B" />
-                <Text className="text-[11px] font-medium text-slate-500">
-                  ETA: <Text className="font-extrabold text-slate-900">{etaStr || '—'}</Text>
-                </Text>
-              </View>
+              {isDelay ? (
+                <AlertTriangle size={10} color={iconConfig.color} />
+              ) : isUnassigned ? (
+                <UserX size={10} color={iconConfig.color} />
+              ) : isPod ? (
+                <FileText size={10} color={iconConfig.color} />
+              ) : (
+                <Camera size={10} color={iconConfig.color} />
+              )}
+              <Text style={{ fontSize: 9, fontWeight: '700', color: iconConfig.color, textTransform: 'uppercase' }}>
+                {item.badgeLabel}
+              </Text>
             </View>
-          </TouchableOpacity>
-        </View>
+
+            {/* Distance */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <MapPin size={10} color="#9898A4" />
+              <Text style={{ fontSize: 10, fontWeight: '500', color: '#6E6E80' }}>{distanceStr}</Text>
+            </View>
+
+            {/* ETA */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+              <Clock size={10} color="#9898A4" />
+              <Text style={{ fontSize: 10, fontWeight: '500', color: '#6E6E80' }}>{etaStr}</Text>
+            </View>
+
+            {/* Spacer */}
+            <View style={{ flex: 1 }} />
+
+            {/* WhatsApp icon button */}
+            <TouchableOpacity
+              activeOpacity={0.75}
+              onPress={(e) => {
+                e.stopPropagation?.();
+                shareItemToWhatsApp(item);
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                backgroundColor: '#25D366',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <WhatsAppIcon size={14} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       );
     },
     [cardWidth]
   );
 
-  return (
-    <View className={`gap-3 ${className ?? ''}`}>
-      {/* ── 1. UNIFIED HEADER ────────────────────────────────────────────────── */}
-      <View className="flex-row items-center justify-between">
-        <View className="flex-row items-center gap-2">
-          <View className="w-2.5 h-2.5 rounded-full bg-[#FA634E]" />
-          <Text className="text-xs font-black uppercase tracking-wider text-[#3E3C3D]">
-            OPERATOR COMMAND
-          </Text>
-        </View>
+  /* ─── Render ───────────────────────────────────────────────────────────── */
 
-        <View className="px-2.5 py-1 rounded-full bg-rose-50 border border-rose-200/80">
-          <Text className="text-[10px] font-black uppercase tracking-wider text-[#FA634E]">
-            {actionItems.length} ALERTS
-          </Text>
-        </View>
+  return (
+    <View className={className} style={{ gap: 12 }}>
+      {/* ── Section Header ────────────────────────────────────────────────── */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={{ fontSize: 14, fontWeight: '700', color: '#3E3C3D' }}>
+          Action Queue
+        </Text>
+        {actionItems.length > 0 && (
+          <View
+            style={{
+              backgroundColor: '#FEF2F2',
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 10,
+            }}
+          >
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#FA634E' }}>
+              {actionItems.length}
+            </Text>
+          </View>
+        )}
       </View>
 
-      {/* ── 2. CATEGORY FILTER PILLS ─────────────────────────────────────────── */}
+      {/* ── Category Filter Pills ─────────────────────────────────────────── */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        className="py-1 flex-row gap-1.5"
+        contentContainerStyle={{ gap: 6 }}
       >
         {categories.map((cat) => {
           const isActive = activeCategoryFilter === cat.id;
@@ -390,55 +444,66 @@ export function OperatorCommandCenterSection({ onTripPress, className }: Operato
             <TouchableOpacity
               key={cat.id}
               onPress={() => setActiveCategoryFilter(cat.id)}
-              className={`px-3 py-1.5 rounded-xl border flex-row items-center gap-1.5 ${
-                isActive
-                  ? 'bg-[#FA634E] border-[#FA634E]'
-                  : 'bg-[#EEF1F6]/80 border-slate-200/80'
-              }`}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 10,
+                backgroundColor: isActive ? '#FA634E' : '#F5F5F7',
+              }}
             >
               <Text
-                className={`text-[11px] font-extrabold ${
-                  isActive ? 'text-white' : 'text-[#3E3C3D]'
-                }`}
+                style={{
+                  fontSize: 11,
+                  fontWeight: '600',
+                  color: isActive ? '#FFFFFF' : '#3E3C3D',
+                }}
               >
-                {cat.label}
+                {cat.label}{cat.count > 0 ? ` (${cat.count})` : ''}
               </Text>
-              <View
-                className={`px-1.5 py-0.2 rounded-md ${
-                  isActive ? 'bg-white/20' : 'bg-slate-200/80'
-                }`}
-              >
-                <Text
-                  className={`text-[10px] font-black ${
-                    isActive ? 'text-white' : 'text-[#3E3C3D]'
-                  }`}
-                >
-                  {cat.count}
-                </Text>
-              </View>
             </TouchableOpacity>
           );
         })}
       </ScrollView>
 
-      {/* ── 3. RICH ACTION CARDS CAROUSEL ──────────────────────────────────── */}
+      {/* ── Cards Carousel ────────────────────────────────────────────────── */}
       {isLoading ? (
-        <View className="p-8 items-center justify-center bg-white rounded-3xl border border-slate-100">
+        <View
+          style={{
+            padding: 32,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#FFFFFF',
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: '#EBEBED',
+          }}
+        >
           <ActivityIndicator size="small" color="#FA634E" />
-          <Text className="text-xs font-semibold text-slate-400 mt-2">
-            Loading operational cards...
+          <Text style={{ fontSize: 12, fontWeight: '500', color: '#9898A4', marginTop: 8 }}>
+            Loading…
           </Text>
         </View>
       ) : filteredItems.length === 0 ? (
-        <View className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-100 items-center justify-center gap-1">
-          <CheckCircle2 size={20} color="#059669" />
-          <Text className="text-xs font-bold text-[#3E3C3D]">Queue Clear</Text>
-          <Text className="text-[10.5px] font-medium text-slate-500">
-            All active dispatches and operational tasks are running smoothly.
+        <View
+          style={{
+            padding: 20,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#F0FDF4',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: '#BBF7D0',
+            gap: 4,
+          }}
+        >
+          <CheckCircle2 size={18} color="#16A34A" />
+          <Text style={{ fontSize: 12, fontWeight: '600', color: '#3E3C3D' }}>All clear</Text>
+          <Text style={{ fontSize: 11, fontWeight: '400', color: '#6E6E80' }}>
+            No pending actions right now.
           </Text>
         </View>
       ) : (
-        <View className="gap-3">
+        <View style={{ gap: 10 }}>
           <FlatList
             data={filteredItems}
             horizontal
@@ -455,7 +520,7 @@ export function OperatorCommandCenterSection({ onTripPress, className }: Operato
         </View>
       )}
 
-      {/* Modal Inspector Sheet */}
+      {/* ── Inspector Modal ───────────────────────────────────────────────── */}
       <OperatorCommandInspectorModal
         visible={!!selectedItem}
         item={selectedItem}

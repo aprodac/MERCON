@@ -104,32 +104,29 @@ export function CustomerProfileRow({
     : 'C';
 
   return (
-    <View
-      className="flex-row items-center justify-between bg-slate-50/90 p-2.5 rounded-2xl"
-      style={{ borderWidth: 1, borderColor: '#EEF1F6' }}
-    >
+    <View className="flex-row items-center justify-between py-1">
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={onPress}
-        className="flex-row items-center gap-2.5 flex-1 pr-2"
+        className="flex-row items-center gap-2 flex-1 pr-2"
       >
         {showLogo ? (
           <Image
             source={{ uri: resolvedLogoUrl! }}
-            style={{ width: 30, height: 30, borderRadius: 8 }}
+            style={{ width: 24, height: 24, borderRadius: 6 }}
             onError={() => setHasLogoError(true)}
             resizeMode="cover"
           />
         ) : (
           <View
-            className="h-7 w-7 rounded-lg bg-[#FA634E]/10 items-center justify-center"
-            style={{ borderWidth: 1, borderColor: 'rgba(250, 99, 78, 0.25)' }}
+            className="h-6 w-6 rounded-md bg-slate-100 items-center justify-center"
+            style={{ borderWidth: 1, borderColor: '#E2E8F0' }}
           >
-            <Text className="text-[11px] font-black text-[#FA634E]">{initials}</Text>
+            <Text className="text-[10px] font-bold text-slate-600">{initials}</Text>
           </View>
         )}
 
-        <Text numberOfLines={1} className="text-xs font-black text-slate-900 flex-1">
+        <Text numberOfLines={1} className="text-xs font-bold text-slate-800 flex-1">
           {customer.name}
         </Text>
       </TouchableOpacity>

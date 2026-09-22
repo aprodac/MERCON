@@ -13,7 +13,7 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens
 import { useCurrentTrip } from '../../lib/use-current-trip';
 import { useScheduledTrips } from '../../lib/use-scheduled-trips';
 import { useTripHistory } from '../../lib/use-trip-history';
-import { statusLabel, stopLabel, getTripChargeValue, type MobileTrip, type TripStatus } from '../../lib/trips';
+import { statusLabel, stopLabel, getTripChargeValue, getMonthlyDriverPayout, type MobileTrip, type TripStatus } from '../../lib/trips';
 import { useLanguage, formatCurrency, LanguageMode } from '../../lib/language-context';
 import { API_URL } from '../../lib/api';
 
@@ -189,6 +189,10 @@ const DriverChargesScreen = ({ navigation }: any) => {
   }, [scheduledList, currentTrip]);
 
   // Calculations
+  const monthlyEarnedTotal = useMemo(() => {
+    return getMonthlyDriverPayout(historyList);
+  }, [historyList]);
+
   const earnedTotal = useMemo(() => {
     return earnedTrips.reduce((sum, t) => sum + getTripChargeValue(t), 0);
   }, [earnedTrips]);
