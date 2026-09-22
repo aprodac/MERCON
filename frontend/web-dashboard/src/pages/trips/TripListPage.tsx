@@ -762,6 +762,18 @@ export default function TripListPage() {
     }
   };
 
+  // Auto-enter full screen when opening the Trips page (list or kanban view), exit when leaving it
+  useEffect(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+    return () => {
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+    };
+  }, []);
+
   // Legacy `?new=true` deep link (old modal flow) — redirect to the full page.
   useEffect(() => {
     if (searchParams.get('new') === 'true') {
