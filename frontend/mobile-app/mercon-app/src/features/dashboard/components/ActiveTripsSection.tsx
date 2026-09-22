@@ -241,7 +241,9 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
           initials: driverInitials,
           name: driverName,
           online: item.driver?.status === 'Available' || item.driver?.status === 'OnTrip',
-          imageUri: item.driver?.profile_picture ? { uri: item.driver.profile_picture } : undefined,
+          imageUri: (item.driver?.avatar_url || item.driver?.profile_picture)
+            ? { uri: item.driver.avatar_url || item.driver.profile_picture! }
+            : undefined,
         }}
         vehicle={{
           truckId: truck,
@@ -255,7 +257,7 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
           etaStr,
           stopsCount: stops.length,
         }}
-        customerName={item.customer?.name}
+        customer={item.customer ? { name: item.customer.name, logoUrl: item.customer.logo_url } : null}
         status={cardStatus}
         onPress={() => onTripPress?.(item)}
         onSharePress={() => shareTripToWhatsApp(item)}

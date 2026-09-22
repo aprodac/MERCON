@@ -377,6 +377,7 @@ export const getTrips = async (req: Request, res: Response) => {
             select: {
               id: true,
               name: true,
+              logo_url: true,
             }
           },
           quotation: {
