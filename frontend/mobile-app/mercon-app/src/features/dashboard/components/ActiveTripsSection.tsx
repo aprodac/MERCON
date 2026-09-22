@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Linking, Alert, Share, Modal, ScrollView 
 import { Share2, ArrowRight, Truck, Clock, MapPin, Check, Layers, X, Send, CheckCircle2 } from 'lucide-react-native';
 import { EmptyState, ErrorState, SkeletonVehicleCard } from '@/shared/components';
 import { SectionHeader } from './SectionHeader';
+import { DriverAvatar } from './DriverAvatar';
 import { useActiveTrips } from '../hooks';
 import type { Trip } from '../types';
 
@@ -278,6 +279,9 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
             const driverName = trip.driver
               ? `${trip.driver.first_name} ${trip.driver.last_name}`
               : 'Unassigned';
+            const driverInitials = trip.driver
+              ? `${trip.driver.first_name[0] ?? ''}${trip.driver.last_name[0] ?? ''}`.toUpperCase()
+              : '?';
 
             const stops = trip.stops || [];
             const pickupStop = stops.find((s) => s.stop_type === 'Pickup') || stops[0];
@@ -318,16 +322,16 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
                     onTripPress?.(trip);
                   }
                 }}
-                className={`bg-white rounded-2xl p-3.5 border shadow-xs gap-2.5 ${
+                className={`bg-white rounded-3xl p-4 border shadow-xs gap-3 ${
                   isSelected
                     ? 'border-gray-900 bg-gray-50/50'
                     : 'border-gray-200/80'
                 }`}
               >
-                {/* Header: Checkbox (if in selection mode) + Truck + Driver + Status */}
+                {/* Header: Driver Avatar + Driver Name + Truck ID + Status */}
                 <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-2 flex-1 pr-2">
-                    {isSelectionMode ? (
+                  <View className="flex-row items-center gap-3 flex-1 pr-2">
+                    {isSelectionMode && (
                       <TouchableOpacity
                         activeOpacity={0.7}
                         onPress={() => toggleSelectTrip(trip.id)}
@@ -339,28 +343,28 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
                       >
                         {isSelected && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
                       </TouchableOpacity>
-                    ) : (
-                      <View className="h-8 w-8 rounded-xl bg-gray-100 items-center justify-center">
-                        <Truck size={16} color="#3E3C3D" strokeWidth={2} />
-                      </View>
                     )}
 
+                    <DriverAvatar
+                      initials={driverInitials}
+                      size={44}
+                      online={trip.driver?.status === 'Available' || trip.driver?.status === 'OnTrip'}
+                    />
+
                     <View className="flex-1">
-                      <View className="flex-row items-center gap-1.5 flex-wrap">
-                        <Text className="text-xs font-black text-gray-900">
-                          {truck}
-                        </Text>
-                        {trip.customer?.name ? (
-                          <View className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                            <Text className="text-[10px] font-extrabold text-slate-700 uppercase" numberOfLines={1}>
-                              🏢 {trip.customer.name}
-                            </Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      <Text className="text-[11px] font-medium text-gray-500 truncate">
+                      <Text className="text-base font-bold text-gray-900 truncate">
                         {driverName}
                       </Text>
+                      <View className="flex-row items-center gap-1.5 mt-0.5">
+                        <Text className="text-xs font-bold text-gray-700 truncate">
+                          {truck}
+                        </Text>
+                        {trip.vehicle?.asset_type ? (
+                          <Text className="text-[11px] font-medium text-gray-400">
+                            · {trip.vehicle.asset_type}
+                          </Text>
+                        ) : null}
+                      </View>
                     </View>
                   </View>
 
@@ -372,23 +376,30 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
                 </View>
 
                 {/* Route Pill & Distance Info */}
-                <View className="bg-gray-50 rounded-xl p-2.5 gap-1.5 border border-gray-100">
+                <View className="bg-gray-50 rounded-2xl p-3 gap-2 border border-gray-100">
                   <View className="flex-row items-center justify-between">
                     <View className="flex-row items-center gap-1.5 flex-1">
                       <MapPin size={13} color="#FA634E" strokeWidth={2.2} />
-                      <Text className="text-xs font-bold text-gray-800 truncate">
+                      <Text className="text-xs font-bold text-gray-900 truncate">
                         {origin}
                       </Text>
                       <ArrowRight size={12} color="#9898A4" />
-                      <Text className="text-xs font-bold text-gray-800 truncate">
+                      <Text className="text-xs font-bold text-gray-900 truncate">
                         {destination}
                       </Text>
                     </View>
+                    {trip.customer?.name ? (
+                      <View className="bg-white px-2 py-0.5 rounded border border-gray-200">
+                        <Text className="text-[10px] font-extrabold text-gray-700 uppercase" numberOfLines={1}>
+                          🏢 {trip.customer.name}
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
 
-                  <View className="flex-row items-center justify-between pt-1 border-t border-gray-200/60">
+                  <View className="flex-row items-center justify-between pt-1.5 border-t border-gray-200/60">
                     <Text className="text-[11px] text-gray-500 font-medium">
-                      Dist: <Text className="font-bold text-gray-900">{distanceStr} to {destination}</Text>
+                      Dist: <Text className="font-bold text-gray-900">{distanceStr}</Text>
                     </Text>
                     <View className="flex-row items-center gap-1">
                       <Clock size={11} color="#6E6E80" />
@@ -401,7 +412,7 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
 
                 {/* Footer Action: Ref ID + WhatsApp Share Pill */}
                 <View className="flex-row items-center justify-between pt-0.5">
-                  <Text className="text-[11px] font-semibold text-gray-400">
+                  <Text className="text-xs font-semibold text-gray-400">
                     #{trip.ref_id ?? trip.id.slice(0, 8)}
                   </Text>
                   <TouchableOpacity
