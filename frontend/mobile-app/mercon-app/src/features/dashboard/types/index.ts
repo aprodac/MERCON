@@ -38,6 +38,7 @@ export interface DriverRef {
   first_name: string;
   last_name: string;
   status: DriverStatus;
+  avatar_url?: string | null;
   profile_picture?: string | null;
 }
 
@@ -55,6 +56,7 @@ export interface VehicleRef {
 export interface CustomerRef {
   id: string;
   name: string;
+  logo_url?: string | null;
 }
 
 export interface TripStop {
