@@ -715,6 +715,7 @@ export interface BankReconciliation {
   statement_closing_balance: number | string;
   status: ReconciliationStatus;
   lines?: JournalLine[];
+  _count?: { lines: number };
   reconciled_by?: string | null;
   reconciled_at?: string | null;
   createdAt: string;
