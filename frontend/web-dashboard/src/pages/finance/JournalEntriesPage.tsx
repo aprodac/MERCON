@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, FileText, CheckCircle2, XCircle, Trash2, Edit2, AlertCircle, RefreshCw, Eye } from 'lucide-react';
+import { Plus, FileText, Trash2, Eye, BookOpen, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import KpiCard from '@/components/ui/KpiCard';
+import DataTable, { Column } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -190,6 +192,127 @@ export default function JournalEntriesPage() {
     });
   };
 
+  const kpis = {
+    total: pagination.total,
+    draft: entries.filter((e) => e.status === 'Draft').length,
+    posted: entries.filter((e) => e.status === 'Posted').length,
+    voided: entries.filter((e) => e.status === 'Voided').length,
+  };
+
+  const columns: Column<JournalEntry>[] = [
+    {
+      header: 'Ref ID',
+      accessor: (entry) => <span className="font-mono font-bold text-[#3E3C3D]">{entry.ref_id || `JE-${entry.id.slice(0, 6)}`}</span>,
+      mobilePriority: 'primary',
+    },
+    {
+      header: 'Entry Date',
+      accessor: (entry) => <span className="font-mono text-slate-600">{new Date(entry.entry_date).toLocaleDateString()}</span>,
+      mobilePriority: 'secondary',
+    },
+    {
+      header: 'Period',
+      accessor: (entry) => <span className="font-medium text-slate-700">{entry.period?.name || '—'}</span>,
+      mobilePriority: 'meta',
+    },
+    {
+      header: 'Memo / Description',
+      accessor: (entry) => <span className="text-slate-800 max-w-xs truncate block">{entry.memo || '—'}</span>,
+      mobilePriority: 'primary',
+    },
+    {
+      header: 'Lines',
+      accessor: (entry) => <span className="text-slate-600 font-semibold">{entry.lines?.length || 0} line(s)</span>,
+      mobilePriority: 'meta',
+    },
+    {
+      header: 'Status',
+      accessor: (entry) => <Badge className={`${STATUS_BADGES[entry.status]} border`}>{entry.status}</Badge>,
+      mobilePriority: 'secondary',
+    },
+    {
+      header: 'Actions',
+      headerClassName: 'text-right',
+      className: 'text-right',
+      accessor: (entry) => (
+        <div className="space-x-1">
+          <Button variant="ghost" size="sm" onClick={() => setViewingEntry(entry)} className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900">
+            <Eye className="w-3.5 h-3.5 mr-1" />
+            View
+          </Button>
+          {entry.status === 'Draft' && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => postMutation.mutate(entry.id)}
+                disabled={postMutation.isPending}
+                className="h-7 px-2 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+              >
+                Post
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (confirm(`Delete draft entry ${entry.ref_id}?`)) deleteDraftMutation.mutate(entry.id);
+                }}
+                className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            </>
+          )}
+          {entry.status === 'Posted' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const reason = prompt('Reason for voiding journal entry:');
+                if (reason !== null) voidMutation.mutate({ id: entry.id, memo: reason });
+              }}
+              disabled={voidMutation.isPending}
+              className="h-7 px-2 text-xs border-rose-200 text-rose-700 hover:bg-rose-50"
+            >
+              Void
+            </Button>
+          )}
+        </div>
+      ),
+      mobilePriority: 'hidden',
+    },
+  ];
+
+  const statusFilterElement = (
+    <div className="flex items-center gap-1.5 overflow-x-auto">
+      <button
+        onClick={() => {
+          setSelectedStatus('all');
+          setPage(1);
+        }}
+        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
+          selectedStatus === 'all' ? 'bg-[#3E3C3D] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+        }`}
+      >
+        All Statuses
+      </button>
+      {(['Draft', 'Posted', 'Voided'] as JournalEntryStatus[]).map((st) => (
+        <button
+          key={st}
+          onClick={() => {
+            setSelectedStatus(st);
+            setPage(1);
+          }}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
+            selectedStatus === st ? 'bg-[#FA634E] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          {st}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <DashboardLayout active="finance" title="Journal Entries">
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -208,194 +331,36 @@ export default function JournalEntriesPage() {
           </Button>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          {/* Status Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-            <button
-              onClick={() => {
-                setSelectedStatus('all');
-                setPage(1);
-              }}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
-                selectedStatus === 'all'
-                  ? 'bg-[#3E3C3D] text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              All Statuses
-            </button>
-            {(['Draft', 'Posted', 'Voided'] as JournalEntryStatus[]).map((st) => (
-              <button
-                key={st}
-                onClick={() => {
-                  setSelectedStatus(st);
-                  setPage(1);
-                }}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
-                  selectedStatus === st
-                    ? 'bg-[#FA634E] text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {st}
-              </button>
-            ))}
-          </div>
-
-          {/* Search */}
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input
-              placeholder="Search reference or memo..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(1);
-              }}
-              className="pl-9 h-9 text-xs"
-            />
-          </div>
+        {/* KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 shrink-0">
+          <KpiCard title="TOTAL ENTRIES" value={kpis.total} variant="slate" icon={BookOpen} description="Across all statuses" />
+          <KpiCard title="DRAFT" value={kpis.draft} variant="amber" icon={FileText} description="This page — awaiting posting" />
+          <KpiCard title="POSTED" value={kpis.posted} variant="emerald" icon={CheckCircle2} description="This page — in the ledger" />
+          <KpiCard title="VOIDED" value={kpis.voided} variant="rose" icon={XCircle} description="This page — reversed" />
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          {isLoading ? (
-            <div className="p-8 text-center text-slate-500 text-sm">Loading journal entries...</div>
-          ) : entries.length === 0 ? (
-            <div className="p-12 text-center text-slate-400 text-sm">
-              No journal entries found matching criteria.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    <th className="px-4 py-3">Ref ID</th>
-                    <th className="px-4 py-3">Entry Date</th>
-                    <th className="px-4 py-3">Period</th>
-                    <th className="px-4 py-3">Memo / Description</th>
-                    <th className="px-4 py-3">Lines</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                  {entries.map((entry) => (
-                    <tr key={entry.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-4 py-3 font-mono font-bold text-[#3E3C3D]">
-                        {entry.ref_id || `JE-${entry.id.slice(0, 6)}`}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-600">
-                        {new Date(entry.entry_date).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-3 font-medium text-slate-700">
-                        {entry.period?.name || '—'}
-                      </td>
-                      <td className="px-4 py-3 text-slate-800 max-w-xs truncate">
-                        {entry.memo || '—'}
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 font-semibold">
-                        {entry.lines?.length || 0} line(s)
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge className={`${STATUS_BADGES[entry.status]} border`}>
-                          {entry.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-right space-x-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setViewingEntry(entry)}
-                          className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900"
-                        >
-                          <Eye className="w-3.5 h-3.5 mr-1" />
-                          View
-                        </Button>
-                        {entry.status === 'Draft' && (
-                          <>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => postMutation.mutate(entry.id)}
-                              disabled={postMutation.isPending}
-                              className="h-7 px-2 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                            >
-                              Post
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => {
-                                if (confirm(`Delete draft entry ${entry.ref_id}?`)) {
-                                  deleteDraftMutation.mutate(entry.id);
-                                }
-                              }}
-                              className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </Button>
-                          </>
-                        )}
-                        {entry.status === 'Posted' && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              const reason = prompt('Reason for voiding journal entry:');
-                              if (reason !== null) {
-                                voidMutation.mutate({ id: entry.id, memo: reason });
-                              }
-                            }}
-                            disabled={voidMutation.isPending}
-                            className="h-7 px-2 text-xs border-rose-200 text-rose-700 hover:bg-rose-50"
-                          >
-                            Void
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Pagination Footer */}
-          {pagination.total > 0 && (
-            <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
-              <div>
-                Showing <span className="font-semibold text-slate-900">{(pagination.page - 1) * pagination.per_page + 1}</span> to{' '}
-                <span className="font-semibold text-slate-900">{Math.min(pagination.page * pagination.per_page, pagination.total)}</span> of{' '}
-                <span className="font-semibold text-slate-900">{pagination.total}</span> entries
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={pagination.page <= 1 || isLoading}
-                  className="h-7 text-xs px-2.5"
-                >
-                  Previous
-                </Button>
-                <span className="text-xs font-semibold text-slate-700 px-1">
-                  Page {pagination.page} of {pagination.total_pages || 1}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPage((p) => Math.min(pagination.total_pages || 1, p + 1))}
-                  disabled={pagination.page >= (pagination.total_pages || 1) || isLoading}
-                  className="h-7 text-xs px-2.5"
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
+        <DataTable<JournalEntry>
+          title="Journal Entries"
+          columns={columns}
+          data={entries}
+          isLoading={isLoading}
+          searchPlaceholder="Search reference or memo..."
+          searchValue={search}
+          onSearchChange={(val) => {
+            setSearch(val);
+            setPage(1);
+          }}
+          filterElement={statusFilterElement}
+          enableSelection={false}
+          getRowId={(entry) => entry.id}
+          currentPage={pagination.page}
+          totalPages={pagination.total_pages}
+          totalRecords={pagination.total}
+          onPageChange={setPage}
+          emptyTitle="No Journal Entries"
+          emptyMessage="No journal entries found matching criteria."
+        />
 
         {/* Create Modal */}
         <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Trash2, Eye, FileText } from 'lucide-react';
+import { Plus, Trash2, Eye, FileText, ReceiptText, Wallet, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import KpiCard from '@/components/ui/KpiCard';
+import DataTable, { Column } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -28,6 +30,8 @@ export default function InvoicesPage() {
 
   const [selectedStatus, setSelectedStatus] = useState<InvoiceStatus | 'all'>('all');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
+  const perPage = 25;
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
@@ -48,8 +52,8 @@ export default function InvoicesPage() {
   const [paymentMethod, setPaymentMethod] = useState('');
 
   const { data: invoicesRes, isLoading } = useQuery({
-    queryKey: ['invoices', selectedStatus, search],
-    queryFn: () => financeService.getInvoices({ status: selectedStatus, search }),
+    queryKey: ['invoices', selectedStatus, search, page],
+    queryFn: () => financeService.getInvoices({ status: selectedStatus, search, page, per_page: perPage }),
   });
 
   const { data: customersRes } = useQuery({
@@ -69,6 +73,7 @@ export default function InvoicesPage() {
   });
 
   const invoices: Invoice[] = invoicesRes?.data || [];
+  const pagination = invoicesRes?.pagination || { page: 1, per_page: perPage, total: invoices.length, total_pages: 1 };
   const customers = customersRes?.data || [];
   const unbilledTrips = (unbilledTripsRes?.data || []).filter((t: any) => !t.invoiceId);
   const postableAccounts: Account[] = (accountsRes?.data || []).filter((a: Account) => a.is_postable);
@@ -215,6 +220,104 @@ export default function InvoicesPage() {
     setIsPaymentModalOpen(true);
   };
 
+  const kpis = {
+    total: pagination.total,
+    outstanding: invoices
+      .filter((i) => i.status === 'Issued' || i.status === 'PartiallyPaid')
+      .reduce((sum, i) => sum + Number(i.balance_due), 0),
+    paid: invoices.filter((i) => i.status === 'Paid').length,
+    drafts: invoices.filter((i) => i.status === 'Draft').length,
+  };
+
+  const columns: Column<Invoice>[] = [
+    {
+      header: 'Ref ID',
+      accessor: (inv) => <span className="font-mono font-bold text-[#3E3C3D]">{inv.ref_id || `INV-${inv.id.slice(0, 6)}`}</span>,
+      mobilePriority: 'primary',
+    },
+    {
+      header: 'Customer',
+      accessor: (inv) => <span className="font-medium text-slate-800">{(inv as any).customer?.name || '—'}</span>,
+      mobilePriority: 'primary',
+    },
+    {
+      header: 'Invoice Date',
+      accessor: (inv) => <span className="font-mono text-slate-600">{new Date(inv.invoice_date).toLocaleDateString()}</span>,
+      mobilePriority: 'secondary',
+    },
+    {
+      header: 'Total',
+      headerClassName: 'text-right',
+      className: 'text-right',
+      accessor: (inv) => <span className="font-mono text-slate-800">SAR {Number(inv.total_amount).toFixed(2)}</span>,
+      mobilePriority: 'meta',
+    },
+    {
+      header: 'Balance Due',
+      headerClassName: 'text-right',
+      className: 'text-right',
+      accessor: (inv) => <span className="font-mono font-semibold text-slate-900">SAR {Number(inv.balance_due).toFixed(2)}</span>,
+      mobilePriority: 'secondary',
+    },
+    {
+      header: 'Status',
+      accessor: (inv) => <Badge className={`${STATUS_BADGES[inv.status]} border`}>{inv.status}</Badge>,
+      mobilePriority: 'secondary',
+    },
+    {
+      header: 'Actions',
+      headerClassName: 'text-right',
+      className: 'text-right',
+      accessor: (inv) => (
+        <div className="space-x-1">
+          <Button variant="ghost" size="sm" onClick={() => setViewingInvoice(inv)} className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900">
+            <Eye className="w-3.5 h-3.5 mr-1" />
+            View
+          </Button>
+          {inv.status === 'Draft' && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (confirm(`Delete draft invoice ${inv.ref_id}?`)) deleteMutation.mutate(inv.id);
+              }}
+              className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          )}
+        </div>
+      ),
+      mobilePriority: 'hidden',
+    },
+  ];
+
+  const statusFilterElement = (
+    <div className="flex items-center gap-1.5 overflow-x-auto">
+      <button
+        onClick={() => {
+          setSelectedStatus('all');
+          setPage(1);
+        }}
+        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${selectedStatus === 'all' ? 'bg-[#3E3C3D] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+      >
+        All Statuses
+      </button>
+      {(['Draft', 'Issued', 'PartiallyPaid', 'Paid', 'Void'] as InvoiceStatus[]).map((st) => (
+        <button
+          key={st}
+          onClick={() => {
+            setSelectedStatus(st);
+            setPage(1);
+          }}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${selectedStatus === st ? 'bg-[#FA634E] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+        >
+          {st}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <DashboardLayout active="finance" title="Invoices">
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -229,85 +332,41 @@ export default function InvoicesPage() {
           </Button>
         </div>
 
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-            <button
-              onClick={() => setSelectedStatus('all')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${selectedStatus === 'all' ? 'bg-[#3E3C3D] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-            >
-              All Statuses
-            </button>
-            {(['Draft', 'Issued', 'PartiallyPaid', 'Paid', 'Void'] as InvoiceStatus[]).map((st) => (
-              <button
-                key={st}
-                onClick={() => setSelectedStatus(st)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${selectedStatus === st ? 'bg-[#FA634E] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
-              >
-                {st}
-              </button>
-            ))}
-          </div>
-          <div className="relative w-full sm:w-64">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input placeholder="Search ref or customer..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-9 text-xs" />
-          </div>
+        {/* KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 shrink-0">
+          <KpiCard title="TOTAL INVOICES" value={kpis.total} variant="slate" icon={ReceiptText} description="Across all statuses" />
+          <KpiCard
+            title="OUTSTANDING AR"
+            value={<span><span className="text-[16px] font-semibold mr-1 opacity-85">SAR</span>{kpis.outstanding.toLocaleString()}</span>}
+            variant="amber"
+            icon={AlertTriangle}
+            description="Issued or partially paid"
+          />
+          <KpiCard title="PAID" value={kpis.paid} variant="emerald" icon={Wallet} description="This page — fully settled" />
+          <KpiCard title="DRAFTS" value={kpis.drafts} variant="brand" icon={FileText} description="Not yet issued" />
         </div>
 
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          {isLoading ? (
-            <div className="p-8 text-center text-slate-500 text-sm">Loading invoices...</div>
-          ) : invoices.length === 0 ? (
-            <div className="p-12 text-center text-slate-400 text-sm">No invoices found matching criteria.</div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    <th className="px-4 py-3">Ref ID</th>
-                    <th className="px-4 py-3">Customer</th>
-                    <th className="px-4 py-3">Invoice Date</th>
-                    <th className="px-4 py-3 text-right">Total</th>
-                    <th className="px-4 py-3 text-right">Balance Due</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                  {invoices.map((inv) => (
-                    <tr key={inv.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-4 py-3 font-mono font-bold text-[#3E3C3D]">{inv.ref_id || `INV-${inv.id.slice(0, 6)}`}</td>
-                      <td className="px-4 py-3 font-medium text-slate-800">{(inv as any).customer?.name || '—'}</td>
-                      <td className="px-4 py-3 font-mono text-slate-600">{new Date(inv.invoice_date).toLocaleDateString()}</td>
-                      <td className="px-4 py-3 text-right font-mono text-slate-800">SAR {Number(inv.total_amount).toFixed(2)}</td>
-                      <td className="px-4 py-3 text-right font-mono font-semibold text-slate-900">SAR {Number(inv.balance_due).toFixed(2)}</td>
-                      <td className="px-4 py-3">
-                        <Badge className={`${STATUS_BADGES[inv.status]} border`}>{inv.status}</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-right space-x-1">
-                        <Button variant="ghost" size="sm" onClick={() => setViewingInvoice(inv)} className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900">
-                          <Eye className="w-3.5 h-3.5 mr-1" />
-                          View
-                        </Button>
-                        {inv.status === 'Draft' && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              if (confirm(`Delete draft invoice ${inv.ref_id}?`)) deleteMutation.mutate(inv.id);
-                            }}
-                            className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <DataTable<Invoice>
+          title="Invoices"
+          columns={columns}
+          data={invoices}
+          isLoading={isLoading}
+          searchPlaceholder="Search ref or customer..."
+          searchValue={search}
+          onSearchChange={(val) => {
+            setSearch(val);
+            setPage(1);
+          }}
+          filterElement={statusFilterElement}
+          enableSelection={false}
+          getRowId={(inv) => inv.id}
+          currentPage={pagination.page}
+          totalPages={pagination.total_pages}
+          totalRecords={pagination.total}
+          onPageChange={setPage}
+          emptyTitle="No Invoices"
+          emptyMessage="No invoices found matching criteria."
+        />
 
         {/* Create Modal */}
         <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
