@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, StatusBar, ActivityIndicator, Alert, Modal, Switch,
+  StyleSheet, StatusBar, ActivityIndicator, Alert, Modal, Switch, TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft, Check, Truck, Clock, MapPin, FileText,
-  Plus, Trash2, AlertTriangle, RotateCcw, Building2, Zap, Edit3, ChevronRight,
+  Plus, Trash2, AlertTriangle, RotateCcw, Building2, Zap, Edit3, ChevronRight, Search, X,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography } from '../../theme/tokens';
 import { Button, Card, Input, StatusBadge } from '../../components';
@@ -84,9 +84,34 @@ const CreateTripScreen = () => {
 
   // Customer & Quotation state
   const [customerId, setCustomerId] = useState(presetCustomerId ?? '');
+  const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+  const [quotationSearchQuery, setQuotationSearchQuery] = useState('');
   const [quotations, setQuotations] = useState<OperatorQuotation[]>([]);
   const [loadingQuotations, setLoadingQuotations] = useState(false);
   const [selectedQuotation, setSelectedQuotation] = useState<OperatorQuotation | null>(null);
+
+  const filteredCustomers = useMemo(() => {
+    if (!customerSearchQuery.trim()) return customers;
+    const q = customerSearchQuery.toLowerCase().trim();
+    return customers.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        (c.contact_phone && c.contact_phone.includes(q))
+    );
+  }, [customers, customerSearchQuery]);
+
+  const filteredQuotations = useMemo(() => {
+    if (!quotationSearchQuery.trim()) return quotations;
+    const q = quotationSearchQuery.toLowerCase().trim();
+    return quotations.filter((item) => {
+      const orig = (item.originLocation?.name ?? item.origin_name ?? '').toLowerCase();
+      const dest = (item.destinationLocation?.name ?? item.destination_name ?? '').toLowerCase();
+      const veh = (item.vehicle_type ?? item.vehicle_class ?? '').toLowerCase();
+      const line = (item.line_type ?? item.rate_category ?? '').toLowerCase();
+      const rateStr = String(item.rate ?? '');
+      return orig.includes(q) || dest.includes(q) || veh.includes(q) || line.includes(q) || rateStr.includes(q);
+    });
+  }, [quotations, quotationSearchQuery]);
 
   // Pickup & Dropoff location state
   const [pickupName, setPickupName] = useState('');
@@ -772,89 +797,191 @@ const CreateTripScreen = () => {
           {/* PAGE 1: Trip Scope, Quotation, Route & Rate Financials */}
           {page === 1 && (
             <>
-              {/* Section 1: Customer Selection */}
-              <Text style={styles.sectionTitle}>1. Customer</Text>
-              <Card style={styles.pickerCard}>
-                {customers.length === 0 ? (
-                  <Text style={styles.emptyHint}>No customers found</Text>
-                ) : (
-                  customers.map((c) => (
-                    <TouchableOpacity
-                      key={c.id}
-                      style={[styles.pickerItem, customerId === c.id ? styles.pickerItemActive : null]}
-                      activeOpacity={0.8}
-                      onPress={() => handleSelectCustomer(c.id)}
-                    >
-                      <Text style={[styles.pickerItemText, customerId === c.id ? styles.pickerItemTextActive : null]}>
-                        {c.name}
-                      </Text>
-                      {customerId === c.id && <Check size={18} color={Colors.primary} strokeWidth={3} />}
-                    </TouchableOpacity>
-                  ))
-                )}
-              </Card>
-              {fieldErrors.customerId && <Text style={styles.fieldErrorBadge}>{fieldErrors.customerId}</Text>}
+              {/* Section 1: Customer Account & Commercial Quotation Cards */}
+              <Text style={styles.sectionTitle}>1. Customer & Active Commercial Rates</Text>
 
-              {/* Recent Routes Accelerator Chips */}
-              {customerId && recentRoutes.length > 0 && (
-                <View style={{ marginTop: Spacing.xs }}>
-                  <Text style={styles.acceleratorTitle}>Recent Lanes for {selectedCustomerObj?.name}:</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
-                    {recentRoutes.map((r, idx) => (
-                      <TouchableOpacity
-                        key={idx}
-                        style={styles.acceleratorChip}
-                        activeOpacity={0.8}
-                        onPress={() => handleSelectQuotation(r.quotation)}
-                      >
-                        <Zap size={12} color={Colors.primary} />
-                        <Text style={styles.acceleratorChipText}>{r.origin} → {r.dest}</Text>
+              {!customerId ? (
+                /* State A: No Customer Selected — Search Bar + Horizontal Customer Cards */
+                <View style={{ gap: 8 }}>
+                  <View style={styles.searchBarContainer}>
+                    <Search size={16} color={Colors.gray500} />
+                    <TextInput
+                      style={styles.searchBarInput}
+                      value={customerSearchQuery}
+                      onChangeText={setCustomerSearchQuery}
+                      placeholder="Search customer company name..."
+                      placeholderTextColor={Colors.gray400}
+                    />
+                    {customerSearchQuery ? (
+                      <TouchableOpacity onPress={() => setCustomerSearchQuery('')} style={{ padding: 2 }}>
+                        <X size={16} color={Colors.gray500} />
                       </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
+                    ) : null}
+                  </View>
 
-              {/* Section 2: Quotation Picker */}
-              {customerId ? (
-                <>
-                  <Text style={styles.sectionTitle}>2. Active Quotations</Text>
-                  <Card style={styles.pickerCard}>
-                    {loadingQuotations ? (
+                  {filteredCustomers.length === 0 ? (
+                    <Card style={styles.pickerCard}>
+                      <Text style={styles.emptyHint}>No customer accounts matching "{customerSearchQuery}"</Text>
+                    </Card>
+                  ) : (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ gap: 10, paddingVertical: 4 }}
+                    >
+                      {filteredCustomers.map((c) => {
+                        const initials = c.name.substring(0, 2).toUpperCase();
+                        return (
+                          <TouchableOpacity
+                            key={c.id}
+                            style={styles.customerCard}
+                            activeOpacity={0.8}
+                            onPress={() => handleSelectCustomer(c.id)}
+                          >
+                            <View style={styles.customerCardHeader}>
+                              <View style={styles.customerAvatar}>
+                                <Text style={styles.customerAvatarText}>{initials}</Text>
+                              </View>
+                              <Building2 size={16} color={Colors.gray400} />
+                            </View>
+
+                            <View style={{ flex: 1, justifyContent: 'center', marginVertical: 4 }}>
+                              <Text style={styles.customerCardTitle} numberOfLines={2}>
+                                {c.name}
+                              </Text>
+                              {c.contact_phone ? (
+                                <Text style={styles.customerCardPhone} numberOfLines={1}>
+                                  {c.contact_phone}
+                                </Text>
+                              ) : null}
+                            </View>
+
+                            <View style={styles.customerCardFooter}>
+                              <Text style={styles.customerSelectAction}>Select Company →</Text>
+                            </View>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+                </View>
+              ) : (
+                /* State B: Customer Selected — Selected Customer Badge + Quotation Search & Cards */
+                <View style={{ gap: 10 }}>
+                  {/* Selected Customer Header Badge */}
+                  <Card style={styles.selectedCustomerBar}>
+                    <View style={styles.customerAvatarSmall}>
+                      <Text style={styles.customerAvatarTextSmall}>
+                        {selectedCustomerObj?.name.substring(0, 2).toUpperCase() ?? 'CO'}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.selectedCustomerLabel}>Customer Company</Text>
+                      <Text style={styles.selectedCustomerName} numberOfLines={1}>
+                        {selectedCustomerObj?.name ?? 'Selected Customer'}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.changeCustomerBtn}
+                      onPress={() => {
+                        setCustomerId('');
+                        setSelectedQuotation(null);
+                        setQuotationMatch(null);
+                        setManualRateOverride(false);
+                        setIsRouteCollapsed(false);
+                        setQuotationSearchQuery('');
+                      }}
+                    >
+                      <RotateCcw size={12} color={Colors.primary} />
+                      <Text style={styles.changeCustomerText}>Change</Text>
+                    </TouchableOpacity>
+                  </Card>
+
+                  {/* Quotation Search Bar */}
+                  <View style={styles.searchBarContainer}>
+                    <Search size={16} color={Colors.gray500} />
+                    <TextInput
+                      style={styles.searchBarInput}
+                      value={quotationSearchQuery}
+                      onChangeText={setQuotationSearchQuery}
+                      placeholder="Filter active rates (e.g. Riyadh, 10 TON)..."
+                      placeholderTextColor={Colors.gray400}
+                    />
+                    {quotationSearchQuery ? (
+                      <TouchableOpacity onPress={() => setQuotationSearchQuery('')} style={{ padding: 2 }}>
+                        <X size={16} color={Colors.gray500} />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+
+                  {/* Quotation Cards Carousel */}
+                  {loadingQuotations ? (
+                    <Card style={styles.pickerCard}>
                       <ActivityIndicator color={Colors.primary} style={{ padding: Spacing.lg }} />
-                    ) : quotations.length === 0 ? (
-                      <Text style={styles.emptyHint}>No quotations on file for this customer — enter the route and rate manually below.</Text>
-                    ) : (
-                      quotations.map((q) => {
+                    </Card>
+                  ) : filteredQuotations.length === 0 ? (
+                    <Card style={styles.pickerCard}>
+                      <Text style={styles.emptyHint}>
+                        {quotations.length === 0
+                          ? 'No active quotation rate cards on file for this customer. Enter route & rate manually below.'
+                          : `No rate cards matching "${quotationSearchQuery}"`}
+                      </Text>
+                    </Card>
+                  ) : (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={{ gap: 10, paddingVertical: 4 }}
+                    >
+                      {filteredQuotations.map((q) => {
                         const isSelected = selectedQuotation?.id === q.id;
                         const origin = q.originLocation?.name ?? q.origin_name ?? '—';
                         const dest = q.destinationLocation?.name ?? q.destination_name ?? '—';
+                        const vehClass = q.vehicle_type ?? q.vehicle_class ?? 'Any Vehicle';
+                        const lineType = q.line_type ?? q.rate_category ?? 'Single Trip';
+                        const rateVal = Number(q.rate ?? 0);
+
                         return (
                           <TouchableOpacity
                             key={q.id}
-                            style={[styles.quotationItem, isSelected ? styles.pickerItemActive : null]}
+                            style={[
+                              styles.quotationCard,
+                              isSelected && styles.quotationCardActive,
+                            ]}
                             activeOpacity={0.8}
                             onPress={() => handleSelectQuotation(q)}
                           >
-                            <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
-                              <FileText size={18} color={Colors.gray600} strokeWidth={2} />
+                            <View style={styles.quotationCardHeader}>
+                              <View style={{ flex: 1 }}>
+                                <Text style={styles.quotationCardLane} numberOfLines={1}>
+                                  {origin} → {dest}
+                                </Text>
+                                <Text style={styles.quotationCardMeta} numberOfLines={1}>
+                                  {vehClass} · {lineType}
+                                </Text>
+                              </View>
+                              {isSelected ? (
+                                <View style={styles.selectedCheckBadge}>
+                                  <Check size={12} color={Colors.white} strokeWidth={3} />
+                                </View>
+                              ) : null}
                             </View>
-                            <View style={styles.driverInfo}>
-                              <Text style={[styles.pickerItemText, isSelected ? styles.pickerItemTextActive : null]} numberOfLines={1}>
-                                {origin} → {dest}
+
+                            <View style={styles.quotationCardFooter}>
+                              <Text style={[styles.quotationCardRate, isSelected && styles.quotationCardRateActive]}>
+                                SAR {rateVal.toLocaleString()}
                               </Text>
-                              <Text style={styles.driverId}>
-                                {(q.vehicle_type ?? q.vehicle_class ?? 'Any vehicle')} · SAR {Number(q.rate ?? 0).toLocaleString()}
+                              <Text style={[styles.quotationCardAction, isSelected && styles.quotationCardActionActive]}>
+                                {isSelected ? 'Applied' : 'Apply Card →'}
                               </Text>
                             </View>
-                            {isSelected && <Check size={18} color={Colors.primary} strokeWidth={3} />}
                           </TouchableOpacity>
                         );
-                      })
-                    )}
-                  </Card>
-                </>
-              ) : null}
+                      })}
+                    </ScrollView>
+                  )}
+                </View>
+              )}
 
               {/* Progressive Form Collapse Summary Pill */}
               {isRouteCollapsed && pickupName && dropoffName ? (
@@ -1502,6 +1629,72 @@ const styles = StyleSheet.create({
   },
   pickerCard: { borderRadius: Radius.xl },
   emptyHint: { padding: Spacing.lg, fontSize: Typography.sm, color: Colors.gray500 },
+
+  searchBarContainer: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray200,
+    borderRadius: Radius.lg, paddingHorizontal: Spacing.md, height: 44,
+  },
+  searchBarInput: {
+    flex: 1, fontSize: Typography.sm, color: Colors.gray900, height: '100%',
+  },
+  customerCard: {
+    width: 170, height: 116, backgroundColor: Colors.white,
+    borderWidth: 1, borderColor: Colors.gray200, borderRadius: Radius.xl,
+    padding: Spacing.md, justifyContent: 'space-between',
+  },
+  customerCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  customerAvatar: {
+    width: 32, height: 32, borderRadius: Radius.lg, backgroundColor: Colors.primaryLight,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  customerAvatarText: { fontSize: 12, fontWeight: '800', color: Colors.primary },
+  customerCardTitle: { fontSize: 13, fontWeight: '700', color: Colors.gray900 },
+  customerCardPhone: { fontSize: 10, color: Colors.gray500, marginTop: 2 },
+  customerCardFooter: { borderTopWidth: 1, borderTopColor: Colors.gray100, paddingTop: 6 },
+  customerSelectAction: { fontSize: 11, fontWeight: '700', color: Colors.primary },
+
+  selectedCustomerBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: Colors.white, padding: Spacing.md, borderRadius: Radius.xl,
+    borderWidth: 1, borderColor: Colors.gray300,
+  },
+  customerAvatarSmall: {
+    width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  customerAvatarTextSmall: { fontSize: 13, fontWeight: '800', color: Colors.white },
+  selectedCustomerLabel: { fontSize: 10, fontWeight: '700', color: Colors.gray500, textTransform: 'uppercase' },
+  selectedCustomerName: { fontSize: Typography.sm, fontWeight: '800', color: Colors.gray900 },
+  changeCustomerBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.primaryLight, paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.md,
+  },
+  changeCustomerText: { fontSize: 11, fontWeight: '700', color: Colors.primary },
+
+  quotationCard: {
+    width: 230, height: 116, backgroundColor: Colors.white,
+    borderWidth: 1, borderColor: Colors.gray200, borderRadius: Radius.xl,
+    padding: Spacing.md, justifyContent: 'space-between',
+  },
+  quotationCardActive: {
+    borderColor: Colors.primary, backgroundColor: Colors.primaryLight, borderWidth: 2,
+  },
+  quotationCardHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
+  quotationCardLane: { fontSize: 13, fontWeight: '800', color: Colors.gray900 },
+  quotationCardMeta: { fontSize: 11, fontWeight: '600', color: Colors.gray500, marginTop: 2 },
+  selectedCheckBadge: {
+    width: 20, height: 20, borderRadius: 10, backgroundColor: Colors.primary,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  quotationCardFooter: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    borderTopWidth: 1, borderTopColor: Colors.gray100, paddingTop: 6,
+  },
+  quotationCardRate: { fontSize: 14, fontWeight: '800', color: Colors.gray900 },
+  quotationCardRateActive: { color: Colors.primary },
+  quotationCardAction: { fontSize: 11, fontWeight: '700', color: Colors.gray500 },
+  quotationCardActionActive: { color: Colors.primary },
   pickerItem: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
