@@ -124,7 +124,7 @@ const HomeScreen = () => {
   const [delayModalVisible, setDelayModalVisible] = useState(false);
   const [scheduledTrips, setScheduledTrips] = useState<MobileTrip[]>([]);
   const [scheduledLoading, setScheduledLoading] = useState(true);
-  const [totalEarnings, setTotalEarnings] = useState(0);
+
   const router = useRouter();
 
   // Restore current trip workflow screen on mount
@@ -166,20 +166,7 @@ const HomeScreen = () => {
     }
   }, [trip, loading]);
 
-  const fetchEarnings = useCallback(async () => {
-    try {
-      const history = await tripService.getHistory(100);
-      const total = history.reduce((sum, t) => {
-        if (t.status === 'Completed' || t.status === 'Invoiced') {
-          return sum + getTripChargeValue(t);
-        }
-        return sum;
-      }, 0);
-      setTotalEarnings(total);
-    } catch {
-      // silently fail
-    }
-  }, []);
+
 
   const fetchScheduled = useCallback(async () => {
     setScheduledLoading(true);
@@ -196,9 +183,9 @@ const HomeScreen = () => {
   // Load secondary data (scheduled trips & earnings) strictly after primary trip resolves, avoiding connection storms
   useEffect(() => {
     if (!loading) {
-      Promise.allSettled([fetchScheduled(), fetchEarnings()]);
+      Promise.allSettled([fetchScheduled()]);
     }
-  }, [loading, fetchScheduled, fetchEarnings]);
+  }, [loading, fetchScheduled]);
 
   // Refresh the trip whenever Home regains focus
   const displayTrip = trip || (scheduledTrips.length > 0 ? scheduledTrips[0] : null);
@@ -440,7 +427,7 @@ const HomeScreen = () => {
               </TouchableOpacity>
 
               {/* Driver Charge on Top-Right */}
-              <DriverChargePill amount={totalEarnings} />
+              <DriverChargePill />
             </View>
 
             {/* Welcome back / Greeting below Language on the Left */}

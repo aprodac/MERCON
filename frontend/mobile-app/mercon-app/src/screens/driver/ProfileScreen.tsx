@@ -11,6 +11,7 @@ import {
   ChevronRight, ChevronLeft, ChevronDown, Camera, CheckCircle2, Award, Check, Wallet, X,
 } from 'lucide-react-native';
 import { Avatar } from '../../components';
+import { DriverChargePill } from '../../components/DriverChargePill';
 import { useAuth } from '../../lib/auth-context';
 import { useProfile } from '../../lib/use-profile';
 import { initialsOf } from '../../lib/profile';
@@ -199,27 +200,7 @@ const ProfileScreen = () => {
                 </TouchableOpacity>
               </View>
 
-              {/* Top-Right: Driver Charge Pill */}
-              <TouchableOpacity
-                style={styles.driverChargePill}
-                activeOpacity={0.85}
-                onPress={() => router.push('/driver-charges' as any)}
-              >
-                <View style={styles.walletIconCircle}>
-                  <Wallet size={12} color="#FA634E" strokeWidth={2.2} />
-                </View>
-                <View style={styles.chargeTextCol}>
-                  <Text style={[styles.chargeAmount, { writingDirection: 'ltr' }]}>
-                    {formatCurrency(totalEarnings, language)}
-                  </Text>
-                  <Text style={styles.chargeLabel}>{t('label_driver_charge', 'Driver Charge')}</Text>
-                </View>
-                {language === 'ur' ? (
-                  <ChevronLeft size={12} color="#9898A4" strokeWidth={2.2} />
-                ) : (
-                  <ChevronRight size={12} color="#9898A4" strokeWidth={2.2} />
-                )}
-              </TouchableOpacity>
+              <DriverChargePill />
             </View>
 
             {/* Elegant Driver Identity Row */}

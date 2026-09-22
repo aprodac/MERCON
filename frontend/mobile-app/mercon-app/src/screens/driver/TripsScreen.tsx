@@ -306,7 +306,7 @@ const TripsScreen = ({ navigation }: any) => {
         <Text style={styles.screenTitle}>{t('nav_trips', 'Trips')}</Text>
 
         {/* Driver Charge Pill matching Home and Profile screen exactly */}
-        <DriverChargePill amount={totalEarnings} />
+        <DriverChargePill />
       </View>
 
       {/* Search Input Bar */}
