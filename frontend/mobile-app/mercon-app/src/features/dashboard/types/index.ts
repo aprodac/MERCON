@@ -38,6 +38,7 @@ export interface DriverRef {
   first_name: string;
   last_name: string;
   status: DriverStatus;
+  profile_picture?: string | null;
 }
 
 export interface VehicleRef {

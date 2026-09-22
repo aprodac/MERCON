@@ -213,6 +213,21 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
       ? dropoffStop.location_name.split(',')[0].replace(/\]+$/, '').trim()
       : 'Destination';
 
+    const distanceStr = item.planned_distance
+      ? `${Math.round(item.planned_distance)} KM`
+      : undefined;
+
+    let etaStr: string | undefined = undefined;
+    if (item.planned_end) {
+      const diffMs = new Date(item.planned_end).getTime() - Date.now();
+      if (diffMs > 0) {
+        const hours = (diffMs / (1000 * 60 * 60)).toFixed(1);
+        etaStr = `${hours} HRS`;
+      } else {
+        etaStr = 'ARRIVING SOON';
+      }
+    }
+
     const cardStatus = deriveVehicleCardStatus(
       item.status,
       item.vehicle?.status ?? 'Available',
@@ -226,13 +241,21 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
           initials: driverInitials,
           name: driverName,
           online: item.driver?.status === 'Available' || item.driver?.status === 'OnTrip',
+          imageUri: item.driver?.profile_picture ? { uri: item.driver.profile_picture } : undefined,
         }}
         vehicle={{
           truckId: truck,
           model: item.vehicle?.asset_type ?? 'Truck',
           capacityKg: item.vehicle?.capacity_kg ?? 10000,
         }}
-        route={{ originLabel, destinationLabel, progress: 0.5 }}
+        route={{
+          originLabel,
+          destinationLabel,
+          distanceStr,
+          etaStr,
+          stopsCount: stops.length,
+        }}
+        customerName={item.customer?.name}
         status={cardStatus}
         onPress={() => onTripPress?.(item)}
         onSharePress={() => shareTripToWhatsApp(item)}
@@ -245,7 +268,7 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
       {/* Header + Actions */}
       <View className="flex-row items-center justify-between">
         <SectionHeader
-          title="Active Vehicles"
+          title="Active Trips"
           actionLabel="View all →"
           onActionPress={onViewAll}
         />
@@ -296,9 +319,9 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
           renderItem={() => <SkeletonVehicleCard />}
         />
       ) : isError ? (
-        <ErrorState message="Couldn't load active vehicles." onRetry={() => refetch()} />
+        <ErrorState message="Couldn't load active trips." onRetry={() => refetch()} />
       ) : visibleTrips.length === 0 ? (
-        <EmptyState title="No active vehicles right now" subtitle="Active trucks will show up here." Icon={Truck} />
+        <EmptyState title="No active trips right now" subtitle="Active trips will show up here." Icon={Truck} />
       ) : (
         <View className="gap-3">
           <FlatList
