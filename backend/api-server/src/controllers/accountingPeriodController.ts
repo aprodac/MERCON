@@ -103,52 +103,22 @@ export const createAccountingPeriod = async (req: Request, res: Response) => {
 };
 
 /**
- * Close accounting period
+ * Close accounting period with AccountClosingBalance snapshot computation
  */
 export const closeAccountingPeriod = async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
     const userId = (req as any).user?.id;
 
-    const period = await prisma.accountingPeriod.findFirst({ where: { id } });
-    if (!period) {
-      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Accounting period not found' } });
-    }
-
-    if (period.status !== 'Open') {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'INVALID_TRANSITION', message: `Period is already ${period.status}` },
-      });
-    }
-
-    // Ensure no Draft entries remain in this period before closing
-    const draftCount = await prisma.journalEntry.count({
-      where: { periodId: id, status: 'Draft' },
-    });
-
-    if (draftCount > 0) {
-      return res.status(400).json({
-        success: false,
-        error: {
-          code: 'UNPOSTED_DRAFTS_EXIST',
-          message: `Cannot close period because it contains ${draftCount} unposted draft journal entry/entries. Post or delete drafts first.`,
-        },
-      });
-    }
-
-    const updated = await prisma.accountingPeriod.update({
-      where: { id },
-      data: {
-        status: 'Closed',
-        closed_by: userId,
-        closed_at: new Date(),
-        updated_by: userId,
-      },
-    });
-
-    return res.json({ success: true, data: updated });
+    const result = await closeAccountingPeriodWithSnapshot(id, userId);
+    return res.json({ success: true, data: result });
   } catch (error: any) {
+    if (error instanceof AccountingError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
     logger.error({ err: error }, 'Failed to close accounting period');
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }

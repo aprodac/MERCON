@@ -33,9 +33,14 @@ export function useDrivers({ search = '', status = null, sort = 'name' }: UseDri
     return sortDrivers(flat, sort);
   }, [list.data, tripCountById, sort]);
 
+  const lastPageMeta = list.data?.pages[list.data.pages.length - 1]?.meta;
+  const firstPageMeta = list.data?.pages[0]?.meta;
+
   return {
     drivers,
-    total: list.data?.pages[0]?.meta.total ?? 0,
+    total: firstPageMeta?.total ?? 0,
+    page: lastPageMeta?.page ?? 1,
+    totalPages: firstPageMeta?.total_pages ?? 1,
     loading: list.isLoading,
     error: list.isError ? 'Could not load drivers.' : null,
     refresh: list.refetch,

@@ -257,7 +257,7 @@ export async function applyAdvance(
       );
     }
 
-    let contraLines: Prisma.JournalLineCreateWithoutJournalEntryInput[] = [];
+    let contraLines: Prisma.JournalLineUncheckedCreateWithoutJournalEntryInput[] = [];
     let updatedInvoice: any = null;
     let updatedBill: any = null;
 
