@@ -35,6 +35,11 @@ export async function captureError(input: CaptureErrorInput): Promise<void> {
     const firstStackLine = (stack?.split('\n')[1] || '').trim();
     const fingerprint = createHash('sha1').update(`${source}|${code}|${route}|${firstStackLine}`).digest('hex');
 
+    const existing = await prisma.errorEvent.findUnique({
+      where: { fingerprint },
+      select: { status: true },
+    });
+
     await prisma.errorEvent.upsert({
       where: { fingerprint },
       create: {
@@ -54,6 +59,10 @@ export async function captureError(input: CaptureErrorInput): Promise<void> {
         message,
         stack,
         lastRequestId: requestId ?? null,
+        // A fingerprint marked Resolved that fires again means the fix didn't
+        // hold (or never shipped) — reopen it rather than leaving it hidden
+        // as resolved while it keeps recurring.
+        ...(existing?.status === 'Resolved' ? { status: 'New' } : {}),
       },
     });
   } catch (captureErr) {
