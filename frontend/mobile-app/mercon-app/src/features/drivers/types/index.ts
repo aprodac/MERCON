@@ -21,6 +21,12 @@ export interface DriverActiveTrip {
   vehiclePlate: string | null;
 }
 
+/** The vehicle permanently assigned to a driver from the Drivers module (Driver.assignedVehicleId) — independent of any active trip. */
+export interface DriverListVehicle {
+  plateNumber: string;
+  assetType: string;
+}
+
 export interface DriverListItem {
   id: string;
   ref_id: string | null;
@@ -30,9 +36,12 @@ export interface DriverListItem {
   status: DriverStatus;
   licenseNumber: string;
   licenseExpiry: string;
+  /** Whole days until the licence expires; negative once expired, null when unparseable. */
+  licenseDaysLeft: number | null;
   avatarUrl: string | null;
   createdAt: string;
   activeTrip: DriverActiveTrip | null;
+  assignedVehicle: DriverListVehicle | null;
   /** All-time trip count from GET /reports/drivers — null while that join hasn't resolved yet. */
   totalTrips: number | null;
   /**

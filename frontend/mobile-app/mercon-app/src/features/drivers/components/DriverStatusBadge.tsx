@@ -1,14 +1,15 @@
 import React from 'react';
 import { Text, View } from 'react-native';
+import { Colors, Radius } from '@/theme/tokens';
 import type { DriverDisplayStatus } from '../types';
 
 const META: Record<DriverDisplayStatus, { label: string; bg: string; color: string }> = {
-  Available: { label: 'Available', bg: '#F0FDF4', color: '#16A34A' },
-  OnTrip:    { label: 'On Trip',   bg: '#FFF0EB', color: '#F24822' },
-  OffDuty:   { label: 'Offline',   bg: '#F5F5F7', color: '#6E6E80' },
-  Inactive:  { label: 'Inactive',  bg: '#F5F5F7', color: '#6E6E80' },
-  Suspended: { label: 'Suspended', bg: '#FEF2F2', color: '#DC2626' },
-  OnLeave:   { label: 'On Leave',  bg: '#EFF6FF', color: '#2563EB' },
+  Available: { label: 'Available', bg: Colors.successLight, color: Colors.success },
+  OnTrip:    { label: 'On Trip',   bg: Colors.accentLight,  color: Colors.accent },
+  OffDuty:   { label: 'Offline',   bg: Colors.gray100,      color: Colors.gray500 },
+  Inactive:  { label: 'Inactive',  bg: Colors.gray100,      color: Colors.gray500 },
+  Suspended: { label: 'Suspended', bg: Colors.dangerLight,  color: Colors.danger },
+  OnLeave:   { label: 'On Leave',  bg: Colors.infoLight,    color: Colors.info },
 };
 
 interface DriverStatusBadgeProps {
@@ -20,7 +21,7 @@ interface DriverStatusBadgeProps {
 export function DriverStatusBadge({ status, className }: DriverStatusBadgeProps) {
   const { label, bg, color } = META[status];
   return (
-    <View style={{ backgroundColor: bg }} className={`self-start rounded-full px-2.5 py-1 ${className ?? ''}`}>
+    <View style={{ backgroundColor: bg, borderRadius: Radius.full }} className={`self-start px-2.5 py-1 ${className ?? ''}`}>
       <Text style={{ color }} className="text-[11px] font-semibold">{label}</Text>
     </View>
   );

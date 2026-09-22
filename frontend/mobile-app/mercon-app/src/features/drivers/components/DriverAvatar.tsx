@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Image, Text, View, type ImageSourcePropType } from 'react-native';
+import { Colors } from '@/theme/tokens';
 import { DriverStatusIndicator } from './DriverStatusIndicator';
 import type { DriverDisplayStatus } from '../types';
 
@@ -34,8 +35,8 @@ export function DriverAvatar({ initials, avatarUrl, imageUri, status, size = 52,
   return (
     <View style={{ width: size, height: size }} className={`relative items-center justify-center ${className ?? ''}`}>
       <View
-        style={{ width: size, height: size, borderRadius: halfSize }}
-        className="overflow-hidden bg-[#FA634E] items-center justify-center border border-gray-200"
+        style={{ width: size, height: size, borderRadius: halfSize, backgroundColor: Colors.primary, borderColor: Colors.gray200 }}
+        className="overflow-hidden items-center justify-center border"
       >
         {source ? (
           <Image

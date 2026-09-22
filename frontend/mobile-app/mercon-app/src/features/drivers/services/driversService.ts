@@ -2,6 +2,7 @@
  * Drivers business logic — pure transforms over API-layer data. Nothing
  * here talks to the network.
  */
+import { daysUntil } from './driverDetailsService';
 import type { DriverTripCount, RawDriver } from '../api/driversApi';
 import type { DriverListItem, DriverSortOption, DriverStats } from '../types';
 
@@ -18,10 +19,14 @@ export function toDriverListItem(raw: RawDriver, tripCountById: Map<string, numb
     status: raw.status,
     licenseNumber: raw.license_number,
     licenseExpiry: raw.license_expiry,
+    licenseDaysLeft: daysUntil(raw.license_expiry),
     avatarUrl: raw.avatar_url ?? null,
     createdAt: raw.createdAt,
     activeTrip: activeTrip
       ? { id: activeTrip.id, status: activeTrip.status, vehiclePlate: activeTrip.vehicle?.plate_number ?? null }
+      : null,
+    assignedVehicle: raw.assignedVehicle
+      ? { plateNumber: raw.assignedVehicle.plate_number, assetType: raw.assignedVehicle.asset_type }
       : null,
     totalTrips: tripCountById.get(raw.id) ?? null,
     rating: null,

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, TouchableOpacity } from 'react-native';
 import type { LucideIcon } from 'lucide-react-native';
+import { Colors, Radius, Shadows } from '@/theme/tokens';
 
 interface DriverActionButtonProps {
   label: string;
@@ -17,11 +18,11 @@ export function DriverActionButton({ label, Icon, onPress, disabled, className }
       onPress={onPress}
       disabled={disabled || !onPress}
       activeOpacity={0.75}
-      className={`flex-row items-center justify-center gap-1.5 rounded-xl border border-gray-100 bg-white py-2.5 ${disabled ? 'opacity-40' : ''} ${className ?? ''}`}
-      style={{ shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1 }}
+      className={`flex-row items-center justify-center gap-1.5 border bg-white py-2.5 ${disabled ? 'opacity-40' : ''} ${className ?? ''}`}
+      style={{ borderRadius: Radius.md, borderColor: Colors.gray100, ...Shadows.sm }}
     >
-      <Icon size={15} color="#F24822" strokeWidth={2.25} />
-      <Text className="text-xs font-semibold text-gray-700">{label}</Text>
+      <Icon size={15} color={Colors.accent} strokeWidth={2.25} />
+      <Text style={{ color: Colors.gray700 }} className="text-xs font-semibold">{label}</Text>
     </TouchableOpacity>
   );
 }

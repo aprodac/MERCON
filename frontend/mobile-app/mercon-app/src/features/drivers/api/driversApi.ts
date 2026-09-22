@@ -21,6 +21,7 @@ export interface RawDriver {
   avatar_url?: string | null;
   createdAt: string;
   trips: { id: string; status: string; vehicle: { plate_number: string } | null }[];
+  assignedVehicle: { id: string; ref_id: string | null; plate_number: string; asset_type: string; capacity_kg: number } | null;
 }
 
 export interface RawDriverListResponse {
