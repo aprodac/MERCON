@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Linking, Alert, Share, Modal, ScrollView } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { View, Text, TouchableOpacity, FlatList, useWindowDimensions, Linking, Alert, Share, Modal, ScrollView, type ViewToken } from 'react-native';
 import { Share2, ArrowRight, Truck, Clock, MapPin, Check, Layers, X, Send, CheckCircle2 } from 'lucide-react-native';
 import { EmptyState, ErrorState, SkeletonVehicleCard } from '@/shared/components';
 import { SectionHeader } from './SectionHeader';
+import { VehicleCard } from './VehicleCard';
+import { CarouselPagination } from './CarouselPagination';
 import { useActiveTrips } from '../hooks';
 import type { Trip } from '../types';
+import { deriveVehicleCardStatus } from '../services/dashboardService';
 
 interface ActiveTripsSectionProps {
   onViewAll?: () => void;
@@ -116,28 +119,16 @@ export async function shareMultipleCombinedToWhatsApp(trips: Trip[]) {
   await shareTextToWhatsApp(bulkText, `${trips.length} Vehicle Status Updates`);
 }
 
-const statusBadgeStyle = (status: string) => {
-  switch (status) {
-    case 'InTransit':
-      return { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', label: 'In Transit' };
-    case 'Loading':
-    case 'AtPickup':
-      return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', label: 'Loading' };
-    case 'AtDelivery':
-      return { bg: 'bg-indigo-50', text: 'text-indigo-700', border: 'border-indigo-200', label: 'At Delivery' };
-    case 'Scheduled':
-      return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', label: 'Scheduled' };
-    case 'Completed':
-      return { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', label: 'Completed' };
-    default:
-      return { bg: 'bg-gray-50', text: 'text-gray-700', border: 'border-gray-200', label: status };
-  }
-};
+const GAP = 14;
+const MIN_CARD_WIDTH = 245;
+const MAX_CARD_WIDTH = 275;
 
 export function ActiveTripsSection({ onViewAll, onTripPress, className }: ActiveTripsSectionProps) {
+  const { width: windowWidth } = useWindowDimensions();
   const { data, isLoading, isError, refetch } = useActiveTrips();
   const trips = data ?? [];
 
+  const [activeIndex, setActiveIndex] = useState(0);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -147,6 +138,14 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
   const [sentIndices, setSentIndices] = useState<Set<number>>(new Set());
 
   const visibleTrips = trips.slice(0, 15);
+  const cardWidth = Math.max(MIN_CARD_WIDTH, Math.min(MAX_CARD_WIDTH, windowWidth * 0.72));
+
+  const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
+  const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
+    if (viewableItems.length > 0 && viewableItems[0].index !== null) {
+      setActiveIndex(viewableItems[0].index);
+    }
+  }).current;
 
   const toggleSelectTrip = (id: string) => {
     setSelectedIds((prev) => {
@@ -194,13 +193,60 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
     }
   };
 
+  const renderItem = useCallback(({ item }: { item: Trip }) => {
+    const truck = item.vehicle?.ref_id || item.vehicle?.plate_number || item.ref_id || 'N/A';
+    const driverName = item.driver
+      ? `${item.driver.first_name} ${item.driver.last_name}`
+      : 'Unassigned';
+    const driverInitials = item.driver
+      ? `${item.driver.first_name[0] ?? ''}${item.driver.last_name[0] ?? ''}`.toUpperCase()
+      : '?';
+
+    const stops = item.stops || [];
+    const pickupStop = stops.find((s) => s.stop_type === 'Pickup') || stops[0];
+    const dropoffStop = [...stops].reverse().find((s) => s.stop_type === 'Dropoff') || stops[stops.length - 1];
+
+    const originLabel = pickupStop?.location_name
+      ? pickupStop.location_name.split(',')[0].replace(/\]+$/, '').trim()
+      : 'Origin';
+    const destinationLabel = dropoffStop?.location_name
+      ? dropoffStop.location_name.split(',')[0].replace(/\]+$/, '').trim()
+      : 'Destination';
+
+    const cardStatus = deriveVehicleCardStatus(
+      item.status,
+      item.vehicle?.status ?? 'Available',
+      false
+    );
+
+    return (
+      <VehicleCard
+        width={cardWidth}
+        driver={{
+          initials: driverInitials,
+          name: driverName,
+          online: item.driver?.status === 'Available' || item.driver?.status === 'OnTrip',
+        }}
+        vehicle={{
+          truckId: truck,
+          model: item.vehicle?.asset_type ?? 'Truck',
+          capacityKg: item.vehicle?.capacity_kg ?? 10000,
+        }}
+        route={{ originLabel, destinationLabel, progress: 0.5 }}
+        status={cardStatus}
+        onPress={() => onTripPress?.(item)}
+        onSharePress={() => shareTripToWhatsApp(item)}
+      />
+    );
+  }, [cardWidth, onTripPress]);
+
   return (
     <View className={`gap-3 ${className ?? ''}`}>
-      {/* Header + Bulk Selection Controls */}
+      {/* Header + Actions */}
       <View className="flex-row items-center justify-between">
         <SectionHeader
-          title={`Active Trips (${trips.length})`}
-          actionLabel={onViewAll ? 'View All' : undefined}
+          title="Active Vehicles"
+          actionLabel="View all →"
           onActionPress={onViewAll}
         />
 
@@ -209,52 +255,31 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
             activeOpacity={0.7}
             onPress={() => {
               setIsSelectionMode(!isSelectionMode);
-              if (isSelectionMode) {
-                setSelectedIds(new Set());
-              }
+              if (isSelectionMode) setSelectedIds(new Set());
             }}
-            className={`flex-row items-center gap-1.5 px-3 py-1 rounded-full border ${
-              isSelectionMode
-                ? 'bg-gray-900 border-gray-900'
-                : 'bg-white border-gray-200'
+            className={`flex-row items-center gap-1 px-3 py-1 rounded-full border ${
+              isSelectionMode ? 'bg-gray-900 border-gray-900' : 'bg-white border-gray-200'
             }`}
           >
             <Layers size={12} color={isSelectionMode ? '#FFFFFF' : '#3E3C3D'} />
-            <Text
-              className={`text-[11px] font-bold ${
-                isSelectionMode ? 'text-white' : 'text-gray-800'
-              }`}
-            >
+            <Text className={`text-[11px] font-bold ${isSelectionMode ? 'text-white' : 'text-gray-800'}`}>
               {isSelectionMode ? 'Done' : 'Select'}
             </Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {/* Multi-Select Sub-Bar */}
+      {/* Multi-Select Bar */}
       {isSelectionMode && visibleTrips.length > 0 && (
         <View className="flex-row items-center justify-between bg-gray-100 p-2.5 rounded-xl border border-gray-200/80">
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={toggleSelectAll}
-            className="flex-row items-center gap-2 px-2 py-1"
-          >
-            <View
-              className={`h-4 w-4 rounded items-center justify-center border ${
-                selectedIds.size === visibleTrips.length && visibleTrips.length > 0
-                  ? 'bg-gray-900 border-gray-900'
-                  : 'bg-white border-gray-300'
-              }`}
-            >
-              {selectedIds.size === visibleTrips.length && visibleTrips.length > 0 && (
-                <Check size={11} color="#FFFFFF" strokeWidth={3} />
-              )}
+          <TouchableOpacity activeOpacity={0.7} onPress={toggleSelectAll} className="flex-row items-center gap-2 px-2 py-1">
+            <View className={`h-4 w-4 rounded items-center justify-center border ${selectedIds.size === visibleTrips.length ? 'bg-gray-900 border-gray-900' : 'bg-white border-gray-300'}`}>
+              {selectedIds.size === visibleTrips.length && <Check size={11} color="#FFFFFF" strokeWidth={3} />}
             </View>
             <Text className="text-xs font-bold text-gray-800">
               {selectedIds.size === visibleTrips.length ? 'Deselect All' : 'Select All'}
             </Text>
           </TouchableOpacity>
-
           <Text className="text-xs font-semibold text-gray-500 pr-2">
             {selectedIds.size} / {visibleTrips.length} selected
           </Text>
@@ -262,172 +287,33 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
       )}
 
       {isLoading ? (
-        <View className="gap-2.5">
-          <SkeletonVehicleCard />
-          <SkeletonVehicleCard />
-        </View>
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={[0, 1]}
+          keyExtractor={(i) => String(i)}
+          contentContainerStyle={{ gap: GAP }}
+          renderItem={() => <SkeletonVehicleCard />}
+        />
       ) : isError ? (
-        <ErrorState message="Couldn't load active trips." onRetry={() => refetch()} />
-      ) : trips.length === 0 ? (
-        <EmptyState title="No active trips right now" subtitle="Active trips will show up here." Icon={Truck} />
+        <ErrorState message="Couldn't load active vehicles." onRetry={() => refetch()} />
+      ) : visibleTrips.length === 0 ? (
+        <EmptyState title="No active vehicles right now" subtitle="Active trucks will show up here." Icon={Truck} />
       ) : (
-        <View className="gap-2.5">
-          {visibleTrips.map((trip) => {
-            const isSelected = selectedIds.has(trip.id);
-            const truck = trip.vehicle?.ref_id || trip.vehicle?.plate_number || 'N/A';
-            const driverName = trip.driver
-              ? `${trip.driver.first_name} ${trip.driver.last_name}`
-              : 'Unassigned';
-
-            const stops = trip.stops || [];
-            const pickupStop = stops.find((s) => s.stop_type === 'Pickup') || stops[0];
-            const dropoffStop = [...stops].reverse().find((s) => s.stop_type === 'Dropoff') || stops[stops.length - 1];
-
-            const origin = pickupStop?.location_name
-              ? pickupStop.location_name.split(',')[0].replace(/\]+$/, '').trim()
-              : 'Origin';
-            const destination = dropoffStop?.location_name
-              ? dropoffStop.location_name.split(',')[0].replace(/\]+$/, '').trim()
-              : 'Destination';
-
-            const distanceStr = trip.planned_distance
-              ? `${Math.round(trip.planned_distance)} KM`
-              : '—';
-
-            let etaStr = '—';
-            if (trip.planned_end) {
-              const diffMs = new Date(trip.planned_end).getTime() - Date.now();
-              if (diffMs > 0) {
-                const hours = (diffMs / (1000 * 60 * 60)).toFixed(1);
-                etaStr = `${hours} HRS`;
-              } else {
-                etaStr = 'Arriving Soon';
-              }
-            }
-
-            const badge = statusBadgeStyle(trip.status);
-
-            return (
-              <TouchableOpacity
-                key={trip.id}
-                activeOpacity={0.85}
-                onPress={() => {
-                  if (isSelectionMode) {
-                    toggleSelectTrip(trip.id);
-                  } else {
-                    onTripPress?.(trip);
-                  }
-                }}
-                className={`bg-white rounded-2xl p-3.5 border shadow-xs gap-2.5 ${
-                  isSelected
-                    ? 'border-gray-900 bg-gray-50/50'
-                    : 'border-gray-200/80'
-                }`}
-              >
-                {/* Header: Checkbox (if in selection mode) + Truck + Driver + Status */}
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-2 flex-1 pr-2">
-                    {isSelectionMode ? (
-                      <TouchableOpacity
-                        activeOpacity={0.7}
-                        onPress={() => toggleSelectTrip(trip.id)}
-                        className={`h-6 w-6 rounded-lg items-center justify-center border ${
-                          isSelected
-                            ? 'bg-gray-900 border-gray-900'
-                            : 'bg-white border-gray-300'
-                        }`}
-                      >
-                        {isSelected && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
-                      </TouchableOpacity>
-                    ) : (
-                      <View className="h-8 w-8 rounded-xl bg-gray-100 items-center justify-center">
-                        <Truck size={16} color="#3E3C3D" strokeWidth={2} />
-                      </View>
-                    )}
-
-                    <View className="flex-1">
-                      <View className="flex-row items-center gap-1.5 flex-wrap">
-                        <Text className="text-xs font-black text-gray-900">
-                          {truck}
-                        </Text>
-                        {trip.customer?.name ? (
-                          <View className="bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                            <Text className="text-[10px] font-extrabold text-slate-700 uppercase" numberOfLines={1}>
-                              🏢 {trip.customer.name}
-                            </Text>
-                          </View>
-                        ) : null}
-                      </View>
-                      <Text className="text-[11px] font-medium text-gray-500 truncate">
-                        {driverName}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View className={`px-2.5 py-1 rounded-md border ${badge.bg} ${badge.border}`}>
-                    <Text className={`text-[10px] font-extrabold uppercase ${badge.text}`}>
-                      {badge.label}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Route Pill & Distance Info */}
-                <View className="bg-gray-50 rounded-xl p-2.5 gap-1.5 border border-gray-100">
-                  <View className="flex-row items-center justify-between">
-                    <View className="flex-row items-center gap-1.5 flex-1">
-                      <MapPin size={13} color="#FA634E" strokeWidth={2.2} />
-                      <Text className="text-xs font-bold text-gray-800 truncate">
-                        {origin}
-                      </Text>
-                      <ArrowRight size={12} color="#9898A4" />
-                      <Text className="text-xs font-bold text-gray-800 truncate">
-                        {destination}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <View className="flex-row items-center justify-between pt-1 border-t border-gray-200/60">
-                    <Text className="text-[11px] text-gray-500 font-medium">
-                      Dist: <Text className="font-bold text-gray-900">{distanceStr} to {destination}</Text>
-                    </Text>
-                    <View className="flex-row items-center gap-1">
-                      <Clock size={11} color="#6E6E80" />
-                      <Text className="text-[11px] text-gray-500 font-medium">
-                        ETA: <Text className="font-bold text-gray-900">{etaStr}</Text>
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-
-                {/* Footer Action: Ref ID + WhatsApp Share Pill */}
-                <View className="flex-row items-center justify-between pt-0.5">
-                  <Text className="text-[11px] font-semibold text-gray-400">
-                    #{trip.ref_id ?? trip.id.slice(0, 8)}
-                  </Text>
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => shareTripToWhatsApp(trip)}
-                    className="flex-row items-center gap-1.5 bg-[#25D366]/10 px-3 py-1.5 rounded-full border border-[#25D366]/30"
-                  >
-                    <Share2 size={12} color="#25D366" strokeWidth={2.5} />
-                    <Text className="text-[11px] font-bold text-[#128C7E]">Share Status</Text>
-                  </TouchableOpacity>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-
-          {trips.length > 15 && (
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={onViewAll}
-              className="py-2.5 items-center justify-center rounded-xl bg-gray-100 border border-gray-200/60"
-            >
-              <Text className="text-xs font-bold text-gray-700">
-                View All {trips.length} Active Trips
-              </Text>
-            </TouchableOpacity>
-          )}
+        <View className="gap-3">
+          <FlatList
+            data={visibleTrips}
+            horizontal
+            keyExtractor={(item) => item.id}
+            showsHorizontalScrollIndicator={false}
+            snapToInterval={cardWidth + GAP}
+            decelerationRate="fast"
+            contentContainerStyle={{ gap: GAP, paddingRight: 16 }}
+            renderItem={renderItem}
+            onViewableItemsChanged={onViewableItemsChanged}
+            viewabilityConfig={viewabilityConfig}
+          />
+          <CarouselPagination count={visibleTrips.length} activeIndex={activeIndex} className="mt-1" />
         </View>
       )}
 

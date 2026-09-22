@@ -1,9 +1,9 @@
 import React from 'react';
-import { Text, TouchableOpacity, View, type ImageSourcePropType } from 'react-native';
+import { Text, TouchableOpacity, View, Linking, type ImageSourcePropType } from 'react-native';
+import { Share2 } from 'lucide-react-native';
 import { DriverAvatar } from './DriverAvatar';
 import { DriverStatus } from './DriverStatus';
 import { RoutePreview } from './RoutePreview';
-import { InfoRow } from './InfoRow';
 import { StatusBadge } from './StatusBadge';
 import type { VehicleCardStatus, TripStatus } from '../types';
 
@@ -23,7 +23,6 @@ export interface VehicleCardVehicle {
 export interface VehicleCardRoute {
   originLabel: string;
   destinationLabel: string;
-  /** 0-1 position of the truck marker along the route preview. */
   progress?: number;
 }
 
@@ -35,43 +34,96 @@ interface VehicleCardProps {
   lastLocation?: { lat: number; lng: number } | null;
   currentTrip?: { id: string; status: TripStatus };
   onPress?: () => void;
-  /** Carousel item width — omit to fill the parent (e.g. a single, non-carousel usage). */
+  onSharePress?: () => void;
   width?: number;
   className?: string;
 }
 
-export function VehicleCard({ driver, vehicle, route, status, onPress, width, className }: VehicleCardProps) {
-  const Wrapper = onPress ? TouchableOpacity : View;
+export function VehicleCard({
+  driver,
+  vehicle,
+  route,
+  status,
+  onPress,
+  onSharePress,
+  width,
+  className,
+}: VehicleCardProps) {
+  const openMaps = () => {
+    const origin = encodeURIComponent(route.originLabel || 'Riyadh');
+    const dest = encodeURIComponent(route.destinationLabel || 'Dammam');
+    const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${dest}`;
+    Linking.openURL(mapsUrl).catch(() => {});
+  };
+
+  const formattedCapacity = vehicle.capacityKg > 0
+    ? `${(vehicle.capacityKg / 1000).toFixed(1).replace(/\.0$/, '')} Ton`
+    : '—';
+
   return (
-    <Wrapper
-      {...(onPress ? { onPress, activeOpacity: 0.85 } : {})}
+    <View
       style={width ? { width } : undefined}
-      className={`gap-4 rounded-3xl border border-[#F3F3F3] bg-white p-5 ${className ?? ''}`}
+      className={`gap-3.5 rounded-3xl border border-gray-100 bg-white p-4 shadow-sm ${className ?? ''}`}
     >
-      {/* Section 1 — driver information */}
-      <View className="flex-row items-center gap-3">
-        <DriverAvatar initials={driver.initials} imageUri={driver.imageUri} size={52} />
-        <View className="flex-1">
-          <Text numberOfLines={1} className="text-[18px] font-bold text-gray-900">
-            {driver.name}
-          </Text>
-          <DriverStatus online={driver.online} className="mt-0.5" />
-        </View>
+      {/* Top Bar: Driver Avatar + Name + Online Dot + Share Button (Top Right) */}
+      <View className="flex-row items-center justify-between">
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={onPress}
+          className="flex-row items-center gap-2.5 flex-1 pr-1"
+        >
+          <DriverAvatar initials={driver.initials} imageUri={driver.imageUri} size={44} />
+          <View className="flex-1">
+            <Text numberOfLines={1} className="text-sm font-bold text-gray-900">
+              {driver.name}
+            </Text>
+            <DriverStatus online={driver.online} className="mt-0.5" />
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={onSharePress || onPress}
+          className="h-8 w-8 rounded-xl bg-gray-50 border border-gray-200/80 items-center justify-center"
+        >
+          <Share2 size={15} color="#3E3C3D" strokeWidth={2} />
+        </TouchableOpacity>
       </View>
 
-      {/* Section 2 — live route preview */}
-      <RoutePreview originLabel={route.originLabel} destinationLabel={route.destinationLabel} progress={route.progress} height={140} />
+      {/* Middle Block: Interactive Map Route Preview (Opens Google Maps on tap) */}
+      <TouchableOpacity activeOpacity={0.9} onPress={openMaps}>
+        <RoutePreview
+          originLabel={route.originLabel}
+          destinationLabel={route.destinationLabel}
+          progress={route.progress ?? 0.5}
+          height={125}
+        />
+      </TouchableOpacity>
 
-      {/* Section 3 — vehicle information */}
-      <View className="gap-2.5">
-        <InfoRow label="Truck ID" value={vehicle.truckId} />
-        <InfoRow label="Model" value={vehicle.model} />
-        <InfoRow label="Capacity" value={`${(vehicle.capacityKg / 1000).toFixed(1)} Ton`} />
+      {/* Bottom Block: Info Rows (Truck ID, Model, Capacity, Status Badge) */}
+      <TouchableOpacity activeOpacity={0.85} onPress={onPress} className="gap-2 pt-0.5">
         <View className="flex-row items-center justify-between">
-          <Text className="text-[11px] text-gray-400">Status</Text>
+          <Text className="text-xs font-semibold text-blue-600">Truck ID</Text>
+          <Text className="text-xs font-black text-gray-900">{vehicle.truckId}</Text>
+        </View>
+
+        <View className="flex-row items-center justify-between">
+          <Text className="text-xs font-semibold text-blue-600">Model</Text>
+          <Text className="text-xs font-bold text-gray-800" numberOfLines={1}>
+            {vehicle.model}
+          </Text>
+        </View>
+
+        <View className="flex-row items-center justify-between">
+          <Text className="text-xs font-semibold text-blue-600">Capacity</Text>
+          <Text className="text-xs font-bold text-gray-800">{formattedCapacity}</Text>
+        </View>
+
+        <View className="flex-row items-center justify-between pt-0.5">
+          <Text className="text-xs font-semibold text-blue-600">Status</Text>
           <StatusBadge status={status} />
         </View>
-      </View>
-    </Wrapper>
+      </TouchableOpacity>
+    </View>
   );
 }
