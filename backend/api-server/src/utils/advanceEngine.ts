@@ -114,7 +114,7 @@ export async function recordAdvance(payload: RecordAdvancePayload, userId?: stri
     // 6. Build double-entry GL lines:
     // Received (Customer): Money In -> Dr Bank/Cash, Cr Customer-Advance Liability
     // Paid (Provider/Employee): Money Out -> Dr Provider/Employee Advance Asset, Cr Bank/Cash
-    let lines: Prisma.JournalLineCreateWithoutJournalEntryInput[] = [];
+    let lines: Prisma.JournalLineUncheckedCreateWithoutJournalEntryInput[] = [];
     if (payload.direction === 'Received') {
       lines = [
         {

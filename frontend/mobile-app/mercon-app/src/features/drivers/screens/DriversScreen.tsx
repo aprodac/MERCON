@@ -38,17 +38,11 @@ export default function DriversScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }} edges={['top']}>
       <DriversHeader
-        onSearchPress={() => setSearchVisible((v) => !v)}
         onFilterPress={() => setFilterVisible(true)}
         filterActive={status !== null}
       />
-
-      {/* Prominent Always-Visible Search Bar */}
-      <View className="px-4 pt-2.5 pb-1 bg-white">
-        <SearchBar value={query} onChangeText={setQuery} placeholder="Search drivers by name or phone…" />
-      </View>
 
       {error ? (
         <ErrorState message={error} onRetry={() => refresh()} className="flex-1" />
@@ -56,13 +50,14 @@ export default function DriversScreen() {
         <FlatList
           data={drivers}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 100 }}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 110 }}
           ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor="#FA634E" />}
           onEndReachedThreshold={0.4}
           onEndReached={() => { if (hasNextPage) fetchNextPage(); }}
           ListHeaderComponent={
-            <View className="gap-5 pb-4">
+            <View className="gap-4.5 pb-4">
+              <SearchBar value={query} onChangeText={setQuery} placeholder="Search drivers by name or phone…" />
               <DriverStatsSection />
               <DriversListHeader total={total} sort={sort} onSortChange={setSort} />
             </View>
