@@ -1635,7 +1635,7 @@ const CreateTripScreen = () => {
                     <View style={[styles.rowFields, { marginTop: 6 }]}>
                       <Input style={{ flex: 2 }} placeholder="Custom charge name" value={customChargeType} onChangeText={setCustomChargeType} />
                       <Input style={{ flex: 1 }} placeholder="SAR" value={customChargeAmount} onChangeText={setCustomChargeAmount} keyboardType="numeric" />
-                      <TouchableOpacity style={styles.addChargeBtn} onPress={addCustomCharge}>
+                      <TouchableOpacity style={styles.addChargeBtn} onPress={addAdditionalCharge}>
                         <Plus size={18} color={Colors.white} />
                       </TouchableOpacity>
                     </View>

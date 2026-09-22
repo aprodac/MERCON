@@ -25,34 +25,34 @@ function resolveAvatarSource(avatarUrl?: string | null, imageUri?: ImageSourcePr
   return { uri: url.startsWith('/') ? `https://dev.mercon.tech${url}` : `https://dev.mercon.tech/${url}` };
 }
 
-/** Driver photo / initials avatar component with status indicator. */
-export function DriverAvatar({ initials, avatarUrl, imageUri, status, size = 56, className }: DriverAvatarProps) {
+/** Purely circular driver avatar component with status dot indicator. */
+export function DriverAvatar({ initials, avatarUrl, imageUri, status, size = 52, className }: DriverAvatarProps) {
   const [hasError, setHasError] = useState(false);
-  const radius = Math.round(size * 0.28);
   const source = !hasError ? resolveAvatarSource(avatarUrl, imageUri) : null;
+  const halfSize = Math.round(size / 2);
 
   return (
-    <View style={{ width: size, height: size }} className={`relative ${className ?? ''}`}>
-      {source ? (
-        <Image
-          source={source}
-          resizeMode="cover"
-          onError={() => setHasError(true)}
-          style={{ width: size, height: size, borderRadius: radius }}
-        />
-      ) : (
-        <View
-          style={{ width: size, height: size, borderRadius: radius, backgroundColor: '#FA634E' }}
-          className="items-center justify-center shadow-sm"
-        >
-          <Text style={{ fontSize: Math.round(size * 0.36) }} className="font-bold text-white tracking-wide">
+    <View style={{ width: size, height: size }} className={`relative items-center justify-center ${className ?? ''}`}>
+      <View
+        style={{ width: size, height: size, borderRadius: halfSize }}
+        className="overflow-hidden bg-[#FA634E] items-center justify-center border border-gray-200"
+      >
+        {source ? (
+          <Image
+            source={source}
+            resizeMode="cover"
+            onError={() => setHasError(true)}
+            style={{ width: size, height: size, borderRadius: halfSize }}
+          />
+        ) : (
+          <Text style={{ fontSize: Math.round(size * 0.38) }} className="font-bold text-white tracking-wide text-center">
             {initials}
           </Text>
-        </View>
-      )}
+        )}
+      </View>
       {status && (
-        <View className="absolute -bottom-0.5 -right-0.5">
-          <DriverStatusIndicator status={status} size={Math.round(size * 0.24)} />
+        <View className="absolute bottom-0 right-0 z-10">
+          <DriverStatusIndicator status={status} size={Math.round(size * 0.28)} />
         </View>
       )}
     </View>
