@@ -25,7 +25,7 @@ export const listBankAccounts = async (req: Request, res: Response) => {
 
 export const getBankAccountById = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const account = await prisma.bankAccount.findUnique({
       where: { id },
       include: {
@@ -102,7 +102,7 @@ export const createBankAccount = async (req: Request, res: Response) => {
 
 export const updateBankAccount = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const {
       bank_name,
       account_number,

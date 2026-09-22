@@ -80,6 +80,10 @@ import accountingPeriodRoutes from './routes/accountingPeriodRoutes';
 import journalEntryRoutes from './routes/journalEntryRoutes';
 import invoiceRoutes from './routes/invoiceRoutes';
 import billRoutes from './routes/billRoutes';
+import bankAccountRoutes from './routes/bankAccountRoutes';
+import advanceRoutes from './routes/advanceRoutes';
+import reconciliationRoutes from './routes/reconciliationRoutes';
+import financeReportsRoutes from './routes/financeReportsRoutes';
 import { reportClientError } from './controllers/clientErrorController';
 import { validate } from './middlewares/validate';
 import { clientErrorBody } from './schemas';
@@ -169,6 +173,10 @@ apiRouter.use('/accounting-periods', accountingPeriodRoutes);
 apiRouter.use('/journal-entries', journalEntryRoutes);
 apiRouter.use('/invoices', invoiceRoutes);
 apiRouter.use('/bills', billRoutes);
+apiRouter.use('/bank-accounts', bankAccountRoutes);
+apiRouter.use('/advances', advanceRoutes);
+apiRouter.use('/reconciliations', reconciliationRoutes);
+apiRouter.use('/finance', financeReportsRoutes);
 apiRouter.post('/client-errors', authenticateJWT, validate({ body: clientErrorBody }), reportClientError);
 
 // Mount router on both /api and root for maximum proxy compatibility
