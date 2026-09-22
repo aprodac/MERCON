@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, StatusBar,
   FlatList, ActivityIndicator, RefreshControl, Dimensions, Image,
@@ -222,8 +222,14 @@ const TripsScreen = ({ navigation }: any) => {
   const { trips: scheduledList, loading: loadingScheduled, error: errorScheduled, refetch: refetchScheduled } = useScheduledTrips();
   const { trips: historyList, loading: loadingHistory, error: errorHistory, refetch: refetchHistory } = useTripHistory();
 
+  const isFirstFocusRef = useRef(true);
+
   useFocusEffect(
     useCallback(() => {
+      if (isFirstFocusRef.current) {
+        isFirstFocusRef.current = false;
+        return;
+      }
       refetchCurrent();
       refetchScheduled();
       refetchHistory();
