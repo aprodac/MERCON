@@ -14,6 +14,7 @@ const DEFAULT_SETTINGS = {
   defaultCountryCode: 'SA',
   defaultCountryDialCode: '+966',
   enabledModules: [...MODULE_KEYS],
+  hiddenModules: [],
   defaultRedirectModule: 'quotations',
   themeColors: null,
   taxonomyConfig: null,
@@ -58,7 +59,7 @@ async function getOrCreateSettings() {
     return await prisma.settings.upsert({
       where: { id: SINGLETON_ID },
       update: {},
-      create: { id: SINGLETON_ID, enabledModules: [...MODULE_KEYS], defaultRedirectModule: 'quotations' },
+      create: { id: SINGLETON_ID, enabledModules: [...MODULE_KEYS], hiddenModules: [], defaultRedirectModule: 'quotations' },
     });
   } catch (err: any) {
     console.warn('[Settings] Unable to query Settings from database, using defaults:', err.message || err);
@@ -154,6 +155,7 @@ export const updateSettings = async (req: Request, res: Response) => {
       defaultCountryCode,
       defaultCountryDialCode,
       enabledModules,
+      hiddenModules,
       defaultRedirectModule,
     } = req.body;
 
@@ -180,6 +182,12 @@ export const updateSettings = async (req: Request, res: Response) => {
         return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'enabledModules must be an array of strings' } });
       }
       data.enabledModules = enabledModules;
+    }
+    if (hiddenModules !== undefined) {
+      if (!Array.isArray(hiddenModules) || !hiddenModules.every((m) => typeof m === 'string')) {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'hiddenModules must be an array of strings' } });
+      }
+      data.hiddenModules = hiddenModules;
     }
     data.updated_by = userId;
 

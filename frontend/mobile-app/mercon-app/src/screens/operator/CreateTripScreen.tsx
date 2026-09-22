@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, StatusBar, ActivityIndicator, Alert, Modal, Switch,
@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft, Check, Truck, Clock, MapPin, FileText,
-  Plus, Trash2, AlertTriangle, RotateCcw, Building2, ChevronDown, ChevronUp, Zap, Edit3,
+  Plus, Trash2, AlertTriangle, RotateCcw, Building2, Zap, Edit3, ChevronRight,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography } from '../../theme/tokens';
 import { Button, Card, Input, StatusBadge } from '../../components';
@@ -56,6 +56,10 @@ function formatDateDDMMYYYY(d: Date): string {
 const CreateTripScreen = () => {
   const router = useRouter();
   const { customerId: presetCustomerId } = useLocalSearchParams<{ customerId?: string }>();
+  const scrollViewRef = useRef<ScrollView>(null);
+
+  // Page pacing state: Page 1 ("Trip & Rate") vs Page 2 ("Schedule & Assignment")
+  const [page, setPage] = useState<1 | 2>(1);
 
   // Master Data state
   const [loadingOptions, setLoadingOptions] = useState(true);
@@ -150,7 +154,6 @@ const CreateTripScreen = () => {
     const dep = new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min));
     if (Number.isNaN(dep.getTime())) return;
 
-    // Add 4 hours transit buffer
     const eta = new Date(dep.getTime() + 4 * 60 * 60 * 1000);
     setEtaDate(formatDateDDMMYYYY(eta));
     const etaHh = String(eta.getHours()).padStart(2, '0');
@@ -264,6 +267,7 @@ const CreateTripScreen = () => {
     if (Array.isArray(d.additionalCharges)) setAdditionalCharges(d.additionalCharges);
     if (typeof d.saveAsPersistentQuotation === 'boolean') setSaveAsPersistentQuotation(d.saveAsPersistentQuotation);
     if (typeof d.isRouteCollapsed === 'boolean') setIsRouteCollapsed(d.isRouteCollapsed);
+    setPage(1);
     setHasSavedDraft(false);
   };
 
@@ -375,7 +379,6 @@ const CreateTripScreen = () => {
     if (q.destinationLocation?.lat != null) setDropoffLat(String(q.destinationLocation.lat));
     if (q.destinationLocation?.lng != null) setDropoffLng(String(q.destinationLocation.lng));
 
-    // Progressive Collapse: quotation answered route + rate -> collapse section for effortless UI!
     setIsRouteCollapsed(true);
     setFieldErrors({});
   };
@@ -492,47 +495,65 @@ const CreateTripScreen = () => {
     return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
   }
 
-  // Field-level Validation Engine
-  const validateFormFields = (): boolean => {
-    const errors: Record<string, string> = {};
+  // Page 1 Validation: Customer, Route, Rate
+  const validatePage1Fields = (): boolean => {
+    const errors: Record<string, string> = { ...fieldErrors };
+    let isValid = true;
 
-    if (!customerId) errors.customerId = 'Please select a customer';
-    if (!pickupName.trim()) errors.pickupName = 'Pickup location name is required';
+    if (!customerId) { errors.customerId = 'Please select a customer'; isValid = false; } else { delete errors.customerId; }
+    if (!pickupName.trim()) { errors.pickupName = 'Pickup location name is required'; isValid = false; } else { delete errors.pickupName; }
     if (Number.isNaN(parseFloat(pickupLat)) || Number.isNaN(parseFloat(pickupLng))) {
-      errors.pickupCoords = 'Valid pickup coordinates (lat, lng) are required';
-    }
-    if (!dropoffName.trim()) errors.dropoffName = 'Dropoff location name is required';
+      errors.pickupCoords = 'Valid pickup coordinates (lat, lng) are required'; isValid = false;
+    } else { delete errors.pickupCoords; }
+
+    if (!dropoffName.trim()) { errors.dropoffName = 'Dropoff location name is required'; isValid = false; } else { delete errors.dropoffName; }
     if (Number.isNaN(parseFloat(dropoffLat)) || Number.isNaN(parseFloat(dropoffLng))) {
-      errors.dropoffCoords = 'Valid dropoff coordinates (lat, lng) are required';
-    }
+      errors.dropoffCoords = 'Valid dropoff coordinates (lat, lng) are required'; isValid = false;
+    } else { delete errors.dropoffCoords; }
 
     if (effectiveBillingAmount <= 0) {
-      errors.billingAmount = 'Enter a customer billing rate greater than 0';
-    }
+      errors.billingAmount = 'Enter a customer billing rate greater than 0'; isValid = false;
+    } else { delete errors.billingAmount; }
+
+    setFieldErrors(errors);
+    return isValid;
+  };
+
+  // Page 2 Validation: Schedule, Fleet 3PL cost / Driver Payout
+  const validatePage2Fields = (): boolean => {
+    const errors: Record<string, string> = { ...fieldErrors };
+    let isValid = true;
 
     if (fleetType === 'THIRD_PARTY') {
       if (Number.isNaN(effective3PLCost) || effective3PLCost < 0) {
-        errors.thirdPartyCost = 'Agreed subcontractor cost is required';
-      }
+        errors.thirdPartyCost = 'Agreed subcontractor cost is required'; isValid = false;
+      } else { delete errors.thirdPartyCost; }
     } else {
       if (manualRateOverride && (Number.isNaN(effectiveDriverPayout) || effectiveDriverPayout < 0)) {
-        errors.driverPayout = 'Driver payout is required';
-      }
+        errors.driverPayout = 'Driver payout is required'; isValid = false;
+      } else { delete errors.driverPayout; }
     }
 
     const plannedPickup = parseDateTime(date, time);
     const plannedDropoff = parseDateTime(etaDate, etaTime);
     if (plannedPickup && plannedDropoff && plannedDropoff <= plannedPickup) {
-      errors.deliveryDue = 'Delivery due date & time must be after the departure time';
-    }
+      errors.deliveryDue = 'Delivery due date & time must be after the departure time'; isValid = false;
+    } else { delete errors.deliveryDue; }
 
     setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
+    return isValid;
   };
 
-  // Submit flow entry point
+  // Submit flow entry point from Page 2
   const handleInitiateSubmit = () => {
-    if (!validateFormFields() || submitting) return;
+    const p1Valid = validatePage1Fields();
+    const p2Valid = validatePage2Fields();
+    if (!p1Valid) {
+      setPage(1);
+      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+      return;
+    }
+    if (!p2Valid || submitting) return;
 
     const plannedPickup = parseDateTime(date, time);
 
@@ -688,6 +709,38 @@ const CreateTripScreen = () => {
         <View style={styles.placeholder} />
       </View>
 
+      {/* 2-Page Stepper Indicator Bar */}
+      <View style={styles.stepperContainer}>
+        <TouchableOpacity
+          style={[styles.stepperTab, page === 1 && styles.stepperTabActive]}
+          activeOpacity={0.8}
+          onPress={() => setPage(1)}
+        >
+          <View style={[styles.stepperDot, page === 1 && styles.stepperDotActive]}>
+            <Text style={[styles.stepperDotText, page === 1 && styles.stepperDotTextActive]}>1</Text>
+          </View>
+          <Text style={[styles.stepperTabText, page === 1 && styles.stepperTabTextActive]}>Trip & Rate</Text>
+        </TouchableOpacity>
+
+        <View style={styles.stepperLine} />
+
+        <TouchableOpacity
+          style={[styles.stepperTab, page === 2 && styles.stepperTabActive]}
+          activeOpacity={0.8}
+          onPress={() => {
+            if (validatePage1Fields()) {
+              setPage(2);
+              scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+            }
+          }}
+        >
+          <View style={[styles.stepperDot, page === 2 && styles.stepperDotActive]}>
+            <Text style={[styles.stepperDotText, page === 2 && styles.stepperDotTextActive]}>2</Text>
+          </View>
+          <Text style={[styles.stepperTabText, page === 2 && styles.stepperTabTextActive]}>Schedule & Fleet</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* Restore Draft Banner */}
       {hasSavedDraft && (
         <View style={styles.draftBanner}>
@@ -709,595 +762,616 @@ const CreateTripScreen = () => {
       {loadingOptions ? (
         <ActivityIndicator color={Colors.primary} style={{ marginTop: Spacing['3xl'] }} />
       ) : (
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <ScrollView ref={scrollViewRef} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {optionsError ? <Text style={styles.errorText}>{optionsError}</Text> : null}
 
-          {/* Section 1: Customer Selection */}
-          <Text style={styles.sectionTitle}>1. Customer</Text>
-          <Card style={styles.pickerCard}>
-            {customers.length === 0 ? (
-              <Text style={styles.emptyHint}>No customers found</Text>
-            ) : (
-              customers.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={[styles.pickerItem, customerId === c.id ? styles.pickerItemActive : null]}
-                  activeOpacity={0.8}
-                  onPress={() => handleSelectCustomer(c.id)}
-                >
-                  <Text style={[styles.pickerItemText, customerId === c.id ? styles.pickerItemTextActive : null]}>
-                    {c.name}
-                  </Text>
-                  {customerId === c.id && <Check size={18} color={Colors.primary} strokeWidth={3} />}
-                </TouchableOpacity>
-              ))
-            )}
-          </Card>
-          {fieldErrors.customerId && <Text style={styles.fieldErrorBadge}>{fieldErrors.customerId}</Text>}
-
-          {/* Recent Routes Accelerator Chips */}
-          {customerId && recentRoutes.length > 0 && (
-            <View style={{ marginTop: Spacing.xs }}>
-              <Text style={styles.acceleratorTitle}>Recent Lanes for {selectedCustomerObj?.name}:</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
-                {recentRoutes.map((r, idx) => (
-                  <TouchableOpacity
-                    key={idx}
-                    style={styles.acceleratorChip}
-                    activeOpacity={0.8}
-                    onPress={() => handleSelectQuotation(r.quotation)}
-                  >
-                    <Zap size={12} color={Colors.primary} />
-                    <Text style={styles.acceleratorChipText}>{r.origin} → {r.dest}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          )}
-
-          {/* Section 2: Quotation Picker */}
-          {customerId ? (
+          {/* PAGE 1: Trip Scope, Quotation, Route & Rate Financials */}
+          {page === 1 && (
             <>
-              <Text style={styles.sectionTitle}>2. Active Quotations</Text>
+              {/* Section 1: Customer Selection */}
+              <Text style={styles.sectionTitle}>1. Customer</Text>
               <Card style={styles.pickerCard}>
-                {loadingQuotations ? (
-                  <ActivityIndicator color={Colors.primary} style={{ padding: Spacing.lg }} />
-                ) : quotations.length === 0 ? (
-                  <Text style={styles.emptyHint}>No quotations on file for this customer — enter the route and rate manually below.</Text>
+                {customers.length === 0 ? (
+                  <Text style={styles.emptyHint}>No customers found</Text>
                 ) : (
-                  quotations.map((q) => {
-                    const isSelected = selectedQuotation?.id === q.id;
-                    const origin = q.originLocation?.name ?? q.origin_name ?? '—';
-                    const dest = q.destinationLocation?.name ?? q.destination_name ?? '—';
-                    return (
-                      <TouchableOpacity
-                        key={q.id}
-                        style={[styles.quotationItem, isSelected ? styles.pickerItemActive : null]}
-                        activeOpacity={0.8}
-                        onPress={() => handleSelectQuotation(q)}
-                      >
-                        <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
-                          <FileText size={18} color={Colors.gray600} strokeWidth={2} />
-                        </View>
-                        <View style={styles.driverInfo}>
-                          <Text style={[styles.pickerItemText, isSelected ? styles.pickerItemTextActive : null]} numberOfLines={1}>
-                            {origin} → {dest}
-                          </Text>
-                          <Text style={styles.driverId}>
-                            {(q.vehicle_type ?? q.vehicle_class ?? 'Any vehicle')} · SAR {Number(q.rate ?? 0).toLocaleString()}
-                          </Text>
-                        </View>
-                        {isSelected && <Check size={18} color={Colors.primary} strokeWidth={3} />}
-                      </TouchableOpacity>
-                    );
-                  })
+                  customers.map((c) => (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[styles.pickerItem, customerId === c.id ? styles.pickerItemActive : null]}
+                      activeOpacity={0.8}
+                      onPress={() => handleSelectCustomer(c.id)}
+                    >
+                      <Text style={[styles.pickerItemText, customerId === c.id ? styles.pickerItemTextActive : null]}>
+                        {c.name}
+                      </Text>
+                      {customerId === c.id && <Check size={18} color={Colors.primary} strokeWidth={3} />}
+                    </TouchableOpacity>
+                  ))
                 )}
               </Card>
-            </>
-          ) : null}
+              {fieldErrors.customerId && <Text style={styles.fieldErrorBadge}>{fieldErrors.customerId}</Text>}
 
-          {/* Progressive Form Collapse Summary Pill */}
-          {isRouteCollapsed && pickupName && dropoffName ? (
-            <Card style={styles.appliedSummaryCard}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.appliedSummaryLane}>{pickupName} → {dropoffName}</Text>
-                <Text style={styles.appliedSummaryDetails}>
-                  {rateCategory === 'ROUND_TRIP' ? 'Round Trip' : 'Single Trip'} · Total Billing: SAR {effectiveBillingAmount.toLocaleString()}
-                </Text>
-              </View>
-              <TouchableOpacity style={styles.editRouteBtn} onPress={() => setIsRouteCollapsed(false)}>
-                <Edit3 size={14} color={Colors.primary} />
-                <Text style={styles.editRouteBtnText}>Edit</Text>
-              </TouchableOpacity>
-            </Card>
-          ) : (
-            <>
-              {/* Section 3: Route & Multi-Stop Configuration */}
-              <Text style={styles.sectionTitle}>3. Route & Multi-Stop Configuration</Text>
-              <Card style={styles.formCard}>
-                {/* Category Segmented Control */}
-                <View style={styles.segmentedContainer}>
-                  <TouchableOpacity
-                    style={[styles.segmentedBtn, rateCategory === 'SINGLE_TRIP' && styles.segmentedBtnActive]}
-                    onPress={() => setRateCategory('SINGLE_TRIP')}
-                  >
-                    <Text style={[styles.segmentedText, rateCategory === 'SINGLE_TRIP' && styles.segmentedTextActive]}>Single Trip</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.segmentedBtn, rateCategory === 'ROUND_TRIP' && styles.segmentedBtnActive]}
-                    onPress={() => setRateCategory('ROUND_TRIP')}
-                  >
-                    <Text style={[styles.segmentedText, rateCategory === 'ROUND_TRIP' && styles.segmentedTextActive]}>Round Trip</Text>
-                  </TouchableOpacity>
+              {/* Recent Routes Accelerator Chips */}
+              {customerId && recentRoutes.length > 0 && (
+                <View style={{ marginTop: Spacing.xs }}>
+                  <Text style={styles.acceleratorTitle}>Recent Lanes for {selectedCustomerObj?.name}:</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                    {recentRoutes.map((r, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={styles.acceleratorChip}
+                        activeOpacity={0.8}
+                        onPress={() => handleSelectQuotation(r.quotation)}
+                      >
+                        <Zap size={12} color={Colors.primary} />
+                        <Text style={styles.acceleratorChipText}>{r.origin} → {r.dest}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
                 </View>
+              )}
 
-                {/* Pickup Location */}
-                <View style={styles.formGroup}>
-                  <Input
-                    label="Pickup Location name *"
-                    value={pickupName}
-                    state={fieldErrors.pickupName ? 'error' : 'default'}
-                    errorText={fieldErrors.pickupName}
-                    onChangeText={(t) => {
-                      setPickupName(t); setPickupLocationId(undefined); setShowPickupResults(true);
-                      if (selectedQuotation) { setSelectedQuotation(null); setQuotationMatch(null); }
-                    }}
-                    placeholder="Search a saved location, or type a name"
-                    maxLength={120}
-                  />
-                  {pickupLocationId ? (
-                    <View style={styles.savedLocationChip}>
-                      <MapPin size={11} color={Colors.primary} strokeWidth={2.4} />
-                      <Text style={styles.savedLocationChipText}>Saved location — coordinates auto-filled</Text>
-                    </View>
-                  ) : (
-                    showPickupResults && pickupResults.length > 0 && (
-                      <View style={styles.searchResults}>
-                        {pickupResults.map((loc) => (
+              {/* Section 2: Quotation Picker */}
+              {customerId ? (
+                <>
+                  <Text style={styles.sectionTitle}>2. Active Quotations</Text>
+                  <Card style={styles.pickerCard}>
+                    {loadingQuotations ? (
+                      <ActivityIndicator color={Colors.primary} style={{ padding: Spacing.lg }} />
+                    ) : quotations.length === 0 ? (
+                      <Text style={styles.emptyHint}>No quotations on file for this customer — enter the route and rate manually below.</Text>
+                    ) : (
+                      quotations.map((q) => {
+                        const isSelected = selectedQuotation?.id === q.id;
+                        const origin = q.originLocation?.name ?? q.origin_name ?? '—';
+                        const dest = q.destinationLocation?.name ?? q.destination_name ?? '—';
+                        return (
                           <TouchableOpacity
-                            key={loc.id}
-                            style={styles.searchResultRow}
+                            key={q.id}
+                            style={[styles.quotationItem, isSelected ? styles.pickerItemActive : null]}
                             activeOpacity={0.8}
-                            onPress={() => {
-                              setPickupLocationId(loc.id); setPickupName(loc.name);
-                              if (loc.lat != null) setPickupLat(String(loc.lat));
-                              if (loc.lng != null) setPickupLng(String(loc.lng));
-                              setShowPickupResults(false);
-                            }}
+                            onPress={() => handleSelectQuotation(q)}
                           >
-                            <MapPin size={13} color={Colors.gray500} strokeWidth={2} />
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.searchResultName}>{loc.name}</Text>
-                              {loc.address ? <Text style={styles.searchResultAddress} numberOfLines={1}>{loc.address}</Text> : null}
+                            <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
+                              <FileText size={18} color={Colors.gray600} strokeWidth={2} />
                             </View>
+                            <View style={styles.driverInfo}>
+                              <Text style={[styles.pickerItemText, isSelected ? styles.pickerItemTextActive : null]} numberOfLines={1}>
+                                {origin} → {dest}
+                              </Text>
+                              <Text style={styles.driverId}>
+                                {(q.vehicle_type ?? q.vehicle_class ?? 'Any vehicle')} · SAR {Number(q.rate ?? 0).toLocaleString()}
+                              </Text>
+                            </View>
+                            {isSelected && <Check size={18} color={Colors.primary} strokeWidth={3} />}
                           </TouchableOpacity>
-                        ))}
-                      </View>
-                    )
-                  )}
-                  <Text style={styles.label}>Pickup Coordinates (lat, lng)</Text>
-                  <View style={styles.rowFields}>
-                    <Input style={{ flex: 1 }} value={pickupLat} onChangeText={setPickupLat} placeholder="Latitude" keyboardType="numeric" state={pickupLocationId ? 'disabled' : fieldErrors.pickupCoords ? 'error' : 'default'} />
-                    <Input style={{ flex: 1 }} value={pickupLng} onChangeText={setPickupLng} placeholder="Longitude" keyboardType="numeric" state={pickupLocationId ? 'disabled' : fieldErrors.pickupCoords ? 'error' : 'default'} />
-                  </View>
-                  {fieldErrors.pickupCoords && <Text style={styles.fieldErrorBadge}>{fieldErrors.pickupCoords}</Text>}
-                </View>
+                        );
+                      })
+                    )}
+                  </Card>
+                </>
+              ) : null}
 
-                {/* Intermediate Stops */}
-                {outboundStops.map((stop, idx) => (
-                  <View key={stop.id} style={[styles.formGroup, styles.intermediateStopCard]}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Text style={styles.stopLabel}>Intermediate Stop #{idx + 1}</Text>
-                      <TouchableOpacity onPress={() => removeOutboundStop(stop.id)}>
-                        <Trash2 size={16} color={Colors.error} />
+              {/* Progressive Form Collapse Summary Pill */}
+              {isRouteCollapsed && pickupName && dropoffName ? (
+                <Card style={styles.appliedSummaryCard}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.appliedSummaryLane}>{pickupName} → {dropoffName}</Text>
+                    <Text style={styles.appliedSummaryDetails}>
+                      {rateCategory === 'ROUND_TRIP' ? 'Round Trip' : 'Single Trip'} · Total Billing: SAR {effectiveBillingAmount.toLocaleString()}
+                    </Text>
+                  </View>
+                  <TouchableOpacity style={styles.editRouteBtn} onPress={() => setIsRouteCollapsed(false)}>
+                    <Edit3 size={14} color={Colors.primary} />
+                    <Text style={styles.editRouteBtnText}>Edit</Text>
+                  </TouchableOpacity>
+                </Card>
+              ) : (
+                <>
+                  {/* Section 3: Route & Multi-Stop Configuration */}
+                  <Text style={styles.sectionTitle}>3. Route & Multi-Stop Configuration</Text>
+                  <Card style={styles.formCard}>
+                    <View style={styles.segmentedContainer}>
+                      <TouchableOpacity
+                        style={[styles.segmentedBtn, rateCategory === 'SINGLE_TRIP' && styles.segmentedBtnActive]}
+                        onPress={() => setRateCategory('SINGLE_TRIP')}
+                      >
+                        <Text style={[styles.segmentedText, rateCategory === 'SINGLE_TRIP' && styles.segmentedTextActive]}>Single Trip</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.segmentedBtn, rateCategory === 'ROUND_TRIP' && styles.segmentedBtnActive]}
+                        onPress={() => setRateCategory('ROUND_TRIP')}
+                      >
+                        <Text style={[styles.segmentedText, rateCategory === 'ROUND_TRIP' && styles.segmentedTextActive]}>Round Trip</Text>
                       </TouchableOpacity>
                     </View>
-                    <Input
-                      label="Stop Location Name"
-                      value={stop.name}
-                      onChangeText={(t) => updateOutboundStop(stop.id, 'name', t)}
-                      placeholder="Location name (e.g. Al Hasa Yard)"
-                    />
-                    <View style={styles.rowFields}>
-                      <Input style={{ flex: 1 }} value={stop.lat} onChangeText={(t) => updateOutboundStop(stop.id, 'lat', t)} placeholder="Latitude" keyboardType="numeric" />
-                      <Input style={{ flex: 1 }} value={stop.lng} onChangeText={(t) => updateOutboundStop(stop.id, 'lng', t)} placeholder="Longitude" keyboardType="numeric" />
-                    </View>
-                  </View>
-                ))}
 
-                <TouchableOpacity style={styles.addStopBtn} onPress={addOutboundStop}>
-                  <Plus size={16} color={Colors.primary} />
-                  <Text style={styles.addStopBtnText}>Add Intermediate Stop</Text>
-                </TouchableOpacity>
+                    <View style={styles.formGroup}>
+                      <Input
+                        label="Pickup Location name *"
+                        value={pickupName}
+                        state={fieldErrors.pickupName ? 'error' : 'default'}
+                        errorText={fieldErrors.pickupName}
+                        onChangeText={(t) => {
+                          setPickupName(t); setPickupLocationId(undefined); setShowPickupResults(true);
+                          if (selectedQuotation) { setSelectedQuotation(null); setQuotationMatch(null); }
+                        }}
+                        placeholder="Search a saved location, or type a name"
+                        maxLength={120}
+                      />
+                      {pickupLocationId ? (
+                        <View style={styles.savedLocationChip}>
+                          <MapPin size={11} color={Colors.primary} strokeWidth={2.4} />
+                          <Text style={styles.savedLocationChipText}>Saved location — coordinates auto-filled</Text>
+                        </View>
+                      ) : (
+                        showPickupResults && pickupResults.length > 0 && (
+                          <View style={styles.searchResults}>
+                            {pickupResults.map((loc) => (
+                              <TouchableOpacity
+                                key={loc.id}
+                                style={styles.searchResultRow}
+                                activeOpacity={0.8}
+                                onPress={() => {
+                                  setPickupLocationId(loc.id); setPickupName(loc.name);
+                                  if (loc.lat != null) setPickupLat(String(loc.lat));
+                                  if (loc.lng != null) setPickupLng(String(loc.lng));
+                                  setShowPickupResults(false);
+                                }}
+                              >
+                                <MapPin size={13} color={Colors.gray500} strokeWidth={2} />
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.searchResultName}>{loc.name}</Text>
+                                  {loc.address ? <Text style={styles.searchResultAddress} numberOfLines={1}>{loc.address}</Text> : null}
+                                </View>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        )
+                      )}
+                      <Text style={styles.label}>Pickup Coordinates (lat, lng)</Text>
+                      <View style={styles.rowFields}>
+                        <Input style={{ flex: 1 }} value={pickupLat} onChangeText={setPickupLat} placeholder="Latitude" keyboardType="numeric" state={pickupLocationId ? 'disabled' : fieldErrors.pickupCoords ? 'error' : 'default'} />
+                        <Input style={{ flex: 1 }} value={pickupLng} onChangeText={setPickupLng} placeholder="Longitude" keyboardType="numeric" state={pickupLocationId ? 'disabled' : fieldErrors.pickupCoords ? 'error' : 'default'} />
+                      </View>
+                      {fieldErrors.pickupCoords && <Text style={styles.fieldErrorBadge}>{fieldErrors.pickupCoords}</Text>}
+                    </View>
+
+                    {outboundStops.map((stop, idx) => (
+                      <View key={stop.id} style={[styles.formGroup, styles.intermediateStopCard]}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={styles.stopLabel}>Intermediate Stop #{idx + 1}</Text>
+                          <TouchableOpacity onPress={() => removeOutboundStop(stop.id)}>
+                            <Trash2 size={16} color={Colors.error} />
+                          </TouchableOpacity>
+                        </View>
+                        <Input
+                          label="Stop Location Name"
+                          value={stop.name}
+                          onChangeText={(t) => updateOutboundStop(stop.id, 'name', t)}
+                          placeholder="Location name (e.g. Al Hasa Yard)"
+                        />
+                        <View style={styles.rowFields}>
+                          <Input style={{ flex: 1 }} value={stop.lat} onChangeText={(t) => updateOutboundStop(stop.id, 'lat', t)} placeholder="Latitude" keyboardType="numeric" />
+                          <Input style={{ flex: 1 }} value={stop.lng} onChangeText={(t) => updateOutboundStop(stop.id, 'lng', t)} placeholder="Longitude" keyboardType="numeric" />
+                        </View>
+                      </View>
+                    ))}
+
+                    <TouchableOpacity style={styles.addStopBtn} onPress={addOutboundStop}>
+                      <Plus size={16} color={Colors.primary} />
+                      <Text style={styles.addStopBtnText}>Add Intermediate Stop</Text>
+                    </TouchableOpacity>
+
+                    <View style={styles.formDivider} />
+
+                    <View style={styles.formGroup}>
+                      <Input
+                        label="Dropoff Location name *"
+                        value={dropoffName}
+                        state={fieldErrors.dropoffName ? 'error' : 'default'}
+                        errorText={fieldErrors.dropoffName}
+                        onChangeText={(t) => {
+                          setDropoffName(t); setDropoffLocationId(undefined); setShowDropoffResults(true);
+                          if (selectedQuotation) { setSelectedQuotation(null); setQuotationMatch(null); }
+                        }}
+                        placeholder="Search a saved location, or type a name"
+                        maxLength={120}
+                      />
+                      {dropoffLocationId ? (
+                        <View style={styles.savedLocationChip}>
+                          <MapPin size={11} color={Colors.primary} strokeWidth={2.4} />
+                          <Text style={styles.savedLocationChipText}>Saved location — coordinates auto-filled</Text>
+                        </View>
+                      ) : (
+                        showDropoffResults && dropoffResults.length > 0 && (
+                          <View style={styles.searchResults}>
+                            {dropoffResults.map((loc) => (
+                              <TouchableOpacity
+                                key={loc.id}
+                                style={styles.searchResultRow}
+                                activeOpacity={0.8}
+                                onPress={() => {
+                                  setDropoffLocationId(loc.id); setDropoffName(loc.name);
+                                  if (loc.lat != null) setDropoffLat(String(loc.lat));
+                                  if (loc.lng != null) setDropoffLng(String(loc.lng));
+                                  setShowDropoffResults(false);
+                                }}
+                              >
+                                <MapPin size={13} color={Colors.gray500} strokeWidth={2} />
+                                <View style={{ flex: 1 }}>
+                                  <Text style={styles.searchResultName}>{loc.name}</Text>
+                                  {loc.address ? <Text style={styles.searchResultAddress} numberOfLines={1}>{loc.address}</Text> : null}
+                                </View>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        )
+                      )}
+                      <Text style={styles.label}>Dropoff Coordinates (lat, lng)</Text>
+                      <View style={styles.rowFields}>
+                        <Input style={{ flex: 1 }} value={dropoffLat} onChangeText={setDropoffLat} placeholder="Latitude" keyboardType="numeric" state={dropoffLocationId ? 'disabled' : fieldErrors.dropoffCoords ? 'error' : 'default'} />
+                        <Input style={{ flex: 1 }} value={dropoffLng} onChangeText={setDropoffLng} placeholder="Longitude" keyboardType="numeric" state={dropoffLocationId ? 'disabled' : fieldErrors.dropoffCoords ? 'error' : 'default'} />
+                      </View>
+                      {fieldErrors.dropoffCoords && <Text style={styles.fieldErrorBadge}>{fieldErrors.dropoffCoords}</Text>}
+                    </View>
+                  </Card>
+
+                  {/* Section 4: Rate & Financials */}
+                  <Text style={styles.sectionTitle}>4. Rate & Financials</Text>
+                  <Card style={styles.formCard}>
+                    {lookingUpRate ? (
+                      <ActivityIndicator color={Colors.primary} />
+                    ) : quotationMatch && !manualRateOverride ? (
+                      <View>
+                        <View style={styles.rateMatchedRow}>
+                          <Text style={styles.label}>Customer Billing Rate</Text>
+                          <Text style={styles.rateValue}>SAR {quotationMatch.rate.toLocaleString()}</Text>
+                        </View>
+                        <View style={styles.rateMatchedRow}>
+                          <Text style={styles.label}>Driver Payout</Text>
+                          <Text style={styles.rateValue}>SAR {quotationMatch.driverPayout.toLocaleString()}</Text>
+                        </View>
+                        <Text style={styles.rateSourceHint}>
+                          {selectedQuotation ? 'From the selected quotation.' : 'Matched an existing quotation for this customer & route.'}
+                        </Text>
+                        <TouchableOpacity onPress={() => setManualRateOverride(true)}>
+                          <Text style={styles.rateOverrideLink}>Use custom rate entry</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <View>
+                        {quotationMatch === null && !lookingUpRate && customerId ? (
+                          <Text style={styles.rateSourceHint}>No matching quotation found — enter rates manually below.</Text>
+                        ) : null}
+                        <Input
+                          label="Customer Base Billing Rate (SAR) *"
+                          value={billingAmountInput}
+                          state={fieldErrors.billingAmount ? 'error' : 'default'}
+                          errorText={fieldErrors.billingAmount}
+                          onChangeText={setBillingAmountInput}
+                          placeholder="0.00"
+                          keyboardType="numeric"
+                        />
+                        {fleetType === 'OWN_FLEET' && (
+                          <Input
+                            label="Driver Payout (SAR) *"
+                            value={driverPayoutInput}
+                            state={fieldErrors.driverPayout ? 'error' : 'default'}
+                            errorText={fieldErrors.driverPayout}
+                            onChangeText={setDriverPayoutInput}
+                            placeholder="0.00"
+                            keyboardType="numeric"
+                          />
+                        )}
+                        {quotationMatch && (
+                          <TouchableOpacity onPress={() => setManualRateOverride(false)}>
+                            <Text style={styles.rateOverrideLink}>Use matched quotation rate instead</Text>
+                          </TouchableOpacity>
+                        )}
+
+                        <View style={styles.toggleRow}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={styles.toggleLabel}>Save as Reusable Quotation</Text>
+                            <Text style={styles.toggleSublabel}>Store rate for future trips on this customer & lane</Text>
+                          </View>
+                          <Switch
+                            value={saveAsPersistentQuotation}
+                            onValueChange={setSaveAsPersistentQuotation}
+                            trackColor={{ false: Colors.gray200, true: Colors.primary }}
+                          />
+                        </View>
+                      </View>
+                    )}
+
+                    <View style={styles.formDivider} />
+                    <Text style={styles.label}>Itemized Additional Charges (Surcharges)</Text>
+
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginVertical: 6 }}>
+                      {CHARGE_PRESETS.map((preset, idx) => (
+                        <TouchableOpacity
+                          key={idx}
+                          style={styles.presetChip}
+                          onPress={() => addPresetCharge(preset)}
+                        >
+                          <Plus size={11} color={Colors.gray700} />
+                          <Text style={styles.presetChipText}>{preset.type} (+{preset.amount})</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    {additionalCharges.map((c) => (
+                      <View key={c.id} style={styles.chargeRow}>
+                        <Text style={styles.chargeType}>{c.charge_type}</Text>
+                        <Text style={styles.chargeAmount}>+SAR {c.amount.toLocaleString()}</Text>
+                        <TouchableOpacity onPress={() => removeCharge(c.id)}>
+                          <Trash2 size={14} color={Colors.error} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+
+                    <View style={[styles.rowFields, { marginTop: 6 }]}>
+                      <Input style={{ flex: 2 }} placeholder="Custom charge name" value={customChargeType} onChangeText={setCustomChargeType} />
+                      <Input style={{ flex: 1 }} placeholder="SAR" value={customChargeAmount} onChangeText={setCustomChargeAmount} keyboardType="numeric" />
+                      <TouchableOpacity style={styles.addChargeBtn} onPress={addCustomCharge}>
+                        <Plus size={18} color={Colors.white} />
+                      </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.financialSummaryCard}>
+                      <View style={styles.summaryRow}>
+                        <Text style={styles.summaryLabel}>Base Billing Rate:</Text>
+                        <Text style={styles.summaryValue}>SAR {baseBillingRate.toLocaleString()}</Text>
+                      </View>
+                      {totalAdditionalCharges > 0 && (
+                        <View style={styles.summaryRow}>
+                          <Text style={styles.summaryLabel}>Additional Surcharges:</Text>
+                          <Text style={styles.summaryValue}>+SAR {totalAdditionalCharges.toLocaleString()}</Text>
+                        </View>
+                      )}
+                      <View style={[styles.summaryRow, { borderTopWidth: 1, borderTopColor: Colors.gray200, paddingTop: 6 }]}>
+                        <Text style={styles.totalSummaryLabel}>Total Customer Billing:</Text>
+                        <Text style={styles.totalSummaryValue}>SAR {effectiveBillingAmount.toLocaleString()}</Text>
+                      </View>
+                      <View style={styles.summaryRow}>
+                        <Text style={styles.summaryLabel}>{fleetType === 'THIRD_PARTY' ? 'Subcontractor Cost:' : 'Driver Payout:'}</Text>
+                        <Text style={styles.summaryValue}>SAR {financialCost.toLocaleString()}</Text>
+                      </View>
+                      <View style={styles.summaryRow}>
+                        <Text style={styles.summaryLabel}>Expected Gross Margin:</Text>
+                        <Text style={[styles.summaryValue, { color: netMargin >= 0 ? Colors.success : Colors.error }]}>
+                          SAR {netMargin.toLocaleString()} ({marginPercent.toFixed(1)}%)
+                        </Text>
+                      </View>
+                    </View>
+                  </Card>
+                </>
+              )}
+
+              {/* Page 1 Bottom Action Button */}
+              <View style={{ marginTop: Spacing.md }}>
+                <Button
+                  title="Continue to Schedule & Fleet →"
+                  onPress={() => {
+                    if (validatePage1Fields()) {
+                      setPage(2);
+                      scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+                    }
+                  }}
+                />
+              </View>
+            </>
+          )}
+
+          {/* PAGE 2: Schedule & Fleet Execution Assignment */}
+          {page === 2 && (
+            <>
+              {/* Section 5: Schedule (Touch Date/Time Presets & Auto-ETA) */}
+              <Text style={styles.sectionTitle}>5. Departure & Auto-ETA Schedule</Text>
+              <Card style={styles.formCard}>
+                <Text style={styles.label}>Departure Schedule</Text>
+                <View style={{ flexDirection: 'row', gap: 6, marginVertical: 4 }}>
+                  <TouchableOpacity
+                    style={styles.touchPresetChip}
+                    onPress={() => {
+                      const todayStr = formatDateDDMMYYYY(new Date());
+                      setDate(todayStr);
+                      calculateAutoEta(todayStr, time);
+                    }}
+                  >
+                    <Text style={styles.touchPresetText}>Today</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.touchPresetChip}
+                    onPress={() => {
+                      const tom = new Date(Date.now() + 24 * 60 * 60 * 1000);
+                      const tomStr = formatDateDDMMYYYY(tom);
+                      setDate(tomStr);
+                      calculateAutoEta(tomStr, time);
+                    }}
+                  >
+                    <Text style={styles.touchPresetText}>Tomorrow</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
+                  {['08:00', '12:00', '16:00', '20:00'].map((tVal) => (
+                    <TouchableOpacity
+                      key={tVal}
+                      style={[styles.touchPresetChip, time === tVal && styles.touchPresetChipActive]}
+                      onPress={() => {
+                        setTime(tVal);
+                        calculateAutoEta(date, tVal);
+                      }}
+                    >
+                      <Text style={[styles.touchPresetText, time === tVal && styles.touchPresetTextActive]}>{tVal}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={styles.rowFields}>
+                  <Input style={{ flex: 1 }} label="Date" value={date} onChangeText={(t) => { setDate(t); calculateAutoEta(t, time); }} placeholder="DD/MM/YYYY" keyboardType="numeric" />
+                  <Input style={{ flex: 1 }} label="Time" value={time} onChangeText={(t) => { setTime(t); calculateAutoEta(date, t); }} placeholder="HH:MM" keyboardType="numeric" />
+                </View>
 
                 <View style={styles.formDivider} />
 
-                {/* Dropoff Location */}
-                <View style={styles.formGroup}>
-                  <Input
-                    label="Dropoff Location name *"
-                    value={dropoffName}
-                    state={fieldErrors.dropoffName ? 'error' : 'default'}
-                    errorText={fieldErrors.dropoffName}
-                    onChangeText={(t) => {
-                      setDropoffName(t); setDropoffLocationId(undefined); setShowDropoffResults(true);
-                      if (selectedQuotation) { setSelectedQuotation(null); setQuotationMatch(null); }
-                    }}
-                    placeholder="Search a saved location, or type a name"
-                    maxLength={120}
-                  />
-                  {dropoffLocationId ? (
-                    <View style={styles.savedLocationChip}>
-                      <MapPin size={11} color={Colors.primary} strokeWidth={2.4} />
-                      <Text style={styles.savedLocationChipText}>Saved location — coordinates auto-filled</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={styles.label}>Delivery Due Date & Time</Text>
+                  {isAutoEta && (
+                    <View style={styles.autoEtaChip}>
+                      <Zap size={10} color={Colors.primary} />
+                      <Text style={styles.autoEtaChipText}>Auto-computed ETA (+4 hrs)</Text>
                     </View>
-                  ) : (
-                    showDropoffResults && dropoffResults.length > 0 && (
-                      <View style={styles.searchResults}>
-                        {dropoffResults.map((loc) => (
-                          <TouchableOpacity
-                            key={loc.id}
-                            style={styles.searchResultRow}
-                            activeOpacity={0.8}
-                            onPress={() => {
-                              setDropoffLocationId(loc.id); setDropoffName(loc.name);
-                              if (loc.lat != null) setDropoffLat(String(loc.lat));
-                              if (loc.lng != null) setDropoffLng(String(loc.lng));
-                              setShowDropoffResults(false);
-                            }}
-                          >
-                            <MapPin size={13} color={Colors.gray500} strokeWidth={2} />
-                            <View style={{ flex: 1 }}>
-                              <Text style={styles.searchResultName}>{loc.name}</Text>
-                              {loc.address ? <Text style={styles.searchResultAddress} numberOfLines={1}>{loc.address}</Text> : null}
-                            </View>
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )
                   )}
-                  <Text style={styles.label}>Dropoff Coordinates (lat, lng)</Text>
-                  <View style={styles.rowFields}>
-                    <Input style={{ flex: 1 }} value={dropoffLat} onChangeText={setDropoffLat} placeholder="Latitude" keyboardType="numeric" state={dropoffLocationId ? 'disabled' : fieldErrors.dropoffCoords ? 'error' : 'default'} />
-                    <Input style={{ flex: 1 }} value={dropoffLng} onChangeText={setDropoffLng} placeholder="Longitude" keyboardType="numeric" state={dropoffLocationId ? 'disabled' : fieldErrors.dropoffCoords ? 'error' : 'default'} />
-                  </View>
-                  {fieldErrors.dropoffCoords && <Text style={styles.fieldErrorBadge}>{fieldErrors.dropoffCoords}</Text>}
                 </View>
+                <View style={styles.rowFields}>
+                  <Input style={{ flex: 1 }} value={etaDate} onChangeText={(t) => { setEtaDate(t); setIsAutoEta(false); }} placeholder="DD/MM/YYYY" keyboardType="numeric" />
+                  <Input style={{ flex: 1 }} value={etaTime} onChangeText={(t) => { setEtaTime(t); setIsAutoEta(false); }} placeholder="HH:MM" keyboardType="numeric" />
+                </View>
+                {fieldErrors.deliveryDue && <Text style={styles.fieldErrorBadge}>{fieldErrors.deliveryDue}</Text>}
               </Card>
 
-              {/* Section 4: Rate & Financials */}
-              <Text style={styles.sectionTitle}>4. Rate & Financials</Text>
+              {/* Section 6: Fleet Assignment (Own Fleet vs 3PL) */}
+              <Text style={styles.sectionTitle}>6. Fleet & Execution Assignment</Text>
               <Card style={styles.formCard}>
-                {lookingUpRate ? (
-                  <ActivityIndicator color={Colors.primary} />
-                ) : quotationMatch && !manualRateOverride ? (
-                  <View>
-                    <View style={styles.rateMatchedRow}>
-                      <Text style={styles.label}>Customer Billing Rate</Text>
-                      <Text style={styles.rateValue}>SAR {quotationMatch.rate.toLocaleString()}</Text>
-                    </View>
-                    <View style={styles.rateMatchedRow}>
-                      <Text style={styles.label}>Driver Payout</Text>
-                      <Text style={styles.rateValue}>SAR {quotationMatch.driverPayout.toLocaleString()}</Text>
-                    </View>
-                    <Text style={styles.rateSourceHint}>
-                      {selectedQuotation ? 'From the selected quotation.' : 'Matched an existing quotation for this customer & route.'}
-                    </Text>
-                    <TouchableOpacity onPress={() => setManualRateOverride(true)}>
-                      <Text style={styles.rateOverrideLink}>Use custom rate entry</Text>
-                    </TouchableOpacity>
-                  </View>
+                <View style={styles.segmentedContainer}>
+                  <TouchableOpacity
+                    style={[styles.segmentedBtn, fleetType === 'OWN_FLEET' && styles.segmentedBtnActive]}
+                    onPress={() => setFleetType('OWN_FLEET')}
+                  >
+                    <Text style={[styles.segmentedText, fleetType === 'OWN_FLEET' && styles.segmentedTextActive]}>Own Fleet</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.segmentedBtn, fleetType === 'THIRD_PARTY' && styles.segmentedBtnActive]}
+                    onPress={() => setFleetType('THIRD_PARTY')}
+                  >
+                    <Text style={[styles.segmentedText, fleetType === 'THIRD_PARTY' && styles.segmentedTextActive]}>3PL Subcontractor</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {fleetType === 'OWN_FLEET' ? (
+                  <>
+                    <Text style={styles.label}>Driver Assignment</Text>
+                    <Card style={styles.pickerCard}>
+                      <TouchableOpacity
+                        style={[styles.driverItem, selectedDriver === ASSIGN_LATER ? styles.driverItemActive : null]}
+                        onPress={() => setSelectedDriver(ASSIGN_LATER)}
+                      >
+                        <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
+                          <Clock size={20} color={Colors.gray600} strokeWidth={2} />
+                        </View>
+                        <View style={styles.driverInfo}>
+                          <Text style={styles.driverName}>Assign Later</Text>
+                          <Text style={styles.driverId}>Dispatch driver later</Text>
+                        </View>
+                        {selectedDriver === ASSIGN_LATER && <Check size={18} color={Colors.primary} strokeWidth={3} />}
+                      </TouchableOpacity>
+                      {drivers.map((driver) => (
+                        <TouchableOpacity
+                          key={driver.id}
+                          style={[styles.driverItem, selectedDriver === driver.id ? styles.driverItemActive : null]}
+                          onPress={() => setSelectedDriver(driver.id)}
+                        >
+                          <View style={styles.driverAvatar}>
+                            <Text style={styles.driverAvatarText}>{driver.first_name[0]}{driver.last_name[0]}</Text>
+                          </View>
+                          <View style={styles.driverInfo}>
+                            <Text style={styles.driverName}>{driver.first_name} {driver.last_name}</Text>
+                            <Text style={styles.driverId}>{driver.ref_id ?? driver.license_number}</Text>
+                          </View>
+                          <StatusBadge status="Available" />
+                        </TouchableOpacity>
+                      ))}
+                    </Card>
+
+                    <Text style={styles.label}>Vehicle Assignment</Text>
+                    <Card style={styles.pickerCard}>
+                      <TouchableOpacity
+                        style={[styles.driverItem, selectedVehicle === ASSIGN_LATER ? styles.driverItemActive : null]}
+                        onPress={() => setSelectedVehicle(ASSIGN_LATER)}
+                      >
+                        <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
+                          <Clock size={20} color={Colors.gray600} strokeWidth={2} />
+                        </View>
+                        <View style={styles.driverInfo}>
+                          <Text style={styles.driverName}>Assign Later</Text>
+                          <Text style={styles.driverId}>Assign vehicle later</Text>
+                        </View>
+                        {selectedVehicle === ASSIGN_LATER && <Check size={18} color={Colors.primary} strokeWidth={3} />}
+                      </TouchableOpacity>
+                      {vehicles.map((v) => (
+                        <TouchableOpacity
+                          key={v.id}
+                          style={[styles.driverItem, selectedVehicle === v.id ? styles.driverItemActive : null]}
+                          onPress={() => setSelectedVehicle(v.id)}
+                        >
+                          <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
+                            <Truck size={22} color={Colors.primary} strokeWidth={2} />
+                          </View>
+                          <View style={styles.driverInfo}>
+                            <Text style={styles.driverName}>{v.plate_number}</Text>
+                            <Text style={styles.driverId}>{v.asset_type}</Text>
+                          </View>
+                          <StatusBadge status="Available" />
+                        </TouchableOpacity>
+                      ))}
+                    </Card>
+                  </>
                 ) : (
-                  <View>
-                    {quotationMatch === null && !lookingUpRate && customerId ? (
-                      <Text style={styles.rateSourceHint}>No matching quotation found — enter rates manually below.</Text>
-                    ) : null}
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>3PL Provider Selection</Text>
+                    <Card style={styles.pickerCard}>
+                      {thirdPartyProviders.map((p) => (
+                        <TouchableOpacity
+                          key={p.id}
+                          style={[styles.pickerItem, selected3PLProvider === p.id && styles.pickerItemActive]}
+                          onPress={() => setSelected3PLProvider(p.id)}
+                        >
+                          <Building2 size={18} color={Colors.gray600} />
+                          <Text style={styles.pickerItemText}>{p.name}</Text>
+                          {selected3PLProvider === p.id && <Check size={18} color={Colors.primary} strokeWidth={3} />}
+                        </TouchableOpacity>
+                      ))}
+                    </Card>
+                    <Input label="Subcontractor Driver Name" value={thirdPartyDriverName} onChangeText={setThirdPartyDriverName} placeholder="Driver full name" />
+                    <Input label="Subcontractor Driver Phone" value={thirdPartyDriverPhone} onChangeText={setThirdPartyDriverPhone} placeholder="+966 5X XXX XXXX" keyboardType="phone-pad" />
+                    <Input label="Subcontractor Truck Plate" value={thirdPartyVehiclePlate} onChangeText={setThirdPartyVehiclePlate} placeholder="Plate (e.g. 1234 ABC)" />
                     <Input
-                      label="Customer Base Billing Rate (SAR) *"
-                      value={billingAmountInput}
-                      state={fieldErrors.billingAmount ? 'error' : 'default'}
-                      errorText={fieldErrors.billingAmount}
-                      onChangeText={setBillingAmountInput}
+                      label="Subcontractor Agreed Cost (SAR) *"
+                      value={thirdPartyCostInput}
+                      state={fieldErrors.thirdPartyCost ? 'error' : 'default'}
+                      errorText={fieldErrors.thirdPartyCost}
+                      onChangeText={setThirdPartyCostInput}
                       placeholder="0.00"
                       keyboardType="numeric"
                     />
-                    {fleetType === 'OWN_FLEET' && (
-                      <Input
-                        label="Driver Payout (SAR) *"
-                        value={driverPayoutInput}
-                        state={fieldErrors.driverPayout ? 'error' : 'default'}
-                        errorText={fieldErrors.driverPayout}
-                        onChangeText={setDriverPayoutInput}
-                        placeholder="0.00"
-                        keyboardType="numeric"
-                      />
-                    )}
-                    {quotationMatch && (
-                      <TouchableOpacity onPress={() => setManualRateOverride(false)}>
-                        <Text style={styles.rateOverrideLink}>Use matched quotation rate instead</Text>
-                      </TouchableOpacity>
-                    )}
-
-                    {/* Save as reusable quotation toggle */}
-                    <View style={styles.toggleRow}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.toggleLabel}>Save as Reusable Quotation</Text>
-                        <Text style={styles.toggleSublabel}>Store rate for future trips on this customer & lane</Text>
-                      </View>
-                      <Switch
-                        value={saveAsPersistentQuotation}
-                        onValueChange={setSaveAsPersistentQuotation}
-                        trackColor={{ false: Colors.gray200, true: Colors.primary }}
-                      />
-                    </View>
                   </View>
                 )}
-
-                {/* Additional Charges Presets & Line Items */}
-                <View style={styles.formDivider} />
-                <Text style={styles.label}>Itemized Additional Charges (Surcharges)</Text>
-
-                {/* Presets */}
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginVertical: 6 }}>
-                  {CHARGE_PRESETS.map((preset, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      style={styles.presetChip}
-                      onPress={() => addPresetCharge(preset)}
-                    >
-                      <Plus size={11} color={Colors.gray700} />
-                      <Text style={styles.presetChipText}>{preset.type} (+{preset.amount})</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-
-                {/* Added charge items list */}
-                {additionalCharges.map((c) => (
-                  <View key={c.id} style={styles.chargeRow}>
-                    <Text style={styles.chargeType}>{c.charge_type}</Text>
-                    <Text style={styles.chargeAmount}>+SAR {c.amount.toLocaleString()}</Text>
-                    <TouchableOpacity onPress={() => removeCharge(c.id)}>
-                      <Trash2 size={14} color={Colors.error} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-
-                {/* Custom charge input */}
-                <View style={[styles.rowFields, { marginTop: 6 }]}>
-                  <Input style={{ flex: 2 }} placeholder="Custom charge name" value={customChargeType} onChangeText={setCustomChargeType} />
-                  <Input style={{ flex: 1 }} placeholder="SAR" value={customChargeAmount} onChangeText={setCustomChargeAmount} keyboardType="numeric" />
-                  <TouchableOpacity style={styles.addChargeBtn} onPress={addCustomCharge}>
-                    <Plus size={18} color={Colors.white} />
-                  </TouchableOpacity>
-                </View>
-
-                {/* Total Financial Summary Card */}
-                <View style={styles.financialSummaryCard}>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Base Billing Rate:</Text>
-                    <Text style={styles.summaryValue}>SAR {baseBillingRate.toLocaleString()}</Text>
-                  </View>
-                  {totalAdditionalCharges > 0 && (
-                    <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>Additional Surcharges:</Text>
-                      <Text style={styles.summaryValue}>+SAR {totalAdditionalCharges.toLocaleString()}</Text>
-                    </View>
-                  )}
-                  <View style={[styles.summaryRow, { borderTopWidth: 1, borderTopColor: Colors.gray200, paddingTop: 6 }]}>
-                    <Text style={styles.totalSummaryLabel}>Total Customer Billing:</Text>
-                    <Text style={styles.totalSummaryValue}>SAR {effectiveBillingAmount.toLocaleString()}</Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>{fleetType === 'THIRD_PARTY' ? 'Subcontractor Cost:' : 'Driver Payout:'}</Text>
-                    <Text style={styles.summaryValue}>SAR {financialCost.toLocaleString()}</Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Expected Gross Margin:</Text>
-                    <Text style={[styles.summaryValue, { color: netMargin >= 0 ? Colors.success : Colors.error }]}>
-                      SAR {netMargin.toLocaleString()} ({marginPercent.toFixed(1)}%)
-                    </Text>
-                  </View>
-                </View>
               </Card>
-            </>
-          )}
 
-          {/* Section 5: Schedule (Touch Date/Time Presets & Auto-ETA) */}
-          <Text style={styles.sectionTitle}>5. Departure & Auto-ETA Schedule</Text>
-          <Card style={styles.formCard}>
-            <Text style={styles.label}>Departure Schedule</Text>
-            {/* Date Preset Chips */}
-            <View style={{ flexDirection: 'row', gap: 6, marginVertical: 4 }}>
-              <TouchableOpacity
-                style={styles.touchPresetChip}
-                onPress={() => {
-                  const todayStr = formatDateDDMMYYYY(new Date());
-                  setDate(todayStr);
-                  calculateAutoEta(todayStr, time);
-                }}
-              >
-                <Text style={styles.touchPresetText}>Today</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.touchPresetChip}
-                onPress={() => {
-                  const tom = new Date(Date.now() + 24 * 60 * 60 * 1000);
-                  const tomStr = formatDateDDMMYYYY(tom);
-                  setDate(tomStr);
-                  calculateAutoEta(tomStr, time);
-                }}
-              >
-                <Text style={styles.touchPresetText}>Tomorrow</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Time Preset Chips */}
-            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8 }}>
-              {['08:00', '12:00', '16:00', '20:00'].map((tVal) => (
+              {/* Page 2 Bottom Action Bar: Back & Review/Submit */}
+              <View style={styles.page2NavRow}>
                 <TouchableOpacity
-                  key={tVal}
-                  style={[styles.touchPresetChip, time === tVal && styles.touchPresetChipActive]}
+                  style={styles.backStepBtn}
                   onPress={() => {
-                    setTime(tVal);
-                    calculateAutoEta(date, tVal);
+                    setPage(1);
+                    scrollViewRef.current?.scrollTo({ y: 0, animated: true });
                   }}
                 >
-                  <Text style={[styles.touchPresetText, time === tVal && styles.touchPresetTextActive]}>{tVal}</Text>
+                  <Text style={styles.backStepBtnText}>← Back</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.rowFields}>
-              <Input style={{ flex: 1 }} label="Date" value={date} onChangeText={(t) => { setDate(t); calculateAutoEta(t, time); }} placeholder="DD/MM/YYYY" keyboardType="numeric" />
-              <Input style={{ flex: 1 }} label="Time" value={time} onChangeText={(t) => { setTime(t); calculateAutoEta(date, t); }} placeholder="HH:MM" keyboardType="numeric" />
-            </View>
-
-            <View style={styles.formDivider} />
-
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={styles.label}>Delivery Due Date & Time</Text>
-              {isAutoEta && (
-                <View style={styles.autoEtaChip}>
-                  <Zap size={10} color={Colors.primary} />
-                  <Text style={styles.autoEtaChipText}>Auto-computed ETA (+4 hrs)</Text>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    title={submitting ? 'Creating…' : 'Review & Create Trip'}
+                    onPress={handleInitiateSubmit}
+                    disabled={submitting}
+                    loading={submitting}
+                  />
                 </View>
-              )}
-            </View>
-            <View style={styles.rowFields}>
-              <Input style={{ flex: 1 }} value={etaDate} onChangeText={(t) => { setEtaDate(t); setIsAutoEta(false); }} placeholder="DD/MM/YYYY" keyboardType="numeric" />
-              <Input style={{ flex: 1 }} value={etaTime} onChangeText={(t) => { setEtaTime(t); setIsAutoEta(false); }} placeholder="HH:MM" keyboardType="numeric" />
-            </View>
-            {fieldErrors.deliveryDue && <Text style={styles.fieldErrorBadge}>{fieldErrors.deliveryDue}</Text>}
-          </Card>
-
-          {/* Section 6: Fleet Assignment (Own Fleet vs 3PL) */}
-          <Text style={styles.sectionTitle}>6. Fleet & Execution Assignment</Text>
-          <Card style={styles.formCard}>
-            {/* Segmented Fleet Toggle */}
-            <View style={styles.segmentedContainer}>
-              <TouchableOpacity
-                style={[styles.segmentedBtn, fleetType === 'OWN_FLEET' && styles.segmentedBtnActive]}
-                onPress={() => setFleetType('OWN_FLEET')}
-              >
-                <Text style={[styles.segmentedText, fleetType === 'OWN_FLEET' && styles.segmentedTextActive]}>Own Fleet</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.segmentedBtn, fleetType === 'THIRD_PARTY' && styles.segmentedBtnActive]}
-                onPress={() => setFleetType('THIRD_PARTY')}
-              >
-                <Text style={[styles.segmentedText, fleetType === 'THIRD_PARTY' && styles.segmentedTextActive]}>3PL Subcontractor</Text>
-              </TouchableOpacity>
-            </View>
-
-            {fleetType === 'OWN_FLEET' ? (
-              <>
-                {/* Driver Selector */}
-                <Text style={styles.label}>Driver Assignment</Text>
-                <Card style={styles.pickerCard}>
-                  <TouchableOpacity
-                    style={[styles.driverItem, selectedDriver === ASSIGN_LATER ? styles.driverItemActive : null]}
-                    onPress={() => setSelectedDriver(ASSIGN_LATER)}
-                  >
-                    <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
-                      <Clock size={20} color={Colors.gray600} strokeWidth={2} />
-                    </View>
-                    <View style={styles.driverInfo}>
-                      <Text style={styles.driverName}>Assign Later</Text>
-                      <Text style={styles.driverId}>Dispatch driver later</Text>
-                    </View>
-                    {selectedDriver === ASSIGN_LATER && <Check size={18} color={Colors.primary} strokeWidth={3} />}
-                  </TouchableOpacity>
-                  {drivers.map((driver) => (
-                    <TouchableOpacity
-                      key={driver.id}
-                      style={[styles.driverItem, selectedDriver === driver.id ? styles.driverItemActive : null]}
-                      onPress={() => setSelectedDriver(driver.id)}
-                    >
-                      <View style={styles.driverAvatar}>
-                        <Text style={styles.driverAvatarText}>{driver.first_name[0]}{driver.last_name[0]}</Text>
-                      </View>
-                      <View style={styles.driverInfo}>
-                        <Text style={styles.driverName}>{driver.first_name} {driver.last_name}</Text>
-                        <Text style={styles.driverId}>{driver.ref_id ?? driver.license_number}</Text>
-                      </View>
-                      <StatusBadge status="Available" />
-                    </TouchableOpacity>
-                  ))}
-                </Card>
-
-                {/* Vehicle Selector */}
-                <Text style={styles.label}>Vehicle Assignment</Text>
-                <Card style={styles.pickerCard}>
-                  <TouchableOpacity
-                    style={[styles.driverItem, selectedVehicle === ASSIGN_LATER ? styles.driverItemActive : null]}
-                    onPress={() => setSelectedVehicle(ASSIGN_LATER)}
-                  >
-                    <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
-                      <Clock size={20} color={Colors.gray600} strokeWidth={2} />
-                    </View>
-                    <View style={styles.driverInfo}>
-                      <Text style={styles.driverName}>Assign Later</Text>
-                      <Text style={styles.driverId}>Assign vehicle later</Text>
-                    </View>
-                    {selectedVehicle === ASSIGN_LATER && <Check size={18} color={Colors.primary} strokeWidth={3} />}
-                  </TouchableOpacity>
-                  {vehicles.map((v) => (
-                    <TouchableOpacity
-                      key={v.id}
-                      style={[styles.driverItem, selectedVehicle === v.id ? styles.driverItemActive : null]}
-                      onPress={() => setSelectedVehicle(v.id)}
-                    >
-                      <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
-                        <Truck size={22} color={Colors.primary} strokeWidth={2} />
-                      </View>
-                      <View style={styles.driverInfo}>
-                        <Text style={styles.driverName}>{v.plate_number}</Text>
-                        <Text style={styles.driverId}>{v.asset_type}</Text>
-                      </View>
-                      <StatusBadge status="Available" />
-                    </TouchableOpacity>
-                  ))}
-                </Card>
-              </>
-            ) : (
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>3PL Provider Selection</Text>
-                <Card style={styles.pickerCard}>
-                  {thirdPartyProviders.map((p) => (
-                    <TouchableOpacity
-                      key={p.id}
-                      style={[styles.pickerItem, selected3PLProvider === p.id && styles.pickerItemActive]}
-                      onPress={() => setSelected3PLProvider(p.id)}
-                    >
-                      <Building2 size={18} color={Colors.gray600} />
-                      <Text style={styles.pickerItemText}>{p.name}</Text>
-                      {selected3PLProvider === p.id && <Check size={18} color={Colors.primary} strokeWidth={3} />}
-                    </TouchableOpacity>
-                  ))}
-                </Card>
-                <Input label="Subcontractor Driver Name" value={thirdPartyDriverName} onChangeText={setThirdPartyDriverName} placeholder="Driver full name" />
-                <Input label="Subcontractor Driver Phone" value={thirdPartyDriverPhone} onChangeText={setThirdPartyDriverPhone} placeholder="+966 5X XXX XXXX" keyboardType="phone-pad" />
-                <Input label="Subcontractor Truck Plate" value={thirdPartyVehiclePlate} onChangeText={setThirdPartyVehiclePlate} placeholder="Plate (e.g. 1234 ABC)" />
-                <Input
-                  label="Subcontractor Agreed Cost (SAR) *"
-                  value={thirdPartyCostInput}
-                  state={fieldErrors.thirdPartyCost ? 'error' : 'default'}
-                  errorText={fieldErrors.thirdPartyCost}
-                  onChangeText={setThirdPartyCostInput}
-                  placeholder="0.00"
-                  keyboardType="numeric"
-                />
               </View>
-            )}
-          </Card>
-
-          {/* Submit Button */}
-          <Button
-            title={submitting ? 'Creating…' : 'Review & Create Trip'}
-            onPress={handleInitiateSubmit}
-            disabled={submitting}
-            loading={submitting}
-          />
+            </>
+          )}
         </ScrollView>
       )}
 
@@ -1396,6 +1470,25 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: Typography.lg, fontWeight: '700', color: Colors.gray900 },
   placeholder: { width: 40 },
+
+  stepperContainer: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: Colors.white, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm,
+    borderBottomWidth: 1, borderBottomColor: Colors.gray200,
+  },
+  stepperTab: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
+  stepperTabActive: {},
+  stepperDot: {
+    width: 22, height: 22, borderRadius: 11, backgroundColor: Colors.gray200,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  stepperDotActive: { backgroundColor: Colors.primary },
+  stepperDotText: { fontSize: 11, fontWeight: '700', color: Colors.gray600 },
+  stepperDotTextActive: { color: Colors.white },
+  stepperTabText: { fontSize: Typography.xs, fontWeight: '600', color: Colors.gray500 },
+  stepperTabTextActive: { fontWeight: '700', color: Colors.gray900 },
+  stepperLine: { flex: 1, height: 1, backgroundColor: Colors.gray200, marginHorizontal: Spacing.md },
+
   scroll: { padding: Spacing.lg, paddingBottom: Spacing['3xl'], gap: Spacing.sm },
   errorText: { fontSize: Typography.sm, color: Colors.error, marginBottom: Spacing.sm },
   fieldErrorBadge: { fontSize: 11, color: Colors.error, fontWeight: '600', marginTop: 2, marginLeft: 2 },
@@ -1508,6 +1601,9 @@ const styles = StyleSheet.create({
   touchPresetTextActive: { color: Colors.primary, fontWeight: '700' },
   autoEtaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.primaryLight, paddingHorizontal: 6, paddingVertical: 2, borderRadius: Radius.sm },
   autoEtaChipText: { fontSize: 10, fontWeight: '700', color: Colors.primary },
+  page2NavRow: { flexDirection: 'row', gap: Spacing.md, alignItems: 'center', marginTop: Spacing.md },
+  backStepBtn: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.gray300 },
+  backStepBtnText: { fontSize: Typography.sm, fontWeight: '700', color: Colors.gray700 },
 });
 
 export default CreateTripScreen;
