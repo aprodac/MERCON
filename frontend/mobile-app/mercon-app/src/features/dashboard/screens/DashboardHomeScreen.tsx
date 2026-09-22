@@ -85,18 +85,13 @@ export default function DashboardHomeScreen() {
           </View>
         )}
 
-        {/* 4. OPERATOR COMMAND CENTER */}
+        {/* 4. UNIFIED OPERATOR COMMAND CENTER */}
         <OperatorCommandCenterSection
           onTripPress={(tripId) => router.push({ pathname: '/operator/trip-details', params: { id: tripId } })}
-        />
-
-        {/* 5. Active Trips — compact vertically stacked list with WhatsApp status sharing */}
-        <ActiveTripsSection
-          onViewAll={() => router.push('/operator/trips')}
-          onTripPress={(trip) => router.push({ pathname: '/operator/trip-details', params: { id: trip.id } })}
         />
       </ScrollView>
     </SafeAreaView>
   );
 }
+
 
