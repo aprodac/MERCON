@@ -34,11 +34,11 @@ export const reconcileBankAccountHandler = async (req: Request, res: Response) =
 
 export const listReconciliations = async (req: Request, res: Response) => {
   try {
-    const { bankAccountId } = req.query;
+    const bankAccountId = typeof req.query.bankAccountId === 'string' ? req.query.bankAccountId : undefined;
 
     const reconciliations = await prisma.bankReconciliation.findMany({
       where: {
-        bankAccountId: bankAccountId ? String(bankAccountId) : undefined,
+        bankAccountId: bankAccountId || undefined,
       },
       include: {
         bankAccount: { include: { account: true } },
@@ -57,7 +57,7 @@ export const listReconciliations = async (req: Request, res: Response) => {
 
 export const getReconciliationById = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const reconciliation = await prisma.bankReconciliation.findUnique({
       where: { id },

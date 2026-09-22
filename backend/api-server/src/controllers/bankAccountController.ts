@@ -25,7 +25,7 @@ export const listBankAccounts = async (req: Request, res: Response) => {
 
 export const getBankAccountById = async (req: Request, res: Response) => {
   try {
-    const id = req.params.id as string;
+    const id = String(req.params.id);
     const account = await prisma.bankAccount.findUnique({
       where: { id },
       include: {
@@ -41,9 +41,9 @@ export const getBankAccountById = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Bank account not found' });
     }
 
-    res.json({ success: true, data: account });
+    return res.json({ success: true, data: account });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
   }
 };
 
