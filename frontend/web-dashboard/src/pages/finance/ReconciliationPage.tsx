@@ -135,10 +135,30 @@ export default function ReconciliationPage() {
   // Net movement = Debits - Credits
   const netMovement = totalSelectedDebits - totalSelectedCredits;
 
-  const openingBalance = Number(selectedBankAccount?.opening_balance || 0);
+  // Effective Opening Balance:
+  // Carries forward statement_closing_balance from the most recent past reconciliation for this account.
+  // If no past reconciliations exist, falls back to the account's initial opening_balance.
+  const latestPastReconciliation = useMemo(() => {
+    if (!selectedBankAccount) return null;
+    const accountPast = pastReconciliations.filter(
+      (r) => r.bankAccountId === selectedBankAccount.id
+    );
+    if (accountPast.length === 0) return null;
+    return [...accountPast].sort(
+      (a, b) => new Date(b.statement_date).getTime() - new Date(a.statement_date).getTime()
+    )[0];
+  }, [selectedBankAccount, pastReconciliations]);
 
-  // Calculated Ending Balance = Opening + Net Movement
-  const calculatedEndingBalance = openingBalance + netMovement;
+  const effectiveOpeningBalance = useMemo(() => {
+    if (!selectedBankAccount) return 0;
+    if (latestPastReconciliation) {
+      return Number(latestPastReconciliation.statement_closing_balance) || 0;
+    }
+    return Number(selectedBankAccount.opening_balance || 0);
+  }, [selectedBankAccount, latestPastReconciliation]);
+
+  // Calculated Ending Balance = Effective Opening + Net Movement
+  const calculatedEndingBalance = effectiveOpeningBalance + netMovement;
 
   const targetStatementBalance =
     statementClosingBalance === '' ? 0 : Number(statementClosingBalance);
@@ -342,10 +362,19 @@ export default function ReconciliationPage() {
             {/* Live Movement & Reconciliation Summary Card */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-1">
-                <span className="text-xs text-gray-500">Opening Position</span>
+                <span className="text-xs text-gray-500 block">Opening Position</span>
                 <div className="text-lg font-mono font-bold text-gray-900">
-                  {openingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })} SAR
+                  {effectiveOpeningBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })} SAR
                 </div>
+                {latestPastReconciliation ? (
+                  <span className="text-[10px] text-emerald-600 font-medium block truncate">
+                    Carried forward from {new Date(latestPastReconciliation.statement_date).toLocaleDateString()}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-gray-400 font-medium block">
+                    Initial account opening balance
+                  </span>
+                )}
               </div>
 
               <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-1">
