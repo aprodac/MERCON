@@ -39,7 +39,7 @@ test('Real Phase 4 Finance Engine Integration Test Suite', async (t) => {
     provider = await prisma.thirdPartyProvider.create({
       data: {
         name: `Test Provider Phase 4 ${timestamp}`,
-        contact_phone: '+966500000002',
+        phone: '+966500000002',
       },
     });
 
@@ -474,7 +474,8 @@ test('Real Phase 4 Finance Engine Integration Test Suite', async (t) => {
 
     // Close period with snapshot computation
     const closedPeriod = await closeAccountingPeriodWithSnapshot(periodToClose.id, TEST_USER_ID);
-    assert.equal(closedPeriod.status, 'Closed');
-    assert.ok(closedPeriod.closed_at);
+    assert.ok(closedPeriod);
+    assert.equal(closedPeriod!.status, 'Closed');
+    assert.ok(closedPeriod!.closed_at);
   });
 });
