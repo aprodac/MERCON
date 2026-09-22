@@ -102,7 +102,7 @@ export const createBankAccount = async (req: Request, res: Response) => {
 
 export const updateBankAccount = async (req: Request, res: Response) => {
   try {
-    const id = req.params.id as string;
+    const id = String(req.params.id);
     const {
       bank_name,
       account_number,

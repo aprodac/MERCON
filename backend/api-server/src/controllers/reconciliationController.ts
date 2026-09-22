@@ -57,7 +57,7 @@ export const listReconciliations = async (req: Request, res: Response) => {
 
 export const getReconciliationById = async (req: Request, res: Response) => {
   try {
-    const id = req.params.id as string;
+    const id = String(req.params.id);
 
     const reconciliation = await prisma.bankReconciliation.findUnique({
       where: { id },
