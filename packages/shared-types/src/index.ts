@@ -669,6 +669,17 @@ export interface BillPayment {
   createdAt: string;
 }
 
+export interface AuditLog {
+  id: string;
+  userId?: string | null;
+  user?: { id: string; name: string | null; username: string; role: string } | null;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  metadata?: Record<string, any> | null;
+  createdAt: string;
+}
+
 // ─── Phase 4 Finance Types ──────────────────────────────────────────
 export type ReconciliationStatus = 'Draft' | 'Completed';
 export type AdvancePartyType = 'Customer' | 'Provider' | 'Employee';
