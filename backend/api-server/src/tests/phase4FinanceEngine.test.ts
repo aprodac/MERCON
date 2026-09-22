@@ -209,8 +209,8 @@ test('Real Phase 4 Finance Engine Integration Test Suite', async (t) => {
       TEST_USER_ID,
     );
 
-    const validLine = entry.lines.find((l: any) => l.accountId === bankGLAccount1.id);
-    const invalidLine = entry.lines.find((l: any) => l.accountId === bankGLAccount2.id);
+    const validLine = entry.lines.find((l: any) => l.accountId === bankGLAccount1.id)!;
+    const invalidLine = entry.lines.find((l: any) => l.accountId === bankGLAccount2.id)!;
 
     // Attempting to reconcile line from wrong account must fail
     await assert.rejects(
@@ -312,6 +312,7 @@ test('Real Phase 4 Finance Engine Integration Test Suite', async (t) => {
           create: [
             {
               description: 'Trip Freight Services',
+              rate: 3000,
               amount: 3000,
             },
           ],
