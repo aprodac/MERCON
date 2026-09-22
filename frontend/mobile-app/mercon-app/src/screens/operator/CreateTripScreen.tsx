@@ -69,8 +69,8 @@ const CreateTripScreen = () => {
   const { customerId: presetCustomerId } = useLocalSearchParams<{ customerId?: string }>();
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Page pacing state: Page 1 ("Trip & Rate") vs Page 2 ("Schedule & Assignment")
-  const [page, setPage] = useState<1 | 2>(1);
+  // Page pacing state: Page 1 ("Customer & Route") vs Page 2 ("Schedule & Fleet") vs Page 3 ("Financials & Review")
+  const [page, setPage] = useState<1 | 2 | 3>(1);
 
   // Master Data state
   const [loadingOptions, setLoadingOptions] = useState(true);

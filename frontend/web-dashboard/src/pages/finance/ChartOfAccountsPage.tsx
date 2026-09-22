@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Search, Layers, CheckCircle2, XCircle, Trash2, Edit2, ChevronRight, FolderTree } from 'lucide-react';
+import { Plus, Layers, CheckCircle2, Trash2, Edit2, FolderTree, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import KpiCard from '@/components/ui/KpiCard';
+import DataTable, { Column } from '@/components/ui/DataTable';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 import { financeService, CreateAccountDTO } from '@/services/financeService';
 import type { Account, AccountType } from '@mercon/shared-types';
@@ -133,6 +135,138 @@ export default function ChartOfAccountsPage() {
     }
   };
 
+  const kpis = {
+    total: accounts.length,
+    postable: accounts.filter((a) => a.is_postable).length,
+    active: accounts.filter((a) => a.isActive).length,
+    byType: ACCOUNT_TYPES.reduce<Record<string, number>>((acc, t) => {
+      acc[t] = accounts.filter((a) => a.account_type === t).length;
+      return acc;
+    }, {}),
+  };
+
+  const columns: Column<Account>[] = [
+    {
+      header: 'Account Code',
+      accessor: (acc) => <span className="font-mono font-bold text-[#3E3C3D]">{acc.account_code}</span>,
+      mobilePriority: 'primary',
+    },
+    {
+      header: 'Name',
+      accessor: (acc) => (
+        <span className="font-medium text-slate-900">
+          {acc.parentId && <span className="text-slate-300 mr-1.5">└</span>}
+          {acc.name}
+        </span>
+      ),
+      mobilePriority: 'primary',
+    },
+    {
+      header: 'Type',
+      accessor: (acc) => <Badge className={`${TYPE_COLORS[acc.account_type]} border`}>{acc.account_type}</Badge>,
+      mobilePriority: 'secondary',
+    },
+    {
+      header: 'Parent Account',
+      accessor: (acc) => <span className="text-slate-500">{acc.parent ? `${acc.parent.account_code} - ${acc.parent.name}` : '—'}</span>,
+      mobilePriority: 'meta',
+    },
+    {
+      header: 'Postable',
+      accessor: (acc) =>
+        acc.is_postable ? (
+          <span className="inline-flex items-center text-emerald-600 text-xs font-medium">
+            <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Postable
+          </span>
+        ) : (
+          <span className="inline-flex items-center text-slate-400 text-xs">Header Account</span>
+        ),
+      mobilePriority: 'meta',
+    },
+    {
+      header: 'Status',
+      accessor: (acc) =>
+        acc.isActive ? (
+          <Badge variant="outline" className="border-emerald-200 text-emerald-700 bg-emerald-50">Active</Badge>
+        ) : (
+          <Badge variant="outline" className="border-slate-200 text-slate-500 bg-slate-50">Inactive</Badge>
+        ),
+      mobilePriority: 'meta',
+    },
+    {
+      header: 'Actions',
+      headerClassName: 'text-right',
+      className: 'text-right',
+      accessor: (acc) => (
+        <div className="space-x-1">
+          <Button variant="ghost" size="sm" onClick={() => openEditModal(acc)} className="h-7 w-7 p-0 text-slate-500 hover:text-slate-900">
+            <Edit2 className="w-3.5 h-3.5" />
+          </Button>
+          {acc.isActive ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                if (confirm(`Deactivate/delete account ${acc.account_code}?`)) deleteMutation.mutate(acc.id);
+              }}
+              title="Deactivate Account"
+              className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => updateMutation.mutate({ id: acc.id, data: { isActive: true } })}
+              title="Reactivate Account"
+              className="h-7 px-2 text-xs font-semibold text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+            >
+              Reactivate
+            </Button>
+          )}
+        </div>
+      ),
+      mobilePriority: 'hidden',
+    },
+  ];
+
+  const typeFilterElement = (
+    <div className="flex items-center gap-1.5 overflow-x-auto">
+      <button
+        onClick={() => setSelectedType('all')}
+        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
+          selectedType === 'all' ? 'bg-[#3E3C3D] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+        }`}
+      >
+        All Types
+      </button>
+      {ACCOUNT_TYPES.map((type) => (
+        <button
+          key={type}
+          onClick={() => setSelectedType(type)}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
+            selectedType === type ? 'bg-[#FA634E] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          {type}
+        </button>
+      ))}
+    </div>
+  );
+
+  const inactiveToggleElement = (
+    <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 font-medium cursor-pointer select-none h-9 px-3 border border-slate-200 rounded-md bg-white">
+      <input
+        type="checkbox"
+        checked={showInactive}
+        onChange={(e) => setShowInactive(e.target.checked)}
+        className="rounded border-slate-300 text-[#FA634E] focus:ring-[#FA634E] w-3.5 h-3.5"
+      />
+      Show Inactive
+    </label>
+  );
+
   return (
     <DashboardLayout active="finance" title="Chart of Accounts">
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -151,164 +285,30 @@ export default function ChartOfAccountsPage() {
           </Button>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-          {/* Type Pills */}
-          <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-            <button
-              onClick={() => setSelectedType('all')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
-                selectedType === 'all'
-                  ? 'bg-[#3E3C3D] text-white'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
-            >
-              All Types
-            </button>
-            {ACCOUNT_TYPES.map((type) => (
-              <button
-                key={type}
-                onClick={() => setSelectedType(type)}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
-                  selectedType === type
-                    ? 'bg-[#FA634E] text-white'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {type}
-              </button>
-            ))}
-          </div>
-
-          {/* Search & Inactive Toggle */}
-          <div className="flex items-center gap-3 w-full sm:w-auto">
-            <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 font-medium cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showInactive}
-                onChange={(e) => setShowInactive(e.target.checked)}
-                className="rounded border-slate-300 text-[#FA634E] focus:ring-[#FA634E] w-3.5 h-3.5"
-              />
-              Show Inactive
-            </label>
-            <div className="relative w-full sm:w-64">
-              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <Input
-                placeholder="Search code or name..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 h-9 text-xs"
-              />
-            </div>
-          </div>
+        {/* KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 shrink-0">
+          <KpiCard title="TOTAL ACCOUNTS" value={kpis.total} variant="slate" icon={FolderTree} description="Chart of accounts entries" />
+          <KpiCard title="POSTABLE ACCOUNTS" value={kpis.postable} variant="brand" icon={Wallet} description="Accept direct journal postings" />
+          <KpiCard title="ASSET / LIABILITY" value={`${kpis.byType.Asset || 0} / ${kpis.byType.Liability || 0}`} variant="emerald" icon={Layers} description="Asset vs. Liability accounts" />
+          <KpiCard title="REVENUE / EXPENSE" value={`${kpis.byType.Revenue || 0} / ${kpis.byType.Expense || 0}`} variant="blue" icon={Layers} description="Revenue vs. Expense accounts" />
         </div>
 
         {/* Table */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          {isLoading ? (
-            <div className="p-8 text-center text-slate-500 text-sm">Loading Chart of Accounts...</div>
-          ) : accounts.length === 0 ? (
-            <div className="p-12 text-center text-slate-400 text-sm">
-              No accounts found matching search criteria.
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    <th className="px-4 py-3">Account Code</th>
-                    <th className="px-4 py-3">Name</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Parent Account</th>
-                    <th className="px-4 py-3">Postable</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                  {accounts.map((acc) => (
-                    <tr key={acc.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-4 py-3 font-mono font-bold text-[#3E3C3D]">
-                        {acc.account_code}
-                      </td>
-                      <td className="px-4 py-3 font-medium text-slate-900">
-                        {acc.parentId && <span className="text-slate-300 mr-1.5">└</span>}
-                        {acc.name}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge className={`${TYPE_COLORS[acc.account_type]} border`}>
-                          {acc.account_type}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-slate-500">
-                        {acc.parent ? `${acc.parent.account_code} - ${acc.parent.name}` : '—'}
-                      </td>
-                      <td className="px-4 py-3">
-                        {acc.is_postable ? (
-                          <span className="inline-flex items-center text-emerald-600 text-xs font-medium">
-                            <CheckCircle2 className="w-3.5 h-3.5 mr-1" /> Postable
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center text-slate-400 text-xs">
-                            Header Account
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {acc.isActive ? (
-                          <Badge variant="outline" className="border-emerald-200 text-emerald-700 bg-emerald-50">
-                            Active
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="border-slate-200 text-slate-500 bg-slate-50">
-                            Inactive
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right space-x-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEditModal(acc)}
-                          className="h-7 w-7 p-0 text-slate-500 hover:text-slate-900"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </Button>
-                        {acc.isActive ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              if (confirm(`Deactivate/delete account ${acc.account_code}?`)) {
-                                deleteMutation.mutate(acc.id);
-                              }
-                            }}
-                            title="Deactivate Account"
-                            className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              updateMutation.mutate({ id: acc.id, data: { isActive: true } });
-                            }}
-                            title="Reactivate Account"
-                            className="h-7 px-2 text-xs font-semibold text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                          >
-                            Reactivate
-                          </Button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        <DataTable<Account>
+          title="Chart of Accounts"
+          columns={columns}
+          data={accounts}
+          isLoading={isLoading}
+          searchPlaceholder="Search code or name..."
+          searchValue={search}
+          onSearchChange={setSearch}
+          filterElement={typeFilterElement}
+          actionsElement={inactiveToggleElement}
+          enableSelection={false}
+          getRowId={(acc) => acc.id}
+          emptyTitle="No Accounts Found"
+          emptyMessage="No accounts found matching search criteria."
+        />
 
         {/* Modal */}
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>

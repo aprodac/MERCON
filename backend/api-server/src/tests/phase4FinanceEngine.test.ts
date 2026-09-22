@@ -450,8 +450,8 @@ test('Real Phase 4 Finance Engine Integration Test Suite', async (t) => {
     const periodToClose = await prisma.accountingPeriod.create({
       data: {
         name: `Period to Close ${timestamp}`,
-        start_date: new Date('2025-01-01'),
-        end_date: new Date('2025-01-31'),
+        start_date: new Date(timestamp),
+        end_date: new Date(timestamp + 86400000 * 30),
         status: 'Open',
       },
     });

@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Calendar, Lock, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Plus, Calendar, Lock, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import KpiCard from '@/components/ui/KpiCard';
+import DataTable, { Column } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
@@ -82,6 +84,63 @@ export default function AccountingPeriodsPage() {
     createMutation.mutate(formData);
   };
 
+  const kpis = {
+    open: periods.filter((p) => p.status === 'Open').length,
+    closed: periods.filter((p) => p.status === 'Closed').length,
+    locked: periods.filter((p) => p.status === 'Locked').length,
+    totalEntries: periods.reduce((sum, p) => sum + (p._count?.journalEntries || 0), 0),
+  };
+
+  type PeriodRow = AccountingPeriod & { _count?: { journalEntries: number } };
+
+  const columns: Column<PeriodRow>[] = [
+    { header: 'Period Name', accessor: (p) => <span className="font-bold text-[#3E3C3D]">{p.name}</span>, mobilePriority: 'primary' },
+    { header: 'Start Date', accessor: (p) => <span className="font-mono text-slate-600">{new Date(p.start_date).toLocaleDateString()}</span>, mobilePriority: 'secondary' },
+    { header: 'End Date', accessor: (p) => <span className="font-mono text-slate-600">{new Date(p.end_date).toLocaleDateString()}</span>, mobilePriority: 'secondary' },
+    { header: 'Journal Entries', accessor: (p) => <span className="font-semibold text-slate-800">{p._count?.journalEntries || 0}</span>, mobilePriority: 'meta' },
+    { header: 'Status', accessor: (p) => <Badge className={`${STATUS_BADGES[p.status]} border`}>{p.status}</Badge>, mobilePriority: 'meta' },
+    {
+      header: 'Actions',
+      headerClassName: 'text-right',
+      className: 'text-right',
+      accessor: (p) =>
+        !isAdmin ? (
+          <span className="text-slate-400 text-xs italic">Read Only</span>
+        ) : (
+          <>
+            {p.status === 'Open' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (confirm(`Close period '${p.name}'? Unposted draft entries must be posted or removed first.`)) closeMutation.mutate(p.id);
+                }}
+                className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
+                Close Period
+              </Button>
+            )}
+            {p.status === 'Closed' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (confirm(`Lock period '${p.name}' permanently? This cannot be undone.`)) lockMutation.mutate(p.id);
+                }}
+                className="h-7 text-xs border-slate-300 text-slate-700 hover:bg-slate-100"
+              >
+                <Lock className="w-3.5 h-3.5 mr-1" />
+                Lock Period
+              </Button>
+            )}
+            {p.status === 'Locked' && <span className="text-slate-400 text-xs italic">Read Only</span>}
+          </>
+        ),
+      mobilePriority: 'hidden',
+    },
+  ];
+
   return (
     <DashboardLayout active="finance" title="Accounting Periods">
       <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -102,95 +161,25 @@ export default function AccountingPeriodsPage() {
           )}
         </div>
 
-        {/* Table */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          {isLoading ? (
-            <div className="p-8 text-center text-slate-500 text-sm">Loading periods...</div>
-          ) : periods.length === 0 ? (
-            <div className="p-12 text-center text-slate-400 text-sm">
-              No accounting periods defined yet.{isAdmin ? ' Click "New Period" to create one.' : ''}
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    <th className="px-4 py-3">Period Name</th>
-                    <th className="px-4 py-3">Start Date</th>
-                    <th className="px-4 py-3">End Date</th>
-                    <th className="px-4 py-3">Journal Entries</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
-                  {periods.map((p) => (
-                    <tr key={p.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-4 py-3 font-bold text-[#3E3C3D]">
-                        {p.name}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-600">
-                        {new Date(p.start_date).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-slate-600">
-                        {new Date(p.end_date).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-slate-800">
-                        {p._count?.journalEntries || 0}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge className={`${STATUS_BADGES[p.status]} border`}>
-                          {p.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-right space-x-2">
-                        {!isAdmin ? (
-                          <span className="text-slate-400 text-xs italic">Read Only</span>
-                        ) : (
-                          <>
-                            {p.status === 'Open' && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  if (confirm(`Close period '${p.name}'? Unposted draft entries must be posted or removed first.`)) {
-                                    closeMutation.mutate(p.id);
-                                  }
-                                }}
-                                className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
-                              >
-                                <CheckCircle2 className="w-3.5 h-3.5 mr-1" />
-                                Close Period
-                              </Button>
-                            )}
-                            {p.status === 'Closed' && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  if (confirm(`Lock period '${p.name}' permanently? This cannot be undone.`)) {
-                                    lockMutation.mutate(p.id);
-                                  }
-                                }}
-                                className="h-7 text-xs border-slate-300 text-slate-700 hover:bg-slate-100"
-                              >
-                                <Lock className="w-3.5 h-3.5 mr-1" />
-                                Lock Period
-                              </Button>
-                            )}
-                            {p.status === 'Locked' && (
-                              <span className="text-slate-400 text-xs italic">Read Only</span>
-                            )}
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+        {/* KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 shrink-0">
+          <KpiCard title="OPEN PERIODS" value={kpis.open} variant="emerald" icon={Calendar} description="Accepting new postings" />
+          <KpiCard title="CLOSED PERIODS" value={kpis.closed} variant="amber" icon={CheckCircle2} description="Finalized, no new postings" />
+          <KpiCard title="LOCKED PERIODS" value={kpis.locked} variant="slate" icon={Lock} description="Permanently read-only" />
+          <KpiCard title="TOTAL JOURNAL ENTRIES" value={kpis.totalEntries} variant="brand" icon={Calendar} description="Across all periods" />
         </div>
+
+        {/* Table */}
+        <DataTable<PeriodRow>
+          title="Accounting Periods"
+          columns={columns}
+          data={periods}
+          isLoading={isLoading}
+          enableSelection={false}
+          getRowId={(p) => p.id}
+          emptyTitle="No Accounting Periods"
+          emptyMessage={`No accounting periods defined yet.${isAdmin ? ' Click "New Period" to create one.' : ''}`}
+        />
 
         {/* Modal */}
         <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
