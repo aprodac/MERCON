@@ -112,6 +112,7 @@ export interface OperatorTripDetail {
 
 export interface CreateTripStopInput {
   stop_type: 'Pickup' | 'Dropoff' | 'Stop' | 'Rest' | 'Refuel';
+  leg_index?: number;
   lat: number;
   lng: number;
   planned_arrival?: string;

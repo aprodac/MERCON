@@ -653,6 +653,7 @@ export const createTrip = async (req: Request, res: Response) => {
       third_party_vehicle_plate,
       third_party_vehicle_type,
       third_party_cost,
+      charges,
     } = req.body;
 
     const createdBy = isUuid((req as any).user?.id) ? (req as any).user.id : null;
@@ -957,6 +958,18 @@ export const createTrip = async (req: Request, res: Response) => {
                   }
                 }
               } : {}),
+              ...(charges && Array.isArray(charges) && charges.length > 0 ? {
+                charges: {
+                  create: charges.map((c: any) => ({
+                    charge_type: String(c.charge_type || 'Extra Charge').trim(),
+                    rate: Number(c.rate ?? c.amount ?? 0),
+                    quantity: Number(c.quantity ?? 1),
+                    amount: Number(c.amount ?? c.rate ?? 0),
+                    ...(c.surchargeRuleId ? { surchargeRuleId: c.surchargeRuleId } : {}),
+                    ...(createdBy ? { created_by: createdBy } : {}),
+                  })),
+                },
+              } : {}),
               stops: {
                 create: resolvedStops.map((stop: any, index: number) => {
                   const rawLat = parseOptionalFloat(stop.lat);
@@ -973,10 +986,16 @@ export const createTrip = async (req: Request, res: Response) => {
                   } else if (index === resolvedStops.length - 1 && parsedPlannedEnd) {
                     stopPlannedArrival = parsedPlannedEnd;
                   }
+                  const rawStopType = String(stop.stop_type || 'Dropoff');
+                  const normalizedStopType: StopType = (rawStopType === 'Stop' ? 'Rest' : rawStopType) as StopType;
+                  const calculatedLegIndex = stop.leg_index !== undefined
+                    ? Number(stop.leg_index)
+                    : ((finalRateCategory === 'ROUND_TRIP' || rate_category === 'ROUND_TRIP') && index >= 2 ? 1 : 0);
+
                   return {
                     stop_sequence: index + 1,
-                    leg_index: stop.leg_index !== undefined ? Number(stop.leg_index) : 0,
-                    stop_type: stop.stop_type as StopType,
+                    leg_index: calculatedLegIndex,
+                    stop_type: normalizedStopType,
                     location_lat: latVal,
                     location_lng: lngVal,
                     location_coordinate_precision: precisionVal,

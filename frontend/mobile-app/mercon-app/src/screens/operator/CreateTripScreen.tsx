@@ -603,6 +603,7 @@ const CreateTripScreen = () => {
       const stopsPayload: CreateTripStopInput[] = [
         {
           stop_type: 'Pickup',
+          leg_index: 0,
           lat: pickupLatNum,
           lng: pickupLngNum,
           planned_arrival: plannedPickup,
@@ -617,6 +618,7 @@ const CreateTripScreen = () => {
         if (s.name.trim() && !Number.isNaN(lat) && !Number.isNaN(lng)) {
           stopsPayload.push({
             stop_type: 'Stop',
+            leg_index: 0,
             lat, lng,
             location_name: s.name.trim(),
             location_id: s.locationId,
@@ -626,6 +628,7 @@ const CreateTripScreen = () => {
 
       stopsPayload.push({
         stop_type: 'Dropoff',
+        leg_index: 0,
         lat: dropoffLatNum,
         lng: dropoffLngNum,
         planned_arrival: plannedDropoff,
@@ -636,6 +639,7 @@ const CreateTripScreen = () => {
       if (rateCategory === 'ROUND_TRIP') {
         stopsPayload.push({
           stop_type: 'Dropoff',
+          leg_index: 1,
           lat: pickupLatNum,
           lng: pickupLngNum,
           planned_arrival: plannedDropoff,
