@@ -9,7 +9,6 @@ import {
 } from 'lucide-react';
 
 import { PREDEFINED_ROUTES, GeoPoint } from '@/services/telemetrySimulator';
-import { useSimulatedTelemetry } from '@/hooks/useSimulatedTelemetry';
 import { MAP_THEMES } from '@/components/maps/mapThemes';
 import MapThemeSelector from '@/components/maps/MapThemeSelector';
 import { cn } from '@/lib/utils';
@@ -350,7 +349,6 @@ export default function TripLiveMapCard({
   isExpanded = false,
 }: TripLiveMapCardProps) {
   const navigate = useNavigate();
-  const { fleet } = useSimulatedTelemetry(1);
   const [mapThemeId, setMapThemeId] = useState<string>('voyager');
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -481,13 +479,9 @@ export default function TripLiveMapCard({
     !(resLat === 0 && resLng === 0) &&
     (displayState === 'CURRENT' || displayState === 'LAST_KNOWN');
 
-  const matchedTruck = fleet.find((f) => f.tripId === tripId || f.refId === refId);
-  const simulatedTruck = hasResolvedCoords ? undefined : (matchedTruck || fleet[0]);
-
-  const activeTruckLat = hasResolvedCoords ? resLat! : (simulatedTruck ? simulatedTruck.currentCoords.lat : originStop.coords[0]);
-  const activeTruckLng = hasResolvedCoords ? resLng! : (simulatedTruck ? simulatedTruck.currentCoords.lng : originStop.coords[1]);
-  const activeSpeed = hasResolvedCoords ? (resolvedLocation?.speed_kph ?? 0) : (simulatedTruck ? simulatedTruck.speedKmH : 0);
-  const activeHeading = hasResolvedCoords ? (resolvedLocation?.heading_deg ?? 0) : (simulatedTruck ? simulatedTruck.heading : 0);
+  const activeTruckLat = hasResolvedCoords ? resLat! : null;
+  const activeTruckLng = hasResolvedCoords ? resLng! : null;
+  const activeHeading = hasResolvedCoords ? (resolvedLocation?.heading_deg ?? 0) : 0;
   const sourceText = resolvedLocation?.source === 'DRIVER_GPS' ? 'Driver GPS' : resolvedLocation?.source === 'PHYSICAL_GPS' ? 'Vehicle GPS' : null;
 
   // ─── 3. Multi-Stop OSRM Driving Route Generation ────────────────────────────
@@ -703,9 +697,9 @@ export default function TripLiveMapCard({
       <div className={cn('bg-white dark:bg-slate-900 border border-[#E5E7EB] dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3', className)}>
         <div className="flex items-center justify-between border-b border-slate-200/70 dark:border-slate-700/60 pb-2.5">
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+            <span className={cn('w-2.5 h-2.5 rounded-full shrink-0', hasResolvedCoords ? 'bg-emerald-500 animate-ping' : 'bg-slate-300 dark:bg-slate-600')} />
             <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#3E3C3D] dark:text-slate-200">
-              Live Vehicle Status
+              {hasResolvedCoords ? 'Live Vehicle Status' : 'GPS Not Active'}
             </h4>
           </div>
           {resolvedLocation?.plate_number && (
@@ -724,7 +718,9 @@ export default function TripLiveMapCard({
             <div className="flex flex-col min-w-0">
               <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 truncate">Current Location</span>
               <span className="text-xs font-bold text-[#3E3C3D] dark:text-slate-100 truncate" title={currentPlaceName || undefined}>
-                {currentPlaceName || `${activeTruckLat.toFixed(4)}, ${activeTruckLng.toFixed(4)}`}
+                {hasResolvedCoords
+                  ? (currentPlaceName || `${activeTruckLat!.toFixed(4)}, ${activeTruckLng!.toFixed(4)}`)
+                  : 'GPS Not Active'}
               </span>
             </div>
           </div>
@@ -750,7 +746,7 @@ export default function TripLiveMapCard({
             <div className="flex flex-col min-w-0">
               <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 truncate">ETA Remaining</span>
               <span className="text-xs font-mono font-bold text-[#3E3C3D] dark:text-slate-100 truncate">
-                {remainingEtaText || (simulatedTruck ? `${simulatedTruck.etaMinutes}m` : 'Calculating...')}
+                {remainingEtaText || (hasResolvedCoords ? 'Calculating...' : '—')}
               </span>
             </div>
           </div>
@@ -765,7 +761,7 @@ export default function TripLiveMapCard({
               <span className="text-xs font-bold text-[#3E3C3D] dark:text-slate-200 truncate">
                 {hasResolvedCoords
                   ? `${sourceText || 'Vehicle GPS'}${resolvedLocation?.formatted_time_ago ? ` · ${resolvedLocation.formatted_time_ago}` : ''}`
-                  : 'Simulated Telemetry'}
+                  : 'GPS Not Active'}
               </span>
             </div>
           </div>
@@ -930,6 +926,14 @@ export default function TripLiveMapCard({
                 </button>
               </div>
 
+              {/* GPS Not Active indicator — no real driver/vehicle location to plot */}
+              {!hasResolvedCoords && !isAnimating && (
+                <div className="absolute bottom-3 left-3 z-[400] flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/90 backdrop-blur-xl px-2.5 py-1.5 shadow-lg">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500 shrink-0" />
+                  <span className="text-[10.5px] font-bold text-slate-500 dark:text-slate-400">GPS Not Active</span>
+                </div>
+              )}
+
               {/* ─── LEAFLET MAP CONTAINER ───────────────────────────────────────── */}
               <MapContainer
                 center={activeTruckLat && activeTruckLng ? [activeTruckLat, activeTruckLng] : originStop.coords}
@@ -1039,10 +1043,10 @@ export default function TripLiveMapCard({
 
                 {/* Animated Moving Truck Marker (When animation is running) */}
                 {isAnimating ? (
-                  <Marker position={currentAnimCoord} icon={createLiveTruckIcon(animHeading, simulatedTruck?.plateNumber || 'Truck')}>
+                  <Marker position={currentAnimCoord} icon={createLiveTruckIcon(animHeading, resolvedLocation?.plate_number || 'Truck')}>
                     <Popup className={currentTheme.isDark ? "dark-map-popup" : ""}>
                       <div className="text-xs font-sans p-1">
-                        <p className="font-bold text-[#E8450F]">Animated Truck Simulation</p>
+                        <p className="font-bold text-[#E8450F]">Planned Route Preview</p>
                         <p className="text-[10px] text-gray-500">{currentLegText}</p>
                         <p className="text-[10px] font-mono text-emerald-600">Progress: {animProgressPct}%</p>
                       </div>
@@ -1075,16 +1079,7 @@ export default function TripLiveMapCard({
                       </div>
                     </Popup>
                   </Marker>
-                ) : (
-                  <Marker position={[activeTruckLat, activeTruckLng]} icon={createLiveTruckIcon(activeHeading, simulatedTruck?.plateNumber || 'MERCON Fleet', activeSpeed || 85)}>
-                    <Popup className={currentTheme.isDark ? "dark-map-popup" : ""}>
-                      <div className="text-xs font-sans p-1">
-                        <p className="font-bold text-[#E8450F]">{simulatedTruck?.plateNumber || 'MERCON Fleet'}</p>
-                        <p className="text-[10px] text-gray-500">Speed: {activeSpeed || 85} km/h</p>
-                      </div>
-                    </Popup>
-                  </Marker>
-                )}
+                ) : null}
               </MapContainer>
             </div>
           </div>

@@ -4,7 +4,7 @@ import {
   Home, Bell, Truck, Users, Car, Building2,
   CreditCard, ReceiptText, Calculator, Files, FileBarChart,
   Settings, User, LogOut, Wrench, X, MapPin, TrendingUp, Trash2,
-  CalendarRange, Wallet, SlidersHorizontal, ChevronsLeft, ChevronsRight, FolderArchive, Lock, ShieldCheck, GraduationCap, AlertTriangle
+  CalendarRange, Wallet, SlidersHorizontal, ChevronsLeft, ChevronsRight, FolderArchive, Lock, ShieldCheck, GraduationCap, AlertTriangle, FolderTree, BookOpen
 } from 'lucide-react';
 
 import { authStore } from '@/store/authStore';
@@ -105,6 +105,9 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
       items: [
         { icon: Calculator, label: 'Quotations', path: '/quotations', moduleKey: 'quotations', permissionKey: 'quotations.view' },
         { icon: Wallet, label: 'Expenses', path: '/expenses', moduleKey: 'expenses', permissionKey: 'reports.view' },
+        { icon: FolderTree, label: 'Chart of Accounts', path: '/finance/chart-of-accounts', moduleKey: 'finance' },
+        { icon: CalendarRange, label: 'Accounting Periods', path: '/finance/periods', moduleKey: 'finance' },
+        { icon: BookOpen, label: 'Journal Entries', path: '/finance/journal-entries', moduleKey: 'finance' },
         { icon: TrendingUp, label: 'Vehicle P&L', path: '/vehicles/financials', moduleKey: 'vehicles', permissionKey: 'fleet.financials' },
       ],
     },

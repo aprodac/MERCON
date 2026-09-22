@@ -54,3 +54,21 @@ export async function generateRefId(
 ): Promise<string> {
   return generateSequentialRefId(prefix, getAllRefIds, opts);
 }
+
+export async function nextJournalEntryRefId(client: any): Promise<string> {
+  return generateRefId(
+    'JE',
+    () => client.journalEntry.findMany({ select: { ref_id: true } }),
+    { padLength: 4 },
+  );
+}
+
+export async function nextBillRefId(client: any): Promise<string> {
+  return generateRefId(
+    'BIL',
+    () => client.bill.findMany({ select: { ref_id: true } }),
+    { padLength: 4 },
+  );
+}
+
+

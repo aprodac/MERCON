@@ -25,7 +25,12 @@ export function DriverProfileCard({ driver, performance }: DriverProfileCardProp
       className="rounded-3xl border border-[#F3F3F3] bg-white"
     >
       <View className="flex-row items-center gap-4">
-        <DriverAvatar initials={driverDisplayInitials(driver)} status={driver.status} size={64} />
+        <DriverAvatar
+          initials={driverDisplayInitials(driver)}
+          avatarUrl={driver.avatarUrl}
+          status={driver.status}
+          size={64}
+        />
 
         {/* min-w-0 lets long names truncate instead of pushing the badge off-card. */}
         <View className="min-w-0 flex-1">
@@ -44,7 +49,7 @@ export function DriverProfileCard({ driver, performance }: DriverProfileCardProp
       <View className="my-5 h-px bg-[#F3F3F3]" />
 
       <DriverStatistics
-        rating={performance.averageRating}
+        licenseDaysLeft={driver.licenseDaysLeft}
         totalTrips={performance.totalTrips}
         onTimeRatePct={performance.onTimeRatePct}
       />

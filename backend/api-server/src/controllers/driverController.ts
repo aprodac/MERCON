@@ -7,6 +7,7 @@ import { DriverStatus } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import ExcelJS from 'exceljs';
 import { logger } from '../utils/logger';
+import { OPERATIONAL_TRIP_STATUSES, resolveVehicleLocationsForTrips } from '../services/locationResolver';
 
 /**
  * Fields the driver roster search bar looks at. Full name has to work, so both
@@ -64,6 +65,87 @@ export const buildDriverQueryOptions = (query: any) => {
   return { whereClause, orderByClause };
 };
 
+/**
+ * Attaches live GPS status to a page of drivers. For each driver's current
+ * operational trip (if any), resolves the best-known vehicle/driver-phone
+ * location via the same resolver the Kanban board and Trip Details use, so
+ * all three surfaces agree on what "active" GPS means.
+ */
+async function attachDriverGpsStatus<
+  T extends { id: string; assignedVehicleId: string | null; assignedVehicle: any }
+>(drivers: T[]): Promise<Array<T & { trips: any[] }>> {
+  if (drivers.length === 0) return [];
+
+  const driverIds = drivers.map((d) => d.id);
+
+  let activeTrips: any[] = [];
+  try {
+    activeTrips = await prisma.trip.findMany({
+      where: {
+        driverId: { in: driverIds },
+        status: { in: OPERATIONAL_TRIP_STATUSES },
+        deletedAt: null,
+      },
+      distinct: ['driverId'],
+      orderBy: [{ driverId: 'asc' }, { updatedAt: 'desc' }],
+      select: {
+        id: true,
+        driverId: true,
+        status: true,
+        vehicleId: true,
+        vehicle: {
+          select: {
+            id: true,
+            ref_id: true,
+            plate_number: true,
+            last_lat: true,
+            last_lng: true,
+            last_speed_kph: true,
+            last_heading: true,
+            last_status: true,
+            last_seen_at: true,
+            icces_device_id: true,
+          },
+        },
+      },
+    });
+  } catch (e) {
+    logger.warn({ err: e }, 'Failed to fetch active trips for driver GPS status');
+  }
+
+  let locationsMap = new Map<string, any>();
+  const tripsWithVehicle = activeTrips.filter((t) => t.vehicle);
+  if (tripsWithVehicle.length > 0) {
+    try {
+      locationsMap = await resolveVehicleLocationsForTrips(tripsWithVehicle, prisma);
+    } catch (e) {
+      logger.warn({ err: e }, 'Failed to resolve driver GPS status');
+    }
+  }
+
+  const activeTripByDriver = new Map(activeTrips.map((t) => [t.driverId as string, t]));
+
+  return drivers.map((d) => {
+    const activeTrip = activeTripByDriver.get(d.id);
+    if (!activeTrip || !activeTrip.vehicle) {
+      return { ...d, trips: [] };
+    }
+
+    const resolvedLocation = locationsMap.get(activeTrip.id) || null;
+    const tripVehicle = { ...activeTrip.vehicle, resolved_location: resolvedLocation };
+    const assignedVehicle =
+      d.assignedVehicle && d.assignedVehicle.id === activeTrip.vehicleId
+        ? { ...d.assignedVehicle, resolved_location: resolvedLocation }
+        : d.assignedVehicle;
+
+    return {
+      ...d,
+      assignedVehicle,
+      trips: [{ id: activeTrip.id, status: activeTrip.status, vehicle: tripVehicle }],
+    };
+  });
+}
+
 export const getDrivers = async (req: Request, res: Response) => {
   try {
     const { page = '1', per_page = '20' } = req.query;
@@ -106,7 +188,9 @@ export const getDrivers = async (req: Request, res: Response) => {
         prisma.driver.count({ where: whereClause })
       ]);
 
-      const formatted = drivers.map(d => ({
+      const driversWithGps = await attachDriverGpsStatus(drivers);
+
+      const formatted = driversWithGps.map(d => ({
         ...d,
         hasAccountPassword: Boolean(d.user?.password_hash),
       }));
@@ -164,6 +248,8 @@ export const getDrivers = async (req: Request, res: Response) => {
       prisma.driver.count({ where: whereClause })
     ]);
 
+    const driversWithGps = await attachDriverGpsStatus(drivers);
+
     // Lifetime driver payout for the roster's Total Trip Charge column.
     const driverIds = drivers.map((d) => d.id);
     const ELIGIBLE_TRIP_STATUSES = ['Completed', 'Invoiced'];
@@ -205,7 +291,7 @@ export const getDrivers = async (req: Request, res: Response) => {
       }
     }
 
-    const formatted = drivers.map(d => ({
+    const formatted = driversWithGps.map(d => ({
       ...d,
       total_trip_charges: tripChargeByDriver.get(d.id) || 0,
       hasAccountPassword: Boolean(d.user?.password_hash || d.user),

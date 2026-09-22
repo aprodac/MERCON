@@ -75,6 +75,11 @@ import geocodingRoutes from './routes/geocodingRoutes';
 import vehicleCompatibilityRoutes from './routes/vehicleCompatibilityRoutes';
 import publicRoutes from './routes/publicRoutes';
 import errorEventRoutes from './routes/errorEventRoutes';
+import accountRoutes from './routes/accountRoutes';
+import accountingPeriodRoutes from './routes/accountingPeriodRoutes';
+import journalEntryRoutes from './routes/journalEntryRoutes';
+import invoiceRoutes from './routes/invoiceRoutes';
+import billRoutes from './routes/billRoutes';
 import { reportClientError } from './controllers/clientErrorController';
 import { validate } from './middlewares/validate';
 import { clientErrorBody } from './schemas';
@@ -159,6 +164,11 @@ apiRouter.use('/geocoding', geocodingRoutes);
 apiRouter.use('/vehicle-compatibility', vehicleCompatibilityRoutes);
 apiRouter.use('/public', publicRoutes);
 apiRouter.use('/error-events', errorEventRoutes);
+apiRouter.use('/accounts', accountRoutes);
+apiRouter.use('/accounting-periods', accountingPeriodRoutes);
+apiRouter.use('/journal-entries', journalEntryRoutes);
+apiRouter.use('/invoices', invoiceRoutes);
+apiRouter.use('/bills', billRoutes);
 apiRouter.post('/client-errors', authenticateJWT, validate({ body: clientErrorBody }), reportClientError);
 
 // Mount router on both /api and root for maximum proxy compatibility

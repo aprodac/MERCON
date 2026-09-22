@@ -48,6 +48,7 @@ export function toDriverDetail(raw: RawDriverDetail): DriverDetail {
     status: raw.status,
     licenseNumber: raw.license_number,
     licenseExpiry: raw.license_expiry,
+    avatarUrl: raw.avatar_url ?? null,
     licenseDaysLeft: daysUntil(raw.license_expiry) ?? 0,
     aiRiskScore: typeof raw?.ai_risk_score === 'number' ? raw.ai_risk_score : null,
     isActive: raw.isActive,

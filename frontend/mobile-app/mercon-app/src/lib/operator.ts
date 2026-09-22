@@ -184,18 +184,79 @@ export interface OperatorQuotation {
   line_type?: string | null;
   rate_category?: string | null;
   billing_type?: string | null;
+  pricing_basis?: string | null;
   origin_name?: string | null;
   destination_name?: string | null;
   originLocationId?: string | null;
   destinationLocationId?: string | null;
   originLocation?: { id: string; name: string; lat?: number | null; lng?: number | null } | null;
   destinationLocation?: { id: string; name: string; lat?: number | null; lng?: number | null } | null;
+  stops?: any[];
+}
+
+/** Helper to extract origin and destination location labels from a quotation object. */
+export function getQuotationRoute(q: Partial<OperatorQuotation> & { stops?: any[] }): { origin: string; dest: string } {
+  if (!q) return { origin: 'Origin', dest: 'Destination' };
+
+  const isValid = (s: string | null | undefined): s is string => {
+    if (!s || typeof s !== 'string') return false;
+    const trimmed = s.trim();
+    return trimmed.length > 0 && trimmed !== '—' && trimmed !== '--' && trimmed !== '---' && trimmed !== 'null';
+  };
+
+  let origin = isValid(q.originLocation?.name) ? q.originLocation!.name : isValid(q.origin_name) ? q.origin_name! : '';
+  let dest = isValid(q.destinationLocation?.name) ? q.destinationLocation!.name : isValid(q.destination_name) ? q.destination_name! : '';
+
+  if (isValid(origin) && isValid(dest)) {
+    return { origin: origin.trim(), dest: dest.trim() };
+  }
+
+  // Check stops if present
+  if (Array.isArray(q.stops) && q.stops.length > 0) {
+    const firstStop = q.stops[0];
+    const lastStop = q.stops[q.stops.length - 1];
+    const firstLoc = firstStop?.location?.name || firstStop?.source_label || firstStop?.location_name || firstStop?.name || firstStop?.label;
+    const lastLoc = lastStop?.location?.name || lastStop?.source_label || lastStop?.location_name || lastStop?.name || lastStop?.label;
+
+    if (!isValid(origin) && isValid(firstLoc)) origin = firstLoc;
+    if (!isValid(dest) && isValid(lastLoc)) dest = lastLoc;
+
+    if (isValid(origin) && isValid(dest)) {
+      return { origin: origin.trim(), dest: dest.trim() };
+    }
+  }
+
+  // Parse from quotation title `q.name` (e.g. "Riyadh Dry Port → Dammam Port", "Jeddah -> Dammam")
+  if (q.name && typeof q.name === 'string') {
+    const cleanName = q.name.replace(/\s*\[.*?\]/g, '').trim();
+    const parts = cleanName
+      .split(/\s*(?:→|->|-->|–|-)\s*/)
+      .map((s) => s.trim())
+      .filter(isValid);
+
+    if (parts.length >= 2) {
+      if (!isValid(origin)) origin = parts[0];
+      if (!isValid(dest)) dest = parts[parts.length - 1];
+    } else if (parts.length === 1 && isValid(parts[0])) {
+      if (!isValid(origin)) origin = parts[0];
+      if (!isValid(dest)) dest = parts[0];
+    }
+  }
+
+  return {
+    origin: isValid(origin) ? origin.trim() : 'Origin',
+    dest: isValid(dest) ? dest.trim() : 'Destination',
+  };
 }
 
 export interface OperatorCustomer {
   id: string;
   name: string;
   contact_phone?: string;
+  primary_contact_person?: string | null;
+  primary_contact_phone?: string | null;
+  logo_url?: string | null;
+  avatar_url?: string | null;
   isActive?: boolean;
   createdAt?: string;
 }
@@ -354,6 +415,7 @@ export const operatorService = {
 
   async createQuotation(payload: {
     customer_id: string;
+    name?: string;
     origin_name?: string;
     origin_location_id?: string;
     destination_name?: string;
@@ -363,6 +425,7 @@ export const operatorService = {
     vehicle_type?: string;
     rate_category?: string;
     billing_type?: string;
+    pricing_basis?: string;
   }): Promise<OperatorQuotation> {
     const { data } = await api.post('/quotations', payload);
     return data.data as OperatorQuotation;

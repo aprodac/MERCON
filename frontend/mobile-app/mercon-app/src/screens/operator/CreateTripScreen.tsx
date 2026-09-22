@@ -1,24 +1,35 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, StatusBar, ActivityIndicator, Alert, Modal, Switch, TextInput,
+  StyleSheet, StatusBar, ActivityIndicator, Alert, Modal, Switch, TextInput, Linking, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft, Check, Truck, Clock, MapPin, FileText,
-  Plus, Trash2, AlertTriangle, RotateCcw, Building2, Zap, Edit3, ChevronRight, Search, X,
+  Plus, Trash2, AlertTriangle, RotateCcw, Building2, Zap, Edit3, ChevronRight, Search, X, MessageCircle, Sparkles, Pencil, Layers,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography } from '../../theme/tokens';
 import { Button, Card, Input, StatusBadge } from '../../components';
-import { getApiErrorMessage } from '../../lib/api';
+import { getApiErrorMessage, API_URL } from '../../lib/api';
 import { safeSecureStore } from '../../lib/secure-store';
 import {
   operatorService, invalidateOperatorTrips,
   type OperatorCustomer, type OperatorDriver, type OperatorVehicle,
   type OperatorLocation, type QuotationLookupMatch, type OperatorQuotation,
   type OperatorThirdPartyProvider, type CreateTripStopInput,
+  getQuotationRoute,
 } from '../../lib/operator';
+
+function resolveMediaUrl(url?: string | null): string | null {
+  if (!url || typeof url !== 'string' || !url.trim()) return null;
+  const trimmed = url.trim();
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:')) {
+    return trimmed;
+  }
+  const baseUrl = API_URL ? API_URL.replace(/\/api\/?$/, '') : 'https://dev.mercon.tech';
+  return `${baseUrl}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+}
 
 const ASSIGN_LATER = 'assign_later';
 const DRAFT_STORAGE_KEY = 'MERCON_OPERATOR_TRIP_DRAFT_V3';
@@ -104,12 +115,14 @@ const CreateTripScreen = () => {
     if (!quotationSearchQuery.trim()) return quotations;
     const q = quotationSearchQuery.toLowerCase().trim();
     return quotations.filter((item) => {
-      const orig = (item.originLocation?.name ?? item.origin_name ?? '').toLowerCase();
-      const dest = (item.destinationLocation?.name ?? item.destination_name ?? '').toLowerCase();
+      const { origin, dest } = getQuotationRoute(item);
+      const orig = origin.toLowerCase();
+      const dst = dest.toLowerCase();
+      const name = (item.name || '').toLowerCase();
       const veh = (item.vehicle_type ?? item.vehicle_class ?? '').toLowerCase();
       const line = (item.line_type ?? item.rate_category ?? '').toLowerCase();
       const rateStr = String(item.rate ?? '');
-      return orig.includes(q) || dest.includes(q) || veh.includes(q) || line.includes(q) || rateStr.includes(q);
+      return orig.includes(q) || dst.includes(q) || name.includes(q) || veh.includes(q) || line.includes(q) || rateStr.includes(q);
     });
   }, [quotations, quotationSearchQuery]);
 
@@ -156,7 +169,10 @@ const CreateTripScreen = () => {
   const [manualRateOverride, setManualRateOverride] = useState(false);
   const [billingAmountInput, setBillingAmountInput] = useState('');
   const [driverPayoutInput, setDriverPayoutInput] = useState('');
-  const [saveAsPersistentQuotation, setSaveAsPersistentQuotation] = useState(false);
+  const [saveAsPersistentQuotation, setSaveAsPersistentQuotation] = useState(true);
+  const [billingType, setBillingType] = useState<'Monthly' | 'Extra'>('Extra');
+  const [pricingBasis, setPricingBasis] = useState<'Per Trip' | 'Per Month'>('Per Trip');
+  const [isInlineQuotationForm, setIsInlineQuotationForm] = useState(false);
 
   // Itemized Additional Charges state
   const [additionalCharges, setAdditionalCharges] = useState<AdditionalChargeItem[]>([]);
@@ -346,6 +362,7 @@ const CreateTripScreen = () => {
   useEffect(() => {
     if (!customerId) {
       setQuotations([]);
+      setIsInlineQuotationForm(false);
       return;
     }
     let cancelled = false;
@@ -353,7 +370,12 @@ const CreateTripScreen = () => {
       setLoadingQuotations(true);
       try {
         const results = await operatorService.getQuotationsForCustomer(customerId);
-        if (!cancelled) setQuotations(results);
+        if (!cancelled) {
+          setQuotations(results);
+          if (results.length === 0) {
+            setIsInlineQuotationForm(true);
+          }
+        }
       } catch {
         if (!cancelled) setQuotations([]);
       } finally {
@@ -381,24 +403,51 @@ const CreateTripScreen = () => {
       setSelectedQuotation(null);
       setQuotationMatch(null);
       setIsRouteCollapsed(false);
+      setBillingAmountInput('');
+      setDriverPayoutInput('');
+      setManualRateOverride(false);
       return;
     }
     setSelectedQuotation(q);
     setManualRateOverride(false);
-    if ((q.line_type ?? q.rate_category) === 'ROUND_TRIP') {
-      setRateCategory('ROUND_TRIP');
+
+    const bRate = Number(q.rate ?? 0);
+    const dPayout = Number(q.driver_payout ?? 0);
+
+    setBillingAmountInput(bRate > 0 ? String(bRate) : '');
+    setDriverPayoutInput(dPayout > 0 ? String(dPayout) : '');
+
+    if (q.billing_type === 'Monthly' || q.billing_type === 'Extra') {
+      setBillingType(q.billing_type);
     }
+    if (q.pricing_basis === 'PER_MONTH' || q.pricing_basis === 'Per Month') {
+      setPricingBasis('Per Month');
+    } else {
+      setPricingBasis('Per Trip');
+    }
+
+    const normCategory = (q.line_type ?? q.rate_category ?? '').toUpperCase();
+    if (normCategory.includes('ROUND') || normCategory === 'ROUND_TRIP') {
+      setRateCategory('ROUND_TRIP');
+    } else {
+      setRateCategory('SINGLE_TRIP');
+    }
+
     setQuotationMatch({
       quotationId: q.id,
-      rate: Number(q.rate ?? 0),
-      driverPayout: Number(q.driver_payout ?? 0),
+      rate: bRate,
+      driverPayout: dPayout,
     });
-    const originName = q.originLocation?.name ?? q.origin_name ?? '';
-    const destName = q.destinationLocation?.name ?? q.destination_name ?? '';
+
+    const { origin, dest } = getQuotationRoute(q);
+    const originName = q.originLocation?.name ?? q.origin_name ?? (origin !== 'Origin' ? origin : '');
+    const destName = q.destinationLocation?.name ?? q.destination_name ?? (dest !== 'Destination' ? dest : '');
+
     if (originName) setPickupName(originName);
     setPickupLocationId(q.originLocationId ?? undefined);
     if (q.originLocation?.lat != null) setPickupLat(String(q.originLocation.lat));
     if (q.originLocation?.lng != null) setPickupLng(String(q.originLocation.lng));
+
     if (destName) setDropoffName(destName);
     setDropoffLocationId(q.destinationLocationId ?? undefined);
     if (q.destinationLocation?.lat != null) setDropoffLat(String(q.destinationLocation.lat));
@@ -408,13 +457,40 @@ const CreateTripScreen = () => {
     setFieldErrors({});
   };
 
+  const handleToggleInlineForm = () => {
+    if (!isInlineQuotationForm) {
+      if (selectedQuotation) {
+        const bRate = Number(selectedQuotation.rate ?? 0);
+        const dPayout = Number(selectedQuotation.driver_payout ?? 0);
+        if (bRate > 0) setBillingAmountInput(String(bRate));
+        if (dPayout > 0) setDriverPayoutInput(String(dPayout));
+        if (selectedQuotation.billing_type === 'Monthly' || selectedQuotation.billing_type === 'Extra') {
+          setBillingType(selectedQuotation.billing_type);
+        }
+        if (selectedQuotation.pricing_basis === 'PER_MONTH' || selectedQuotation.pricing_basis === 'Per Month') {
+          setPricingBasis('Per Month');
+        } else {
+          setPricingBasis('Per Trip');
+        }
+        const normCategory = (selectedQuotation.line_type ?? selectedQuotation.rate_category ?? '').toUpperCase();
+        if (normCategory.includes('ROUND') || normCategory === 'ROUND_TRIP') {
+          setRateCategory('ROUND_TRIP');
+        } else {
+          setRateCategory('SINGLE_TRIP');
+        }
+      }
+      setIsInlineQuotationForm(true);
+    } else {
+      setIsInlineQuotationForm(false);
+    }
+  };
+
   // Recent Routes Accelerator Chips
   const recentRoutes = useMemo(() => {
     const routeMap = new Map<string, { origin: string; dest: string; quotation: OperatorQuotation }>();
     quotations.forEach((q) => {
-      const origin = q.originLocation?.name ?? q.origin_name;
-      const dest = q.destinationLocation?.name ?? q.destination_name;
-      if (origin && dest) {
+      const { origin, dest } = getQuotationRoute(q);
+      if (origin && dest && origin !== 'Origin' && dest !== 'Destination') {
         const key = `${origin} -> ${dest}`;
         if (!routeMap.has(key)) {
           routeMap.set(key, { origin, dest, quotation: q });
@@ -680,6 +756,32 @@ const CreateTripScreen = () => {
         amount: c.amount,
       }));
 
+      let resolvedRateCardId = quotationMatch && !manualRateOverride ? quotationMatch.quotationId : undefined;
+
+      if (!resolvedRateCardId && saveAsPersistentQuotation && effectiveBillingAmount > 0 && customerId) {
+        try {
+          const newQuo = await operatorService.createQuotation({
+            customer_id: customerId,
+            name: `${pickupName.trim() || 'Origin'} → ${dropoffName.trim() || 'Destination'}`,
+            rate: effectiveBillingAmount,
+            driver_payout: fleetType === 'OWN_FLEET' ? effectiveDriverPayout : undefined,
+            origin_location_id: pickupLocationId,
+            origin_name: pickupLocationId ? undefined : pickupName.trim(),
+            destination_location_id: dropoffLocationId,
+            destination_name: dropoffLocationId ? undefined : dropoffName.trim(),
+            vehicle_type: selectedVehicleObj?.asset_type ?? selectedQuotation?.vehicle_type ?? selectedQuotation?.vehicle_class ?? undefined,
+            rate_category: rateCategory === 'ROUND_TRIP' ? 'Round Trip' : 'Single Trip',
+            billing_type: billingType,
+            pricing_basis: pricingBasis === 'Per Month' ? 'PER_MONTH' : 'PER_TRIP',
+          });
+          if (newQuo?.id) {
+            resolvedRateCardId = newQuo.id;
+          }
+        } catch (quoErr) {
+          console.log('[CreateTrip] Could not save quotation rate card inline:', quoErr);
+        }
+      }
+
       const created = await operatorService.createTrip({
         customer_id: customerId,
         driver_id: fleetType === 'OWN_FLEET' && selectedDriver && selectedDriver !== ASSIGN_LATER ? selectedDriver : undefined,
@@ -688,10 +790,10 @@ const CreateTripScreen = () => {
         planned_end: plannedDropoff,
         billing_amount: effectiveBillingAmount,
         trip_charges: fleetType === 'OWN_FLEET' ? effectiveDriverPayout : undefined,
-        rate_card_id: quotationMatch && !manualRateOverride ? quotationMatch.quotationId : undefined,
+        rate_card_id: resolvedRateCardId,
         vehicle_type: selectedVehicleObj?.asset_type ?? selectedQuotation?.vehicle_type ?? selectedQuotation?.vehicle_class ?? undefined,
         rate_category: rateCategory,
-        billing_type: selectedQuotation?.billing_type ?? 'EXTRA',
+        billing_type: selectedQuotation?.billing_type ?? billingType,
 
         is_third_party: fleetType === 'THIRD_PARTY',
         third_party_provider_id: fleetType === 'THIRD_PARTY' && selected3PLProvider ? selected3PLProvider : undefined,
@@ -831,6 +933,7 @@ const CreateTripScreen = () => {
                     >
                       {filteredCustomers.map((c) => {
                         const initials = c.name.substring(0, 2).toUpperCase();
+                        const logoUri = resolveMediaUrl(c.logo_url || c.avatar_url);
                         return (
                           <TouchableOpacity
                             key={c.id}
@@ -839,9 +942,17 @@ const CreateTripScreen = () => {
                             onPress={() => handleSelectCustomer(c.id)}
                           >
                             <View style={styles.customerCardHeader}>
-                              <View style={styles.customerAvatar}>
-                                <Text style={styles.customerAvatarText}>{initials}</Text>
-                              </View>
+                              {logoUri ? (
+                                <Image
+                                  source={{ uri: logoUri }}
+                                  style={styles.customerAvatarImage}
+                                  resizeMode="cover"
+                                />
+                              ) : (
+                                <View style={styles.customerAvatar}>
+                                  <Text style={styles.customerAvatarText}>{initials}</Text>
+                                </View>
+                              )}
                               <Building2 size={16} color={Colors.gray400} />
                             </View>
 
@@ -868,117 +979,301 @@ const CreateTripScreen = () => {
               ) : (
                 /* State B: Customer Selected — Selected Customer Badge + Quotation Search & Cards */
                 <View style={{ gap: 10 }}>
-                  {/* Selected Customer Header Badge */}
-                  <Card style={styles.selectedCustomerBar}>
-                    <View style={styles.customerAvatarSmall}>
-                      <Text style={styles.customerAvatarTextSmall}>
-                        {selectedCustomerObj?.name.substring(0, 2).toUpperCase() ?? 'CO'}
-                      </Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.selectedCustomerLabel}>Customer Company</Text>
-                      <Text style={styles.selectedCustomerName} numberOfLines={1}>
-                        {selectedCustomerObj?.name ?? 'Selected Customer'}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.changeCustomerBtn}
-                      onPress={() => {
-                        setCustomerId('');
-                        setSelectedQuotation(null);
-                        setQuotationMatch(null);
-                        setManualRateOverride(false);
-                        setIsRouteCollapsed(false);
-                        setQuotationSearchQuery('');
-                      }}
-                    >
-                      <RotateCcw size={12} color={Colors.primary} />
-                      <Text style={styles.changeCustomerText}>Change</Text>
-                    </TouchableOpacity>
-                  </Card>
+                  {/* Selected Customer Header Profile Card */}
+                  {(() => {
+                    const logoUri = resolveMediaUrl(selectedCustomerObj?.logo_url || selectedCustomerObj?.avatar_url);
+                    const initials = selectedCustomerObj?.name ? selectedCustomerObj.name.substring(0, 2).toUpperCase() : 'CO';
+                    const phone = selectedCustomerObj?.contact_phone || selectedCustomerObj?.primary_contact_phone;
+                    const contactPerson = selectedCustomerObj?.primary_contact_person;
 
-                  {/* Quotation Search Bar */}
-                  <View style={styles.searchBarContainer}>
-                    <Search size={16} color={Colors.gray500} />
-                    <TextInput
-                      style={styles.searchBarInput}
-                      value={quotationSearchQuery}
-                      onChangeText={setQuotationSearchQuery}
-                      placeholder="Filter active rates (e.g. Riyadh, 10 TON)..."
-                      placeholderTextColor={Colors.gray400}
-                    />
-                    {quotationSearchQuery ? (
-                      <TouchableOpacity onPress={() => setQuotationSearchQuery('')} style={{ padding: 2 }}>
-                        <X size={16} color={Colors.gray500} />
-                      </TouchableOpacity>
-                    ) : null}
+                    return (
+                      <Card style={styles.selectedCustomerBar}>
+                        {logoUri ? (
+                          <Image
+                            source={{ uri: logoUri }}
+                            style={styles.customerAvatarImageSmall}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View style={styles.customerAvatarSmall}>
+                            <Text style={styles.customerAvatarTextSmall}>{initials}</Text>
+                          </View>
+                        )}
+
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.selectedCustomerName} numberOfLines={1}>
+                            {selectedCustomerObj?.name ?? 'Selected Customer'}
+                          </Text>
+                          <Text style={styles.selectedCustomerSubtext} numberOfLines={1}>
+                            {contactPerson ? `${contactPerson} ${phone ? `· ${phone}` : ''}` : phone ? `Phone: ${phone}` : 'Active Commercial Account'}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={styles.changeCustomerBtn}
+                          onPress={() => {
+                            setCustomerId('');
+                            setSelectedQuotation(null);
+                            setQuotationMatch(null);
+                            setManualRateOverride(false);
+                            setIsRouteCollapsed(false);
+                            setQuotationSearchQuery('');
+                          }}
+                        >
+                          <RotateCcw size={12} color={Colors.primary} />
+                          <Text style={styles.changeCustomerText}>Change</Text>
+                        </TouchableOpacity>
+                      </Card>
+                    );
+                  })()}
+
+                  {/* Commercial Quotation Header Toolbar */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4, marginBottom: 2 }}>
+                    <Text style={styles.subSectionTitle}>
+                      {isInlineQuotationForm
+                        ? selectedQuotation
+                          ? 'Edit Selected Quotation'
+                          : 'Define Commercial Quotation'
+                        : 'Active Commercial Rate Cards'}
+                    </Text>
+
+                    <TouchableOpacity
+                      style={styles.quotationToggleBtn}
+                      activeOpacity={0.8}
+                      onPress={handleToggleInlineForm}
+                    >
+                      {isInlineQuotationForm ? (
+                        <>
+                          <Layers size={13} color={Colors.primary} />
+                          <Text style={styles.quotationToggleBtnText}>
+                            {quotations.length > 0 ? `Saved Cards (${quotations.length})` : 'View Saved Cards'}
+                          </Text>
+                        </>
+                      ) : selectedQuotation ? (
+                        <>
+                          <Pencil size={13} color={Colors.primary} />
+                          <Text style={styles.quotationToggleBtnText}>Edit Quotation</Text>
+                        </>
+                      ) : (
+                        <>
+                          <Plus size={13} color={Colors.primary} />
+                          <Text style={styles.quotationToggleBtnText}>Define Quotation</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
                   </View>
 
-                  {/* Quotation Cards Carousel */}
-                  {loadingQuotations ? (
-                    <Card style={styles.pickerCard}>
-                      <ActivityIndicator color={Colors.primary} style={{ padding: Spacing.lg }} />
-                    </Card>
-                  ) : filteredQuotations.length === 0 ? (
-                    <Card style={styles.pickerCard}>
-                      <Text style={styles.emptyHint}>
-                        {quotations.length === 0
-                          ? 'No active quotation rate cards on file for this customer. Enter route & rate manually below.'
-                          : `No rate cards matching "${quotationSearchQuery}"`}
-                      </Text>
-                    </Card>
+                  {isInlineQuotationForm ? (
+                    /* Inline Quotation Form Mode (Define or Edit) */
+                    <View style={styles.defineQuotationBanner}>
+                      <View style={styles.defineQuotationHeader}>
+                        <View style={styles.defineQuotationTag}>
+                          <Sparkles size={12} color="#FA634E" />
+                          <Text style={styles.defineQuotationTagText}>
+                            {selectedQuotation ? '✏️ Edit Selected Quotation' : '✨ Define Quotation'}
+                          </Text>
+                        </View>
+                        <Text style={styles.defineQuotationLaneText} numberOfLines={1}>
+                          {pickupName.trim() || 'Origin'} → {dropoffName.trim() || 'Destination'}
+                        </Text>
+                      </View>
+
+                      {/* Specification Pickers: Billing Type & Rate Basis */}
+                      <View style={{ flexDirection: 'row', gap: 8, marginVertical: 4 }}>
+                        {/* Billing Type Selector */}
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.miniPickerLabel}>Billing Type</Text>
+                          <View style={styles.segmentedContainer}>
+                            <TouchableOpacity
+                              style={[styles.segmentedBtn, billingType === 'Monthly' && styles.segmentedBtnActive]}
+                              onPress={() => setBillingType('Monthly')}
+                            >
+                              <Text style={[styles.segmentedBtnText, billingType === 'Monthly' && styles.segmentedBtnTextActive]}>
+                                Monthly
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.segmentedBtn, billingType === 'Extra' && styles.segmentedBtnActive]}
+                              onPress={() => setBillingType('Extra')}
+                            >
+                              <Text style={[styles.segmentedBtnText, billingType === 'Extra' && styles.segmentedBtnTextActive]}>
+                                Extra / Spot
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+
+                        {/* Rate Basis Selector */}
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.miniPickerLabel}>Rate Basis</Text>
+                          <View style={styles.segmentedContainer}>
+                            <TouchableOpacity
+                              style={[styles.segmentedBtn, pricingBasis === 'Per Trip' && styles.segmentedBtnActive]}
+                              onPress={() => setPricingBasis('Per Trip')}
+                            >
+                              <Text style={[styles.segmentedBtnText, pricingBasis === 'Per Trip' && styles.segmentedBtnTextActive]}>
+                                Per Trip
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[styles.segmentedBtn, pricingBasis === 'Per Month' && styles.segmentedBtnActive]}
+                              onPress={() => setPricingBasis('Per Month')}
+                            >
+                              <Text style={[styles.segmentedBtnText, pricingBasis === 'Per Month' && styles.segmentedBtnTextActive]}>
+                                Per Month
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* Customer Billing Rate Input */}
+                      <Input
+                        label="Customer Billing Rate (SAR) *"
+                        value={billingAmountInput}
+                        state={fieldErrors.billingAmount ? 'error' : 'default'}
+                        errorText={fieldErrors.billingAmount}
+                        onChangeText={(t) => {
+                          setBillingAmountInput(t);
+                          setManualRateOverride(true);
+                        }}
+                        placeholder="e.g. 1500"
+                        keyboardType="numeric"
+                      />
+
+                      {/* Per Month Breakdown Helper Pill */}
+                      {pricingBasis === 'Per Month' && Number(billingAmountInput) > 0 ? (
+                        <View style={styles.monthlyBreakdownPill}>
+                          <Zap size={12} color="#7C3AED" />
+                          <Text style={styles.monthlyBreakdownText}>
+                            Per-Trip Breakdown: <Text style={{ fontWeight: '800' }}>SAR {(Math.round((Number(billingAmountInput) / 30) * 100) / 100).toLocaleString()} / trip</Text> (30-day duty)
+                          </Text>
+                        </View>
+                      ) : null}
+
+                      {/* Driver Payout Input (Own Fleet Only) */}
+                      {fleetType === 'OWN_FLEET' && (
+                        <Input
+                          label="Driver Payout (SAR) *"
+                          value={driverPayoutInput}
+                          state={fieldErrors.driverPayout ? 'error' : 'default'}
+                          errorText={fieldErrors.driverPayout}
+                          onChangeText={(t) => {
+                            setDriverPayoutInput(t);
+                            setManualRateOverride(true);
+                          }}
+                          placeholder="e.g. 400"
+                          keyboardType="numeric"
+                        />
+                      )}
+
+                      {/* Save to Quotation Ledger Toggle */}
+                      <View style={styles.toggleRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.toggleLabel}>Save to Customer Quotations Ledger</Text>
+                          <Text style={styles.toggleSublabel}>Store rate card so future trips for this customer & route match automatically</Text>
+                        </View>
+                        <Switch
+                          value={saveAsPersistentQuotation}
+                          onValueChange={setSaveAsPersistentQuotation}
+                          trackColor={{ false: Colors.gray200, true: Colors.primary }}
+                        />
+                      </View>
+                    </View>
                   ) : (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={{ gap: 10, paddingVertical: 4 }}
-                    >
-                      {filteredQuotations.map((q) => {
-                        const isSelected = selectedQuotation?.id === q.id;
-                        const origin = q.originLocation?.name ?? q.origin_name ?? '—';
-                        const dest = q.destinationLocation?.name ?? q.destination_name ?? '—';
-                        const vehClass = q.vehicle_type ?? q.vehicle_class ?? 'Any Vehicle';
-                        const lineType = q.line_type ?? q.rate_category ?? 'Single Trip';
-                        const rateVal = Number(q.rate ?? 0);
-
-                        return (
-                          <TouchableOpacity
-                            key={q.id}
-                            style={[
-                              styles.quotationCard,
-                              isSelected && styles.quotationCardActive,
-                            ]}
-                            activeOpacity={0.8}
-                            onPress={() => handleSelectQuotation(q)}
-                          >
-                            <View style={styles.quotationCardHeader}>
-                              <View style={{ flex: 1 }}>
-                                <Text style={styles.quotationCardLane} numberOfLines={1}>
-                                  {origin} → {dest}
-                                </Text>
-                                <Text style={styles.quotationCardMeta} numberOfLines={1}>
-                                  {vehClass} · {lineType}
-                                </Text>
-                              </View>
-                              {isSelected ? (
-                                <View style={styles.selectedCheckBadge}>
-                                  <Check size={12} color={Colors.white} strokeWidth={3} />
-                                </View>
-                              ) : null}
-                            </View>
-
-                            <View style={styles.quotationCardFooter}>
-                              <Text style={[styles.quotationCardRate, isSelected && styles.quotationCardRateActive]}>
-                                SAR {rateVal.toLocaleString()}
-                              </Text>
-                              <Text style={[styles.quotationCardAction, isSelected && styles.quotationCardActionActive]}>
-                                {isSelected ? 'Applied' : 'Apply Card →'}
-                              </Text>
-                            </View>
+                    /* Saved Quotation Cards Mode */
+                    <>
+                      {/* Quotation Search Bar */}
+                      <View style={styles.searchBarContainer}>
+                        <Search size={16} color={Colors.gray500} />
+                        <TextInput
+                          style={styles.searchBarInput}
+                          value={quotationSearchQuery}
+                          onChangeText={setQuotationSearchQuery}
+                          placeholder="Filter active rates (e.g. Riyadh, 10 TON)..."
+                          placeholderTextColor={Colors.gray400}
+                        />
+                        {quotationSearchQuery ? (
+                          <TouchableOpacity onPress={() => setQuotationSearchQuery('')} style={{ padding: 2 }}>
+                            <X size={16} color={Colors.gray500} />
                           </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
+                        ) : null}
+                      </View>
+
+                      {/* Quotation Cards Carousel */}
+                      {loadingQuotations ? (
+                        <Card style={styles.pickerCard}>
+                          <ActivityIndicator color={Colors.primary} style={{ padding: Spacing.lg }} />
+                        </Card>
+                      ) : filteredQuotations.length === 0 ? (
+                        <Card style={styles.pickerCard}>
+                          <Text style={styles.emptyHint}>
+                            {quotations.length === 0
+                              ? 'No active quotation rate cards on file for this customer.'
+                              : `No rate cards matching "${quotationSearchQuery}"`}
+                          </Text>
+                          <TouchableOpacity
+                            style={{ marginHorizontal: Spacing.md, marginBottom: Spacing.md, alignSelf: 'flex-start' }}
+                            onPress={() => setIsInlineQuotationForm(true)}
+                          >
+                            <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.primary }}>
+                              + Define Quotation for this Lane →
+                            </Text>
+                          </TouchableOpacity>
+                        </Card>
+                      ) : (
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={{ gap: 10, paddingVertical: 4 }}
+                        >
+                          {filteredQuotations.map((q) => {
+                            const isSelected = selectedQuotation?.id === q.id;
+                            const { origin, dest } = getQuotationRoute(q);
+                            const vehClass = q.vehicle_type ?? q.vehicle_class ?? 'Any Vehicle';
+                            const lineType = q.line_type ?? q.rate_category ?? 'Single Trip';
+                            const rateVal = Number(q.rate ?? 0);
+
+                            return (
+                              <TouchableOpacity
+                                key={q.id}
+                                style={[
+                                  styles.quotationCard,
+                                  isSelected && styles.quotationCardActive,
+                                ]}
+                                activeOpacity={0.8}
+                                onPress={() => handleSelectQuotation(q)}
+                              >
+                                <View style={styles.quotationCardHeader}>
+                                  <View style={{ flex: 1 }}>
+                                    <Text style={styles.quotationCardLane} numberOfLines={1}>
+                                      {origin} → {dest}
+                                    </Text>
+                                    <Text style={styles.quotationCardMeta} numberOfLines={1}>
+                                      {vehClass} · {lineType}
+                                    </Text>
+                                  </View>
+                                  {isSelected ? (
+                                    <View style={styles.selectedCheckBadge}>
+                                      <Check size={12} color={Colors.white} strokeWidth={3} />
+                                    </View>
+                                  ) : null}
+                                </View>
+
+                                <View style={styles.quotationCardFooter}>
+                                  <Text style={[styles.quotationCardRate, isSelected && styles.quotationCardRateActive]}>
+                                    SAR {rateVal.toLocaleString()}
+                                  </Text>
+                                  <Text style={[styles.quotationCardAction, isSelected && styles.quotationCardActionActive]}>
+                                    {isSelected ? 'Applied' : 'Apply Card →'}
+                                  </Text>
+                                </View>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+                      )}
+                    </>
                   )}
                 </View>
               )}
@@ -1171,46 +1466,126 @@ const CreateTripScreen = () => {
                         </TouchableOpacity>
                       </View>
                     ) : (
-                      <View>
+                      <View style={{ gap: 10 }}>
                         {quotationMatch === null && !lookingUpRate && customerId ? (
-                          <Text style={styles.rateSourceHint}>No matching quotation found — enter rates manually below.</Text>
+                          <Text style={styles.rateSourceHint}>No matching quotation found — define quotation rates for this lane below.</Text>
                         ) : null}
-                        <Input
-                          label="Customer Base Billing Rate (SAR) *"
-                          value={billingAmountInput}
-                          state={fieldErrors.billingAmount ? 'error' : 'default'}
-                          errorText={fieldErrors.billingAmount}
-                          onChangeText={setBillingAmountInput}
-                          placeholder="0.00"
-                          keyboardType="numeric"
-                        />
-                        {fleetType === 'OWN_FLEET' && (
+
+                        {/* Define Quotation Banner & Form Block */}
+                        <View style={styles.defineQuotationBanner}>
+                          <View style={styles.defineQuotationHeader}>
+                            <View style={styles.defineQuotationTag}>
+                              <Sparkles size={12} color="#FA634E" />
+                              <Text style={styles.defineQuotationTagText}>
+                                {selectedQuotation ? 'Edit Selected Quotation' : 'Define Quotation'}
+                              </Text>
+                            </View>
+                            <Text style={styles.defineQuotationLaneText} numberOfLines={1}>
+                              {pickupName.trim() || 'Origin'} → {dropoffName.trim() || 'Destination'}
+                            </Text>
+                          </View>
+
+                          {/* Specification Pickers: Billing Type & Rate Basis */}
+                          <View style={{ flexDirection: 'row', gap: 8, marginVertical: 4 }}>
+                            {/* Billing Type Selector */}
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.miniPickerLabel}>Billing Type</Text>
+                              <View style={styles.segmentedContainer}>
+                                <TouchableOpacity
+                                  style={[styles.segmentedBtn, billingType === 'Monthly' && styles.segmentedBtnActive]}
+                                  onPress={() => setBillingType('Monthly')}
+                                >
+                                  <Text style={[styles.segmentedBtnText, billingType === 'Monthly' && styles.segmentedBtnTextActive]}>
+                                    Monthly
+                                  </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={[styles.segmentedBtn, billingType === 'Extra' && styles.segmentedBtnActive]}
+                                  onPress={() => setBillingType('Extra')}
+                                >
+                                  <Text style={[styles.segmentedBtnText, billingType === 'Extra' && styles.segmentedBtnTextActive]}>
+                                    Extra / Spot
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+
+                            {/* Rate Basis Selector */}
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.miniPickerLabel}>Rate Basis</Text>
+                              <View style={styles.segmentedContainer}>
+                                <TouchableOpacity
+                                  style={[styles.segmentedBtn, pricingBasis === 'Per Trip' && styles.segmentedBtnActive]}
+                                  onPress={() => setPricingBasis('Per Trip')}
+                                >
+                                  <Text style={[styles.segmentedBtnText, pricingBasis === 'Per Trip' && styles.segmentedBtnTextActive]}>
+                                    Per Trip
+                                  </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={[styles.segmentedBtn, pricingBasis === 'Per Month' && styles.segmentedBtnActive]}
+                                  onPress={() => setPricingBasis('Per Month')}
+                                >
+                                  <Text style={[styles.segmentedBtnText, pricingBasis === 'Per Month' && styles.segmentedBtnTextActive]}>
+                                    Per Month
+                                  </Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          </View>
+
+                          {/* Customer Base Billing Rate Input */}
                           <Input
-                            label="Driver Payout (SAR) *"
-                            value={driverPayoutInput}
-                            state={fieldErrors.driverPayout ? 'error' : 'default'}
-                            errorText={fieldErrors.driverPayout}
-                            onChangeText={setDriverPayoutInput}
-                            placeholder="0.00"
+                            label="Customer Billing Rate (SAR) *"
+                            value={billingAmountInput}
+                            state={fieldErrors.billingAmount ? 'error' : 'default'}
+                            errorText={fieldErrors.billingAmount}
+                            onChangeText={setBillingAmountInput}
+                            placeholder="e.g. 1500"
                             keyboardType="numeric"
                           />
-                        )}
-                        {quotationMatch && (
-                          <TouchableOpacity onPress={() => setManualRateOverride(false)}>
-                            <Text style={styles.rateOverrideLink}>Use matched quotation rate instead</Text>
-                          </TouchableOpacity>
-                        )}
 
-                        <View style={styles.toggleRow}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.toggleLabel}>Save as Reusable Quotation</Text>
-                            <Text style={styles.toggleSublabel}>Store rate for future trips on this customer & lane</Text>
+                          {/* Per Month Breakdown Helper Pill */}
+                          {pricingBasis === 'Per Month' && Number(billingAmountInput) > 0 ? (
+                            <View style={styles.monthlyBreakdownPill}>
+                              <Zap size={12} color="#7C3AED" />
+                              <Text style={styles.monthlyBreakdownText}>
+                                Per-Trip Breakdown: <Text style={{ fontWeight: '800' }}>SAR {(Math.round((Number(billingAmountInput) / 30) * 100) / 100).toLocaleString()} / trip</Text> (30-day duty)
+                              </Text>
+                            </View>
+                          ) : null}
+
+                          {/* Driver Payout Input (Own Fleet Only) */}
+                          {fleetType === 'OWN_FLEET' && (
+                            <Input
+                              label="Driver Payout (SAR) *"
+                              value={driverPayoutInput}
+                              state={fieldErrors.driverPayout ? 'error' : 'default'}
+                              errorText={fieldErrors.driverPayout}
+                              onChangeText={setDriverPayoutInput}
+                              placeholder="e.g. 400"
+                              keyboardType="numeric"
+                            />
+                          )}
+
+                          {quotationMatch && (
+                            <TouchableOpacity onPress={() => setManualRateOverride(false)}>
+                              <Text style={styles.rateOverrideLink}>Use matched quotation rate instead</Text>
+                            </TouchableOpacity>
+                          )}
+
+                          {/* Save to Quotation Ledger Toggle */}
+                          <View style={styles.toggleRow}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.toggleLabel}>Save to Customer Quotations Ledger</Text>
+                              <Text style={styles.toggleSublabel}>Store rate card so future trips for this customer & route match automatically</Text>
+                            </View>
+                            <Switch
+                              value={saveAsPersistentQuotation}
+                              onValueChange={setSaveAsPersistentQuotation}
+                              trackColor={{ false: Colors.gray200, true: Colors.primary }}
+                            />
                           </View>
-                          <Switch
-                            value={saveAsPersistentQuotation}
-                            onValueChange={setSaveAsPersistentQuotation}
-                            trackColor={{ false: Colors.gray200, true: Colors.primary }}
-                          />
                         </View>
                       </View>
                     )}
@@ -1648,6 +2023,10 @@ const styles = StyleSheet.create({
     width: 32, height: 32, borderRadius: Radius.lg, backgroundColor: Colors.primaryLight,
     alignItems: 'center', justifyContent: 'center',
   },
+  customerAvatarImage: {
+    width: 32, height: 32, borderRadius: Radius.lg, backgroundColor: Colors.gray100,
+    borderWidth: 1, borderColor: Colors.gray200,
+  },
   customerAvatarText: { fontSize: 12, fontWeight: '800', color: Colors.primary },
   customerCardTitle: { fontSize: 13, fontWeight: '700', color: Colors.gray900 },
   customerCardPhone: { fontSize: 10, color: Colors.gray500, marginTop: 2 },
@@ -1660,17 +2039,38 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.gray300,
   },
   customerAvatarSmall: {
-    width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.primary,
+    width: 38, height: 38, borderRadius: 10, backgroundColor: Colors.primary,
     alignItems: 'center', justifyContent: 'center',
+  },
+  customerAvatarImageSmall: {
+    width: 38, height: 38, borderRadius: 10, backgroundColor: Colors.gray100,
+    borderWidth: 1, borderColor: Colors.gray200,
   },
   customerAvatarTextSmall: { fontSize: 13, fontWeight: '800', color: Colors.white },
   selectedCustomerLabel: { fontSize: 10, fontWeight: '700', color: Colors.gray500, textTransform: 'uppercase' },
   selectedCustomerName: { fontSize: Typography.sm, fontWeight: '800', color: Colors.gray900 },
+  selectedCustomerSubtext: { fontSize: 11, fontWeight: '600', color: Colors.gray500, marginTop: 1 },
+  verifiedBadge: {
+    width: 14, height: 14, borderRadius: 7, backgroundColor: '#10B981',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  customerWhatsappBtn: {
+    width: 28, height: 28, borderRadius: 14, backgroundColor: '#25D366',
+    alignItems: 'center', justifyContent: 'center',
+  },
   changeCustomerBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: Colors.primaryLight, paddingHorizontal: 10, paddingVertical: 6, borderRadius: Radius.md,
   },
   changeCustomerText: { fontSize: 11, fontWeight: '700', color: Colors.primary },
+
+  subSectionTitle: { fontSize: Typography.xs, fontWeight: '700', color: Colors.gray600, textTransform: 'uppercase', letterSpacing: 0.5 },
+  quotationToggleBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.primaryLight, paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: Radius.md, borderWidth: 1, borderColor: '#FED7AA',
+  },
+  quotationToggleBtnText: { fontSize: 11, fontWeight: '700', color: Colors.primary },
 
   quotationCard: {
     width: 230, height: 116, backgroundColor: Colors.white,
@@ -1704,6 +2104,35 @@ const styles = StyleSheet.create({
   pickerItemText: { fontSize: Typography.sm, color: Colors.gray700, fontWeight: '500' },
   pickerItemTextActive: { color: Colors.primary, fontWeight: '700' },
   formCard: { borderRadius: Radius.xl, padding: Spacing.lg, gap: 8 },
+  defineQuotationBanner: {
+    padding: 12, borderRadius: Radius.xl, backgroundColor: '#FFF7ED',
+    borderWidth: 1, borderColor: '#FFEDD5', gap: 8,
+  },
+  defineQuotationHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    gap: 8, paddingBottom: 6, borderBottomWidth: 1, borderBottomColor: '#FED7AA',
+  },
+  defineQuotationTag: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: '#FFEDD5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: Radius.full,
+  },
+  defineQuotationTagText: { fontSize: 11, fontWeight: '800', color: Colors.primary },
+  defineQuotationLaneText: { fontSize: 11, fontWeight: '800', color: Colors.gray800, flex: 1, textAlign: 'right' },
+  miniPickerLabel: { fontSize: 10, fontWeight: '700', color: Colors.gray600, textTransform: 'uppercase', marginBottom: 4 },
+  segmentedContainer: {
+    flexDirection: 'row', backgroundColor: Colors.white, borderRadius: Radius.lg,
+    borderWidth: 1, borderColor: Colors.gray200, padding: 2,
+  },
+  segmentedBtn: { flex: 1, paddingVertical: 6, alignItems: 'center', justifyContent: 'center', borderRadius: Radius.md },
+  segmentedBtnActive: { backgroundColor: Colors.primary },
+  segmentedBtnText: { fontSize: 11, fontWeight: '700', color: Colors.gray700 },
+  segmentedBtnTextActive: { color: Colors.white },
+  monthlyBreakdownPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#F3E8FF', paddingHorizontal: 10, paddingVertical: 6,
+    borderRadius: Radius.md, borderWidth: 1, borderColor: '#E9D5FF',
+  },
+  monthlyBreakdownText: { fontSize: 11, color: '#6B21A8' },
   formGroup: { gap: Spacing.xs },
   label: { fontSize: Typography.xs, color: Colors.gray500, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
   formDivider: { height: 1, backgroundColor: Colors.gray200, marginVertical: Spacing.xs },
@@ -1748,9 +2177,6 @@ const styles = StyleSheet.create({
   draftRestoreText: { color: Colors.white, fontSize: 11, fontWeight: '700' },
   draftDiscardBtn: { paddingHorizontal: 8, paddingVertical: 4 },
   draftDiscardText: { color: Colors.gray600, fontSize: 11 },
-  segmentedContainer: { flexDirection: 'row', backgroundColor: Colors.gray100, borderRadius: Radius.md, padding: 2, marginBottom: 8 },
-  segmentedBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: Radius.md },
-  segmentedBtnActive: { backgroundColor: Colors.white, elevation: 1 },
   segmentedText: { fontSize: Typography.xs, color: Colors.gray600, fontWeight: '600' },
   segmentedTextActive: { color: Colors.primary, fontWeight: '700' },
   intermediateStopCard: { backgroundColor: Colors.gray50, padding: Spacing.md, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.gray200 },

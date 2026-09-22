@@ -30,6 +30,7 @@ export interface DriverListItem {
   status: DriverStatus;
   licenseNumber: string;
   licenseExpiry: string;
+  avatarUrl: string | null;
   createdAt: string;
   activeTrip: DriverActiveTrip | null;
   /** All-time trip count from GET /reports/drivers — null while that join hasn't resolved yet. */
@@ -168,6 +169,7 @@ export interface DriverDetail {
   status: DriverStatus;
   licenseNumber: string;
   licenseExpiry: string;
+  avatarUrl: string | null;
   /** Whole days until the licence expires; negative once expired. */
   licenseDaysLeft: number;
   aiRiskScore: number | null;

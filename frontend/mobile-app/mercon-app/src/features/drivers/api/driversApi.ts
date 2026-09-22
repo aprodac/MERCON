@@ -18,6 +18,7 @@ export interface RawDriver {
   status: DriverStatus;
   license_number: string;
   license_expiry: string;
+  avatar_url?: string | null;
   createdAt: string;
   trips: { id: string; status: string; vehicle: { plate_number: string } | null }[];
 }
