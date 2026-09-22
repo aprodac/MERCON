@@ -257,7 +257,7 @@ export async function applyAdvance(
       );
     }
 
-    let contraLines: Prisma.JournalLineUncheckedCreateWithoutJournalEntryInput[] = [];
+    let contraLines: Prisma.JournalLineCreateWithoutJournalEntryInput[] = [];
     let updatedInvoice: any = null;
     let updatedBill: any = null;
 
@@ -289,13 +289,13 @@ export async function applyAdvance(
       // Contra entry: Dr Customer Advance Liability, Cr Accounts Receivable
       contraLines = [
         {
-          accountId: advanceAccountId,
+          account: { connect: { id: advanceAccountId } },
           debit: applyAmount,
           credit: 0,
           description: `Advance application to Invoice ${invoice.ref_id || invoice.id}`,
         },
         {
-          accountId: arAccountId,
+          account: { connect: { id: arAccountId } },
           debit: 0,
           credit: applyAmount,
           description: `Settlement via Advance ${advance.ref_id || advance.id}`,
@@ -344,13 +344,13 @@ export async function applyAdvance(
       // Contra entry: Dr Accounts Payable, Cr Provider Advance Asset
       contraLines = [
         {
-          accountId: apAccountId,
+          account: { connect: { id: apAccountId } },
           debit: applyAmount,
           credit: 0,
           description: `Settlement via Advance ${advance.ref_id || advance.id}`,
         },
         {
-          accountId: advanceAccountId,
+          account: { connect: { id: advanceAccountId } },
           debit: 0,
           credit: applyAmount,
           description: `Advance application to Bill ${bill.ref_id || bill.id}`,

@@ -15,14 +15,19 @@ import { SearchBar } from '@/features/dashboard/components';
 import { EmptyState, ErrorState } from '@/shared/components';
 
 import {
-  DriverCard, DriversHeader, DriversListHeader, DriverStatsSection, FilterBottomSheet, SkeletonDriverCard,
+  DriverCard,
+  DriverPagination,
+  DriversHeader,
+  DriversListHeader,
+  DriverStatsSection,
+  FilterBottomSheet,
+  SkeletonDriverCard,
 } from '../components';
 import { useDriverFilters, useDriverSearch, useDriverSorting, useDrivers } from '../hooks';
 import type { DriverListItem } from '../types';
 
 export default function DriversScreen() {
   const router = useRouter();
-  const [searchVisible, setSearchVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
 
   const { query, debouncedQuery, setQuery } = useDriverSearch();
@@ -30,7 +35,17 @@ export default function DriversScreen() {
   const { sort, setSort } = useDriverSorting();
 
   const {
-    drivers, total, loading, error, refresh, isRefreshing, fetchNextPage, hasNextPage, isFetchingNextPage,
+    drivers,
+    total,
+    page,
+    totalPages,
+    loading,
+    error,
+    refresh,
+    isRefreshing,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
   } = useDrivers({ search: debouncedQuery, status, sort });
 
   const openDriver = (driver: DriverListItem) => {
@@ -56,9 +71,9 @@ export default function DriversScreen() {
           onEndReachedThreshold={0.4}
           onEndReached={() => { if (hasNextPage) fetchNextPage(); }}
           ListHeaderComponent={
-            <View className="gap-4.5 pb-4">
-              <SearchBar value={query} onChangeText={setQuery} placeholder="Search drivers by name or phone…" />
+            <View className="gap-4 pb-3">
               <DriverStatsSection />
+              <SearchBar value={query} onChangeText={setQuery} placeholder="Search drivers by name or phone…" />
               <DriversListHeader total={total} sort={sort} onSortChange={setSort} />
             </View>
           }
@@ -81,7 +96,17 @@ export default function DriversScreen() {
               <EmptyState title="No drivers found" subtitle="Try a different search or filter." Icon={Users} className="mt-8" />
             )
           }
-          ListFooterComponent={isFetchingNextPage ? <ActivityIndicator color="#F24822" style={{ marginTop: 16 }} /> : null}
+          ListFooterComponent={
+            <DriverPagination
+              currentCount={drivers.length}
+              totalCount={total}
+              page={page}
+              totalPages={totalPages}
+              hasNextPage={hasNextPage}
+              isFetchingNextPage={isFetchingNextPage}
+              onLoadNext={fetchNextPage}
+            />
+          }
         />
       )}
 

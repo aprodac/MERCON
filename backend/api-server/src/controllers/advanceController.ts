@@ -67,7 +67,7 @@ export const listAdvances = async (req: Request, res: Response) => {
 
 export const getAdvanceById = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
 
     const advance = await prisma.advance.findUnique({
       where: { id },
@@ -99,7 +99,7 @@ export const getAdvanceById = async (req: Request, res: Response) => {
 
 export const applyAdvanceHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const { targetId, targetType, amount } = req.body;
     const userId = (req as any).user?.id;
 
@@ -129,7 +129,7 @@ export const applyAdvanceHandler = async (req: Request, res: Response) => {
 
 export const voidAdvanceHandler = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = req.params.id as string;
     const userId = (req as any).user?.id;
 
     const result = await voidAdvance(id, userId);
