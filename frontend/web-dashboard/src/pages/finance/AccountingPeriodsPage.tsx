@@ -27,6 +27,8 @@ export default function AccountingPeriodsPage() {
   const isAdmin = isSuperAdmin || userRole === 'Admin';
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isFyModalOpen, setIsFyModalOpen] = useState(false);
+  const [closingDate, setClosingDate] = useState<string>('');
   const [formData, setFormData] = useState<CreateAccountingPeriodDTO>({
     name: '',
     start_date: '',
@@ -72,6 +74,21 @@ export default function AccountingPeriodsPage() {
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error?.message || 'Failed to lock period');
+    },
+  });
+
+  const fyClosingMutation = useMutation({
+    mutationFn: (dateStr: string) => financeService.closeFiscalYear(dateStr),
+    onSuccess: (res: any) => {
+      const entry = res?.data;
+      toast.success(`Fiscal year closed successfully! Journal Entry ${entry?.ref_id || ''} posted.`);
+      queryClient.invalidateQueries({ queryKey: ['accounting-periods'] });
+      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      setIsFyModalOpen(false);
+      setClosingDate('');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error?.message || 'Failed to close fiscal year');
     },
   });
 
@@ -151,13 +168,28 @@ export default function AccountingPeriodsPage() {
             <p className="text-sm text-slate-500">Financial closing cycles and posting locks</p>
           </div>
           {isAdmin && (
-            <Button
-              onClick={() => setIsModalOpen(true)}
-              className="bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-sm font-medium"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              New Period
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const today = new Date();
+                  const defaultClosing = `${today.getFullYear()}-12-31`;
+                  setClosingDate(defaultClosing);
+                  setIsFyModalOpen(true);
+                }}
+                className="border-slate-300 text-slate-700 hover:bg-slate-50 font-medium"
+              >
+                <Lock className="w-4 h-4 mr-2 text-slate-500" />
+                Close Fiscal Year
+              </Button>
+              <Button
+                onClick={() => setIsModalOpen(true)}
+                className="bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-sm font-medium"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                New Period
+              </Button>
+            </div>
           )}
         </div>
 
@@ -241,6 +273,52 @@ export default function AccountingPeriodsPage() {
                 </Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Close Fiscal Year Confirm Dialog */}
+        <Dialog open={isFyModalOpen} onOpenChange={setIsFyModalOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold text-[#3E3C3D]">
+                Close Fiscal Year
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2 text-sm text-slate-600">
+              <p>
+                Closing a fiscal year zeros out all Revenue and Expense account balances up to the specified closing date and posts the net income/loss to Retained Earnings via a single closing Journal Entry.
+              </p>
+              <p className="text-xs text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+                Ensure all accounting periods prior to and including the closing date are Closed or Locked before performing fiscal year closing.
+              </p>
+              <div>
+                <label className="text-xs font-semibold text-slate-700 mb-1 block">
+                  Fiscal Year Closing Date *
+                </label>
+                <Input
+                  type="date"
+                  value={closingDate}
+                  onChange={(e) => setClosingDate(e.target.value)}
+                  className="h-9 text-xs"
+                />
+              </div>
+            </div>
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => setIsFyModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                className="bg-[#FA634E] hover:bg-[#e0523d] text-white"
+                disabled={!closingDate || fyClosingMutation.isPending}
+                onClick={() => {
+                  if (closingDate) fyClosingMutation.mutate(closingDate);
+                }}
+              >
+                {fyClosingMutation.isPending ? 'Closing FY...' : 'Confirm & Close FY'}
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

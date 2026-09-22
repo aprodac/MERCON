@@ -7,6 +7,7 @@ const createAccountSchema = z.object({
   account_code: z.string().min(1, 'Account code is required'),
   name: z.string().min(1, 'Account name is required'),
   account_type: z.enum(['Asset', 'Liability', 'Equity', 'Revenue', 'Expense']),
+  cash_flow_category: z.enum(['Operating', 'Investing', 'Financing']).nullable().optional(),
   parentId: z.string().uuid().nullable().optional(),
   description: z.string().nullable().optional(),
   is_postable: z.boolean().default(true),

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, Eye, CheckCircle2, CreditCard, AlertTriangle, FileText } from 'lucide-react';
 import { toast } from 'sonner';
@@ -12,9 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
-import { financeService, CreateBillDTO, BillLineDTO } from '@/services/financeService';
-import { thirdPartyService } from '@/services/thirdPartyService';
-import { expenseService } from '@/services/expenseService';
+import { financeService } from '@/services/financeService';
 import type { Bill, BillStatus, Account } from '@mercon/shared-types';
 
 const STATUS_BADGES: Record<BillStatus, string> = {
@@ -26,6 +25,7 @@ const STATUS_BADGES: Record<BillStatus, string> = {
 };
 
 export default function BillsPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [selectedStatus, setSelectedStatus] = useState<BillStatus | 'all'>('all');
@@ -33,18 +33,8 @@ export default function BillsPage() {
   const [page, setPage] = useState(1);
   const perPage = 25;
 
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [viewingBill, setViewingBill] = useState<Bill | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-
-  // Create form state
-  const [providerId, setProviderId] = useState<string>('');
-  const [payeeName, setPayeeName] = useState('');
-  const [billDate, setBillDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [dueDate, setDueDate] = useState<string>('');
-  const [taxAmount, setTaxAmount] = useState<number>(0);
-  const [selectedExpenseIds, setSelectedExpenseIds] = useState<string[]>([]);
-  const [manualLines, setManualLines] = useState<BillLineDTO[]>([]);
 
   // Payment form state
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
@@ -57,17 +47,6 @@ export default function BillsPage() {
     queryFn: () => financeService.getBills({ status: selectedStatus, search, page, per_page: perPage }),
   });
 
-  const { data: providersRes } = useQuery({
-    queryKey: ['third-party-providers', 'all'],
-    queryFn: () => thirdPartyService.getAll({ is_active: true, per_page: 500 }),
-  });
-
-  const { data: unbilledExpensesRes } = useQuery({
-    queryKey: ['expenses', 'unbilled'],
-    queryFn: () => expenseService.getAll({ per_page: 200 }),
-    enabled: isCreateModalOpen,
-  });
-
   const { data: accountsRes } = useQuery({
     queryKey: ['accounts', 'postable'],
     queryFn: () => financeService.getAccounts({ include_inactive: false }),
@@ -75,20 +54,7 @@ export default function BillsPage() {
 
   const bills: Bill[] = billsRes?.data || [];
   const pagination = billsRes?.pagination || { page: 1, per_page: perPage, total: bills.length, total_pages: 1 };
-  const providers = providersRes?.data?.data || [];
-  const unbilledExpenses = unbilledExpensesRes?.data || [];
   const postableAccounts: Account[] = (accountsRes?.data || []).filter((a: Account) => a.is_postable);
-  const expenseAccounts = postableAccounts.filter((a) => a.account_type === 'Expense');
-
-  const createMutation = useMutation({
-    mutationFn: financeService.createDraftBill,
-    onSuccess: () => {
-      toast.success('Draft bill created');
-      queryClient.invalidateQueries({ queryKey: ['bills'] });
-      closeCreateModal();
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.error?.message || 'Failed to create bill'),
-  });
 
   const approveMutation = useMutation({
     mutationFn: financeService.approveBill,
@@ -129,65 +95,6 @@ export default function BillsPage() {
     },
     onError: (err: any) => toast.error(err?.response?.data?.error?.message || 'Failed to record payment'),
   });
-
-  const openCreateModal = () => {
-    setProviderId('');
-    setPayeeName('');
-    setBillDate(new Date().toISOString().split('T')[0]);
-    setDueDate('');
-    setTaxAmount(0);
-    setSelectedExpenseIds([]);
-    setManualLines([]);
-    setIsCreateModalOpen(true);
-  };
-
-  const closeCreateModal = () => setIsCreateModalOpen(false);
-
-  const toggleExpense = (id: string) => {
-    setSelectedExpenseIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  };
-
-  const handleAddManualLine = () => {
-    setManualLines([...manualLines, { description: '', amount: 0, accountId: null, source_type: 'Manual' }]);
-  };
-
-  const handleManualLineChange = (index: number, field: keyof BillLineDTO, value: any) => {
-    const updated = [...manualLines];
-    updated[index] = { ...updated[index], [field]: value };
-    setManualLines(updated);
-  };
-
-  const handleRemoveManualLine = (index: number) => {
-    setManualLines(manualLines.filter((_, i) => i !== index));
-  };
-
-  const estimatedSubtotal =
-    unbilledExpenses
-      .filter((e: any) => selectedExpenseIds.includes(e.id))
-      .reduce((sum: number, e: any) => sum + (Number(e.amount) || 0), 0) +
-    manualLines.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
-
-  const handleCreateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!providerId && !payeeName) {
-      toast.error('Select a provider or enter a payee name');
-      return;
-    }
-    if (selectedExpenseIds.length === 0 && manualLines.length === 0) {
-      toast.error('Select at least one expense or add a manual line');
-      return;
-    }
-    const payload: CreateBillDTO = {
-      providerId: providerId || null,
-      payee_name: payeeName || null,
-      bill_date: billDate,
-      due_date: dueDate || null,
-      tax_amount: taxAmount,
-      expenseIds: selectedExpenseIds,
-      lines: manualLines.filter((l) => l.description && l.amount >= 0),
-    };
-    createMutation.mutate(payload);
-  };
 
   const handleRecordPayment = (e: React.FormEvent) => {
     e.preventDefault();
@@ -320,7 +227,7 @@ export default function BillsPage() {
             <h1 className="text-2xl font-bold text-[#3E3C3D]">Bills</h1>
             <p className="text-sm text-slate-500">Vendor/provider costs, approvals & accounts payable</p>
           </div>
-          <Button onClick={openCreateModal} className="bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-sm font-medium">
+          <Button onClick={() => navigate('/finance/bills/new')} className="bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-sm font-medium">
             <Plus className="w-4 h-4 mr-2" />
             New Bill
           </Button>
@@ -361,123 +268,6 @@ export default function BillsPage() {
           emptyTitle="No Bills"
           emptyMessage="No bills found matching criteria."
         />
-
-        {/* Create Modal */}
-        <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="text-lg font-bold text-[#3E3C3D]">New Bill (Draft)</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleCreateSubmit} className="space-y-4 py-2">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 mb-1 block">Provider (Third-Party)</label>
-                  <Select value={providerId || 'none'} onValueChange={(v) => setProviderId(v === 'none' ? '' : v)}>
-                    <SelectTrigger className="h-9 text-xs">
-                      <SelectValue placeholder="Select provider" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">— No provider —</SelectItem>
-                      {providers.map((p: any) => (
-                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 mb-1 block">Or Payee Name</label>
-                  <Input placeholder="e.g. Ad-hoc vendor" value={payeeName} onChange={(e) => setPayeeName(e.target.value)} className="h-9 text-xs" disabled={!!providerId} />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 mb-1 block">Bill Date *</label>
-                  <Input type="date" value={billDate} onChange={(e) => setBillDate(e.target.value)} className="h-9 text-xs" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 mb-1 block">Due Date</label>
-                  <Input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="h-9 text-xs" />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 mb-1 block">Tax Amount</label>
-                  <Input type="number" step="0.01" min="0" value={taxAmount} onChange={(e) => setTaxAmount(parseFloat(e.target.value) || 0)} className="h-9 text-xs" />
-                </div>
-              </div>
-
-              {/* Expense selection */}
-              <div className="border border-slate-200 rounded-lg overflow-hidden">
-                <div className="bg-slate-50 px-3 py-2 border-b border-slate-200">
-                  <span className="text-xs font-bold text-slate-700">Operational Expenses</span>
-                  <p className="text-[10px] text-slate-400 mt-0.5">
-                    Not yet filtered by "already billed" — check for duplicates against existing Bills before approving.
-                  </p>
-                </div>
-                <div className="p-3 space-y-1.5 max-h-40 overflow-y-auto">
-                  {unbilledExpenses.length === 0 ? (
-                    <p className="text-xs text-slate-400">No expenses found.</p>
-                  ) : (
-                    unbilledExpenses.map((exp: any) => (
-                      <label key={exp.id} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-slate-50 p-1 rounded">
-                        <input type="checkbox" checked={selectedExpenseIds.includes(exp.id)} onChange={() => toggleExpense(exp.id)} className="rounded text-[#FA634E]" />
-                        <span className="font-mono font-semibold">{exp.ref_id || exp.id.slice(0, 8)}</span>
-                        <span className="text-slate-500">— {exp.category}</span>
-                        <span className="ml-auto font-mono font-semibold text-slate-800">SAR {(Number(exp.amount) || 0).toFixed(2)}</span>
-                      </label>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Manual lines */}
-              <div className="border border-slate-200 rounded-lg overflow-hidden">
-                <div className="bg-slate-50 px-3 py-2 border-b border-slate-200 flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-700">Manual Lines (require a GL account)</span>
-                  <Button type="button" variant="ghost" size="sm" onClick={handleAddManualLine} className="h-7 text-xs text-[#FA634E] hover:bg-rose-50">
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Line
-                  </Button>
-                </div>
-                {manualLines.length > 0 && (
-                  <div className="p-3 space-y-2">
-                    {manualLines.map((line, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <Input placeholder="Description" value={line.description} onChange={(e) => handleManualLineChange(idx, 'description', e.target.value)} className="h-8 text-xs flex-[2]" />
-                        <div className="flex-1">
-                          <Select value={line.accountId || ''} onValueChange={(v) => handleManualLineChange(idx, 'accountId', v)}>
-                            <SelectTrigger className="h-8 text-xs">
-                              <SelectValue placeholder="Expense account" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {expenseAccounts.map((acc) => (
-                                <SelectItem key={acc.id} value={acc.id}>{acc.account_code} - {acc.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <Input type="number" step="0.01" placeholder="Amount" value={line.amount || ''} onChange={(e) => handleManualLineChange(idx, 'amount', parseFloat(e.target.value) || 0)} className="h-8 text-xs w-24 text-right font-mono" />
-                        <Button type="button" variant="ghost" size="sm" onClick={() => handleRemoveManualLine(idx)} className="h-8 w-8 p-0 text-slate-400 hover:text-rose-600 shrink-0">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 flex justify-between items-center text-xs font-semibold">
-                <span>Estimated Subtotal (excl. tax)</span>
-                <span className="font-mono text-slate-900">SAR {estimatedSubtotal.toFixed(2)}</span>
-              </div>
-
-              <DialogFooter className="pt-2">
-                <Button type="button" variant="outline" size="sm" onClick={closeCreateModal}>Cancel</Button>
-                <Button type="submit" size="sm" className="bg-[#FA634E] hover:bg-[#e0523d] text-white" disabled={createMutation.isPending}>
-                  Save as Draft
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
 
         {/* View / Detail Modal */}
         <Dialog open={!!viewingBill} onOpenChange={() => setViewingBill(null)}>

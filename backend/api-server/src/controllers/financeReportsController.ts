@@ -89,17 +89,123 @@ export const getTrialBalance = async (req: Request, res: Response) => {
   }
 };
 
+export const calculateProfitAndLossData = async (date_from?: string, date_to?: string) => {
+  const entryDateFilter: Prisma.DateTimeFilter = {};
+  if (date_from) {
+    entryDateFilter.gte = new Date(String(date_from));
+  }
+  if (date_to) {
+    entryDateFilter.lte = new Date(String(date_to));
+  }
+
+  const lines = await prisma.journalLine.findMany({
+    where: {
+      journalEntry: {
+        status: 'Posted',
+        entry_date: Object.keys(entryDateFilter).length > 0 ? entryDateFilter : undefined,
+      },
+      account: {
+        account_type: { in: ['Revenue', 'Expense'] },
+      },
+    },
+    include: {
+      account: true,
+    },
+  });
+
+  const revenueMap = new Map<string, { account_code: string; name: string; amount: Prisma.Decimal }>();
+  const expenseMap = new Map<string, { account_code: string; name: string; amount: Prisma.Decimal }>();
+
+  for (const line of lines) {
+    const acc = line.account;
+    const debit = new Prisma.Decimal(line.debit || 0);
+    const credit = new Prisma.Decimal(line.credit || 0);
+
+    if (acc.account_type === 'Revenue') {
+      const current = revenueMap.get(acc.id) || {
+        account_code: acc.account_code,
+        name: acc.name,
+        amount: new Prisma.Decimal(0),
+      };
+      current.amount = current.amount.plus(credit.minus(debit));
+      revenueMap.set(acc.id, current);
+    } else if (acc.account_type === 'Expense') {
+      const current = expenseMap.get(acc.id) || {
+        account_code: acc.account_code,
+        name: acc.name,
+        amount: new Prisma.Decimal(0),
+      };
+      current.amount = current.amount.plus(debit.minus(credit));
+      expenseMap.set(acc.id, current);
+    }
+  }
+
+  let totalRevenue = new Prisma.Decimal(0);
+  const revenues = Array.from(revenueMap.values())
+    .map((r) => {
+      totalRevenue = totalRevenue.plus(r.amount);
+      return {
+        account_code: r.account_code,
+        name: r.name,
+        amount: r.amount.toNumber(),
+      };
+    })
+    .sort((a, b) => a.account_code.localeCompare(b.account_code));
+
+  let totalExpense = new Prisma.Decimal(0);
+  const expenses = Array.from(expenseMap.values())
+    .map((e) => {
+      totalExpense = totalExpense.plus(e.amount);
+      return {
+        account_code: e.account_code,
+        name: e.name,
+        amount: e.amount.toNumber(),
+      };
+    })
+    .sort((a, b) => a.account_code.localeCompare(b.account_code));
+
+  const netProfit = totalRevenue.minus(totalExpense).toNumber();
+
+  return {
+    date_from: date_from ? String(date_from) : undefined,
+    date_to: date_to ? String(date_to) : undefined,
+    revenues,
+    expenses,
+    total_revenue: totalRevenue.toNumber(),
+    total_expense: totalExpense.toNumber(),
+    net_profit: netProfit,
+  };
+};
+
 export const getProfitAndLoss = async (req: Request, res: Response) => {
   try {
     const { date_from, date_to } = req.query;
+    const data = await calculateProfitAndLossData(
+      date_from ? String(date_from) : undefined,
+      date_to ? String(date_to) : undefined,
+    );
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getCashFlow = async (req: Request, res: Response) => {
+  try {
+    const { date_from, date_to } = req.query;
+
+    const fromDate = date_from ? new Date(String(date_from)) : undefined;
+    const toDate = date_to ? new Date(String(date_to)) : undefined;
+
+    const pnl = await calculateProfitAndLossData(
+      date_from ? String(date_from) : undefined,
+      date_to ? String(date_to) : undefined,
+    );
+    const netIncome = pnl.net_profit;
 
     const entryDateFilter: Prisma.DateTimeFilter = {};
-    if (date_from) {
-      entryDateFilter.gte = new Date(String(date_from));
-    }
-    if (date_to) {
-      entryDateFilter.lte = new Date(String(date_to));
-    }
+    if (fromDate) entryDateFilter.gte = fromDate;
+    if (toDate) entryDateFilter.lte = toDate;
 
     const lines = await prisma.journalLine.findMany({
       where: {
@@ -108,77 +214,112 @@ export const getProfitAndLoss = async (req: Request, res: Response) => {
           entry_date: Object.keys(entryDateFilter).length > 0 ? entryDateFilter : undefined,
         },
         account: {
-          account_type: { in: ['Revenue', 'Expense'] },
+          cash_flow_category: { in: ['Operating', 'Investing', 'Financing'] },
         },
       },
-      include: {
-        account: true,
-      },
+      include: { account: true },
     });
 
-    const revenueMap = new Map<string, { account_code: string; name: string; amount: Prisma.Decimal }>();
-    const expenseMap = new Map<string, { account_code: string; name: string; amount: Prisma.Decimal }>();
+    const operatingItems: { account_code: string; name: string; amount: number }[] = [];
+    const investingItems: { account_code: string; name: string; amount: number }[] = [];
+    const financingItems: { account_code: string; name: string; amount: number }[] = [];
 
-    for (const line of lines) {
-      const acc = line.account;
-      const debit = new Prisma.Decimal(line.debit || 0);
-      const credit = new Prisma.Decimal(line.credit || 0);
+    const operatingMap = new Map<string, { account_code: string; name: string; amount: Prisma.Decimal }>();
+    const investingMap = new Map<string, { account_code: string; name: string; amount: Prisma.Decimal }>();
+    const financingMap = new Map<string, { account_code: string; name: string; amount: Prisma.Decimal }>();
 
-      if (acc.account_type === 'Revenue') {
-        const current = revenueMap.get(acc.id) || {
-          account_code: acc.account_code,
-          name: acc.name,
-          amount: new Prisma.Decimal(0),
-        };
-        current.amount = current.amount.plus(credit.minus(debit));
-        revenueMap.set(acc.id, current);
-      } else if (acc.account_type === 'Expense') {
-        const current = expenseMap.get(acc.id) || {
-          account_code: acc.account_code,
-          name: acc.name,
-          amount: new Prisma.Decimal(0),
-        };
-        current.amount = current.amount.plus(debit.minus(credit));
-        expenseMap.set(acc.id, current);
+    for (const l of lines) {
+      const acc = l.account;
+      const debit = new Prisma.Decimal(l.debit || 0);
+      const credit = new Prisma.Decimal(l.credit || 0);
+      const netActivity = debit.minus(credit);
+
+      if (acc.cash_flow_category === 'Operating') {
+        const cur = operatingMap.get(acc.id) || { account_code: acc.account_code, name: acc.name, amount: new Prisma.Decimal(0) };
+        cur.amount = cur.amount.plus(netActivity);
+        operatingMap.set(acc.id, cur);
+      } else if (acc.cash_flow_category === 'Investing') {
+        const cur = investingMap.get(acc.id) || { account_code: acc.account_code, name: acc.name, amount: new Prisma.Decimal(0) };
+        cur.amount = cur.amount.plus(netActivity);
+        investingMap.set(acc.id, cur);
+      } else if (acc.cash_flow_category === 'Financing') {
+        const cur = financingMap.get(acc.id) || { account_code: acc.account_code, name: acc.name, amount: new Prisma.Decimal(0) };
+        cur.amount = cur.amount.plus(netActivity);
+        financingMap.set(acc.id, cur);
       }
     }
 
-    let totalRevenue = new Prisma.Decimal(0);
-    const revenues = Array.from(revenueMap.values())
-      .map((r) => {
-        totalRevenue = totalRevenue.plus(r.amount);
-        return {
-          account_code: r.account_code,
-          name: r.name,
-          amount: r.amount.toNumber(),
-        };
-      })
-      .sort((a, b) => a.account_code.localeCompare(b.account_code));
+    let operatingAdjTotal = 0;
+    for (const v of operatingMap.values()) {
+      const amt = v.amount.toNumber();
+      operatingItems.push({ account_code: v.account_code, name: v.name, amount: amt });
+      operatingAdjTotal += amt;
+    }
 
-    let totalExpense = new Prisma.Decimal(0);
-    const expenses = Array.from(expenseMap.values())
-      .map((e) => {
-        totalExpense = totalExpense.plus(e.amount);
-        return {
-          account_code: e.account_code,
-          name: e.name,
-          amount: e.amount.toNumber(),
-        };
-      })
-      .sort((a, b) => a.account_code.localeCompare(b.account_code));
+    let investingTotal = 0;
+    for (const v of investingMap.values()) {
+      const amt = v.amount.toNumber();
+      investingItems.push({ account_code: v.account_code, name: v.name, amount: amt });
+      investingTotal += amt;
+    }
 
-    const netProfit = totalRevenue.minus(totalExpense).toNumber();
+    let financingTotal = 0;
+    for (const v of financingMap.values()) {
+      const amt = v.amount.toNumber();
+      financingItems.push({ account_code: v.account_code, name: v.name, amount: amt });
+      financingTotal += amt;
+    }
+
+    const totalOperating = netIncome + operatingAdjTotal;
+    const netChangeInCash = totalOperating + investingTotal + financingTotal;
+
+    const cashBankAccounts = await prisma.bankAccount.findMany({
+      select: { opening_balance: true, accountId: true },
+    });
+
+    let totalOpeningBal = cashBankAccounts.reduce((sum, b) => sum + Number(b.opening_balance || 0), 0);
+
+    if (fromDate) {
+      const priorLines = await prisma.journalLine.findMany({
+        where: {
+          journalEntry: {
+            status: 'Posted',
+            entry_date: { lt: fromDate },
+          },
+          account: {
+            bankAccount: { isNot: null },
+          },
+        },
+      });
+
+      const priorNet = priorLines.reduce((sum, l) => sum + Number(l.debit || 0) - Number(l.credit || 0), 0);
+      totalOpeningBal += priorNet;
+    }
+
+    const closingCash = totalOpeningBal + netChangeInCash;
 
     res.json({
       success: true,
       data: {
         date_from: date_from ? String(date_from) : undefined,
         date_to: date_to ? String(date_to) : undefined,
-        revenues,
-        expenses,
-        total_revenue: totalRevenue.toNumber(),
-        total_expense: totalExpense.toNumber(),
-        net_profit: netProfit,
+        net_income: netIncome,
+        operating: {
+          net_income: netIncome,
+          adjustments: operatingItems,
+          total: totalOperating,
+        },
+        investing: {
+          items: investingItems,
+          total: investingTotal,
+        },
+        financing: {
+          items: financingItems,
+          total: financingTotal,
+        },
+        net_change_in_cash: netChangeInCash,
+        opening_cash: totalOpeningBal,
+        closing_cash: closingCash,
       },
     });
   } catch (error: any) {

@@ -1200,11 +1200,18 @@ enum AccountType {
   Expense
 }
 
+enum CashFlowCategory {
+  Operating
+  Investing
+  Financing
+}
+
 model Account {
-  id           String      @id @default(uuid()) @db.Uuid
-  account_code String      @unique
-  name         String
-  account_type AccountType
+  id                 String            @id @default(uuid()) @db.Uuid
+  account_code       String            @unique
+  name               String
+  account_type       AccountType
+  cash_flow_category CashFlowCategory?
 
   parentId String?   @db.Uuid
   parent   Account?  @relation("AccountHierarchy", fields: [parentId], references: [id])
@@ -1730,6 +1737,7 @@ model Settings {
   defaultCustomerAdvanceAccountId String? @db.Uuid
   defaultProviderAdvanceAccountId String? @db.Uuid
   defaultEmployeeAdvanceAccountId String? @db.Uuid
+  defaultRetainedEarningsAccountId String? @db.Uuid
 
   // Module keys this deployment shows/allows.
   enabledModules        String[] @default([])

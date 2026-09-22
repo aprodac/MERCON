@@ -4,6 +4,7 @@ import type {
   AccountingPeriod,
   JournalEntry,
   AccountType,
+  CashFlowCategory,
   PeriodStatus,
   JournalEntryStatus,
   Invoice,
@@ -23,6 +24,7 @@ export interface CreateAccountDTO {
   account_code: string;
   name: string;
   account_type: AccountType;
+  cash_flow_category?: CashFlowCategory | null;
   parentId?: string | null;
   description?: string | null;
   is_postable?: boolean;
@@ -151,6 +153,11 @@ export const financeService = {
 
   lockAccountingPeriod: async (id: string) => {
     const response = await api.post(`/accounting-periods/${id}/lock`);
+    return response.data;
+  },
+
+  closeFiscalYear: async (closing_date: string) => {
+    const response = await api.post('/accounting-periods/close-fiscal-year', { closing_date });
     return response.data;
   },
 
@@ -313,6 +320,21 @@ export const financeService = {
     const response = await api.get('/finance/reports/balance-sheet', { params });
     return response.data;
   },
+
+  getARAgeing: async (params?: { as_of?: string }): Promise<ApiResponse<AgeingReportData>> => {
+    const response = await api.get('/finance/reports/ar-ageing', { params });
+    return response.data;
+  },
+
+  getAPAgeing: async (params?: { as_of?: string }): Promise<ApiResponse<AgeingReportData>> => {
+    const response = await api.get('/finance/reports/ap-ageing', { params });
+    return response.data;
+  },
+
+  getCashFlow: async (params?: { date_from?: string; date_to?: string }): Promise<ApiResponse<CashFlowData>> => {
+    const response = await api.get('/finance/reports/cash-flow', { params });
+    return response.data;
+  },
 };
 
 export interface TrialBalanceItem {
@@ -359,5 +381,42 @@ export interface BalanceSheetData {
   total_liabilities: number;
   total_equity: number;
   is_balanced: boolean;
+}
+
+export interface AgeingRow {
+  party_name: string;
+  current: number;
+  days_1_30: number;
+  days_31_60: number;
+  days_61_90: number;
+  days_90_plus: number;
+  total: number;
+}
+
+export interface AgeingReportData {
+  as_of: string;
+  rows: AgeingRow[];
+  grand_total: AgeingRow;
+}
+
+export interface CashFlowData {
+  date_from?: string;
+  date_to?: string;
+  operating: {
+    net_income: number;
+    adjustments: ReportLineItem[];
+    total: number;
+  };
+  investing: {
+    items: ReportLineItem[];
+    total: number;
+  };
+  financing: {
+    items: ReportLineItem[];
+    total: number;
+  };
+  net_change_in_cash: number;
+  opening_cash: number;
+  closing_cash: number;
 }
 

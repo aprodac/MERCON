@@ -178,6 +178,7 @@ export const MODULE_KEYS = [
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
 export type AccountType = 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense';
+export type CashFlowCategory = 'Operating' | 'Investing' | 'Financing';
 export type PeriodStatus = 'Open' | 'Closed' | 'Locked';
 export type JournalEntryStatus = 'Draft' | 'Posted' | 'Voided';
 export type InvoiceStatus = 'Draft' | 'Issued' | 'PartiallyPaid' | 'Paid' | 'Void';
@@ -327,6 +328,13 @@ export interface Settings {
   defaultCountryCode?: string;
   /** Default dial code (e.g. "+966") for phone number fields across the deployment. */
   defaultCountryDialCode?: string;
+  defaultReceivableAccountId?: string | null;
+  defaultRevenueAccountId?: string | null;
+  defaultPayableAccountId?: string | null;
+  defaultCustomerAdvanceAccountId?: string | null;
+  defaultProviderAdvanceAccountId?: string | null;
+  defaultEmployeeAdvanceAccountId?: string | null;
+  defaultRetainedEarningsAccountId?: string | null;
   updatedAt: string;
 }
 
@@ -494,6 +502,7 @@ export interface Account {
   account_code: string;
   name: string;
   account_type: AccountType;
+  cash_flow_category?: CashFlowCategory | null;
   parentId?: string | null;
   parent?: Account | null;
   children?: Account[];
@@ -810,6 +819,52 @@ export interface BalanceSheetReport {
   total_equity: number;
   is_balanced: boolean;
 }
+
+export interface TimestampedStep {
+  time: string;
+  title: string;
+  description: string;
+}
+
+export interface LearningResource {
+  id: string;
+  title: string;
+  category: string;
+  categoryLabel: string;
+  courseName?: string | null;
+  episodeNumber?: number | null;
+  targetRoute?: string | null;
+  description: string;
+  durationSeconds: number;
+  videoUrl: string;
+  thumbnailUrl?: string | null;
+  steps?: TimestampedStep[] | null;
+  keyTakeaways?: string[] | null;
+  created_by?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  isWatched?: boolean;
+  createdBy?: {
+    id: string;
+    name?: string | null;
+  } | null;
+}
+
+export interface CreateLearningResourceDTO {
+  title: string;
+  category: string;
+  categoryLabel?: string;
+  courseName?: string;
+  episodeNumber?: number;
+  targetRoute?: string;
+  description: string;
+  durationSeconds?: number;
+  videoUrl?: string;
+  steps?: TimestampedStep[];
+  keyTakeaways?: string[];
+}
+
+
 
 
 

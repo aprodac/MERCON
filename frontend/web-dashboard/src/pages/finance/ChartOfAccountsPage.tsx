@@ -39,6 +39,7 @@ export default function ChartOfAccountsPage() {
     account_code: '',
     name: '',
     account_type: 'Asset',
+    cash_flow_category: null,
     parentId: null,
     description: '',
     is_postable: true,
@@ -94,6 +95,7 @@ export default function ChartOfAccountsPage() {
       account_code: '',
       name: '',
       account_type: 'Asset',
+      cash_flow_category: null,
       parentId: null,
       description: '',
       is_postable: true,
@@ -108,6 +110,7 @@ export default function ChartOfAccountsPage() {
       account_code: acc.account_code,
       name: acc.name,
       account_type: acc.account_type,
+      cash_flow_category: acc.cash_flow_category || null,
       parentId: acc.parentId || null,
       description: acc.description || '',
       is_postable: acc.is_postable,
@@ -363,6 +366,31 @@ export default function ChartOfAccountsPage() {
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   className="h-9 text-xs"
                 />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-700 mb-1 block">
+                  Cash Flow Category (Optional)
+                </label>
+                <Select
+                  value={formData.cash_flow_category || 'none'}
+                  onValueChange={(val) =>
+                    setFormData({
+                      ...formData,
+                      cash_flow_category: val === 'none' ? null : (val as any),
+                    })
+                  }
+                >
+                  <SelectTrigger className="h-9 text-xs bg-white">
+                    <SelectValue placeholder="Unclassified" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Unclassified (None)</SelectItem>
+                    <SelectItem value="Operating">Operating</SelectItem>
+                    <SelectItem value="Investing">Investing</SelectItem>
+                    <SelectItem value="Financing">Financing</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div>

@@ -4,11 +4,16 @@ import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { closeAccountingPeriodWithSnapshot } from '../utils/periodClosingEngine';
 import { AccountingError } from '../utils/accountingEngine';
+import { closeFiscalYear } from '../utils/fiscalYearClosingEngine';
 
 const createPeriodSchema = z.object({
   name: z.string().min(1, 'Period name is required'),
   start_date: z.string().min(1, 'Start date is required'),
   end_date: z.string().min(1, 'End date is required'),
+});
+
+const closeFiscalYearSchema = z.object({
+  closing_date: z.string().min(1, 'Closing date is required'),
 });
 
 /**
@@ -172,6 +177,45 @@ export const lockAccountingPeriod = async (req: Request, res: Response) => {
     return res.json({ success: true, data: updated });
   } catch (error: any) {
     logger.error({ err: error }, 'Failed to lock accounting period');
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};
+
+/**
+ * Explicit Fiscal Year-End Closing Handler
+ */
+export const closeFiscalYearHandler = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id || 'system';
+    const parseResult = closeFiscalYearSchema.safeParse(req.body);
+
+    if (!parseResult.success) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: parseResult.error.issues[0].message },
+      });
+    }
+
+    const { closing_date } = parseResult.data;
+    const closingDate = new Date(closing_date);
+
+    if (isNaN(closingDate.getTime())) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_DATE', message: 'Invalid closing_date format' },
+      });
+    }
+
+    const closingEntry = await closeFiscalYear(closingDate, userId);
+    return res.json({ success: true, data: closingEntry });
+  } catch (error: any) {
+    if (error instanceof AccountingError) {
+      return res.status(error.statusCode).json({
+        success: false,
+        error: { code: error.code, message: error.message },
+      });
+    }
+    logger.error({ err: error }, 'Failed to close fiscal year');
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
 };
