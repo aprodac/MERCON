@@ -5,6 +5,7 @@ import { nextBillRefId } from '../utils/refId';
 import { logger } from '../utils/logger';
 import { approveBill, recordBillPayment, voidBill } from '../utils/billEngine';
 import { AccountingError } from '../utils/accountingEngine';
+import { logAuditEvent } from '../services/auditService';
 
 /**
  * Helper to generate bill lines from selected Expense and TripSubcontract IDs
@@ -482,6 +483,14 @@ export const deleteDraftBill = async (req: Request<{ id: string }>, res: Respons
 
     await prisma.bill.delete({ where: { id } });
 
+    await logAuditEvent({
+      req,
+      action: 'BILL_DRAFT_DELETED',
+      entityType: 'Bill',
+      entityId: existingBill.id,
+      metadata: { ref_id: existingBill.ref_id, providerId: existingBill.providerId },
+    });
+
     return res.status(200).json({
       success: true,
       message: 'Draft bill deleted successfully',
@@ -505,6 +514,14 @@ export const approveBillHandler = async (req: Request<{ id: string }>, res: Resp
     const userId = (req as any).user?.id || 'SYSTEM';
 
     const bill = await approveBill(id, userId);
+
+    await logAuditEvent({
+      req,
+      action: 'BILL_APPROVED',
+      entityType: 'Bill',
+      entityId: bill.id,
+      metadata: { ref_id: bill.ref_id, providerId: bill.providerId, total_amount: bill.total_amount, journalEntryId: bill.journalEntryId },
+    });
 
     return res.status(200).json({
       success: true,
@@ -539,6 +556,20 @@ export const recordBillPaymentHandler = async (req: Request<{ id: string }>, res
     const payload = paymentSchema.parse(req.body);
 
     const result = await recordBillPayment(id, userId, payload);
+
+    await logAuditEvent({
+      req,
+      action: 'BILL_PAYMENT_RECORDED',
+      entityType: 'Bill',
+      entityId: id,
+      metadata: {
+        ref_id: result.bill.ref_id,
+        amount: result.payment.amount,
+        accountId: result.payment.accountId,
+        newBalanceDue: result.bill.balance_due,
+        newStatus: result.bill.status,
+      },
+    });
 
     return res.status(200).json({
       success: true,
@@ -581,6 +612,14 @@ export const voidBillHandler = async (req: Request<{ id: string }>, res: Respons
     const userId = (req as any).user?.id || 'SYSTEM';
 
     const bill = await voidBill(id, userId);
+
+    await logAuditEvent({
+      req,
+      action: 'BILL_VOIDED',
+      entityType: 'Bill',
+      entityId: bill.id,
+      metadata: { ref_id: bill.ref_id, providerId: bill.providerId, journalEntryId: bill.journalEntryId },
+    });
 
     return res.status(200).json({
       success: true,

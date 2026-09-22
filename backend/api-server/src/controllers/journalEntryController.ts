@@ -4,6 +4,7 @@ import { prisma } from '../db';
 import { generateRefId, nextJournalEntryRefId } from '../utils/refId';
 import { logger } from '../utils/logger';
 import { postJournalEntry, voidJournalEntry, AccountingError } from '../utils/accountingEngine';
+import { logAuditEvent } from '../services/auditService';
 
 const journalLineSchema = z.object({
   accountId: z.string().uuid('Invalid account ID'),
@@ -292,6 +293,14 @@ export const deleteDraftJournalEntry = async (req: Request, res: Response) => {
 
     await prisma.journalEntry.delete({ where: { id } });
 
+    await logAuditEvent({
+      req,
+      action: 'JOURNAL_ENTRY_DRAFT_DELETED',
+      entityType: 'JournalEntry',
+      entityId: existing.id,
+      metadata: { ref_id: existing.ref_id, periodId: existing.periodId, source_type: existing.source_type },
+    });
+
     return res.json({ success: true, message: `Journal entry ${existing.ref_id || existing.id} deleted` });
   } catch (error: any) {
     logger.error({ err: error }, 'Failed to delete draft journal entry');
@@ -308,6 +317,14 @@ export const postJournalEntryHandler = async (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
 
     const posted = await postJournalEntry(id, userId);
+
+    await logAuditEvent({
+      req,
+      action: 'JOURNAL_ENTRY_POSTED',
+      entityType: 'JournalEntry',
+      entityId: posted.id,
+      metadata: { ref_id: posted.ref_id, periodId: posted.periodId, source_type: posted.source_type, source_id: posted.source_id },
+    });
 
     return res.json({ success: true, data: posted });
   } catch (error: any) {
@@ -332,6 +349,14 @@ export const voidJournalEntryHandler = async (req: Request, res: Response) => {
     const { memo } = req.body || {};
 
     const result = await voidJournalEntry(id, userId, memo);
+
+    await logAuditEvent({
+      req,
+      action: 'JOURNAL_ENTRY_VOIDED',
+      entityType: 'JournalEntry',
+      entityId: id,
+      metadata: { memo, reversalEntryId: result.reversal?.id, reversalRefId: result.reversal?.ref_id },
+    });
 
     return res.json({ success: true, data: result });
   } catch (error: any) {

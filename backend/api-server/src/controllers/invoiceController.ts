@@ -5,6 +5,7 @@ import { generateRefId } from '../utils/refId';
 import { logger } from '../utils/logger';
 import { issueInvoice, recordInvoicePayment, voidInvoice } from '../utils/invoiceEngine';
 import { AccountingError } from '../utils/accountingEngine';
+import { logAuditEvent } from '../services/auditService';
 
 const INVOICE_REF_PREFIX = 'INV';
 const INVOICE_REF_PAD = 4;
@@ -381,6 +382,14 @@ export const deleteDraftInvoice = async (req: Request, res: Response) => {
 
     await prisma.invoice.delete({ where: { id } });
 
+    await logAuditEvent({
+      req,
+      action: 'INVOICE_DRAFT_DELETED',
+      entityType: 'Invoice',
+      entityId: existing.id,
+      metadata: { ref_id: existing.ref_id, customerId: existing.customerId },
+    });
+
     return res.json({ success: true, message: `Draft invoice ${existing.ref_id || existing.id} deleted` });
   } catch (error: any) {
     logger.error({ err: error }, 'Failed to delete draft invoice');
@@ -397,6 +406,14 @@ export const issueInvoiceHandler = async (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
 
     const issued = await issueInvoice(id, userId);
+
+    await logAuditEvent({
+      req,
+      action: 'INVOICE_ISSUED',
+      entityType: 'Invoice',
+      entityId: issued.id,
+      metadata: { ref_id: issued.ref_id, customerId: issued.customerId, total_amount: issued.total_amount, journalEntryId: issued.journalEntryId },
+    });
 
     return res.json({ success: true, data: issued });
   } catch (error: any) {
@@ -429,6 +446,20 @@ export const recordInvoicePaymentHandler = async (req: Request, res: Response) =
 
     const result = await recordInvoicePayment(id, userId, parseResult.data);
 
+    await logAuditEvent({
+      req,
+      action: 'INVOICE_PAYMENT_RECORDED',
+      entityType: 'Invoice',
+      entityId: id,
+      metadata: {
+        ref_id: result.invoice.ref_id,
+        amount: result.payment.amount,
+        accountId: result.payment.accountId,
+        newBalanceDue: result.invoice.balance_due,
+        newStatus: result.invoice.status,
+      },
+    });
+
     return res.json({ success: true, data: result });
   } catch (error: any) {
     if (error instanceof AccountingError) {
@@ -451,6 +482,14 @@ export const voidInvoiceHandler = async (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
 
     const voided = await voidInvoice(id, userId);
+
+    await logAuditEvent({
+      req,
+      action: 'INVOICE_VOIDED',
+      entityType: 'Invoice',
+      entityId: voided.id,
+      metadata: { ref_id: voided.ref_id, customerId: voided.customerId, journalEntryId: voided.journalEntryId },
+    });
 
     return res.json({ success: true, data: voided });
   } catch (error: any) {
