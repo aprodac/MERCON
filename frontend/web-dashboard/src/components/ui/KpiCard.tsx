@@ -76,6 +76,7 @@ export interface KpiCardProps extends Omit<React.ComponentProps<'div'>, 'title' 
   onStageClick?: (stageName: string) => void
   onHealthClick?: (healthType: string) => void
   customFooter?: React.ReactNode
+  standaloneIcon?: boolean
 
   // Backward compatibility props
   delta?: string | number | null
@@ -85,27 +86,62 @@ export interface KpiCardProps extends Omit<React.ComponentProps<'div'>, 'title' 
   iconVariant?: 'solid' | 'light'
 }
 
-/** Strictly standardizes variant styling to Green (emerald), Red (rose), or Neutral (slate). */
-const variantStyles: Record<'emerald' | 'rose' | 'slate', {
+/** Standardized variant styling for all KPI card variants. */
+const variantStyles: Record<KpiCardVariant, {
   hex: string
   iconBg: string
   iconColor: string
   valueColor: string
   activeRing: string
+  borderColor: string
 }> = {
+  brand: {
+    hex: '#FA634E',
+    iconBg: 'bg-orange-50 dark:bg-orange-950/40',
+    iconColor: 'text-[#FA634E]',
+    valueColor: 'text-slate-900 dark:text-slate-100',
+    activeRing: 'border-[#FA634E] ring-1 ring-[#FA634E]/30 transition-all',
+    borderColor: 'border-orange-300/80 hover:border-[#FA634E] dark:border-orange-500/40',
+  },
+  blue: {
+    hex: '#2563EB',
+    iconBg: 'bg-blue-50 dark:bg-blue-950/40',
+    iconColor: 'text-blue-600 dark:text-blue-400',
+    valueColor: 'text-slate-900 dark:text-slate-100',
+    activeRing: 'border-blue-500 ring-1 ring-blue-500/30 transition-all',
+    borderColor: 'border-blue-300/80 hover:border-blue-500 dark:border-blue-500/40',
+  },
   emerald: {
     hex: '#10B981',
     iconBg: 'bg-emerald-50 dark:bg-emerald-950/40',
     iconColor: 'text-emerald-600 dark:text-emerald-400',
-    valueColor: 'text-emerald-600 dark:text-emerald-400',
+    valueColor: 'text-slate-900 dark:text-slate-100',
     activeRing: 'border-emerald-500 ring-1 ring-emerald-500/30 transition-all',
+    borderColor: 'border-emerald-300/80 hover:border-emerald-500 dark:border-emerald-500/40',
+  },
+  amber: {
+    hex: '#D97706',
+    iconBg: 'bg-amber-50 dark:bg-amber-950/40',
+    iconColor: 'text-amber-600 dark:text-amber-400',
+    valueColor: 'text-slate-900 dark:text-slate-100',
+    activeRing: 'border-amber-500 ring-1 ring-amber-500/30 transition-all',
+    borderColor: 'border-amber-300/80 hover:border-amber-500 dark:border-amber-500/40',
+  },
+  purple: {
+    hex: '#9333EA',
+    iconBg: 'bg-purple-50 dark:bg-purple-950/40',
+    iconColor: 'text-purple-600 dark:text-purple-400',
+    valueColor: 'text-slate-900 dark:text-slate-100',
+    activeRing: 'border-purple-500 ring-1 ring-purple-500/30 transition-all',
+    borderColor: 'border-purple-300/80 hover:border-purple-500 dark:border-purple-500/40',
   },
   rose: {
     hex: '#EF4444',
     iconBg: 'bg-rose-50 dark:bg-rose-950/40',
     iconColor: 'text-rose-600 dark:text-rose-400',
-    valueColor: 'text-rose-600 dark:text-rose-400',
+    valueColor: 'text-slate-900 dark:text-slate-100',
     activeRing: 'border-rose-500 ring-1 ring-rose-500/30 transition-all',
+    borderColor: 'border-rose-300/80 hover:border-rose-500 dark:border-rose-500/40',
   },
   slate: {
     hex: '#64748B',
@@ -113,6 +149,15 @@ const variantStyles: Record<'emerald' | 'rose' | 'slate', {
     iconColor: 'text-slate-600 dark:text-slate-400',
     valueColor: 'text-slate-900 dark:text-slate-100',
     activeRing: 'border-slate-400 ring-1 ring-slate-400/30 transition-all',
+    borderColor: 'border-slate-200/80 hover:border-slate-400 dark:border-slate-700',
+  },
+  teal: {
+    hex: '#0D9488',
+    iconBg: 'bg-teal-50 dark:bg-teal-950/40',
+    iconColor: 'text-teal-600 dark:text-teal-400',
+    valueColor: 'text-slate-900 dark:text-slate-100',
+    activeRing: 'border-teal-500 ring-1 ring-teal-500/30 transition-all',
+    borderColor: 'border-teal-300/80 hover:border-teal-500 dark:border-teal-500/40',
   },
 }
 
@@ -236,6 +281,7 @@ export function KpiCard({
   ...props
 }: KpiCardProps) {
   const displayTitle = title || label || ''
+  const isStandalone = props.standaloneIcon !== false
 
   let computedTrend = trend
   let computedTrendValue = trendValue
@@ -248,30 +294,37 @@ export function KpiCard({
     }
   }
 
-  // Strictly map variant to emerald (green), rose (red), or slate (neutral)
-  let normalizedVariant: 'emerald' | 'rose' | 'slate' = 'slate'
-  if (variant === 'emerald' || variant === 'rose') {
-    normalizedVariant = variant
-  } else if (variant === 'amber') {
-    normalizedVariant = 'rose' // Amber/warning mapped to rose (action required)
-  } else if (color === '#10B981' || color === '#16A34A') {
-    normalizedVariant = 'emerald'
-  } else if (color === '#EF4444' || color === '#DC2626') {
-    normalizedVariant = 'rose'
-  } else if (computedTrend === 'up') {
-    normalizedVariant = 'emerald'
-  } else if (computedTrend === 'down') {
-    normalizedVariant = 'rose'
+  // Determine variant
+  let normalizedVariant: KpiCardVariant = variant || 'slate'
+  if (!variant) {
+    if (color === '#10B981' || color === '#16A34A') {
+      normalizedVariant = 'emerald'
+    } else if (color === '#EF4444' || color === '#DC2626') {
+      normalizedVariant = 'rose'
+    } else if (color === '#2563EB') {
+      normalizedVariant = 'blue'
+    } else if (color === '#FA634E') {
+      normalizedVariant = 'brand'
+    } else if (computedTrend === 'up') {
+      normalizedVariant = 'emerald'
+    } else if (computedTrend === 'down') {
+      normalizedVariant = 'rose'
+    }
   }
 
-  const selectedStyle = variantStyles[normalizedVariant]
+  const selectedStyle = variantStyles[normalizedVariant] || variantStyles.slate
 
   let renderedIcon: React.ReactNode = null
   if (icon) {
+    const defaultIconClass = isStandalone ? 'size-5 shrink-0' : 'size-[18px]'
     if (React.isValidElement(icon)) {
-      renderedIcon = React.cloneElement(icon as React.ReactElement<any>, { className: 'size-[18px]' })
+      renderedIcon = React.cloneElement(icon as React.ReactElement<any>, {
+        className: cn(defaultIconClass, isStandalone && selectedStyle.iconColor, (icon.props as any).className)
+      })
     } else if (typeof icon === 'function' || typeof icon === 'object') {
-      renderedIcon = React.createElement(icon as React.ElementType, { className: 'size-[18px]' })
+      renderedIcon = React.createElement(icon as React.ElementType, {
+        className: cn(defaultIconClass, selectedStyle.iconColor)
+      })
     } else {
       renderedIcon = icon
     }
@@ -311,9 +364,10 @@ export function KpiCard({
   return (
     <div
       className={cn(
-        'group relative flex min-h-[130px] flex-col gap-0 rounded-lg border border-black/[0.06] bg-white pt-4 px-4 pb-4 shadow-xs transition-all duration-150 dark:border-white/[0.08] dark:bg-card overflow-hidden',
+        'group relative flex min-h-[130px] flex-col gap-0 rounded-2xl border bg-white pt-4 px-4 pb-4 shadow-xs transition-all duration-200 dark:bg-card overflow-hidden',
+        selectedStyle.borderColor,
         hasFullBleedFooter && 'pb-0',
-        props.onClick && 'cursor-pointer hover:border-black/[0.14] dark:hover:border-white/[0.16]',
+        props.onClick && 'cursor-pointer hover:shadow-sm',
         isActive && selectedStyle.activeRing,
         className
       )}
@@ -321,7 +375,7 @@ export function KpiCard({
     >
       {/* Upper content wrapper to push footer to the absolute bottom */}
       <div className="flex-1 flex flex-col">
-        {/* Header: label + extra action + tinted icon */}
+        {/* Header: label + extra action + standalone icon */}
         <div className="flex items-center justify-between gap-2 min-h-[36px]">
           <span className="text-[10px] font-bold uppercase tracking-wider text-[#9898A4] truncate">
             {displayTitle}
@@ -329,9 +383,15 @@ export function KpiCard({
           <div className="flex items-center gap-1.5 shrink-0">
             {headerAction}
             {renderedIcon && (
-              <span className={cn('shrink-0 flex items-center justify-center p-1.5 rounded-md', selectedStyle.iconBg, selectedStyle.iconColor)}>
-                {renderedIcon}
-              </span>
+              isStandalone ? (
+                <span className="shrink-0 flex items-center justify-center">
+                  {renderedIcon}
+                </span>
+              ) : (
+                <span className={cn('shrink-0 flex items-center justify-center p-1.5 rounded-md', selectedStyle.iconBg, selectedStyle.iconColor)}>
+                  {renderedIcon}
+                </span>
+              )
             )}
           </div>
         </div>

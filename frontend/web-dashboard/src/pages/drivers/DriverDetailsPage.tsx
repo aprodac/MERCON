@@ -1693,9 +1693,9 @@ export default function DriverDetailsPage() {
 
           {/* ════════════════════════════════════════════════
               COLUMN 3 (RIGHT): Documents Box (xl:col-span-3)
-              Stacked Folder Pocket style from Truck Detail Page
+              Max 5-6 visible at once, scrollable if more
              ════════════════════════════════════════════════ */}
-          <div className="xl:col-span-3 h-full min-h-[460px]">
+          <div className="xl:col-span-3 flex flex-col h-full min-h-[460px] max-h-[480px] overflow-hidden">
             <DriverDocumentsValidityFolder
               driverId={driver.id}
               selectedDocumentId={selectedDocIdForPreview}

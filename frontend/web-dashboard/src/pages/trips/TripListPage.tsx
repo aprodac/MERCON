@@ -58,6 +58,7 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import DeletedBadge from '@/components/ui/DeletedBadge';
 import Btn from '@/components/ui/Btn';
 import KpiCard from '@/components/ui/KpiCard';
+import TripKpiCards from '@/components/trips/TripKpiCards';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
@@ -1888,142 +1889,23 @@ export default function TripListPage() {
 
         {/* ── 2. Instrument-Panel KPI Cards (Trip Ledger Table View Only) ────────────────── */}
         {viewMode === 'table' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 shrink-0">
-            <KpiCard
-              title={kpiTitle}
-              className="kpi-tint-trips"
-              value={
-                <span>
-                  {periodCount}
-                  <span className="text-[16px] font-semibold ml-1.5 opacity-85">Trips</span>
-                </span>
-              }
-              variant="slate"
-              description={kpiDescription}
-              headerAction={
-                <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700 shadow-2xs">
-                  {(
-                    [
-                      { label: '1D', value: 'Today', title: 'Today (1D)' },
-                      { label: '1W', value: 'ThisWeek', title: 'This Week (1W)' },
-                      { label: '1M', value: 'ThisMonth', title: 'This Month (1M)' },
-                    ] as const
-                  ).map((period) => {
-                    const active = kpiPeriod === period.value;
-                    return (
-                      <button
-                        key={period.value}
-                        type="button"
-                        title={period.title}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setKpiPeriod(period.value);
-                          setDateFilter(period.value);
-                          setCurrentPage(1);
-                        }}
-                        className={cn(
-                          "text-[9px] font-extrabold h-5 px-2 rounded-md transition-all cursor-pointer",
-                          active
-                            ? "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-xs font-black"
-                            : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
-                        )}
-                      >
-                        {period.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              }
-              semiCircleGauge={{
-                segments: [
-                  { label: "Completed", count: periodCompletedCount, color: "#10B981" },
-                  { label: "In Transit", count: periodInTransitCount, color: "#64748B" },
-                  { label: "Pending", count: periodQueueCount, color: "#94A3B8" },
-                ],
-              }}
-              isActive={selectedStatus === 'All'}
-              onClick={() => {
-                setSelectedStatus('All');
-                setCurrentPage(1);
-              }}
-            />
-
-            <KpiCard
-              title="IN TRANSIT"
-              className="kpi-tint-trips"
-              value={
-                <span>
-                  {inTransitCount}
-                  <span className="text-[16px] font-semibold ml-1.5 opacity-85">On Road</span>
-                </span>
-              }
-              variant="emerald"
-              description="Trucks on the road now"
-              icon={RouteLine}
-              isActive={selectedStatus === 'InTransit'}
-              onClick={() => {
-                setSelectedStatus('InTransit');
-                setCurrentPage(1);
-              }}
-            />
-
-            <KpiCard
-              title="DELIVERED & COMPLETED"
-              className="kpi-tint-trips"
-              value={
-                <span>
-                  {completedCount}
-                  <span className="text-[16px] font-semibold ml-1.5 opacity-85">Trips</span>
-                </span>
-              }
-              variant="emerald"
-              description={`Delivered: ${deliveredPendingInvoiceCount} | Invoiced: ${invoicedCount}`}
-              icon={CheckBadge}
-              isActive={selectedStatus === 'Completed,Invoiced' || selectedStatus === 'Completed' || selectedStatus === 'Invoiced'}
-              onClick={() => {
-                setSelectedStatus('Completed,Invoiced');
-                setCurrentPage(1);
-              }}
-            />
-
-            <KpiCard
-              title="SCHEDULED TRIPS"
-              className="kpi-tint-trips"
-              value={
-                <span>
-                  {draftTrips.length}
-                  <span className="text-[16px] font-semibold ml-1.5 opacity-85">Scheduled</span>
-                </span>
-              }
-              variant="slate"
-              description="Upcoming & planned trips"
-              icon={ClockIcon}
-              isActive={selectedStatus === 'Draft'}
-              onClick={() => {
-                setSelectedStatus('Draft');
-                setCurrentPage(1);
-              }}
-            />
-
-            <KpiCard
-              title="DELAYED TRIPS"
-              className="kpi-tint-trips"
-              value={
-                <span>
-                  {delayedCount}
-                  <span className="text-[16px] font-semibold ml-1.5 opacity-85">Overdue</span>
-                </span>
-              }
-              variant="rose"
-              description="Active trips past planned end time"
-              icon={RiskAlert}
-              isActive={selectedStatus === 'Issues'}
-              onClick={() => {
-                setSelectedStatus('Issues');
-                setCurrentPage(1);
-              }}
-            />
-          </div>
+          <TripKpiCards
+            kpiTitle={kpiTitle}
+            kpiPeriod={kpiPeriod}
+            setKpiPeriod={setKpiPeriod}
+            setDateFilter={setDateFilter}
+            setCurrentPage={setCurrentPage}
+            selectedStatus={selectedStatus}
+            setSelectedStatus={setSelectedStatus}
+            periodCount={periodCount}
+            periodCompletedCount={periodCompletedCount}
+            periodInTransitCount={periodInTransitCount}
+            periodQueueCount={periodQueueCount}
+            inTransitCount={inTransitCount}
+            completedCount={completedCount}
+            scheduledCount={draftTrips.length}
+            delayedCount={delayedCount}
+          />
         )}
 
         {/* ── Control Toolbar & Views ───────────────────── */}

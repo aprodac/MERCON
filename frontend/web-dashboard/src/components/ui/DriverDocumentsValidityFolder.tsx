@@ -41,37 +41,38 @@ function getDocIconColor(docType: string) {
 function getStatusBadge(expiry_date: string | null, status: string) {
   if (status === 'Expired' || status === 'Rejected') {
     return {
-      badgeBg: 'bg-red-50', badgeText: 'text-red-700',
-      badgeBorder: 'border-red-200', dotColor: 'bg-red-500',
+      badgeBg: 'bg-red-50 dark:bg-red-950/40', badgeText: 'text-red-700 dark:text-red-400',
+      badgeBorder: 'border-red-200/80 dark:border-red-800/60', dotColor: 'bg-red-500',
       label: status === 'Rejected' ? 'Rejected' : 'Expired',
     };
   }
   if (!expiry_date) {
     return {
-      badgeBg: 'bg-slate-50', badgeText: 'text-slate-500',
-      badgeBorder: 'border-slate-200', dotColor: 'bg-slate-400',
+      badgeBg: 'bg-slate-50 dark:bg-slate-800/60', badgeText: 'text-slate-600 dark:text-slate-400',
+      badgeBorder: 'border-slate-200/80 dark:border-slate-700', dotColor: 'bg-slate-400',
       label: 'No Expiry',
     };
   }
   const daysLeft = differenceInDays(parseISO(expiry_date), new Date());
   if (daysLeft < 0) {
     return {
-      badgeBg: 'bg-red-50', badgeText: 'text-red-700',
-      badgeBorder: 'border-red-200', dotColor: 'bg-red-500',
+      badgeBg: 'bg-red-50 dark:bg-red-950/40', badgeText: 'text-red-700 dark:text-red-400',
+      badgeBorder: 'border-red-200/80 dark:border-red-800/60', dotColor: 'bg-red-500',
       label: 'Expired',
     };
   }
   if (daysLeft <= 30) {
     return {
-      badgeBg: 'bg-amber-50', badgeText: 'text-amber-700',
-      badgeBorder: 'border-amber-200', dotColor: 'bg-amber-500',
+      badgeBg: 'bg-amber-50 dark:bg-amber-950/40', badgeText: 'text-amber-700 dark:text-amber-400',
+      badgeBorder: 'border-amber-200/80 dark:border-amber-800/60', dotColor: 'bg-amber-500',
       label: `${daysLeft}d left`,
     };
   }
+  const shortDate = format(parseISO(expiry_date), 'dd/MM/yy');
   return {
-    badgeBg: 'bg-emerald-50', badgeText: 'text-emerald-700',
-    badgeBorder: 'border-[#A7F3D0]', dotColor: 'bg-[#16A34A]',
-    label: expiry_date ? `Valid (${format(parseISO(expiry_date), 'd MMM yyyy')})` : 'Valid',
+    badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40', badgeText: 'text-emerald-700 dark:text-emerald-400',
+    badgeBorder: 'border-emerald-200/80 dark:border-emerald-800/60', dotColor: 'bg-emerald-500',
+    label: `Valid · ${shortDate}`,
   };
 }
 
@@ -193,7 +194,7 @@ export default function DriverDocumentsValidityFolder({
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col justify-between h-full min-h-[460px] relative overflow-hidden select-none">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col justify-between h-full min-h-[460px] max-h-[480px] overflow-hidden select-none">
 
       {/* ── Top Header Bar ── */}
       <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0 z-10">
@@ -203,8 +204,8 @@ export default function DriverDocumentsValidityFolder({
         </h2>
       </div>
 
-      {/* ── Folder Pocket & Stacked Index Cards (Shifted Down) ── */}
-      <div className="relative flex-1 flex flex-col justify-start pt-2 pb-1 min-h-0 overflow-y-auto pr-0.5">
+      {/* ── Folder Pocket & Stacked Index Cards (Max 5-6 visible at once, scrollable if more) ── */}
+      <div className="relative flex-1 flex flex-col justify-start pt-2 pb-1 min-h-0 max-h-[380px] overflow-y-auto overflow-x-hidden pr-1.5">
 
         {isLoading ? (
           <div className="flex flex-col items-center justify-center gap-3 py-10 text-slate-400">
@@ -275,16 +276,16 @@ export default function DriverDocumentsValidityFolder({
                     )}
                   </svg>
 
-                  <div className={`relative z-10 w-full h-full px-4 flex justify-between ${isLast ? 'items-start pt-4' : 'items-center'}`}>
-                    <div className="flex items-center gap-3 pt-0.5">
-                      <Icon className={`w-5 h-5 ${doc.iconColor} stroke-[2.2] shrink-0`} />
-                      <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+                  <div className={`relative z-10 w-full h-full px-3.5 flex justify-between ${isLast ? 'items-start pt-3.5' : 'items-center'}`}>
+                    <div className="flex items-center gap-2 pt-0.5 min-w-0 flex-1 pr-2">
+                      <Icon className={`w-4 h-4 ${doc.iconColor} stroke-[2.2] shrink-0`} />
+                      <span className="text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 tracking-tight truncate">
                         {doc.name}
                       </span>
                     </div>
-                    <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-medium ${doc.badgeBg} ${doc.badgeText} border ${doc.badgeBorder} shadow-2xs shrink-0`}>
-                      <span className={`w-2 h-2 rounded-full ${doc.dotColor} shrink-0`}></span>
-                      <span>{doc.label}</span>
+                    <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${doc.badgeBg} ${doc.badgeText} border ${doc.badgeBorder} shadow-2xs shrink-0 max-w-[48%] sm:max-w-[55%] min-w-0`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${doc.dotColor} shrink-0`}></span>
+                      <span className="truncate whitespace-nowrap">{doc.label}</span>
                     </div>
                   </div>
                 </div>

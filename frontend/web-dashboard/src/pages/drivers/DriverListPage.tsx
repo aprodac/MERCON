@@ -804,7 +804,7 @@ export default function DriverListPage() {
                 <span className="text-[16px] font-semibold ml-1.5 opacity-85">Drivers</span>
               </span>
             }
-            variant="emerald"
+            variant="slate"
             trend="up"
             trendValue={`${Math.round((availableCount / (totalCount || 1)) * 100)}% Standby`}
             icon={DriverBadge}
@@ -827,7 +827,7 @@ export default function DriverListPage() {
                 <span className="text-[16px] font-semibold ml-1.5 opacity-85">Ready</span>
               </span>
             }
-            variant="emerald"
+            variant="blue"
             trend="up"
             trendValue={`${availableCount} Available`}
             icon={CheckBadge}

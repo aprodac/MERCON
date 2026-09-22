@@ -524,15 +524,15 @@ export default function CustomerDetailsPage() {
         <div className="flex items-stretch gap-4 shrink-0 mt-1">
 
           {/* LEFT: CUSTOMER PHOTO / LOGO CARD */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-2xs shrink-0 w-36 sm:w-40 min-h-[140px] overflow-hidden flex items-center justify-center p-3">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-full shadow-2xs shrink-0 w-32 h-32 sm:w-36 sm:h-36 overflow-hidden flex items-center justify-center p-2.5">
             {customer.logo_url ? (
               <img
                 src={customer.logo_url}
                 alt={customer.name}
-                className="w-full h-full object-contain rounded-xl"
+                className="w-full h-full object-contain rounded-full"
               />
             ) : (
-              <div className="w-full h-full bg-[#3E3C3D] text-white flex items-center justify-center font-black text-4xl rounded-xl shadow-xs">
+              <div className="w-full h-full bg-[#FA634E] text-white flex items-center justify-center font-black text-4xl sm:text-5xl rounded-full shadow-xs">
                 {customer.name?.[0]?.toUpperCase() || 'C'}
               </div>
             )}
@@ -931,11 +931,11 @@ export default function CustomerDetailsPage() {
                                   <img
                                     src={customer.logo_url}
                                     alt={customer.name}
-                                    className="w-5 h-5 rounded-md object-contain border border-slate-200 dark:border-slate-700 bg-white p-0.5 shrink-0 shadow-2xs"
+                                    className="w-5 h-5 rounded-full object-contain border border-slate-200 dark:border-slate-700 bg-white p-0.5 shrink-0 shadow-2xs"
                                   />
                                 ) : (
-                                  <div className="w-5 h-5 rounded-md bg-slate-900 text-white font-mono font-black text-[8.5px] flex items-center justify-center border border-slate-800 shadow-2xs shrink-0">
-                                    {customer.name?.slice(0, 2).toUpperCase() || 'C'}
+                                  <div className="w-5 h-5 rounded-full bg-[#FA634E] text-white font-mono font-black text-[9px] flex items-center justify-center shrink-0">
+                                    {customer.name?.[0]?.toUpperCase() || 'C'}
                                   </div>
                                 )}
                                 <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate" title={customer.name}>

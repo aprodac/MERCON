@@ -635,7 +635,7 @@ function getSecondaryContactPhone(phoneOrId?: string): string {
                 <span className="text-[16px] font-semibold ml-1.5 opacity-85">Scheduled</span>
               </span>
             }
-            variant="slate"
+            variant="blue"
             trend="neutral"
             trendValue="30-90 Days"
             description="Commercial contract horizon"

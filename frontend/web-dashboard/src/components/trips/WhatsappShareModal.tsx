@@ -227,29 +227,27 @@ export default function WhatsappShareModal({
         ? selectedTrip.third_party_vehicle_plate || '3PL Vehicle'
         : selectedTrip.vehicle?.plate_number || 'Unassigned';
       const customerName = selectedTrip.customer?.name || (selectedTrip as any).customerName || 'Logistics Partner';
+      const driverPhone = selectedTrip.driver?.phone_primary || (selectedTrip.driver as any)?.phone_number || '';
+      const vehicleClass = (selectedTrip.vehicle as any)?.vehicle_class || (selectedTrip.vehicle as any)?.vehicle_type || '';
+      const lineType = (selectedTrip as any)?.line_type || '';
+      const tripRef = selectedTrip.ref_id || selectedTrip.id;
 
-      let text = `*MERCON LOGISTICS - TRIP STATUS REPORT*\n`;
-      text += `Date: ${today}\n`;
-      text += `Trip ID: ${selectedTrip.ref_id || selectedTrip.id}\n`;
-      text += `Customer: ${customerName}\n\n`;
-      text += `Route: ${pickup} ➔ ${dropoff}\n`;
-      text += `Status: ${formatTripStatusLabel(selectedTrip.status)}\n`;
-
-      if (includeDriver) {
-        text += `Driver: ${driverName}\n`;
-      }
-      if (includeVehicle) {
-        text += `Vehicle Plate: ${vehiclePlate}\n`;
-      }
+      let text = `🚛 *Vehicle Status Update*\n\n`;
+      text += `Truck # *${vehiclePlate}*\n`;
+      if (includeDriver) text += `Driver Name # ${driverName}\n`;
+      if (driverPhone && includeDriver) text += `Number # +${driverPhone.replace(/^\+/, '')}\n`;
+      text += `Route # ${pickup} >>> ${dropoff}\n`;
+      text += `Status # ${formatTripStatusLabel(selectedTrip.status)}\n`;
       if (includeEta && selectedTrip.planned_end) {
-        text += `ETA: ${formatTimeShort(selectedTrip.planned_end)}\n`;
+        text += `ETA # ${formatTimeShort(selectedTrip.planned_end)}\n`;
       }
-
+      if (vehicleClass || lineType) {
+        text += `\n*(${[vehicleClass, lineType].filter(Boolean).join(' - ')})*\n`;
+      }
       if ((selectedTrip as any).notes) {
-        text += `\nNotes: ${(selectedTrip as any).notes}\n`;
+        text += `\nNotes # ${(selectedTrip as any).notes}\n`;
       }
-
-      text += `\n_MERCON Operations Center_`;
+      text += `\n🔗 *Evidence Gallery*:\n${window.location.origin}/trips/evidence-gallery?ref=${encodeURIComponent(tripRef)}`;
       return text;
     }
 
@@ -275,7 +273,6 @@ export default function WhatsappShareModal({
     text += `\n-----------------------------\n`;
 
     if (relevantTrips.length > 0) {
-      text += `DISPATCH DETAILS:\n\n`;
       relevantTrips.slice(0, 10).forEach((t, index) => {
         const pickup = getPickupName(t);
         const dropoff = getDropoffName(t);
@@ -285,13 +282,19 @@ export default function WhatsappShareModal({
           ? `${t.driver.first_name} ${t.driver.last_name || ''}`.trim()
           : 'Unassigned';
         const vehiclePlate = t.vehicle?.plate_number || t.third_party_vehicle_plate || '—';
+        const driverPhone = t.driver?.phone_primary || (t.driver as any)?.phone_number || '';
+        const vehicleClass = (t.vehicle as any)?.vehicle_class || (t.vehicle as any)?.vehicle_type || '';
+        const lineType = (t as any)?.line_type || '';
 
-        text += `${index + 1}. Trip ID ${t.ref_id || t.id}\n`;
-        text += `   Route: ${pickup} ➔ ${dropoff}\n`;
-        text += `   Status: ${formatTripStatusLabel(t.status)}\n`;
-        if (includeDriver) text += `   Driver: ${driverName}\n`;
-        if (includeVehicle) text += `   Vehicle: ${vehiclePlate}\n`;
-        if (includeEta && t.planned_end) text += `   ETA: ${formatTimeShort(t.planned_end)}\n`;
+        text += `${index + 1}. ${pickup} >>> ${dropoff}`;
+        if (vehicleClass) text += ` ${vehicleClass}`;
+        if (lineType) text += `\n*(${lineType})*`;
+        text += `\n`;
+        if (includeDriver) text += `Driver Name # ${driverName}\n`;
+        if (includeDriver && driverPhone) text += `Number # +${driverPhone.replace(/^\+/, '')}\n`;
+        if (includeVehicle) text += `Truck No # ${vehiclePlate}\n`;
+        if (includeEta && t.planned_end) text += `ETA # ${formatTimeShort(t.planned_end)}\n`;
+        text += `Status # ${formatTripStatusLabel(t.status)}\n`;
         text += `\n`;
       });
     }

@@ -73,6 +73,7 @@ import settingsRoutes from './routes/settingsRoutes';
 import thirdPartyRoutes from './routes/thirdPartyRoutes';
 import geocodingRoutes from './routes/geocodingRoutes';
 import vehicleCompatibilityRoutes from './routes/vehicleCompatibilityRoutes';
+import publicRoutes from './routes/publicRoutes';
 import errorEventRoutes from './routes/errorEventRoutes';
 import { reportClientError } from './controllers/clientErrorController';
 import { validate } from './middlewares/validate';
@@ -156,6 +157,7 @@ apiRouter.use('/settings', settingsRoutes);
 apiRouter.use('/third-party-providers', thirdPartyRoutes);
 apiRouter.use('/geocoding', geocodingRoutes);
 apiRouter.use('/vehicle-compatibility', vehicleCompatibilityRoutes);
+apiRouter.use('/public', publicRoutes);
 apiRouter.use('/error-events', errorEventRoutes);
 apiRouter.post('/client-errors', authenticateJWT, validate({ body: clientErrorBody }), reportClientError);
 

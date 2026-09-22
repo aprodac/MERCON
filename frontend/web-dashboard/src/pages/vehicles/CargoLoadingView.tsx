@@ -1324,10 +1324,10 @@ export default function CargoLoadingView() {
 
       </div>
 
-      {/* ── Main Content Grid: Left (Service History), Middle (Truck Visualizer + Trips), Right (Documents & Validity) ── */}
+      {/* ── Main Content Grid: Left (Trips Ledger), Middle (Truck Visualizer + Service History), Right (Driver Documents & Validity) ── */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-5 items-stretch">
 
-        {/* Left Column: Trips Ledger (Stretches to combined height of Middle column) */}
+        {/* Left Column: Trips Ledger */}
         <div className="xl:col-span-3 flex flex-col h-full min-h-0">
           <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col justify-between h-full min-h-[460px] overflow-hidden">
             <div className="flex flex-col h-full min-h-0 justify-between">
@@ -1506,7 +1506,7 @@ export default function CargoLoadingView() {
           </div>
         </div>
 
-        {/* Middle Column: Unified Truck Visualizer + Service History OR Full Trip Preview OR Document Preview */}
+        {/* Middle Column: Unified Truck Visualizer + Service History OR Full Trip Preview */}
         <div className="xl:col-span-6 flex flex-col h-full min-h-0">
           {selectedDocId ? (
             <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-xs flex flex-col justify-between h-full min-h-[610px] overflow-hidden">
@@ -2114,17 +2114,17 @@ export default function CargoLoadingView() {
           )}
         </div>
 
-        {/* Right Column: Documents & Validity (Stretches to combined height of Middle column) */}
-        <div className="xl:col-span-3 flex flex-col h-full min-h-0">
-          <DocumentsValidityFolder 
-            vehicleId={vehicle?.id || id} 
+        {/* Right Column: Documents & Validity (Truck Documents - Max 5-6 visible at once, scrollable if more) */}
+        <div className="xl:col-span-3 flex flex-col h-full min-h-[460px] max-h-[480px] overflow-hidden">
+          <DocumentsValidityFolder
+            vehicleId={vehicle?.id || id}
+            selectedDocumentId={selectedDocId}
+            deletedDocIds={deletedDocIds}
+            onDeleteDocument={(delId) => setDeletedDocIds((prev) => [...prev, delId])}
             onSelectDocument={(docId) => {
               setSelectedTripIdForPreview(null);
               setSelectedDocId(docId);
             }}
-            selectedDocumentId={selectedDocId}
-            deletedDocIds={deletedDocIds}
-            onDeleteDocument={(delId) => setDeletedDocIds((prev) => [...prev, delId])}
           />
         </div>
 
