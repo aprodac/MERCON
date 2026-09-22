@@ -1,5 +1,16 @@
 import { api } from '@/lib/api';
-import type { Account, AccountingPeriod, JournalEntry, AccountType, PeriodStatus, JournalEntryStatus } from '@mercon/shared-types';
+import type {
+  Account,
+  AccountingPeriod,
+  JournalEntry,
+  AccountType,
+  PeriodStatus,
+  JournalEntryStatus,
+  Invoice,
+  InvoiceStatus,
+  Bill,
+  BillStatus,
+} from '@mercon/shared-types';
 
 export interface GetAccountsParams {
   type?: AccountType | 'all';

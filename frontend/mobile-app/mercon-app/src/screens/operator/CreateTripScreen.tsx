@@ -856,7 +856,7 @@ const CreateTripScreen = () => {
         <View style={styles.placeholder} />
       </View>
 
-      {/* 2-Page Stepper Indicator Bar */}
+      {/* 3-Tab Stepper Indicator Bar */}
       <View style={styles.stepperContainer}>
         <TouchableOpacity
           style={[styles.stepperTab, page === 1 && styles.stepperTabActive]}
@@ -866,7 +866,7 @@ const CreateTripScreen = () => {
           <View style={[styles.stepperDot, page === 1 && styles.stepperDotActive]}>
             <Text style={[styles.stepperDotText, page === 1 && styles.stepperDotTextActive]}>1</Text>
           </View>
-          <Text style={[styles.stepperTabText, page === 1 && styles.stepperTabTextActive]}>Trip & Rate</Text>
+          <Text style={[styles.stepperTabText, page === 1 && styles.stepperTabTextActive]}>Customer & Route</Text>
         </TouchableOpacity>
 
         <View style={styles.stepperLine} />
@@ -885,6 +885,24 @@ const CreateTripScreen = () => {
             <Text style={[styles.stepperDotText, page === 2 && styles.stepperDotTextActive]}>2</Text>
           </View>
           <Text style={[styles.stepperTabText, page === 2 && styles.stepperTabTextActive]}>Schedule & Fleet</Text>
+        </TouchableOpacity>
+
+        <View style={styles.stepperLine} />
+
+        <TouchableOpacity
+          style={[styles.stepperTab, page === 3 && styles.stepperTabActive]}
+          activeOpacity={0.8}
+          onPress={() => {
+            if (validatePage1Fields() && validatePage2Fields()) {
+              setPage(3);
+              scrollViewRef.current?.scrollTo({ y: 0, animated: true });
+            }
+          }}
+        >
+          <View style={[styles.stepperDot, page === 3 && styles.stepperDotActive]}>
+            <Text style={[styles.stepperDotText, page === 3 && styles.stepperDotTextActive]}>3</Text>
+          </View>
+          <Text style={[styles.stepperTabText, page === 3 && styles.stepperTabTextActive]}>Financials & Review</Text>
         </TouchableOpacity>
       </View>
 
@@ -912,7 +930,7 @@ const CreateTripScreen = () => {
         <ScrollView ref={scrollViewRef} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {optionsError ? <Text style={styles.errorText}>{optionsError}</Text> : null}
 
-          {/* PAGE 1: Trip Scope, Quotation, Route & Rate Financials */}
+          {/* TAB 1: Customer Account, Quotation & Route Configuration */}
           {page === 1 && (
             <>
               {/* Section 1: Customer Account & Commercial Quotation Cards */}
@@ -1032,7 +1050,6 @@ const CreateTripScreen = () => {
                             setSelectedQuotation(null);
                             setQuotationMatch(null);
                             setManualRateOverride(false);
-                            setIsRouteCollapsed(false);
                             setQuotationSearchQuery('');
                           }}
                         >
@@ -1294,175 +1311,6 @@ const CreateTripScreen = () => {
                 </View>
               )}
 
-              {/* Progressive Form Collapse Summary Pill */}
-              {isRouteCollapsed && pickupName && dropoffName ? (
-                <Card style={styles.appliedSummaryCard}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.appliedSummaryLane}>{pickupName} → {dropoffName}</Text>
-                    <Text style={styles.appliedSummaryDetails}>
-                      {rateCategory === 'ROUND_TRIP' ? 'Round Trip' : 'Single Trip'} · Total Billing: SAR {effectiveBillingAmount.toLocaleString()}
-                    </Text>
-                  </View>
-                  <TouchableOpacity style={styles.editRouteBtn} onPress={() => setIsRouteCollapsed(false)}>
-                    <Edit3 size={14} color={Colors.primary} />
-                    <Text style={styles.editRouteBtnText}>Edit</Text>
-                  </TouchableOpacity>
-                </Card>
-              ) : (
-                <>
-                  {/* Section 3: Route & Multi-Stop Configuration */}
-                  <Text style={styles.sectionTitle}>3. Route & Multi-Stop Configuration</Text>
-                  <Card style={styles.formCard}>
-                    <View style={styles.segmentedContainer}>
-                      <TouchableOpacity
-                        style={[styles.segmentedBtn, rateCategory === 'SINGLE_TRIP' && styles.segmentedBtnActive]}
-                        onPress={() => setRateCategory('SINGLE_TRIP')}
-                      >
-                        <Text style={[styles.segmentedText, rateCategory === 'SINGLE_TRIP' && styles.segmentedTextActive]}>Single Trip</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.segmentedBtn, rateCategory === 'ROUND_TRIP' && styles.segmentedBtnActive]}
-                        onPress={() => setRateCategory('ROUND_TRIP')}
-                      >
-                        <Text style={[styles.segmentedText, rateCategory === 'ROUND_TRIP' && styles.segmentedTextActive]}>Round Trip</Text>
-                      </TouchableOpacity>
-                    </View>
-
-                    <View style={styles.formGroup}>
-                      <Input
-                        label="Pickup Location name *"
-                        value={pickupName}
-                        state={fieldErrors.pickupName ? 'error' : 'default'}
-                        errorText={fieldErrors.pickupName}
-                        onChangeText={(t) => {
-                          setPickupName(t); setPickupLocationId(undefined); setShowPickupResults(true);
-                          if (selectedQuotation) { setSelectedQuotation(null); setQuotationMatch(null); }
-                        }}
-                        placeholder="Search a saved location, or type a name"
-                        maxLength={120}
-                      />
-                      {pickupLocationId ? (
-                        <View style={styles.savedLocationChip}>
-                          <MapPin size={11} color={Colors.primary} strokeWidth={2.4} />
-                          <Text style={styles.savedLocationChipText}>Saved location — coordinates auto-filled</Text>
-                        </View>
-                      ) : (
-                        showPickupResults && pickupResults.length > 0 && (
-                          <View style={styles.searchResults}>
-                            {pickupResults.map((loc) => (
-                              <TouchableOpacity
-                                key={loc.id}
-                                style={styles.searchResultRow}
-                                activeOpacity={0.8}
-                                onPress={() => {
-                                  setPickupLocationId(loc.id); setPickupName(loc.name);
-                                  if (loc.lat != null) setPickupLat(String(loc.lat));
-                                  if (loc.lng != null) setPickupLng(String(loc.lng));
-                                  setShowPickupResults(false);
-                                }}
-                              >
-                                <MapPin size={13} color={Colors.gray500} strokeWidth={2} />
-                                <View style={{ flex: 1 }}>
-                                  <Text style={styles.searchResultName}>{loc.name}</Text>
-                                  {loc.address ? <Text style={styles.searchResultAddress} numberOfLines={1}>{loc.address}</Text> : null}
-                                </View>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                        )
-                      )}
-                      <Text style={styles.label}>Pickup Coordinates (lat, lng)</Text>
-                      <View style={styles.rowFields}>
-                        <Input style={{ flex: 1 }} value={pickupLat} onChangeText={setPickupLat} placeholder="Latitude" keyboardType="numeric" state={pickupLocationId ? 'disabled' : fieldErrors.pickupCoords ? 'error' : 'default'} />
-                        <Input style={{ flex: 1 }} value={pickupLng} onChangeText={setPickupLng} placeholder="Longitude" keyboardType="numeric" state={pickupLocationId ? 'disabled' : fieldErrors.pickupCoords ? 'error' : 'default'} />
-                      </View>
-                      {fieldErrors.pickupCoords && <Text style={styles.fieldErrorBadge}>{fieldErrors.pickupCoords}</Text>}
-                    </View>
-
-                    {outboundStops.map((stop, idx) => (
-                      <View key={stop.id} style={[styles.formGroup, styles.intermediateStopCard]}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <Text style={styles.stopLabel}>Intermediate Stop #{idx + 1}</Text>
-                          <TouchableOpacity onPress={() => removeOutboundStop(stop.id)}>
-                            <Trash2 size={16} color={Colors.error} />
-                          </TouchableOpacity>
-                        </View>
-                        <Input
-                          label="Stop Location Name"
-                          value={stop.name}
-                          onChangeText={(t) => updateOutboundStop(stop.id, 'name', t)}
-                          placeholder="Location name (e.g. Al Hasa Yard)"
-                        />
-                        <View style={styles.rowFields}>
-                          <Input style={{ flex: 1 }} value={stop.lat} onChangeText={(t) => updateOutboundStop(stop.id, 'lat', t)} placeholder="Latitude" keyboardType="numeric" />
-                          <Input style={{ flex: 1 }} value={stop.lng} onChangeText={(t) => updateOutboundStop(stop.id, 'lng', t)} placeholder="Longitude" keyboardType="numeric" />
-                        </View>
-                      </View>
-                    ))}
-
-                    <TouchableOpacity style={styles.addStopBtn} onPress={addOutboundStop}>
-                      <Plus size={16} color={Colors.primary} />
-                      <Text style={styles.addStopBtnText}>Add Intermediate Stop</Text>
-                    </TouchableOpacity>
-
-                    <View style={styles.formDivider} />
-
-                    <View style={styles.formGroup}>
-                      <Input
-                        label="Dropoff Location name *"
-                        value={dropoffName}
-                        state={fieldErrors.dropoffName ? 'error' : 'default'}
-                        errorText={fieldErrors.dropoffName}
-                        onChangeText={(t) => {
-                          setDropoffName(t); setDropoffLocationId(undefined); setShowDropoffResults(true);
-                          if (selectedQuotation) { setSelectedQuotation(null); setQuotationMatch(null); }
-                        }}
-                        placeholder="Search a saved location, or type a name"
-                        maxLength={120}
-                      />
-                      {dropoffLocationId ? (
-                        <View style={styles.savedLocationChip}>
-                          <MapPin size={11} color={Colors.primary} strokeWidth={2.4} />
-                          <Text style={styles.savedLocationChipText}>Saved location — coordinates auto-filled</Text>
-                        </View>
-                      ) : (
-                        showDropoffResults && dropoffResults.length > 0 && (
-                          <View style={styles.searchResults}>
-                            {dropoffResults.map((loc) => (
-                              <TouchableOpacity
-                                key={loc.id}
-                                style={styles.searchResultRow}
-                                activeOpacity={0.8}
-                                onPress={() => {
-                                  setDropoffLocationId(loc.id); setDropoffName(loc.name);
-                                  if (loc.lat != null) setDropoffLat(String(loc.lat));
-                                  if (loc.lng != null) setDropoffLng(String(loc.lng));
-                                  setShowDropoffResults(false);
-                                }}
-                              >
-                                <MapPin size={13} color={Colors.gray500} strokeWidth={2} />
-                                <View style={{ flex: 1 }}>
-                                  <Text style={styles.searchResultName}>{loc.name}</Text>
-                                  {loc.address ? <Text style={styles.searchResultAddress} numberOfLines={1}>{loc.address}</Text> : null}
-                                </View>
-                              </TouchableOpacity>
-                            ))}
-                          </View>
-                        )
-                      )}
-                      <Text style={styles.label}>Dropoff Coordinates (lat, lng)</Text>
-                      <View style={styles.rowFields}>
-                        <Input style={{ flex: 1 }} value={dropoffLat} onChangeText={setDropoffLat} placeholder="Latitude" keyboardType="numeric" state={dropoffLocationId ? 'disabled' : fieldErrors.dropoffCoords ? 'error' : 'default'} />
-                        <Input style={{ flex: 1 }} value={dropoffLng} onChangeText={setDropoffLng} placeholder="Longitude" keyboardType="numeric" state={dropoffLocationId ? 'disabled' : fieldErrors.dropoffCoords ? 'error' : 'default'} />
-                      </View>
-                      {fieldErrors.dropoffCoords && <Text style={styles.fieldErrorBadge}>{fieldErrors.dropoffCoords}</Text>}
-                    </View>
-                  </Card>
-
-                  {/* Section 4: Rate & Financials */}
-                  <Text style={styles.sectionTitle}>4. Rate & Financials</Text>
-                  <Card style={styles.formCard}>
-                    {lookingUpRate ? (
                       <ActivityIndicator color={Colors.primary} />
                     ) : quotationMatch && !manualRateOverride ? (
                       <View>
