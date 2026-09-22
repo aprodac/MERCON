@@ -13,33 +13,11 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens
 import { useCurrentTrip } from '../../lib/use-current-trip';
 import { useScheduledTrips } from '../../lib/use-scheduled-trips';
 import { useTripHistory } from '../../lib/use-trip-history';
-import { statusLabel, stopLabel, type MobileTrip, type TripStatus } from '../../lib/trips';
+import { statusLabel, stopLabel, getTripChargeValue, getMonthlyDriverPayout, type MobileTrip, type TripStatus } from '../../lib/trips';
 import { useLanguage, formatCurrency, LanguageMode } from '../../lib/language-context';
 import { API_URL } from '../../lib/api';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
-
-function extractChargeNumber(val: any): number {
-  if (val === null || val === undefined) return 0;
-  if (typeof val === 'number') return val;
-  if (typeof val === 'string') {
-    const parsed = parseFloat(val);
-    return Number.isNaN(parsed) ? 0 : parsed;
-  }
-  if (typeof val === 'object') {
-    if (val.toNumber && typeof val.toNumber === 'function') {
-      return val.toNumber();
-    }
-    const parsed = parseFloat(String(val));
-    return Number.isNaN(parsed) ? 0 : parsed;
-  }
-  return 0;
-}
-
-export function getTripChargeValue(t: MobileTrip | any): number {
-  if (!t) return 0;
-  return extractChargeNumber(t.driver_payout ?? t.driver_charge ?? t.trip_charges ?? t.quotation?.driver_payout);
-}
 
 function formatDateTime(iso?: string | null): string {
   if (!iso) return '—';
@@ -211,6 +189,10 @@ const DriverChargesScreen = ({ navigation }: any) => {
   }, [scheduledList, currentTrip]);
 
   // Calculations
+  const monthlyEarnedTotal = useMemo(() => {
+    return getMonthlyDriverPayout(historyList);
+  }, [historyList]);
+
   const earnedTotal = useMemo(() => {
     return earnedTrips.reduce((sum, t) => sum + getTripChargeValue(t), 0);
   }, [earnedTrips]);

@@ -6,70 +6,67 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
-  ArrowLeft, Upload, CheckCircle2, AlertCircle, Camera, Image as ImageIcon, RefreshCw, Building2, ArrowRight,
+  ArrowLeft, Upload, CheckCircle2, Camera, Image as ImageIcon, RefreshCw, Building2, ArrowRight,
 } from 'lucide-react-native';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, getEffectiveWorkflowState, statusLabel, stopLabel, type MobileTrip } from '../../lib/trips';
+import { tripService, getEffectiveWorkflowState, getNextExternalAppAction, statusLabel, stopLabel } from '../../lib/trips';
 import { pickFromGallery, capturePhoto, type CapturedPhoto } from '../../lib/camera';
 import { API_URL, getApiErrorMessage } from '../../lib/api';
 import { TripProgressStepper, DelayButton, DelayReportModal, BilingualText } from '../../components';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
+function isValidUri(url?: string | null): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (trimmed.length < 7) return false;
+  return (
+    trimmed.startsWith('http://') ||
+    trimmed.startsWith('https://') ||
+    trimmed.startsWith('file://') ||
+    trimmed.startsWith('data:')
+  );
+}
+
+function resolveLogoUrl(rawLogo?: string | null): string | null {
+  if (!rawLogo || typeof rawLogo !== 'string') return null;
+  const trimmed = rawLogo.trim();
+  if (!trimmed) return null;
+  let fullUrl = trimmed;
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://') && !trimmed.startsWith('file://') && !trimmed.startsWith('data:')) {
+    const cleanPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+    fullUrl = `${FILE_BASE}${cleanPath}`;
+  }
+  return isValidUri(fullUrl) ? fullUrl : null;
+}
+
 export const ExternalAppWorkflowScreen = () => {
   const router = useRouter();
   const { trip, loading, refetch, setTrip } = useCurrentTrip();
+  const [logoError, setLogoError] = useState(false);
+  const logoUrl = resolveLogoUrl(trip?.customer?.logo_url || null);
+  const showLogo = Boolean(logoUrl) && !logoError;
 
   const [selectedPhoto, setSelectedPhoto] = useState<CapturedPhoto | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [showDelayModal, setShowDelayModal] = useState(false);
-  const [result, setResult] = useState<{
-    document_id?: string;
-    extraction_status: 'SUCCESS' | 'NEEDS_REVIEW' | 'FAILED';
-    event_type?: string | null;
-    event_timestamp?: string | null;
-    stop_location_name?: string | null;
-    external_reference?: string | null;
-    detected_text?: string | null;
-    is_wrong_trip?: boolean;
-    extraction_error?: string | null;
-    confidence: number;
-    applied: boolean;
-    can_confirm?: boolean;
-    target_status?: string | null;
-    target_workflow_state?: string | null;
-    notes?: string | null;
-    validation_reason?: string | null;
-    trip?: MobileTrip | null;
-  } | null>(null);
 
   const ws = getEffectiveWorkflowState(trip);
+  const action = getNextExternalAppAction(trip);
 
   const getStepperStep = () => {
-    if (trip?.status === 'Completed' || ws === 'COMPLETED' || ws === 'REVIEW_COMPLETE') return 4;
-    if (ws === 'ARRIVED_AT_DELIVERY' || ws === 'DELIVERY_VERIFICATION' || ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'FINAL_DELIVERY_VERIFICATION' || ws === 'IN_TRANSIT_RETURN') return 3;
-    if (ws === 'ARRIVED_AT_PICKUP' || ws === 'LOADING' || ws === 'LOADING_COMPLETED' || ws === 'GOING_TO_STOP' || ws === 'ARRIVED_AT_STOP' || ws === 'IN_TRANSIT') return 2;
+    if (trip?.status === 'Completed' || ws === 'COMPLETED') return 4;
+    if (ws === 'ARRIVED_AT_DELIVERY' || ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'IN_TRANSIT_RETURN' || ws === 'RETURN_LOADING' || ws === 'RETURN_LOADING_COMPLETED') return 3;
+    if (ws === 'ARRIVED_AT_PICKUP' || ws === 'LOADING_COMPLETED' || ws === 'IN_TRANSIT') return 2;
     return 1;
   };
 
-  const resetPhotoState = () => {
-    setSelectedPhoto(null);
-    setResult(null);
-    setIsConfirmed(false);
-    setConfirming(false);
-  };
+  const resetPhotoState = () => setSelectedPhoto(null);
 
   const handlePickGallery = async () => {
     try {
       const photo = await pickFromGallery();
-      if (photo) {
-        setSelectedPhoto(photo);
-        setResult(null);
-        setIsConfirmed(false);
-        setConfirming(false);
-      }
+      if (photo) setSelectedPhoto(photo);
     } catch (err) {
       Alert.alert('Error', getApiErrorMessage(err));
     }
@@ -78,82 +75,9 @@ export const ExternalAppWorkflowScreen = () => {
   const handleCamera = async () => {
     try {
       const photo = await capturePhoto();
-      if (photo) {
-        setSelectedPhoto(photo);
-        setResult(null);
-        setIsConfirmed(false);
-        setConfirming(false);
-      }
+      if (photo) setSelectedPhoto(photo);
     } catch (err) {
       Alert.alert('Error', getApiErrorMessage(err));
-    }
-  };
-
-  const handleUploadAndAnalyze = async () => {
-    if (!trip || !selectedPhoto) return;
-    setAnalyzing(true);
-    setResult(null);
-    setIsConfirmed(false);
-    setConfirming(false);
-    try {
-      const rawRes = await tripService.uploadExternalScreenshot(trip.id, selectedPhoto);
-      const res = (rawRes as any)?.data || rawRes;
-      const appliedSuccess = Boolean(res.applied);
-      setResult({
-        document_id: res.document_id,
-        extraction_status: res.extraction_status,
-        event_type: res.event_type,
-        event_timestamp: res.event_timestamp,
-        stop_location_name: res.stop_location_name,
-        external_reference: res.external_reference,
-        detected_text: res.detected_text,
-        is_wrong_trip: res.is_wrong_trip,
-        extraction_error: res.extraction_error,
-        confidence: res.confidence,
-        applied: appliedSuccess,
-        can_confirm: res.can_confirm ?? (res.event_type && !res.is_wrong_trip && !res.extraction_error),
-        target_status: res.target_status,
-        target_workflow_state: res.target_workflow_state,
-        notes: res.notes,
-        validation_reason: res.validation_reason,
-        trip: res.trip,
-      });
-
-      if (appliedSuccess) {
-        setIsConfirmed(true);
-        if (res.trip) {
-          setTrip(res.trip);
-        } else {
-          await refetch();
-        }
-      }
-    } catch (err) {
-      Alert.alert('Upload Error', getApiErrorMessage(err));
-    } finally {
-      setAnalyzing(false);
-    }
-  };
-
-  const handleConfirmUpdate = async () => {
-    if (!trip || !result) return;
-    setConfirming(true);
-    try {
-      if (result.target_status) {
-        const updatedTrip = await tripService.updateTripStatus(trip.id, {
-          status: result.target_status as any,
-          driver_workflow_state: result.target_workflow_state ?? undefined,
-        });
-        setTrip(updatedTrip);
-      } else if (result.trip) {
-        setTrip(result.trip);
-      } else {
-        await refetch();
-      }
-      setIsConfirmed(true);
-    } catch (err) {
-      Alert.alert('Error', getApiErrorMessage(err));
-    } finally {
-      setConfirming(false);
     }
   };
 
@@ -161,21 +85,27 @@ export const ExternalAppWorkflowScreen = () => {
   const dropoffStop = trip?.stops?.find((s) => s.stop_sequence === (trip?.stops?.length ?? 2) || s.stop_type === 'Dropoff') ?? trip?.stops?.[trip?.stops?.length - 1];
   const isCompleted = trip?.status === 'Completed' || trip?.status === 'Invoiced';
 
-  const isWrongTripError = result?.is_wrong_trip || Boolean(result?.validation_reason?.toLowerCase().includes('wrong trip'));
-  const isAiError = Boolean(result?.extraction_error || result?.notes?.toLowerCase().includes('ai processing error') || result?.notes?.toLowerCase().includes('ai error'));
-  const isFullyAppliedOrConfirmed = (result?.applied || isConfirmed) && !isWrongTripError && !isAiError;
-  const canConfirm = Boolean(result && (result.can_confirm || (result.event_type && !isWrongTripError && !isAiError)) && !isFullyAppliedOrConfirmed);
+  const stopIdForAction = () => {
+    if (!action || !trip?.stops) return undefined;
+    const legStops = trip.stops.filter((s) => (s.leg_index ?? 0) === action.legIndex);
+    const wantsDelivery = action.operation.includes('delivery');
+    const match = legStops.find((s) => s.stop_type === (wantsDelivery ? 'Dropoff' : 'Pickup'));
+    return (match ?? legStops[0])?.id;
+  };
 
-  const formatMilestoneName = (event?: string | null) => {
-    if (!event) return 'Milestone';
-    switch (event) {
-      case 'ARRIVED_AT_PICKUP': return 'Arrived at Pickup';
-      case 'LOADING_COMPLETED': return 'Loading Completed';
-      case 'DEPARTED_PICKUP': return 'Departed Pickup (In Transit)';
-      case 'ARRIVED_AT_DELIVERY': return 'Arrived at Delivery';
-      case 'DELIVERY_COMPLETED': return 'Delivery Completed';
-      case 'DELAYED': return 'Trip Delayed';
-      default: return event.replace(/_/g, ' ');
+  const handleConfirmAndAdvance = async () => {
+    if (!trip || !selectedPhoto || !action) return;
+    setSubmitting(true);
+    try {
+      const kind = action.operation.includes('delivery') ? 'pod' : 'cargo';
+      await tripService.uploadPhoto(trip.id, kind, selectedPhoto, action.legIndex, action.operation, stopIdForAction());
+      const updatedTrip = await tripService.updateStatus(trip.id, action.targetStatus, action.targetWorkflowState);
+      setTrip(updatedTrip);
+      resetPhotoState();
+    } catch (err) {
+      Alert.alert('Error', getApiErrorMessage(err));
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -212,9 +142,21 @@ export const ExternalAppWorkflowScreen = () => {
         {/* Card 1: Hero Overview */}
         <View style={styles.heroCard}>
           <View style={styles.heroHeaderRow}>
-            <View style={styles.logoFallback}>
-              <Building2 size={22} color="#FA634E" strokeWidth={2} />
-            </View>
+            {showLogo ? (
+              <View style={styles.logoBox}>
+                <Image
+                  source={{ uri: logoUrl! }}
+                  style={styles.logoImg}
+                  resizeMode="contain"
+                  fadeDuration={0}
+                  onError={() => setLogoError(true)}
+                />
+              </View>
+            ) : (
+              <View style={styles.logoFallback}>
+                <Building2 size={22} color="#FA634E" strokeWidth={2} />
+              </View>
+            )}
             <View style={styles.heroCustomerCol}>
               <Text style={styles.customerName} numberOfLines={1}>
                 {trip?.customer?.name ?? 'Mercon Logistics'}
@@ -238,177 +180,69 @@ export const ExternalAppWorkflowScreen = () => {
           </View>
         </View>
 
-        {/* Card 2: Upload Screenshot */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Upload App Screenshot</Text>
+        {/* Card 2: Current Milestone Action, or Completed state */}
+        {action ? (
+          <View style={styles.card}>
+            <Text style={styles.sectionTitle}>{action.label}</Text>
+            <Text style={styles.sectionSubtitle}>
+              Attach a screenshot of the customer's app showing this update, then confirm.
+            </Text>
 
-          {selectedPhoto ? (
-            <View style={styles.previewContainer}>
-              <Image source={{ uri: selectedPhoto.uri }} style={styles.previewImage} resizeMode="contain" />
-              <TouchableOpacity
-                style={styles.changePhotoBtn}
-                onPress={resetPhotoState}
-                disabled={analyzing || confirming}
-              >
-                <RefreshCw size={14} color="#3E3C3D" />
-                <Text style={styles.changePhotoText}>Change Screenshot</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.pickersRow}>
-              <TouchableOpacity style={styles.pickerBox} onPress={handlePickGallery} activeOpacity={0.8}>
-                <ImageIcon size={26} color="#FA634E" strokeWidth={2} />
-                <Text style={styles.pickerTitle}>Choose Screenshot</Text>
-                <Text style={styles.pickerSub}>Select from gallery</Text>
-              </TouchableOpacity>
+            {selectedPhoto ? (
+              <View style={styles.previewContainer}>
+                <Image source={{ uri: selectedPhoto.uri }} style={styles.previewImage} resizeMode="contain" />
+                <TouchableOpacity
+                  style={styles.changePhotoBtn}
+                  onPress={resetPhotoState}
+                  disabled={submitting}
+                >
+                  <RefreshCw size={14} color="#3E3C3D" />
+                  <Text style={styles.changePhotoText}>Change Screenshot</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.pickersRow}>
+                <TouchableOpacity style={styles.pickerBox} onPress={handlePickGallery} activeOpacity={0.8}>
+                  <ImageIcon size={26} color="#FA634E" strokeWidth={2} />
+                  <Text style={styles.pickerTitle}>Choose Screenshot</Text>
+                  <Text style={styles.pickerSub}>Select from gallery</Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity style={styles.pickerBox} onPress={handleCamera} activeOpacity={0.8}>
-                <Camera size={26} color="#3E3C3D" strokeWidth={2} />
-                <Text style={styles.pickerTitle}>Take Photo</Text>
-                <Text style={styles.pickerSub}>Use camera</Text>
-              </TouchableOpacity>
-            </View>
-          )}
+                <TouchableOpacity style={styles.pickerBox} onPress={handleCamera} activeOpacity={0.8}>
+                  <Camera size={26} color="#3E3C3D" strokeWidth={2} />
+                  <Text style={styles.pickerTitle}>Take Photo</Text>
+                  <Text style={styles.pickerSub}>Use camera</Text>
+                </TouchableOpacity>
+              </View>
+            )}
 
-          {selectedPhoto && (
             <TouchableOpacity
               style={[
                 styles.uploadActionBtn,
-                (analyzing || confirming || isFullyAppliedOrConfirmed) && styles.uploadActionBtnDisabled,
-                isFullyAppliedOrConfirmed && styles.uploadActionBtnConfirmed,
+                (!selectedPhoto || submitting) && styles.uploadActionBtnDisabled,
               ]}
-              onPress={
-                isFullyAppliedOrConfirmed
-                  ? undefined
-                  : canConfirm
-                  ? handleConfirmUpdate
-                  : handleUploadAndAnalyze
-              }
-              disabled={analyzing || confirming || isFullyAppliedOrConfirmed}
+              onPress={handleConfirmAndAdvance}
+              disabled={!selectedPhoto || submitting}
               activeOpacity={0.88}
             >
-              {analyzing ? (
+              {submitting ? (
                 <>
                   <ActivityIndicator color="#FFFFFF" size="small" />
-                  <Text style={styles.uploadActionText}>Analysing Screenshot...</Text>
-                </>
-              ) : confirming ? (
-                <>
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                  <Text style={styles.uploadActionText}>Confirming Update...</Text>
-                </>
-              ) : isFullyAppliedOrConfirmed ? (
-                <>
-                  <CheckCircle2 size={18} color="#FFFFFF" strokeWidth={2.2} />
-                  <Text style={styles.uploadActionText}>Progress Update Confirmed</Text>
-                </>
-              ) : canConfirm ? (
-                <>
-                  <CheckCircle2 size={18} color="#FFFFFF" strokeWidth={2.2} />
-                  <Text style={styles.uploadActionText}>Confirm & Update Progress</Text>
-                </>
-              ) : result ? (
-                <>
-                  <RefreshCw size={18} color="#FFFFFF" strokeWidth={2.2} />
-                  <Text style={styles.uploadActionText}>Re-analyse Screenshot</Text>
+                  <Text style={styles.uploadActionText}>Updating Progress...</Text>
                 </>
               ) : (
                 <>
                   <Upload size={18} color="#FFFFFF" strokeWidth={2.2} />
-                  <Text style={styles.uploadActionText}>Analyse Screenshot</Text>
+                  <Text style={styles.uploadActionText}>Confirm: {action.label}</Text>
                 </>
               )}
             </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Card 3: Result Card */}
-        {result && (
-          <View
-            style={[
-              styles.card,
-              isFullyAppliedOrConfirmed
-                ? styles.resultCardSuccess
-                : canConfirm
-                ? styles.resultCardWarning
-                : styles.resultCardDanger,
-            ]}
-          >
-            <View style={styles.resultHeader}>
-              {isFullyAppliedOrConfirmed ? (
-                <CheckCircle2 size={20} color="#059669" strokeWidth={2.2} />
-              ) : canConfirm ? (
-                <AlertCircle size={20} color="#D97706" strokeWidth={2.2} />
-              ) : (
-                <AlertCircle size={20} color="#DC2626" strokeWidth={2.2} />
-              )}
-              <Text style={styles.resultTitle}>
-                {isFullyAppliedOrConfirmed
-                  ? 'Milestone Verified & Applied'
-                  : canConfirm
-                  ? 'Milestone Extracted — Ready to Confirm'
-                  : isWrongTripError
-                  ? 'Wrong Trip Screenshot'
-                  : isAiError
-                  ? 'AI Processing Error'
-                  : 'Verification Failed'}
-              </Text>
-            </View>
-
-            {/* Extracted Details Section */}
-            {result.event_type && (
-              <View style={styles.resultDetailRow}>
-                <Text style={styles.resultLabel}>Extracted Milestone:</Text>
-                <Text style={styles.resultValue}>{formatMilestoneName(result.event_type)}</Text>
-              </View>
-            )}
-
-            {result.external_reference && (
-              <View style={styles.resultDetailRow}>
-                <Text style={styles.resultLabel}>Extracted Ref #:</Text>
-                <Text style={styles.resultValue}>{result.external_reference}</Text>
-              </View>
-            )}
-
-            {result.stop_location_name && (
-              <View style={styles.resultDetailRow}>
-                <Text style={styles.resultLabel}>Extracted Location:</Text>
-                <Text style={styles.resultValue}>{result.stop_location_name}</Text>
-              </View>
-            )}
-
-            {result.event_timestamp && (
-              <View style={styles.resultDetailRow}>
-                <Text style={styles.resultLabel}>Extracted Time:</Text>
-                <Text style={styles.resultValue}>{result.event_timestamp}</Text>
-              </View>
-            )}
-
-            {result.confidence > 0 && (
-              <View style={styles.resultDetailRow}>
-                <Text style={styles.resultLabel}>AI Confidence:</Text>
-                <Text style={styles.resultValue}>{Math.round((result.confidence || 0) * 100)}%</Text>
-              </View>
-            )}
-
-            {result.notes && (
-              <View style={styles.resultDetailRow}>
-                <Text style={styles.resultLabel}>AI Summary:</Text>
-                <Text style={styles.resultValue}>{result.notes}</Text>
-              </View>
-            )}
-
-            {!isFullyAppliedOrConfirmed && !canConfirm && (
-              <View style={styles.failureReasonBox}>
-                <View style={styles.failureReasonTitleRow}>
-                  <AlertCircle size={16} color="#DC2626" strokeWidth={2.2} />
-                  <Text style={styles.failureReasonTitle}>Why Verification Failed:</Text>
-                </View>
-                <Text style={styles.failureReasonText}>
-                  {result.validation_reason || result.notes || 'The uploaded screenshot could not be automatically verified for this trip.'}
-                </Text>
-              </View>
-            )}
+          </View>
+        ) : (
+          <View style={[styles.card, styles.completedCard]}>
+            <CheckCircle2 size={28} color="#059669" strokeWidth={2.2} />
+            <Text style={styles.completedTitle}>Trip Completed</Text>
+            <Text style={styles.completedSubtitle}>All milestones for this trip have been confirmed.</Text>
           </View>
         )}
       </ScrollView>
@@ -492,6 +326,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  logoBox: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logoImg: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+  },
   heroCustomerCol: {
     flex: 1,
   },
@@ -568,7 +413,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#3E3C3D',
+    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 12.5,
+    color: '#6E6E80',
     marginBottom: 14,
+    lineHeight: 17,
   },
   pickersRow: {
     flexDirection: 'row',
@@ -632,84 +483,27 @@ const styles = StyleSheet.create({
     marginTop: 14,
   },
   uploadActionBtnDisabled: {
-    opacity: 0.6,
-  },
-  uploadActionBtnConfirmed: {
-    backgroundColor: '#059669',
+    opacity: 0.5,
   },
   uploadActionText: {
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '700',
   },
-  resultCardSuccess: {
-    borderColor: '#A7F3D0',
-    borderWidth: 1,
-    backgroundColor: '#ECFDF5',
-  },
-  resultCardWarning: {
-    borderColor: '#FDE68A',
-    borderWidth: 1,
-    backgroundColor: '#FFFBEB',
-  },
-  resultCardDanger: {
-    borderColor: '#FECACA',
-    borderWidth: 1,
-    backgroundColor: '#FEF2F2',
-  },
-  resultHeader: {
-    flexDirection: 'row',
+  completedCard: {
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
+    paddingVertical: 28,
+    gap: 6,
   },
-  resultTitle: {
-    fontSize: 15,
+  completedTitle: {
+    fontSize: 16,
     fontWeight: '700',
     color: '#1F2937',
+    marginTop: 4,
   },
-  resultDetailRow: {
-    flexDirection: 'row',
-    marginTop: 6,
-  },
-  resultLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#4B5563',
-    width: 100,
-  },
-  resultValue: {
-    fontSize: 12,
-    color: '#111827',
-    flex: 1,
-  },
-  resultValueDanger: {
-    fontSize: 12,
-    color: '#DC2626',
-    flex: 1,
-  },
-  failureReasonBox: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: '#FEF2F2',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-  },
-  failureReasonTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  failureReasonTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#991B1B',
-  },
-  failureReasonText: {
-    fontSize: 13,
-    color: '#7F1D1D',
-    lineHeight: 18,
+  completedSubtitle: {
+    fontSize: 12.5,
+    color: '#6E6E80',
+    textAlign: 'center',
   },
 });

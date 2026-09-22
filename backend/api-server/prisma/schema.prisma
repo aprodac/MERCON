@@ -1251,6 +1251,7 @@ model Settings {
 
   // Module keys this deployment shows/allows.
   enabledModules        String[] @default([])
+  hiddenModules         String[] @default([])
   defaultRedirectModule String?  @default("quotations")
 
   // Theme palette and custom status colors for UI branding customization

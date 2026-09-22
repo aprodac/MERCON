@@ -313,6 +313,7 @@ export interface Settings {
   maintenanceMode?: boolean;
   maintenanceBanner?: string | null;
   enabledModules: ModuleKey[];
+  hiddenModules: ModuleKey[];
   /** IANA timezone (e.g. "Asia/Riyadh") the frontends convert UTC timestamps to for display. */
   timezone: string;
   /** Default country code (e.g. "SA") for phone number fields across the deployment. */

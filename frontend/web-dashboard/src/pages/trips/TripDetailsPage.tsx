@@ -131,7 +131,7 @@ export default function TripDetailsPage() {
   const tripEntityId = trip?.id || id;
 
   // Trip documents
-  const { data: docsRes } = useQuery({
+  const { data: docsRes, refetch: refetchDocuments } = useQuery({
     queryKey: ['documents', 'Trip', tripEntityId],
     queryFn: () => documentService.getAll({ entity_type: 'Trip', entity_id: tripEntityId, per_page: 50 }),
     enabled: !!tripEntityId && !!trip,
@@ -674,7 +674,7 @@ export default function TripDetailsPage() {
         {/* ── 4. BOTTOM ROW: TRIP PHOTO EVIDENCE (LEFT 9 COLS) + FINANCIALS (RIGHT 3 COLS) ── */}
         <div className="grid grid-cols-12 gap-3 items-stretch">
           {/* Left Column: Trip Photo Evidence Panel (~75% / 9 Cols) */}
-          <div className="col-span-12 lg:col-span-9 flex flex-col h-full">
+          <div className="col-span-12 lg:col-span-9 flex flex-col gap-3 h-full">
             <TripPhotoEvidence
               documents={documents}
               stops={trip.stops}
@@ -683,6 +683,10 @@ export default function TripDetailsPage() {
               onUpload={() => {
                 setUploadDocType(undefined);
                 setIsUploadModalOpen(true);
+              }}
+              onEvidenceUpdated={() => {
+                refetch();
+                refetchDocuments();
               }}
             />
           </div>

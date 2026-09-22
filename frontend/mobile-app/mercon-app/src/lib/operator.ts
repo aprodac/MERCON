@@ -29,14 +29,16 @@ export interface OperatorTrip {
   status: string;
   planned_start?: string | null;
   createdAt?: string;
-  customer?: { name: string } | null;
-  driver?: { first_name: string; last_name: string } | null;
-  vehicle?: { plate_number: string } | null;
+  customer?: { id?: string; name: string; logo_url?: string | null } | null;
+  driver?: { first_name: string; last_name: string; avatar_url?: string | null } | null;
+  vehicle?: { plate_number: string; ref_id?: string | null; asset_type?: string } | null;
+  stops?: any[];
 }
 
 export interface OperatorTripStop {
   id: string;
   stop_sequence: number;
+  leg_index?: number;
   stop_type: string;
   location_lat: number;
   location_lng: number;
@@ -44,38 +46,150 @@ export interface OperatorTripStop {
   planned_arrival: string | null;
   actual_arrival: string | null;
   actual_departure: string | null;
+  delay_reason?: string | null;
+  delay_note?: string | null;
+  delay_logged_at?: string | null;
+}
+
+export interface OperatorTripDocument {
+  id: string;
+  doc_type: string | null;
+  file_url: string;
+  mime_type?: string | null;
+  ocr_raw_text?: string | null;
+  ai_extracted_json?: any;
+  status?: string;
+  createdAt: string;
 }
 
 export interface OperatorTripDetail {
   id: string;
   ref_id: string | null;
   status: TripStatus;
+  driver_workflow?: 'NATIVE' | 'EXTERNAL_APP';
   planned_distance: number | null;
   planned_start: string | null;
   actual_start: string | null;
   planned_end: string | null;
   actual_end: string | null;
   createdAt: string;
-  customer: { id: string; name: string } | null;
+  customer: { id: string; name: string; contact_phone?: string | null; logo_url?: string | null } | null;
   driver: { id: string; first_name: string; last_name: string; phone_primary: string | null; ref_id: string | null } | null;
-  vehicle: { id: string; plate_number: string; asset_type: string; ref_id: string | null } | null;
+  vehicle: { id: string; plate_number: string; asset_type: string; ref_id: string | null; capacity_kg?: number | null } | null;
   stops: OperatorTripStop[];
+  documents?: OperatorTripDocument[];
+
+  // Co-driver — same DB columns/relation as the web dashboard's Trip type.
+  co_driver_id?: string | null;
+  coDriver?: { id: string; first_name: string; last_name: string; phone_primary?: string | null; ref_id?: string | null } | null;
+  co_driver_payout?: number;
+
+  // Financials — persisted Trip columns (backend/api-server/prisma/schema.prisma),
+  // not re-derived here, so this can never disagree with the web dashboard.
+  billing_amount?: number | null;
+  applied_rate?: number | null;
+  driver_payout?: number;
+  driver_charge?: number;
+  trip_charges?: number;
+  paid_amount?: number;
+  balance_due?: number | null;
+  charges?: { id: string; charge_type: string; unit: string | null; rate: number; quantity: number; amount: number }[];
+
+  // Line type / quotation — drives the Round Trip vs Single Trip label.
+  quotation_line_type?: string | null;
+  quotationId?: string | null;
+  quotation?: { id?: string; name?: string | null; rate?: number | null; driver_payout?: number | null; pricing_basis?: string | null } | null;
+  rateCard?: { name?: string | null; rate_category?: string | null; vehicle_type?: string | null } | null;
+
+  // Third-party / subcontracted trips.
+  is_third_party?: boolean;
+  third_party_driver_name?: string | null;
+  third_party_driver_phone?: string | null;
+  third_party_vehicle_plate?: string | null;
+  third_party_vehicle_type?: string | null;
+  third_party_cost?: number | null;
 }
 
 export interface CreateTripStopInput {
-  stop_type: 'Pickup' | 'Dropoff';
+  stop_type: 'Pickup' | 'Dropoff' | 'Stop' | 'Rest' | 'Refuel';
+  leg_index?: number;
   lat: number;
   lng: number;
   planned_arrival?: string;
   location_name?: string;
+  /** Set when the operator picked a saved Location via search, instead of typing raw coordinates. */
+  location_id?: string;
 }
 
 export interface CreateTripInput {
   customer_id: string;
-  driver_id: string;
-  vehicle_id: string;
+  // Optional — the backend supports "assign later" (tripController.ts
+  // createTrip): a trip can be created with no driver/vehicle and dispatched
+  // afterward, same as the web dashboard's "Assign Later" option.
+  driver_id?: string;
+  vehicle_id?: string;
+  co_driver_id?: string;
   planned_start?: string;
+  /** What every delay/lateness figure is measured against — must be sent, not just stamped on the dropoff stop. */
+  planned_end?: string;
+  // Financials — same fields the web dashboard's create-trip wizard sends,
+  // resolved from a matched quotation or entered manually when none matches.
+  billing_amount?: number;
+  trip_charges?: number;
+  rate_card_id?: string;
+  vehicle_type?: string;
+  rate_category?: string;
+  billing_type?: string;
+  // Subcontractor / 3PL fields
+  is_third_party?: boolean;
+  third_party_provider_id?: string;
+  third_party_driver_name?: string;
+  third_party_driver_phone?: string;
+  third_party_vehicle_plate?: string;
+  third_party_cost?: number;
+  charges?: { charge_type: string; rate: number; quantity: number; amount: number }[];
   stops: CreateTripStopInput[];
+}
+
+export interface OperatorThirdPartyProvider {
+  id: string;
+  name: string;
+  contact_person?: string | null;
+  phone?: string | null;
+}
+
+export interface OperatorLocation {
+  id: string;
+  name: string;
+  address?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+}
+
+export interface QuotationLookupMatch {
+  quotationId: string;
+  rate: number;
+  driverPayout: number;
+}
+
+/** A customer's quotation, as picked from a list — same fields the web
+ * dashboard's quotation cards use to auto-fill a trip's route + rate. */
+export interface OperatorQuotation {
+  id: string;
+  name: string;
+  rate: number;
+  driver_payout?: number | null;
+  vehicle_type?: string | null;
+  vehicle_class?: string | null;
+  line_type?: string | null;
+  rate_category?: string | null;
+  billing_type?: string | null;
+  origin_name?: string | null;
+  destination_name?: string | null;
+  originLocationId?: string | null;
+  destinationLocationId?: string | null;
+  originLocation?: { id: string; name: string; lat?: number | null; lng?: number | null } | null;
+  destinationLocation?: { id: string; name: string; lat?: number | null; lng?: number | null } | null;
 }
 
 export interface OperatorCustomer {
@@ -142,7 +256,43 @@ export const operatorService = {
 
   async tripById(id: string): Promise<OperatorTripDetail> {
     const { data } = await api.get(`/trips/${id}`);
-    return data.data as OperatorTripDetail;
+    const tripDetail = data.data as OperatorTripDetail;
+
+    if (!tripDetail.documents || tripDetail.documents.length === 0) {
+      try {
+        const docRes = await api.get('/documents', {
+          params: { entity_type: 'Trip', entity_id: tripDetail.id || id, per_page: 50 },
+        });
+        const docs = docRes.data?.data || [];
+        if (docs.length > 0) {
+          tripDetail.documents = docs;
+        }
+      } catch {
+        // silent fallback
+      }
+    }
+
+    return tripDetail;
+  },
+
+  async uploadTripPhoto(tripId: string, uri: string, kind: 'pod' | 'cargo' | 'delay' = 'pod'): Promise<any> {
+    const formData = new FormData();
+    const filename = uri.split('/').pop() || 'media.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const isVideo = /\.(mp4|mov|webm|avi|mkv|3gp)$/i.test(filename);
+    const type = isVideo ? 'video/mp4' : (match ? `image/${match[1]}` : 'image/jpeg');
+
+    formData.append('file', {
+      uri,
+      name: filename,
+      type,
+    } as any);
+    formData.append('kind', kind);
+
+    const { data } = await api.post(`/trips/${tripId}/photo`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
   },
 
   async customers(): Promise<OperatorCustomer[]> {
@@ -178,6 +328,78 @@ export const operatorService = {
   async createTrip(payload: CreateTripInput): Promise<OperatorTripDetail> {
     const { data } = await api.post('/trips', payload);
     return data.data as OperatorTripDetail;
+  },
+
+  /** Same `/locations` endpoint the web dashboard's location combobox uses — Locations are customer-scoped. */
+  async searchLocations(customerId: string, query: string): Promise<OperatorLocation[]> {
+    if (!customerId || !query.trim()) return [];
+    const { data } = await api.get('/locations', { params: { customerId, search: query.trim(), active_only: true } });
+    return (data.data ?? []) as OperatorLocation[];
+  },
+
+  async thirdPartyProviders(): Promise<OperatorThirdPartyProvider[]> {
+    const { data } = await api.get('/third-party-providers', { params: { per_page: 100 } });
+    return (data.data ?? []) as OperatorThirdPartyProvider[];
+  },
+
+  /** Same `/quotations` list endpoint the web dashboard's create-trip wizard
+   * uses to show a customer's quotations as pickable cards — selecting one
+   * fills the whole route + rate in one action, same as the web flow's
+   * `onApplyRateCard`. */
+  async getQuotationsForCustomer(customerId: string): Promise<OperatorQuotation[]> {
+    if (!customerId) return [];
+    const { data } = await api.get('/quotations', { params: { customerId, active_only: 'true', per_page: 50 } });
+    return (data.data ?? []) as OperatorQuotation[];
+  },
+
+  async createQuotation(payload: {
+    customer_id: string;
+    origin_name?: string;
+    origin_location_id?: string;
+    destination_name?: string;
+    destination_location_id?: string;
+    rate: number;
+    driver_payout?: number;
+    vehicle_type?: string;
+    rate_category?: string;
+    billing_type?: string;
+  }): Promise<OperatorQuotation> {
+    const { data } = await api.post('/quotations', payload);
+    return data.data as OperatorQuotation;
+  },
+
+  /** Same `/quotations/lookup` endpoint the web dashboard's create-trip
+   * wizard uses to auto-fill a rate. Swallows errors/no-match and returns
+   * null so the screen can fall back to manual entry rather than block. */
+  async lookupQuotation(params: {
+    customer_id?: string;
+    origin_location_id?: string;
+    destination_location_id?: string;
+    vehicle_type?: string;
+    rate_category?: string;
+    billing_type?: string;
+  }): Promise<QuotationLookupMatch | null> {
+    try {
+      const { data } = await api.get('/quotations/lookup', {
+        params: {
+          ...(params.customer_id ? { customer_id: params.customer_id } : {}),
+          ...(params.origin_location_id ? { origin_location_id: params.origin_location_id } : {}),
+          ...(params.destination_location_id ? { destination_location_id: params.destination_location_id } : {}),
+          ...(params.vehicle_type ? { vehicle_type: params.vehicle_type } : {}),
+          ...(params.rate_category ? { rate_category: params.rate_category } : {}),
+          ...(params.billing_type ? { billing_type: params.billing_type } : {}),
+        },
+      });
+      const quotation = data?.data?.quotation;
+      if (!quotation?.id) return null;
+      return {
+        quotationId: quotation.id,
+        rate: Number(quotation.rate ?? 0),
+        driverPayout: Number(quotation.driver_payout ?? 0),
+      };
+    } catch {
+      return null;
+    }
   },
 
   async vehicleDocuments(): Promise<OperatorDocument[]> {
@@ -225,6 +447,25 @@ export const operatorService = {
   async replaceDriver(id: string, newDriverId: string): Promise<OperatorTripDetail> {
     const { data } = await api.post(`/trips/${id}/replace-driver`, { new_driver_id: newDriverId });
     return data.data as OperatorTripDetail;
+  },
+
+  /** Reassign only the vehicle — same `/dispatch` endpoint the web dashboard's
+   * ReassignTripModal calls for a vehicle-only reassignment. */
+  async replaceVehicle(id: string, newVehicleId: string): Promise<OperatorTripDetail> {
+    const { data } = await api.post(`/trips/${id}/dispatch`, { vehicle_id: newVehicleId });
+    return data.data as OperatorTripDetail;
+  },
+
+  /** Confirm or correct the real time an EXTERNAL_APP evidence screenshot
+   * happened at — same endpoint/columns the web dashboard's time-confirmation
+   * panel uses. Omit a field to leave that timestamp as recorded. */
+  async confirmEvidenceTime(
+    tripId: string,
+    stopId: string,
+    payload: { document_id: string; actual_arrival?: string; actual_departure?: string }
+  ): Promise<OperatorTripStop> {
+    const { data } = await api.patch(`/trips/${tripId}/stops/${stopId}/confirm-time`, payload);
+    return data.data as OperatorTripStop;
   },
 };
 

@@ -18,8 +18,8 @@ import {
   useDashboardSummary, useDelayedDeliveries, useNotifications,
 } from '../hooks';
 import {
-  ActiveVehiclesSection, AppHeader, ContextSelector, DashboardMetricCard,
-  DocumentExpirySection, ScannerButton, SearchBar,
+  AppHeader, DashboardMetricCard,
+  OperatorCommandCenterSection, ScannerButton, SearchBar,
 } from '../components';
 import { ErrorState, SkeletonMetricCard } from '@/shared/components';
 
@@ -43,27 +43,25 @@ export default function DashboardHomeScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }} edges={['top']}>
       <ScrollView
         contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 20 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#E8450F" />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#FA634E" />}
       >
         {/* 1. AppHeader */}
         <AppHeader
           logoSource={require('@/assets/images/mercon-logo.png')}
           greeting="Welcome back,"
           userName={firstName}
+          role={role ?? 'Operator'}
           unreadNotifications={unreadCount}
           onNotificationPress={() => router.push('/notifications')}
         />
 
-        {/* 2. Context Selector Row */}
-        <ContextSelector role={role ?? 'Operator'} />
-
-        {/* 3. Search Row */}
+        {/* 2. Search Row */}
         <View className="flex-row items-center gap-2">
           <SearchBar value={search} onChangeText={setSearch} onSubmit={() => router.push('/operator/trips')} />
           <ScannerButton />
         </View>
 
-        {/* 4. Dashboard Metrics */}
+        {/* 3. Dashboard Metrics */}
         {summary.isLoading || activeTrips.isLoading || delayedDeliveries.isLoading ? (
           <View className="flex-row gap-3">
             <SkeletonMetricCard />
@@ -87,17 +85,13 @@ export default function DashboardHomeScreen() {
           </View>
         )}
 
-        {/* 5-6. Active Vehicles — header, carousel, pagination */}
-        <ActiveVehiclesSection
-          onViewAll={() => router.push('/operator/vehicles')}
-          onVehiclePress={(v) => router.push({ pathname: '/operator/trip-details', params: { id: v.tripId } })}
-        />
-
-        {/* 7. Document Expiry — replaces Fleet Utilization */}
-        <DocumentExpirySection
-          onViewAll={() => router.push('/operator/vehicle-renewals')}
+        {/* 4. UNIFIED OPERATOR COMMAND CENTER */}
+        <OperatorCommandCenterSection
+          onTripPress={(tripId) => router.push({ pathname: '/operator/trip-details', params: { id: tripId } })}
         />
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+

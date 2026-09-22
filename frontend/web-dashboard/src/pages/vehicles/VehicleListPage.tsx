@@ -1583,18 +1583,7 @@ export default function VehicleListPage() {
                       zIndex: 10
                     }}
                   >
-                    <div className="relative flex items-center justify-center">
-                      <div 
-                        className="absolute bottom-[20px] bg-red-600 text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded-md shadow-md flex items-center gap-1 animate-bounce"
-                        style={{ whiteSpace: 'nowrap' }}
-                      >
-                        <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
-                        <span>MAINTENANCE</span>
-                        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-t-[4px] border-t-red-600" />
-                      </div>
-
-                      <RouteLineTruck3D className="h-7 w-auto" color="#DC2626" />
-                    </div>
+                    <RouteLineTruck3D className="h-7 w-auto" color="#DC2626" />
                   </div>
                 </div>
               }

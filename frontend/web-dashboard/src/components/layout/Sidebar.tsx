@@ -81,6 +81,7 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
 
   const unreadCount = notificationsRes?.data?.filter((n: any) => !n.is_read).length || 0;
   const enabledModules = settings?.enabledModules;
+  const hiddenModules = settings?.hiddenModules;
 
   interface NavItem {
     icon: any;
@@ -143,11 +144,13 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
 
   const processedGroups: { label: string; items: NavItem[] }[] = [];
   const comingSoonItems: NavItem[] = [];
+  const hiddenSet = new Set(hiddenModules || []);
 
   rawGroups.forEach((g) => {
     const enabledItems: NavItem[] = [];
     g.items.forEach((item) => {
       if (checkIsDisabled(item)) {
+        if (item.moduleKey && hiddenSet.has(item.moduleKey)) return; // fully hidden
         comingSoonItems.push(item);
       } else {
         enabledItems.push(item);

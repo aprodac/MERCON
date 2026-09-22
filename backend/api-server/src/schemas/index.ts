@@ -154,12 +154,14 @@ export const loginBody = z.object({
 export const createTripBody = z.object({
   customer_id: z.string().uuid('A valid customer is required'),
   driver_id: z.string().uuid('Invalid driver').optional(),
+  co_driver_id: z.string().uuid('Invalid co-driver').nullable().optional(),
   vehicle_id: z.string().uuid('Invalid vehicle').optional(),
   planned_start: z.coerce.date().optional(),
   planned_end: z.coerce.date().optional(),
   billing_amount: z.coerce.number().optional(),
   driver_charge: z.coerce.number().optional(),
   trip_charges: z.coerce.number().optional(),
+  co_driver_payout: z.coerce.number().optional(),
   status: z.enum(['Scheduled', 'Loading', 'InTransit', 'Delayed', 'Completed', 'Invoiced', 'Cancelled', 'Draft']).optional(),
   dispatch_now: z.boolean().optional(),
   // The rate card the dispatcher was shown. Recorded on the trip so invoicing
@@ -187,8 +189,16 @@ export const createTripBody = z.object({
   third_party_vehicle_plate: z.string().trim().optional(),
   third_party_vehicle_type: z.string().trim().optional(),
   third_party_cost: z.coerce.number().optional(),
+  charges: z.array(z.object({
+    charge_type: z.string().trim().min(1),
+    rate: z.coerce.number(),
+    quantity: z.coerce.number().optional().default(1),
+    amount: z.coerce.number(),
+    surchargeRuleId: z.string().uuid().optional(),
+  })).optional(),
   stops: z.array(z.object({
-    stop_type: z.enum(['Pickup', 'Dropoff', 'Rest', 'Refuel']),
+    stop_type: z.enum(['Pickup', 'Dropoff', 'Rest', 'Refuel', 'Stop']),
+    leg_index: z.number().int().optional(),
     // Client + controller use lat/lng (controller reads stop.lat/stop.lng), not location_*.
     lat: z.coerce.number(),
     lng: z.coerce.number(),
@@ -408,6 +418,16 @@ export const logStopDelayBody = z.object({
     'Weather', 'Documentation', 'RouteBlocked', 'Other',
   ]),
   delay_note: z.string().trim().max(500).optional(),
+});
+
+export const confirmEvidenceTimeBody = z.object({
+  document_id: z.string().uuid(),
+  // Neither is required — an operator confirming the recorded time is
+  // already correct submits with both omitted. Not strict ISO validation
+  // since a <input type="datetime-local"> sends "YYYY-MM-DDTHH:mm" with no
+  // offset; the controller parses with `new Date(...)`.
+  actual_arrival: z.string().min(1).optional(),
+  actual_departure: z.string().min(1).optional(),
 });
 
 /* ─── Drivers ────────────────────────────────────────────────────────────── */

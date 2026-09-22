@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-nativ
 import { Wallet, ChevronRight, ChevronLeft } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTripHistory } from '../lib/use-trip-history';
-import { getTripChargeValue } from '../screens/driver/DriverChargesScreen';
+import { getTripChargeValue, getMonthlyDriverPayout } from '../lib/trips';
 import { useLanguage } from '../lib/language-context';
 
 interface DriverChargePillProps {
@@ -11,20 +11,10 @@ interface DriverChargePillProps {
   style?: ViewStyle;
 }
 
-export function DriverChargePill({ amount, style }: DriverChargePillProps) {
+function DriverChargePillContent({ amount, style }: { amount: number; style?: ViewStyle }) {
   const router = useRouter();
   const { t, language, formatCurrency } = useLanguage();
-  const { trips: historyList } = useTripHistory();
 
-  const totalEarnings = useMemo(() => {
-    if (typeof amount === 'number') return amount;
-    return historyList.reduce((sum, t) => {
-      if (t.status === 'Completed' || t.status === 'Invoiced') {
-        return sum + getTripChargeValue(t);
-      }
-      return sum;
-    }, 0);
-  }, [amount, historyList]);
 
   return (
     <TouchableOpacity
@@ -37,7 +27,7 @@ export function DriverChargePill({ amount, style }: DriverChargePillProps) {
       </View>
       <View style={styles.chargeTextCol}>
         <Text style={[styles.chargeAmount, { writingDirection: 'ltr' }]}>
-          {formatCurrency(totalEarnings)}
+          {formatCurrency(amount)}
         </Text>
         <Text style={styles.chargeLabel}>{t('label_driver_charge', 'Driver Charge')}</Text>
       </View>
@@ -48,6 +38,23 @@ export function DriverChargePill({ amount, style }: DriverChargePillProps) {
       )}
     </TouchableOpacity>
   );
+}
+
+function DriverChargePillWithFetchedHistory({ style }: { style?: ViewStyle }) {
+  const { trips: historyList } = useTripHistory();
+
+  const totalEarnings = useMemo(() => {
+    return getMonthlyDriverPayout(historyList);
+  }, [historyList]);
+
+  return <DriverChargePillContent amount={totalEarnings} style={style} />;
+}
+
+export function DriverChargePill({ amount, style }: DriverChargePillProps) {
+  if (typeof amount === 'number') {
+    return <DriverChargePillContent amount={amount} style={style} />;
+  }
+  return <DriverChargePillWithFetchedHistory style={style} />;
 }
 
 const styles = StyleSheet.create({

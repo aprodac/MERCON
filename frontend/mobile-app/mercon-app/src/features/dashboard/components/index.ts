@@ -8,6 +8,7 @@ export * from './ScannerButton';
 export * from './DashboardMetricCard';
 export * from './SectionHeader';
 export * from './ActiveVehiclesSection';
+export * from './ActiveTripsSection';
 export * from './VehicleCard';
 export * from './DriverAvatar';
 export * from './DriverStatus';
@@ -32,3 +33,6 @@ export * from './DocumentStatusBadge';
 export * from './DocumentTypeIcon';
 export * from './ExpiryProgressBar';
 export * from './DocumentExpirySkeletons';
+export * from './OperatorCommandCenterSection';
+export * from './OperatorCommandInspectorModal';
+

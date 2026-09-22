@@ -479,7 +479,7 @@ export const TripKpiCards: React.FC<TripKpiCardsProps> = ({
               <div className="h-2 w-2 rounded-full bg-red-500 ring-4 ring-red-500/20" />
             </div>
 
-            {/* 3D Visual Route Line Red Truck with Floating Overdue Badge */}
+            {/* 3D Visual Route Line Red Truck */}
             <div
               className="absolute"
               style={{
@@ -489,18 +489,7 @@ export const TripKpiCards: React.FC<TripKpiCardsProps> = ({
                 zIndex: 10
               }}
             >
-              <div className="relative flex items-center justify-center">
-                <div
-                  className="absolute bottom-[20px] bg-red-600 text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded-md shadow-md flex items-center gap-1"
-                  style={{ whiteSpace: 'nowrap' }}
-                >
-                  <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
-                  <span>OVERDUE</span>
-                  <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-t-[4px] border-t-red-600" />
-                </div>
-
-                <RouteLineTruck3D className="h-7 w-auto" color="#DC2626" />
-              </div>
+              <RouteLineTruck3D className="h-7 w-auto" color="#DC2626" />
             </div>
           </div>
         }

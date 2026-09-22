@@ -49,12 +49,11 @@ export const getPublicTripEvidence = async (req: Request, res: Response) => {
     const stopIds = trip.stops.map(s => s.id);
 
     // Query all real documents attached to this trip or any of its stops
+    // NOTE: entity_id is a UUID column — never pass ref_id (e.g. "TRP-0252") here
     const documentRecords = await prisma.document.findMany({
       where: {
         OR: [
           { entity_type: 'Trip', entity_id: trip.id },
-          { entity_id: trip.id },
-          { entity_id: trip.ref_id || undefined },
           { entity_type: 'TripStop', entity_id: { in: stopIds } }
         ],
         deletedAt: null

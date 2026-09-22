@@ -194,7 +194,7 @@ export default function DriverDocumentsValidityFolder({
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col justify-between h-full min-h-[460px] overflow-hidden select-none">
+    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col justify-between h-full min-h-[460px] max-h-[480px] overflow-hidden select-none">
 
       {/* ── Top Header Bar ── */}
       <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0 z-10">
@@ -204,8 +204,8 @@ export default function DriverDocumentsValidityFolder({
         </h2>
       </div>
 
-      {/* ── Folder Pocket & Stacked Index Cards (Shifted Down) ── */}
-      <div className="relative flex-1 flex flex-col justify-start pt-2 pb-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1.5">
+      {/* ── Folder Pocket & Stacked Index Cards (Max 5-6 visible at once, scrollable if more) ── */}
+      <div className="relative flex-1 flex flex-col justify-start pt-2 pb-1 min-h-0 max-h-[380px] overflow-y-auto overflow-x-hidden pr-1.5">
 
         {isLoading ? (
           <div className="flex flex-col items-center justify-center gap-3 py-10 text-slate-400">

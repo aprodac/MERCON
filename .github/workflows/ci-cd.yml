@@ -134,7 +134,6 @@ jobs:
           echo "Building images..."
           docker compose -p mercon build
 
-<<<<<<< HEAD
           echo "Executing Prisma database migrations against production database..."
           docker compose -p mercon run --rm --no-deps mercon-api npx prisma migrate deploy
 
@@ -142,10 +141,6 @@ jobs:
           docker compose -p mercon up -d --no-build
 
           # Give mercon-api a moment to finish starting before polling it.
-=======
-          # Give mercon-api a moment to run its startup chain (prisma db push
-          # && seed && node dist/index.js) before polling it.
->>>>>>> a5bb263c (feat(ops): add prod deploy health gate, frontend healthcheck, nightly DB backups)
           sleep 8
 
           # Health gate — ported from ci-cd-dev.yml, which already does this

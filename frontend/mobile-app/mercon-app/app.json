@@ -1,5 +1,10 @@
 {
   "expo": {
+    "ios": {
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": ["whatsapp"]
+      }
+    },
     "extra": {
       "eas": {
         "projectId": "2697c85a-0ac8-4a2e-9225-5cc84a5b518d"

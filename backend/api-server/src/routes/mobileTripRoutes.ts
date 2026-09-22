@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCurrentTrip, getTripHistory, getScheduledTrips, updateTripStatus, uploadTripPhoto, uploadExternalScreenshot, getTripRoute, getMobileTripDetails, recordDriverLocation } from '../controllers/mobileTripController';
+import { getCurrentTrip, getTripHistory, getScheduledTrips, updateTripStatus, uploadTripPhoto, getTripRoute, getMobileTripDetails, recordDriverLocation } from '../controllers/mobileTripController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
 import { upload } from '../middlewares/upload';
@@ -18,7 +18,6 @@ router.get('/:id', getMobileTripDetails);
 router.get('/:id/route', getTripRoute);
 router.post('/:id/status', updateTripStatus);
 router.post('/:id/photo', upload.single('file'), uploadTripPhoto);
-router.post('/:id/external-screenshot', upload.single('file'), uploadExternalScreenshot);
 router.post('/:id/location', recordDriverLocation);
 
 export default router;

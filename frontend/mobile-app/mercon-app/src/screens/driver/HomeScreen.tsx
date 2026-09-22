@@ -15,12 +15,10 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens
 import { Badge, DelayReportModal, DriverChargePill, BilingualText } from '../../components';
 import { useAuth } from '../../lib/auth-context';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, type TripStatus, type MobileTrip } from '../../lib/trips';
+import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getNextExternalAppAction, getTripChargeValue, getMonthlyDriverPayout, type TripStatus, type MobileTrip } from '../../lib/trips';
 import { getApiErrorMessage } from '../../lib/api';
 import { useLanguage, getLocalizedStatus } from '../../lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, type TimelineStop } from '../../lib/routeParser';
-
-import { getTripChargeValue } from './DriverChargesScreen';
 
 const WORKFLOW_URDU_LABEL: Record<string, string> = {
   ASSIGNED: 'ٹرپ شروع کریں',
@@ -124,7 +122,6 @@ const HomeScreen = () => {
   const [delayModalVisible, setDelayModalVisible] = useState(false);
   const [scheduledTrips, setScheduledTrips] = useState<MobileTrip[]>([]);
   const [scheduledLoading, setScheduledLoading] = useState(true);
-
   const router = useRouter();
 
   // Restore current trip workflow screen on mount
@@ -166,8 +163,6 @@ const HomeScreen = () => {
     }
   }, [trip, loading]);
 
-
-
   const fetchScheduled = useCallback(async () => {
     setScheduledLoading(true);
     try {
@@ -180,10 +175,12 @@ const HomeScreen = () => {
     }
   }, [trip]);
 
-  // Load secondary data (scheduled trips & earnings) strictly after primary trip resolves, avoiding connection storms
+  // Load secondary data (scheduled trips) strictly once after primary trip resolves on initial load
+  const secondaryLoadedRef = useRef(false);
   useEffect(() => {
-    if (!loading) {
-      Promise.allSettled([fetchScheduled()]);
+    if (!loading && !secondaryLoadedRef.current) {
+      secondaryLoadedRef.current = true;
+      fetchScheduled();
     }
   }, [loading, fetchScheduled]);
 
@@ -212,9 +209,10 @@ const HomeScreen = () => {
     if (t.driver_workflow === 'EXTERNAL_APP') {
       const ws = getEffectiveWorkflowState(t);
       const isAssigned = ws === 'ASSIGNED';
+      const nextAction = getNextExternalAppAction(t);
       return {
         badgeLabel: isAssigned ? 'Assigned (External)' : 'External App',
-        btnLabel: isAssigned ? 'Start Trip' : 'Upload App Screenshot',
+        btnLabel: isAssigned ? 'Start Trip' : (nextAction?.label ?? 'Trip Completed'),
         onPress: async () => {
           if (isAssigned) {
             setAdvancing(true);
@@ -404,7 +402,7 @@ const HomeScreen = () => {
             refreshing={loading}
             onRefresh={async () => {
               await refetch();
-              await Promise.allSettled([fetchScheduled(), fetchEarnings()]);
+              await fetchScheduled();
             }}
             tintColor="#FFFFFF"
             progressBackgroundColor="#FA634E"

@@ -171,6 +171,56 @@ export interface MobileTrip {
   }> | null;
 }
 
+function extractChargeNumber(val: any): number {
+  if (val === null || val === undefined) return 0;
+  if (typeof val === 'number') return val;
+  if (typeof val === 'string') {
+    const parsed = parseFloat(val);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  if (typeof val === 'object') {
+    if (val.toNumber && typeof val.toNumber === 'function') {
+      return val.toNumber();
+    }
+    const parsed = parseFloat(String(val));
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
+/**
+ * The amount this trip pays the driver. `trip.driver_payout` is already the
+ * server-computed value (calculateBackendTripFinancials in
+ * backend/api-server/src/utils/tripFinancials.ts — the same function the web
+ * dashboard uses), so this just reads it rather than re-deriving it, the way
+ * two separate copies of this function used to.
+ */
+export function getTripChargeValue(t: MobileTrip | null | undefined): number {
+  if (!t) return 0;
+  return extractChargeNumber(t.driver_payout ?? t.driver_charge ?? t.trip_charges);
+}
+
+/** Check whether a trip's completion date falls in the specified month (defaults to current month). */
+export function isTripInMonth(t: MobileTrip | null | undefined, refDate: Date = new Date()): boolean {
+  if (!t) return false;
+  const dateStr = t.actual_end ?? t.planned_end ?? t.actual_start ?? t.planned_start ?? (t as any).createdAt;
+  if (!dateStr) return false;
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return false;
+  return d.getMonth() === refDate.getMonth() && d.getFullYear() === refDate.getFullYear();
+}
+
+/** Calculates total driver payout for completed/invoiced trips completed in the specified month. */
+export function getMonthlyDriverPayout(trips: (MobileTrip | null | undefined)[], refDate: Date = new Date()): number {
+  if (!Array.isArray(trips)) return 0;
+  return trips.reduce((sum, t) => {
+    if (t && (t.status === 'Completed' || t.status === 'Invoiced') && isTripInMonth(t, refDate)) {
+      return sum + getTripChargeValue(t);
+    }
+    return sum;
+  }, 0);
+}
+
 /** Check whether a trip is genuinely a Round Trip */
 export function isRoundTrip(trip: MobileTrip | null | undefined): boolean {
   if (!trip) return false;
@@ -298,6 +348,67 @@ export function getEffectiveWorkflowState(trip: MobileTrip | null | undefined): 
   }
 
   return ws || 'ASSIGNED';
+}
+
+export interface ExternalAppAction {
+  label: string;
+  targetStatus: TripStatus;
+  targetWorkflowState: string;
+  /** Tag written to the evidence photo's Document — matches the vocabulary
+   * `TripPhotoEvidence.tsx` on the web dashboard already categorizes by. */
+  operation: string;
+  legIndex: 0 | 1;
+}
+
+/**
+ * The single next action for an EXTERNAL_APP-workflow trip, keyed purely off
+ * the trip's current state — mirrors the exact (status, workflow_state)
+ * pairs the NATIVE screens (PickupVerificationScreen, DeliveryVerificationScreen,
+ * LiveNavigationScreen) already use for every stage, including round trips.
+ * Returns null once the trip is complete.
+ */
+export function getNextExternalAppAction(trip: MobileTrip | null | undefined): ExternalAppAction | null {
+  if (!trip) return null;
+  const ws = getEffectiveWorkflowState(trip);
+  // `isRoundTrip()` also fires on weak signals (quotation line-type text,
+  // destination markers) that don't guarantee a real return-leg stop exists.
+  // `getEffectiveWorkflowState` itself only takes the round-trip path when
+  // there's an actual 3rd/4th stop (or an explicit leg_index:1 stop) to
+  // visit — match that same real-data gate here, or a "round trip" with no
+  // real return stop sends the driver through phantom return-leg stages
+  // that never resolve to Completed.
+  const stops = trip.stops ?? [];
+  const isRound = stops.some((s) => (s.leg_index ?? 0) === 1) || stops.length >= 3;
+
+  switch (ws) {
+    case 'ASSIGNED':
+    case 'GOING_TO_PICKUP':
+      return { label: 'Arrived at Pickup', targetStatus: 'Loading', targetWorkflowState: 'ARRIVED_AT_PICKUP', operation: 'pickup_arrival', legIndex: 0 };
+    case 'ARRIVED_AT_PICKUP':
+      return { label: 'Loading Completed', targetStatus: 'Loading', targetWorkflowState: 'LOADING_COMPLETED', operation: 'pickup', legIndex: 0 };
+    case 'LOADING_COMPLETED':
+      return { label: 'Departed (In Transit)', targetStatus: 'InTransit', targetWorkflowState: 'IN_TRANSIT', operation: 'pickup', legIndex: 0 };
+    case 'IN_TRANSIT':
+      return { label: 'Arrived at Delivery', targetStatus: 'InTransit', targetWorkflowState: 'ARRIVED_AT_DELIVERY', operation: 'delivery_arrival', legIndex: 0 };
+    case 'ARRIVED_AT_DELIVERY':
+    case 'DELIVERY_VERIFICATION':
+    case 'FIRST_DELIVERY_COMPLETED':
+      return isRound
+        ? { label: 'Delivery Completed', targetStatus: 'Loading', targetWorkflowState: 'RETURN_LOADING', operation: 'delivery', legIndex: 0 }
+        : { label: 'Delivery Completed', targetStatus: 'Completed', targetWorkflowState: 'COMPLETED', operation: 'delivery', legIndex: 0 };
+    case 'RETURN_LOADING':
+      return { label: 'Loading Completed', targetStatus: 'Loading', targetWorkflowState: 'RETURN_LOADING_COMPLETED', operation: 'return_loading_arrival', legIndex: 1 };
+    case 'RETURN_LOADING_COMPLETED':
+      return { label: 'Departed (In Transit)', targetStatus: 'InTransit', targetWorkflowState: 'IN_TRANSIT_RETURN', operation: 'return_loading', legIndex: 1 };
+    case 'IN_TRANSIT_RETURN':
+      return { label: 'Arrived at Final Delivery', targetStatus: 'InTransit', targetWorkflowState: 'ARRIVED_AT_FINAL_DELIVERY', operation: 'return_delivery_arrival', legIndex: 1 };
+    case 'ARRIVED_AT_FINAL_DELIVERY':
+    case 'FINAL_DELIVERY_VERIFICATION':
+      return { label: 'Delivery Completed', targetStatus: 'Completed', targetWorkflowState: 'COMPLETED', operation: 'return_delivery', legIndex: 1 };
+    case 'COMPLETED':
+    default:
+      return null;
+  }
 }
 
 export interface AuthoritativeActiveStop {
@@ -466,45 +577,6 @@ export const tripService = {
       params: { from_lat: fromLat, from_lng: fromLng },
     });
     return data.data as TripRoute;
-  },
-
-  /** Upload an external app screenshot for AI Vision extraction and milestone processing. */
-  async uploadExternalScreenshot(
-    id: string,
-    asset: { uri: string; mimeType?: string | null; fileName?: string | null }
-  ): Promise<{
-    document_id: string;
-    extraction_status: 'SUCCESS' | 'NEEDS_REVIEW' | 'FAILED';
-    event_type?: string | null;
-    event_timestamp?: string | null;
-    stop_location_name?: string | null;
-    external_reference?: string | null;
-    detected_text?: string | null;
-    is_wrong_trip?: boolean;
-    extraction_error?: string | null;
-    confidence: number;
-    applied: boolean;
-    can_confirm?: boolean;
-    target_status?: string | null;
-    target_workflow_state?: string | null;
-    notes?: string | null;
-    validation_reason?: string | null;
-    trip?: MobileTrip | null;
-  }> {
-    const form = new FormData();
-    const fileName = asset.fileName || 'external-screenshot.jpg';
-    const mimeType = asset.mimeType || 'image/jpeg';
-    form.append('file', {
-      uri: asset.uri,
-      name: fileName,
-      type: mimeType,
-    } as any);
-
-    const res = await api.post<any>(`/mobile/trips/${id}/external-screenshot`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 90000,
-    });
-    return (res.data?.data ?? res.data) as any;
   },
 
   async sendLocationUpdate(

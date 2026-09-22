@@ -11,8 +11,7 @@ import {
   House, Package, UserCheck, ChevronDown,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
-import { tripService, statusLabel, stopLabel, stopAddress, type MobileTrip, type TripStatus } from '../../lib/trips';
-import { getTripChargeValue } from './DriverChargesScreen';
+import { tripService, statusLabel, stopLabel, stopAddress, getTripChargeValue, type MobileTrip, type TripStatus } from '../../lib/trips';
 import { BilingualText } from '../../components';
 import { useLanguage, formatCurrency, getLocalizedStatus } from '../../lib/language-context';
 import { API_URL } from '../../lib/api';

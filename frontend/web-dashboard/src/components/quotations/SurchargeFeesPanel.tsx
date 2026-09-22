@@ -485,7 +485,7 @@ export default function SurchargeFeesPanel({ activeTab = 'surcharges', setActive
                   Filtered by:{' '}
                   {search && <span className="mr-2">Search: <strong className="underline text-slate-900 dark:text-slate-100">{search}</strong></span>}
                   {customerFilter !== 'all' && (
-                    <span className="mr-2">Customer: <strong className="underline text-slate-900 dark:text-slate-100">{customers.find(c => c.id === customerFilter)?.name}</strong></span>
+                    <span className="mr-2">Customer: <strong className="underline text-slate-900 dark:text-slate-100">{customers?.find(c => c.id === customerFilter)?.name}</strong></span>
                   )}
                   {chargeTypeFilter !== 'all' && (
                     <span className="mr-2">Type: <strong className="underline text-slate-900 dark:text-slate-100">{chargeTypeFilter}</strong></span>
