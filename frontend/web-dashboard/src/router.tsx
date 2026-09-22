@@ -90,6 +90,8 @@ const ExpenseDetailsPage      = lazyWithRetry(() => import('@/pages/expenses/Exp
 const ChartOfAccountsPage     = lazyWithRetry(() => import('@/pages/finance/ChartOfAccountsPage'));
 const AccountingPeriodsPage   = lazyWithRetry(() => import('@/pages/finance/AccountingPeriodsPage'));
 const JournalEntriesPage      = lazyWithRetry(() => import('@/pages/finance/JournalEntriesPage'));
+const InvoicesPage            = lazyWithRetry(() => import('@/pages/finance/InvoicesPage'));
+const BillsPage                = lazyWithRetry(() => import('@/pages/finance/BillsPage'));
 
 // Documents
 const DocumentsCenterPage     = lazyWithRetry(() => import('@/pages/documents/DocumentsCenterPage'));
@@ -275,6 +277,8 @@ export default function AppRouter() {
             <Route path="/finance/chart-of-accounts" element={<RequireModule moduleKey="finance"><ChartOfAccountsPage /></RequireModule>} />
             <Route path="/finance/periods"           element={<RequireModule moduleKey="finance"><AccountingPeriodsPage /></RequireModule>} />
             <Route path="/finance/journal-entries"   element={<RequireModule moduleKey="finance"><JournalEntriesPage /></RequireModule>} />
+            <Route path="/finance/invoices"          element={<RequireModule moduleKey="finance"><InvoicesPage /></RequireModule>} />
+            <Route path="/finance/bills"             element={<RequireModule moduleKey="finance"><BillsPage /></RequireModule>} />
             <Route path="/finance"                   element={<Navigate to="/finance/chart-of-accounts" replace />} />
 
             {/* Documents */}

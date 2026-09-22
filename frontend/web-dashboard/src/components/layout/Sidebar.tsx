@@ -108,6 +108,8 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
         { icon: FolderTree, label: 'Chart of Accounts', path: '/finance/chart-of-accounts', moduleKey: 'finance' },
         { icon: CalendarRange, label: 'Accounting Periods', path: '/finance/periods', moduleKey: 'finance' },
         { icon: BookOpen, label: 'Journal Entries', path: '/finance/journal-entries', moduleKey: 'finance' },
+        { icon: ReceiptText, label: 'Invoices', path: '/finance/invoices', moduleKey: 'finance' },
+        { icon: CreditCard, label: 'Bills', path: '/finance/bills', moduleKey: 'finance' },
         { icon: TrendingUp, label: 'Vehicle P&L', path: '/vehicles/financials', moduleKey: 'vehicles', permissionKey: 'fleet.financials' },
       ],
     },
