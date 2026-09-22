@@ -136,19 +136,35 @@ test('Real Phase 4 Finance Engine Integration Test Suite', async (t) => {
       },
     });
 
-    // Create Open Accounting Period
+    // Find or create Open Accounting Period
     const now = new Date();
-    const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-
-    openPeriod = await prisma.accountingPeriod.create({
-      data: {
-        name: `Phase 4 Period ${timestamp}`,
-        start_date: startDate,
-        end_date: endDate,
+    openPeriod = await prisma.accountingPeriod.findFirst({
+      where: {
         status: 'Open',
+        start_date: { lte: now },
+        end_date: { gte: now },
       },
     });
+
+    if (!openPeriod) {
+      const startDate = new Date(2026, 8, 1);
+      const endDate = new Date(2026, 8, 30, 23, 59, 59);
+
+      openPeriod = await prisma.accountingPeriod.findFirst({
+        where: { start_date: startDate, end_date: endDate },
+      });
+
+      if (!openPeriod) {
+        openPeriod = await prisma.accountingPeriod.create({
+          data: {
+            name: `Phase 4 Test Period ${timestamp}`,
+            start_date: startDate,
+            end_date: endDate,
+            status: 'Open',
+          },
+        });
+      }
+    }
 
     // Configure Settings with GL Accounts
     await prisma.settings.upsert({
