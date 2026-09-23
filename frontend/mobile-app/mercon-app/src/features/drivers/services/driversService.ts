@@ -8,8 +8,33 @@ import type { DriverListItem, DriverSortOption, DriverStats } from '../types';
 
 const ACTIVE_TRIP_STATUSES = ['Scheduled', 'Loading', 'InTransit', 'Delayed', 'Emergency'];
 
-export function toDriverListItem(raw: RawDriver, tripCountById: Map<string, number>): DriverListItem {
+export interface DriverPerfData {
+  totalTrips: number;
+  monthlyPayout: number;
+  nearestDocExpiry: string | null;
+}
+
+export function toDriverListItem(
+  raw: RawDriver,
+  tripCountById: Map<string, DriverPerfData | number>,
+): DriverListItem {
   const activeTrip = raw.trips?.find((t) => ACTIVE_TRIP_STATUSES.includes(t.status));
+  const rawPerf = tripCountById.get(raw.id);
+
+  let totalTrips: number | null = null;
+  let monthlyPayout: number | null = null;
+  let nearestDocExpiry: string | null = null;
+
+  if (typeof rawPerf === 'number') {
+    totalTrips = rawPerf;
+  } else if (rawPerf) {
+    totalTrips = rawPerf.totalTrips;
+    monthlyPayout = rawPerf.monthlyPayout;
+    nearestDocExpiry = rawPerf.nearestDocExpiry;
+  }
+
+  const docDaysLeft = nearestDocExpiry ? daysUntil(nearestDocExpiry) : null;
+
   return {
     id: raw.id,
     ref_id: raw.ref_id,
@@ -28,7 +53,10 @@ export function toDriverListItem(raw: RawDriver, tripCountById: Map<string, numb
     assignedVehicle: raw.assignedVehicle
       ? { plateNumber: raw.assignedVehicle.plate_number, assetType: raw.assignedVehicle.asset_type }
       : null,
-    totalTrips: tripCountById.get(raw.id) ?? null,
+    totalTrips,
+    monthlyPayout,
+    nearestDocExpiry,
+    docDaysLeft,
     rating: null,
   };
 }
@@ -66,8 +94,17 @@ export function computeDriverStats(drivers: Pick<DriverListItem, 'status'>[]): D
   );
 }
 
-export function tripCountMap(counts: DriverTripCount[]): Map<string, number> {
-  return new Map(counts.map((c) => [c.id, c.total_trips]));
+export function tripCountMap(counts: DriverTripCount[]): Map<string, DriverPerfData> {
+  return new Map(
+    counts.map((c) => [
+      c.id,
+      {
+        totalTrips: c.total_trips,
+        monthlyPayout: c.monthly_payout ?? 0,
+        nearestDocExpiry: c.nearest_doc_expiry ?? null,
+      },
+    ]),
+  );
 }
 
 /**

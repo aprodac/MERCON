@@ -129,7 +129,9 @@ export interface CreateTripInput {
   driver_id?: string;
   vehicle_id?: string;
   co_driver_id?: string;
+  co_driver_payout?: number;
   planned_start?: string;
+
   /** What every delay/lateness figure is measured against — must be sent, not just stamped on the dropoff stop. */
   planned_end?: string;
   // Financials — same fields the web dashboard's create-trip wizard sends,
@@ -156,6 +158,9 @@ export interface OperatorThirdPartyProvider {
   name: string;
   contact_person?: string | null;
   phone?: string | null;
+  email?: string | null;
+  isActive?: boolean;
+  _count?: { subcontracts?: number };
 }
 
 export interface OperatorLocation {
@@ -179,6 +184,7 @@ export interface OperatorQuotation {
   name: string;
   rate: number;
   driver_payout?: number | null;
+  is_active?: boolean;
   vehicle_type?: string | null;
   vehicle_class?: string | null;
   line_type?: string | null;
@@ -391,6 +397,11 @@ export const operatorService = {
     return data.data as OperatorTripDetail;
   },
 
+  async bulkCreateTrips(rows: CreateTripInput[]): Promise<{ imported: number; failed: number; results?: any[] }> {
+    const { data } = await api.post('/trips/bulk-import', { rows });
+    return data;
+  },
+
   /** Same `/locations` endpoint the web dashboard's location combobox uses — Locations are customer-scoped. */
   async searchLocations(customerId: string, query: string): Promise<OperatorLocation[]> {
     if (!customerId || !query.trim()) return [];
@@ -530,6 +541,26 @@ export const operatorService = {
     const { data } = await api.patch(`/trips/${tripId}/stops/${stopId}/confirm-time`, payload);
     return data.data as OperatorTripStop;
   },
+
+  async quotations(): Promise<OperatorQuotation[]> {
+    const { data } = await api.get('/quotations', { params: { per_page: 50 } });
+    return (data.data ?? []) as OperatorQuotation[];
+  },
+
+  async maintenanceRecords(): Promise<OperatorMaintenanceRecord[]> {
+    const { data } = await api.get('/maintenance', { params: { per_page: 50 } });
+    return (data.data ?? []) as OperatorMaintenanceRecord[];
+  },
+
+  async expenses(): Promise<OperatorExpense[]> {
+    const { data } = await api.get('/expenses', { params: { per_page: 50 } });
+    return (data.data ?? []) as OperatorExpense[];
+  },
+
+  async documents(): Promise<OperatorDocument[]> {
+    const { data } = await api.get('/documents', { params: { per_page: 50 } });
+    return (data.data ?? []) as OperatorDocument[];
+  },
 };
 
 export interface OperatorInvoice {
@@ -563,7 +594,12 @@ export interface OperatorDriver {
   status: string;
   license_number: string;
   license_expiry: string;
+  avatar_url?: string | null;
+  photo_url?: string | null;
+  assigned_vehicle?: { plate_number?: string | null } | null;
+  current_vehicle?: { plate_number?: string | null } | null;
 }
+
 
 export interface UpdateDriverInput {
   first_name?: string;
@@ -912,6 +948,31 @@ export function useOperatorVehicleById(id: string | undefined) {
   return { vehicle, loading, error, refetch };
 }
 
+export interface OperatorMaintenanceRecord {
+  id: string;
+  ref_id?: string | null;
+  maintenance_type?: string | null;
+  status: string;
+  cost?: number | null;
+  scheduled_date?: string | null;
+  completed_date?: string | null;
+  description?: string | null;
+  vehicle_plate?: string | null;
+  vehicle?: { id: string; plate_number: string } | null;
+  createdAt?: string;
+}
+
+export interface OperatorExpense {
+  id: string;
+  ref_id?: string | null;
+  category: string;
+  amount: number;
+  status: string;
+  expense_date?: string | null;
+  description?: string | null;
+  createdAt?: string;
+}
+
 let cacheOperatorSummary: DashboardSummary | null = null;
 let cacheOperatorActiveTrips: OperatorTrip[] = [];
 let isOpDashboardFetched = false;
@@ -944,4 +1005,119 @@ export function useOperatorDashboard() {
   useEffect(() => { refetch(); }, [refetch]);
 
   return { summary, activeTrips, loading, error, refetch };
+}
+
+export function useOperatorQuotations() {
+  const [quotations, setQuotations] = useState<OperatorQuotation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await operatorService.quotations();
+      setQuotations(data);
+    } catch (e) {
+      setError(getApiErrorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { quotations, loading, error, refetch };
+}
+
+export function useOperatorThirdPartyProviders() {
+  const [providers, setProviders] = useState<OperatorThirdPartyProvider[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await operatorService.thirdPartyProviders();
+      setProviders(data);
+    } catch (e) {
+      setError(getApiErrorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { providers, loading, error, refetch };
+}
+
+export function useOperatorMaintenanceRecords() {
+  const [records, setRecords] = useState<OperatorMaintenanceRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await operatorService.maintenanceRecords();
+      setRecords(data);
+    } catch (e) {
+      setError(getApiErrorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { records, loading, error, refetch };
+}
+
+export function useOperatorExpenses() {
+  const [expenses, setExpenses] = useState<OperatorExpense[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await operatorService.expenses();
+      setExpenses(data);
+    } catch (e) {
+      setError(getApiErrorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { expenses, loading, error, refetch };
+}
+
+export function useOperatorDocuments() {
+  const [documents, setDocuments] = useState<OperatorDocument[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await operatorService.documents();
+      setDocuments(data);
+    } catch (e) {
+      setError(getApiErrorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refetch(); }, [refetch]);
+
+  return { documents, loading, error, refetch };
 }

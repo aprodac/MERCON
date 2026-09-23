@@ -25,9 +25,12 @@ const RIGHT_TABS: { label: 'Drivers' | 'More'; Icon: LucideIcon }[] = [{ label: 
 
 const INACTIVE = 'rgba(238, 241, 246, 0.65)'; // Light Cool Gray (#EEF1F6) matching web dashboard sidebar text
 
+import { NewTripMenuModal } from '../components';
+
 export function OperatorBottomNav({ activeTab: explicitActive, onTabPress, onFabPress }: OperatorBottomNavProps = {}) {
   const router = useRouter();
   const pathname = usePathname();
+  const [showMenu, setShowMenu] = React.useState(false);
 
   // Capsule settles in when the active tab changes. Start fully visible (1) so the
   // first paint doesn't flash or hide the capsule before the entrance animation.
@@ -70,26 +73,34 @@ export function OperatorBottomNav({ activeTab: explicitActive, onTabPress, onFab
   };
 
   return (
-    <View style={styles.wrapper}>
-      <View style={styles.pill}>
-        {LEFT_TABS.map(renderTab)}
+    <>
+      <View style={styles.wrapper}>
+        <View style={styles.pill}>
+          {LEFT_TABS.map(renderTab)}
 
-        {/* FAB */}
-        <View style={styles.fabSlot}>
-          <TouchableOpacity
-            onPress={onFabPress ?? (() => router.push(DEFAULT_FAB_ROUTE as any))}
-            activeOpacity={0.85}
-            style={styles.fab}
-          >
-            <Plus size={26} color={Colors.white} strokeWidth={2.8} />
-          </TouchableOpacity>
+          {/* FAB */}
+          <View style={styles.fabSlot}>
+            <TouchableOpacity
+              onPress={onFabPress ?? (() => setShowMenu(true))}
+              activeOpacity={0.85}
+              style={styles.fab}
+            >
+              <Plus size={26} color={Colors.white} strokeWidth={2.8} />
+            </TouchableOpacity>
+          </View>
+
+          {RIGHT_TABS.map(renderTab)}
         </View>
-
-        {RIGHT_TABS.map(renderTab)}
       </View>
-    </View>
+
+      <NewTripMenuModal
+        visible={showMenu}
+        onClose={() => setShowMenu(false)}
+      />
+    </>
   );
 }
+
 
 const styles = StyleSheet.create({
   wrapper: {

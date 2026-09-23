@@ -12,16 +12,18 @@ interface IconButtonProps {
   badge?: boolean;
   /** White background + soft shadow instead of the flat grey fill. */
   elevated?: boolean;
+  accessibilityLabel?: string;
 }
 
 export function IconButton({
-  Icon, onPress, size = 40, iconColor = '#111111', iconSize = 20, className, badge, elevated,
+  Icon, onPress, size = 40, iconColor = '#111111', iconSize = 20, className, badge, elevated, accessibilityLabel,
 }: IconButtonProps) {
   return (
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={0.7}
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
       style={{
         width: size,
         height: size,

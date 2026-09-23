@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import type { LucideIcon } from 'lucide-react-native';
+import { Colors, Radius, Shadows } from '@/theme/tokens';
 
 interface DriverStatCardProps {
   label: string;
@@ -11,24 +12,21 @@ interface DriverStatCardProps {
   className?: string;
 }
 
-/** Compact KPI card styled to match the operator bottom tab bar (#3E3C3D charcoal background, #FA634E accent). */
+/** Compact KPI card styled with design system tokens (Colors.navBg background, Colors.primary icon accent). */
 export function DriverStatCard({ label, value, Icon, caption, className }: DriverStatCardProps) {
   return (
     <View
       style={{
-        backgroundColor: '#3E3C3D',
+        backgroundColor: Colors.navBg,
         borderColor: 'rgba(238, 241, 246, 0.15)',
         borderWidth: 1,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 3,
+        borderRadius: Radius.lg,
+        ...Shadows.md,
       }}
-      className={`flex-1 flex-row items-center gap-3.5 overflow-hidden rounded-2xl py-3.5 px-4 ${className ?? ''}`}
+      className={`flex-1 flex-row items-center gap-3.5 overflow-hidden py-3.5 px-4 ${className ?? ''}`}
     >
       <View className="h-10 w-10 items-center justify-center rounded-xl bg-white/10">
-        <Icon size={18} color="#FA634E" strokeWidth={2.4} />
+        <Icon size={18} color={Colors.primary} strokeWidth={2.4} />
       </View>
 
       <View className="flex-1 gap-0.5">

@@ -7,10 +7,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   ArrowLeft, Check, Truck, Clock, MapPin, FileText,
-  Plus, Trash2, AlertTriangle, RotateCcw, Building2, Zap, Edit3, ChevronRight, Search, X, MessageCircle, Sparkles, Pencil, Layers,
+  Plus, Trash2, AlertTriangle, RotateCcw, Building2, Zap, Edit3, ChevronRight, Search, X, MessageCircle, Sparkles, Pencil, Layers, User, UserPlus,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography } from '../../theme/tokens';
-import { Button, Card, Input, StatusBadge } from '../../components';
+import { Button, Card, Input, StatusBadge, Toast, MonthlyCalendarSelector, type DayAssignmentOverride } from '../../components';
+import { DriverAvatar } from '../../features/drivers/components/DriverAvatar';
 import { getApiErrorMessage, API_URL } from '../../lib/api';
 import { safeSecureStore } from '../../lib/secure-store';
 import {
@@ -20,6 +21,13 @@ import {
   type OperatorThirdPartyProvider, type CreateTripStopInput,
   getQuotationRoute,
 } from '../../lib/operator';
+import {
+  estimateTravelTimeByName,
+  calculateArrivalDropoffDateAndTime,
+  type TravelTimeEstimate,
+} from '../../lib/travelTimeService';
+
+
 
 function resolveMediaUrl(url?: string | null): string | null {
   if (!url || typeof url !== 'string' || !url.trim()) return null;
@@ -33,6 +41,19 @@ function resolveMediaUrl(url?: string | null): string | null {
 
 const ASSIGN_LATER = 'assign_later';
 const DRAFT_STORAGE_KEY = 'MERCON_OPERATOR_TRIP_DRAFT_V3';
+const RECENT_ROUTES_STORAGE_KEY = 'MERCON_RECENT_ROUTES_V1';
+
+export interface RecentRouteItem {
+  id: string;
+  originName: string;
+  originLat?: string;
+  originLng?: string;
+  originLocationId?: string;
+  destName: string;
+  destLat?: string;
+  destLng?: string;
+  destLocationId?: string;
+}
 
 interface IntermediateStop {
   id: string;
@@ -64,9 +85,28 @@ function formatDateDDMMYYYY(d: Date): string {
   return `${dd}/${mm}/${yyyy}`;
 }
 
+export type RateCategoryType = 'SINGLE_TRIP' | 'ROUND_TRIP' | '10_HRS' | '12_HRS';
+
+function normalizeBillingType(val?: string | null): 'Monthly' | 'Extra' {
+  if (!val) return 'Monthly';
+  const s = String(val).toUpperCase().trim();
+  if (/\b(EXTRA|SPOT|ADHOC)\b/i.test(s)) return 'Extra';
+  return 'Monthly';
+}
+
 const CreateTripScreen = () => {
   const router = useRouter();
-  const { customerId: presetCustomerId } = useLocalSearchParams<{ customerId?: string }>();
+  const {
+    customerId: presetCustomerId,
+    billingType: presetBillingType,
+    assignment: presetAssignment,
+    assignmentType: presetAssignmentType,
+  } = useLocalSearchParams<{
+    customerId?: string;
+    billingType?: string;
+    assignment?: string;
+    assignmentType?: string;
+  }>();
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Page pacing state: Page 1 ("Customer & Route") vs Page 2 ("Schedule & Fleet") vs Page 3 ("Financials & Review")
@@ -84,19 +124,27 @@ const CreateTripScreen = () => {
   const [hasSavedDraft, setHasSavedDraft] = useState(false);
   const [savedDraftData, setSavedDraftData] = useState<any>(null);
 
+  // Toast notification state
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [toastType, setToastType] = useState<'success' | 'info' | 'error'>('success');
+
   // Progressive Collapse state: collapses Route and Rate sections when quotation/lane is applied
   const [isRouteCollapsed, setIsRouteCollapsed] = useState(false);
 
   // Field-level error validation state
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  // Workflow state: Single Trip vs Round Trip
-  const [rateCategory, setRateCategory] = useState<'SINGLE_TRIP' | 'ROUND_TRIP'>('SINGLE_TRIP');
+  // Workflow state: 4 Line Types (Single Trip, Round Trip, 10 Hours Duty, 12 Hours Duty)
+  const [rateCategory, setRateCategory] = useState<RateCategoryType>('SINGLE_TRIP');
 
   // Customer & Quotation state
   const [customerId, setCustomerId] = useState(presetCustomerId ?? '');
   const [customerSearchQuery, setCustomerSearchQuery] = useState('');
   const [quotationSearchQuery, setQuotationSearchQuery] = useState('');
+  const [quotationBillingFilter, setQuotationBillingFilter] = useState<'ALL' | 'Monthly' | 'Extra'>(
+    presetBillingType === 'Monthly' ? 'Monthly' : presetBillingType === 'Extra' ? 'Extra' : 'ALL'
+  );
   const [quotations, setQuotations] = useState<OperatorQuotation[]>([]);
   const [loadingQuotations, setLoadingQuotations] = useState(false);
   const [selectedQuotation, setSelectedQuotation] = useState<OperatorQuotation | null>(null);
@@ -112,19 +160,40 @@ const CreateTripScreen = () => {
   }, [customers, customerSearchQuery]);
 
   const filteredQuotations = useMemo(() => {
-    if (!quotationSearchQuery.trim()) return quotations;
-    const q = quotationSearchQuery.toLowerCase().trim();
-    return quotations.filter((item) => {
-      const { origin, dest } = getQuotationRoute(item);
-      const orig = origin.toLowerCase();
-      const dst = dest.toLowerCase();
-      const name = (item.name || '').toLowerCase();
-      const veh = (item.vehicle_type ?? item.vehicle_class ?? '').toLowerCase();
-      const line = (item.line_type ?? item.rate_category ?? '').toLowerCase();
-      const rateStr = String(item.rate ?? '');
-      return orig.includes(q) || dst.includes(q) || name.includes(q) || veh.includes(q) || line.includes(q) || rateStr.includes(q);
-    });
-  }, [quotations, quotationSearchQuery]);
+    let result = quotations;
+
+    if (quotationBillingFilter !== 'ALL') {
+      result = result.filter((item) => {
+        const itemBType = normalizeBillingType(item.billing_type);
+        return itemBType === quotationBillingFilter;
+      });
+    }
+
+    if (quotationSearchQuery.trim()) {
+      const q = quotationSearchQuery.toLowerCase().trim();
+      result = result.filter((item) => {
+        const { origin, dest } = getQuotationRoute(item);
+        const orig = origin.toLowerCase();
+        const dst = dest.toLowerCase();
+        const name = (item.name || '').toLowerCase();
+        const veh = (item.vehicle_type ?? item.vehicle_class ?? '').toLowerCase();
+        const line = (item.line_type ?? item.rate_category ?? '').toLowerCase();
+        const rateStr = String(item.rate ?? '');
+        const bType = (item.billing_type || '').toLowerCase();
+        return (
+          orig.includes(q) ||
+          dst.includes(q) ||
+          name.includes(q) ||
+          veh.includes(q) ||
+          line.includes(q) ||
+          rateStr.includes(q) ||
+          bType.includes(q)
+        );
+      });
+    }
+
+    return result;
+  }, [quotations, quotationBillingFilter, quotationSearchQuery]);
 
   // Pickup & Dropoff location state
   const [pickupName, setPickupName] = useState('');
@@ -144,6 +213,17 @@ const CreateTripScreen = () => {
   // Multi-stop state
   const [outboundStops, setOutboundStops] = useState<IntermediateStop[]>([]);
 
+  // Explicit Return Leg fields for Round Trip
+  const [returnOriginName, setReturnOriginName] = useState('');
+  const [returnOriginLat, setReturnOriginLat] = useState('');
+  const [returnOriginLng, setReturnOriginLng] = useState('');
+  const [returnOriginLocationId, setReturnOriginLocationId] = useState<string | undefined>(undefined);
+
+  const [returnDestinationName, setReturnDestinationName] = useState('');
+  const [returnDestinationLat, setReturnDestinationLat] = useState('');
+  const [returnDestinationLng, setReturnDestinationLng] = useState('');
+  const [returnDestinationLocationId, setReturnDestinationLocationId] = useState<string | undefined>(undefined);
+
   // Departure & Delivery Due dates
   const [date, setDate] = useState(formatDateDDMMYYYY(new Date()));
   const [time, setTime] = useState('08:00');
@@ -151,10 +231,123 @@ const CreateTripScreen = () => {
   const [etaTime, setEtaTime] = useState('12:00');
   const [isAutoEta, setIsAutoEta] = useState(true);
 
-  // Fleet Assignment state: Own Fleet vs 3PL Subcontractor
-  const [fleetType, setFleetType] = useState<'OWN_FLEET' | 'THIRD_PARTY'>('OWN_FLEET');
+  // Monthly Duty Trip Calendar & Override state
+  const [selectedMonthlyDates, setSelectedMonthlyDates] = useState<string[]>([]);
+  const [monthlyCurrentMonth, setMonthlyCurrentMonth] = useState<Date>(new Date());
+  const [monthlyAssignmentMode, setMonthlyAssignmentMode] = useState<'MASTER' | 'PER_DAY'>('MASTER');
+  const [dayAssignments, setDayAssignments] = useState<Record<string, DayAssignmentOverride>>({});
+
+  const handleToggleMonthlyDate = (dateStr: string) => {
+    setSelectedMonthlyDates((prev) =>
+      prev.includes(dateStr) ? prev.filter((d) => d !== dateStr) : [...prev, dateStr].sort()
+    );
+  };
+
+  const handleSelectAllWeekdays = () => {
+    const yr = monthlyCurrentMonth.getFullYear();
+    const mo = monthlyCurrentMonth.getMonth();
+    const totalDays = new Date(yr, mo + 1, 0).getDate();
+    const weekdays: string[] = [];
+
+    for (let d = 1; d <= totalDays; d++) {
+      const dayOfWeek = new Date(yr, mo, d).getDay();
+      // Sun(0), Mon(1), Tue(2), Wed(3), Thu(4) are Saudi weekdays
+      if (dayOfWeek >= 0 && dayOfWeek <= 4) {
+        const mm = String(mo + 1).padStart(2, '0');
+        const dd = String(d).padStart(2, '0');
+        weekdays.push(`${yr}-${mm}-${dd}`);
+      }
+    }
+    setSelectedMonthlyDates(weekdays);
+  };
+
+  const handleSelectAllDays = () => {
+    const yr = monthlyCurrentMonth.getFullYear();
+    const mo = monthlyCurrentMonth.getMonth();
+    const totalDays = new Date(yr, mo + 1, 0).getDate();
+    const allDays: string[] = [];
+
+    for (let d = 1; d <= totalDays; d++) {
+      const mm = String(mo + 1).padStart(2, '0');
+      const dd = String(d).padStart(2, '0');
+      allDays.push(`${yr}-${mm}-${dd}`);
+    }
+    setSelectedMonthlyDates(allDays);
+  };
+
+  const handleClearMonthlyDates = () => {
+    setSelectedMonthlyDates([]);
+  };
+
+  const handleSaveDayOverride = (dateStr: string, override: DayAssignmentOverride | null) => {
+    setDayAssignments((prev) => {
+      const next = { ...prev };
+      if (!override || (!override.driver_id && !override.vehicle_id && !override.co_driver_id)) {
+        delete next[dateStr];
+      } else {
+        next[dateStr] = override;
+      }
+      return next;
+    });
+  };
+
+  // Travel time & transit calculation state
+  const [travelEstimate, setTravelEstimate] = useState<TravelTimeEstimate | null>(null);
+  const [estimatingTime, setEstimatingTime] = useState(false);
+
+  // Fleet Assignment state: Own Fleet vs 3PL Subcontractor (Preset support)
+  const [fleetType, setFleetType] = useState<'OWN_FLEET' | 'THIRD_PARTY'>(
+    presetAssignment === 'third_party' || presetAssignmentType === 'third_party' ? 'THIRD_PARTY' : 'OWN_FLEET'
+  );
   const [selectedDriver, setSelectedDriver] = useState('');
   const [selectedVehicle, setSelectedVehicle] = useState('');
+
+  // Search & Co-Driver state
+  const [driverSearchQuery, setDriverSearchQuery] = useState('');
+  const [vehicleSearchQuery, setVehicleSearchQuery] = useState('');
+  const [coDriverSearchQuery, setCoDriverSearchQuery] = useState('');
+  const [selectedCoDriver, setSelectedCoDriver] = useState('');
+  const [coDriverPayoutInput, setCoDriverPayoutInput] = useState('');
+  const [showCoDriver, setShowCoDriver] = useState(false);
+
+  const filteredDrivers = useMemo(() => {
+    if (!driverSearchQuery.trim()) return drivers;
+    const q = driverSearchQuery.toLowerCase().trim();
+    return drivers.filter((d) => {
+      const name = `${d.first_name} ${d.last_name}`.toLowerCase();
+      const phone = (d.phone_primary || '').toLowerCase();
+      const refId = (d.ref_id || d.license_number || '').toLowerCase();
+      return name.includes(q) || phone.includes(q) || refId.includes(q);
+    });
+  }, [drivers, driverSearchQuery]);
+
+  const filteredCoDrivers = useMemo(() => {
+    const available = drivers.filter((d) => d.id !== selectedDriver);
+    if (!coDriverSearchQuery.trim()) return available;
+    const q = coDriverSearchQuery.toLowerCase().trim();
+    return available.filter((d) => {
+      const name = `${d.first_name} ${d.last_name}`.toLowerCase();
+      const phone = (d.phone_primary || '').toLowerCase();
+      const refId = (d.ref_id || d.license_number || '').toLowerCase();
+      return name.includes(q) || phone.includes(q) || refId.includes(q);
+    });
+  }, [drivers, selectedDriver, coDriverSearchQuery]);
+
+  const filteredVehicles = useMemo(() => {
+    if (!vehicleSearchQuery.trim()) return vehicles;
+    const q = vehicleSearchQuery.toLowerCase().trim();
+    return vehicles.filter((v) => {
+      const plate = (v.plate_number || '').toLowerCase();
+      const type = (v.asset_type || '').toLowerCase();
+      const refId = (v.ref_id || '').toLowerCase();
+      return plate.includes(q) || type.includes(q) || refId.includes(q);
+    });
+  }, [vehicles, vehicleSearchQuery]);
+
+  const recommendedDrivers = useMemo(() => {
+    return drivers.slice(0, 2);
+  }, [drivers]);
+
 
   // 3PL Subcontractor state
   const [selected3PLProvider, setSelected3PLProvider] = useState('');
@@ -163,15 +356,19 @@ const CreateTripScreen = () => {
   const [thirdPartyVehiclePlate, setThirdPartyVehiclePlate] = useState('');
   const [thirdPartyCostInput, setThirdPartyCostInput] = useState('');
 
-  // Rate & Financials state
+  // Rate & Financials state (Preset support for Monthly vs Extra)
   const [quotationMatch, setQuotationMatch] = useState<QuotationLookupMatch | null>(null);
   const [lookingUpRate, setLookingUpRate] = useState(false);
   const [manualRateOverride, setManualRateOverride] = useState(false);
   const [billingAmountInput, setBillingAmountInput] = useState('');
   const [driverPayoutInput, setDriverPayoutInput] = useState('');
   const [saveAsPersistentQuotation, setSaveAsPersistentQuotation] = useState(true);
-  const [billingType, setBillingType] = useState<'Monthly' | 'Extra'>('Extra');
-  const [pricingBasis, setPricingBasis] = useState<'Per Trip' | 'Per Month'>('Per Trip');
+  const [billingType, setBillingType] = useState<'Monthly' | 'Extra'>(
+    presetBillingType === 'Monthly' ? 'Monthly' : 'Extra'
+  );
+  const [pricingBasis, setPricingBasis] = useState<'Per Trip' | 'Per Month'>(
+    presetBillingType === 'Monthly' ? 'Per Month' : 'Per Trip'
+  );
   const [isInlineQuotationForm, setIsInlineQuotationForm] = useState(false);
 
   // Itemized Additional Charges state
@@ -184,7 +381,49 @@ const CreateTripScreen = () => {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showPastDateModal, setShowPastDateModal] = useState(false);
 
-  // Auto-ETA Dropoff Calculation: Departure + 4 hours
+  // Travel time calculation effect
+  useEffect(() => {
+    if (!pickupName.trim() || !dropoffName.trim()) {
+      setTravelEstimate(null);
+      return;
+    }
+    let cancelled = false;
+    setEstimatingTime(true);
+    estimateTravelTimeByName(
+      pickupName,
+      dropoffName,
+      parseFloat(pickupLat) || null,
+      parseFloat(pickupLng) || null,
+      parseFloat(dropoffLat) || null,
+      parseFloat(dropoffLng) || null
+    ).then((est) => {
+      if (!cancelled) {
+        setTravelEstimate(est);
+        setEstimatingTime(false);
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setTravelEstimate(null);
+        setEstimatingTime(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [pickupName, dropoffName, pickupLat, pickupLng, dropoffLat, dropoffLng]);
+
+  // Dynamic Auto-ETA Dropoff Calculation based on real travelEstimate duration
+  useEffect(() => {
+    if (isAutoEta && travelEstimate && date && time) {
+      const calc = calculateArrivalDropoffDateAndTime(date, time, travelEstimate.durationMinutes);
+      if (calc.dropoffDate && calc.dropoffTime) {
+        setEtaDate(calc.dropoffDate);
+        setEtaTime(calc.dropoffTime);
+      }
+    } else if (isAutoEta && date && time) {
+      calculateAutoEta(date, time);
+    }
+  }, [travelEstimate, date, time, isAutoEta]);
+
+  // Fallback Auto-ETA: Departure + 4 hours
   const calculateAutoEta = (depDateStr: string, depTimeStr: string) => {
     const match = depDateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (!match) return;
@@ -227,6 +466,51 @@ const CreateTripScreen = () => {
     })();
   }, []);
 
+  // Recent Routes Accelerator state
+  const [savedRecentRoutes, setSavedRecentRoutes] = useState<RecentRouteItem[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await safeSecureStore.getItemAsync(RECENT_ROUTES_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) setSavedRecentRoutes(parsed);
+        }
+      } catch {
+        // silent
+      }
+    })();
+  }, []);
+
+  const saveRecentRoute = async (route: Omit<RecentRouteItem, 'id'>) => {
+    if (!route.originName.trim() || !route.destName.trim()) return;
+    try {
+      const stored = await safeSecureStore.getItemAsync(RECENT_ROUTES_STORAGE_KEY);
+      let list: RecentRouteItem[] = stored ? JSON.parse(stored) : [];
+      const key = `${route.originName.trim().toLowerCase()}->${route.destName.trim().toLowerCase()}`;
+      list = list.filter((item) => `${item.originName.trim().toLowerCase()}->${item.destName.trim().toLowerCase()}` !== key);
+      list.unshift({ id: `${Date.now()}`, ...route });
+      list = list.slice(0, 5);
+      setSavedRecentRoutes(list);
+      await safeSecureStore.setItemAsync(RECENT_ROUTES_STORAGE_KEY, JSON.stringify(list));
+    } catch {
+      // silent
+    }
+  };
+
+  const handleSelectRecentRoute = (item: RecentRouteItem) => {
+    setPickupName(item.originName);
+    if (item.originLat) setPickupLat(item.originLat);
+    if (item.originLng) setPickupLng(item.originLng);
+    if (item.originLocationId) setPickupLocationId(item.originLocationId);
+
+    setDropoffName(item.destName);
+    if (item.destLat) setDropoffLat(item.destLat);
+    if (item.destLng) setDropoffLng(item.destLng);
+    if (item.destLocationId) setDropoffLocationId(item.destLocationId);
+  };
+
   // Check for saved draft on mount
   useEffect(() => {
     (async () => {
@@ -243,22 +527,31 @@ const CreateTripScreen = () => {
     })();
   }, []);
 
-  // Debounced draft autosave
+  // Debounced draft autosave (BUG FIX: Do NOT overwrite DRAFT_STORAGE_KEY while hasSavedDraft is true and user hasn't restored/discarded!)
   useEffect(() => {
     if (loadingOptions) return;
+    if (hasSavedDraft) return;
+
     const timer = setTimeout(async () => {
+      const hasContent = customerId || pickupName.trim() || dropoffName.trim();
+      if (!hasContent) return;
+
       const draftState = {
         customerId,
         rateCategory,
         pickupName, pickupLat, pickupLng, pickupLocationId,
         dropoffName, dropoffLat, dropoffLng, dropoffLocationId,
         outboundStops,
+        returnOriginName, returnOriginLat, returnOriginLng, returnOriginLocationId,
+        returnDestinationName, returnDestinationLat, returnDestinationLng, returnDestinationLocationId,
         date, time, etaDate, etaTime,
         fleetType, selectedDriver, selectedVehicle,
+        selectedCoDriver, coDriverPayoutInput, showCoDriver,
         selected3PLProvider, thirdPartyDriverName, thirdPartyDriverPhone,
         thirdPartyVehiclePlate, thirdPartyCostInput,
         billingAmountInput, driverPayoutInput, manualRateOverride,
         additionalCharges, saveAsPersistentQuotation, isRouteCollapsed,
+        selectedMonthlyDates, monthlyAssignmentMode, dayAssignments,
       };
       try {
         await safeSecureStore.setItemAsync(DRAFT_STORAGE_KEY, JSON.stringify(draftState));
@@ -268,12 +561,16 @@ const CreateTripScreen = () => {
     }, 1200);
     return () => clearTimeout(timer);
   }, [
-    customerId, rateCategory, pickupName, pickupLat, pickupLng, pickupLocationId,
+    hasSavedDraft, customerId, rateCategory, pickupName, pickupLat, pickupLng, pickupLocationId,
     dropoffName, dropoffLat, dropoffLng, dropoffLocationId, outboundStops,
+    returnOriginName, returnOriginLat, returnOriginLng, returnOriginLocationId,
+    returnDestinationName, returnDestinationLat, returnDestinationLng, returnDestinationLocationId,
     date, time, etaDate, etaTime, fleetType, selectedDriver, selectedVehicle,
+    selectedCoDriver, coDriverPayoutInput, showCoDriver,
     selected3PLProvider, thirdPartyDriverName, thirdPartyDriverPhone,
     thirdPartyVehiclePlate, thirdPartyCostInput, billingAmountInput, driverPayoutInput,
     manualRateOverride, additionalCharges, saveAsPersistentQuotation, isRouteCollapsed, loadingOptions,
+    selectedMonthlyDates, monthlyAssignmentMode, dayAssignments,
   ]);
 
   const restoreDraft = () => {
@@ -290,6 +587,14 @@ const CreateTripScreen = () => {
     if (d.dropoffLng) setDropoffLng(d.dropoffLng);
     if (d.dropoffLocationId) setDropoffLocationId(d.dropoffLocationId);
     if (Array.isArray(d.outboundStops)) setOutboundStops(d.outboundStops);
+    if (d.returnOriginName) setReturnOriginName(d.returnOriginName);
+    if (d.returnOriginLat) setReturnOriginLat(d.returnOriginLat);
+    if (d.returnOriginLng) setReturnOriginLng(d.returnOriginLng);
+    if (d.returnOriginLocationId) setReturnOriginLocationId(d.returnOriginLocationId);
+    if (d.returnDestinationName) setReturnDestinationName(d.returnDestinationName);
+    if (d.returnDestinationLat) setReturnDestinationLat(d.returnDestinationLat);
+    if (d.returnDestinationLng) setReturnDestinationLng(d.returnDestinationLng);
+    if (d.returnDestinationLocationId) setReturnDestinationLocationId(d.returnDestinationLocationId);
     if (d.date) setDate(d.date);
     if (d.time) setTime(d.time);
     if (d.etaDate) setEtaDate(d.etaDate);
@@ -297,6 +602,9 @@ const CreateTripScreen = () => {
     if (d.fleetType) setFleetType(d.fleetType);
     if (d.selectedDriver) setSelectedDriver(d.selectedDriver);
     if (d.selectedVehicle) setSelectedVehicle(d.selectedVehicle);
+    if (d.selectedCoDriver) setSelectedCoDriver(d.selectedCoDriver);
+    if (d.coDriverPayoutInput) setCoDriverPayoutInput(d.coDriverPayoutInput);
+    if (typeof d.showCoDriver === 'boolean') setShowCoDriver(d.showCoDriver);
     if (d.selected3PLProvider) setSelected3PLProvider(d.selected3PLProvider);
     if (d.thirdPartyDriverName) setThirdPartyDriverName(d.thirdPartyDriverName);
     if (d.thirdPartyDriverPhone) setThirdPartyDriverPhone(d.thirdPartyDriverPhone);
@@ -305,11 +613,18 @@ const CreateTripScreen = () => {
     if (d.billingAmountInput) setBillingAmountInput(d.billingAmountInput);
     if (d.driverPayoutInput) setDriverPayoutInput(d.driverPayoutInput);
     if (typeof d.manualRateOverride === 'boolean') setManualRateOverride(d.manualRateOverride);
+    if (Array.isArray(d.selectedMonthlyDates)) setSelectedMonthlyDates(d.selectedMonthlyDates);
+    if (d.monthlyAssignmentMode) setMonthlyAssignmentMode(d.monthlyAssignmentMode);
+    if (d.dayAssignments && typeof d.dayAssignments === 'object') setDayAssignments(d.dayAssignments);
     if (Array.isArray(d.additionalCharges)) setAdditionalCharges(d.additionalCharges);
     if (typeof d.saveAsPersistentQuotation === 'boolean') setSaveAsPersistentQuotation(d.saveAsPersistentQuotation);
     if (typeof d.isRouteCollapsed === 'boolean') setIsRouteCollapsed(d.isRouteCollapsed);
     setPage(1);
     setHasSavedDraft(false);
+    setToastMessage('Unsaved trip draft restored successfully.');
+
+    setToastType('success');
+    setToastVisible(true);
   };
 
   const discardDraft = async () => {
@@ -320,7 +635,11 @@ const CreateTripScreen = () => {
     }
     setHasSavedDraft(false);
     setSavedDraftData(null);
+    setToastMessage('Draft discarded.');
+    setToastType('info');
+    setToastVisible(true);
   };
+
 
   // Saved location search for Pickup
   useEffect(() => {
@@ -417,9 +736,8 @@ const CreateTripScreen = () => {
     setBillingAmountInput(bRate > 0 ? String(bRate) : '');
     setDriverPayoutInput(dPayout > 0 ? String(dPayout) : '');
 
-    if (q.billing_type === 'Monthly' || q.billing_type === 'Extra') {
-      setBillingType(q.billing_type);
-    }
+    const normBType = normalizeBillingType(q.billing_type);
+    setBillingType(normBType);
     if (q.pricing_basis === 'PER_MONTH' || q.pricing_basis === 'Per Month') {
       setPricingBasis('Per Month');
     } else {
@@ -429,6 +747,10 @@ const CreateTripScreen = () => {
     const normCategory = (q.line_type ?? q.rate_category ?? '').toUpperCase();
     if (normCategory.includes('ROUND') || normCategory === 'ROUND_TRIP') {
       setRateCategory('ROUND_TRIP');
+    } else if (normCategory.includes('10_HRS') || normCategory.includes('10 HRS') || normCategory.includes('10 HOURS')) {
+      setRateCategory('10_HRS');
+    } else if (normCategory.includes('12_HRS') || normCategory.includes('12 HRS') || normCategory.includes('12 HOURS')) {
+      setRateCategory('12_HRS');
     } else {
       setRateCategory('SINGLE_TRIP');
     }
@@ -484,6 +806,10 @@ const CreateTripScreen = () => {
         const normCategory = (selectedQuotation.line_type ?? selectedQuotation.rate_category ?? '').toUpperCase();
         if (normCategory.includes('ROUND') || normCategory === 'ROUND_TRIP') {
           setRateCategory('ROUND_TRIP');
+        } else if (normCategory.includes('10_HRS') || normCategory.includes('10 HRS') || normCategory.includes('10 HOURS')) {
+          setRateCategory('10_HRS');
+        } else if (normCategory.includes('12_HRS') || normCategory.includes('12 HRS') || normCategory.includes('12 HOURS')) {
+          setRateCategory('12_HRS');
         } else {
           setRateCategory('SINGLE_TRIP');
         }
@@ -493,6 +819,7 @@ const CreateTripScreen = () => {
       setIsInlineQuotationForm(false);
     }
   };
+
 
   // Recent Routes Accelerator Chips
   const recentRoutes = useMemo(() => {
@@ -619,6 +946,20 @@ const CreateTripScreen = () => {
       errors.dropoffName = 'Dropoff location name is required';
       isValid = false;
     }
+    if (rateCategory === 'ROUND_TRIP') {
+      if (!returnOriginName.trim() && !dropoffName.trim()) {
+        errors.returnOriginName = 'Return origin location is required for round trips';
+        isValid = false;
+      }
+      if (!returnDestinationName.trim() && !pickupName.trim()) {
+        errors.returnDestinationName = 'Return destination location is required for round trips';
+        isValid = false;
+      }
+    }
+    if (billingType === 'Monthly' && selectedMonthlyDates.length === 0) {
+      errors.monthlyDates = 'Please select at least one calendar day for this monthly trip schedule';
+      isValid = false;
+    }
     if (effectiveBillingAmount <= 0) {
       errors.billingAmount = 'Customer billing rate must be greater than 0';
       isValid = false;
@@ -642,19 +983,22 @@ const CreateTripScreen = () => {
     let isValid = true;
 
     if (fleetType === 'THIRD_PARTY') {
-      if (Number.isNaN(effective3PLCost) || effective3PLCost < 0) {
-        errors.thirdPartyCost = 'Agreed subcontractor cost is required'; isValid = false;
+      if (Number.isNaN(effective3PLCost) || effective3PLCost <= 0) {
+        errors.thirdPartyCost = 'Agreed subcontractor cost is required and must be greater than 0';
+        isValid = false;
       } else { delete errors.thirdPartyCost; }
     } else {
       if (manualRateOverride && (Number.isNaN(effectiveDriverPayout) || effectiveDriverPayout < 0)) {
-        errors.driverPayout = 'Driver payout is required'; isValid = false;
+        errors.driverPayout = 'Driver payout is required';
+        isValid = false;
       } else { delete errors.driverPayout; }
     }
 
     const plannedPickup = parseDateTime(date, time);
     const plannedDropoff = parseDateTime(etaDate, etaTime);
     if (plannedPickup && plannedDropoff && plannedDropoff <= plannedPickup) {
-      errors.deliveryDue = 'Delivery due date & time must be after the departure time'; isValid = false;
+      errors.deliveryDue = 'Delivery due date & time must be after the departure time';
+      isValid = false;
     } else { delete errors.deliveryDue; }
 
     setFieldErrors(errors);
@@ -672,10 +1016,22 @@ const CreateTripScreen = () => {
     }
     if (!p2Valid || submitting) return;
 
-    const plannedPickup = parseDateTime(date, time);
+    // Past date check (Single trips & Monthly schedule dates)
+    let isPastDate = false;
+    if (billingType === 'Monthly') {
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      isPastDate = selectedMonthlyDates.some((dStr) => {
+        const dTs = new Date(`${dStr}T00:00:00`).getTime();
+        return !Number.isNaN(dTs) && dTs < cutoff;
+      });
+    } else {
+      const plannedPickup = parseDateTime(date, time);
+      if (plannedPickup && new Date(plannedPickup).getTime() < Date.now() - 5 * 60 * 1000) {
+        isPastDate = true;
+      }
+    }
 
-    // Past date check
-    if (plannedPickup && new Date(plannedPickup).getTime() < Date.now() - 5 * 60 * 1000) {
+    if (isPastDate) {
       setShowPastDateModal(true);
       return;
     }
@@ -754,16 +1110,38 @@ const CreateTripScreen = () => {
       });
 
       if (rateCategory === 'ROUND_TRIP') {
+        const retOrigName = returnOriginName.trim() || dropoffName.trim() || 'Return Origin';
+        const retDestName = returnDestinationName.trim() || pickupName.trim() || 'Return Destination';
+        const retOrigLat = parseFloat(returnOriginLat) || dropoffLatNum || 0;
+        const retOrigLng = parseFloat(returnOriginLng) || dropoffLngNum || 0;
+        const retDestLat = parseFloat(returnDestinationLat) || pickupLatNum || 0;
+        const retDestLng = parseFloat(returnDestinationLng) || pickupLngNum || 0;
+
+        // Return Leg Pickup (Leg #1)
+        stopsPayload.push({
+          stop_type: 'Pickup',
+          leg_index: 1,
+          lat: retOrigLat,
+          lng: retOrigLng,
+          planned_arrival: plannedDropoff,
+          location_name: retOrigName,
+          location_id: returnOriginLocationId || dropoffLocationId,
+        });
+
+        // Return Leg Dropoff (Leg #1)
         stopsPayload.push({
           stop_type: 'Dropoff',
           leg_index: 1,
-          lat: pickupLatNum,
-          lng: pickupLngNum,
-          planned_arrival: plannedDropoff,
-          location_name: `${pickupName.trim()} (Return Leg)`,
-          location_id: pickupLocationId,
+          lat: retDestLat,
+          lng: retDestLng,
+          planned_arrival: plannedDropoff
+            ? new Date(new Date(plannedDropoff).getTime() + (travelEstimate?.durationMinutes || 240) * 60000).toISOString()
+            : undefined,
+          location_name: retDestName,
+          location_id: returnDestinationLocationId || pickupLocationId,
         });
       }
+
 
       const formattedCharges = additionalCharges.map((c) => ({
         charge_type: c.charge_type,
@@ -798,11 +1176,90 @@ const CreateTripScreen = () => {
         }
       }
 
+      if (billingType === 'Monthly') {
+        if (selectedMonthlyDates.length === 0) {
+          Alert.alert('Monthly Schedule Required', 'Please select at least one calendar day for this monthly trip schedule.');
+          setSubmitting(false);
+          return;
+        }
+
+        const masterDriverId = fleetType === 'OWN_FLEET' && selectedDriver && selectedDriver !== ASSIGN_LATER ? selectedDriver : undefined;
+        const masterVehicleId = fleetType === 'OWN_FLEET' && selectedVehicle && selectedVehicle !== ASSIGN_LATER ? selectedVehicle : undefined;
+        const masterCoDriverId = fleetType === 'OWN_FLEET' && showCoDriver && selectedCoDriver && selectedCoDriver !== ASSIGN_LATER ? selectedCoDriver : undefined;
+        const masterCoDriverPayout = fleetType === 'OWN_FLEET' && showCoDriver && coDriverPayoutInput ? (parseFloat(coDriverPayoutInput) || undefined) : undefined;
+
+        const durationMs = (travelEstimate?.durationMinutes || 240) * 60000;
+
+        const bulkRows: any[] = selectedMonthlyDates.map((dateStr) => {
+          const override = dayAssignments[dateStr];
+
+          const dDriver = override?.driver_id !== undefined ? (override.driver_id || undefined) : masterDriverId;
+          const dVehicle = override?.vehicle_id !== undefined ? (override.vehicle_id || undefined) : masterVehicleId;
+          const dCoDriver = override?.co_driver_id !== undefined ? (override.co_driver_id || undefined) : masterCoDriverId;
+          const dCoDriverPayout = override?.co_driver_payout !== undefined ? override.co_driver_payout : masterCoDriverPayout;
+
+          const dayStartIso = new Date(`${dateStr}T${time || '08:00'}:00`).toISOString();
+          const dayEndIso = new Date(new Date(dayStartIso).getTime() + durationMs).toISOString();
+
+          const dayStops = stopsPayload.map((s) => ({
+            ...s,
+            planned_arrival: s.stop_type === 'Pickup' ? dayStartIso : s.stop_type === 'Dropoff' ? dayEndIso : s.planned_arrival,
+          }));
+
+          return {
+            customer_id: customerId,
+            driver_id: dDriver,
+            vehicle_id: dVehicle,
+            co_driver_id: dCoDriver,
+            co_driver_payout: dCoDriverPayout,
+            planned_start: dayStartIso,
+            planned_end: dayEndIso,
+            billing_amount: effectiveBillingAmount,
+            trip_charges: fleetType === 'OWN_FLEET' ? effectiveDriverPayout : undefined,
+            rate_card_id: resolvedRateCardId,
+            vehicle_type: selectedVehicleObj?.asset_type ?? selectedQuotation?.vehicle_type ?? selectedQuotation?.vehicle_class ?? undefined,
+            rate_category: rateCategory,
+            billing_type: 'Monthly',
+            status: isCompletedPastDate ? 'Completed' : 'Scheduled',
+            is_third_party: fleetType === 'THIRD_PARTY',
+            third_party_provider_id: fleetType === 'THIRD_PARTY' && selected3PLProvider ? selected3PLProvider : undefined,
+            third_party_driver_name: fleetType === 'THIRD_PARTY' ? thirdPartyDriverName : undefined,
+            third_party_driver_phone: fleetType === 'THIRD_PARTY' ? thirdPartyDriverPhone : undefined,
+            third_party_vehicle_plate: fleetType === 'THIRD_PARTY' ? thirdPartyVehiclePlate : undefined,
+            third_party_cost: fleetType === 'THIRD_PARTY' ? effective3PLCost : undefined,
+            charges: formattedCharges,
+            stops: dayStops,
+          };
+        });
+
+        const bulkRes = await operatorService.bulkCreateTrips(bulkRows);
+        await saveRecentRoute({
+          originName: pickupName.trim(),
+          originLat: pickupLat,
+          originLng: pickupLng,
+          originLocationId: pickupLocationId,
+          destName: dropoffName.trim(),
+          destLat: dropoffLat,
+          destLng: dropoffLng,
+          destLocationId: dropoffLocationId,
+        });
+        setToastMessage(`${bulkRes.imported ?? bulkRows.length} Monthly Duty trips created successfully!`);
+        setToastType('success');
+        setToastVisible(true);
+        await discardDraft();
+        invalidateOperatorTrips();
+        router.back();
+        return;
+      }
+
       const created = await operatorService.createTrip({
         customer_id: customerId,
         driver_id: fleetType === 'OWN_FLEET' && selectedDriver && selectedDriver !== ASSIGN_LATER ? selectedDriver : undefined,
         vehicle_id: fleetType === 'OWN_FLEET' && selectedVehicle && selectedVehicle !== ASSIGN_LATER ? selectedVehicle : undefined,
+        co_driver_id: fleetType === 'OWN_FLEET' && showCoDriver && selectedCoDriver && selectedCoDriver !== ASSIGN_LATER ? selectedCoDriver : undefined,
+        co_driver_payout: fleetType === 'OWN_FLEET' && showCoDriver && coDriverPayoutInput ? (parseFloat(coDriverPayoutInput) || undefined) : undefined,
         planned_start: plannedPickup,
+
         planned_end: plannedDropoff,
         billing_amount: effectiveBillingAmount,
         trip_charges: fleetType === 'OWN_FLEET' ? effectiveDriverPayout : undefined,
@@ -819,6 +1276,17 @@ const CreateTripScreen = () => {
         third_party_cost: fleetType === 'THIRD_PARTY' ? effective3PLCost : undefined,
         charges: formattedCharges,
         stops: stopsPayload,
+      });
+
+      await saveRecentRoute({
+        originName: pickupName.trim(),
+        originLat: pickupLat,
+        originLng: pickupLng,
+        originLocationId: pickupLocationId,
+        destName: dropoffName.trim(),
+        destLat: dropoffLat,
+        destLng: dropoffLng,
+        destLocationId: dropoffLocationId,
       });
 
       if (isCompletedPastDate && created?.id) {
@@ -841,6 +1309,7 @@ const CreateTripScreen = () => {
 
   const selectedCustomerObj = customers.find((c) => c.id === customerId);
   const selectedDriverObj = drivers.find((d) => d.id === selectedDriver);
+  const selectedCoDriverObj = drivers.find((d) => d.id === selectedCoDriver);
   const selected3PLProviderObj = thirdPartyProviders.find((p) => p.id === selected3PLProvider);
 
   return (
@@ -1216,6 +1685,34 @@ const CreateTripScreen = () => {
                   ) : (
                     /* Saved Quotation Cards Mode */
                     <>
+                      {/* Quotation Billing Type Filter */}
+                      <View style={{ marginBottom: Spacing.xs }}>
+                        <Text style={styles.miniPickerLabel}>Quotation Billing Type</Text>
+                        <View style={styles.segmentedContainer}>
+                          {(['ALL', 'Monthly', 'Extra'] as const).map((filterOpt) => {
+                            const isActive = quotationBillingFilter === filterOpt;
+                            return (
+                              <TouchableOpacity
+                                key={filterOpt}
+                                style={[styles.segmentedBtn, isActive && styles.segmentedBtnActive]}
+                                onPress={() => {
+                                  setQuotationBillingFilter(filterOpt);
+                                  if (filterOpt === 'Monthly') {
+                                    setBillingType('Monthly');
+                                  } else if (filterOpt === 'Extra') {
+                                    setBillingType('Extra');
+                                  }
+                                }}
+                              >
+                                <Text style={[styles.segmentedBtnText, isActive && styles.segmentedBtnTextActive]}>
+                                  {filterOpt === 'ALL' ? 'All Rates' : filterOpt === 'Monthly' ? 'Monthly Duty' : 'Spot / Extra'}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      </View>
+
                       {/* Quotation Search Bar */}
                       <View style={styles.searchBarContainer}>
                         <Search size={16} color={Colors.gray500} />
@@ -1243,7 +1740,9 @@ const CreateTripScreen = () => {
                           <Text style={styles.emptyHint}>
                             {quotations.length === 0
                               ? 'No active quotation rate cards on file for this customer.'
-                              : `No rate cards matching "${quotationSearchQuery}"`}
+                              : `No rate cards matching ${
+                                  quotationBillingFilter !== 'ALL' ? `${quotationBillingFilter} filter` : 'search'
+                                }${quotationSearchQuery ? ` "${quotationSearchQuery}"` : ''}`}
                           </Text>
                           <TouchableOpacity
                             style={{ marginHorizontal: Spacing.md, marginBottom: Spacing.md, alignSelf: 'flex-start' }}
@@ -1311,23 +1810,99 @@ const CreateTripScreen = () => {
                 </View>
               )}
 
-              {/* Section 2: Route & Multi-Stop Configuration (ALWAYS VISIBLE on Tab 1!) */}
+              {/* Monthly Duty Schedule Calendar Selector */}
+              {billingType === 'Monthly' && (
+                <>
+                  <Text style={styles.sectionTitle}>Monthly Duty Calendar Schedule</Text>
+                  <MonthlyCalendarSelector
+                    selectedDates={selectedMonthlyDates}
+                    onToggleDate={handleToggleMonthlyDate}
+                    onSelectAllWeekdays={handleSelectAllWeekdays}
+                    onSelectAllDays={handleSelectAllDays}
+                    onClearAll={handleClearMonthlyDates}
+                    currentMonth={monthlyCurrentMonth}
+                    onMonthChange={setMonthlyCurrentMonth}
+                    assignmentMode={monthlyAssignmentMode}
+                    onToggleAssignmentMode={setMonthlyAssignmentMode}
+                    dayAssignments={dayAssignments}
+                    onSaveDayOverride={handleSaveDayOverride}
+                    drivers={drivers}
+                    vehicles={vehicles}
+                    masterDriverId={selectedDriver}
+                    masterVehicleId={selectedVehicle}
+                    masterCoDriverId={selectedCoDriver}
+                  />
+                </>
+              )}
+
+              {/* Section 2: Route & Multi-Stop Configuration */}
               <Text style={styles.sectionTitle}>2. Route & Multi-Stop Configuration</Text>
               <Card style={styles.formCard}>
-                <View style={styles.segmentedContainer}>
-                  <TouchableOpacity
-                    style={[styles.segmentedBtn, rateCategory === 'SINGLE_TRIP' && styles.segmentedBtnActive]}
-                    onPress={() => setRateCategory('SINGLE_TRIP')}
-                  >
-                    <Text style={[styles.segmentedText, rateCategory === 'SINGLE_TRIP' && styles.segmentedTextActive]}>Single Trip</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.segmentedBtn, rateCategory === 'ROUND_TRIP' && styles.segmentedBtnActive]}
-                    onPress={() => setRateCategory('ROUND_TRIP')}
-                  >
-                    <Text style={[styles.segmentedText, rateCategory === 'ROUND_TRIP' && styles.segmentedTextActive]}>Round Trip</Text>
-                  </TouchableOpacity>
+                {/* Recent Routes Accelerator Chips */}
+                {savedRecentRoutes.length > 0 && (
+                  <View style={{ marginBottom: Spacing.sm }}>
+                    <Text style={styles.acceleratorTitle}>Recent Routes</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                      {savedRecentRoutes.map((rr) => (
+                        <TouchableOpacity
+                          key={rr.id}
+                          style={styles.acceleratorChip}
+                          onPress={() => handleSelectRecentRoute(rr)}
+                        >
+                          <Clock size={12} color={Colors.primary} />
+                          <Text style={styles.acceleratorChipText}>
+                            {rr.originName} → {rr.destName}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* 4 Line Types Selector Grid */}
+                <View style={styles.lineTypeGrid}>
+                  {([
+                    { id: 'SINGLE_TRIP', label: 'Single Trip' },
+                    { id: 'ROUND_TRIP', label: 'Round Trip' },
+                    { id: '10_HRS', label: '10 Hours Duty' },
+                    { id: '12_HRS', label: '12 Hours Duty' },
+                  ] as const).map((opt) => (
+                    <TouchableOpacity
+                      key={opt.id}
+                      style={[styles.lineTypeBtn, rateCategory === opt.id && styles.lineTypeBtnActive]}
+                      onPress={() => setRateCategory(opt.id as RateCategoryType)}
+                    >
+                      <Text style={[styles.lineTypeText, rateCategory === opt.id && styles.lineTypeTextActive]}>
+                        {opt.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
+
+                {/* Inline Transit Time Badge */}
+                {pickupName.trim() && dropoffName.trim() ? (
+                  <View style={styles.transitBadgeContainer}>
+                    {estimatingTime ? (
+                      <View style={styles.transitBadgePill}>
+                        <ActivityIndicator size="small" color={Colors.primary} />
+                        <Text style={styles.transitBadgeText}>Calculating transit...</Text>
+                      </View>
+                    ) : travelEstimate ? (
+                      <View style={styles.transitBadgePill}>
+                        <Clock size={14} color={Colors.primary} strokeWidth={2.5} />
+                        <Text style={styles.transitBadgeText}>
+                          Transit: <Text style={{ fontWeight: '800' }}>{travelEstimate.durationText}</Text>
+                        </Text>
+                        <Text style={styles.transitDistanceText}>({travelEstimate.distanceKm} km)</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.transitBadgeFallback}>
+                        <Clock size={14} color={Colors.gray500} strokeWidth={2} />
+                        <Text style={styles.transitBadgeFallbackText}>Est. 4h 00m (Fallback Estimate)</Text>
+                      </View>
+                    )}
+                  </View>
+                ) : null}
 
                 <View style={styles.formGroup}>
                   <Input
@@ -1458,7 +2033,68 @@ const CreateTripScreen = () => {
                   </View>
                   {fieldErrors.dropoffCoords && <Text style={styles.fieldErrorBadge}>{fieldErrors.dropoffCoords}</Text>}
                 </View>
+
+                {/* Explicit Return Leg Configuration Card (When ROUND_TRIP is selected) */}
+                {rateCategory === 'ROUND_TRIP' && (
+                  <View style={styles.returnLegContainer}>
+                    <View style={styles.returnLegHeader}>
+                      <RotateCcw size={15} color="#4F46E5" strokeWidth={2.4} />
+                      <Text style={styles.returnLegTitle}>Return Leg (Leg #2)</Text>
+                    </View>
+
+                    <View style={styles.formGroup}>
+                      <Input
+                        label="Return Origin Location Name"
+                        value={returnOriginName || dropoffName}
+                        onChangeText={setReturnOriginName}
+                        placeholder="Defaults to outbound dropoff location"
+                      />
+                      <View style={styles.rowFields}>
+                        <Input
+                          style={{ flex: 1 }}
+                          value={returnOriginLat || dropoffLat}
+                          onChangeText={setReturnOriginLat}
+                          placeholder="Return Origin Lat"
+                          keyboardType="numeric"
+                        />
+                        <Input
+                          style={{ flex: 1 }}
+                          value={returnOriginLng || dropoffLng}
+                          onChangeText={setReturnOriginLng}
+                          placeholder="Return Origin Lng"
+                          keyboardType="numeric"
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.formGroup}>
+                      <Input
+                        label="Return Destination Location Name"
+                        value={returnDestinationName || pickupName}
+                        onChangeText={setReturnDestinationName}
+                        placeholder="Defaults to outbound pickup location"
+                      />
+                      <View style={styles.rowFields}>
+                        <Input
+                          style={{ flex: 1 }}
+                          value={returnDestinationLat || pickupLat}
+                          onChangeText={setReturnDestinationLat}
+                          placeholder="Return Dest Lat"
+                          keyboardType="numeric"
+                        />
+                        <Input
+                          style={{ flex: 1 }}
+                          value={returnDestinationLng || pickupLng}
+                          onChangeText={setReturnDestinationLng}
+                          placeholder="Return Dest Lng"
+                          keyboardType="numeric"
+                        />
+                      </View>
+                    </View>
+                  </View>
+                )}
               </Card>
+
 
               {/* Tab 1 Bottom Action Button */}
               <View style={{ marginTop: Spacing.md }}>
@@ -1544,7 +2180,7 @@ const CreateTripScreen = () => {
                 {fieldErrors.deliveryDue && <Text style={styles.fieldErrorBadge}>{fieldErrors.deliveryDue}</Text>}
               </Card>
 
-              {/* Section 6: Fleet Assignment (Own Fleet vs 3PL) */}
+              {/* Section 6: Fleet & Execution Assignment (Own Fleet vs 3PL) */}
               <Text style={styles.sectionTitle}>6. Fleet & Execution Assignment</Text>
               <Card style={styles.formCard}>
                 <View style={styles.segmentedContainer}>
@@ -1564,73 +2200,272 @@ const CreateTripScreen = () => {
 
                 {fleetType === 'OWN_FLEET' ? (
                   <>
-                    <Text style={styles.label}>Driver Assignment</Text>
-                    <Card style={styles.pickerCard}>
-                      <TouchableOpacity
-                        style={[styles.driverItem, selectedDriver === ASSIGN_LATER ? styles.driverItemActive : null]}
-                        onPress={() => setSelectedDriver(ASSIGN_LATER)}
-                      >
-                        <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
-                          <Clock size={20} color={Colors.gray600} strokeWidth={2} />
-                        </View>
-                        <View style={styles.driverInfo}>
-                          <Text style={styles.driverName}>Assign Later</Text>
-                          <Text style={styles.driverId}>Dispatch driver later</Text>
-                        </View>
-                        {selectedDriver === ASSIGN_LATER && <Check size={18} color={Colors.primary} strokeWidth={3} />}
-                      </TouchableOpacity>
-                      {drivers.map((driver) => (
+                    {/* PRIMARY DRIVER HEADER & RECOMMENDED vs ASSIGNED CARD */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                      <Text style={styles.label}>
+                        {selectedDriver && selectedDriver !== ASSIGN_LATER ? 'ASSIGNED PRIMARY DRIVER' : 'RECOMMENDED DRIVERS'}
+                      </Text>
+                      {selectedDriver ? (
                         <TouchableOpacity
-                          key={driver.id}
-                          style={[styles.driverItem, selectedDriver === driver.id ? styles.driverItemActive : null]}
-                          onPress={() => setSelectedDriver(driver.id)}
+                          onPress={() => {
+                            setSelectedDriver('');
+                            setDriverSearchQuery('');
+                          }}
                         >
-                          <View style={styles.driverAvatar}>
-                            <Text style={styles.driverAvatarText}>{driver.first_name[0]}{driver.last_name[0]}</Text>
-                          </View>
-                          <View style={styles.driverInfo}>
-                            <Text style={styles.driverName}>{driver.first_name} {driver.last_name}</Text>
-                            <Text style={styles.driverId}>{driver.ref_id ?? driver.license_number}</Text>
-                          </View>
-                          <StatusBadge status="Available" />
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.primary }}>Change Driver</Text>
                         </TouchableOpacity>
-                      ))}
-                    </Card>
+                      ) : null}
+                    </View>
 
-                    <Text style={styles.label}>Vehicle Assignment</Text>
-                    <Card style={styles.pickerCard}>
-                      <TouchableOpacity
-                        style={[styles.driverItem, selectedVehicle === ASSIGN_LATER ? styles.driverItemActive : null]}
-                        onPress={() => setSelectedVehicle(ASSIGN_LATER)}
-                      >
+                    {/* ASSIGNED DRIVER PROFILE CARD */}
+                    {selectedDriver && selectedDriver !== ASSIGN_LATER && selectedDriverObj ? (
+                      <View style={styles.assignedDriverCard}>
+                        <DriverAvatar
+                          initials={`${selectedDriverObj.first_name[0]}${selectedDriverObj.last_name[0]}`}
+                          avatarUrl={selectedDriverObj.avatar_url || selectedDriverObj.photo_url}
+                          size={46}
+                        />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.assignedDriverName}>{selectedDriverObj.first_name} {selectedDriverObj.last_name}</Text>
+                          <Text style={styles.assignedDriverSubtext}>
+                            {selectedDriverObj.assigned_vehicle?.plate_number
+                              ? `Truck: ${selectedDriverObj.assigned_vehicle.plate_number}`
+                              : selectedDriverObj.phone_primary ?? selectedDriverObj.license_number}
+                          </Text>
+                        </View>
+                        <StatusBadge status="Available" />
+                      </View>
+                    ) : selectedDriver === ASSIGN_LATER ? (
+                      <View style={styles.assignedDriverCard}>
                         <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
                           <Clock size={20} color={Colors.gray600} strokeWidth={2} />
                         </View>
-                        <View style={styles.driverInfo}>
-                          <Text style={styles.driverName}>Assign Later</Text>
-                          <Text style={styles.driverId}>Assign vehicle later</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.assignedDriverName}>Assign Later</Text>
+                          <Text style={styles.assignedDriverSubtext}>Dispatch driver later after booking</Text>
                         </View>
-                        {selectedVehicle === ASSIGN_LATER && <Check size={18} color={Colors.primary} strokeWidth={3} />}
-                      </TouchableOpacity>
-                      {vehicles.map((v) => (
+                      </View>
+                    ) : (
+                      /* UNSELECTED STATE: RECOMMENDED DRIVER CARDS */
+                      <View style={styles.recommendedCardsRow}>
+                        {recommendedDrivers.length === 0 ? (
+                          <Text style={{ fontSize: 12, color: Colors.gray500 }}>No drivers available</Text>
+                        ) : (
+                          recommendedDrivers.map((rd) => (
+                            <TouchableOpacity
+                              key={rd.id}
+                              style={styles.recommendedDriverCard}
+                              activeOpacity={0.8}
+                              onPress={() => setSelectedDriver(rd.id)}
+                            >
+                              <DriverAvatar
+                                initials={`${rd.first_name[0]}${rd.last_name[0]}`}
+                                avatarUrl={rd.avatar_url || rd.photo_url}
+                                size={40}
+                              />
+                              <Text style={styles.recommendedDriverName} numberOfLines={1}>
+                                {rd.first_name} {rd.last_name}
+                              </Text>
+                              <Text style={styles.recommendedDriverSubtext} numberOfLines={1}>
+                                {rd.assigned_vehicle?.plate_number
+                                  ? `Truck: ${rd.assigned_vehicle.plate_number}`
+                                  : rd.phone_primary ?? 'Available'}
+                              </Text>
+                            </TouchableOpacity>
+                          ))
+                        )}
+                      </View>
+                    )}
+
+                    {/* SEARCHABLE PRIMARY DRIVER PICKER */}
+                    <Text style={styles.label}>Select Primary Driver</Text>
+                    <View style={styles.searchBarContainer}>
+                      <Search size={16} color={Colors.gray500} />
+                      <TextInput
+                        style={styles.searchBarInput}
+                        value={driverSearchQuery}
+                        onChangeText={setDriverSearchQuery}
+                        placeholder="Search driver name, phone, license..."
+                        placeholderTextColor={Colors.gray400}
+                      />
+                      {driverSearchQuery ? (
+                        <TouchableOpacity onPress={() => setDriverSearchQuery('')}>
+                          <X size={16} color={Colors.gray500} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+
+                    <Card style={{ ...styles.pickerCard, maxHeight: 180 }}>
+                      <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
                         <TouchableOpacity
-                          key={v.id}
-                          style={[styles.driverItem, selectedVehicle === v.id ? styles.driverItemActive : null]}
-                          onPress={() => setSelectedVehicle(v.id)}
+                          style={[styles.driverItem, selectedDriver === ASSIGN_LATER ? styles.driverItemActive : null]}
+                          onPress={() => setSelectedDriver(ASSIGN_LATER)}
                         >
                           <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
-                            <Truck size={22} color={Colors.primary} strokeWidth={2} />
+                            <Clock size={18} color={Colors.gray600} strokeWidth={2} />
                           </View>
                           <View style={styles.driverInfo}>
-                            <Text style={styles.driverName}>{v.plate_number}</Text>
-                            <Text style={styles.driverId}>{v.asset_type}</Text>
+                            <Text style={styles.driverName}>Assign Later</Text>
+                            <Text style={styles.driverId}>Dispatch driver later</Text>
                           </View>
-                          <StatusBadge status="Available" />
+                          {selectedDriver === ASSIGN_LATER && <Check size={18} color={Colors.primary} strokeWidth={3} />}
                         </TouchableOpacity>
-                      ))}
+
+                        {filteredDrivers.map((driver) => (
+                          <TouchableOpacity
+                            key={driver.id}
+                            style={[styles.driverItem, selectedDriver === driver.id ? styles.driverItemActive : null]}
+                            onPress={() => setSelectedDriver(driver.id)}
+                          >
+                            <DriverAvatar
+                              initials={`${driver.first_name[0]}${driver.last_name[0]}`}
+                              avatarUrl={driver.avatar_url || driver.photo_url}
+                              size={34}
+                            />
+                            <View style={styles.driverInfo}>
+                              <Text style={styles.driverName}>{driver.first_name} {driver.last_name}</Text>
+                              <Text style={styles.driverId}>{driver.phone_primary ?? driver.ref_id ?? driver.license_number}</Text>
+                            </View>
+                            <StatusBadge status="Available" />
+                            {selectedDriver === driver.id && <Check size={18} color={Colors.primary} strokeWidth={3} style={{ marginLeft: 6 }} />}
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </Card>
+
+                    {/* CO-DRIVER / RELIEVER AFFORDANCE */}
+                    {showCoDriver ? (
+                      <View style={styles.coDriverContainer}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <Text style={styles.coDriverTitle}>CO-DRIVER / RELIEVER</Text>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setSelectedCoDriver('');
+                              setCoDriverPayoutInput('');
+                              setShowCoDriver(false);
+                            }}
+                          >
+                            <Trash2 size={16} color={Colors.error} />
+                          </TouchableOpacity>
+                        </View>
+
+                        <View style={styles.searchBarContainer}>
+                          <Search size={16} color={Colors.gray500} />
+                          <TextInput
+                            style={styles.searchBarInput}
+                            value={coDriverSearchQuery}
+                            onChangeText={setCoDriverSearchQuery}
+                            placeholder="Search co-driver name, phone..."
+                            placeholderTextColor={Colors.gray400}
+                          />
+                          {coDriverSearchQuery ? (
+                            <TouchableOpacity onPress={() => setCoDriverSearchQuery('')}>
+                              <X size={16} color={Colors.gray500} />
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
+
+                        <Card style={{ ...styles.pickerCard, maxHeight: 150 }}>
+                          <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                            {filteredCoDrivers.length === 0 ? (
+                              <Text style={{ padding: Spacing.md, fontSize: 12, color: Colors.gray500 }}>No available co-drivers</Text>
+                            ) : (
+                              filteredCoDrivers.map((cd) => (
+                                <TouchableOpacity
+                                  key={cd.id}
+                                  style={[styles.driverItem, selectedCoDriver === cd.id ? styles.driverItemActive : null]}
+                                  onPress={() => setSelectedCoDriver(cd.id)}
+                                >
+                                  <DriverAvatar
+                                    initials={`${cd.first_name[0]}${cd.last_name[0]}`}
+                                    avatarUrl={cd.avatar_url || cd.photo_url}
+                                    size={32}
+                                  />
+                                  <View style={styles.driverInfo}>
+                                    <Text style={styles.driverName}>{cd.first_name} {cd.last_name}</Text>
+                                    <Text style={styles.driverId}>{cd.phone_primary ?? cd.license_number}</Text>
+                                  </View>
+                                  {selectedCoDriver === cd.id && <Check size={18} color={Colors.primary} strokeWidth={3} />}
+                                </TouchableOpacity>
+                              ))
+                            )}
+                          </ScrollView>
+                        </Card>
+
+                        <Input
+                          label="Co-Driver Payout Override (SAR)"
+                          value={coDriverPayoutInput}
+                          onChangeText={setCoDriverPayoutInput}
+                          placeholder="Optional (Default: 50/50 split)"
+                          keyboardType="numeric"
+                        />
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.addCoDriverBtn}
+                        onPress={() => setShowCoDriver(true)}
+                      >
+                        <UserPlus size={15} color="#10B981" strokeWidth={2.4} />
+                        <Text style={styles.addCoDriverBtnText}>Add Co-Driver / Reliever</Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {/* SEARCHABLE PRIMARY VEHICLE PICKER */}
+                    <Text style={styles.label}>Vehicle Assignment</Text>
+                    <View style={styles.searchBarContainer}>
+                      <Search size={16} color={Colors.gray500} />
+                      <TextInput
+                        style={styles.searchBarInput}
+                        value={vehicleSearchQuery}
+                        onChangeText={setVehicleSearchQuery}
+                        placeholder="Search plate, asset code..."
+                        placeholderTextColor={Colors.gray400}
+                      />
+                      {vehicleSearchQuery ? (
+                        <TouchableOpacity onPress={() => setVehicleSearchQuery('')}>
+                          <X size={16} color={Colors.gray500} />
+                        </TouchableOpacity>
+                      ) : null}
+                    </View>
+
+                    <Card style={{ ...styles.pickerCard, maxHeight: 180 }}>
+                      <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                        <TouchableOpacity
+                          style={[styles.driverItem, selectedVehicle === ASSIGN_LATER ? styles.driverItemActive : null]}
+                          onPress={() => setSelectedVehicle(ASSIGN_LATER)}
+                        >
+                          <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
+                            <Clock size={18} color={Colors.gray600} strokeWidth={2} />
+                          </View>
+                          <View style={styles.driverInfo}>
+                            <Text style={styles.driverName}>Assign Later</Text>
+                            <Text style={styles.driverId}>Assign vehicle later</Text>
+                          </View>
+                          {selectedVehicle === ASSIGN_LATER && <Check size={18} color={Colors.primary} strokeWidth={3} />}
+                        </TouchableOpacity>
+
+                        {filteredVehicles.map((v) => (
+                          <TouchableOpacity
+                            key={v.id}
+                            style={[styles.driverItem, selectedVehicle === v.id ? styles.driverItemActive : null]}
+                            onPress={() => setSelectedVehicle(v.id)}
+                          >
+                            <View style={[styles.driverAvatar, styles.vehicleAvatarBg]}>
+                              <Truck size={20} color={Colors.primary} strokeWidth={2} />
+                            </View>
+                            <View style={styles.driverInfo}>
+                              <Text style={styles.driverName}>{v.plate_number}</Text>
+                              <Text style={styles.driverId}>{v.asset_type}</Text>
+                            </View>
+                            <StatusBadge status="Available" />
+                            {selectedVehicle === v.id && <Check size={18} color={Colors.primary} strokeWidth={3} style={{ marginLeft: 6 }} />}
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
                     </Card>
                   </>
                 ) : (
+
                   <View style={styles.formGroup}>
                     <Text style={styles.label}>3PL Provider Selection</Text>
                     <Card style={styles.pickerCard}>
@@ -1715,7 +2550,25 @@ const CreateTripScreen = () => {
                 <Text style={styles.reviewHeading}>Customer & Scope</Text>
                 <Text style={styles.reviewText}>{selectedCustomerObj?.name ?? '—'}</Text>
                 <Text style={styles.reviewSubtext}>Rate Category: {rateCategory === 'ROUND_TRIP' ? 'Round Trip (Return Leg)' : 'Single Trip'}</Text>
+                <Text style={styles.reviewSubtext}>Billing Type: {billingType === 'Monthly' ? 'Monthly Duty Schedule' : 'Spot / Extra'}</Text>
               </View>
+
+              {billingType === 'Monthly' && (
+                <View style={styles.reviewSection}>
+                  <Text style={styles.reviewHeading}>Monthly Duty Schedule Summary</Text>
+                  <Text style={styles.reviewText}>
+                    {selectedMonthlyDates.length} Trips across {monthlyCurrentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                  </Text>
+                  <Text style={styles.reviewSubtext}>
+                    Assignment Mode: {monthlyAssignmentMode === 'PER_DAY' ? 'Per-Day Overrides' : 'Master Assignment'}
+                  </Text>
+                  {Object.keys(dayAssignments).length > 0 && (
+                    <Text style={[styles.reviewSubtext, { color: Colors.primary, fontWeight: '700', marginTop: 2 }]}>
+                      {Object.keys(dayAssignments).length} date(s) with custom driver/truck overrides
+                    </Text>
+                  )}
+                </View>
+              )}
 
               <View style={styles.reviewSection}>
                 <Text style={styles.reviewHeading}>Route Breakdown</Text>
@@ -1737,6 +2590,11 @@ const CreateTripScreen = () => {
                 ) : (
                   <>
                     <Text style={styles.reviewText}>Driver: {selectedDriverObj ? `${selectedDriverObj.first_name} ${selectedDriverObj.last_name}` : 'Assign Later'}</Text>
+                    {showCoDriver && selectedCoDriverObj && (
+                      <Text style={styles.reviewSubtext}>
+                        Co-Driver: {selectedCoDriverObj.first_name} {selectedCoDriverObj.last_name} ({coDriverPayoutInput ? `SAR ${coDriverPayoutInput}` : '50/50 Split'})
+                      </Text>
+                    )}
                     <Text style={styles.reviewSubtext}>Truck: {selectedVehicleObj?.plate_number ?? 'Assign Later'}</Text>
                   </>
                 )}
@@ -1761,11 +2619,110 @@ const CreateTripScreen = () => {
           </Card>
         </View>
       </Modal>
+
+      <Toast
+        visible={toastVisible}
+        message={toastMessage}
+        type={toastType}
+        onDismiss={() => setToastVisible(false)}
+      />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  lineTypeGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginBottom: Spacing.md,
+  },
+  lineTypeBtn: {
+    flex: 1,
+    minWidth: '45%',
+    paddingVertical: Spacing.sm + 2,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: Radius.lg,
+    backgroundColor: Colors.gray100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+  },
+  lineTypeBtnActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  lineTypeText: {
+    fontSize: Typography.xs,
+    fontWeight: '700',
+    color: Colors.gray700,
+  },
+  lineTypeTextActive: {
+    color: Colors.white,
+    fontWeight: '800',
+  },
+  transitBadgeContainer: {
+    marginBottom: Spacing.md,
+  },
+  transitBadgePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(250, 99, 78, 0.08)',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs + 2,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(250, 99, 78, 0.25)',
+    alignSelf: 'flex-start',
+  },
+  transitBadgeText: {
+    fontSize: Typography.xs,
+    fontWeight: '600',
+    color: Colors.primary,
+  },
+  transitDistanceText: {
+    fontSize: Typography.xs,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  transitBadgeFallback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.gray100,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs + 2,
+    borderRadius: Radius.full,
+    alignSelf: 'flex-start',
+  },
+  transitBadgeFallbackText: {
+    fontSize: Typography.xs,
+    fontWeight: '600',
+    color: Colors.gray600,
+  },
+  returnLegContainer: {
+    backgroundColor: 'rgba(79, 70, 229, 0.04)',
+    padding: Spacing.md,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(79, 70, 229, 0.2)',
+    marginTop: Spacing.md,
+    gap: Spacing.md,
+  },
+  returnLegHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  returnLegTitle: {
+    fontSize: Typography.xs,
+    fontWeight: '800',
+    color: '#4F46E5',
+    textTransform: 'uppercase',
+  },
+
   header: {
     backgroundColor: Colors.white,
     flexDirection: 'row',
@@ -2033,6 +2990,89 @@ const styles = StyleSheet.create({
   page2NavRow: { flexDirection: 'row', gap: Spacing.md, alignItems: 'center', marginTop: Spacing.md },
   backStepBtn: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: Radius.md, borderWidth: 1, borderColor: Colors.gray300 },
   backStepBtnText: { fontSize: Typography.sm, fontWeight: '700', color: Colors.gray700 },
+
+  assignedDriverCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.white,
+    padding: Spacing.md,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: Colors.gray300,
+    marginBottom: Spacing.sm,
+  },
+  assignedDriverName: {
+    fontSize: Typography.sm,
+    fontWeight: '800',
+    color: Colors.gray900,
+  },
+  assignedDriverSubtext: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: Colors.gray500,
+    marginTop: 1,
+  },
+  recommendedCardsRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  recommendedDriverCard: {
+    flex: 1,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    alignItems: 'center',
+    gap: 4,
+  },
+  recommendedDriverName: {
+    fontSize: Typography.xs,
+    fontWeight: '700',
+    color: Colors.gray900,
+    textAlign: 'center',
+  },
+  recommendedDriverSubtext: {
+    fontSize: 10,
+    color: Colors.gray500,
+    textAlign: 'center',
+  },
+  coDriverContainer: {
+    backgroundColor: 'rgba(16, 185, 129, 0.04)',
+    padding: Spacing.md,
+    borderRadius: Radius.xl,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
+    marginVertical: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  coDriverTitle: {
+    fontSize: Typography.xs,
+    fontWeight: '800',
+    color: '#059669',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  addCoDriverBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: Radius.lg,
+    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.25)',
+    alignSelf: 'flex-start',
+    marginVertical: Spacing.xs,
+  },
+  addCoDriverBtnText: {
+    fontSize: Typography.xs,
+    fontWeight: '700',
+    color: '#059669',
+  },
 });
 
 export default CreateTripScreen;

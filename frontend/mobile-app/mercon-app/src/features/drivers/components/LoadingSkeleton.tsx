@@ -1,6 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { SkeletonBlock } from '@/shared/components';
+import { Colors, Shadows } from '@/theme/tokens';
 
 export function SkeletonDriverStatCard() {
   return (
@@ -67,18 +68,31 @@ export function SkeletonDriverDetails() {
 
 export function SkeletonDriverCard() {
   return (
-    <View className="flex-row gap-3 rounded-3xl border border-[#F3F3F3] bg-white p-[18px]">
-      <SkeletonBlock width={64} height={64} radius={18} />
-      <View className="flex-1 gap-2">
-        <SkeletonBlock width="60%" height={16} />
-        <SkeletonBlock width={70} height={18} radius={9} />
-        <SkeletonBlock width="50%" height={10} />
-        <SkeletonBlock width="40%" height={10} />
+    <View
+      className="rounded-2xl border bg-white p-4.5"
+      style={{ borderColor: Colors.coolGray, ...Shadows.sm }}
+    >
+      {/* Header — circular avatar, name/status, trip count */}
+      <View className="flex-row items-center gap-3.5">
+        <SkeletonBlock width={52} height={52} radius={26} />
+
+        <View className="flex-1 gap-1.5">
+          <SkeletonBlock width="60%" height={16} />
+          <SkeletonBlock width={72} height={18} radius={9} />
+        </View>
+
+        <SkeletonBlock width={54} height={18} radius={6} />
       </View>
-      <View className="items-end gap-2">
-        <SkeletonBlock width={40} height={12} />
-        <SkeletonBlock width={64} height={36} radius={12} />
-        <SkeletonBlock width={64} height={36} radius={12} />
+
+      {/* Divider */}
+      <View className="mt-3.5 border-t border-[#EEF1F6] pt-3">
+        <SkeletonBlock width="70%" height={14} />
+      </View>
+
+      {/* Action buttons row */}
+      <View className="mt-3 flex-row gap-2.5">
+        <SkeletonBlock height={38} radius={8} className="flex-1" />
+        <SkeletonBlock height={38} radius={8} className="flex-1" />
       </View>
     </View>
   );

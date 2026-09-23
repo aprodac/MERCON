@@ -1,4 +1,5 @@
 import React from 'react';
+import * as Haptics from 'expo-haptics';
 import { SortDropdown as BaseSortDropdown, type SortOption } from '@/shared/components';
 import type { DriverSortOption } from '../types';
 
@@ -19,5 +20,10 @@ interface SortDropdownProps {
 
 /** Driver sort options, rendered by the shared dropdown. */
 export function SortDropdown({ value, onChange, className }: SortDropdownProps) {
-  return <BaseSortDropdown value={value} options={OPTIONS} onChange={onChange} className={className} />;
+  const handleChange = (val: DriverSortOption) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    onChange(val);
+  };
+
+  return <BaseSortDropdown value={value} options={OPTIONS} onChange={handleChange} className={className} />;
 }

@@ -44,6 +44,12 @@ export interface DriverListItem {
   assignedVehicle: DriverListVehicle | null;
   /** All-time trip count from GET /reports/drivers — null while that join hasn't resolved yet. */
   totalTrips: number | null;
+  /** Monthly payout for current calendar month from GET /reports/drivers — null while query hasn't resolved yet. */
+  monthlyPayout: number | null;
+  /** Nearest document expiry date ISO string from GET /reports/drivers — null if no document expiry recorded. */
+  nearestDocExpiry: string | null;
+  /** Whole days until nearest document expires; negative once expired, null when no document expiry is recorded. */
+  docDaysLeft: number | null;
   /**
    * The backend has no driver rating field (only `ai_risk_score`, a
    * different metric) — always null until one exists. DriverRating renders

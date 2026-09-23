@@ -5,11 +5,12 @@
  * The bottom tab bar isn't rendered by this screen: it's mounted once, above
  * the route stack, in src/app/_layout.tsx (`<OperatorBottomNav />`).
  */
-import React, { useState } from 'react';
-import { ActivityIndicator, FlatList, Linking, RefreshControl, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { FlatList, Linking, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Users } from 'lucide-react-native';
+import { Users, X } from 'lucide-react-native';
+import { Colors } from '@/theme/tokens';
 
 import { SearchBar } from '@/features/dashboard/components';
 import { EmptyState, ErrorState } from '@/shared/components';
@@ -29,24 +30,32 @@ import type { DriverListItem } from '../types';
 export default function DriversScreen() {
   const router = useRouter();
   const [filterVisible, setFilterVisible] = useState(false);
+  const [page, setPage] = useState(1);
 
   const { query, debouncedQuery, setQuery } = useDriverSearch();
   const { status, setStatus } = useDriverFilters();
   const { sort, setSort } = useDriverSorting();
 
+  // Reset to page 1 whenever search query or status filter changes
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQuery, status]);
+
   const {
     drivers,
     total,
-    page,
+    page: currentPage,
     totalPages,
     loading,
     error,
     refresh,
     isRefreshing,
-    fetchNextPage,
+    isFetching,
     hasNextPage,
-    isFetchingNextPage,
-  } = useDrivers({ search: debouncedQuery, status, sort });
+    hasPrevPage,
+  } = useDrivers({ search: debouncedQuery, status, sort, page });
+
+  const isFiltered = Boolean(debouncedQuery || status);
 
   const openDriver = (driver: DriverListItem) => {
     router.push({ pathname: '/operator/driver-details', params: { id: driver.id } });
@@ -67,13 +76,32 @@ export default function DriversScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 110 }}
           ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
-          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor="#FA634E" />}
-          onEndReachedThreshold={0.4}
-          onEndReached={() => { if (hasNextPage) fetchNextPage(); }}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={Colors.primary} />}
           ListHeaderComponent={
             <View className="gap-4 pb-3">
               <DriverStatsSection />
-              <SearchBar value={query} onChangeText={setQuery} placeholder="Search drivers by name or phone…" />
+              <SearchBar
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search drivers by name or phone…"
+                isLoading={isFetching && !isRefreshing}
+              />
+              {status !== null && (
+                <View className="flex-row items-center">
+                  <TouchableOpacity
+                    onPress={() => setStatus(null)}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Clear ${status} status filter`}
+                    className="flex-row items-center gap-1.5 rounded-full bg-[#FFF0EB] px-3 py-1 border border-[#FDE3DF]"
+                  >
+                    <Text style={{ color: Colors.primary }} className="text-[12px] font-bold">
+                      Status: {status === 'OnTrip' ? 'On Trip' : status === 'OffDuty' ? 'Offline' : status}
+                    </Text>
+                    <X size={12} color={Colors.primary} strokeWidth={2.5} />
+                  </TouchableOpacity>
+                </View>
+              )}
               <DriversListHeader total={total} sort={sort} onSortChange={setSort} />
             </View>
           }
@@ -92,19 +120,33 @@ export default function DriversScreen() {
                 <SkeletonDriverCard />
                 <SkeletonDriverCard />
               </View>
+            ) : isFiltered ? (
+              <EmptyState
+                title={debouncedQuery ? `No drivers match "${debouncedQuery}"` : 'No matching drivers'}
+                subtitle="Try adjusting your search query or status filter."
+                Icon={Users}
+                className="mt-8"
+              />
             ) : (
-              <EmptyState title="No drivers found" subtitle="Try a different search or filter." Icon={Users} className="mt-8" />
+              <EmptyState
+                title="No drivers registered"
+                subtitle="No driver records have been added to the fleet yet."
+                Icon={Users}
+                className="mt-8"
+              />
             )
           }
           ListFooterComponent={
             <DriverPagination
               currentCount={drivers.length}
               totalCount={total}
-              page={page}
+              page={currentPage}
               totalPages={totalPages}
+              hasPrevPage={hasPrevPage}
               hasNextPage={hasNextPage}
-              isFetchingNextPage={isFetchingNextPage}
-              onLoadNext={fetchNextPage}
+              isFetching={isFetching}
+              onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
+              onNextPage={() => setPage((p) => Math.min(totalPages, p + 1))}
             />
           }
         />
@@ -119,3 +161,4 @@ export default function DriversScreen() {
     </SafeAreaView>
   );
 }
+

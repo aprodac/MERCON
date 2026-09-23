@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { Plus, Search, SlidersHorizontal, X } from 'lucide-react-native';
+import { Menu, Plus, Search, SlidersHorizontal, X } from 'lucide-react-native';
 import { IconButton } from '@/features/dashboard/components';
 import { Colors } from '@/theme/tokens';
 import { CUSTOMER_STATUS_FILTERS } from '../hooks/useCustomerFilters';
@@ -20,6 +20,7 @@ interface CustomersHeaderProps {
   /** Hidden entirely when the signed-in role cannot create customers. */
   canCreate: boolean;
   onAddCustomer: () => void;
+  onMenuPress?: () => void;
 }
 
 /**
@@ -37,6 +38,7 @@ export function CustomersHeader({
   onStatusChange,
   canCreate,
   onAddCustomer,
+  onMenuPress,
 }: CustomersHeaderProps) {
   return (
     <View className="border-b border-gray-100 bg-white px-4 pb-4 pt-3">
@@ -52,6 +54,7 @@ export function CustomersHeader({
         <View className="flex-row gap-2.5">
           <IconButton Icon={Search} onPress={onToggleSearch} elevated />
           <IconButton Icon={SlidersHorizontal} onPress={onToggleFilters} badge={status !== 'all'} elevated />
+          {onMenuPress && <IconButton Icon={Menu} onPress={onMenuPress} elevated />}
         </View>
       </View>
 

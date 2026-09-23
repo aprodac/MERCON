@@ -32,6 +32,8 @@ export interface RawDriverListResponse {
 export interface DriverTripCount {
   id: string;
   total_trips: number;
+  monthly_payout?: number;
+  nearest_doc_expiry?: string | null;
 }
 
 export const driversApi = {
@@ -51,5 +53,26 @@ export const driversApi = {
   async getDriverTripCounts(): Promise<DriverTripCount[]> {
     const { data } = await api.get('/reports/drivers', { params: { per_page: 200 } });
     return (data.data ?? []) as DriverTripCount[];
+  },
+
+  /** Database-aggregated driver counts across all fleet drivers. */
+  async getDriverStats(): Promise<{
+    totalDrivers: number;
+    online: number;
+    onTrip: number;
+    offline: number;
+    onLeave: number;
+    inactive: number;
+  }> {
+    const { data } = await api.get('/drivers/stats');
+    const res = data.data ?? {};
+    return {
+      totalDrivers: res.total ?? 0,
+      online: res.available ?? 0,
+      onTrip: res.on_trip ?? 0,
+      offline: res.off_duty ?? 0,
+      onLeave: 0,
+      inactive: res.inactive ?? 0,
+    };
   },
 };

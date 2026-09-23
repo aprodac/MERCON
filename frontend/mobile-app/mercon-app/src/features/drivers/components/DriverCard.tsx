@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
-import { Truck, Navigation, TriangleAlert } from 'lucide-react-native';
+import { Truck, Navigation, TriangleAlert, FileText, Wallet } from 'lucide-react-native';
 import { Colors, Radius, Shadows, Spacing } from '@/theme/tokens';
 import { DriverAvatar } from './DriverAvatar';
 import { DriverStatusBadge } from './DriverStatusBadge';
@@ -22,17 +22,24 @@ export function DriverCard({ driver, onCall, onTrack, onView, className }: Drive
   const onTrip = driver.status === 'OnTrip' && !!driver.activeTrip;
   const licenseExpired = driver.licenseDaysLeft !== null && driver.licenseDaysLeft < 0;
   const licenseExpiringSoon = driver.licenseDaysLeft !== null && !licenseExpired && driver.licenseDaysLeft <= EXPIRY_SOON_DAYS;
+  const docExpired = driver.docDaysLeft !== null && driver.docDaysLeft < 0;
+  const docExpiringSoon = driver.docDaysLeft !== null && !docExpired && driver.docDaysLeft <= EXPIRY_SOON_DAYS;
   const vehiclePlate = driver.activeTrip?.vehiclePlate ?? driver.assignedVehicle?.plateNumber ?? null;
+  const name = driverFullName(driver);
+
+  const payoutText = driver.monthlyPayout !== null
+    ? `SAR ${driver.monthlyPayout.toLocaleString('en-US')}`
+    : 'SAR 0';
 
   return (
-    <View
+    <TouchableOpacity
+      activeOpacity={onView ? 0.9 : 1}
+      onPress={onView ? () => onView(driver) : undefined}
       className={`bg-white p-4 ${className ?? ''}`}
       style={{ borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.coolGray, ...Shadows.sm }}
     >
-      {/* Header — avatar, name + status/phone, total trips */}
-      <TouchableOpacity
-        activeOpacity={onView ? 0.7 : 1}
-        onPress={onView ? () => onView(driver) : undefined}
+      {/* Header — avatar, name + status/phone/payout, total trips */}
+      <View
         className="flex-row items-center"
         style={{ gap: Spacing.md }}
       >
@@ -45,7 +52,7 @@ export function DriverCard({ driver, onCall, onTrack, onView, className }: Drive
 
         <View className="flex-1" style={{ gap: 4 }}>
           <Text numberOfLines={1} style={{ color: Colors.charcoal }} className="text-[16px] font-bold">
-            {driverFullName(driver)}
+            {name}
           </Text>
           <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
             <DriverStatusBadge status={driver.status} />
@@ -55,12 +62,18 @@ export function DriverCard({ driver, onCall, onTrack, onView, className }: Drive
               </Text>
             )}
           </View>
+          <View className="flex-row items-center" style={{ gap: 4 }}>
+            <Wallet size={12} color={Colors.primary} strokeWidth={2} />
+            <Text numberOfLines={1} style={{ color: Colors.gray600 }} className="text-[12px] font-semibold">
+              Payout (Month): <Text style={{ color: Colors.charcoal, fontWeight: '700' }}>{payoutText}</Text>
+            </Text>
+          </View>
         </View>
 
         {driver.totalTrips !== null && <DriverTrips totalTrips={driver.totalTrips} />}
-      </TouchableOpacity>
+      </View>
 
-      {/* Operational details — vehicle assignment + (only when it matters) license expiry */}
+      {/* Operational details — vehicle assignment + license & doc expiry */}
       <View style={{ marginTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.coolGray, paddingTop: Spacing.sm, gap: Spacing.xs }}>
         {onTrip && driver.activeTrip ? (
           <TouchableOpacity
@@ -105,11 +118,35 @@ export function DriverCard({ driver, onCall, onTrack, onView, className }: Drive
             </Text>
           </View>
         )}
+
+        {docExpired || docExpiringSoon ? (
+          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
+            <TriangleAlert size={13} color={docExpired ? Colors.danger : Colors.warning} strokeWidth={2} />
+            <Text
+              numberOfLines={1}
+              style={{ color: docExpired ? Colors.danger : Colors.warning }}
+              className="flex-1 text-[12px] font-semibold"
+            >
+              Document {formatDaysLeft(driver.docDaysLeft)}
+            </Text>
+          </View>
+        ) : (
+          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
+            <FileText size={13} color={Colors.gray500} strokeWidth={2} />
+            <Text numberOfLines={1} style={{ color: Colors.gray600 }} className="flex-1 text-[12px] font-medium">
+              Document Expiry:{' '}
+              {driver.docDaysLeft !== null
+                ? `${driver.docDaysLeft} days left`
+                : 'No record'}
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Actions */}
       <View style={{ marginTop: Spacing.sm }}>
         <DriverActionGroup
+          driverName={name}
           onTrip={onTrip}
           canCall={!!driver.phone}
           onCall={onCall ? () => onCall(driver) : undefined}
@@ -117,6 +154,6 @@ export function DriverCard({ driver, onCall, onTrack, onView, className }: Drive
           onView={onView ? () => onView(driver) : undefined}
         />
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }

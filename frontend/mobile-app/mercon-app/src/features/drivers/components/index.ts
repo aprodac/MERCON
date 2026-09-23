@@ -1,5 +1,4 @@
 export * from './DriversHeader';
-export * from './SearchButton';
 export * from './FilterButton';
 export * from './DriverStatsSection';
 export * from './DriverStatCard';

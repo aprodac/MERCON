@@ -1,8 +1,9 @@
 import React from 'react';
 import { Image, Text, View, TouchableOpacity, Alert } from 'react-native';
-import { LogOut } from 'lucide-react-native';
+import { LogOut, Menu } from 'lucide-react-native';
 import { NotificationButton } from './NotificationButton';
 import { useAuth } from '@/lib/auth-context';
+import { Colors } from '@/theme/tokens';
 
 interface AppHeaderProps {
   logoSource: number;
@@ -12,11 +13,12 @@ interface AppHeaderProps {
   role?: string | null;
   unreadNotifications: number;
   onNotificationPress?: () => void;
+  onMenuPress?: () => void;
   className?: string;
 }
 
 export function AppHeader({
-  logoSource, logoSize = 48, greeting, userName, role, unreadNotifications, onNotificationPress, className,
+  logoSource, logoSize = 48, greeting, userName, role, unreadNotifications, onNotificationPress, onMenuPress, className,
 }: AppHeaderProps) {
   const { signOut } = useAuth();
 
@@ -53,6 +55,17 @@ export function AppHeader({
 
       <View className="flex-row items-center gap-2">
         <NotificationButton unreadCount={unreadNotifications} onPress={onNotificationPress} />
+        {onMenuPress && (
+          <TouchableOpacity
+            onPress={onMenuPress}
+            activeOpacity={0.8}
+            accessibilityRole="button"
+            accessibilityLabel="Open sidebar menu"
+            className="h-10 w-10 items-center justify-center rounded-full bg-gray-100"
+          >
+            <Menu size={20} color={Colors.charcoal} strokeWidth={2.2} />
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           onPress={handleSignOut}
           activeOpacity={0.8}

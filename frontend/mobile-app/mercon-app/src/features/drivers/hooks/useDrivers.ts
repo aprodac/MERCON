@@ -4,16 +4,17 @@ import { driversApi } from '../api/driversApi';
 import { sortDrivers, toDriverListItem, tripCountMap } from '../services/driversService';
 import type { DriverSortOption, DriverStatus } from '../types';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 10;
 
 interface UseDriversParams {
   search?: string;
   status?: DriverStatus | null;
   sort?: DriverSortOption;
+  page?: number;
 }
 
-/** Paginated (infinite-scroll) driver list — search/status reload from the backend, sort is applied client-side (see driversService.sortDrivers). */
-export function useDrivers({ search = '', status = null, sort = 'name' }: UseDriversParams) {
+/** Paginated driver list (10 per page) — search/status/page reload from backend. */
+export function useDrivers({ search = '', status = null, sort = 'name', page = 1 }: UseDriversParams) {
   const tripCounts = useQuery({
     queryKey: ['drivers', 'trip-counts'],
     queryFn: driversApi.getDriverTripCounts,
@@ -21,32 +22,30 @@ export function useDrivers({ search = '', status = null, sort = 'name' }: UseDri
   });
   const tripCountById = useMemo(() => tripCountMap(tripCounts.data ?? []), [tripCounts.data]);
 
-  const list = useInfiniteQuery({
-    queryKey: ['drivers', 'list', search, status],
-    queryFn: ({ pageParam }) => driversApi.getDrivers({ page: pageParam, per_page: PAGE_SIZE, search, status }),
-    initialPageParam: 1,
-    getNextPageParam: (lastPage) => (lastPage.meta.page < lastPage.meta.total_pages ? lastPage.meta.page + 1 : undefined),
+  const query = useQuery({
+    queryKey: ['drivers', 'list', search, status, page],
+    queryFn: () => driversApi.getDrivers({ page, per_page: PAGE_SIZE, search, status }),
   });
 
-  const drivers = useMemo(() => {
-    const flat = (list.data?.pages ?? []).flatMap((page) => page.data.map((raw) => toDriverListItem(raw, tripCountById)));
-    return sortDrivers(flat, sort);
-  }, [list.data, tripCountById, sort]);
+  const rawDrivers = query.data?.data ?? [];
+  const meta = query.data?.meta ?? { page: 1, per_page: 10, total: 0, total_pages: 1 };
 
-  const lastPageMeta = list.data?.pages[list.data.pages.length - 1]?.meta;
-  const firstPageMeta = list.data?.pages[0]?.meta;
+  const drivers = useMemo(() => {
+    const list = rawDrivers.map((raw) => toDriverListItem(raw, tripCountById));
+    return sortDrivers(list, sort);
+  }, [rawDrivers, tripCountById, sort]);
 
   return {
     drivers,
-    total: firstPageMeta?.total ?? 0,
-    page: lastPageMeta?.page ?? 1,
-    totalPages: firstPageMeta?.total_pages ?? 1,
-    loading: list.isLoading,
-    error: list.isError ? 'Could not load drivers.' : null,
-    refresh: list.refetch,
-    isRefreshing: list.isRefetching && !list.isFetchingNextPage,
-    fetchNextPage: list.fetchNextPage,
-    hasNextPage: !!list.hasNextPage,
-    isFetchingNextPage: list.isFetchingNextPage,
+    total: meta.total,
+    page: meta.page,
+    totalPages: meta.total_pages,
+    loading: query.isLoading,
+    error: query.isError ? 'Could not load drivers.' : null,
+    refresh: query.refetch,
+    isRefreshing: query.isRefetching,
+    isFetching: query.isFetching,
+    hasNextPage: meta.page < meta.total_pages,
+    hasPrevPage: meta.page > 1,
   };
 }

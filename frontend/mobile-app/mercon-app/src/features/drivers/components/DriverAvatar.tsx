@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Image, Text, View, type ImageSourcePropType } from 'react-native';
 import { Colors } from '@/theme/tokens';
+import { SkeletonBlock } from '@/shared/components';
 import { DriverStatusIndicator } from './DriverStatusIndicator';
 import type { DriverDisplayStatus } from '../types';
 
@@ -26,9 +27,10 @@ function resolveAvatarSource(avatarUrl?: string | null, imageUri?: ImageSourcePr
   return { uri: url.startsWith('/') ? `https://dev.mercon.tech${url}` : `https://dev.mercon.tech/${url}` };
 }
 
-/** Purely circular driver avatar component with status dot indicator. */
+/** Purely circular driver avatar component with image loading skeleton & status dot indicator. */
 export function DriverAvatar({ initials, avatarUrl, imageUri, status, size = 52, className }: DriverAvatarProps) {
   const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const source = !hasError ? resolveAvatarSource(avatarUrl, imageUri) : null;
   const halfSize = Math.round(size / 2);
 
@@ -39,12 +41,24 @@ export function DriverAvatar({ initials, avatarUrl, imageUri, status, size = 52,
         className="overflow-hidden items-center justify-center border"
       >
         {source ? (
-          <Image
-            source={source}
-            resizeMode="cover"
-            onError={() => setHasError(true)}
-            style={{ width: size, height: size, borderRadius: halfSize }}
-          />
+          <>
+            {isLoading && (
+              <View className="absolute inset-0 z-10">
+                <SkeletonBlock width={size} height={size} radius={halfSize} />
+              </View>
+            )}
+            <Image
+              source={source}
+              resizeMode="cover"
+              onLoadStart={() => setIsLoading(true)}
+              onLoadEnd={() => setIsLoading(false)}
+              onError={() => {
+                setHasError(true);
+                setIsLoading(false);
+              }}
+              style={{ width: size, height: size, borderRadius: halfSize }}
+            />
+          </>
         ) : (
           <Text style={{ fontSize: Math.round(size * 0.38) }} className="font-bold text-white tracking-wide text-center">
             {initials}
@@ -52,7 +66,7 @@ export function DriverAvatar({ initials, avatarUrl, imageUri, status, size = 52,
         )}
       </View>
       {status && (
-        <View className="absolute bottom-0 right-0 z-10">
+        <View className="absolute bottom-0 right-0 z-20">
           <DriverStatusIndicator status={status} size={Math.round(size * 0.28)} />
         </View>
       )}
