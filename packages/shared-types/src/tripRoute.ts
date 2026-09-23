@@ -98,8 +98,6 @@ export const DRIVER_WORKFLOW_STATES = [
 export type DriverWorkflowState = (typeof DRIVER_WORKFLOW_STATES)[number];
 
 export const ROUTE_EDITABLE_STATUSES: string[] = ['Draft', 'Scheduled'];
-/** @deprecated Legacy backward compatibility fallback. Prefer ROUTE_EDITABLE_STATUSES. */
-export const ROUTE_LOCKED_STATUSES: string[] = ['Loading', 'InTransit', 'Delayed', 'Completed', 'Invoiced', 'Cancelled'];
 export const STOPS_FROZEN_IN: string[] = ['Completed', 'Invoiced', 'Cancelled'];
 
 export function isRouteEditable(status?: string | null): boolean {
