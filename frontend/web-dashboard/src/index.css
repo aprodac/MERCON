@@ -101,6 +101,35 @@
   --sidebar-accent-foreground:        #FA634E;
   --sidebar-border:        rgba(238, 241, 246, 0.12);
   --sidebar-ring:        #FA634E;
+
+  /* ─── Finance Tokens ──────────────────────────────────────────────────────── */
+  --fin-canvas:         #EEF1F6;
+  --fin-surface:        #FFFFFF;
+  --fin-surface-sunken: #F7F8FA;
+  --fin-surface-header: #FAFAFB;
+  --fin-row-hover:      #FAFAFB;
+  --fin-row-selected:   #FFF8F6;
+  --fin-border:         rgba(0, 0, 0, 0.06);
+  --fin-border-strong:  rgba(0, 0, 0, 0.08);
+  --fin-text:           #111111;
+  --fin-text-2:         #6E6E80;
+  --fin-text-3:         #757583;
+  --fin-brand:          #FA634E;
+  --fin-brand-hover:    #EE553F;
+  --fin-brand-tint:     #FFF4F2;
+  --fin-charcoal:       #3E3C3D;
+  --fin-positive:       #15803D;
+  --fin-positive-bg:    #ECFDF3;
+  --fin-negative:       #C2410C;
+  --fin-negative-bg:    #FEF1EE;
+  --fin-info:           #1D4ED8;
+  --fin-info-bg:        #EEF3FF;
+  --fin-warning:        #B45309;
+  --fin-warning-bg:     #FFF6E5;
+  --fin-neutral:        #4B4B57;
+  --fin-neutral-bg:     #F1F2F5;
+  --fin-muted:          #6E6E80;
+  --fin-muted-bg:       #F4F4F6;
 }
 
 /* ─── Page Accent Color Tokens ────────────────────────────────────────────── */
@@ -441,6 +470,40 @@ body {
   --sidebar-accent-foreground:        oklch(0.985 0 0);
   --sidebar-border:        oklch(1 0 0 / 10%);
   --sidebar-ring:        oklch(0.556 0 0);
+
+  /* ─── Finance Dark Tokens ─────────────────────────────────────────────────── */
+  --fin-canvas:         #020617;
+  --fin-surface:        #0f172a;
+  --fin-surface-sunken: rgba(15, 23, 42, 0.5);
+  --fin-surface-header: rgba(30, 41, 59, 0.4);
+  --fin-row-hover:      rgba(30, 41, 59, 0.4);
+  --fin-row-selected:   rgba(250, 99, 78, 0.08);
+  --fin-border:         #1e293b;
+  --fin-border-strong:  #334155;
+  --fin-text:           #f1f5f9;
+  --fin-text-2:         #94a3b8;
+  --fin-text-3:         #64748b;
+  --fin-brand:          #FA634E;
+  --fin-brand-hover:    #EE553F;
+  --fin-brand-tint:     rgba(250, 99, 78, 0.10);
+  --fin-charcoal:       #2D2B2C;
+  --fin-positive:       #4ade80;
+  --fin-positive-bg:    rgba(6, 78, 59, 0.4);
+  --fin-negative:       #fb923c;
+  --fin-negative-bg:    rgba(67, 20, 7, 0.4);
+  --fin-info:           #93c5fd;
+  --fin-info-bg:        rgba(23, 37, 84, 0.4);
+  --fin-warning:        #fcd34d;
+  --fin-warning-bg:     rgba(69, 26, 3, 0.4);
+  --fin-neutral:        #cbd5e1;
+  --fin-neutral-bg:     #1e293b;
+  --fin-muted:          #94a3b8;
+  --fin-muted-bg:       rgba(30, 41, 59, 0.6);
+}
+
+.fin-num {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 @layer base {
