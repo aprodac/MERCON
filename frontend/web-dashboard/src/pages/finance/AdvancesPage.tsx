@@ -47,10 +47,10 @@ export default function AdvancesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // URL state
+  const categoryParam = (searchParams.get('category') as 'all' | 'Customer' | 'Provider' | 'Employee') || 'all';
   const currentTab = (searchParams.get('tab') as AdvanceStatus | 'all') || 'all';
   const searchTerm = searchParams.get('search') || '';
   const directionParam = searchParams.get('direction') || 'all';
-  const partyTypeParam = searchParams.get('party_type') || ''; // comma-separated
   const groupByParty = searchParams.get('group_by_party') === 'true';
 
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -64,6 +64,19 @@ export default function AdvancesPage() {
   });
 
   const advances: Advance[] = advancesRes?.data || [];
+
+  // Category counts
+  const categoryCounts = useMemo(() => {
+    let Customer = 0;
+    let Provider = 0;
+    let Employee = 0;
+    for (const a of advances) {
+      if (a.party_type === 'Customer') Customer++;
+      else if (a.party_type === 'Provider') Provider++;
+      else if (a.party_type === 'Employee') Employee++;
+    }
+    return { Customer, Provider, Employee };
+  }, [advances]);
 
   // Summary strip computations
   const summaryMetrics = useMemo(() => {
@@ -93,30 +106,31 @@ export default function AdvancesPage() {
     return { customerTotal, customerCount, providerTotal, providerCount, employeeTotal, employeeCount };
   }, [advances]);
 
-  // Tab counts
+  // Status sub-tab counts (scoped by active category)
   const tabCounts = useMemo(() => {
-    const counts = { all: advances.length, Open: 0, PartiallyApplied: 0, FullyApplied: 0, Void: 0 };
-    for (const a of advances) {
+    const categoryFiltered = advances.filter(
+      (a) => categoryParam === 'all' || a.party_type === categoryParam
+    );
+    const counts = { all: categoryFiltered.length, Open: 0, PartiallyApplied: 0, FullyApplied: 0, Void: 0 };
+    for (const a of categoryFiltered) {
       if (counts[a.status] !== undefined) {
         counts[a.status]++;
       }
     }
     return counts;
-  }, [advances]);
+  }, [advances, categoryParam]);
 
   // Filtering
-  const selectedPartyTypes = partyTypeParam ? partyTypeParam.split(',') : [];
-
   const filteredAdvances = useMemo(() => {
     return advances.filter((adv) => {
-      // Tab filter
+      // Primary category tab filter
+      if (categoryParam !== 'all' && adv.party_type !== categoryParam) return false;
+
+      // Status sub-tab filter
       if (currentTab !== 'all' && adv.status !== currentTab) return false;
 
       // Direction filter
       if (directionParam !== 'all' && adv.direction !== directionParam) return false;
-
-      // Party Type multi-select
-      if (selectedPartyTypes.length > 0 && !selectedPartyTypes.includes(adv.party_type)) return false;
 
       // Search term (ref, memo, party name)
       if (searchTerm) {
@@ -133,7 +147,7 @@ export default function AdvancesPage() {
 
       return true;
     });
-  }, [advances, currentTab, directionParam, selectedPartyTypes, searchTerm]);
+  }, [advances, categoryParam, currentTab, directionParam, searchTerm]);
 
   // Grouping by party
   const groupedAdvances = useMemo(() => {
@@ -169,6 +183,13 @@ export default function AdvancesPage() {
     },
   });
 
+  const handleCategoryChange = (cat: 'all' | 'Customer' | 'Provider' | 'Employee') => {
+    const next = new URLSearchParams(searchParams);
+    if (cat === 'all') next.delete('category');
+    else next.set('category', cat);
+    setSearchParams(next);
+  };
+
   const handleTabChange = (tab: string) => {
     const next = new URLSearchParams(searchParams);
     if (tab === 'all') next.delete('tab');
@@ -187,19 +208,6 @@ export default function AdvancesPage() {
     const next = new URLSearchParams(searchParams);
     if (dir === 'all') next.delete('direction');
     else next.set('direction', dir);
-    setSearchParams(next);
-  };
-
-  const handlePartyTypeToggle = (type: string) => {
-    let list = [...selectedPartyTypes];
-    if (list.includes(type)) {
-      list = list.filter((t) => t !== type);
-    } else {
-      list.push(type);
-    }
-    const next = new URLSearchParams(searchParams);
-    if (list.length > 0) next.set('party_type', list.join(','));
-    else next.delete('party_type');
     setSearchParams(next);
   };
 
@@ -431,32 +439,98 @@ export default function AdvancesPage() {
           }
         />
 
-        {/* Summary Strip (3 cells) */}
+        {/* Primary Category Tabs */}
+        <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => handleCategoryChange('all')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border ${
+              categoryParam === 'all'
+                ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            <span>All Advances</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold">
+              {advances.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleCategoryChange('Customer')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border ${
+              categoryParam === 'Customer'
+                ? 'bg-sky-600 text-white border-transparent shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-sky-700 dark:text-sky-300 border-sky-200/80 dark:border-sky-900/60 hover:bg-sky-50/50'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-sky-400" />
+            <span>Customer Advances (Money in)</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-200 font-semibold">
+              {categoryCounts.Customer}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleCategoryChange('Provider')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border ${
+              categoryParam === 'Provider'
+                ? 'bg-purple-600 text-white border-transparent shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 border-purple-200/80 dark:border-purple-900/60 hover:bg-purple-50/50'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-purple-400" />
+            <span>Provider Advances (Money out)</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-200 font-semibold">
+              {categoryCounts.Provider}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleCategoryChange('Employee')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border ${
+              categoryParam === 'Employee'
+                ? 'bg-teal-600 text-white border-transparent shadow-xs'
+                : 'bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-300 border-teal-200/80 dark:border-teal-900/60 hover:bg-teal-50/50'
+            }`}
+          >
+            <span className="w-2 h-2 rounded-full bg-teal-400" />
+            <span>Employee Advances (Money out)</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-200 font-semibold">
+              {categoryCounts.Employee}
+            </span>
+          </button>
+        </div>
+
+        {/* Summary Strip */}
         <SummaryStrip
           items={[
             {
               label: 'Customer advances held',
               value: summaryMetrics.customerTotal,
               sub: `${summaryMetrics.customerCount} advances · owed back or to be applied`,
-              tone: 'default',
+              tone: categoryParam === 'Customer' ? 'positive' : 'default',
             },
             {
               label: 'Paid to providers',
               value: summaryMetrics.providerTotal,
               sub: `${summaryMetrics.providerCount} advances`,
-              tone: 'default',
+              tone: categoryParam === 'Provider' ? 'positive' : 'default',
             },
             {
               label: 'Employee advances',
               value: summaryMetrics.employeeTotal,
               sub: `${summaryMetrics.employeeCount} advances`,
-              tone: 'default',
+              tone: categoryParam === 'Employee' ? 'positive' : 'default',
             },
           ]}
           isLoading={isLoading}
         />
 
-        {/* Status Tabs */}
+        {/* Status Sub-Tabs */}
         <StatusTabs
           activeTab={currentTab}
           onTabChange={handleTabChange}
@@ -478,28 +552,6 @@ export default function AdvancesPage() {
               searchPlaceholder="Search ref, memo, party name..."
               rightSlot={
                 <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
-                  {/* Type Chips */}
-                  {(['Customer', 'Provider', 'Employee'] as const).map((type) => {
-                    const active = selectedPartyTypes.includes(type);
-                    const tint = PARTY_TINTS[type];
-
-                    return (
-                      <button
-                        key={type}
-                        type="button"
-                        onClick={() => handlePartyTypeToggle(type)}
-                        className={`h-7 px-2.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-colors border ${
-                          active
-                            ? `${tint.bg} ${tint.text} border-transparent ring-1 ring-inset ring-current`
-                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-                        }`}
-                      >
-                        <span className={`w-1.5 h-1.5 rounded-full ${tint.dot}`} />
-                        <span>{type}</span>
-                      </button>
-                    );
-                  })}
-
                   {/* Direction filter */}
                   <select
                     value={directionParam}
