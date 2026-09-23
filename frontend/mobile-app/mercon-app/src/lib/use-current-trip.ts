@@ -22,13 +22,18 @@ export function useCurrentTrip() {
   const [error, setError] = useState<string | null>(null);
 
   const setTrip = useCallback((newTrip: MobileTrip | null | ((prev: MobileTrip | null) => MobileTrip | null)) => {
+    const toCache = (next: MobileTrip | null) =>
+      !next || next.status === 'Completed' || next.status === 'Invoiced' || next.status === 'Cancelled' || next.driver_workflow_state === 'COMPLETED'
+        ? null
+        : next;
+    // Update the shared cache right away, not inside the state updater: a screen
+    // that navigates immediately after setTrip (e.g. Stop → Navigate) must hand
+    // the NEXT screen the new trip. The updater runs later, so the next screen
+    // read the stale trip ("still at stop") and bounced back to the stop screen.
+    if (typeof newTrip !== 'function') cachedTrip = toCache(newTrip);
     setTripState((prev) => {
       const next = typeof newTrip === 'function' ? newTrip(prev) : newTrip;
-      if (!next || next.status === 'Completed' || next.status === 'Invoiced' || next.status === 'Cancelled' || next.driver_workflow_state === 'COMPLETED') {
-        cachedTrip = null;
-      } else {
-        cachedTrip = next;
-      }
+      cachedTrip = toCache(next);
       return next;
     });
   }, []);

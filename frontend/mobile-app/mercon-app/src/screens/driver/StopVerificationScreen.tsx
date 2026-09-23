@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   StatusBar, Image, Alert, ActivityIndicator, Platform,
@@ -87,6 +87,9 @@ export default function StopVerificationScreen() {
   const { trip, loading, refetch, setTrip } = useCurrentTrip();
 
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
+  // Photos of THIS stop already uploaded in this session (a retry after a
+  // partial upload failure only re-sends the rest, but they still count).
+  const uploadedCountRef = useRef(0);
   const [submitting, setSubmitting] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const [showDelayModal, setShowDelayModal] = useState(false);
@@ -164,8 +167,19 @@ export default function StopVerificationScreen() {
     savePhotosState(updated);
   };
 
+  const MIN_STOP_PHOTOS = 3;
+
   const handleCompleteStop = async () => {
-    if (!trip) return;
+    if (!trip || submitting) return;
+    // Same rule as loading/delivery: at least 3 photos per stop.
+    const totalPhotos = photos.filter((p) => !!p?.uri).length + uploadedCountRef.current;
+    if (totalPhotos < MIN_STOP_PHOTOS) {
+      Alert.alert(
+        t('title_stop_photos_required', 'Stop Photos Required'),
+        `${t('msg_min_stop_photos', 'Please add at least 3 photos for this stop')} (${totalPhotos}/${MIN_STOP_PHOTOS}).`,
+      );
+      return;
+    }
     setSubmitting(true);
 
     try {
@@ -194,6 +208,7 @@ export default function StopVerificationScreen() {
           dbStopId
         );
         pending = pending.filter((x) => x !== p);
+        uploadedCountRef.current += 1;
         savePhotosState(pending);
       }
 
@@ -208,12 +223,18 @@ export default function StopVerificationScreen() {
       if (hasNextStop) {
         const nextIdx = parsedIndex + 1;
         const nextState = isReturnLeg ? `ARRIVED_AT_RETURN_STOP_${nextIdx}` : `ARRIVED_AT_STOP_${nextIdx}`;
-        await tripService.updateStatus(trip.id, 'InTransit', nextState, undefined, dbStopId);
+        // Update the app's copy of the trip too — screens read it, and a stale
+        // copy still says "at stop", which sent the driver back to this stop.
+        const updated = await tripService.updateStatus(trip.id, 'InTransit', nextState, undefined, dbStopId);
+        setTrip(updated);
+        uploadedCountRef.current = 0;
         router.replace({ pathname: '/trip/stop', params: { stopIndex: String(nextIdx), legIndex: isReturnLeg ? '1' : '0' } } as any);
       } else {
         // Proceed to Delivery / Return Delivery
         const nextState = isReturnLeg ? 'IN_TRANSIT_RETURN' : 'IN_TRANSIT';
-        await tripService.updateStatus(trip.id, 'InTransit', nextState, undefined, dbStopId);
+        const updated = await tripService.updateStatus(trip.id, 'InTransit', nextState, undefined, dbStopId);
+        setTrip(updated);
+        uploadedCountRef.current = 0;
         router.replace('/trip/navigate' as any);
       }
     } catch (e) {

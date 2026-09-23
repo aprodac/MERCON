@@ -222,6 +222,8 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
 
   // Modals (Return Loading & Delay)
   title_return_modal: { en: 'Delivery Completed!', ur: 'ڈلیوری مکمل ہو گئی!' },
+  title_stop_photos_required: { en: 'Stop Photos Required', ur: 'اسٹاپ کی تصاویر ضروری ہیں' },
+  msg_min_stop_photos: { en: 'Please add at least 3 photos for this stop', ur: 'اس اسٹاپ کے لیے کم از کم 3 تصاویر شامل کریں' },
   title_round_1_done: { en: 'Round 1 of 2 completed', ur: 'راؤنڈ 1 از 2 مکمل' },
   label_next_return_loading: { en: 'Next: return loading at {place}', ur: 'اگلا: {place} پر واپسی لوڈنگ' },
   action_start_round_2: { en: 'Start Round 2 of 2', ur: 'راؤنڈ 2 از 2 شروع کریں' },
