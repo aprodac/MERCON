@@ -10,10 +10,10 @@
         "./assets/*"
       ],
       "@mercon/shared-types": [
-        "../../packages/shared-types/src/index.ts"
+        "../../../packages/shared-types/src/index.ts"
       ],
       "@mercon/shared-types/*": [
-        "../../packages/shared-types/src/*"
+        "../../../packages/shared-types/src/*"
       ]
     }
   },
