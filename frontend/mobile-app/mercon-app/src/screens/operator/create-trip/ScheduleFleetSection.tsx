@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Switch } from 'react-native';
-import { Clock, Truck, Sparkles, UserPlus, Search, Check } from 'lucide-react-native';
+import { Clock, Truck, Sparkles, UserPlus, Search, Check, Calendar, ChevronDown, Plus, Minus } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography } from '../../../theme/tokens';
 import { Card } from '../../../components/Card';
 import { Input } from '../../../components/Input';
 import { StatusBadge } from '../../../components/Badge';
+import { AppModal } from '../../../components/common/AppModal';
 import { OperatorDriver, OperatorVehicle, OperatorThirdPartyProvider } from '../../../lib/operator';
 import { DriverAvatar, DRIVER_AVATAR_SIZES } from '../../../features/drivers/components/DriverAvatar';
 import { MonthlyCalendarSection } from './MonthlyCalendarSection';
@@ -171,13 +172,72 @@ export const ScheduleFleetSection: React.FC<ScheduleFleetSectionProps> = ({
   // Filter recommended drivers (Available status)
   const recommendedDrivers = drivers.filter((d) => (d.status || 'Available') === 'Available').slice(0, 4);
 
+  // State for picker modals
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showDurationPicker, setShowDurationPicker] = useState(false);
+
+  // Generate upcoming 14 days for Date Picker
+  const upcomingDates = useMemo(() => {
+    const items: Array<{ formatted: string; label: string; isToday: boolean }> = [];
+    const today = new Date();
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
+      const formatted = `${dd}/${mm}/${yyyy}`;
+      const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+      const monthName = d.toLocaleDateString('en-US', { month: 'short' });
+      const label =
+        i === 0
+          ? `Today (${dayName}, ${monthName} ${d.getDate()})`
+          : i === 1
+          ? `Tomorrow (${dayName}, ${monthName} ${d.getDate()})`
+          : `${dayName}, ${monthName} ${d.getDate()}`;
+      items.push({ formatted, label, isToday: i === 0 });
+    }
+    return items;
+  }, []);
+
+  const TIME_SLOTS = useMemo(
+    () => [
+      { value: '06:00', label: '06:00 AM (Early Morning)' },
+      { value: '07:00', label: '07:00 AM' },
+      { value: '08:00', label: '08:00 AM (Morning Peak)' },
+      { value: '09:00', label: '09:00 AM' },
+      { value: '10:00', label: '10:00 AM' },
+      { value: '11:00', label: '11:00 AM' },
+      { value: '12:00', label: '12:00 PM (Noon)' },
+      { value: '13:00', label: '01:00 PM' },
+      { value: '14:00', label: '02:00 PM (Afternoon)' },
+      { value: '15:00', label: '03:00 PM' },
+      { value: '16:00', label: '04:00 PM' },
+      { value: '17:00', label: '05:00 PM' },
+      { value: '18:00', label: '06:00 PM (Evening)' },
+      { value: '20:00', label: '08:00 PM (Night)' },
+      { value: '22:00', label: '10:00 PM' },
+    ],
+    []
+  );
+
+  const DURATION_PRESETS = useMemo(() => ['1.0', '2.0', '3.0', '4.0', '5.0', '6.0', '8.0', '10.0', '12.0', '16.0', '24.0'], []);
+
+  const handleStepDuration = (delta: number) => {
+    const current = parseFloat(estimatedHours) || 4.0;
+    const next = Math.max(0.5, current + delta);
+    const nextStr = next.toFixed(1);
+    setEstimatedHours(nextStr);
+    onCalculateAutoEta(date, time, nextStr);
+  };
+
   return (
     <View style={styles.container}>
       {/* Section 5: Departure Schedule & Auto-ETA */}
-      <Text style={styles.sectionTitle}>5. Departure & Schedule</Text>
-      <Card style={styles.card}>
-        <Text style={styles.fieldLabel}>Departure Presets</Text>
-        <View style={styles.presetChipsRow}>
+      <View style={styles.scheduleHeaderRow}>
+        <Text style={styles.sectionTitle}>5. Departure & Schedule</Text>
+        <View style={styles.headerPresetsRow}>
           <TouchableOpacity
             style={styles.touchPresetChip}
             onPress={() => {
@@ -200,52 +260,181 @@ export const ScheduleFleetSection: React.FC<ScheduleFleetSectionProps> = ({
             <Text style={styles.touchPresetText}>Tomorrow</Text>
           </TouchableOpacity>
         </View>
+      </View>
 
-        <View style={styles.inputsRow}>
-          <Input
-            label="Departure Date (DD/MM/YYYY)"
-            value={date}
-            onChangeText={(val) => {
-              setDate(val);
-              onCalculateAutoEta(val, time);
-            }}
-            placeholder="DD/MM/YYYY"
-            style={{ flex: 1 }}
-          />
-          <Input
-            label="Time (HH:MM)"
-            value={time}
-            onChangeText={(val) => {
-              setTime(val);
-              onCalculateAutoEta(date, val);
-            }}
-            placeholder="08:00"
-            style={{ flex: 1 }}
-          />
-        </View>
+      <Card style={styles.compactScheduleCard}>
+        <View style={styles.threeInputRow}>
+          {/* Date Picker Trigger */}
+          <View style={{ flex: 1.2 }}>
+            <Text style={styles.pickerFieldLabel}>Departure Date</Text>
+            <TouchableOpacity
+              style={styles.pickerTriggerBtn}
+              onPress={() => setShowDatePicker(true)}
+              activeOpacity={0.7}
+            >
+              <Calendar size={14} color={Colors.primary} />
+              <Text style={styles.pickerTriggerText} numberOfLines={1}>
+                {date || 'Select Date'}
+              </Text>
+              <ChevronDown size={14} color={Colors.gray400} />
+            </TouchableOpacity>
+          </View>
 
-        <View style={{ marginTop: Spacing.xs }}>
-          <Input
-            label="Estimated Transit Duration (Hours)"
-            value={estimatedHours}
-            onChangeText={(val) => {
-              setEstimatedHours(val);
-              onCalculateAutoEta(date, time, val);
-            }}
-            placeholder="e.g. 4.0"
-            keyboardType="numeric"
-          />
+          {/* Time Picker Trigger */}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pickerFieldLabel}>Time</Text>
+            <TouchableOpacity
+              style={styles.pickerTriggerBtn}
+              onPress={() => setShowTimePicker(true)}
+              activeOpacity={0.7}
+            >
+              <Clock size={14} color={Colors.primary} />
+              <Text style={styles.pickerTriggerText} numberOfLines={1}>
+                {time || '08:00'}
+              </Text>
+              <ChevronDown size={14} color={Colors.gray400} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Duration Stepper & Trigger */}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.pickerFieldLabel}>Duration (h)</Text>
+            <View style={styles.stepperContainer}>
+              <TouchableOpacity
+                style={styles.stepperBtn}
+                onPress={() => handleStepDuration(-0.5)}
+              >
+                <Minus size={12} color={Colors.gray700} />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.stepperValueBtn}
+                onPress={() => setShowDurationPicker(true)}
+              >
+                <Text style={styles.stepperValueText}>{estimatedHours || '4.0'}h</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.stepperBtn}
+                onPress={() => handleStepDuration(0.5)}
+              >
+                <Plus size={12} color={Colors.gray700} />
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
 
         {autoEtaDropoffDate && autoEtaDropoffTime && (
-          <View style={styles.etaBanner}>
-            <Clock size={16} color={Colors.primary} />
-            <Text style={styles.etaBannerText}>
-              Estimated Arrival: {autoEtaDropoffDate} at {autoEtaDropoffTime}
+          <View style={styles.etaBannerCompact}>
+            <Clock size={13} color={Colors.primary} />
+            <Text style={styles.etaBannerTextCompact}>
+              ETA: {autoEtaDropoffDate} @ {autoEtaDropoffTime}
             </Text>
           </View>
         )}
       </Card>
+
+      {/* Modal Pickers */}
+      <AppModal
+        visible={showDatePicker}
+        onClose={() => setShowDatePicker(false)}
+        type="dialog"
+        title="Select Departure Date"
+      >
+        <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+          {upcomingDates.map((item) => (
+            <TouchableOpacity
+              key={item.formatted}
+              style={[
+                styles.pickerListItem,
+                date === item.formatted && styles.pickerListItemActive,
+              ]}
+              onPress={() => {
+                setDate(item.formatted);
+                onCalculateAutoEta(item.formatted, time);
+                setShowDatePicker(false);
+              }}
+            >
+              <Calendar size={16} color={date === item.formatted ? Colors.primary : Colors.gray500} />
+              <Text
+                style={[
+                  styles.pickerListItemText,
+                  date === item.formatted && styles.pickerListItemTextActive,
+                ]}
+              >
+                {item.label}
+              </Text>
+              {date === item.formatted && <Check size={16} color={Colors.primary} strokeWidth={3} />}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </AppModal>
+
+      <AppModal
+        visible={showTimePicker}
+        onClose={() => setShowTimePicker(false)}
+        type="dialog"
+        title="Select Departure Time"
+      >
+        <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+          {TIME_SLOTS.map((slot) => (
+            <TouchableOpacity
+              key={slot.value}
+              style={[
+                styles.pickerListItem,
+                time === slot.value && styles.pickerListItemActive,
+              ]}
+              onPress={() => {
+                setTime(slot.value);
+                onCalculateAutoEta(date, slot.value);
+                setShowTimePicker(false);
+              }}
+            >
+              <Clock size={16} color={time === slot.value ? Colors.primary : Colors.gray500} />
+              <Text
+                style={[
+                  styles.pickerListItemText,
+                  time === slot.value && styles.pickerListItemTextActive,
+                ]}
+              >
+                {slot.label}
+              </Text>
+              {time === slot.value && <Check size={16} color={Colors.primary} strokeWidth={3} />}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </AppModal>
+
+      <AppModal
+        visible={showDurationPicker}
+        onClose={() => setShowDurationPicker(false)}
+        type="dialog"
+        title="Select Estimated Transit Duration"
+      >
+        <View style={styles.durationPresetsGrid}>
+          {DURATION_PRESETS.map((dur) => (
+            <TouchableOpacity
+              key={dur}
+              style={[
+                styles.durationChip,
+                estimatedHours === dur && styles.durationChipActive,
+              ]}
+              onPress={() => {
+                setEstimatedHours(dur);
+                onCalculateAutoEta(date, time, dur);
+                setShowDurationPicker(false);
+              }}
+            >
+              <Text
+                style={[
+                  styles.durationChipText,
+                  estimatedHours === dur && styles.durationChipTextActive,
+                ]}
+              >
+                {dur} hrs
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </AppModal>
 
       {/* Monthly Duty Calendar inside Schedule & Fleet */}
       {billingType === 'Monthly' && (
@@ -617,6 +806,142 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     marginBottom: 4,
   },
+  scheduleHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.xs,
+  },
+  headerPresetsRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  compactScheduleCard: {
+    padding: Spacing.sm,
+    gap: Spacing.xs,
+  },
+  pickerFieldLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.gray600,
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  pickerTriggerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 4,
+    backgroundColor: Colors.gray100,
+    borderRadius: Radius.md,
+    paddingHorizontal: 8,
+    height: 38,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+  },
+  pickerTriggerText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.gray900,
+  },
+  stepperContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.gray100,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+    height: 38,
+    paddingHorizontal: 2,
+  },
+  stepperBtn: {
+    width: 28,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.white,
+    borderRadius: Radius.sm,
+  },
+  stepperValueBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepperValueText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: Colors.gray900,
+  },
+  pickerListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray100,
+  },
+  pickerListItemActive: {
+    backgroundColor: Colors.primaryLight,
+  },
+  pickerListItemText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.gray800,
+  },
+  pickerListItemTextActive: {
+    color: Colors.primary,
+    fontWeight: '800',
+  },
+  durationPresetsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  durationChip: {
+    width: '30%',
+    paddingVertical: 10,
+    alignItems: 'center',
+    backgroundColor: Colors.gray100,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+  },
+  durationChipActive: {
+    backgroundColor: Colors.primaryLight,
+    borderColor: Colors.primary,
+  },
+  durationChipText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: Colors.gray800,
+  },
+  durationChipTextActive: {
+    color: Colors.primary,
+    fontWeight: '800',
+  },
+  threeInputRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  etaBannerCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.primaryLight,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 5,
+    borderRadius: Radius.md,
+    marginTop: 2,
+  },
+  etaBannerTextCompact: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
   presetChipsRow: {
     flexDirection: 'row',
     gap: Spacing.xs,
@@ -624,16 +949,16 @@ const styles = StyleSheet.create({
   },
   touchPresetChip: {
     backgroundColor: Colors.gray100,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: Radius.md,
     borderWidth: 1,
     borderColor: Colors.gray200,
   },
   touchPresetText: {
-    fontSize: Typography.xs,
-    fontWeight: '600',
-    color: Colors.gray900,
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.gray800,
   },
   inputsRow: {
     flexDirection: 'row',
