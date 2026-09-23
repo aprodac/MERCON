@@ -5,24 +5,22 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft, MapPin, CheckCircle2, Clock, Truck, ChevronRight } from 'lucide-react-native';
 import { useLanguage } from '../../lib/language-context';
 import { useProfile } from '../../lib/use-profile';
+import { useTripHistory } from '../../lib/use-trip-history';
 
-// Mock recent trips data for the UI
-const RECENT_TRIPS = [
-  { id: 'TRP-1042', route: 'Riyadh → Dammam', date: '21 Sep 2026', vehicle: 'NXA-8210', status: 'ON_TIME' },
-  { id: 'TRP-1038', route: 'Jeddah → Riyadh', date: '18 Sep 2026', vehicle: 'NXA-8210', status: 'DELAYED' },
-  { id: 'TRP-1031', route: 'Dammam → Jubail', date: '15 Sep 2026', vehicle: 'NXA-8210', status: 'ON_TIME' },
-  { id: 'TRP-1025', route: 'Riyadh → Al Kharj', date: '12 Sep 2026', vehicle: 'NXA-8210', status: 'ON_TIME' },
-];
+
 
 export default function PerformanceOverviewScreen() {
   const router = useRouter();
   const { t } = useLanguage();
   const { profile } = useProfile();
 
-  // Fallbacks
-  const totalTrips = profile?.stats?.totalTrips ?? 142;
-  const onTimePercentage = profile?.stats?.onTimePercentage ?? 98;
-  const totalDistance = profile?.stats?.totalDistanceKm ?? 12500;
+  const { trips, loading: tripsLoading } = useTripHistory();
+  const recentTrips = trips.slice(0, 5); // Take up to 5 most recent
+
+  // Use zero fallback (no mock data)
+  const totalTrips = profile?.stats?.totalTrips ?? 0;
+  const onTimePercentage = profile?.stats?.onTimePercentage ?? 0;
+  const totalDistance = profile?.stats?.totalDistanceKm ?? 0;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -41,18 +39,17 @@ export default function PerformanceOverviewScreen() {
         
         {/* HERO SCORECARD */}
         <View style={styles.scorecard}>
-          <Text style={styles.scorecardTitle}>On-Time Delivery Rate</Text>
+          <Text style={styles.scorecardTitle}>Total Trips Completed</Text>
           <View style={styles.mainScoreRow}>
-            <Text style={styles.mainScore}>{onTimePercentage}</Text>
-            <Text style={styles.mainScorePercent}>%</Text>
+            <Text style={styles.mainScore}>{totalTrips}</Text>
           </View>
           
           <View style={styles.scorecardDivider} />
           
           <View style={styles.statsRow}>
             <View style={styles.statCol}>
-              <Text style={styles.statLabel}>Total Trips</Text>
-              <Text style={styles.statValue}>{totalTrips}</Text>
+              <Text style={styles.statLabel}>On-Time Rating</Text>
+              <Text style={styles.statValue}>{onTimePercentage}%</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statCol}>
@@ -77,39 +74,69 @@ export default function PerformanceOverviewScreen() {
         <Text style={styles.sectionTitle}>Recent Trip History</Text>
         
         <View style={styles.tripsContainer}>
-          {RECENT_TRIPS.map((trip, index) => {
-            const isOnTime = trip.status === 'ON_TIME';
-            return (
-              <React.Fragment key={trip.id}>
-                <TouchableOpacity style={styles.tripRow} activeOpacity={0.7}>
-                  <View style={[styles.statusIconBox, { backgroundColor: isOnTime ? '#ECFDF5' : '#FFFBEB' }]}>
-                    {isOnTime ? (
-                      <CheckCircle2 size={20} color="#059669" />
-                    ) : (
-                      <Clock size={20} color="#D97706" />
-                    )}
-                  </View>
-                  
-                  <View style={styles.tripInfo}>
-                    <Text style={styles.tripRoute}>{trip.route}</Text>
-                    <View style={styles.tripMetaRow}>
-                      <Text style={styles.tripDate}>{trip.date} • {trip.id}</Text>
+          {tripsLoading && recentTrips.length === 0 ? (
+            <View style={{ padding: 24, alignItems: 'center' }}>
+              <Text style={{ color: '#A1A1AA' }}>Loading recent trips...</Text>
+            </View>
+          ) : recentTrips.length === 0 ? (
+            <View style={{ padding: 24, alignItems: 'center' }}>
+              <Text style={{ color: '#A1A1AA' }}>No recent trips found.</Text>
+            </View>
+          ) : (
+            recentTrips.map((trip, index) => {
+              // Usually status might be COMPLETED or ON_TIME based on backend enum. 
+              // We'll treat COMPLETED as on-time for display if there's no delay flag.
+              const isOnTime = true; // Placeholder for actual delay logic based on your backend
+              
+              // Format route: From Origin -> Destination
+              let routeLabel = 'Unknown Route';
+              if (trip.stops && trip.stops.length >= 2) {
+                const origin = trip.stops[0]?.location?.name || trip.stops[0]?.location_name || 'Origin';
+                const dest = trip.stops[trip.stops.length - 1]?.location?.name || trip.stops[trip.stops.length - 1]?.location_name || 'Destination';
+                routeLabel = `${origin} → ${dest}`;
+              }
+
+              // Format date
+              let dateLabel = '—';
+              try {
+                const d = trip.actual_end || trip.planned_start;
+                if (d) {
+                  dateLabel = new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+                }
+              } catch {}
+
+              return (
+                <React.Fragment key={trip.id}>
+                  <TouchableOpacity style={styles.tripRow} activeOpacity={0.7} onPress={() => router.push(`/trip/${trip.id}` as any)}>
+                    <View style={[styles.statusIconBox, { backgroundColor: isOnTime ? '#ECFDF5' : '#FFFBEB' }]}>
+                      {isOnTime ? (
+                        <CheckCircle2 size={20} color="#059669" />
+                      ) : (
+                        <Clock size={20} color="#D97706" />
+                      )}
                     </View>
-                  </View>
-                  
-                  <View style={styles.tripStatusCol}>
-                    <View style={[styles.badge, { backgroundColor: isOnTime ? '#ECFDF5' : '#FFFBEB' }]}>
-                      <Text style={[styles.badgeText, { color: isOnTime ? '#059669' : '#D97706' }]}>
-                        {isOnTime ? 'On Time' : 'Delayed'}
-                      </Text>
+                    
+                    <View style={styles.tripInfo}>
+                      <Text style={styles.tripRoute}>{routeLabel}</Text>
+                      <View style={styles.tripMetaRow}>
+                        <Text style={styles.tripDate}>{dateLabel} • {trip.ref_id || trip.id}</Text>
+                      </View>
                     </View>
-                  </View>
-                </TouchableOpacity>
-                
-                {index < RECENT_TRIPS.length - 1 && <View style={styles.listDivider} />}
-              </React.Fragment>
-            );
-          })}
+                    
+                    <View style={styles.tripStatusCol}>
+                      <View style={[styles.badge, { backgroundColor: isOnTime ? '#ECFDF5' : '#FFFBEB' }]}>
+                        <Text style={[styles.badgeText, { color: isOnTime ? '#059669' : '#D97706' }]}>
+                          {isOnTime ? 'On Time' : 'Delayed'}
+                        </Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                  
+                  {index < recentTrips.length - 1 && <View style={styles.listDivider} />}
+                </React.Fragment>
+              );
+            })
+          )}
         </View>
 
       </ScrollView>
