@@ -4,7 +4,7 @@ import {
   FlatList, ActivityIndicator, RefreshControl, Dimensions, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   Building2, Calendar, CheckCircle2, ChevronRight, ChevronLeft, Wallet,
   ArrowRight, ArrowLeft, CalendarClock, TriangleAlert,
@@ -214,7 +214,14 @@ const TripCard = ({ item, onPress, t, language }: { item: CardData; onPress: () 
 
 const TripsScreen = ({ navigation }: any) => {
   const router = useRouter();
-  const [selectedTab, setSelectedTab] = useState<Tab>('Scheduled');
+  const { tab } = useLocalSearchParams<{ tab?: string }>();
+  const [selectedTab, setSelectedTab] = useState<Tab>(tab === 'Completed' ? 'Completed' : 'Scheduled');
+
+  React.useEffect(() => {
+    if (tab === 'Completed' || tab === 'Scheduled') {
+      setSelectedTab(tab);
+    }
+  }, [tab]);
   const [search, setSearch] = useState('');
   const { t, language } = useLanguage();
 
