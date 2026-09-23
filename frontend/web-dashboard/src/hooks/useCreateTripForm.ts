@@ -410,6 +410,10 @@ export function useCreateTripForm() {
                   // Only an exact route match. `candidate_quotation` is the SAME lane with
                   // DIFFERENT stops — applying it would price A→X→B at A→B's rate.
                   card = exactRes?.quotation || exactRes?.rate_card || null;
+                  // Never trust a lane-only answer: an older API ignores the stops and
+                  // returns the A→B quotation for A→X→B, which re-selected it right
+                  // after "Define Quotation" opened (the flip-flop). Every stop must match.
+                  if (card && !quotationMatchesRoute(card as any, slotLegs, slotIsRound)) card = null;
                 }
 
                 if (!card) {
