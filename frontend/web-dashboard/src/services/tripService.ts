@@ -172,6 +172,7 @@ export interface Trip {
   vehicle_type?: string | null;
   rate_category?: string | null;
   billing_type?: string | null;
+  awb_number?: string | null;
   rateCardId?: string | null;
   rateCard?: {
     id: string;
@@ -618,6 +619,7 @@ export interface BulkImportTripRow {
   rate_category?: string;
   vehicle_type?: string;
   billing_type?: string;
+  awb_number?: string | null;
   billing_amount?: number;
   /** What MERCON paid its own driver for this specific trip. */
   trip_charges?: number;

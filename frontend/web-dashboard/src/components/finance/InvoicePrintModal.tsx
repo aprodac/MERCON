@@ -36,6 +36,7 @@ export function InvoicePrintModal({
   const customer = (invoice as any).customer;
   const customerName = customer?.name || 'Valued Customer';
   const customerAddress = customer?.address || customer?.city || 'Saudi Arabia';
+  const customerVatRegNo = customer?.tax_id || customer?.vat_number || customer?.vat_reg_no || '';
   const invoiceRef = invoice.ref_id || `INV-${invoice.id.slice(0, 8).toUpperCase()}`;
   const invoiceDateStr = invoice.invoice_date
     ? new Date(invoice.invoice_date).toLocaleDateString('en-GB')
@@ -48,11 +49,18 @@ export function InvoicePrintModal({
   const totalAmount = Number(invoice.total_amount) || 0;
   const balanceDue = Number(invoice.balance_due) || 0;
   const taxAmount = Number(invoice.tax_amount) || 0;
-  const taxRate = Number(invoice.tax_rate) || 0;
+  const taxRate = Number(invoice.tax_rate) || 15;
   const subtotal = Number((invoice as any).subtotal_amount) || (totalAmount - taxAmount);
-  const paidAmount = totalAmount - balanceDue;
 
   const isPaid = balanceDue <= 0 && totalAmount > 0;
+
+  const companyVatNumber = settings?.vatNumber || '312709215800003';
+  const companyCrNumber = settings?.crNumber || '1009152862';
+
+  const headerSubLine = [
+    companyCrNumber ? `C.R NO. ${companyCrNumber}` : null,
+    companyVatNumber ? `VAT NO.${companyVatNumber}` : null,
+  ].filter(Boolean).join(' | ');
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -94,7 +102,7 @@ export function InvoicePrintModal({
           {/* THE OFFICIAL PRINTABLE PAPER DOCUMENT */}
           <div
             ref={printRef}
-            className="w-full max-w-[210mm] bg-white text-slate-900 p-8 shadow-xl border border-slate-200 print:shadow-none print:border-0 print:p-0 print:m-0 font-sans text-xs space-y-5 relative"
+            className="w-full max-w-[210mm] bg-white text-slate-900 p-8 shadow-xl border border-slate-200 print:shadow-none print:border-0 print:p-0 print:m-0 font-sans text-xs space-y-4 relative"
             style={{ minHeight: '270mm' }}
           >
             {/* PAID Stamp / Watermark if fully settled */}
@@ -106,14 +114,14 @@ export function InvoicePrintModal({
             )}
 
             {/* 1. OFFICIAL BILINGUAL BRANDING HEADER */}
-            <div className="border-b-2 border-slate-900 pb-3 space-y-1">
+            <div className="border-b-2 border-slate-900 pb-2 space-y-1">
               <div className="flex items-center justify-between">
                 {/* Arabic Title */}
                 <div className="text-right">
-                  <h1 className="text-base font-black text-slate-900 leading-tight">
+                  <h1 className="text-lg font-black text-[#E8450F] leading-tight">
                     شركة ميركون
                   </h1>
-                  <p className="text-[11px] font-bold text-slate-700">
+                  <p className="text-[11px] font-bold text-slate-800">
                     للخدمات اللوجستية
                   </p>
                 </div>
@@ -128,14 +136,11 @@ export function InvoicePrintModal({
                       (e.target as HTMLElement).style.display = 'none';
                     }}
                   />
-                  <span className="text-[10px] font-black tracking-widest text-[#FA634E] uppercase mt-1">
-                    {settings?.appName || 'MERCON LOGISTICS'}
-                  </span>
                 </div>
 
                 {/* English Title */}
                 <div className="text-left">
-                  <h1 className="text-base font-black text-[#FA634E] tracking-tight leading-tight">
+                  <h1 className="text-lg font-black text-[#FA634E] tracking-tight leading-tight">
                     MERCON LOGISTICS
                   </h1>
                   <p className="text-[11px] font-bold text-slate-800 tracking-wider">
@@ -145,158 +150,234 @@ export function InvoicePrintModal({
               </div>
 
               {/* Sub-header C.R & VAT NO. */}
-              <div className="text-center text-[10px] font-mono font-bold text-slate-700 pt-1 border-t border-slate-300">
-                C.R NO. 1009152862 | VAT NO. 31270921580003
-              </div>
+              {headerSubLine && (
+                <div className="text-center text-[10px] font-mono font-bold text-slate-800 pt-1 border-t border-slate-300">
+                  {headerSubLine}
+                </div>
+              )}
             </div>
 
             {/* Document Type Heading */}
-            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-              <div>
-                <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">
-                  TAX INVOICE / فاتورة ضريبية
-                </h2>
-                <p className="text-[11px] text-slate-500 font-mono">
-                  Ref: <strong className="text-[#FA634E] font-bold">{invoiceRef}</strong>
-                </p>
-              </div>
-              <div className="text-right">
-                <span className={`inline-block px-3 py-1 rounded text-xs font-bold uppercase tracking-wider ${
-                  isPaid ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-800 border border-amber-300'
-                }`}>
-                  {invoice.status}
-                </span>
-              </div>
+            <div className="text-center border-b border-slate-900 pb-1.5">
+              <h2 className="text-base font-black text-slate-900 uppercase tracking-tight">
+                TAX INVOICE فاتورة الضريبة
+              </h2>
             </div>
 
             {/* 2. CUSTOMER & INVOICE REFERENCE BOX */}
-            <table className="w-full border-collapse border border-slate-900 text-xs">
+            <table className="w-full border-collapse border border-slate-900 text-[11px]">
               <tbody>
                 <tr className="border-b border-slate-900">
-                  <td className="p-2 font-bold border-r border-slate-900 bg-slate-50 w-7/12">
-                    <span className="text-slate-500 font-normal text-[10px] block uppercase">Billed To / العميل:</span>
-                    <span className="text-sm font-black text-slate-900">{customerName}</span>
+                  <td className="p-1.5 font-bold border-r border-slate-900 bg-slate-50/50 w-7/12">
+                    <span className="text-slate-900 font-bold block">Invoice To</span>
+                    <span className="text-slate-900 font-bold block">Name <span className="font-semibold text-slate-600 font-arabic">اسم الزبون</span></span>
+                    <span className="text-xs font-black text-slate-900 block mt-0.5">{customerName}</span>
                   </td>
-                  <td className="p-2 border-r border-slate-900 font-bold bg-slate-50 w-2/12">Invoice Date:</td>
-                  <td className="p-2 font-mono font-semibold w-3/12">{invoiceDateStr}</td>
+                  <td className="p-1.5 border-r border-slate-900 w-2/12">
+                    <div className="font-bold text-slate-900">Date</div>
+                    <div className="font-bold text-slate-900">Invoice No.</div>
+                  </td>
+                  <td className="p-1.5 font-mono font-bold w-3/12">
+                    <div>{invoiceDateStr}</div>
+                    <div className="text-[#FA634E]">{invoiceRef}</div>
+                  </td>
                 </tr>
+
                 <tr className="border-b border-slate-900">
-                  <td className="p-2 border-r border-slate-900">
-                    <span className="font-semibold text-slate-600">Location / Address: </span>
-                    {customerAddress}
+                  <td className="p-1.5 border-r border-slate-900">
+                    <span className="font-bold text-slate-900 block">Address</span>
+                    <span className="text-slate-700 font-medium block leading-tight text-[10px]">{customerAddress}</span>
+                    <span className="font-bold text-slate-900 block mt-1">ATTN#</span>
                   </td>
-                  <td className="p-2 border-r border-slate-900 font-bold bg-slate-50">Due Date:</td>
-                  <td className="p-2 font-mono font-bold text-slate-900">{dueDateStr}</td>
+                  <td className="p-1.5 border-r border-slate-900">
+                    <div className="font-bold text-slate-900">Due Date</div>
+                    <div className="font-bold text-slate-900 mt-2">PO No</div>
+                  </td>
+                  <td className="p-1.5 font-mono font-bold text-slate-900">
+                    <div>{dueDateStr}</div>
+                    <div className="mt-2">—</div>
+                  </td>
                 </tr>
+
                 <tr>
-                  <td className="p-2 border-r border-slate-900">
-                    <span className="font-semibold text-slate-600">Payment Status: </span>
-                    <span className="font-bold">{isPaid ? 'Fully Settled (SAR 0.00 Due)' : `Outstanding (SAR ${balanceDue.toFixed(2)} Due)`}</span>
+                  <td className="p-1.5 border-r border-slate-900">
+                    <span className="font-bold text-slate-900 inline-block mr-2">VAT Reg No.</span>
+                    <span className="font-mono font-bold text-slate-900">{customerVatRegNo || '—'}</span>
                   </td>
-                  <td className="p-2 border-r border-slate-900 font-bold bg-slate-50">Currency:</td>
-                  <td className="p-2 font-mono font-bold text-[#FA634E]">SAR (Saudi Riyal)</td>
+                  <td className="p-1.5 border-r border-slate-900 font-bold text-slate-900">
+                    Company VAT
+                  </td>
+                  <td className="p-1.5 font-mono font-bold text-slate-900">
+                    {companyVatNumber}
+                  </td>
                 </tr>
               </tbody>
             </table>
 
             {/* 3. ITEMIZATION TABLE */}
-            <table className="w-full border-collapse border border-slate-900 text-xs">
+            <table className="w-full border-collapse border border-slate-900 text-[10px]">
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-900">
-                  <th className="p-2 border-r border-slate-900 text-center font-bold w-12">#</th>
-                  <th className="p-2 border-r border-slate-900 text-left font-bold">Description / Details</th>
-                  <th className="p-2 border-r border-slate-900 text-center font-bold w-20">Qty</th>
-                  <th className="p-2 border-r border-slate-900 text-right font-bold w-28">Rate (SAR)</th>
-                  <th className="p-2 text-right font-bold w-32">Amount (SAR)</th>
+                  <th className="p-1 border-r border-slate-900 text-center font-bold w-7">
+                    No.<br /><span className="font-arabic font-normal">رقم</span>
+                  </th>
+                  <th className="p-1 border-r border-slate-900 text-center font-bold w-16">
+                    Date<br /><span className="font-arabic font-normal">تاريخ</span>
+                  </th>
+                  <th className="p-1 border-r border-slate-900 text-center font-bold">
+                    Description<br /><span className="font-arabic font-normal">الوصف</span>
+                  </th>
+                  <th className="p-1 border-r border-slate-900 text-center font-bold w-20">
+                    AWB<br />NUMBER
+                  </th>
+                  <th className="p-1 border-r border-slate-900 text-center font-bold w-16">
+                    Rate<br /><span className="font-arabic font-normal">سعر الواحدة</span>
+                  </th>
+                  <th className="p-1 border-r border-slate-900 text-center font-bold w-10">
+                    QTY<br /><span className="font-arabic font-normal">كمية</span>
+                  </th>
+                  <th className="p-1 border-r border-slate-900 text-center font-bold w-14">
+                    VAT {taxRate}%<br /><span className="font-arabic font-normal">القيمة الضريبية</span>
+                  </th>
+                  <th className="p-1 border-r border-slate-900 text-center font-bold w-16">
+                    VAT<br /><span className="font-arabic font-normal">مجموع الضريبة</span>
+                  </th>
+                  <th className="p-1 text-center font-bold w-20">
+                    Total<br /><span className="font-arabic font-normal">القيمة الإجمالي</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {lines.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-4 text-center text-slate-400 italic">
+                    <td colSpan={9} className="p-4 text-center text-slate-400 italic">
                       No invoice line items specified.
                     </td>
                   </tr>
                 ) : (
-                  lines.map((line, idx) => {
+                  lines.map((line: any, idx: number) => {
                     const qty = Number(line.quantity) || 1;
-                    const rate = Number(line.rate) || Number(line.amount) / qty || 0;
                     const lineAmt = Number(line.amount) || 0;
+                    const rate = Number(line.rate) || (qty > 0 ? lineAmt / qty : 0);
+                    const lineVat = lineAmt * (taxRate / 100);
+                    const lineTotal = lineAmt + lineVat;
+
+                    const tripDateStr = line.tripId && line.trip?.actual_start
+                      ? new Date(line.trip.actual_start).toLocaleDateString('en-GB')
+                      : '';
+                    const awbNoStr = line.tripId && line.trip?.awb_number
+                      ? line.trip.awb_number
+                      : '';
 
                     return (
                       <tr key={line.id || idx} className="border-b border-slate-900 hover:bg-slate-50">
-                        <td className="p-2 border-r border-slate-900 text-center font-mono text-slate-500">{idx + 1}</td>
-                        <td className="p-2 border-r border-slate-900 font-semibold text-slate-800">{line.description}</td>
-                        <td className="p-2 border-r border-slate-900 text-center font-mono">{qty}</td>
-                        <td className="p-2 border-r border-slate-900 text-right font-mono">{rate.toFixed(2)}</td>
-                        <td className="p-2 text-right font-mono font-bold text-slate-900">{lineAmt.toFixed(2)}</td>
+                        <td className="p-1 border-r border-slate-900 text-center font-mono text-slate-500">{idx + 1}</td>
+                        <td className="p-1 border-r border-slate-900 text-center font-mono text-[10px] text-slate-700">{tripDateStr}</td>
+                        <td className="p-1.5 border-r border-slate-900 font-semibold text-slate-800 leading-snug">{line.description}</td>
+                        <td className="p-1 border-r border-slate-900 text-center font-mono text-[10px] font-bold text-slate-800">{awbNoStr}</td>
+                        <td className="p-1 border-r border-slate-900 text-right font-mono">{rate.toFixed(2)}</td>
+                        <td className="p-1 border-r border-slate-900 text-center font-mono">{qty}</td>
+                        <td className="p-1 border-r border-slate-900 text-center font-mono text-slate-600">{taxRate}%</td>
+                        <td className="p-1 border-r border-slate-900 text-right font-mono text-slate-700">{lineVat.toFixed(2)}</td>
+                        <td className="p-1 text-right font-mono font-bold text-slate-900">{lineTotal.toFixed(2)}</td>
                       </tr>
                     );
                   })
                 )}
+                {/* Total Row inside Item Table */}
+                <tr className="bg-slate-50 border-b border-slate-900 font-bold">
+                  <td colSpan={4} className="p-1.5 border-r border-slate-900 font-black text-slate-900">Total</td>
+                  <td colSpan={5} className="p-1.5 text-right font-mono font-black text-slate-900">
+                    {subtotal.toFixed(2)}
+                  </td>
+                </tr>
               </tbody>
             </table>
 
             {/* 4. FINANCIAL BREAKDOWN & TOTALS SUMMARY */}
-            <div className="flex justify-end pt-2">
-              <div className="w-72 border border-slate-900 divide-y divide-slate-900 text-xs">
-                <div className="flex justify-between p-2 bg-slate-50">
-                  <span className="font-semibold text-slate-700">Subtotal:</span>
-                  <span className="font-mono font-bold text-slate-900">SAR {subtotal.toFixed(2)}</span>
+            <div className="flex justify-end pt-1">
+              <div className="w-80 border border-slate-900 divide-y divide-slate-900 text-xs">
+                <div className="flex justify-between p-1.5 bg-white font-bold">
+                  <span className="text-slate-800">Total Excluding VAT / <span className="font-arabic">المبلغ قبل الضريبة</span>:</span>
+                  <span className="font-mono text-slate-900">{subtotal.toFixed(2)}</span>
                 </div>
-                {taxRate > 0 && (
-                  <div className="flex justify-between p-2 bg-slate-50">
-                    <span className="font-semibold text-slate-700">VAT ({taxRate}%):</span>
-                    <span className="font-mono font-bold text-slate-900">SAR {taxAmount.toFixed(2)}</span>
-                  </div>
-                )}
-                {taxRate === 0 && taxAmount > 0 && (
-                  <div className="flex justify-between p-2 bg-slate-50">
-                    <span className="font-semibold text-slate-700">VAT Tax:</span>
-                    <span className="font-mono font-bold text-slate-900">SAR {taxAmount.toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between p-2 bg-slate-900 text-white font-bold">
-                  <span>Grand Total:</span>
+                <div className="flex justify-between p-1.5 bg-white font-bold">
+                  <span className="text-slate-800">Total VAT / {taxRate}% / <span className="font-arabic">مجموع الضريبة</span>:</span>
+                  <span className="font-mono text-slate-900">{taxAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between p-2 bg-slate-900 text-white font-black">
+                  <span>Total Amount including VAT / <span className="font-arabic">اجمالي المبلغ المـ</span>:</span>
                   <span className="font-mono text-sm text-[#FA634E]">SAR {totalAmount.toFixed(2)}</span>
                 </div>
-                {paidAmount > 0 && (
-                  <div className="flex justify-between p-2 bg-emerald-50 text-emerald-800 font-semibold">
-                    <span>Amount Paid:</span>
-                    <span className="font-mono font-bold">SAR {paidAmount.toFixed(2)}</span>
+              </div>
+            </div>
+
+            {/* 5. BANK DETAILS & OFFICIAL STAMPS FOOTER */}
+            <div className="pt-2">
+              <div className="border border-slate-900 rounded p-2.5 grid grid-cols-12 gap-2 text-[10px]">
+                {/* Left: Bank Details */}
+                <div className="col-span-6 space-y-1 font-sans">
+                  <h3 className="font-black text-slate-900 underline uppercase text-[11px]">Bank Details:</h3>
+                  <div className="space-y-0.5 text-slate-800">
+                    <p><strong>Bank Name:</strong> SAB ( Saudi British Bank)</p>
+                    <p><strong>Account No:</strong> 611110701001</p>
+                    <p className="font-mono"><strong>IBAN:</strong> SA1645000000611110701001</p>
                   </div>
-                )}
-                <div className="flex justify-between p-2 bg-slate-100 font-bold">
-                  <span className="text-slate-900">Balance Due:</span>
-                  <span className="font-mono text-slate-900 text-sm">SAR {balanceDue.toFixed(2)}</span>
+                  <div className="space-y-0.5 text-slate-800 pt-1">
+                    <p><strong>Bank Name:</strong> Al Rajhi Bank</p>
+                    <p><strong>Account No:</strong> 21100-001-000608956478</p>
+                    <p className="font-mono"><strong>IBAN:</strong> SA58 8000 0211 6080 1956 4785</p>
+                  </div>
+                </div>
+
+                {/* Center: QR Code & Approved Stamp */}
+                <div className="col-span-3 flex flex-col items-center justify-center border-l border-r border-slate-300 px-2 text-center">
+                  <div className="w-16 h-16 border border-slate-800 p-1 flex items-center justify-center bg-white shadow-2xs">
+                    {/* SVG Representation of ZATCA QR Code */}
+                    <svg viewBox="0 0 100 100" className="w-full h-full">
+                      <rect width="100" height="100" fill="white" />
+                      <rect x="10" y="10" width="25" height="25" fill="black" />
+                      <rect x="65" y="10" width="25" height="25" fill="black" />
+                      <rect x="10" y="65" width="25" height="25" fill="black" />
+                      <rect x="15" y="15" width="15" height="15" fill="white" />
+                      <rect x="70" y="15" width="15" height="15" fill="white" />
+                      <rect x="15" y="70" width="15" height="15" fill="white" />
+                      <rect x="18" y="18" width="9" height="9" fill="black" />
+                      <rect x="73" y="18" width="9" height="9" fill="black" />
+                      <rect x="18" y="73" width="9" height="9" fill="black" />
+                      <rect x="40" y="40" width="20" height="20" fill="black" />
+                      <rect x="45" y="10" width="10" height="20" fill="black" />
+                      <rect x="45" y="70" width="10" height="20" fill="black" />
+                      <rect x="10" y="45" width="20" height="10" fill="black" />
+                      <rect x="70" y="45" width="20" height="10" fill="black" />
+                    </svg>
+                  </div>
+                  <span className="text-[9px] font-black text-slate-800 uppercase mt-1">Approved Rv</span>
+                </div>
+
+                {/* Right: Official Stamp Circle */}
+                <div className="col-span-3 flex flex-col items-center justify-center text-center">
+                  <div className="w-20 h-20 rounded-full border-2 border-indigo-900/60 text-indigo-900/80 p-1 flex flex-col items-center justify-center text-[8px] font-black uppercase rotate-[-6deg] select-none">
+                    <span className="text-[7px] leading-none text-center">شركة ميركون للخدمات اللوجستية</span>
+                    <span className="text-[10px] font-extrabold my-0.5">M</span>
+                    <span className="text-[6px] font-mono leading-none">C.R 1009152862</span>
+                    <span className="text-[6px] text-center leading-none mt-0.5">MERCON LOGISTICS SERVICES CO.</span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* 5. TERMS & CONDITIONS SECTION */}
-            <div className="pt-3 space-y-1.5 text-[11px] text-slate-800">
-              <h3 className="font-bold italic text-slate-900 underline text-xs">
-                Terms and Payment Instructions / الشروط والأحكام
-              </h3>
-              <ul className="list-disc pl-5 space-y-1 italic text-slate-700 leading-tight">
-                <li>Payment is due according to agreed credit terms from the invoice date.</li>
-                <li>All bank charges for transfer to be borne by the customer.</li>
-                <li>Please quote invoice reference number <strong className="font-bold text-slate-900">{invoiceRef}</strong> when making payment.</li>
-                <li>This is an official Tax Invoice generated by MERCON Logistics Operating Platform.</li>
-              </ul>
+            {/* Bottom Footer Ribbon Bar */}
+            <div className="pt-2 border-t border-slate-300 text-center text-[9px] text-slate-700 space-y-0.5">
+              <p className="font-medium">
+                Building No. 4326, Ibn Al Ameed, Al Sulay Dist. Postal Code 14266, Riyadh, KSA | 
+                <span className="font-arabic ml-1">رقم المبنى ٤٣٢٦، ابن العميد، حي السلي ١٤٢٦٦ الرياض، المملكة العربية السعودية</span>
+              </p>
+              <p className="font-mono font-bold text-slate-900">
+                +966 54 451 4848 | www.merconlogisticssa.com | sales@merconlogisticssa.com | mail@merconlogisticssa.com
+              </p>
             </div>
 
-            {/* Footer Signature Strip */}
-            <div className="pt-8 border-t border-slate-300 flex justify-between text-[11px] font-bold text-slate-700">
-              <div>
-                <p>Issued By: ___________________</p>
-                <p className="text-[9px] font-normal text-slate-500 mt-1">MERCON Logistics Finance Dept</p>
-              </div>
-              <div className="text-right">
-                <p>Received / Accepted By: ___________________</p>
-                <p className="text-[9px] font-normal text-slate-500 mt-1">Authorized Customer Signature & Stamp</p>
-              </div>
-            </div>
           </div>
         </div>
       </DialogContent>

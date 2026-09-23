@@ -6,7 +6,7 @@ import {
   Navigation, CheckCircle2, XCircle, AlertTriangle,
   User as UserIcon, Truck, UploadCloud, SquarePen,
   X, Eye, Maximize2, Coins, ListOrdered, Map as MapIcon,
-  MapPin, Repeat, Calendar, Clock, Building2, ArrowRight
+  MapPin, Repeat, Calendar, Clock, Building2, ArrowRight, FileText
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -578,6 +578,14 @@ export default function TripDetailsPage() {
                   <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700">
                     <Clock size={12} className="text-slate-500 dark:text-slate-400 shrink-0 stroke-[2.5]" />
                     <span>Created: {fullCreatedDateText} {createdTimeStr ? `(${createdTimeStr})` : ''}</span>
+                  </div>
+                )}
+
+                {/* 5. AWB / Ref Tag (Light Amber surface + bold text) */}
+                {trip.awb_number && (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black bg-amber-50 dark:bg-amber-950/60 text-amber-950 dark:text-amber-200 border border-amber-200/90 dark:border-amber-800/90">
+                    <FileText size={12} className="text-amber-600 dark:text-amber-400 shrink-0 stroke-[2.5]" />
+                    <span>AWB: {trip.awb_number}</span>
                   </div>
                 )}
               </div>

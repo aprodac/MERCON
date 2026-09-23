@@ -561,6 +561,11 @@ export const operatorService = {
     const { data } = await api.get('/documents', { params: { per_page: 50 } });
     return (data.data ?? []) as OperatorDocument[];
   },
+
+  async locations(): Promise<OperatorLocation[]> {
+    const { data } = await api.get('/locations', { params: { per_page: 100 } });
+    return (data.data ?? []) as OperatorLocation[];
+  },
 };
 
 export interface OperatorInvoice {

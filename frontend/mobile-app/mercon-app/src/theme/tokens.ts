@@ -135,7 +135,10 @@ export const Typography = {
   mono:          { fontSize: 12, fontFamily: 'monospace' as const, fontWeight: '600' as const },
 
   // Numeric font-size scale — screens use these as `fontSize: Typography.sm`
+  micro:         10,
+  subcaption:    11,
   xs:            12,
+  bodySm:        13,
   sm:            14,
   md:            15,
   base:          16,

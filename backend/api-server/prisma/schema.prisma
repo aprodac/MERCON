@@ -353,6 +353,7 @@ model Vehicle {
 model Trip {
   id               String   @id @default(uuid()) @db.Uuid
   ref_id           String?  @unique
+  awb_number       String?
   customerId       String   @db.Uuid
   customer         Customer @relation(fields: [customerId], references: [id])
   driverId         String?  @db.Uuid
@@ -1715,6 +1716,8 @@ model Settings {
 
   appName          String  @default("MERCON Operator Platform")
   companyLegalName String  @default("MERCON Operations Ltd.")
+  vatNumber        String?
+  crNumber         String?
   logoUrl          String?
   primaryColor     String  @default("#E8450F")
 

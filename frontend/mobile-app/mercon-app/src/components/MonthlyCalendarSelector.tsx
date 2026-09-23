@@ -25,6 +25,7 @@ import { Colors, Spacing, Radius, Typography } from '../theme/tokens';
 import { Card } from './Card';
 import { Button } from './Button';
 import { Input } from './Input';
+import { AppModal } from './common/AppModal';
 import { OperatorDriver, OperatorVehicle } from '../lib/operator';
 import { DriverAvatar } from '../features/drivers/components/DriverAvatar';
 
@@ -33,6 +34,7 @@ export interface DayAssignmentOverride {
   vehicle_id?: string;
   co_driver_id?: string;
   co_driver_payout?: number;
+  isCustom?: boolean;
 }
 
 interface MonthlyCalendarSelectorProps {
@@ -43,8 +45,15 @@ interface MonthlyCalendarSelectorProps {
   onClearAll: () => void;
   currentMonth: Date;
   onMonthChange: (newMonth: Date) => void;
-  assignmentMode: 'MASTER' | 'PER_DAY';
-  onToggleAssignmentMode: (mode: 'MASTER' | 'PER_DAY') => void;
+  assignmentMode: 'MASTER' | 'PER_DAY' | 'ROTATION';
+  onToggleAssignmentMode: (mode: 'MASTER' | 'PER_DAY' | 'ROTATION') => void;
+  rotationCount?: 2 | 3 | 4;
+  onRotationCountChange?: (count: 2 | 3 | 4) => void;
+  rotationDrivers?: string[];
+  rotationVehicles?: string[];
+  onUpdateRotationDriver?: (slotIdx: number, driverId: string) => void;
+  onUpdateRotationVehicle?: (slotIdx: number, vehicleId: string) => void;
+  onDuplicateFirstDayToAll?: () => void;
   dayAssignments: Record<string, DayAssignmentOverride>;
   onSaveDayOverride: (dateStr: string, override: DayAssignmentOverride | null) => void;
   drivers: OperatorDriver[];
@@ -66,6 +75,13 @@ export const MonthlyCalendarSelector: React.FC<MonthlyCalendarSelectorProps> = (
   onMonthChange,
   assignmentMode,
   onToggleAssignmentMode,
+  rotationCount = 2,
+  onRotationCountChange,
+  rotationDrivers = [],
+  rotationVehicles = [],
+  onUpdateRotationDriver,
+  onUpdateRotationVehicle,
+  onDuplicateFirstDayToAll,
   dayAssignments,
   onSaveDayOverride,
   drivers,
@@ -312,122 +328,128 @@ export const MonthlyCalendarSelector: React.FC<MonthlyCalendarSelectorProps> = (
       </View>
 
       {/* Per-Day Override Modal */}
-      <Modal visible={Boolean(overrideModalDate)} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <Card style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.modalTitle}>Override Assignment</Text>
-                <Text style={styles.modalSubtitle}>{overrideModalDate}</Text>
-              </View>
-              <TouchableOpacity onPress={() => setOverrideModalDate(null)}>
-                <X size={20} color={Colors.gray500} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={{ maxHeight: 420 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-              {/* Primary Driver Override */}
-              <Text style={styles.fieldLabel}>Primary Driver</Text>
-              <View style={styles.searchBar}>
-                <Search size={14} color={Colors.gray500} />
-                <TextInput
-                  style={styles.searchInput}
-                  value={driverSearch}
-                  onChangeText={setDriverSearch}
-                  placeholder="Search driver name..."
-                  placeholderTextColor={Colors.gray400}
-                />
-              </View>
-              <Card style={{ maxHeight: 120, marginBottom: Spacing.sm }}>
-                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                  {filteredDrivers.map((d) => (
-                    <TouchableOpacity
-                      key={d.id}
-                      style={[styles.pickerItem, overrideDriverId === d.id && styles.pickerItemActive]}
-                      onPress={() => setOverrideDriverId(d.id)}
-                    >
-                      <DriverAvatar
-                        initials={`${d.first_name[0]}${d.last_name[0]}`}
-                        avatarUrl={d.avatar_url || d.photo_url}
-                        size={24}
-                      />
-                      <Text style={styles.pickerItemText}>{d.first_name} {d.last_name}</Text>
-                      {overrideDriverId === d.id && <Check size={16} color={Colors.primary} strokeWidth={3} />}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </Card>
-
-              {/* Primary Vehicle Override */}
-              <Text style={styles.fieldLabel}>Primary Vehicle</Text>
-              <View style={styles.searchBar}>
-                <Search size={14} color={Colors.gray500} />
-                <TextInput
-                  style={styles.searchInput}
-                  value={vehicleSearch}
-                  onChangeText={setVehicleSearch}
-                  placeholder="Search plate or asset type..."
-                  placeholderTextColor={Colors.gray400}
-                />
-              </View>
-              <Card style={{ maxHeight: 120, marginBottom: Spacing.sm }}>
-                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                  {filteredVehicles.map((v) => (
-                    <TouchableOpacity
-                      key={v.id}
-                      style={[styles.pickerItem, overrideVehicleId === v.id && styles.pickerItemActive]}
-                      onPress={() => setOverrideVehicleId(v.id)}
-                    >
-                      <Truck size={16} color={Colors.gray600} />
-                      <Text style={styles.pickerItemText}>{v.plate_number} ({v.asset_type})</Text>
-                      {overrideVehicleId === v.id && <Check size={16} color={Colors.primary} strokeWidth={3} />}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </Card>
-
-              {/* Co-Driver Override */}
-              <Text style={styles.fieldLabel}>Co-Driver (Optional)</Text>
-              <Card style={{ maxHeight: 100, marginBottom: Spacing.sm }}>
-                <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
-                  <TouchableOpacity
-                    style={[styles.pickerItem, !overrideCoDriverId && styles.pickerItemActive]}
-                    onPress={() => setOverrideCoDriverId('')}
-                  >
-                    <Text style={styles.pickerItemText}>No Co-Driver</Text>
-                    {!overrideCoDriverId && <Check size={16} color={Colors.primary} strokeWidth={3} />}
-                  </TouchableOpacity>
-                  {filteredCoDrivers.map((cd) => (
-                    <TouchableOpacity
-                      key={cd.id}
-                      style={[styles.pickerItem, overrideCoDriverId === cd.id && styles.pickerItemActive]}
-                      onPress={() => setOverrideCoDriverId(cd.id)}
-                    >
-                      <Text style={styles.pickerItemText}>{cd.first_name} {cd.last_name}</Text>
-                      {overrideCoDriverId === cd.id && <Check size={16} color={Colors.primary} strokeWidth={3} />}
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </Card>
-
-              {overrideCoDriverId ? (
-                <Input
-                  label="Co-Driver Payout Override (SAR)"
-                  value={overrideCoDriverPayout}
-                  onChangeText={setOverrideCoDriverPayout}
-                  placeholder="Optional (Default: 50/50 split)"
-                  keyboardType="numeric"
-                />
-              ) : null}
+      <AppModal
+        visible={Boolean(overrideModalDate)}
+        onClose={() => setOverrideModalDate(null)}
+        type="dialog"
+        title={`Override Assignment — ${overrideModalDate ?? ''}`}
+      >
+        <ScrollView style={{ maxHeight: 420 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
+          {/* Primary Driver Override */}
+          <Text style={styles.fieldLabel}>Primary Driver</Text>
+          <View style={styles.searchBar}>
+            <Search size={14} color={Colors.gray500} />
+            <TextInput
+              style={styles.searchInput}
+              value={driverSearch}
+              onChangeText={setDriverSearch}
+              placeholder="Search driver name..."
+              placeholderTextColor={Colors.gray400}
+            />
+          </View>
+          <Card style={{ maxHeight: 120, marginBottom: Spacing.sm }}>
+            <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              {filteredDrivers.map((d) => (
+                <TouchableOpacity
+                  key={d.id}
+                  style={[styles.pickerItem, overrideDriverId === d.id && styles.pickerItemActive]}
+                  onPress={() => setOverrideDriverId(d.id)}
+                >
+                  <DriverAvatar
+                    initials={`${d.first_name[0]}${d.last_name[0]}`}
+                    avatarUrl={d.avatar_url || d.photo_url}
+                    size={24}
+                  />
+                  <Text style={styles.pickerItemText}>{d.first_name} {d.last_name}</Text>
+                  {overrideDriverId === d.id && <Check size={16} color={Colors.primary} strokeWidth={3} />}
+                </TouchableOpacity>
+              ))}
             </ScrollView>
-
-            <View style={{ gap: 8, marginTop: 12 }}>
-              <Button title="Save Day Override" onPress={handleSaveModalOverride} />
-              <Button title="Reset to Master Assignment" variant="outline" onPress={handleClearModalOverride} />
-            </View>
           </Card>
+
+          {/* Primary Vehicle Override */}
+          <Text style={styles.fieldLabel}>Primary Vehicle</Text>
+          <View style={styles.searchBar}>
+            <Search size={14} color={Colors.gray500} />
+            <TextInput
+              style={styles.searchInput}
+              value={vehicleSearch}
+              onChangeText={setVehicleSearch}
+              placeholder="Search plate or asset type..."
+              placeholderTextColor={Colors.gray400}
+            />
+          </View>
+          <Card style={{ maxHeight: 120, marginBottom: Spacing.sm }}>
+            <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              {filteredVehicles.map((v) => (
+                <TouchableOpacity
+                  key={v.id}
+                  style={[styles.pickerItem, overrideVehicleId === v.id && styles.pickerItemActive]}
+                  onPress={() => setOverrideVehicleId(v.id)}
+                >
+                  <Truck size={16} color={Colors.gray600} />
+                  <Text style={styles.pickerItemText}>{v.plate_number} ({v.asset_type})</Text>
+                  {overrideVehicleId === v.id && <Check size={16} color={Colors.primary} strokeWidth={3} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Card>
+
+          {/* Co-Driver Override */}
+          <Text style={styles.fieldLabel}>Co-Driver (Optional)</Text>
+          <View style={styles.searchBar}>
+            <Search size={14} color={Colors.gray500} />
+            <TextInput
+              style={styles.searchInput}
+              value={coDriverSearch}
+              onChangeText={setCoDriverSearch}
+              placeholder="Search co-driver name..."
+              placeholderTextColor={Colors.gray400}
+            />
+          </View>
+          <Card style={{ maxHeight: 120, marginBottom: Spacing.sm }}>
+            <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              <TouchableOpacity
+                style={[styles.pickerItem, !overrideCoDriverId && styles.pickerItemActive]}
+                onPress={() => setOverrideCoDriverId('')}
+              >
+                <Text style={styles.pickerItemText}>No Co-Driver</Text>
+                {!overrideCoDriverId && <Check size={16} color={Colors.primary} strokeWidth={3} />}
+              </TouchableOpacity>
+              {filteredDrivers.map((d) => (
+                <TouchableOpacity
+                  key={d.id}
+                  style={[styles.pickerItem, overrideCoDriverId === d.id && styles.pickerItemActive]}
+                  onPress={() => setOverrideCoDriverId(d.id)}
+                >
+                  <DriverAvatar
+                    initials={`${d.first_name[0]}${d.last_name[0]}`}
+                    avatarUrl={d.avatar_url || d.photo_url}
+                    size={24}
+                  />
+                  <Text style={styles.pickerItemText}>{d.first_name} {d.last_name}</Text>
+                  {overrideCoDriverId === d.id && <Check size={16} color={Colors.primary} strokeWidth={3} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Card>
+
+          {overrideCoDriverId ? (
+            <Input
+              label="Co-Driver Payout Override (SAR)"
+              value={overrideCoDriverPayout}
+              onChangeText={setOverrideCoDriverPayout}
+              placeholder="Optional (Default: 50/50 split)"
+              keyboardType="numeric"
+            />
+          ) : null}
+        </ScrollView>
+
+        <View style={{ gap: 8, marginTop: 12 }}>
+          <Button title="Save Day Override" onPress={handleSaveModalOverride} />
+          <Button title="Reset to Master Assignment" variant="outline" onPress={handleClearModalOverride} />
         </View>
-      </Modal>
+      </AppModal>
     </View>
   );
 };

@@ -18,11 +18,11 @@ import { financeService } from '@/services/financeService';
 import type { Invoice, InvoiceStatus, Account } from '@mercon/shared-types';
 
 const STATUS_BADGES: Record<InvoiceStatus, string> = {
-  Draft: 'bg-amber-50 text-amber-700 border-amber-200',
-  Issued: 'bg-blue-50 text-blue-700 border-blue-200',
-  PartiallyPaid: 'bg-orange-50 text-orange-700 border-orange-200',
-  Paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  Void: 'bg-rose-50 text-rose-700 border-rose-200',
+  Draft: 'bg-amber-50 text-amber-700 border-amber-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
+  Issued: 'bg-blue-50 text-blue-700 border-blue-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
+  PartiallyPaid: 'bg-orange-50 text-orange-700 border-orange-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
+  Paid: 'bg-emerald-50 text-emerald-700 border-emerald-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
+  Void: 'bg-rose-50 text-rose-700 border-rose-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
 };
 
 export default function InvoicesPage() {

@@ -1,17 +1,25 @@
 import React, { useState } from 'react';
-import { Image, Text, View, type ImageSourcePropType } from 'react-native';
-import { Colors } from '@/theme/tokens';
-import { SkeletonBlock } from '@/shared/components';
+import { Image, Text, View, StyleSheet, type ImageSourcePropType, type ViewStyle } from 'react-native';
+import { Colors } from '../../../theme/tokens';
+import { SkeletonBlock } from '../../../shared/components';
 import { DriverStatusIndicator } from './DriverStatusIndicator';
 import type { DriverDisplayStatus } from '../types';
 
-interface DriverAvatarProps {
+export const DRIVER_AVATAR_SIZES = {
+  xl: 46,
+  lg: 40,
+  md: 34,
+  sm: 32,
+  xs: 24,
+} as const;
+
+export interface DriverAvatarProps {
   initials: string;
   avatarUrl?: string | null;
   imageUri?: ImageSourcePropType;
   status?: DriverDisplayStatus;
   size?: number;
-  className?: string;
+  style?: ViewStyle;
 }
 
 /** Helper to resolve avatar source string to ImageSourcePropType */
@@ -23,27 +31,34 @@ function resolveAvatarSource(avatarUrl?: string | null, imageUri?: ImageSourcePr
   if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image/')) {
     return { uri: url };
   }
-  // Relative URL fallback
   return { uri: url.startsWith('/') ? `https://dev.mercon.tech${url}` : `https://dev.mercon.tech/${url}` };
 }
 
 /** Purely circular driver avatar component with image loading skeleton & status dot indicator. */
-export function DriverAvatar({ initials, avatarUrl, imageUri, status, size = 52, className }: DriverAvatarProps) {
+export function DriverAvatar({ initials, avatarUrl, imageUri, status, size = 40, style }: DriverAvatarProps) {
   const [hasError, setHasError] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const source = !hasError ? resolveAvatarSource(avatarUrl, imageUri) : null;
   const halfSize = Math.round(size / 2);
 
   return (
-    <View style={{ width: size, height: size }} className={`relative items-center justify-center ${className ?? ''}`}>
+    <View style={[styles.container, { width: size, height: size }, style]}>
       <View
-        style={{ width: size, height: size, borderRadius: halfSize, backgroundColor: Colors.primary, borderColor: Colors.gray200 }}
-        className="overflow-hidden items-center justify-center border"
+        style={[
+          styles.avatarFrame,
+          {
+            width: size,
+            height: size,
+            borderRadius: halfSize,
+            backgroundColor: Colors.primary,
+            borderColor: Colors.gray200,
+          },
+        ]}
       >
         {source ? (
           <>
             {isLoading && (
-              <View className="absolute inset-0 z-10">
+              <View style={styles.skeletonContainer}>
                 <SkeletonBlock width={size} height={size} radius={halfSize} />
               </View>
             )}
@@ -60,16 +75,50 @@ export function DriverAvatar({ initials, avatarUrl, imageUri, status, size = 52,
             />
           </>
         ) : (
-          <Text style={{ fontSize: Math.round(size * 0.38) }} className="font-bold text-white tracking-wide text-center">
+          <Text style={[styles.initialsText, { fontSize: Math.round(size * 0.38) }]}>
             {initials}
           </Text>
         )}
       </View>
       {status && (
-        <View className="absolute bottom-0 right-0 z-20">
+        <View style={styles.statusContainer}>
           <DriverStatusIndicator status={status} size={Math.round(size * 0.28)} />
         </View>
       )}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarFrame: {
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  skeletonContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 10,
+  },
+  initialsText: {
+    fontWeight: '700',
+    color: Colors.white,
+    letterSpacing: 0.5,
+    textAlign: 'center',
+  },
+  statusContainer: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    zIndex: 20,
+  },
+});

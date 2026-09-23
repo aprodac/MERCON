@@ -7,6 +7,9 @@ export const settingsService = {
       const res = await api.get<ApiResponse<PublicSettings>>('/settings/public');
       return res.data?.data || {
         appName: 'MERCON Operator Platform',
+        companyLegalName: 'MERCON Logistics',
+        vatNumber: null,
+        crNumber: null,
         logoUrl: null,
         primaryColor: '#E8450F',
         themeColors: null,
@@ -15,10 +18,13 @@ export const settingsService = {
         defaultCountryDialCode: '+966',
         maintenanceMode: false,
         maintenanceBanner: null,
-      };
+      } as PublicSettings;
     } catch {
       return {
         appName: 'MERCON Operator Platform',
+        companyLegalName: 'MERCON Logistics',
+        vatNumber: null,
+        crNumber: null,
         logoUrl: null,
         primaryColor: '#E8450F',
         themeColors: null,
