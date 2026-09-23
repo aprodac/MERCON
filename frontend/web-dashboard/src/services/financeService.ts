@@ -11,6 +11,14 @@ import type {
   InvoiceStatus,
   Bill,
   BillStatus,
+  BankAccount,
+  BankReconciliation,
+  Advance,
+  AdvanceApplication,
+  AdvancePartyType,
+  AdvanceDirection,
+  AdvanceStatus,
+  ReconciliationStatus,
 } from '@mercon/shared-types';
 
 export interface GetAccountsParams {
@@ -106,6 +114,69 @@ export interface RecordBillPaymentDTO {
   accountId: string;
   payment_method?: string | null;
   reference?: string | null;
+}
+
+export interface CreateBankAccountDTO {
+  accountId: string;
+  bank_name?: string | null;
+  account_number?: string | null;
+  iban?: string | null;
+  swift_code?: string | null;
+  is_cash?: boolean;
+  opening_balance?: number;
+  opening_date?: string | null;
+  currency?: string;
+}
+
+export interface UpdateBankAccountDTO {
+  bank_name?: string | null;
+  account_number?: string | null;
+  iban?: string | null;
+  swift_code?: string | null;
+  is_cash?: boolean;
+  opening_balance?: number;
+  opening_date?: string | null;
+  currency?: string;
+  isActive?: boolean;
+}
+
+export interface TransferFundsDTO {
+  fromAccountId: string;
+  toAccountId: string;
+  amount: number;
+  date: string;
+  memo?: string | null;
+}
+
+export interface GetAdvancesParams {
+  party_type?: AdvancePartyType | string;
+  party_id?: string;
+  status?: AdvanceStatus | string;
+  direction?: AdvanceDirection | string;
+}
+
+export interface CreateAdvanceDTO {
+  party_type: AdvancePartyType;
+  party_id?: string | null;
+  direction: AdvanceDirection;
+  amount: number;
+  advance_date: string;
+  accountId: string;
+  memo?: string | null;
+  currency?: string;
+}
+
+export interface ApplyAdvanceDTO {
+  targetId: string;
+  targetType: 'Invoice' | 'Bill';
+  amount: number;
+}
+
+export interface CreateReconciliationDTO {
+  bankAccountId: string;
+  statement_date: string;
+  statement_closing_balance: number;
+  journalLineIds: string[];
 }
 
 export const financeService = {
@@ -333,6 +404,74 @@ export const financeService = {
 
   getCashFlow: async (params?: { date_from?: string; date_to?: string }): Promise<ApiResponse<CashFlowData>> => {
     const response = await api.get('/finance/reports/cash-flow', { params });
+    return response.data;
+  },
+
+  // Bank Accounts
+  getBankAccounts: async (): Promise<ApiResponse<BankAccount[]>> => {
+    const response = await api.get('/bank-accounts');
+    return response.data;
+  },
+
+  getBankAccountById: async (id: string): Promise<ApiResponse<BankAccount>> => {
+    const response = await api.get(`/bank-accounts/${id}`);
+    return response.data;
+  },
+
+  createBankAccount: async (data: CreateBankAccountDTO): Promise<ApiResponse<BankAccount>> => {
+    const response = await api.post('/bank-accounts', data);
+    return response.data;
+  },
+
+  updateBankAccount: async (id: string, data: UpdateBankAccountDTO): Promise<ApiResponse<BankAccount>> => {
+    const response = await api.put(`/bank-accounts/${id}`, data);
+    return response.data;
+  },
+
+  transferFunds: async (data: TransferFundsDTO): Promise<ApiResponse<any>> => {
+    const response = await api.post('/bank-accounts/transfer', data);
+    return response.data;
+  },
+
+  // Advances
+  getAdvances: async (params?: GetAdvancesParams): Promise<ApiResponse<Advance[]>> => {
+    const response = await api.get('/advances', { params });
+    return response.data;
+  },
+
+  getAdvanceById: async (id: string): Promise<ApiResponse<Advance>> => {
+    const response = await api.get(`/advances/${id}`);
+    return response.data;
+  },
+
+  createAdvance: async (data: CreateAdvanceDTO): Promise<ApiResponse<Advance>> => {
+    const response = await api.post('/advances', data);
+    return response.data;
+  },
+
+  applyAdvance: async (id: string, data: ApplyAdvanceDTO): Promise<ApiResponse<any>> => {
+    const response = await api.post(`/advances/${id}/apply`, data);
+    return response.data;
+  },
+
+  voidAdvance: async (id: string): Promise<ApiResponse<any>> => {
+    const response = await api.post(`/advances/${id}/void`);
+    return response.data;
+  },
+
+  // Bank Reconciliation
+  getReconciliations: async (params?: { bankAccountId?: string }): Promise<ApiResponse<BankReconciliation[]>> => {
+    const response = await api.get('/reconciliations', { params });
+    return response.data;
+  },
+
+  getReconciliationById: async (id: string): Promise<ApiResponse<BankReconciliation>> => {
+    const response = await api.get(`/reconciliations/${id}`);
+    return response.data;
+  },
+
+  createReconciliation: async (data: CreateReconciliationDTO): Promise<ApiResponse<BankReconciliation>> => {
+    const response = await api.post('/reconciliations', data);
     return response.data;
   },
 };
