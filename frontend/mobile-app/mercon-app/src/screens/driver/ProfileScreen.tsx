@@ -322,54 +322,89 @@ export default function ProfileScreen() {
             </View>
           </SafeAreaView>
         </View>
-                {/* ── UNIFIED NAVIGATION MENU CARD ── */}
-        <View style={styles.menuCard}>
+                {/* ── UNIFIED NAVIGATION MENU LIST ── */}
+        <View style={styles.menuListContainer}>
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
-            <User size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
-            <Text style={styles.menuItemText}>{t('nav_personal_info', 'Personal Information')}</Text>
-            <ChevronRightIcon size={18} color="#C4C4C8" />
+            <View style={[styles.iconCircle, { backgroundColor: '#F0F9EA' }]}>
+              <User size={20} color="#65A30D" strokeWidth={1.8} />
+            </View>
+            <View style={styles.menuTextCol}>
+              <Text style={styles.menuItemTitle}>{t('nav_personal_info', 'Personal Information')}</Text>
+              <Text style={styles.menuItemSub}>Edit your profile details</Text>
+            </View>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/vehicle' as any)}>
-            <Truck size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
-            <Text style={styles.menuItemText}>{t('title_assigned_vehicle', 'Assigned Vehicle')}</Text>
-            <ChevronRightIcon size={18} color="#C4C4C8" />
+            <View style={[styles.iconCircle, { backgroundColor: '#FEF2F2' }]}>
+              <Truck size={20} color="#DC2626" strokeWidth={1.8} />
+            </View>
+            <View style={styles.menuTextCol}>
+              <Text style={styles.menuItemTitle}>{t('title_assigned_vehicle', 'Assigned Vehicle')}</Text>
+              <Text style={styles.menuItemSub}>View your current vehicle</Text>
+            </View>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/documents' as any)}>
-            <FileText size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
-            <Text style={styles.menuItemText}>{t('title_my_documents', 'My Documents')}</Text>
-            <ChevronRightIcon size={18} color="#C4C4C8" />
+            <View style={[styles.iconCircle, { backgroundColor: '#EFF6FF' }]}>
+              <FileText size={20} color="#2563EB" strokeWidth={1.8} />
+            </View>
+            <View style={styles.menuTextCol}>
+              <Text style={styles.menuItemTitle}>{t('title_my_documents', 'My Documents')}</Text>
+              <Text style={styles.menuItemSub}>Manage uploaded documents</Text>
+            </View>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
-            <Award size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
-            <Text style={styles.menuItemText}>{t('title_performance_overview', 'Performance Overview')}</Text>
-            <ChevronRightIcon size={18} color="#C4C4C8" />
+            <View style={[styles.iconCircle, { backgroundColor: '#FEF9C3' }]}>
+              <Award size={20} color="#CA8A04" strokeWidth={1.8} />
+            </View>
+            <View style={styles.menuTextCol}>
+              <Text style={styles.menuItemTitle}>{t('title_performance_overview', 'Performance Overview')}</Text>
+              <Text style={styles.menuItemSub}>View your trip statistics</Text>
+            </View>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
-            <Lock size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
-            <Text style={styles.menuItemText}>{t('action_change_password', 'Change Password')}</Text>
-            <ChevronRightIcon size={18} color="#C4C4C8" />
+            <View style={[styles.iconCircle, { backgroundColor: '#ECFDF5' }]}>
+              <Lock size={20} color="#059669" strokeWidth={1.8} />
+            </View>
+            <View style={styles.menuTextCol}>
+              <Text style={styles.menuItemTitle}>{t('action_change_password', 'Change Password')}</Text>
+              <Text style={styles.menuItemSub}>Update your security</Text>
+            </View>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/settings' as any)}>
-            <Settings size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
-            <Text style={styles.menuItemText}>{t('nav_settings', 'App Settings')}</Text>
-            <ChevronRightIcon size={18} color="#C4C4C8" />
+            <View style={[styles.iconCircle, { backgroundColor: '#F3F4F6' }]}>
+              <Settings size={20} color="#4B5563" strokeWidth={1.8} />
+            </View>
+            <View style={styles.menuTextCol}>
+              <Text style={styles.menuItemTitle}>{t('nav_settings', 'App Settings')}</Text>
+              <Text style={styles.menuItemSub}>Language and preferences</Text>
+            </View>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
-            <HelpCircle size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
-            <Text style={styles.menuItemText}>{t('nav_help_support', 'Help & Support')}</Text>
-            <ChevronRightIcon size={18} color="#C4C4C8" />
+            <View style={[styles.iconCircle, { backgroundColor: '#FFF7ED' }]}>
+              <HelpCircle size={20} color="#EA580C" strokeWidth={1.8} />
+            </View>
+            <View style={styles.menuTextCol}>
+              <Text style={styles.menuItemTitle}>{t('nav_help_support', 'Help & Support')}</Text>
+              <Text style={styles.menuItemSub}>Get assistance from admin</Text>
+            </View>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -381,9 +416,14 @@ export default function ProfileScreen() {
               router.replace('/login');
             }}
           >
-            <LogOut size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
-            <Text style={styles.menuItemText}>{t('action_sign_out', 'Logout')}</Text>
-            <ChevronRightIcon size={18} color="#C4C4C8" />
+            <View style={[styles.iconCircle, { backgroundColor: '#FEF2F2' }]}>
+              <LogOut size={20} color="#DC2626" strokeWidth={1.8} />
+            </View>
+            <View style={styles.menuTextCol}>
+              <Text style={styles.menuItemTitle}>{t('action_sign_out', 'Logout')}</Text>
+              <Text style={styles.menuItemSub}>Sign out of your account</Text>
+            </View>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -584,7 +624,7 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#EEF1F6',
+    backgroundColor: '#FFFFFF',
   },
   topHeaderFill: {
     position: 'absolute',
@@ -599,8 +639,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     backgroundColor: '#FA634E',
     overflow: 'hidden',
-    marginHorizontal: -16,
-    alignSelf: 'stretch',
+    
   },
   headerSafe: {
     paddingHorizontal: 16,
@@ -705,39 +744,48 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.9)',
     marginTop: 4,
   },
-  /* Menu Card */
-  menuCard: {
+  /* Menu List Container (Flat full width) */
+  menuListContainer: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 4,
-    marginHorizontal: 16,
-    marginTop: -30,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 3,
+    paddingVertical: 8,
+    marginTop: -15, /* slight overlap for seamless look */
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    minHeight: 500,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 16,
-    paddingHorizontal: 18,
+    paddingHorizontal: 24,
   },
-  menuIcon: {
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginRight: 16,
   },
-  menuItemText: {
+  menuTextCol: {
     flex: 1,
-    fontSize: 15,
+    justifyContent: 'center',
+  },
+  menuItemTitle: {
+    fontSize: 16,
     fontWeight: '500',
-    color: '#2D2C2C',
+    color: '#18181B',
+    marginBottom: 2,
+  },
+  menuItemSub: {
+    fontSize: 13,
+    color: '#71717A',
   },
   menuDivider: {
     height: 1,
     backgroundColor: '#F4F4F5',
-    marginHorizontal: 16,
+    marginLeft: 84, /* Line starts after icon */
+    marginRight: 24,
   },
   /* Identity Row */
   identityRow: {
@@ -802,9 +850,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 16,
     paddingBottom: 95,
-    gap: 14,
+    backgroundColor: '#FFFFFF',
   },
   sectionSurface: {
     backgroundColor: '#FFFFFF',
@@ -866,7 +913,7 @@ const styles = StyleSheet.create({
   perfDivider: {
     width: 1,
     height: 26,
-    backgroundColor: '#EEF1F6',
+    backgroundColor: '#FFFFFF',
   },
 
   /* Assigned Vehicle Compact Surface */
@@ -1046,7 +1093,7 @@ const styles = StyleSheet.create({
   photoImg: {
     width: '100%',
     height: 64,
-    backgroundColor: '#EEF1F6',
+    backgroundColor: '#FFFFFF',
   },
   photoMeta: {
     padding: 6,
@@ -1164,7 +1211,7 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: '#EEF1F6',
+    backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1256,7 +1303,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: 8,
     position: 'relative',
-    backgroundColor: '#EEF1F6',
+    backgroundColor: '#FFFFFF',
   },
   docImagePreviewImg: {
     width: '100%',
@@ -1305,7 +1352,7 @@ const styles = StyleSheet.create({
   viewFileBtn: {
     height: 42,
     borderRadius: 14,
-    backgroundColor: '#EEF1F6',
+    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
