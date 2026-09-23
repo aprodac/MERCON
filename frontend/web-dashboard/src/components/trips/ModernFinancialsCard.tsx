@@ -76,7 +76,7 @@ export default function ModernFinancialsCard({
   const hasCoDriver = !is3PL && coDriverPayout > 0;
 
   return (
-    <div className="w-full h-full bg-white dark:bg-slate-900 rounded-2xl border border-[#E5E7EB] dark:border-slate-800 shadow-[0_1px_3px_rgba(0,0,0,0.04)] px-4.5 py-4 flex flex-col justify-between gap-3 text-[#3E3C3D] dark:text-slate-100">
+    <div className="w-full h-full bg-white dark:bg-slate-900 rounded-2xl border border-[#E5E7EB] dark:border-slate-800 shadow-[0_1px_3px_rgba(0,0,0,0.04)] px-4.5 py-4 flex flex-col justify-start gap-2.5 text-[#3E3C3D] dark:text-slate-100">
       {/* Top Section */}
       <div className="flex flex-col gap-2.5">
         {/* HEADER: $ FINANCIAL SUMMARY & QUOTATION NAME */}
@@ -206,20 +206,20 @@ export default function ModernFinancialsCard({
               </span>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Action Buttons — ONLY Add Charge Needed */}
-      <div className="pt-2 mt-auto border-t border-slate-100 dark:border-slate-800">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onAddCharge}
-          className="w-full h-8 rounded-xl border-orange-200 text-[#FA634E] hover:bg-orange-50 dark:border-orange-900/60 dark:text-orange-400 dark:hover:bg-orange-950/40 text-[11px] font-bold gap-1 shadow-none cursor-pointer"
-        >
-          <Plus size={13} />
-          {additionalChargesCount > 0 ? `Add Charge (${additionalChargesCount})` : 'Add Charge'}
-        </Button>
+          {/* Action Buttons — EXACTLY BELOW BALANCE */}
+          <div className="pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onAddCharge}
+              className="w-full h-8 rounded-xl border-orange-200 text-[#FA634E] hover:bg-orange-50 dark:border-orange-900/60 dark:text-orange-400 dark:hover:bg-orange-950/40 text-[11px] font-bold gap-1 shadow-none cursor-pointer"
+            >
+              <Plus size={13} />
+              {additionalChargesCount > 0 ? `Add Charge (${additionalChargesCount})` : 'Add Charge'}
+            </Button>
+          </div>
+        </div>
       </div>
     </div>
   );
