@@ -124,44 +124,44 @@ const HomeScreen = () => {
   const [scheduledLoading, setScheduledLoading] = useState(true);
   const router = useRouter();
 
-  // Restore current trip workflow screen on mount
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    if (loading || !trip || restoredRef.current) return;
-    restoredRef.current = true;
-    const ws = getEffectiveWorkflowState(trip);
-    if (trip.driver_workflow === 'EXTERNAL_APP') {
-      if (ws !== 'ASSIGNED') {
-        router.push('/trip/external-app');
-      }
-      return;
-    }
-    if (ws === 'GOING_TO_PICKUP') {
-      router.push('/trip/navigate');
-    } else if (ws === 'ARRIVED_AT_PICKUP' || ws === 'LOADING' || ws === 'RETURN_LOADING') {
-      router.push('/trip/pickup');
-    } else if (
-      ws === 'GOING_TO_STOP' || ws === 'ARRIVED_AT_STOP' || ws === 'STOP_VERIFICATION' ||
-      ws === 'GOING_TO_RETURN_STOP' || ws === 'ARRIVED_AT_RETURN_STOP' || ws === 'RETURN_STOP_VERIFICATION'
-    ) {
-      const isReturn = ws.includes('RETURN');
-      router.push({ pathname: '/trip/stop', params: { legIndex: isReturn ? '1' : '0' } });
-    } else if (ws === 'IN_TRANSIT' || ws === 'IN_TRANSIT_RETURN') {
-      const isReturn = ws === 'IN_TRANSIT_RETURN';
-      const legIdx = isReturn ? 1 : 0;
-      const legStops = (trip.stops || []).filter((s) => (s.leg_index ?? 0) === legIdx);
-      const hasUncompletedIntermediate = legStops.some(
-        (s) => s.stop_type !== 'Pickup' && s.stop_type !== 'Dropoff' && !s.actual_departure
-      );
-      if (hasUncompletedIntermediate) {
-        router.push({ pathname: '/trip/stop', params: { legIndex: isReturn ? '1' : '0' } });
-      } else {
-        router.push('/trip/navigate');
-      }
-    } else if (ws === 'ARRIVED_AT_DELIVERY' || ws === 'DELIVERY_VERIFICATION' || ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'FINAL_DELIVERY_VERIFICATION' || ws === 'REVIEW_COMPLETE') {
-      router.push('/trip/delivery');
-    }
-  }, [trip, loading]);
+//  // Restore current trip workflow screen on mount
+//  const restoredRef = useRef(false);
+//  useEffect(() => {
+//    if (loading || !trip || restoredRef.current) return;
+//    restoredRef.current = true;
+//    const ws = getEffectiveWorkflowState(trip);
+//    if (trip.driver_workflow === 'EXTERNAL_APP') {
+//      if (ws !== 'ASSIGNED') {
+//        router.push('/trip/external-app');
+//      }
+//      return;
+//    }
+//    if (ws === 'GOING_TO_PICKUP') {
+//      router.push('/trip/navigate');
+//    } else if (ws === 'ARRIVED_AT_PICKUP' || ws === 'LOADING' || ws === 'RETURN_LOADING') {
+//      router.push('/trip/pickup');
+//    } else if (
+//      ws === 'GOING_TO_STOP' || ws === 'ARRIVED_AT_STOP' || ws === 'STOP_VERIFICATION' ||
+//      ws === 'GOING_TO_RETURN_STOP' || ws === 'ARRIVED_AT_RETURN_STOP' || ws === 'RETURN_STOP_VERIFICATION'
+//    ) {
+//      const isReturn = ws.includes('RETURN');
+//      router.push({ pathname: '/trip/stop', params: { legIndex: isReturn ? '1' : '0' } });
+//    } else if (ws === 'IN_TRANSIT' || ws === 'IN_TRANSIT_RETURN') {
+//      const isReturn = ws === 'IN_TRANSIT_RETURN';
+//      const legIdx = isReturn ? 1 : 0;
+//      const legStops = (trip.stops || []).filter((s) => (s.leg_index ?? 0) === legIdx);
+//      const hasUncompletedIntermediate = legStops.some(
+//        (s) => s.stop_type !== 'Pickup' && s.stop_type !== 'Dropoff' && !s.actual_departure
+//      );
+//      if (hasUncompletedIntermediate) {
+//        router.push({ pathname: '/trip/stop', params: { legIndex: isReturn ? '1' : '0' } });
+//      } else {
+//        router.push('/trip/navigate');
+//      }
+//    } else if (ws === 'ARRIVED_AT_DELIVERY' || ws === 'DELIVERY_VERIFICATION' || ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'FINAL_DELIVERY_VERIFICATION' || ws === 'REVIEW_COMPLETE') {
+//      router.push('/trip/delivery');
+//    }
+//  }, [trip, loading]);
 
   const fetchScheduled = useCallback(async () => {
     setScheduledLoading(true);
