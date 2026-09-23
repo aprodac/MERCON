@@ -6,12 +6,14 @@ import { cn } from '@/lib/utils';
 export interface FilterChipOption {
   value: string;
   label: string;
+  dotClass?: string;
 }
 
 export interface FilterChipProps {
   label: string;
   value?: string;
   isActive?: boolean;
+  dotClass?: string;
   onClear?: () => void;
   onChange?: (val: string) => void;
   options?: FilterChipOption[];
@@ -23,6 +25,7 @@ export function FilterChip({
   label,
   value,
   isActive = false,
+  dotClass,
   onClear,
   onChange,
   options,
@@ -33,23 +36,27 @@ export function FilterChip({
 
   const selectedOption = options?.find((o) => o.value === value);
   const displayVal = selectedOption ? selectedOption.label : value;
+  const activeDotClass = selectedOption?.dotClass || dotClass;
 
   const buttonContent = (
     <button
       type="button"
       className={cn(
-        'inline-flex items-center gap-1.5 h-[34px] px-3 text-[12px] font-semibold rounded-[10px] border transition-all cursor-pointer select-none',
+        'inline-flex items-center gap-2 h-[34px] px-3.5 text-[12px] font-semibold rounded-full border transition-all cursor-pointer select-none',
         isActive || (value && value !== 'all')
-          ? 'bg-[#FFF4F2] dark:bg-[rgba(250,99,78,0.12)] border-[#FA634E]/30 text-[#FA634E] dark:text-[#FA634E]'
-          : 'bg-[#F4F5F8] dark:bg-slate-800/80 border-transparent text-[#3E3C3D] dark:text-slate-300 hover:bg-[#EAECEF] dark:hover:bg-slate-700/80',
+          ? 'bg-sky-50/80 dark:bg-sky-950/30 border-sky-300/80 dark:border-sky-800 text-sky-900 dark:text-sky-200 shadow-2xs'
+          : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/80 shadow-2xs',
         className
       )}
     >
+      {activeDotClass && (
+        <span className={cn('w-2 h-2 rounded-full shrink-0 animate-pulse-subtle', activeDotClass)} />
+      )}
       <span>
         {label}
         {displayVal && displayVal !== 'all' && displayVal !== 'All' ? `: ${displayVal}` : ''}
       </span>
-      {(children || options) && <ChevronDown className="w-3.5 h-3.5 opacity-60 shrink-0" />}
+      {(children || options) && <ChevronDown className="w-3.5 h-3.5 opacity-50 shrink-0 ml-0.5" />}
       {onClear && (value || isActive) && (
         <span
           role="button"
@@ -58,7 +65,7 @@ export function FilterChip({
             e.stopPropagation();
             onClear();
           }}
-          className="ml-0.5 hover:bg-black/10 dark:hover:bg-white/10 rounded p-0.5"
+          className="ml-0.5 hover:bg-black/10 dark:hover:bg-white/10 rounded-full p-0.5"
         >
           <X className="w-3 h-3" />
         </span>
@@ -76,12 +83,12 @@ export function FilterChip({
       <PopoverContent
         align="start"
         sideOffset={6}
-        className="w-auto p-2 bg-white dark:bg-slate-900 border border-black/[0.08] dark:border-slate-800 shadow-md rounded-xl max-h-60 overflow-y-auto"
+        className="w-auto p-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl max-h-60 overflow-y-auto"
       >
         {children ? (
           children
         ) : (
-          <div className="flex flex-col gap-0.5 min-w-[140px]">
+          <div className="flex flex-col gap-0.5 min-w-[150px]">
             {options?.map((opt) => (
               <button
                 key={opt.value}
@@ -91,13 +98,16 @@ export function FilterChip({
                   setOpen(false);
                 }}
                 className={cn(
-                  'w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                  'w-full text-left px-3 py-1.5 rounded-xl text-xs font-medium transition-colors flex items-center gap-2',
                   value === opt.value
-                    ? 'bg-[#FFF4F2] text-[#FA634E] font-semibold'
+                    ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-900 dark:text-sky-200 font-semibold'
                     : 'hover:bg-slate-100 text-slate-700 dark:hover:bg-slate-800 dark:text-slate-300'
                 )}
               >
-                {opt.label}
+                {(opt.dotClass || activeDotClass) && (
+                  <span className={cn('w-2 h-2 rounded-full shrink-0', opt.dotClass || activeDotClass)} />
+                )}
+                <span>{opt.label}</span>
               </button>
             ))}
           </div>

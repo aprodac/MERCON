@@ -332,25 +332,38 @@ export default function JournalEntriesPage() {
 
   return (
     <DashboardLayout active="finance" title="Journal Entries">
-      <div className="p-6 space-y-5 max-w-7xl mx-auto">
-        {/* Actions Bar */}
-        <div className="flex items-center justify-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setIsExportOpen(true)}
-            className="h-9 text-xs font-semibold"
-          >
-            <Download className="w-3.5 h-3.5 mr-1.5" />
-            Export
-          </Button>
-          <Button
-            onClick={() => navigate('/finance/journal-entries/new')}
-            className="bg-[#FA634E] hover:bg-[#e0523d] text-white h-9 text-xs font-semibold px-3.5 shadow-sm"
-          >
-            <Plus className="w-4 h-4 mr-1.5" />
-            New entry
-          </Button>
+      <div className="p-6 space-y-4 max-w-7xl mx-auto">
+        {/* Top Control Bar: Status Tabs on Left, Actions on Right */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl px-4 py-1.5 shadow-xs">
+          <StatusTabs
+            value={activeTab}
+            onChange={(tab) => updateParams({ status: tab === 'all' ? null : tab, page: '1' })}
+            tabs={[
+              { key: 'all', label: 'All', count: tabCounts.all },
+              { key: 'Draft', label: 'Draft', count: tabCounts.Draft },
+              { key: 'Posted', label: 'Posted', count: tabCounts.Posted },
+              { key: 'Voided', label: 'Voided', count: tabCounts.Voided },
+            ]}
+          />
+
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto py-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsExportOpen(true)}
+              className="h-9 text-xs font-semibold rounded-xl"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              Export
+            </Button>
+            <Button
+              onClick={() => navigate('/finance/journal-entries/new')}
+              className="bg-[#FA634E] hover:bg-[#e0523d] text-white h-9 text-xs font-semibold px-3.5 rounded-xl shadow-xs"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              New entry
+            </Button>
+          </div>
         </div>
 
         {/* Drafts notice info bar */}
@@ -373,18 +386,6 @@ export default function JournalEntriesPage() {
           </div>
         )}
 
-        {/* Status Tabs */}
-        <StatusTabs
-          value={activeTab}
-          onChange={(tab) => updateParams({ status: tab === 'all' ? null : tab, page: '1' })}
-          tabs={[
-            { key: 'all', label: 'All', count: tabCounts.all },
-            { key: 'Draft', label: 'Draft', count: tabCounts.Draft },
-            { key: 'Posted', label: 'Posted', count: tabCounts.Posted },
-            { key: 'Voided', label: 'Voided', count: tabCounts.Voided },
-          ]}
-        />
-
         {/* FilterBar */}
         <FilterBar
           searchValue={search}
@@ -397,10 +398,15 @@ export default function JournalEntriesPage() {
           <FilterChip
             label="Period"
             value={selectedPeriod}
+            dotClass="bg-sky-500"
             onChange={(val) => updateParams({ period_id: val === 'all' ? null : val, page: '1' })}
             options={[
-              { value: 'all', label: 'All Periods' },
-              ...periods.map((p) => ({ value: p.id, label: `${p.name} (${p.status})` })),
+              { value: 'all', label: 'All Periods', dotClass: 'bg-slate-400' },
+              ...periods.map((p) => ({
+                value: p.id,
+                label: `${p.name} (${p.status})`,
+                dotClass: p.status === 'Open' ? 'bg-emerald-500' : 'bg-slate-400',
+              })),
             ]}
           />
 
@@ -408,21 +414,22 @@ export default function JournalEntriesPage() {
           <FilterChip
             label="Source"
             value={selectedSource}
+            dotClass="bg-indigo-500"
             onChange={(val) => updateParams({ source_type: val === 'all' ? null : val, page: '1' })}
             options={[
-              { value: 'all', label: 'All Sources' },
-              { value: 'Manual', label: 'Manual' },
-              { value: 'Invoice', label: 'Invoice' },
-              { value: 'InvoicePayment', label: 'Invoice Payment' },
-              { value: 'Bill', label: 'Bill' },
-              { value: 'BillPayment', label: 'Bill Payment' },
-              { value: 'Expense', label: 'Expense' },
-              { value: 'Advance', label: 'Advance' },
-              { value: 'AdvanceApplication', label: 'Advance Application' },
-              { value: 'BankTransfer', label: 'Bank Transfer' },
-              { value: 'TripSubcontract', label: 'Trip Subcontract' },
-              { value: 'FiscalYearClosing', label: 'Fiscal Year Closing' },
-              { value: 'IMPORT', label: 'Import' },
+              { value: 'all', label: 'All Sources', dotClass: 'bg-slate-400' },
+              { value: 'Manual', label: 'Manual', dotClass: 'bg-amber-500' },
+              { value: 'Invoice', label: 'Invoice', dotClass: 'bg-sky-500' },
+              { value: 'InvoicePayment', label: 'Invoice Payment', dotClass: 'bg-emerald-500' },
+              { value: 'Bill', label: 'Bill', dotClass: 'bg-purple-500' },
+              { value: 'BillPayment', label: 'Bill Payment', dotClass: 'bg-indigo-500' },
+              { value: 'Expense', label: 'Expense', dotClass: 'bg-rose-500' },
+              { value: 'Advance', label: 'Advance', dotClass: 'bg-[#FA634E]' },
+              { value: 'AdvanceApplication', label: 'Advance Application', dotClass: 'bg-teal-500' },
+              { value: 'BankTransfer', label: 'Bank Transfer', dotClass: 'bg-blue-600' },
+              { value: 'TripSubcontract', label: 'Trip Subcontract', dotClass: 'bg-orange-500' },
+              { value: 'FiscalYearClosing', label: 'Fiscal Year Closing', dotClass: 'bg-slate-600' },
+              { value: 'IMPORT', label: 'Import', dotClass: 'bg-violet-500' },
             ]}
           />
 
@@ -430,10 +437,15 @@ export default function JournalEntriesPage() {
           <FilterChip
             label="Account"
             value={selectedAccount}
+            dotClass="bg-emerald-500"
             onChange={(val) => updateParams({ account_id: val === 'all' ? null : val, page: '1' })}
             options={[
-              { value: 'all', label: 'All Accounts' },
-              ...accounts.map((a) => ({ value: a.id, label: `${a.account_code} - ${a.name}` })),
+              { value: 'all', label: 'All Accounts', dotClass: 'bg-slate-400' },
+              ...accounts.map((a) => ({
+                value: a.id,
+                label: `${a.account_code} - ${a.name}`,
+                dotClass: 'bg-emerald-500',
+              })),
             ]}
           />
 
