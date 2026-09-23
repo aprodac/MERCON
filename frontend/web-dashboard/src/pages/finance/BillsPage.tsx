@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import KpiCard from '@/components/ui/KpiCard';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import ExportModal, { ExportColumn } from '@/components/ui/ExportModal';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -24,6 +25,16 @@ const STATUS_BADGES: Record<BillStatus, string> = {
   Void: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
+const BILLS_EXPORT_COLUMNS: ExportColumn<Bill>[] = [
+  { id: 'ref_id', label: 'Bill Reference', accessor: (b) => b.ref_id || b.id },
+  { id: 'provider_name', label: 'Provider / Payee', accessor: (b) => (b as any).provider?.name || b.payee_name || '—' },
+  { id: 'bill_date', label: 'Bill Date', accessor: (b) => (b.bill_date ? new Date(b.bill_date).toLocaleDateString() : '—') },
+  { id: 'due_date', label: 'Due Date', accessor: (b) => (b.due_date ? new Date(b.due_date).toLocaleDateString() : '—') },
+  { id: 'status', label: 'Status', accessor: (b) => b.status },
+  { id: 'total_amount', label: 'Total Amount', accessor: (b) => Number(b.total_amount) || 0 },
+  { id: 'balance_due', label: 'Balance Due', accessor: (b) => Number(b.balance_due) || 0 },
+];
+
 export default function BillsPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -35,6 +46,7 @@ export default function BillsPage() {
 
   const [viewingBill, setViewingBill] = useState<Bill | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
 
   // Payment form state
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
@@ -259,6 +271,7 @@ export default function BillsPage() {
             setPage(1);
           }}
           filterElement={statusFilterElement}
+          onExport={() => setIsExportOpen(true)}
           enableSelection={false}
           getRowId={(bill) => bill.id}
           currentPage={pagination.page}
@@ -267,6 +280,21 @@ export default function BillsPage() {
           onPageChange={setPage}
           emptyTitle="No Bills"
           emptyMessage="No bills found matching criteria."
+        />
+
+        {/* Export Modal */}
+        <ExportModal
+          isOpen={isExportOpen}
+          onClose={() => setIsExportOpen(false)}
+          title="Export Bills"
+          description="Choose your export preferences and columns."
+          fileNamePrefix="bills_ledger"
+          sheetName="Bills"
+          subtitle="MERCON Logistics Bills Ledger"
+          filteredData={bills}
+          columns={BILLS_EXPORT_COLUMNS}
+          formats={['xlsx', 'csv']}
+          totalCount={pagination.total}
         />
 
         {/* View / Detail Modal */}

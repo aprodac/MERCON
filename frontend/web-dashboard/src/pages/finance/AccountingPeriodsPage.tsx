@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import KpiCard from '@/components/ui/KpiCard';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import ExportModal, { ExportColumn } from '@/components/ui/ExportModal';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
@@ -15,11 +16,21 @@ import { financeService, CreateAccountingPeriodDTO } from '@/services/financeSer
 import { usePermissions } from '@/hooks/usePermissions';
 import type { AccountingPeriod, PeriodStatus } from '@mercon/shared-types';
 
+type PeriodRow = AccountingPeriod & { _count?: { journalEntries: number } };
+
 const STATUS_BADGES: Record<PeriodStatus, string> = {
   Open: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   Closed: 'bg-amber-50 text-amber-700 border-amber-200',
   Locked: 'bg-slate-100 text-slate-600 border-slate-300',
 };
+
+const ACCOUNTING_PERIODS_EXPORT_COLUMNS: ExportColumn<PeriodRow>[] = [
+  { id: 'name', label: 'Period Name', accessor: (p) => p.name },
+  { id: 'start_date', label: 'Start Date', accessor: (p) => (p.start_date ? new Date(p.start_date).toLocaleDateString() : '—') },
+  { id: 'end_date', label: 'End Date', accessor: (p) => (p.end_date ? new Date(p.end_date).toLocaleDateString() : '—') },
+  { id: 'status', label: 'Status', accessor: (p) => p.status },
+  { id: 'journal_entries_count', label: 'Journal Entries Count', accessor: (p) => p._count?.journalEntries || 0 },
+];
 
 export default function AccountingPeriodsPage() {
   const queryClient = useQueryClient();
@@ -28,6 +39,7 @@ export default function AccountingPeriodsPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFyModalOpen, setIsFyModalOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
   const [closingDate, setClosingDate] = useState<string>('');
   const [formData, setFormData] = useState<CreateAccountingPeriodDTO>({
     name: '',
@@ -207,10 +219,25 @@ export default function AccountingPeriodsPage() {
           columns={columns}
           data={periods}
           isLoading={isLoading}
+          onExport={() => setIsExportOpen(true)}
           enableSelection={false}
           getRowId={(p) => p.id}
           emptyTitle="No Accounting Periods"
           emptyMessage={`No accounting periods defined yet.${isAdmin ? ' Click "New Period" to create one.' : ''}`}
+        />
+
+        {/* Export Modal */}
+        <ExportModal
+          isOpen={isExportOpen}
+          onClose={() => setIsExportOpen(false)}
+          title="Export Accounting Periods"
+          description="Choose your export preferences and columns."
+          fileNamePrefix="accounting_periods"
+          sheetName="Accounting Periods"
+          subtitle="MERCON Logistics Accounting Periods"
+          filteredData={periods}
+          columns={ACCOUNTING_PERIODS_EXPORT_COLUMNS}
+          formats={['xlsx', 'csv']}
         />
 
         {/* Modal */}

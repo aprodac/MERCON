@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import KpiCard from '@/components/ui/KpiCard';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import ExportModal, { ExportColumn } from '@/components/ui/ExportModal';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -21,6 +22,24 @@ const STATUS_BADGES: Record<JournalEntryStatus, string> = {
   Voided: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
+const JOURNAL_ENTRIES_EXPORT_COLUMNS: ExportColumn<JournalEntry>[] = [
+  { id: 'ref_id', label: 'Reference ID', accessor: (e) => e.ref_id || e.id },
+  { id: 'entry_date', label: 'Entry Date', accessor: (e) => (e.entry_date ? new Date(e.entry_date).toLocaleDateString() : '—') },
+  { id: 'period_name', label: 'Period Name', accessor: (e) => e.period?.name || '—' },
+  { id: 'memo', label: 'Memo / Description', accessor: (e) => e.memo || '—' },
+  { id: 'status', label: 'Status', accessor: (e) => e.status },
+  {
+    id: 'total_debit',
+    label: 'Total Debit',
+    accessor: (e) => (e.lines || []).reduce((sum, l) => sum + (Number(l.debit) || 0), 0),
+  },
+  {
+    id: 'total_credit',
+    label: 'Total Credit',
+    accessor: (e) => (e.lines || []).reduce((sum, l) => sum + (Number(l.credit) || 0), 0),
+  },
+];
+
 export default function JournalEntriesPage() {
   const queryClient = useQueryClient();
 
@@ -32,6 +51,7 @@ export default function JournalEntriesPage() {
 
   // Modals & Detail State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
   const [viewingEntry, setViewingEntry] = useState<JournalEntry | null>(null);
 
   // Form State
@@ -352,6 +372,7 @@ export default function JournalEntriesPage() {
             setPage(1);
           }}
           filterElement={statusFilterElement}
+          onExport={() => setIsExportOpen(true)}
           enableSelection={false}
           getRowId={(entry) => entry.id}
           currentPage={pagination.page}
@@ -360,6 +381,21 @@ export default function JournalEntriesPage() {
           onPageChange={setPage}
           emptyTitle="No Journal Entries"
           emptyMessage="No journal entries found matching criteria."
+        />
+
+        {/* Export Modal */}
+        <ExportModal
+          isOpen={isExportOpen}
+          onClose={() => setIsExportOpen(false)}
+          title="Export Journal Entries"
+          description="Choose your export preferences and columns."
+          fileNamePrefix="journal_entries"
+          sheetName="Journal Entries"
+          subtitle="MERCON Logistics Journal Entries Ledger"
+          filteredData={entries}
+          columns={JOURNAL_ENTRIES_EXPORT_COLUMNS}
+          formats={['xlsx', 'csv']}
+          totalCount={pagination.total}
         />
 
         {/* Create Modal */}
