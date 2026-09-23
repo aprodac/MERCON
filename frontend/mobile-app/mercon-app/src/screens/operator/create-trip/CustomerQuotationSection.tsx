@@ -9,7 +9,7 @@ import { StatusBadge } from '../../../components/Badge';
 import { OperatorCustomer, OperatorQuotation } from '../../../lib/operator';
 import { RateCategoryType } from '../hooks/useCreateTripForm';
 import { API_URL } from '../../../lib/api';
-import { filterQuotationsBySearch } from '@mercon/shared-types';
+import { filterQuotationsBySearch } from '../../../lib/quotationSearch';
 
 function resolveMediaUrl(url?: string | null): string | null {
   if (!url || typeof url !== 'string' || !url.trim()) return null;

@@ -15,11 +15,11 @@ import {
   calculateArrivalDropoffDateAndTime,
 } from '../../../lib/travelTimeService';
 import { type DayAssignmentOverride } from '../../../components';
+import { findMatchingQuotation } from '../../../lib/quotationMatching';
 import {
-  findMatchingQuotation,
   applyMonthlyAssignmentStrategy,
   type MonthlyStrategyMode,
-} from '@mercon/shared-types';
+} from '../../../lib/monthlyRotation';
 
 const DRAFT_STORAGE_KEY = 'MERCON_OPERATOR_TRIP_DRAFT_V3';
 const RECENT_ROUTES_STORAGE_KEY = 'MERCON_RECENT_ROUTES_V1';
