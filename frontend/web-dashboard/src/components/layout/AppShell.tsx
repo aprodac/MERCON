@@ -43,6 +43,24 @@ function ShellInner() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Auto-enter full screen on initial app load (fresh page load across all pages)
+  useEffect(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+
+    const handleFirstInteraction = () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(() => {});
+      }
+    };
+
+    window.addEventListener('click', handleFirstInteraction, { once: true, capture: true });
+    return () => {
+      window.removeEventListener('click', handleFirstInteraction, { capture: true });
+    };
+  }, []);
+
   // Close mobile drawer and reset scroll position on navigation
   useEffect(() => {
     setSidebarOpen(false);

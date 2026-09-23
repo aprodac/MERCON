@@ -333,36 +333,25 @@ export default function JournalEntriesPage() {
   return (
     <DashboardLayout active="finance" title="Journal Entries">
       <div className="p-6 space-y-5 max-w-7xl mx-auto">
-        {/* Page Header */}
-        <FinancePageHeader
-          crumbs={[
-            { label: 'Finance', to: '/finance' },
-            { label: 'Accounting', to: '/finance/periods' },
-            { label: 'Journal Entries' },
-          ]}
-          title="Journal Entries"
-          subtitle="Every posting to the general ledger, by date."
-          actions={
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsExportOpen(true)}
-                className="h-9 text-xs font-semibold"
-              >
-                <Download className="w-3.5 h-3.5 mr-1.5" />
-                Export
-              </Button>
-              <Button
-                onClick={() => navigate('/finance/journal-entries/new')}
-                className="bg-[#FA634E] hover:bg-[#e0523d] text-white h-9 text-xs font-semibold px-3.5 shadow-sm"
-              >
-                <Plus className="w-4 h-4 mr-1.5" />
-                New entry
-              </Button>
-            </div>
-          }
-        />
+        {/* Actions Bar */}
+        <div className="flex items-center justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsExportOpen(true)}
+            className="h-9 text-xs font-semibold"
+          >
+            <Download className="w-3.5 h-3.5 mr-1.5" />
+            Export
+          </Button>
+          <Button
+            onClick={() => navigate('/finance/journal-entries/new')}
+            className="bg-[#FA634E] hover:bg-[#e0523d] text-white h-9 text-xs font-semibold px-3.5 shadow-sm"
+          >
+            <Plus className="w-4 h-4 mr-1.5" />
+            New entry
+          </Button>
+        </div>
 
         {/* Drafts notice info bar */}
         {draftCount > 0 && activeTab !== 'Draft' && (
