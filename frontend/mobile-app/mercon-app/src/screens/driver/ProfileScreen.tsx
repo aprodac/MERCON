@@ -322,32 +322,53 @@ export default function ProfileScreen() {
             </View>
           </SafeAreaView>
         </View>
-                {/* ── NAVIGATION MENU CARD ── */}
+                {/* ── UNIFIED NAVIGATION MENU CARD ── */}
         <View style={styles.menuCard}>
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
             <User size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
-            <Text style={styles.menuItemText}>Personal Information</Text>
+            <Text style={styles.menuItemText}>{t('nav_personal_info', 'Personal Information')}</Text>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
+          </TouchableOpacity>
+          <View style={styles.menuDivider} />
+
+          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/vehicle' as any)}>
+            <Truck size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <Text style={styles.menuItemText}>{t('title_assigned_vehicle', 'Assigned Vehicle')}</Text>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
+          </TouchableOpacity>
+          <View style={styles.menuDivider} />
+
+          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/documents' as any)}>
+            <FileText size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <Text style={styles.menuItemText}>{t('title_my_documents', 'My Documents')}</Text>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
-            <HeartPulse size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
-            <Text style={styles.menuItemText}>Emergency Contact</Text>
+            <Award size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <Text style={styles.menuItemText}>{t('title_performance_overview', 'Performance Overview')}</Text>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
+          </TouchableOpacity>
+          <View style={styles.menuDivider} />
+
+          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
+            <Lock size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <Text style={styles.menuItemText}>{t('action_change_password', 'Change Password')}</Text>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/settings' as any)}>
             <Settings size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
-            <Text style={styles.menuItemText}>App Settings</Text>
+            <Text style={styles.menuItemText}>{t('nav_settings', 'App Settings')}</Text>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
             <HelpCircle size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
-            <Text style={styles.menuItemText}>Help & Support</Text>
+            <Text style={styles.menuItemText}>{t('nav_help_support', 'Help & Support')}</Text>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
@@ -361,139 +382,10 @@ export default function ProfileScreen() {
             }}
           >
             <LogOut size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
-            <Text style={styles.menuItemText}>Logout</Text>
+            <Text style={styles.menuItemText}>{t('action_sign_out', 'Logout')}</Text>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
         </View>
-
-        {/* ── SECTION A: PERFORMANCE OVERVIEW ── */}
-        <View style={styles.sectionSurface}>
-          <Text style={styles.sectionTitleText}>
-            {t('title_performance_overview', 'Performance Overview')}
-          </Text>
-
-          <View style={styles.performanceGrid}>
-            <View style={styles.perfCol}>
-              <Text style={styles.perfValue}>{totalTrips}</Text>
-              <Text style={styles.perfLabel}>{t('label_total_trips', 'Total Trips')}</Text>
-            </View>
-
-            <View style={styles.perfDivider} />
-
-            <View style={styles.perfCol}>
-              <Text style={styles.perfValue}>{tripsOnTime}</Text>
-              <Text style={styles.perfLabel}>{t('label_trips_on_time', 'Trips On Time')}</Text>
-            </View>
-
-            <View style={styles.perfDivider} />
-
-            <View style={styles.perfCol}>
-              <Text style={styles.perfValue}>{totalDistance}</Text>
-              <Text style={styles.perfLabel}>{t('label_total_distance', 'Total Distance')}</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ── SECTION B: ASSIGNED VEHICLE ── */}
-        <View style={styles.sectionGroup}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitleText}>
-              {t('title_assigned_vehicle', 'Assigned Vehicle')}
-            </Text>
-            <TouchableOpacity activeOpacity={0.8} onPress={() => router.push('/vehicle' as any)}>
-              <Text style={styles.viewAllText}>{t('action_view_details', 'View Details')} &gt;</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity
-            style={styles.compactVehicleSurface}
-            activeOpacity={0.88}
-            onPress={() => router.push('/vehicle' as any)}
-          >
-            <View style={styles.truckIconBadge}>
-              <Truck size={20} color="#FA634E" strokeWidth={2.2} />
-            </View>
-
-            <View style={styles.vehicleDetailsCol}>
-              <View style={styles.plateRow}>
-                <Text style={[styles.vehiclePlateText, { writingDirection: 'ltr' }]}>{plateNumber}</Text>
-                <View style={styles.activeStatusPill}>
-                  <Text style={styles.activeStatusDot}>●</Text>
-                  <Text style={styles.activeStatusText}>{t('status_active', 'Active')}</Text>
-                </View>
-              </View>
-              <Text style={styles.vehicleSubText}>
-                {vehicleModel} · {fuelType}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── SECTION C: MY DOCUMENTS ── */}
-        <View style={styles.sectionGroup}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitleText}>
-              {t('title_my_documents', 'My Documents')}
-            </Text>
-            <TouchableOpacity activeOpacity={0.8} onPress={() => router.push('/documents' as any)}>
-              <Text style={styles.viewAllText}>{t('action_view_all', 'View All')} {language === 'ur' ? '<' : '>'}</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.singleDocsContainer}>
-            {docList.map((doc, idx) => {
-              const isLast = idx === docList.length - 1;
-              return (
-                <TouchableOpacity
-                  key={doc.id}
-                  style={[styles.docRowItem, !isLast && styles.docRowBorder]}
-                  activeOpacity={0.8}
-                  onPress={() => setSelectedDoc(doc)}
-                >
-                  <View style={styles.docIconBox}>
-                    <doc.Icon size={16} color="#FA634E" strokeWidth={2.2} />
-                  </View>
-
-                  <View style={styles.docInfoCol}>
-                    <Text style={styles.docTitleText}>{t(doc.titleKey, doc.defaultTitle)}</Text>
-                    <Text style={styles.docSubText}>{doc.subText}</Text>
-                  </View>
-
-                  <View style={styles.docRightCol}>
-                    <Text style={[styles.docExpiryText, { writingDirection: 'ltr' }]}>{t('label_expiry', 'Exp')}: {doc.expiry}</Text>
-
-                    <View
-                      style={[
-                        styles.statusChip,
-                        doc.status === 'valid' && styles.statusChipValid,
-                        doc.status === 'expiring' && styles.statusChipExpiring,
-                        doc.status === 'expired' && styles.statusChipExpired,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.statusChipText,
-                          doc.status === 'valid' && styles.statusTextValid,
-                          doc.status === 'expiring' && styles.statusTextExpiring,
-                          doc.status === 'expired' && styles.statusTextExpired,
-                        ]}
-                      >
-                        {doc.status === 'valid' ? t('label_valid', 'Valid') : doc.status === 'expiring' ? t('label_expiring', 'Expiring') : t('status_expired', 'Expired')}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {language === 'ur' ? (
-                    <ChevronLeft size={15} color="#9898A4" strokeWidth={2.2} />
-                  ) : (
-                    <ChevronRight size={15} color="#9898A4" strokeWidth={2.2} />
-                  )}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
       </ScrollView>
 
       {/* ── Document Preview & WhatsApp Share Modal ── */}
@@ -819,7 +711,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 4,
     marginHorizontal: 16,
-    marginTop: -20,
+    marginTop: 20,
     marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
