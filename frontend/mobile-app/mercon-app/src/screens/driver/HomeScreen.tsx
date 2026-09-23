@@ -627,6 +627,14 @@ const HomeScreen = () => {
                           <View style={styles.timelineRow}>
                             {/* Left: dot + connector line */}
                             <View style={styles.timelineDotCol}>
+                              {/* Top half line (connects to previous row) */}
+                              {isFirst ? (
+                                <View style={styles.lineSegmentHidden} />
+                              ) : (
+                                <View style={[styles.lineSegment, { borderColor: lineColor, opacity: returnLeg ? 0.4 : 1 }]} />
+                              )}
+
+                              {/* The Dot */}
                               {isFirst ? (
                                 <View style={[styles.pickupNodeOuter, { borderColor: dotColor }]}>
                                   <View style={[styles.pickupNodeInner, { backgroundColor: dotColor }]} />
@@ -638,8 +646,12 @@ const HomeScreen = () => {
                                   returnLeg && { backgroundColor: dotColor },
                                 ]} />
                               )}
-                              {!isLast && (
-                                <View style={[styles.dashedLine, { borderColor: lineColor, opacity: returnLeg ? 0.4 : 1 }]} />
+
+                              {/* Bottom half line (connects to next row) */}
+                              {isLast ? (
+                                <View style={styles.lineSegmentHidden} />
+                              ) : (
+                                <View style={[styles.lineSegment, { borderColor: lineColor, opacity: returnLeg ? 0.4 : 1 }]} />
                               )}
                             </View>
 
@@ -1185,12 +1197,12 @@ const styles = StyleSheet.create({
   timelineDotCol: {
     width: 28,
     alignItems: 'center',
-    paddingTop: 14,
   },
   /* Short dashed line that runs through the divider row to bridge the two legs */
   returnLegConnector: {
-    width: 0,
-    height: 36,
+    width: 2,
+    flex: 1,
+    minHeight: 36,
     borderLeftWidth: 2,
     borderColor: '#D8D8DC',
     borderStyle: 'dashed',
@@ -1211,13 +1223,25 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: '#FA634E',
   },
-  dashedLine: {
-    width: 0,
-    height: 46,
+  lineSegment: {
+    flex: 1,
+    width: 2,
     borderLeftWidth: 2,
     borderColor: '#D8D8DC',
     borderStyle: 'dashed',
-    marginVertical: 2,
+    marginVertical: 1,
+  },
+  lineSegmentHidden: {
+    flex: 1,
+    width: 2,
+  },
+  dashedLine: {
+    width: 2,
+    flex: 1,
+    borderLeftWidth: 2,
+    borderColor: '#D8D8DC',
+    borderStyle: 'dashed',
+    marginVertical: 4,
   },
   stopNodeDot: {
     width: 10,
