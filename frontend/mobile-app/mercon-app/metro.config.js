@@ -3,7 +3,9 @@ const { withNativeWind } = require('nativewind/metro');
 const path = require('path');
 
 const projectRoot = __dirname;
-const workspaceRoot = path.resolve(projectRoot, '../..');
+// Repo root: frontend/mobile-app/mercon-app -> ../../.. (same as the
+// `file:../../../packages/shared-types` dependency in package.json).
+const workspaceRoot = path.resolve(projectRoot, '../../..');
 
 const config = getDefaultConfig(projectRoot);
 
