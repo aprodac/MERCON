@@ -12,6 +12,7 @@ import { DriverBottomNav } from '@/navigation/DriverBottomNav';
 import { OperatorBottomNav } from '@/navigation/OperatorBottomNav';
 
 import { LanguageProvider } from '@/lib/language-context';
+import { ThemeProvider } from '@/lib/theme-context';
 import { DriverLiveTracking } from '@/lib/DriverLiveTracking';
 import { DriverNotificationManager } from '@/components/DriverNotificationManager';
 
@@ -116,7 +117,9 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <LanguageProvider>
-          <RootNavigator />
+          <ThemeProvider>
+            <RootNavigator />
+          </ThemeProvider>
         </LanguageProvider>
       </AuthProvider>
     </QueryClientProvider>
