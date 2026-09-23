@@ -52,30 +52,43 @@ import {
 } from '@/components/finance/kit';
 import { formatDate, formatMoney } from '@/lib/finance';
 
-// Source badge mapping conforming strictly to MERCON neutral palette
-const SOURCE_CONFIG: Record<string, { icon: React.ElementType; label: string; link?: (id?: string | null) => string }> = {
-  Manual: { icon: PenLine, label: 'Manual' },
-  Invoice: { icon: ReceiptText, label: 'Invoice', link: (id) => (id ? `/finance/invoices` : `/finance/invoices`) },
-  InvoicePayment: { icon: BadgeDollarSign, label: 'Invoice payment', link: () => `/finance/invoices` },
-  Bill: { icon: FileText, label: 'Bill', link: (id) => (id ? `/finance/bills` : `/finance/bills`) },
-  BillPayment: { icon: CreditCard, label: 'Bill payment', link: () => `/finance/bills` },
-  Expense: { icon: Wallet, label: 'Expense', link: () => `/finance/expenses` },
-  Advance: { icon: HandCoins, label: 'Advance', link: () => `/finance/advances` },
-  AdvanceApplication: { icon: ArrowRightLeft, label: 'Advance applied', link: () => `/finance/advances` },
-  BankTransfer: { icon: Building2, label: 'Bank transfer', link: () => `/finance/bank-accounts` },
-  TripSubcontract: { icon: Truck, label: 'Trip subcontract' },
-  FiscalYearClosing: { icon: Lock, label: 'Year-end closing' },
-  IMPORT: { icon: Upload, label: 'Import' },
+// Source badge mapping matching filter chip color dots exactly
+const SOURCE_CONFIG: Record<
+  string,
+  {
+    icon: React.ElementType;
+    label: string;
+    dotClass: string;
+    link?: (id?: string | null) => string;
+  }
+> = {
+  Manual: { icon: PenLine, label: 'Manual', dotClass: 'bg-amber-500' },
+  Invoice: { icon: ReceiptText, label: 'Invoice', dotClass: 'bg-sky-500', link: () => `/finance/invoices` },
+  InvoicePayment: { icon: BadgeDollarSign, label: 'Invoice payment', dotClass: 'bg-emerald-500', link: () => `/finance/invoices` },
+  Bill: { icon: FileText, label: 'Bill', dotClass: 'bg-purple-500', link: () => `/finance/bills` },
+  BillPayment: { icon: CreditCard, label: 'Bill payment', dotClass: 'bg-indigo-500', link: () => `/finance/bills` },
+  Expense: { icon: Wallet, label: 'Expense', dotClass: 'bg-rose-500', link: () => `/finance/expenses` },
+  Advance: { icon: HandCoins, label: 'Advance', dotClass: 'bg-[#FA634E]', link: () => `/finance/advances` },
+  AdvanceApplication: { icon: ArrowRightLeft, label: 'Advance applied', dotClass: 'bg-teal-500', link: () => `/finance/advances` },
+  BankTransfer: { icon: Building2, label: 'Bank transfer', dotClass: 'bg-blue-600', link: () => `/finance/bank-accounts` },
+  TripSubcontract: { icon: Truck, label: 'Trip subcontract', dotClass: 'bg-orange-500' },
+  FiscalYearClosing: { icon: Lock, label: 'Year-end closing', dotClass: 'bg-slate-600' },
+  IMPORT: { icon: Upload, label: 'Import', dotClass: 'bg-violet-500' },
 };
 
 function renderSourceBadge(sourceType?: string, sourceId?: string | null) {
-  const config = SOURCE_CONFIG[sourceType || ''] || { icon: HelpCircle, label: sourceType || 'System' };
+  const config = SOURCE_CONFIG[sourceType || ''] || {
+    icon: HelpCircle,
+    label: sourceType || 'System',
+    dotClass: 'bg-slate-400',
+  };
   const Icon = config.icon;
   const link = config.link?.(sourceId);
 
   const badgeContent = (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-semibold bg-[#EEF1F6] dark:bg-slate-800 text-[#3E3C3D] dark:text-slate-300 border border-slate-200/80 dark:border-slate-700/80 hover:bg-slate-200/60 transition-colors shrink-0">
-      <Icon className="w-3 h-3 text-[#3E3C3D]/70 dark:text-slate-400" />
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/90 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 transition-all shrink-0 shadow-2xs">
+      <span className={`w-2 h-2 rounded-full shrink-0 ${config.dotClass}`} />
+      <Icon className="w-3 h-3 text-slate-500 dark:text-slate-400" />
       {config.label}
     </span>
   );
@@ -138,8 +151,21 @@ export default function JournalEntriesPage() {
   const selectedPeriod = searchParams.get('period_id') || 'all';
   const selectedSource = searchParams.get('source_type') || 'all';
   const selectedAccount = searchParams.get('account_id') || 'all';
-  const dateFrom = searchParams.get('date_from') || '';
-  const dateTo = searchParams.get('date_to') || '';
+
+  // Default Date Logic (Current Month-to-Date: 1st of current month to today)
+  const defaultDates = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return {
+      from: `${year}-${month}-01`,
+      to: `${year}-${month}-${day}`,
+    };
+  }, []);
+
+  const dateFrom = searchParams.get('date_from') ?? defaultDates.from;
+  const dateTo = searchParams.get('date_to') ?? defaultDates.to;
   const search = searchParams.get('search') || '';
   const page = parseInt(searchParams.get('page') || '1', 10);
   const perPage = 25;

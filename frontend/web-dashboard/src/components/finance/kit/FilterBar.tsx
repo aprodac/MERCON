@@ -34,23 +34,35 @@ export function FilterChip({
 }: FilterChipProps) {
   const [open, setOpen] = useState(false);
 
+  const defaultDot = label.toLowerCase().includes('period')
+    ? 'bg-sky-500'
+    : label.toLowerCase().includes('source')
+    ? 'bg-indigo-500'
+    : label.toLowerCase().includes('account')
+    ? 'bg-emerald-500'
+    : 'bg-[#FA634E]';
+
+  const effectiveDotClass = dotClass || defaultDot;
   const selectedOption = options?.find((o) => o.value === value);
   const displayVal = selectedOption ? selectedOption.label : value;
-  const activeDotClass = selectedOption?.dotClass || dotClass;
+  const activeDotClass =
+    selectedOption && selectedOption.value !== 'all' && selectedOption.value !== 'All' && selectedOption.dotClass
+      ? selectedOption.dotClass
+      : effectiveDotClass;
 
   const buttonContent = (
     <button
       type="button"
       className={cn(
         'inline-flex items-center gap-2 h-[34px] px-3.5 text-[12px] font-semibold rounded-full border transition-all cursor-pointer select-none',
-        isActive || (value && value !== 'all')
+        isActive || (value && value !== 'all' && value !== 'All')
           ? 'bg-sky-50/80 dark:bg-sky-950/30 border-sky-300/80 dark:border-sky-800 text-sky-900 dark:text-sky-200 shadow-2xs'
           : 'bg-white dark:bg-slate-900 border-slate-200/90 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/80 shadow-2xs',
         className
       )}
     >
       {activeDotClass && (
-        <span className={cn('w-2 h-2 rounded-full shrink-0 animate-pulse-subtle', activeDotClass)} />
+        <span className={cn('w-2 h-2 rounded-full shrink-0', activeDotClass)} />
       )}
       <span>
         {label}
