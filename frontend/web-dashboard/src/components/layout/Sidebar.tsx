@@ -2,18 +2,21 @@ import { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Home, Bell, Truck, Users, Car, Building2,
+  Home, Truck, Users, Car, Building2,
   CreditCard, ReceiptText, Calculator, Files, FileBarChart,
-  Settings, User, LogOut, Wrench, X, MapPin, TrendingUp, Trash2,
-  CalendarRange, Wallet, SlidersHorizontal, ChevronsLeft, ChevronsRight, FolderArchive, Lock, ShieldCheck, GraduationCap, AlertTriangle, FolderTree, BookOpen, BookOpenText, Scale, BarChart3, Clock, Coins, ChevronDown
+  Settings, LogOut, Wrench, X, MapPin, TrendingUp, Trash2,
+  CalendarRange, Wallet, SlidersHorizontal, ChevronsLeft, ChevronsRight,
+  FolderArchive, Lock, ShieldCheck, GraduationCap, AlertTriangle,
+  FolderTree, BookOpen, BookOpenText, Scale, BarChart3, Clock, Coins,
+  ChevronDown, ChevronRight, PlusCircle, Sparkles, Layers, FileText
 } from 'lucide-react';
 
 import { authStore } from '@/store/authStore';
 import { notificationService } from '@/services/notificationService';
-
 import { settingsService } from '@/services/settingsService';
 import type { ModuleKey } from '@mercon/shared-types';
 import { usePermissions } from '@/hooks/usePermissions';
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 
 interface SidebarProps {
   active?: string;
@@ -26,6 +29,31 @@ interface SidebarProps {
    */
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+}
+
+interface SubRoute {
+  label: string;
+  path: string;
+  icon?: any;
+  permissionKey?: string;
+  moduleKey?: ModuleKey;
+  isAction?: boolean;
+}
+
+interface NavItem {
+  icon: any;
+  label: string;
+  path: string;
+  moduleKey?: ModuleKey;
+  permissionKey?: string;
+  end?: boolean;
+  badge?: number;
+  subRoutes?: SubRoute[];
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
 }
 
 export default function Sidebar({ active, open = false, onClose, collapsed = false, onToggleCollapse }: SidebarProps) {
@@ -53,16 +81,6 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
     return currentPath === itemPath || currentPath.startsWith(itemPath + '/');
   };
 
-  /** MERCON Coral Red (#FA634E) Active Accent */
-  const getActiveAccent = () => {
-    return {
-      from: '#FA634E',
-      to: '#DF4834',
-      shadow: 'rgba(250, 99, 78, 0.35)',
-      border: '#FA634E',
-    };
-  };
-
   const handleLogout = () => {
     authStore.clearSession();
     navigate('/login');
@@ -84,145 +102,202 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
   const enabledModules = settings?.enabledModules;
   const hiddenModules = settings?.hiddenModules;
 
-  interface NavItem {
-    icon: any;
-    label: string;
-    path: string;
-    moduleKey?: ModuleKey;
-    permissionKey?: string;
-    end?: boolean;
-    badge?: number;
-  }
-
-  interface FinanceSubGroup {
-    label: string;
-    items: NavItem[];
-  }
-
-  const financeSubGroupsRaw: FinanceSubGroup[] = [
+  // Master Structure of Nav Groups & Sub-routes
+  const rawNavGroups: NavGroup[] = [
     {
-      label: 'Sales',
+      label: 'MAIN',
       items: [
-        { icon: Calculator, label: 'Quotations', path: '/quotations', moduleKey: 'quotations', permissionKey: 'quotations.view' },
-        { icon: ReceiptText, label: 'Invoices', path: '/finance/invoices', moduleKey: 'finance' },
-        { icon: Clock, label: 'AR Ageing', path: '/finance/ar-ageing', moduleKey: 'finance' },
+        {
+          icon: Home,
+          label: 'Dashboard',
+          path: '/',
+          moduleKey: 'dashboard',
+          badge: unreadCount > 0 ? unreadCount : undefined,
+          subRoutes: [
+            { label: 'Overview', path: '/', icon: Home },
+            { label: 'Notifications Center', path: '/notifications', icon: Clock },
+          ],
+        },
       ],
     },
     {
-      label: 'Purchases',
+      label: 'OPERATIONS',
       items: [
-        { icon: CreditCard, label: 'Bills', path: '/finance/bills', moduleKey: 'finance' },
-        { icon: Wallet, label: 'Expenses', path: '/expenses', moduleKey: 'expenses', permissionKey: 'reports.view' },
-        { icon: Clock, label: 'AP Ageing', path: '/finance/ap-ageing', moduleKey: 'finance' },
+        {
+          icon: Truck,
+          label: 'Trips & Dispatch',
+          path: '/trips',
+          moduleKey: 'trips',
+          subRoutes: [
+            { label: 'All Operations Trips', path: '/trips', icon: Truck },
+            { label: 'Create New Trip', path: '/trips/new', icon: PlusCircle, isAction: true },
+            { label: 'Monthly Agreement Trips', path: '/trips/monthly', icon: CalendarRange },
+            { label: '3rd Party Fleet Services', path: '/third-party', icon: Building2, moduleKey: 'third-party' },
+          ],
+        },
+        {
+          icon: Car,
+          label: 'Fleet & Drivers',
+          path: '/vehicles',
+          moduleKey: 'vehicles',
+          subRoutes: [
+            { label: 'Vehicle Registry', path: '/vehicles', icon: Car },
+            { label: 'Add New Vehicle', path: '/vehicles/new', icon: PlusCircle, isAction: true },
+            { label: 'Fleet Maintenance', path: '/maintenance', icon: Wrench, moduleKey: 'maintenance' },
+            { label: 'Schedule Maintenance', path: '/maintenance/new', icon: PlusCircle, isAction: true, moduleKey: 'maintenance' },
+            { label: 'Driver Roster', path: '/drivers', icon: Users, moduleKey: 'drivers' },
+            { label: 'Add New Driver', path: '/drivers/new', icon: PlusCircle, isAction: true, moduleKey: 'drivers' },
+            { label: 'Vehicle P&L Financials', path: '/vehicles/financials', icon: TrendingUp, permissionKey: 'fleet.financials' },
+          ],
+        },
+        {
+          icon: Building2,
+          label: 'Customers & Quotes',
+          path: '/customers',
+          moduleKey: 'customers',
+          subRoutes: [
+            { label: 'Customer Directory', path: '/customers', icon: Building2 },
+            { label: 'Add New Customer', path: '/customers/new', icon: PlusCircle, isAction: true },
+            { label: 'Commercial Quotations', path: '/quotations', icon: Calculator, moduleKey: 'quotations', permissionKey: 'quotations.view' },
+            { label: 'New Commercial Quote', path: '/quotations/new', icon: PlusCircle, isAction: true, moduleKey: 'quotations' },
+            { label: 'AI Agreement Import', path: '/quotations/import', icon: Sparkles, moduleKey: 'quotations' },
+          ],
+        },
       ],
     },
     {
-      label: 'Banking',
+      label: 'FINANCE',
       items: [
-        { icon: Building2, label: 'Bank Accounts', path: '/finance/bank-accounts', moduleKey: 'finance' },
-        { icon: Scale, label: 'Reconciliation', path: '/finance/reconciliation', moduleKey: 'finance' },
-        { icon: Wallet, label: 'Advances', path: '/finance/advances', moduleKey: 'finance' },
-      ],
-    },
-    {
-      label: 'Accounting',
-      items: [
-        { icon: BookOpen, label: 'Journal Entries', path: '/finance/journal-entries', moduleKey: 'finance' },
-        { icon: BookOpenText, label: 'General Ledger', path: '/finance/general-ledger', moduleKey: 'finance' },
-        { icon: FolderTree, label: 'Chart of Accounts', path: '/finance/chart-of-accounts', moduleKey: 'finance' },
-        { icon: CalendarRange, label: 'Accounting Periods', path: '/finance/periods', moduleKey: 'finance' },
-      ],
-    },
-    {
-      label: 'Reports',
-      items: [
-        { icon: BarChart3, label: 'Profit & Loss', path: '/finance/profit-and-loss', moduleKey: 'finance' },
-        { icon: FileBarChart, label: 'Balance Sheet', path: '/finance/balance-sheet', moduleKey: 'finance' },
-        { icon: Scale, label: 'Trial Balance', path: '/finance/trial-balance', moduleKey: 'finance' },
-        { icon: Coins, label: 'Cash Flow', path: '/finance/cash-flow', moduleKey: 'finance' },
-        { icon: TrendingUp, label: 'Vehicle P&L', path: '/vehicles/financials', moduleKey: 'vehicles', permissionKey: 'fleet.financials' },
-      ],
-    },
-  ];
-
-  const nonFinanceGroups: { label: string; items: NavItem[] }[] = [
-    {
-      label: '',
-      items: [
-        { icon: Home, label: 'Dashboard', path: '/', moduleKey: 'dashboard' },
+        {
+          icon: Calculator,
+          label: 'Sales & Revenue',
+          path: '/finance/invoices',
+          moduleKey: 'finance',
+          subRoutes: [
+            { label: 'Commercial Quotations', path: '/quotations', icon: Calculator, moduleKey: 'quotations', permissionKey: 'quotations.view' },
+            { label: 'Invoices Ledger', path: '/finance/invoices', icon: ReceiptText, moduleKey: 'finance' },
+            { label: 'Create New Invoice', path: '/finance/invoices/new', icon: PlusCircle, isAction: true, moduleKey: 'finance' },
+            { label: 'AR Accounts Receivable', path: '/finance/ar-ageing', icon: Clock, moduleKey: 'finance' },
+          ],
+        },
+        {
+          icon: CreditCard,
+          label: 'Purchases & Bills',
+          path: '/finance/bills',
+          moduleKey: 'finance',
+          subRoutes: [
+            { label: 'Vendor Bills Ledger', path: '/finance/bills', icon: CreditCard, moduleKey: 'finance' },
+            { label: 'Create Vendor Bill', path: '/finance/bills/new', icon: PlusCircle, isAction: true, moduleKey: 'finance' },
+            { label: 'Operating Expenses', path: '/expenses', icon: Wallet, moduleKey: 'expenses', permissionKey: 'reports.view' },
+            { label: 'AP Accounts Payable', path: '/finance/ap-ageing', icon: Clock, moduleKey: 'finance' },
+          ],
+        },
+        {
+          icon: Building2,
+          label: 'Banking & Cash',
+          path: '/finance/bank-accounts',
+          moduleKey: 'finance',
+          subRoutes: [
+            { label: 'Bank Accounts', path: '/finance/bank-accounts', icon: Building2, moduleKey: 'finance' },
+            { label: 'Add Bank Account', path: '/finance/bank-accounts/new', icon: PlusCircle, isAction: true, moduleKey: 'finance' },
+            { label: 'Bank Reconciliation', path: '/finance/reconciliation', icon: Scale, moduleKey: 'finance' },
+            { label: 'Driver & Staff Advances', path: '/finance/advances', icon: Wallet, moduleKey: 'finance' },
+            { label: 'Issue New Advance', path: '/finance/advances/new', icon: PlusCircle, isAction: true, moduleKey: 'finance' },
+          ],
+        },
+        {
+          icon: BookOpen,
+          label: 'General Accounting',
+          path: '/finance/general-ledger',
+          moduleKey: 'finance',
+          subRoutes: [
+            { label: 'General Ledger', path: '/finance/general-ledger', icon: BookOpenText, moduleKey: 'finance' },
+            { label: 'Journal Entries', path: '/finance/journal-entries', icon: BookOpen, moduleKey: 'finance' },
+            { label: 'Create Journal Entry', path: '/finance/journal-entries/new', icon: PlusCircle, isAction: true, moduleKey: 'finance' },
+            { label: 'Chart of Accounts', path: '/finance/chart-of-accounts', icon: FolderTree, moduleKey: 'finance' },
+            { label: 'Accounting Periods', path: '/finance/periods', icon: CalendarRange, moduleKey: 'finance' },
+          ],
+        },
+        {
+          icon: BarChart3,
+          label: 'Financial Statements',
+          path: '/finance/profit-and-loss',
+          moduleKey: 'finance',
+          subRoutes: [
+            { label: 'Profit & Loss Statement', path: '/finance/profit-and-loss', icon: BarChart3, moduleKey: 'finance' },
+            { label: 'Balance Sheet', path: '/finance/balance-sheet', icon: FileBarChart, moduleKey: 'finance' },
+            { label: 'Trial Balance', path: '/finance/trial-balance', icon: Scale, moduleKey: 'finance' },
+            { label: 'Cash Flow Statement', path: '/finance/cash-flow', icon: Coins, moduleKey: 'finance' },
+            { label: 'Vehicle P&L Financials', path: '/vehicles/financials', icon: TrendingUp, moduleKey: 'vehicles', permissionKey: 'fleet.financials' },
+          ],
+        },
       ],
     },
     {
       label: 'COMPLIANCE & REPORTS',
       items: [
-        { icon: GraduationCap, label: 'Learning', path: '/learning', moduleKey: 'learning' },
-        { icon: Files, label: 'Documents', path: '/documents', moduleKey: 'documents' },
-        { icon: FileBarChart, label: 'Company Reports', path: '/company-reports', moduleKey: 'company-reports', permissionKey: 'reports.view' },
-        { icon: SlidersHorizontal, label: 'Report Builder', path: '/report-builder', moduleKey: 'report-builder', permissionKey: 'reports.view' },
+        {
+          icon: FileBarChart,
+          label: 'Reports & Analytics',
+          path: '/company-reports',
+          moduleKey: 'company-reports',
+          permissionKey: 'reports.view',
+          subRoutes: [
+            { label: 'Company Reports', path: '/company-reports', icon: FileBarChart, moduleKey: 'company-reports', permissionKey: 'reports.view' },
+            { label: 'Report Builder Landing', path: '/report-builder', icon: SlidersHorizontal, moduleKey: 'report-builder', permissionKey: 'reports.view' },
+            { label: 'Quick Report Generator', path: '/report-builder/quick', icon: Sparkles, moduleKey: 'report-builder', permissionKey: 'reports.view' },
+            { label: 'Advanced Report Builder', path: '/report-builder/advanced', icon: Layers, moduleKey: 'report-builder', permissionKey: 'reports.view' },
+          ],
+        },
+        {
+          icon: Files,
+          label: 'Documents & Academy',
+          path: '/documents',
+          moduleKey: 'documents',
+          subRoutes: [
+            { label: 'Documents Vault', path: '/documents', icon: Files, moduleKey: 'documents' },
+            { label: 'Learning & Academy', path: '/learning', icon: GraduationCap, moduleKey: 'learning' },
+          ],
+        },
       ],
     },
     {
       label: 'MASTER DATA',
       items: [
-        { icon: MapPin, label: 'Locations', path: '/locations', moduleKey: 'locations', permissionKey: 'settings.view' },
-        { icon: SlidersHorizontal, label: 'Taxonomy & Colors', path: '/taxonomy', moduleKey: 'taxonomy', permissionKey: 'settings.view' },
+        {
+          icon: MapPin,
+          label: 'Locations & Taxonomy',
+          path: '/locations',
+          moduleKey: 'locations',
+          permissionKey: 'settings.view',
+          subRoutes: [
+            { label: 'Locations Master', path: '/locations', icon: MapPin, moduleKey: 'locations', permissionKey: 'settings.view' },
+            { label: 'Add New Location', path: '/locations/create', icon: PlusCircle, isAction: true, moduleKey: 'locations', permissionKey: 'settings.view' },
+            { label: 'Taxonomy & Universal Colors', path: '/taxonomy', icon: SlidersHorizontal, moduleKey: 'taxonomy', permissionKey: 'settings.view' },
+          ],
+        },
       ],
     },
     {
-      label: 'ACCOUNT',
+      label: 'ACCOUNT & SYSTEM',
       items: [
-        { icon: Settings, label: 'Settings', path: '/settings', end: true },
-        { icon: Trash2, label: 'Recycle Bin', path: '/settings/recycle-bin', moduleKey: 'recycle-bin' },
-        ...(isSuperAdmin ? [{ icon: SlidersHorizontal, label: 'Module Governance', path: '/settings/module-governance', permissionKey: 'settings.deployment' }] : []),
-        ...(isSuperAdmin ? [{ icon: ShieldCheck, label: 'Audit Log', path: '/settings/audit-log' }] : []),
-        ...(can('users.view') ? [{ icon: Users, label: 'User Management', path: '/settings/users', permissionKey: 'users.view' }] : []),
-        ...(userRole === 'Admin' || isSuperAdmin ? [{ icon: AlertTriangle, label: 'Error Console', path: '/settings/error-console' }] : []),
-        { icon: FolderArchive, label: 'Aprodac Vault', path: '/aprodac-documents', moduleKey: 'aprodac-documents' },
+        {
+          icon: Settings,
+          label: 'Settings & Admin',
+          path: '/settings',
+          subRoutes: [
+            { label: 'System Settings', path: '/settings', icon: Settings },
+            { label: 'Recycle Bin', path: '/settings/recycle-bin', icon: Trash2, moduleKey: 'recycle-bin' },
+            ...(isSuperAdmin ? [{ label: 'Module Governance', path: '/settings/module-governance', icon: SlidersHorizontal, permissionKey: 'settings.deployment' }] : []),
+            ...(isSuperAdmin ? [{ label: 'Audit Trail Log', path: '/settings/audit-log', icon: ShieldCheck }] : []),
+            ...(can('users.view') ? [{ label: 'User Management', path: '/settings/users', icon: Users, permissionKey: 'users.view' }] : []),
+            ...(userRole === 'Admin' || isSuperAdmin ? [{ label: 'Error Console', path: '/settings/error-console', icon: AlertTriangle }] : []),
+            { label: 'Aprodac Vault', path: '/aprodac-documents', icon: FolderArchive, moduleKey: 'aprodac-documents' },
+          ],
+        },
       ],
     },
   ];
-
-  const [openSubGroups, setOpenSubGroups] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem('mercon_finance_sidebar_subgroups');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
-    return { Sales: true, Purchases: true, Banking: true, Accounting: true, Reports: true };
-  });
-
-  const toggleSubGroup = (label: string) => {
-    setOpenSubGroups((prev) => {
-      const next = { ...prev, [label]: !prev[label] };
-      try {
-        localStorage.setItem('mercon_finance_sidebar_subgroups', JSON.stringify(next));
-      } catch {
-        // ignore
-      }
-      return next;
-    });
-  };
-
-  useEffect(() => {
-    financeSubGroupsRaw.forEach((sg) => {
-      const hasActive = sg.items.some((item) => isItemActive(item.path, item.end));
-      if (hasActive) {
-        setOpenSubGroups((prev) => {
-          if (!prev[sg.label]) {
-            const next = { ...prev, [sg.label]: true };
-            try {
-              localStorage.setItem('mercon_finance_sidebar_subgroups', JSON.stringify(next));
-            } catch {
-              // ignore
-            }
-            return next;
-          }
-          return prev;
-        });
-      }
-    });
-  }, [location.pathname]);
 
   const isItemPermitted = (item: NavItem) => {
     if (item.permissionKey && !can(item.permissionKey)) return false;
@@ -234,67 +309,40 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
   };
 
   const hiddenSet = new Set(hiddenModules || []);
-  const comingSoonItems: NavItem[] = [];
 
-  // Filter finance sub-groups
-  const processedFinanceSubGroups: FinanceSubGroup[] = [];
-  financeSubGroupsRaw.forEach((sg) => {
-    const validItems: NavItem[] = [];
-    sg.items.forEach((item) => {
-      if (!isItemPermitted(item)) return;
+  // Filter groups according to permissions and module governance
+  const processedNavGroups = rawNavGroups.map(group => {
+    const validItems = group.items.filter(item => {
+      if (!isItemPermitted(item)) return false;
       if (checkIsDisabled(item)) {
-        if (item.moduleKey && hiddenSet.has(item.moduleKey)) return;
-        comingSoonItems.push(item);
-      } else {
-        validItems.push(item);
+        if (item.moduleKey && hiddenSet.has(item.moduleKey)) return false;
       }
+      return true;
     });
-    if (validItems.length > 0) {
-      processedFinanceSubGroups.push({
-        label: sg.label,
-        items: validItems,
-      });
-    }
-  });
 
-  // Filter non-finance groups
-  const processedNonFinanceGroups: { label: string; items: NavItem[] }[] = [];
-  nonFinanceGroups.forEach((g) => {
-    const validItems: NavItem[] = [];
-    g.items.forEach((item) => {
-      if (!isItemPermitted(item)) return;
-      if (checkIsDisabled(item)) {
-        if (item.moduleKey && hiddenSet.has(item.moduleKey)) return;
-        comingSoonItems.push(item);
-      } else {
-        validItems.push(item);
-      }
-    });
-    if (validItems.length > 0) {
-      processedNonFinanceGroups.push({
-        label: g.label,
-        items: validItems,
-      });
-    }
-  });
+    return {
+      label: group.label,
+      items: validItems,
+    };
+  }).filter(group => group.items.length > 0);
 
-  if (comingSoonItems.length > 0) {
-    processedNonFinanceGroups.push({
-      label: 'COMING SOON',
-      items: comingSoonItems,
-    });
-  }
-
-  const renderNavItem = (item: NavItem, isNested = false) => {
-    const isActive = isItemActive(item.path, item.end);
+  // Render a single NavItem with its HoverCard sub-route flyout
+  const renderNavItem = (item: NavItem) => {
+    const isActive = isItemActive(item.path, item.end) || (item.subRoutes?.some(sr => location.pathname === sr.path) ?? false);
     const isDisabledModule = item.moduleKey && !isSuperAdmin && enabledModules && Array.isArray(enabledModules) && !enabledModules.includes(item.moduleKey);
+
+    const validSubRoutes = (item.subRoutes || []).filter(sr => {
+      if (sr.permissionKey && !can(sr.permissionKey)) return false;
+      if (sr.moduleKey && !isSuperAdmin && enabledModules && Array.isArray(enabledModules) && !enabledModules.includes(sr.moduleKey)) return false;
+      return true;
+    });
 
     if (isDisabledModule) {
       return (
         <div
           key={item.label}
           title={collapsed ? `${item.label} — Locked` : `${item.label} (Locked)`}
-          className={`flex items-center gap-3 ${isNested && !collapsed ? 'px-2.5 py-2 text-xs' : 'px-3 py-2.5'} rounded-xl opacity-45 cursor-not-allowed select-none transition-colors duration-200 relative overflow-hidden text-[#EEF1F6]/50 bg-white/5 font-medium`}
+          className="flex items-center gap-3 px-3 py-2.5 rounded-xl opacity-45 cursor-not-allowed select-none transition-colors duration-200 relative overflow-hidden text-[#EEF1F6]/50 bg-white/5 font-medium"
         >
           <span className="w-5 h-5 flex items-center justify-center shrink-0">
             <item.icon size={17} className="stroke-[1.8] text-[#EEF1F6]/40" />
@@ -305,9 +353,7 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
               ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:pointer-events-none' : 'lg:max-w-[180px] lg:opacity-100'}
             `}
           >
-            <span className="text-xs truncate">
-              {item.label}
-            </span>
+            <span className="text-xs truncate">{item.label}</span>
             <Lock size={13} className="text-amber-400/90 shrink-0 ml-1.5" />
           </div>
           {collapsed && (
@@ -317,16 +363,15 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
       );
     }
 
-    return (
+    const triggerElement = (
       <NavLink
-        key={item.label}
         to={item.path}
         onClick={onClose}
         title={collapsed ? item.label : undefined}
         className={`
-          flex items-center gap-3 ${isNested && !collapsed ? 'px-2.5 py-2 text-xs' : 'px-3 py-2.5'} rounded-xl cursor-pointer transition-colors duration-200 group relative overflow-hidden
+          flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 group relative overflow-hidden select-none
           ${isActive
-            ? 'bg-[#FA634E] text-white font-bold shadow-2xs'
+            ? 'bg-[#FA634E] text-white font-bold shadow-md shadow-[#FA634E]/25'
             : 'text-[#EEF1F6]/75 hover:bg-white/10 hover:text-white font-medium'
           }
         `}
@@ -345,25 +390,104 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
             ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:pointer-events-none' : 'lg:max-w-[180px] lg:opacity-100'}
           `}
         >
-          <span className="text-xs truncate">
-            {item.label}
-          </span>
-          {item.badge !== undefined && item.badge > 0 && !isActive && (
-            <span className="w-4 h-4 rounded-full bg-[#FA634E] text-white text-[9px] font-bold flex items-center justify-center shrink-0 ml-1.5">
-              {item.badge > 9 ? '9+' : item.badge}
-            </span>
-          )}
+          <span className="text-xs truncate">{item.label}</span>
+          <div className="flex items-center gap-1 shrink-0 ml-1">
+            {item.badge !== undefined && item.badge > 0 && !isActive && (
+              <span className="w-4 h-4 rounded-full bg-[#FA634E] text-white text-[9px] font-bold flex items-center justify-center">
+                {item.badge > 9 ? '9+' : item.badge}
+              </span>
+            )}
+            {validSubRoutes.length > 0 && (
+              <ChevronRight size={13} className="text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition-transform" />
+            )}
+          </div>
         </div>
         {collapsed && item.badge !== undefined && item.badge > 0 && !isActive && (
           <span aria-hidden="true" className="hidden lg:block absolute top-1.5 right-2 w-2 h-2 rounded-full bg-[#FA634E]" />
         )}
       </NavLink>
     );
-  };
 
-  // Find top group (Dashboard)
-  const dashboardGroup = processedNonFinanceGroups.find((g) => g.label === '');
-  const remainingNonFinanceGroups = processedNonFinanceGroups.filter((g) => g.label !== '');
+    // If there are no sub-routes, return standard nav link
+    if (validSubRoutes.length === 0) {
+      return <div key={item.label}>{triggerElement}</div>;
+    }
+
+    // Wrap item in shadcn HoverCard for flyout sub-routes
+    return (
+      <HoverCard key={item.label} openDelay={80} closeDelay={150}>
+        <HoverCardTrigger asChild>
+          {triggerElement}
+        </HoverCardTrigger>
+        <HoverCardContent
+          side="right"
+          align="start"
+          sideOffset={12}
+          className="w-64 p-0 bg-[#2D2B2C] text-[#EEF1F6] border border-white/15 shadow-[0_12px_36px_rgba(0,0,0,0.45)] backdrop-blur-xl rounded-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150"
+        >
+          {/* Flyout Card Header */}
+          <div className="px-3.5 py-2.5 bg-[#3E3C3D] border-b border-white/10 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="p-1 rounded-lg bg-[#FA634E]/20 text-[#FA634E]">
+                <item.icon size={15} />
+              </span>
+              <span className="text-xs font-bold text-white tracking-wide truncate max-w-[150px]">
+                {item.label}
+              </span>
+            </div>
+            <span className="px-2 py-0.5 rounded-full bg-white/10 text-[10px] font-extrabold text-[#EEF1F6]/75">
+              {validSubRoutes.length} pages
+            </span>
+          </div>
+
+          {/* Flyout Card Sub-Routes List */}
+          <div className="p-1.5 space-y-0.5 max-h-[320px] overflow-y-auto sidebar-scrollbar">
+            {validSubRoutes.map((sr) => {
+              const isSubActive = location.pathname === sr.path;
+              const SubIcon = sr.icon || ChevronRight;
+
+              return (
+                <NavLink
+                  key={sr.path + sr.label}
+                  to={sr.path}
+                  onClick={onClose}
+                  className={`
+                    flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-all duration-150 group/sr
+                    ${isSubActive
+                      ? 'bg-[#FA634E] text-white font-bold shadow-xs'
+                      : sr.isAction
+                        ? 'bg-white/5 text-[#FA634E] hover:bg-[#FA634E]/20 hover:text-white font-semibold border border-[#FA634E]/30'
+                        : 'text-[#EEF1F6]/80 hover:bg-white/10 hover:text-white font-medium'
+                    }
+                  `}
+                >
+                  <SubIcon
+                    size={14}
+                    className={`shrink-0 transition-transform group-hover/sr:scale-110 ${
+                      isSubActive
+                        ? 'text-white'
+                        : sr.isAction
+                          ? 'text-[#FA634E] group-hover/sr:text-white'
+                          : 'text-[#EEF1F6]/50 group-hover/sr:text-white'
+                    }`}
+                  />
+                  <span className="flex-1 truncate">{sr.label}</span>
+                  {sr.isAction && (
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-[#FA634E] text-white shrink-0">
+                      NEW
+                    </span>
+                  )}
+                  {isSubActive && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                  )}
+                </NavLink>
+              );
+            })}
+          </div>
+        </HoverCardContent>
+      </HoverCard>
+    );
+  };
 
   return (
     <>
@@ -461,91 +585,22 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
         </button>
 
         {/* Nav groups */}
-        <div className="flex-1 py-4 space-y-4 overflow-y-auto overflow-x-hidden px-3 sidebar-scrollbar">
-          {/* Dashboard Group */}
-          {dashboardGroup && (
-            <div className="space-y-1">
-              {dashboardGroup.items.map((item) => renderNavItem(item))}
-            </div>
-          )}
-
-          {/* FINANCE Group */}
-          {processedFinanceSubGroups.length > 0 && (
-            <div>
-              <p
-                className={`
-                  text-[10px] font-bold text-[#EEF1F6]/50 uppercase tracking-widest px-3 flex items-center gap-1.5 transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap
-                  ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:h-0 lg:mb-0' : 'lg:max-w-full lg:opacity-100 lg:h-4 lg:mb-1.5'}
-                `}
-              >
-                <span className="w-1 h-1 rounded-full bg-[#FA634E] shrink-0" />
-                <span>FINANCE</span>
-              </p>
-
-              {collapsed ? (
-                /* Flat icon strip in collapsed rail mode */
-                <div className="space-y-1">
-                  {processedFinanceSubGroups.flatMap((sg) => sg.items).map((item) => renderNavItem(item))}
-                </div>
-              ) : (
-                /* Grouped collapsible sub-groups in expanded mode */
-                <div className="space-y-2">
-                  {processedFinanceSubGroups.map((sg) => {
-                    const isOpen = Boolean(openSubGroups[sg.label]);
-                    return (
-                      <div key={sg.label} className="space-y-1">
-                        <button
-                          type="button"
-                          onClick={() => toggleSubGroup(sg.label)}
-                          aria-expanded={isOpen}
-                          aria-controls={`subgroup-${sg.label.toLowerCase()}`}
-                          className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-semibold text-[#EEF1F6]/90 hover:text-white hover:bg-white/5 transition-colors group cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span>{sg.label}</span>
-                            <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-[#FA634E]/15 text-[#FA634E] shrink-0">
-                              {sg.items.length}
-                            </span>
-                          </div>
-                          <ChevronDown
-                            size={14}
-                            className={`transition-transform duration-200 text-[#EEF1F6]/50 group-hover:text-white ${
-                              isOpen ? 'rotate-0' : '-rotate-90'
-                            }`}
-                          />
-                        </button>
-                        {isOpen && (
-                          <div
-                            id={`subgroup-${sg.label.toLowerCase()}`}
-                            className="pl-2.5 space-y-1 my-0.5 border-l border-white/10 ml-3.5"
-                          >
-                            {sg.items.map((item) => renderNavItem(item, true))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Other Nav Groups (COMPLIANCE & REPORTS, MASTER DATA, ACCOUNT, etc.) */}
-          {remainingNonFinanceGroups.map((g, idx) => (
-            <div key={g.label || `group-${idx}`}>
-              {g.label ? (
+        <div className="flex-1 py-3 space-y-4 overflow-y-auto overflow-x-hidden px-3 sidebar-scrollbar">
+          {processedNavGroups.map((group) => (
+            <div key={group.label} className="space-y-1">
+              {group.label !== 'MAIN' && (
                 <p
                   className={`
                     text-[10px] font-bold text-[#EEF1F6]/50 uppercase tracking-widest px-3 flex items-center gap-1.5 transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap
-                    ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:h-0 lg:mb-0' : 'lg:max-w-full lg:opacity-100 lg:h-4 lg:mb-1.5'}
+                    ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:h-0 lg:mb-0' : 'lg:max-w-full lg:opacity-100 lg:h-4 lg:mb-1'}
                   `}
                 >
                   <span className="w-1 h-1 rounded-full bg-[#FA634E] shrink-0" />
-                  <span>{g.label}</span>
+                  <span>{group.label}</span>
                 </p>
-              ) : null}
+              )}
               <div className="space-y-1">
-                {g.items.map((item) => renderNavItem(item))}
+                {group.items.map((item) => renderNavItem(item))}
               </div>
             </div>
           ))}
