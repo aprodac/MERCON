@@ -162,6 +162,8 @@ export default function SettingsPage() {
   const [brandingForm, setBrandingForm] = useState({
     appName: '',
     companyLegalName: '',
+    vatNumber: '',
+    crNumber: '',
     logoUrl: '',
     primaryColor: '#E8450F',
     defaultCountryCode: 'SA',
@@ -175,6 +177,8 @@ export default function SettingsPage() {
       setBrandingForm({
         appName: settings.appName,
         companyLegalName: settings.companyLegalName,
+        vatNumber: settings.vatNumber || '',
+        crNumber: settings.crNumber || '',
         logoUrl: settings.logoUrl || '',
         primaryColor: settings.primaryColor,
         defaultCountryCode: settings.defaultCountryCode || 'SA',
@@ -648,6 +652,34 @@ export default function SettingsPage() {
                         onChange={(e) => setBrandingForm((f) => ({ ...f, companyLegalName: e.target.value }))}
                         className={cn(
                           "h-9.5 text-xs font-bold border-slate-200 dark:border-slate-800",
+                          !user?.isSuperAdmin && "bg-slate-50 dark:bg-slate-800/50 cursor-not-allowed"
+                        )}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">VAT Number (15-digit Tax Reg)</Label>
+                      <Input
+                        value={brandingForm.vatNumber}
+                        readOnly={!user?.isSuperAdmin}
+                        placeholder="312709215800003"
+                        onChange={(e) => setBrandingForm((f) => ({ ...f, vatNumber: e.target.value }))}
+                        className={cn(
+                          "h-9.5 text-xs font-mono font-bold border-slate-200 dark:border-slate-800",
+                          !user?.isSuperAdmin && "bg-slate-50 dark:bg-slate-800/50 cursor-not-allowed"
+                        )}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Commercial Registration (C.R. No.)</Label>
+                      <Input
+                        value={brandingForm.crNumber}
+                        readOnly={!user?.isSuperAdmin}
+                        placeholder="1009152862"
+                        onChange={(e) => setBrandingForm((f) => ({ ...f, crNumber: e.target.value }))}
+                        className={cn(
+                          "h-9.5 text-xs font-mono font-bold border-slate-200 dark:border-slate-800",
                           !user?.isSuperAdmin && "bg-slate-50 dark:bg-slate-800/50 cursor-not-allowed"
                         )}
                       />

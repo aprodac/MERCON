@@ -7,7 +7,8 @@ import {
   Plus, RotateCw, ShieldCheck, CheckCircle2, Truck, Calendar,
   ChevronLeft, ChevronRight, TrendingUp, Sparkles, CreditCard, ArrowRight, Package, Layers, Phone, Mail,
   Trash2, UploadCloud, User, Download, ChevronDown, Car, UserCheck, Copy, PhoneCall,
-  MoreVertical, Award, FolderOpen, Banknote, Gauge, Compass, Radio, Plane, Search, Tag
+  MoreVertical, Award, FolderOpen, Banknote, Gauge, Compass, Radio, Plane, Search, Tag,
+  LayoutDashboard, ReceiptText, ArrowUpRight
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -274,13 +275,20 @@ export default function CustomerDetailsPage() {
   const [selectedPreviewQuotation, setSelectedPreviewQuotation] = useState<any | null>(null);
 
   // Active view tab state: default to 'overview' matching reference screenshot
-  const [activeTab, setActiveTab] = useState<'overview' | 'dispatches' | 'quotations' | 'saved_places' | 'governance'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'dispatches' | 'quotations' | 'saved_places' | 'governance' | 'financials'>('overview');
 
   // Fetch Customer details
   const { data: customer, isLoading, error } = useQuery({
     queryKey: ['customer', id],
     queryFn: () => customerService.getById(id!),
     enabled: !!id,
+  });
+
+  // Customer financial statement summary
+  const { data: statement, isLoading: isStatementLoading } = useQuery({
+    queryKey: ['customer-statement', customer?.id],
+    queryFn: () => customerService.getStatement(customer!.id),
+    enabled: !!customer?.id && activeTab === 'financials',
   });
 
   // URL normalization: if navigated using name/id, replace with canonical UUID
@@ -321,6 +329,7 @@ export default function CustomerDetailsPage() {
   const refreshCustomer = async () => {
     setIsRefreshing(true);
     await queryClient.invalidateQueries({ queryKey: ['customer', id] });
+    await queryClient.invalidateQueries({ queryKey: ['customer-statement', customer?.id] });
     await queryClient.invalidateQueries({ queryKey: ['rate-cards', 'customer', id] });
     await queryClient.invalidateQueries({ queryKey: ['quotations', 'customer', id] });
     await queryClient.invalidateQueries({ queryKey: ['locations', id] });
@@ -644,6 +653,203 @@ export default function CustomerDetailsPage() {
 
           </div>
         </div>
+
+        {/* ── NAVIGATION TABS BAR ── */}
+        <div className="flex items-center gap-1.5 border-b border-slate-200 dark:border-slate-800 pb-2 shrink-0">
+          {[
+            { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+            { id: 'financials', label: 'Financial Summary', icon: ReceiptText },
+            { id: 'dispatches', label: 'Dispatches', icon: Truck },
+            { id: 'quotations', label: 'Quotations', icon: Tag },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-2xs",
+                  isActive
+                    ? "bg-[#FA634E] text-white"
+                    : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200/80 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800"
+                )}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* ── FINANCIAL SUMMARY TAB ── */}
+        {activeTab === 'financials' && (
+          <div className="space-y-4">
+            {/* KPI Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Card 1: Total Outstanding */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-2xs flex items-center justify-between min-h-[96px] gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-orange-50 dark:bg-orange-950/60 border border-orange-200/80 dark:border-orange-900/60 flex items-center justify-center shrink-0">
+                    <ReceiptText className="w-6 h-6 text-[#FA634E]" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider leading-none mb-1">
+                      Total Outstanding
+                    </p>
+                    <span className="text-xl sm:text-2xl font-black text-[#FA634E] font-mono leading-none">
+                      SAR {(statement?.total_outstanding ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Total Invoiced */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-2xs flex items-center justify-between min-h-[96px] gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-900/60 flex items-center justify-center shrink-0">
+                    <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider leading-none mb-1">
+                      Total Invoiced
+                    </p>
+                    <span className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white font-mono leading-none">
+                      SAR {(statement?.total_invoiced ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 3: Total Paid */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-5 shadow-2xs flex items-center justify-between min-h-[96px] gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-900/60 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider leading-none mb-1">
+                      Total Paid
+                    </p>
+                    <span className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono leading-none">
+                      SAR {(statement?.total_paid ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Invoices Table */}
+            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Banknote className="w-5 h-5 text-[#FA634E]" />
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">Customer Invoices</h3>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => navigate('/finance/invoices')}
+                  className="text-xs font-bold gap-1.5 rounded-xl text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-100"
+                >
+                  <span>View All Invoices</span>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-[#FA634E]" />
+                </Button>
+              </div>
+
+              {isStatementLoading ? (
+                <div className="py-12 text-center text-xs font-bold text-slate-400 animate-pulse">
+                  Loading financial summary statement...
+                </div>
+              ) : !statement?.invoices || statement.invoices.length === 0 ? (
+                <div className="py-12 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl bg-slate-50/50 dark:bg-slate-800/40">
+                  <ReceiptText className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No Invoices Found</p>
+                  <p className="text-xs text-slate-400 mt-0.5">No invoices have been generated for this customer yet.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-100 dark:border-slate-800 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                        <th className="py-3 px-4">Invoice Ref</th>
+                        <th className="py-3 px-4">Invoice Date</th>
+                        <th className="py-3 px-4">Due Date</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4 text-right">Total Amount</th>
+                        <th className="py-3 px-4 text-right">Balance Due</th>
+                        <th className="py-3 px-4 text-center">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                      {statement.invoices.map((inv) => {
+                        const isDraft = inv.status === 'Draft';
+                        return (
+                          <tr
+                            key={inv.id}
+                            onClick={() => navigate('/finance/invoices')}
+                            className="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors group"
+                          >
+                            <td className="py-3.5 px-4 font-mono font-black text-slate-900 dark:text-white group-hover:text-[#FA634E]">
+                              {inv.ref_id || 'Draft'}
+                            </td>
+                            <td className="py-3.5 px-4 font-medium text-slate-600 dark:text-slate-400">
+                              {inv.invoice_date ? formatInDeploymentTz(inv.invoice_date, tz, 'dd MMM yyyy') : '—'}
+                            </td>
+                            <td className="py-3.5 px-4 font-medium text-slate-600 dark:text-slate-400">
+                              {inv.due_date ? formatInDeploymentTz(inv.due_date, tz, 'dd MMM yyyy') : '—'}
+                            </td>
+                            <td className="py-3.5 px-4">
+                              {isDraft ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold bg-amber-50 text-amber-700 border border-dashed border-amber-300 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-800/60">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                  Draft (Unissued)
+                                </span>
+                              ) : inv.status === 'Paid' ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800/60">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                  Paid
+                                </span>
+                              ) : inv.status === 'PartiallyPaid' ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold bg-orange-50 text-orange-700 border border-orange-200 dark:bg-orange-950/40 dark:text-orange-400 dark:border-orange-800/60">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-orange-500"></span>
+                                  Partially Paid
+                                </span>
+                              ) : inv.status === 'Issued' ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-800/60">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                                  Issued
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10.5px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800/60">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                                  Void
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                              SAR {inv.total_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-mono font-bold">
+                              <span className={inv.balance_due > 0 ? "text-rose-600 dark:text-rose-400" : "text-slate-600 dark:text-slate-400"}>
+                                SAR {inv.balance_due.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </td>
+                            <td className="py-3.5 px-4 text-center">
+                              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 group-hover:bg-[#FA634E] group-hover:text-white transition-colors">
+                                <ArrowUpRight className="w-3.5 h-3.5" />
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Render Tab Specific Ledgers when explicit tabs selected */}
         {activeTab === 'dispatches' && (

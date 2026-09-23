@@ -16,5 +16,4 @@ export * from './ReturnLoadingModal';
 export * from './Toast';
 export * from './NewTripMenuModal';
 export * from './MonthlyCalendarSelector';
-
-
+export * from './common/AppModal';

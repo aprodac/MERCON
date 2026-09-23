@@ -158,7 +158,7 @@ export const getInvoiceById = async (req: Request, res: Response) => {
       include: {
         customer: true,
         lines: {
-          include: { trip: { select: { id: true, ref_id: true, vehicle_type: true, billing_amount: true, status: true } } },
+          include: { trip: { select: { id: true, ref_id: true, vehicle_type: true, billing_amount: true, status: true, awb_number: true, actual_start: true } } },
         },
         payments: {
           include: { account: { select: { id: true, account_code: true, name: true } } },

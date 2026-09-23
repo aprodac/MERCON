@@ -8,6 +8,8 @@ const DEFAULT_SETTINGS = {
   id: SINGLETON_ID,
   appName: 'MERCON Operator Platform',
   companyLegalName: 'MERCON Operations Ltd.',
+  vatNumber: '312709215800003',
+  crNumber: '1009152862',
   logoUrl: null,
   primaryColor: '#E8450F',
   timezone: 'Asia/Riyadh',
@@ -59,7 +61,14 @@ async function getOrCreateSettings() {
     return await prisma.settings.upsert({
       where: { id: SINGLETON_ID },
       update: {},
-      create: { id: SINGLETON_ID, enabledModules: [...MODULE_KEYS], hiddenModules: [], defaultRedirectModule: 'quotations' },
+      create: { 
+        id: SINGLETON_ID, 
+        enabledModules: [...MODULE_KEYS], 
+        hiddenModules: [], 
+        defaultRedirectModule: 'quotations',
+        vatNumber: '312709215800003',
+        crNumber: '1009152862'
+      },
     });
   } catch (err: any) {
     console.warn('[Settings] Unable to query Settings from database, using defaults:', err.message || err);
@@ -75,6 +84,9 @@ export const getPublicSettings = async (_req: Request, res: Response) => {
       success: true,
       data: {
         appName: settings.appName,
+        companyLegalName: settings.companyLegalName,
+        vatNumber: settings.vatNumber,
+        crNumber: settings.crNumber,
         logoUrl: settings.logoUrl,
         primaryColor: settings.primaryColor,
         themeColors: settings.themeColors,
@@ -90,6 +102,9 @@ export const getPublicSettings = async (_req: Request, res: Response) => {
       success: true,
       data: {
         appName: DEFAULT_SETTINGS.appName,
+        companyLegalName: DEFAULT_SETTINGS.companyLegalName,
+        vatNumber: DEFAULT_SETTINGS.vatNumber,
+        crNumber: DEFAULT_SETTINGS.crNumber,
         logoUrl: DEFAULT_SETTINGS.logoUrl,
         primaryColor: DEFAULT_SETTINGS.primaryColor,
         themeColors: null,
@@ -145,6 +160,8 @@ export const updateSettings = async (req: Request, res: Response) => {
     const {
       appName,
       companyLegalName,
+      vatNumber,
+      crNumber,
       logoUrl,
       primaryColor,
       themeColors,
@@ -162,6 +179,8 @@ export const updateSettings = async (req: Request, res: Response) => {
     const data: Record<string, unknown> = {};
     if (appName !== undefined) data.appName = String(appName).trim();
     if (companyLegalName !== undefined) data.companyLegalName = String(companyLegalName).trim();
+    if (vatNumber !== undefined) data.vatNumber = vatNumber ? String(vatNumber).trim() : null;
+    if (crNumber !== undefined) data.crNumber = crNumber ? String(crNumber).trim() : null;
     if (logoUrl !== undefined) data.logoUrl = logoUrl ? String(logoUrl).trim() : null;
     if (primaryColor !== undefined) data.primaryColor = String(primaryColor).trim();
     if (themeColors !== undefined) data.themeColors = themeColors;

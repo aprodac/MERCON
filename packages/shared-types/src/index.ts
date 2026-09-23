@@ -314,6 +314,8 @@ export interface Settings {
   id: string;
   appName: string;
   companyLegalName: string;
+  vatNumber?: string | null;
+  crNumber?: string | null;
   logoUrl?: string | null;
   primaryColor: string;
   themeColors?: Record<string, any> | null;
@@ -339,7 +341,7 @@ export interface Settings {
 }
 
 /** Subset returned by the unauthenticated GET /settings/public endpoint. */
-export type PublicSettings = Pick<Settings, 'appName' | 'logoUrl' | 'primaryColor' | 'timezone' | 'defaultCountryCode' | 'defaultCountryDialCode'>;
+export type PublicSettings = Pick<Settings, 'appName' | 'companyLegalName' | 'vatNumber' | 'crNumber' | 'logoUrl' | 'primaryColor' | 'timezone' | 'defaultCountryCode' | 'defaultCountryDialCode'>;
 
 // ─── Location DTO ───────────────────────────────────────────────
 export interface Location {
@@ -860,10 +862,11 @@ export interface CreateLearningResourceDTO {
   targetRoute?: string;
   description: string;
   durationSeconds?: number;
-  videoUrl?: string;
-  steps?: TimestampedStep[];
-  keyTakeaways?: string[];
 }
+
+export * from './quotationMatching';
+export * from './quotationSearch';
+export * from './monthlyRotation';
 
 
 

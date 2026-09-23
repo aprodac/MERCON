@@ -23,6 +23,7 @@ export function useTripSubmission(
   thirdPartyDriverPhone: string,
   thirdPartyVehiclePlate: string,
   thirdPartyCost: string,
+  awbNumber: string,
   dayAssignments: Record<string, any>,
   selectedDates: string[],
   setContractStep: React.Dispatch<React.SetStateAction<1 | 2 | 3>>,
@@ -518,6 +519,7 @@ export function useTripSubmission(
             stops: structuredStops,
             billing_amount: totalAmount > 0 ? totalAmount : undefined,
             rate_card_id: safeUuid(slot.rateCardId) || undefined,
+            awb_number: awbNumber?.trim() || undefined,
             status: 'Scheduled',
           });
         } else {
@@ -580,6 +582,7 @@ export function useTripSubmission(
             co_driver_payout: finalCoDriverPayout,
             update_quotation_driver_payout: shouldUpdateQuotation,
             rate_card_id: safeUuid(slot.rateCardId || slot.matchedRateCard?.id) || undefined,
+            awb_number: awbNumber?.trim() || undefined,
             status: 'Scheduled',
           });
         }

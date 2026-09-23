@@ -12,6 +12,7 @@ interface InputProps {
   label?: string;
   value?: string;
   onChangeText?: (text: string) => void;
+  onBlur?: () => void;
   placeholder?: string;
   state?: InputState;
   errorText?: string;
@@ -29,7 +30,7 @@ interface InputProps {
 }
 
 export function Input({
-  label, value, onChangeText, placeholder, state = 'default',
+  label, value, onChangeText, onBlur, placeholder, state = 'default',
   errorText, successText, iconLeft, iconRight, secureTextEntry,
   keyboardType, autoCapitalize, autoCorrect, multiline, numberOfLines, maxLength, style,
 }: InputProps) {
@@ -53,7 +54,10 @@ export function Input({
           placeholder={placeholder}
           placeholderTextColor={Colors.gray400}
           onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
+          onBlur={() => {
+            setFocused(false);
+            if (onBlur) onBlur();
+          }}
           editable={!isDisabled}
           secureTextEntry={secureTextEntry}
           keyboardType={keyboardType}

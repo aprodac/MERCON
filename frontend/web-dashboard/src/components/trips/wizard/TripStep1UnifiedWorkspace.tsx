@@ -79,6 +79,8 @@ interface TripStep1UnifiedWorkspaceProps {
   isBaseBillingLocked?: boolean;
   isFinancialsLocked?: boolean;
   status?: string;
+  awbNumber?: string;
+  setAwbNumber?: (val: string) => void;
 }
 
 export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps> = ({
@@ -148,6 +150,8 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
   isBaseBillingLocked = false,
   isFinancialsLocked = false,
   status = '',
+  awbNumber = '',
+  setAwbNumber,
 }) => {
   const primarySlot = contractSlots[0] || {};
   const isRoundTrip = isRoundTripProp ?? (isRoundTripCategory ? isRoundTripCategory(contractRateCategory) : contractRateCategory === 'Round Trip');
@@ -252,6 +256,8 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
                   vehicles={vehicles}
                   isAssignmentLocked={isAssignmentLocked}
                   status={status}
+                  awbNumber={awbNumber}
+                  setAwbNumber={setAwbNumber}
                 />
               )}
 

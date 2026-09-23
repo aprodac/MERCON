@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import KpiCard from '@/components/ui/KpiCard';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import ExportModal, { ExportColumn } from '@/components/ui/ExportModal';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -18,12 +19,22 @@ import { financeService } from '@/services/financeService';
 import type { Invoice, InvoiceStatus, Account } from '@mercon/shared-types';
 
 const STATUS_BADGES: Record<InvoiceStatus, string> = {
-  Draft: 'bg-amber-50 text-amber-700 border-amber-200',
-  Issued: 'bg-blue-50 text-blue-700 border-blue-200',
-  PartiallyPaid: 'bg-orange-50 text-orange-700 border-orange-200',
-  Paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  Void: 'bg-rose-50 text-rose-700 border-rose-200',
+  Draft: 'bg-amber-50 text-amber-700 border-amber-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
+  Issued: 'bg-blue-50 text-blue-700 border-blue-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
+  PartiallyPaid: 'bg-orange-50 text-orange-700 border-orange-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
+  Paid: 'bg-emerald-50 text-emerald-700 border-emerald-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
+  Void: 'bg-rose-50 text-rose-700 border-rose-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
 };
+
+const INVOICES_EXPORT_COLUMNS: ExportColumn<Invoice>[] = [
+  { id: 'ref_id', label: 'Invoice Reference', accessor: (inv) => inv.ref_id || inv.id },
+  { id: 'customer_name', label: 'Customer Name', accessor: (inv) => (inv as any).customer?.name || '—' },
+  { id: 'invoice_date', label: 'Invoice Date', accessor: (inv) => (inv.invoice_date ? new Date(inv.invoice_date).toLocaleDateString() : '—') },
+  { id: 'due_date', label: 'Due Date', accessor: (inv) => (inv.due_date ? new Date(inv.due_date).toLocaleDateString() : '—') },
+  { id: 'status', label: 'Status', accessor: (inv) => inv.status },
+  { id: 'total_amount', label: 'Total Amount', accessor: (inv) => Number(inv.total_amount) || 0 },
+  { id: 'balance_due', label: 'Balance Due', accessor: (inv) => Number(inv.balance_due) || 0 },
+];
 
 export default function InvoicesPage() {
   const navigate = useNavigate();
@@ -37,6 +48,7 @@ export default function InvoicesPage() {
   const [viewingInvoice, setViewingInvoice] = useState<Invoice | null>(null);
   const [printingInvoice, setPrintingInvoice] = useState<Invoice | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
 
   // Payment form state
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
@@ -270,6 +282,7 @@ export default function InvoicesPage() {
             setPage(1);
           }}
           filterElement={statusFilterElement}
+          onExport={() => setIsExportOpen(true)}
           enableSelection={false}
           getRowId={(inv) => inv.id}
           currentPage={pagination.page}
@@ -278,6 +291,21 @@ export default function InvoicesPage() {
           onPageChange={setPage}
           emptyTitle="No Invoices"
           emptyMessage="No invoices found matching criteria."
+        />
+
+        {/* Export Modal */}
+        <ExportModal
+          isOpen={isExportOpen}
+          onClose={() => setIsExportOpen(false)}
+          title="Export Invoices"
+          description="Choose your export preferences and columns."
+          fileNamePrefix="invoices_ledger"
+          sheetName="Invoices"
+          subtitle="MERCON Logistics Invoices Ledger"
+          filteredData={invoices}
+          columns={INVOICES_EXPORT_COLUMNS}
+          formats={['xlsx', 'csv']}
+          totalCount={pagination.total}
         />
 
         {/* View / Detail Modal */}

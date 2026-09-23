@@ -103,6 +103,7 @@ const BalanceSheetPage        = lazyWithRetry(() => import('@/pages/finance/Bala
 const ARAgeingPage            = lazyWithRetry(() => import('@/pages/finance/ARAgeingPage'));
 const APAgeingPage            = lazyWithRetry(() => import('@/pages/finance/APAgeingPage'));
 const CashFlowPage            = lazyWithRetry(() => import('@/pages/finance/CashFlowPage'));
+const GeneralLedgerPage       = lazyWithRetry(() => import('@/pages/finance/GeneralLedgerPage'));
 
 // Documents
 const DocumentsCenterPage     = lazyWithRetry(() => import('@/pages/documents/DocumentsCenterPage'));
@@ -303,6 +304,7 @@ export default function AppRouter() {
             <Route path="/finance/ap-ageing"          element={<RequireModule moduleKey="finance"><APAgeingPage /></RequireModule>} />
             <Route path="/finance/cash-flow text"      element={<Navigate to="/finance/cash-flow" replace />} />
             <Route path="/finance/cash-flow"          element={<RequireModule moduleKey="finance"><CashFlowPage /></RequireModule>} />
+            <Route path="/finance/general-ledger"     element={<RequireModule moduleKey="finance"><GeneralLedgerPage /></RequireModule>} />
             <Route path="/finance"                   element={<Navigate to="/finance/chart-of-accounts" replace />} />
 
             {/* Documents */}

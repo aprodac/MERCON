@@ -60,6 +60,7 @@ export const getTrialBalance = async (req: Request, res: Response) => {
         }
 
         return {
+          account_id: acc.id,
           account_code: acc.account_code,
           name: acc.name,
           account_type: acc.account_type,
@@ -113,8 +114,8 @@ export const calculateProfitAndLossData = async (date_from?: string, date_to?: s
     },
   });
 
-  const revenueMap = new Map<string, { account_code: string; name: string; amount: Prisma.Decimal }>();
-  const expenseMap = new Map<string, { account_code: string; name: string; amount: Prisma.Decimal }>();
+  const revenueMap = new Map<string, { account_id: string; account_code: string; name: string; amount: Prisma.Decimal }>();
+  const expenseMap = new Map<string, { account_id: string; account_code: string; name: string; amount: Prisma.Decimal }>();
 
   for (const line of lines) {
     const acc = line.account;
@@ -123,6 +124,7 @@ export const calculateProfitAndLossData = async (date_from?: string, date_to?: s
 
     if (acc.account_type === 'Revenue') {
       const current = revenueMap.get(acc.id) || {
+        account_id: acc.id,
         account_code: acc.account_code,
         name: acc.name,
         amount: new Prisma.Decimal(0),
@@ -131,6 +133,7 @@ export const calculateProfitAndLossData = async (date_from?: string, date_to?: s
       revenueMap.set(acc.id, current);
     } else if (acc.account_type === 'Expense') {
       const current = expenseMap.get(acc.id) || {
+        account_id: acc.id,
         account_code: acc.account_code,
         name: acc.name,
         amount: new Prisma.Decimal(0),
@@ -145,6 +148,7 @@ export const calculateProfitAndLossData = async (date_from?: string, date_to?: s
     .map((r) => {
       totalRevenue = totalRevenue.plus(r.amount);
       return {
+        account_id: r.account_id,
         account_code: r.account_code,
         name: r.name,
         amount: r.amount.toNumber(),
@@ -157,6 +161,7 @@ export const calculateProfitAndLossData = async (date_from?: string, date_to?: s
     .map((e) => {
       totalExpense = totalExpense.plus(e.amount);
       return {
+        account_id: e.account_id,
         account_code: e.account_code,
         name: e.name,
         amount: e.amount.toNumber(),
@@ -220,13 +225,13 @@ export const getCashFlow = async (req: Request, res: Response) => {
       include: { account: true },
     });
 
-    const operatingItems: { account_code: string; name: string; amount: number }[] = [];
-    const investingItems: { account_code: string; name: string; amount: number }[] = [];
-    const financingItems: { account_code: string; name: string; amount: number }[] = [];
+    const operatingItems: { account_id?: string; account_code: string; name: string; amount: number }[] = [];
+    const investingItems: { account_id?: string; account_code: string; name: string; amount: number }[] = [];
+    const financingItems: { account_id?: string; account_code: string; name: string; amount: number }[] = [];
 
-    const operatingMap = new Map<string, { account_code: string; name: string; amount: Prisma.Decimal }>();
-    const investingMap = new Map<string, { account_code: string; name: string; amount: Prisma.Decimal }>();
-    const financingMap = new Map<string, { account_code: string; name: string; amount: Prisma.Decimal }>();
+    const operatingMap = new Map<string, { account_id: string; account_code: string; name: string; amount: Prisma.Decimal }>();
+    const investingMap = new Map<string, { account_id: string; account_code: string; name: string; amount: Prisma.Decimal }>();
+    const financingMap = new Map<string, { account_id: string; account_code: string; name: string; amount: Prisma.Decimal }>();
 
     for (const l of lines) {
       const acc = l.account;
@@ -235,15 +240,15 @@ export const getCashFlow = async (req: Request, res: Response) => {
       const netActivity = debit.minus(credit);
 
       if (acc.cash_flow_category === 'Operating') {
-        const cur = operatingMap.get(acc.id) || { account_code: acc.account_code, name: acc.name, amount: new Prisma.Decimal(0) };
+        const cur = operatingMap.get(acc.id) || { account_id: acc.id, account_code: acc.account_code, name: acc.name, amount: new Prisma.Decimal(0) };
         cur.amount = cur.amount.plus(netActivity);
         operatingMap.set(acc.id, cur);
       } else if (acc.cash_flow_category === 'Investing') {
-        const cur = investingMap.get(acc.id) || { account_code: acc.account_code, name: acc.name, amount: new Prisma.Decimal(0) };
+        const cur = investingMap.get(acc.id) || { account_id: acc.id, account_code: acc.account_code, name: acc.name, amount: new Prisma.Decimal(0) };
         cur.amount = cur.amount.plus(netActivity);
         investingMap.set(acc.id, cur);
       } else if (acc.cash_flow_category === 'Financing') {
-        const cur = financingMap.get(acc.id) || { account_code: acc.account_code, name: acc.name, amount: new Prisma.Decimal(0) };
+        const cur = financingMap.get(acc.id) || { account_id: acc.id, account_code: acc.account_code, name: acc.name, amount: new Prisma.Decimal(0) };
         cur.amount = cur.amount.plus(netActivity);
         financingMap.set(acc.id, cur);
       }
@@ -252,21 +257,21 @@ export const getCashFlow = async (req: Request, res: Response) => {
     let operatingAdjTotal = 0;
     for (const v of operatingMap.values()) {
       const amt = v.amount.toNumber();
-      operatingItems.push({ account_code: v.account_code, name: v.name, amount: amt });
+      operatingItems.push({ account_id: v.account_id, account_code: v.account_code, name: v.name, amount: amt });
       operatingAdjTotal += amt;
     }
 
     let investingTotal = 0;
     for (const v of investingMap.values()) {
       const amt = v.amount.toNumber();
-      investingItems.push({ account_code: v.account_code, name: v.name, amount: amt });
+      investingItems.push({ account_id: v.account_id, account_code: v.account_code, name: v.name, amount: amt });
       investingTotal += amt;
     }
 
     let financingTotal = 0;
     for (const v of financingMap.values()) {
       const amt = v.amount.toNumber();
-      financingItems.push({ account_code: v.account_code, name: v.name, amount: amt });
+      financingItems.push({ account_id: v.account_id, account_code: v.account_code, name: v.name, amount: amt });
       financingTotal += amt;
     }
 
@@ -332,9 +337,9 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
     const { as_of } = req.query;
     const asOfDate = as_of ? new Date(String(as_of)) : new Date();
 
-    const assets: { account_code: string; name: string; amount: number }[] = [];
-    const liabilities: { account_code: string; name: string; amount: number }[] = [];
-    const equity: { account_code: string; name: string; amount: number }[] = [];
+    const assets: { account_id: string | null; account_code: string; name: string; amount: number }[] = [];
+    const liabilities: { account_id: string | null; account_code: string; name: string; amount: number }[] = [];
+    const equity: { account_id: string | null; account_code: string; name: string; amount: number }[] = [];
 
     let totalAssets = new Prisma.Decimal(0);
     let totalLiabilities = new Prisma.Decimal(0);
@@ -368,7 +373,7 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
         include: { account: true },
       });
 
-      const accountBalMap = new Map<string, { account_code: string; name: string; account_type: string; amount: Prisma.Decimal }>();
+      const accountBalMap = new Map<string, { account_id: string; account_code: string; name: string; account_type: string; amount: Prisma.Decimal }>();
       let cumulativeRevenue = new Prisma.Decimal(0);
       let cumulativeExpense = new Prisma.Decimal(0);
 
@@ -386,6 +391,7 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
         }
 
         const current = accountBalMap.get(acc.id) || {
+          account_id: acc.id,
           account_code: acc.account_code,
           name: acc.name,
           account_type: acc.account_type,
@@ -397,6 +403,7 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
 
       for (const val of accountBalMap.values()) {
         const item = {
+          account_id: val.account_id,
           account_code: val.account_code,
           name: val.name,
           amount: val.amount.toNumber(),
@@ -417,6 +424,7 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
       const retainedEarnings = cumulativeRevenue.minus(cumulativeExpense);
       if (!retainedEarnings.equals(0)) {
         equity.push({
+          account_id: null,
           account_code: '3999',
           name: 'Retained Earnings (Unclosed Net Income)',
           amount: retainedEarnings.toNumber(),
@@ -438,7 +446,7 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
         },
       });
 
-      const accountBalMap = new Map<string, { account_code: string; name: string; account_type: string; amount: Prisma.Decimal }>();
+      const accountBalMap = new Map<string, { account_id: string; account_code: string; name: string; account_type: string; amount: Prisma.Decimal }>();
       let cumulativeRevenue = new Prisma.Decimal(0);
       let cumulativeExpense = new Prisma.Decimal(0);
 
@@ -457,6 +465,7 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
         }
 
         const current = accountBalMap.get(acc.id) || {
+          account_id: acc.id,
           account_code: acc.account_code,
           name: acc.name,
           account_type: acc.account_type,
@@ -475,6 +484,7 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
 
       for (const val of accountBalMap.values()) {
         const item = {
+          account_id: val.account_id,
           account_code: val.account_code,
           name: val.name,
           amount: val.amount.toNumber(),
@@ -496,6 +506,7 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
       const retainedEarnings = cumulativeRevenue.minus(cumulativeExpense);
       if (!retainedEarnings.equals(0)) {
         equity.push({
+          account_id: null,
           account_code: '3999',
           name: 'Retained Earnings (Unclosed Net Income)',
           amount: retainedEarnings.toNumber(),
@@ -528,3 +539,133 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+export const getGeneralLedger = async (req: Request, res: Response) => {
+  try {
+    const { account_id, date_from, date_to } = req.query;
+
+    if (!account_id) {
+      return res.json({
+        success: true,
+        data: {
+          account: null,
+          opening_balance: 0,
+          lines: [],
+          closing_balance: 0,
+        },
+      });
+    }
+
+    const accountIdStr = String(account_id);
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(accountIdStr)) {
+      return res.status(400).json({ error: { code: 'INVALID_ACCOUNT_ID' } });
+    }
+
+    const account = await prisma.account.findUnique({
+      where: { id: accountIdStr },
+    });
+
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        error: 'Account not found',
+      });
+    }
+
+    const isDebitNormal = account.account_type === 'Asset' || account.account_type === 'Expense';
+
+    const fromDate = date_from ? new Date(String(date_from)) : undefined;
+    const toDate = date_to ? new Date(String(date_to)) : undefined;
+
+    let openingBalance = new Prisma.Decimal(0);
+
+    if (fromDate) {
+      const priorLines = await prisma.journalLine.findMany({
+        where: {
+          accountId: account.id,
+          journalEntry: {
+            status: 'Posted',
+            entry_date: { lt: fromDate },
+          },
+        },
+      });
+
+      for (const line of priorLines) {
+        const debit = new Prisma.Decimal(line.debit || 0);
+        const credit = new Prisma.Decimal(line.credit || 0);
+        if (isDebitNormal) {
+          openingBalance = openingBalance.plus(debit.minus(credit));
+        } else {
+          openingBalance = openingBalance.plus(credit.minus(debit));
+        }
+      }
+    }
+
+    const entryDateFilter: Prisma.DateTimeFilter = {};
+    if (fromDate) entryDateFilter.gte = fromDate;
+    if (toDate) entryDateFilter.lte = toDate;
+
+    const lines = await prisma.journalLine.findMany({
+      where: {
+        accountId: account.id,
+        journalEntry: {
+          status: 'Posted',
+          entry_date: Object.keys(entryDateFilter).length > 0 ? entryDateFilter : undefined,
+        },
+      },
+      include: {
+        journalEntry: {
+          select: {
+            ref_id: true,
+            entry_date: true,
+            memo: true,
+            source_type: true,
+            source_id: true,
+          },
+        },
+      },
+      orderBy: [
+        { journalEntry: { entry_date: 'asc' } },
+        { journalEntry: { createdAt: 'asc' } },
+      ],
+    });
+
+    let currentBalance = openingBalance;
+    const formattedLines = lines.map((line) => {
+      const debit = new Prisma.Decimal(line.debit || 0);
+      const credit = new Prisma.Decimal(line.credit || 0);
+      const lineImpact = isDebitNormal ? debit.minus(credit) : credit.minus(debit);
+      currentBalance = currentBalance.plus(lineImpact);
+
+      return {
+        entry_date: line.journalEntry.entry_date.toISOString(),
+        ref_id: line.journalEntry.ref_id,
+        memo: line.description || line.journalEntry.memo || null,
+        source_type: line.journalEntry.source_type || null,
+        source_id: line.journalEntry.source_id || null,
+        debit: debit.toNumber(),
+        credit: credit.toNumber(),
+        running_balance: currentBalance.toNumber(),
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        account: {
+          id: account.id,
+          account_code: account.account_code,
+          name: account.name,
+          account_type: account.account_type,
+        },
+        opening_balance: openingBalance.toNumber(),
+        lines: formattedLines,
+        closing_balance: currentBalance.toNumber(),
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+

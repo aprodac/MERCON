@@ -37,6 +37,8 @@ interface ExecutionAssignmentSectionProps {
   vehicles?: any[];
   isAssignmentLocked?: boolean;
   status?: string;
+  awbNumber?: string;
+  setAwbNumber?: (val: string) => void;
 }
 
 export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProps> = ({
@@ -67,6 +69,8 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
   vehicles = [],
   isAssignmentLocked = false,
   status = '',
+  awbNumber = '',
+  setAwbNumber,
 }) => {
   const [coDriver, setCoDriver] = useState('');
   const [showCoDriver, setShowCoDriver] = useState(false);
@@ -235,6 +239,27 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 <span>Please select an assignment choice: Driver & Vehicle or Assign Later.</span>
               </div>
             )}
+            {/* AWB / REFERENCE NUMBER */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  AWB / REFERENCE NUMBER
+                </label>
+                <span className="text-[9px] font-bold text-slate-400">Optional</span>
+              </div>
+              <input
+                type="text"
+                disabled={isAssignmentLocked}
+                value={awbNumber}
+                onChange={(e) => setAwbNumber?.(e.target.value)}
+                placeholder="Vehicle no. or client waybill no."
+                className={cn(
+                  "h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100",
+                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                )}
+              />
+            </div>
+
             {/* VEHICLE CLASS */}
             {setContractVehicleType && (
               <div className="space-y-1">

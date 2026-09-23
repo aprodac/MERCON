@@ -654,6 +654,7 @@ export const createTrip = async (req: Request, res: Response) => {
       third_party_vehicle_type,
       third_party_cost,
       charges,
+      awb_number,
     } = req.body;
 
     const createdBy = isUuid((req as any).user?.id) ? (req as any).user.id : null;
@@ -915,6 +916,7 @@ export const createTrip = async (req: Request, res: Response) => {
           return tx.trip.create({
             data: {
               ref_id,
+              ...(awb_number ? { awb_number: String(awb_number).trim() } : {}),
               customerId: customer_id,
               driver_workflow: customer.driver_workflow || 'NATIVE',
               ...(driver_id ? { driverId: driver_id } : {}),
@@ -2380,6 +2382,7 @@ export const updateTripFinancials = async (req: Request, res: Response) => {
       trip_charges,
       billing_amount,
       carrier_name,
+      awb_number,
       is_post_trip_settled = true,
     } = req.body;
 
@@ -2466,6 +2469,7 @@ export const updateTripFinancials = async (req: Request, res: Response) => {
           driver_payout: nextTripCharges,
           billing_amount: billing_amount !== undefined ? (parseOptionalFloat(billing_amount) ?? 0) : trip.billing_amount,
           carrier_name: carrier_name !== undefined ? carrier_name : trip.carrier_name,
+          awb_number: awb_number !== undefined ? (awb_number ? String(awb_number).trim() : null) : trip.awb_number,
           is_post_trip_settled: Boolean(is_post_trip_settled),
           updated_by: (req as any).user?.id,
         },

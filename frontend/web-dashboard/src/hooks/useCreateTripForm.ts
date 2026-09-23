@@ -181,6 +181,7 @@ export function useCreateTripForm() {
   const [thirdPartyDriverPhone, setThirdPartyDriverPhone] = useState('');
   const [thirdPartyVehiclePlate, setThirdPartyVehiclePlate] = useState('');
   const [thirdPartyCost, setThirdPartyCost] = useState('');
+  const [awbNumber, setAwbNumber] = useState('');
   const [isCreateProviderOpen, setIsCreateProviderOpen] = useState(false);
 
   const vehiclesRef = useRef(vehicles);
@@ -1009,6 +1010,7 @@ export function useCreateTripForm() {
     thirdPartyDriverPhone,
     thirdPartyVehiclePlate,
     thirdPartyCost,
+    awbNumber,
     dayAssignments,
     selectedDates,
     setContractStep,
@@ -1375,5 +1377,7 @@ export function useCreateTripForm() {
     getAvailableRateCardsForLane,
     handleOpenCreateQuotation,
     getCompatibilityRuleForClass,
+    awbNumber,
+    setAwbNumber,
   };
 }

@@ -181,6 +181,7 @@ export const createTripBody = z.object({
   // "Monthly" commitment — see BILLING_TYPES in @mercon/shared-types.
   operation_type: z.string().trim().max(60).nullable().optional(),
   billing_type: z.string().trim().max(60).nullable().optional(),
+  awb_number: z.string().trim().nullable().optional(),
   // Third-Party Logistics & Rental fields
   is_third_party: z.boolean().optional(),
   third_party_provider_id: z.string().uuid('Invalid provider').nullable().optional(),
@@ -381,6 +382,7 @@ export const bulkImportTripsBody = z.object({
     co_driver_payout: z.coerce.number().nullable().optional(),
     additional_charge: z.coerce.number().nullable().optional(),
     update_quotation_driver_payout: z.boolean().optional(),
+    awb_number: z.string().trim().nullable().optional(),
     stops: z.array(z.object({
       stop_sequence: z.number().int().optional(),
       leg_index: z.number().int().optional(),
