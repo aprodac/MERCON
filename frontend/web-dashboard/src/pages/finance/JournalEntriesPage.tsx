@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, FileText, Trash2, Eye, BookOpen, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -23,10 +24,11 @@ const STATUS_BADGES: Record<JournalEntryStatus, string> = {
 
 export default function JournalEntriesPage() {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
 
   const [selectedStatus, setSelectedStatus] = useState<JournalEntryStatus | 'all'>('all');
   const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('search') || '');
   const [page, setPage] = useState(1);
   const perPage = 25;
 
