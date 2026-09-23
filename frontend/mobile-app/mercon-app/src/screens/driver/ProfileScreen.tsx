@@ -256,7 +256,7 @@ export default function ProfileScreen() {
           id: d.id,
           docType: d.doc_type,
           titleKey: d.doc_type,
-          defaultTitle: docTypeLabel(d.doc_type),
+          defaultTitle: d.documentType?.name || docTypeLabel(d.doc_type),
           subText: d.trip_ref_id ? `Trip ${d.trip_ref_id}` : `Ref #${d.id.slice(-8)}`,
           expiry: formatDate(d.expiry_date),
           status: st.kind === 'expired' ? 'expired' : st.kind === 'expiring' ? 'expiring' : 'valid',
