@@ -5,6 +5,8 @@ import {
   createBankAccount,
   updateBankAccount,
   transferFundsHandler,
+  getBankAccountTransactions,
+  getBankAccountBalanceHistory,
 } from '../controllers/bankAccountController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
@@ -19,6 +21,9 @@ router.get('/', listBankAccounts);
 router.post('/', createBankAccount);
 router.post('/transfer', transferFundsHandler);
 router.get('/:id', getBankAccountById);
+router.get('/:id/transactions', getBankAccountTransactions);
+router.get('/:id/balance-history', getBankAccountBalanceHistory);
 router.put('/:id', updateBankAccount);
 
 export default router;
+
