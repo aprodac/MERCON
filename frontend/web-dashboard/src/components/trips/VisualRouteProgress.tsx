@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Check, Navigation, Truck, MapPin, Flag, Clock } from 'lucide-react';
 import { formatInDeploymentTz } from '@/lib/datetime';
 import { cn } from '@/lib/utils';
-import { isRoundTrip as checkIsRoundTrip, parseTripRouteNodes, getTimelineProgress } from '@mercon/shared-types';
+import { isRoundTrip as checkIsRoundTrip, parseTripRouteNodes, getTimelineProgress, getTimelineVehiclePosition, timelineStopRole, STOP_ROLE_COLORS, type StopRole } from '@mercon/shared-types';
 
 interface VisualRouteProgressProps {
   stops: any[];
@@ -31,6 +31,7 @@ interface NormalizedStop {
   status: 'completed' | 'current' | 'upcoming';
   isFirst: boolean;
   isLast: boolean;
+  role?: StopRole;
 }
 
 const DEFAULT_STOPS: NormalizedStop[] = [
@@ -86,8 +87,17 @@ export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges,
     return checkIsRoundTrip(trip || { stops, route_timeline: timeline });
   }, [stops, timeline, trip]);
 
+  const routeNodes: any[] = useMemo(
+    () => (hasServerTimeline ? timeline : (trip?.route_timeline || parseTripRouteNodes(trip || { stops }))) || [],
+    [stops, timeline, hasServerTimeline, trip],
+  );
+
+  // Where the truck is: on a stop, or between two stops once the driver has
+  // left one and not yet reached the next (shared rule — see getTimelineVehiclePosition).
+  const vehicle = useMemo(() => getTimelineVehiclePosition(routeNodes, isTripFullyCompleted), [routeNodes, isTripFullyCompleted]);
+
   const normalizedStops: NormalizedStop[] = useMemo(() => {
-    const nodes = (hasServerTimeline ? timeline : (trip?.route_timeline || parseTripRouteNodes(trip || { stops }))) || [];
+    const nodes = routeNodes;
     if (!nodes || nodes.length === 0) return DEFAULT_STOPS;
 
     // Same rule as the driver app: a stop is done once the driver LEFT it,
@@ -115,14 +125,17 @@ export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges,
         status: completed ? 'completed' : isCurrent ? 'current' : 'upcoming',
         isFirst,
         isLast,
+        role: timelineStopRole(node),
       };
     });
-  }, [stops, timeline, hasServerTimeline, isTripFullyCompleted, tz, trip]);
+  }, [routeNodes, isTripFullyCompleted, tz]);
 
   const totalStops = normalizedStops.length;
   const completedCount = normalizedStops.filter((s) => s.status === 'completed').length;
   const rawProgress = isTripFullyCompleted
     ? 100
+    : totalStops > 1 && routeNodes.length > 1
+    ? Math.round(((vehicle.index - (vehicle.enRoute ? 0.5 : 0)) / (totalStops - 1)) * 100)
     : totalStops > 1
     ? Math.round((completedCount / (totalStops - 1)) * 100)
     : 100;
@@ -277,6 +290,8 @@ export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges,
 
             const isDone = (stop.status === 'completed' || isTripFullyCompleted || (mIdx === 0 && (progressPercent > 0 || completedCount > 0))) && !hideCheckmarkForLast;
             const isCurrent = stop.status === 'current' && !isTripFullyCompleted && !hideCheckmarkForLast;
+            // Origin/loading = blue, destination/delivery = green, stops in between = red.
+            const roleColor = STOP_ROLE_COLORS[(stop as any).role as StopRole] ?? STOP_ROLE_COLORS.stop;
 
             return (
               <div key={`stop-col-${stop.id}-${mIdx}`} className="relative z-10 flex flex-col items-center text-center min-w-[60px] sm:min-w-[85px] max-w-[120px]">
@@ -284,24 +299,36 @@ export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges,
                   {hideCheckmarkForLast ? (
                     <div className="w-5 h-5 rounded-full bg-transparent border-2 border-emerald-500/30" />
                   ) : isDone ? (
-                    <div className="w-5 h-5 rounded-full bg-[#10B981] text-white flex items-center justify-center ring-4 ring-emerald-100 dark:ring-emerald-950/60 shadow-xs">
+                    <div
+                      className="w-5 h-5 rounded-full text-white flex items-center justify-center ring-4 shadow-xs"
+                      style={{ backgroundColor: roleColor.main, ['--tw-ring-color' as any]: roleColor.soft }}
+                    >
                       <Check className="w-3 h-3 stroke-[3]" />
                     </div>
                   ) : isCurrent ? (
-                    <div className={cn(
-                      "w-5 h-5 rounded-full bg-[#FA634E] text-white flex items-center justify-center ring-4 ring-orange-100 dark:ring-orange-950/60 shadow-xs",
-                      !hidePulseAnimation && "animate-pulse"
-                    )}>
+                    <div
+                      className={cn(
+                        "w-5 h-5 rounded-full text-white flex items-center justify-center ring-4 shadow-xs",
+                        !hidePulseAnimation && "animate-pulse"
+                      )}
+                      style={{ backgroundColor: roleColor.main, ['--tw-ring-color' as any]: roleColor.soft }}
+                    >
                       <MapPin className="w-3 h-3 fill-current" />
                     </div>
                   ) : (
-                    <div className="w-5 h-5 rounded-full bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 ring-4 ring-slate-100 dark:ring-slate-800/60 shadow-xs" />
+                    <div
+                      className="w-5 h-5 rounded-full bg-white dark:bg-slate-900 border-2 ring-4 shadow-xs"
+                      style={{ borderColor: roleColor.main, ['--tw-ring-color' as any]: roleColor.soft }}
+                    />
                   )}
                 </div>
                 <span className="font-extrabold text-xs sm:text-sm text-[#1F2937] dark:text-slate-100 tracking-tight truncate w-full text-center mt-1.5" title={stop.city}>
                   {stop.city}
                 </span>
-                <span className="mt-0.5 px-2 py-0.5 rounded bg-slate-100/90 dark:bg-slate-800/90 text-[8.5px] sm:text-[9px] font-extrabold uppercase text-slate-500 dark:text-slate-400 tracking-wider">
+                <span
+                  className="mt-0.5 px-2 py-0.5 rounded text-[8.5px] sm:text-[9px] font-extrabold uppercase tracking-wider"
+                  style={{ backgroundColor: roleColor.soft, color: roleColor.text }}
+                >
                   {stop.label}
                 </span>
                 <span className="text-[10.5px] font-mono font-bold text-slate-400 dark:text-slate-500 mt-0.5">

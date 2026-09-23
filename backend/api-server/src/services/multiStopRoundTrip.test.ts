@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getTimelineProgress, quotationMatchesRoute } from '@mercon/shared-types';
+import { getTimelineProgress, quotationMatchesRoute, getTimelineVehiclePosition, timelineStopRole } from '@mercon/shared-types';
 
 import { validateTripStops } from './tripValidationService';
 import { stampWorkflowTransition, stampStopTransition, resolveAuthoritativeActiveStop, stampIntermediateStopVisit } from './tripLifecycle';
@@ -1833,6 +1833,30 @@ describe('DEEP CODE-LEVEL TEST SUITE — INDEPENDENT OUTBOUND + RETURN ARCHITECT
       const qn = { stops: [{ source_label: 'RUH - Riyadh', sequence: 1 }, { source_label: 'Medina', sequence: 2 }] };
       assert.equal(quotationMatchesRoute(qn, [[{ name: 'Riyadh' }, { name: 'MED - Medina' }]], false), true);
       assert.equal(quotationMatchesRoute(qn, [[{ name: 'Riyadh' }, { name: 'Buraydah' }, { name: 'Medina' }]], false), false);
+    });
+  });
+
+  // ============================================================
+  // TEST CASE #20 — Truck position + stop role colours
+  // ============================================================
+  describe('Test Case #20 — getTimelineVehiclePosition / timelineStopRole', () => {
+    const n = (a?: boolean, d?: boolean) => ({ actualArrival: a ? 't' : null, actualDeparture: d ? 't' : null });
+    it('loading at pickup → on the pickup', () => {
+      assert.deepEqual(getTimelineVehiclePosition([n(true), n(), n()], false), { index: 0, enRoute: false });
+    });
+    it('left pickup → between pickup and next stop (not on the next stop)', () => {
+      assert.deepEqual(getTimelineVehiclePosition([n(true, true), n(), n()], false), { index: 1, enRoute: true });
+    });
+    it('arrived at next stop → on that stop', () => {
+      assert.deepEqual(getTimelineVehiclePosition([n(true, true), n(true), n()], false), { index: 1, enRoute: false });
+    });
+    it('left Buraydah (stop) → between Buraydah and Medina', () => {
+      assert.deepEqual(getTimelineVehiclePosition([n(true, true), n(true, true), n(), n(), n()], false), { index: 2, enRoute: true });
+    });
+    it('roles: loading = origin, in between = stop, delivery = destination', () => {
+      assert.equal(timelineStopRole({ iconType: 'House' }), 'origin');
+      assert.equal(timelineStopRole({ iconType: 'Route', isIntermediate: true }), 'stop');
+      assert.equal(timelineStopRole({ iconType: 'MapPin' }), 'destination');
     });
   });
 });

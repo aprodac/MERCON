@@ -4,6 +4,7 @@ import { Check, Truck, Package, MapPin } from 'lucide-react-native';
 import { useLanguage } from '../lib/language-context';
 import { MobileTrip } from '../lib/trips';
 import { parseTripRouteNodes, findTimelineIndex, TimelineStop, TimelineTarget } from '../lib/routeParser';
+import { STOP_ROLE_COLORS, timelineStopRole } from '@mercon/shared-types';
 
 export interface TripProgressStepperProps {
   trip: MobileTrip | null;
@@ -37,6 +38,16 @@ export const TripProgressStepper: React.FC<TripProgressStepperProps> = ({ trip, 
     const isUpcoming = !allDone && index > activeIndex;
     const isLast = index === nodes.length - 1;
     const isReturn = (node.legIndex ?? 0) === 1;
+    // Origin/loading = blue, destination/delivery = green, stops in between = red
+    // (same palette as the web create-trip form and trip details).
+    const role = STOP_ROLE_COLORS[timelineStopRole(node)];
+    const nodeColorStyle = isActive
+      ? { backgroundColor: role.main, borderColor: role.main }
+      : isCompleted
+      ? { backgroundColor: allDone ? role.main : role.soft, borderColor: role.main }
+      : { backgroundColor: '#FFFFFF', borderColor: role.soft };
+    const iconColor = isActive || allDone ? '#FFFFFF' : role.main;
+    const labelColor = isUpcoming ? '#94A3B8' : role.text;
 
     return (
       <React.Fragment key={`${node.id}-${index}`}>
@@ -48,16 +59,18 @@ export const TripProgressStepper: React.FC<TripProgressStepperProps> = ({ trip, 
               isCompleted && !allDone && styles.nodeCompleted,
               isActive && styles.nodeActive,
               isUpcoming && styles.nodeUpcoming,
+              nodeColorStyle,
+              isActive && { shadowColor: role.main },
             ]}
           >
             {allDone ? (
               <Check size={14} color="#FFFFFF" strokeWidth={3} />
             ) : isCompleted ? (
-              <Check size={13} color="#10B981" strokeWidth={2.8} />
+              <Check size={13} color={iconColor} strokeWidth={2.8} />
             ) : isActive ? (
               <IconComp size={14} color="#FFFFFF" strokeWidth={2.4} />
             ) : (
-              <IconComp size={14} color="#94A3B8" strokeWidth={2} />
+              <IconComp size={14} color={iconColor} strokeWidth={2} />
             )}
           </View>
 
@@ -68,6 +81,7 @@ export const TripProgressStepper: React.FC<TripProgressStepperProps> = ({ trip, 
               isCompleted && !allDone && styles.labelCompleted,
               isActive && styles.labelActive,
               isUpcoming && styles.labelUpcoming,
+              { color: labelColor },
             ]}
             numberOfLines={1}
             ellipsizeMode="tail"

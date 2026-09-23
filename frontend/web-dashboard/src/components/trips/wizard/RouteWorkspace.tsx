@@ -210,7 +210,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
             <div id={`field-origin-${slot.id}`} className="md:col-span-8 space-y-1">
               <label className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between h-4">
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" /> ORIGIN LOCATION <span className="text-[#FA634E]">*</span>
+                  <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" /> ORIGIN LOCATION <span className="text-[#FA634E]">*</span>
                 </span>
                 {(fieldErrors?.[`origin-${slot.id}`] || fieldErrors?.['origin']) && (
                   <span className="text-[9px] font-bold text-red-500 animate-pulse">Required</span>
@@ -313,10 +313,10 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
 
           {/* INTERMEDIATE STOPS (IF ANY) */}
           {slot.intermediateLocations?.length > 0 && (
-            <div className="pl-3 border-l-2 border-dashed border-amber-300 space-y-1.5 py-0.5">
+            <div className="pl-3 border-l-2 border-dashed border-red-300 space-y-1.5 py-0.5">
               {slot.intermediateLocations.map((stopVal: string, idx: number) => (
                 <div key={idx} className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 shrink-0">
+                  <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200 shrink-0">
                     Stop #{idx + 1}
                   </span>
                   <div className="flex-1">
@@ -369,7 +369,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
             <div id={`field-destination-${slot.id}`} className="md:col-span-8 space-y-1">
               <label className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between h-4">
                 <span className="flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" /> {isRoundTrip ? 'OUTBOUND DESTINATION *' : 'DESTINATION LOCATION *'}
+                  <span className="w-2 h-2 rounded-full bg-green-600 shrink-0" /> {isRoundTrip ? 'OUTBOUND DESTINATION *' : 'DESTINATION LOCATION *'}
                 </span>
                 {(fieldErrors?.[`destination-${slot.id}`] || fieldErrors?.['destination']) && (
                   <span className="text-[9px] font-bold text-red-500 animate-pulse">Required</span>
@@ -473,8 +473,8 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
               {/* RETURN LOADING LOCATION */}
               <div className="md:col-span-6 space-y-1">
-                <label className="text-[10px] font-extrabold text-amber-800 dark:text-amber-300 uppercase tracking-wider block">
-                  RETURN LOADING LOCATION *
+                <label className="text-[10px] font-extrabold text-amber-800 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0" /> RETURN LOADING LOCATION *
                 </label>
                 <LocationCombobox
                   customerId={contractCustomer}
@@ -494,8 +494,8 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
 
               {/* RETURN DESTINATION LOCATION */}
               <div className="md:col-span-6 space-y-1">
-                <label className="text-[10px] font-extrabold text-amber-800 dark:text-amber-300 uppercase tracking-wider block">
-                  RETURN DESTINATION LOCATION *
+                <label className="text-[10px] font-extrabold text-amber-800 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-green-600 shrink-0" /> RETURN DESTINATION LOCATION *
                 </label>
                 <LocationCombobox
                   customerId={contractCustomer}
@@ -530,10 +530,10 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
 
             {/* RETURN INTERMEDIATE STOPS */}
             {slot.returnIntermediateLocations?.length > 0 && (
-              <div className="pl-3 border-l-2 border-dashed border-amber-400 space-y-1.5 py-1">
+              <div className="pl-3 border-l-2 border-dashed border-red-300 space-y-1.5 py-1">
                 {slot.returnIntermediateLocations.map((rStop: string, rIdx: number) => (
                   <div key={rIdx} className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded shrink-0">
+                    <span className="text-[10px] font-bold text-red-700 bg-red-50 px-2 py-0.5 rounded border border-red-200 shrink-0">
                       Return Stop #{rIdx + 1}
                     </span>
                     <div className="flex-1">
