@@ -282,7 +282,7 @@ export default function ProfileScreen() {
       >
         {/* ── 1. Balanced Branded Header (230px) ── */}
         <View style={styles.headerContainer}>
-          <HeaderWaveBg width={SCREEN_WIDTH} height={230} />
+          <HeaderWaveBg width={SCREEN_WIDTH} height={300} />
 
           <SafeAreaView style={styles.headerSafe}>
             {/* Top Controls Bar */}
@@ -325,51 +325,51 @@ export default function ProfileScreen() {
                 {/* ── UNIFIED NAVIGATION MENU CARD ── */}
         <View style={styles.menuCard}>
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
-            <User size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <User size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
             <Text style={styles.menuItemText}>{t('nav_personal_info', 'Personal Information')}</Text>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#C4C4C8" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/vehicle' as any)}>
-            <Truck size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <Truck size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
             <Text style={styles.menuItemText}>{t('title_assigned_vehicle', 'Assigned Vehicle')}</Text>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#C4C4C8" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/documents' as any)}>
-            <FileText size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <FileText size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
             <Text style={styles.menuItemText}>{t('title_my_documents', 'My Documents')}</Text>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#C4C4C8" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
-            <Award size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <Award size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
             <Text style={styles.menuItemText}>{t('title_performance_overview', 'Performance Overview')}</Text>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#C4C4C8" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
-            <Lock size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <Lock size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
             <Text style={styles.menuItemText}>{t('action_change_password', 'Change Password')}</Text>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#C4C4C8" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/settings' as any)}>
-            <Settings size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <Settings size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
             <Text style={styles.menuItemText}>{t('nav_settings', 'App Settings')}</Text>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#C4C4C8" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
           <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
-            <HelpCircle size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <HelpCircle size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
             <Text style={styles.menuItemText}>{t('nav_help_support', 'Help & Support')}</Text>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#C4C4C8" />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -381,9 +381,9 @@ export default function ProfileScreen() {
               router.replace('/login');
             }}
           >
-            <LogOut size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <LogOut size={20} color="#9A2A2A" strokeWidth={1.5} style={styles.menuIcon} />
             <Text style={styles.menuItemText}>{t('action_sign_out', 'Logout')}</Text>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#C4C4C8" />
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -595,7 +595,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FA634E',
   },
   headerContainer: {
-    height: 230,
+    height: 290,
     position: 'relative',
     backgroundColor: '#FA634E',
     overflow: 'hidden',
@@ -694,15 +694,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   driverNameTextCentered: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
     marginTop: 12,
   },
   driverVehicleSubText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.9)',
     marginTop: 4,
   },
   /* Menu Card */
@@ -711,7 +711,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: 4,
     marginHorizontal: 16,
-    marginTop: 20,
+    marginTop: -30,
     marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -722,17 +722,17 @@ const styles = StyleSheet.create({
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
   },
   menuIcon: {
-    marginRight: 14,
+    marginRight: 16,
   },
   menuItemText: {
     flex: 1,
     fontSize: 15,
     fontWeight: '500',
-    color: '#3E3C3D',
+    color: '#2D2C2C',
   },
   menuDivider: {
     height: 1,
@@ -1112,7 +1112,7 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '800',
     color: '#FFFFFF',
-    marginTop: 20,
+    marginTop: -30,
     textAlign: 'center',
   },
 
