@@ -12,5 +12,8 @@ config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
+config.resolver.extraNodeModules = {
+  '@mercon/shared-types': path.resolve(workspaceRoot, 'packages/shared-types'),
+};
 
 module.exports = withNativeWind(config, { input: './src/global.css' });
