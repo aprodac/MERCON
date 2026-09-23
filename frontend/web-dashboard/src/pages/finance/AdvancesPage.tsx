@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Download, ChevronDown, MoreHorizontal, FileText, Ban, CheckCircle2, ArrowDownLeft, ArrowUpRight, User } from 'lucide-react';
+import { Plus, Download, ChevronDown, MoreHorizontal, FileText, Ban, CheckCircle2, ArrowDownLeft, ArrowUpRight, User, TrendingUp, UserCheck } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -390,21 +390,24 @@ export default function AdvancesPage() {
   return (
     <DashboardLayout active="finance" title="Advances">
       <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
-        {/* Top Control Bar: Category Tabs + Actions */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-200 dark:border-slate-800">
-          {/* Primary Category Tabs */}
-          <div className="flex items-center gap-2 overflow-x-auto">
+        {/* Top Control Bar: Large Category Tabs + Actions */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-200/80 dark:border-slate-800">
+          {/* Primary Category Tabs Container */}
+          <div className="bg-[#F4F4F5] dark:bg-slate-800/80 p-1.5 rounded-2xl flex items-center gap-1.5 shadow-2xs border border-slate-200/60 dark:border-slate-700/60 overflow-x-auto">
             <button
               type="button"
               onClick={() => handleCategoryChange('all')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 select-none ${
                 categoryParam === 'all'
-                  ? 'bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 border-transparent shadow-xs'
-                  : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm border border-slate-200/90 dark:border-slate-700'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/60 dark:hover:bg-slate-700/60 border border-transparent'
               }`}
             >
-              <span>All Advances</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold">
+              <TrendingUp className={`w-4 h-4 ${categoryParam === 'all' ? 'text-[#FA634E]' : 'text-slate-400'}`} />
+              <span>Summary</span>
+              <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ${
+                categoryParam === 'all' ? 'bg-[#FA634E] text-white' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+              }`}>
                 {advances.length}
               </span>
             </button>
@@ -412,15 +415,17 @@ export default function AdvancesPage() {
             <button
               type="button"
               onClick={() => handleCategoryChange('Customer')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 select-none ${
                 categoryParam === 'Customer'
-                  ? 'bg-sky-600 text-white border-transparent shadow-xs'
-                  : 'bg-white dark:bg-slate-900 text-sky-700 dark:text-sky-300 border-sky-200/80 dark:border-sky-900/60 hover:bg-sky-50/50'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm border border-slate-200/90 dark:border-slate-700'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/60 dark:hover:bg-slate-700/60 border border-transparent'
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-sky-400" />
+              <ArrowDownLeft className={`w-4 h-4 ${categoryParam === 'Customer' ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'}`} />
               <span>Customer Advances</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-200 font-semibold">
+              <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ${
+                categoryParam === 'Customer' ? 'bg-sky-600 text-white' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+              }`}>
                 {categoryCounts.Customer}
               </span>
             </button>
@@ -428,15 +433,17 @@ export default function AdvancesPage() {
             <button
               type="button"
               onClick={() => handleCategoryChange('Provider')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 select-none ${
                 categoryParam === 'Provider'
-                  ? 'bg-purple-600 text-white border-transparent shadow-xs'
-                  : 'bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 border-purple-200/80 dark:border-purple-900/60 hover:bg-purple-50/50'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm border border-slate-200/90 dark:border-slate-700'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/60 dark:hover:bg-slate-700/60 border border-transparent'
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-purple-400" />
-              <span>Provider Advances</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-200 font-semibold">
+              <ArrowUpRight className={`w-4 h-4 ${categoryParam === 'Provider' ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`} />
+              <span>Supplier Advances</span>
+              <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ${
+                categoryParam === 'Provider' ? 'bg-purple-600 text-white' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+              }`}>
                 {categoryCounts.Provider}
               </span>
             </button>
@@ -444,27 +451,29 @@ export default function AdvancesPage() {
             <button
               type="button"
               onClick={() => handleCategoryChange('Employee')}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 border ${
+              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 select-none ${
                 categoryParam === 'Employee'
-                  ? 'bg-teal-600 text-white border-transparent shadow-xs'
-                  : 'bg-white dark:bg-slate-900 text-teal-700 dark:text-teal-300 border-teal-200/80 dark:border-teal-900/60 hover:bg-teal-50/50'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm border border-slate-200/90 dark:border-slate-700'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/60 dark:hover:bg-slate-700/60 border border-transparent'
               }`}
             >
-              <span className="w-2 h-2 rounded-full bg-teal-400" />
+              <UserCheck className={`w-4 h-4 ${categoryParam === 'Employee' ? 'text-teal-600 dark:text-teal-400' : 'text-slate-400'}`} />
               <span>Employee Advances</span>
-              <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-200 font-semibold">
+              <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ${
+                categoryParam === 'Employee' ? 'bg-teal-600 text-white' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+              }`}>
                 {categoryCounts.Employee}
               </span>
             </button>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setIsExportModalOpen(true)}
-              className="gap-2 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 h-8 text-xs font-medium"
+              className="gap-2 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 h-9 px-3.5 text-xs font-semibold rounded-xl"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export</span>
@@ -473,10 +482,10 @@ export default function AdvancesPage() {
             {/* Split Button for New Advance */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="gap-1.5 bg-[#FA634E] hover:bg-[#E54D38] text-white font-semibold h-8 text-xs">
-                  <Plus className="w-3.5 h-3.5" />
+                <Button className="gap-1.5 bg-[#FA634E] hover:bg-[#E54D38] text-white font-semibold h-9 px-4 text-xs rounded-xl shadow-xs">
+                  <Plus className="w-4 h-4" />
                   <span>New advance</span>
-                  <ChevronDown className="w-3 h-3 ml-0.5 opacity-80" />
+                  <ChevronDown className="w-3.5 h-3.5 ml-0.5 opacity-80" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -486,7 +495,7 @@ export default function AdvancesPage() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/finance/advances/new?type=provider')}>
                   <span className="w-2 h-2 rounded-full bg-purple-500 mr-2" />
-                  <span>Provider advance (Money out)</span>
+                  <span>Supplier advance (Money out)</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/finance/advances/new?type=employee')}>
                   <span className="w-2 h-2 rounded-full bg-teal-500 mr-2" />
@@ -494,6 +503,30 @@ export default function AdvancesPage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          </div>
+        </div>
+
+        {/* Workspace Context Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/80 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
+          <div>
+            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <span>
+                {categoryParam === 'all' && 'All Advances Overview'}
+                {categoryParam === 'Customer' && 'Customer Prepayments & Unapplied Credits'}
+                {categoryParam === 'Provider' && 'Supplier & Provider Vendor Advances'}
+                {categoryParam === 'Employee' && 'Employee Advances & Field Floats'}
+              </span>
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              {categoryParam === 'all' && 'Overall summary of all customer, supplier, and employee advance balances held across MERCON.'}
+              {categoryParam === 'Customer' && 'Prepayments received from customers to be applied against open invoices or refunded.'}
+              {categoryParam === 'Provider' && 'Advance payments made to suppliers and transport providers to be applied against vendor bills.'}
+              {categoryParam === 'Employee' && 'Petty cash advances, trip allowances, and un-cleared floats issued to company staff.'}
+            </p>
+          </div>
+
+          <div className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200/80 dark:border-slate-700 shrink-0">
+            {filteredAdvances.length} record(s) shown
           </div>
         </div>
 
