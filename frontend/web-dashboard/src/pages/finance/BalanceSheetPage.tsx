@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, Info, CheckCircle2 } from 'lucide-react';
 
@@ -18,6 +19,7 @@ function formatMoney(amount: number): string {
 }
 
 export default function BalanceSheetPage() {
+  const navigate = useNavigate();
   const todayIso = new Date().toISOString().slice(0, 10);
   const [asOf, setAsOf] = useState<string>(todayIso);
 
@@ -182,7 +184,11 @@ export default function BalanceSheetPage() {
                       </tr>
                     ) : (
                       assets.map((a) => (
-                        <tr key={a.account_code} className="hover:bg-slate-50/50">
+                        <tr
+                          key={a.account_code}
+                          onClick={() => a.account_id && navigate(`/finance/general-ledger?account_id=${a.account_id}`)}
+                          className={`transition-colors ${a.account_id ? 'hover:bg-slate-100/70 cursor-pointer' : 'cursor-default'}`}
+                        >
                           <td className="py-2 px-3 font-mono text-xs font-semibold text-slate-700">
                             {a.account_code}
                           </td>
@@ -232,7 +238,11 @@ export default function BalanceSheetPage() {
                       </tr>
                     ) : (
                       liabilities.map((l) => (
-                        <tr key={l.account_code} className="hover:bg-slate-50/50">
+                        <tr
+                          key={l.account_code}
+                          onClick={() => l.account_id && navigate(`/finance/general-ledger?account_id=${l.account_id}`)}
+                          className={`transition-colors ${l.account_id ? 'hover:bg-slate-100/70 cursor-pointer' : 'cursor-default'}`}
+                        >
                           <td className="py-2 px-3 font-mono text-xs font-semibold text-slate-700">
                             {l.account_code}
                           </td>
@@ -282,7 +292,11 @@ export default function BalanceSheetPage() {
                       </tr>
                     ) : (
                       equity.map((eq) => (
-                        <tr key={eq.account_code} className="hover:bg-slate-50/50">
+                        <tr
+                          key={eq.account_code}
+                          onClick={() => eq.account_id && navigate(`/finance/general-ledger?account_id=${eq.account_id}`)}
+                          className={`transition-colors ${eq.account_id ? 'hover:bg-slate-100/70 cursor-pointer' : 'cursor-default'}`}
+                        >
                           <td className="py-2 px-3 font-mono text-xs font-semibold text-slate-700">
                             {eq.account_code}
                           </td>

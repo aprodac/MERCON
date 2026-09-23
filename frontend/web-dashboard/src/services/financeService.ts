@@ -482,6 +482,7 @@ export const financeService = {
 };
 
 export interface TrialBalanceItem {
+  account_id: string;
   account_code: string;
   name: string;
   account_type: AccountType;
@@ -500,6 +501,7 @@ export interface TrialBalanceData {
 }
 
 export interface ReportLineItem {
+  account_id?: string | null;
   account_code: string;
   name: string;
   amount: number;

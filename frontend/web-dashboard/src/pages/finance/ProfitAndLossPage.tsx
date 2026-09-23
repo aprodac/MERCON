@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 
@@ -17,6 +18,7 @@ function formatMoney(amount: number): string {
 }
 
 export default function ProfitAndLossPage() {
+  const navigate = useNavigate();
   const currentYearStart = `${new Date().getFullYear()}-01-01`;
   const todayIso = new Date().toISOString().slice(0, 10);
 
@@ -178,7 +180,11 @@ export default function ProfitAndLossPage() {
                       </tr>
                     ) : (
                       revenues.map((r) => (
-                        <tr key={r.account_code} className="hover:bg-slate-50/50">
+                        <tr
+                          key={r.account_code}
+                          onClick={() => r.account_id && navigate(`/finance/general-ledger?account_id=${r.account_id}`)}
+                          className="hover:bg-slate-100/70 cursor-pointer transition-colors"
+                        >
                           <td className="py-2 px-3 font-mono text-xs font-semibold text-slate-700">
                             {r.account_code}
                           </td>
@@ -228,7 +234,11 @@ export default function ProfitAndLossPage() {
                       </tr>
                     ) : (
                       expenses.map((e) => (
-                        <tr key={e.account_code} className="hover:bg-slate-50/50">
+                        <tr
+                          key={e.account_code}
+                          onClick={() => e.account_id && navigate(`/finance/general-ledger?account_id=${e.account_id}`)}
+                          className="hover:bg-slate-100/70 cursor-pointer transition-colors"
+                        >
                           <td className="py-2 px-3 font-mono text-xs font-semibold text-slate-700">
                             {e.account_code}
                           </td>

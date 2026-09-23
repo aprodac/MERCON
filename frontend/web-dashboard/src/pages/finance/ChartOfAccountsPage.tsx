@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Layers, CheckCircle2, Trash2, Edit2, FolderTree, Wallet } from 'lucide-react';
+import { Plus, Layers, CheckCircle2, Trash2, Edit2, FolderTree, Wallet, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -8,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import KpiCard from '@/components/ui/KpiCard';
 import DataTable, { Column } from '@/components/ui/DataTable';
+import ExportModal, { ExportColumn } from '@/components/ui/ExportModal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -25,13 +27,24 @@ const TYPE_COLORS: Record<AccountType, string> = {
   Expense: 'bg-rose-50 text-rose-700 border-rose-200',
 };
 
+const CHART_OF_ACCOUNTS_EXPORT_COLUMNS: ExportColumn<Account>[] = [
+  { id: 'account_code', label: 'Account Code', accessor: (a) => a.account_code },
+  { id: 'name', label: 'Account Name', accessor: (a) => a.name },
+  { id: 'account_type', label: 'Account Type', accessor: (a) => a.account_type },
+  { id: 'parent_account_code', label: 'Parent Account Code', accessor: (a) => a.parent?.account_code || '—' },
+  { id: 'is_postable', label: 'Is Postable', accessor: (a) => (a.is_postable ? 'Yes' : 'No') },
+  { id: 'isActive', label: 'Status', accessor: (a) => (a.isActive ? 'Active' : 'Inactive') },
+];
+
 export default function ChartOfAccountsPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const [selectedType, setSelectedType] = useState<AccountType | 'all'>('all');
   const [search, setSearch] = useState('');
   const [showInactive, setShowInactive] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isExportOpen, setIsExportOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
 
   // Form State
@@ -201,7 +214,19 @@ export default function ChartOfAccountsPage() {
       headerClassName: 'text-right',
       className: 'text-right',
       accessor: (acc) => (
-        <div className="space-x-1">
+        <div className="space-x-1 flex items-center justify-end">
+          {acc.is_postable && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate(`/finance/general-ledger?account_id=${acc.id}`)}
+              title="View Ledger"
+              className="h-7 px-2 text-xs text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 font-semibold"
+            >
+              <BookOpen className="w-3.5 h-3.5 mr-1" />
+              View Ledger
+            </Button>
+          )}
           <Button variant="ghost" size="sm" onClick={() => openEditModal(acc)} className="h-7 w-7 p-0 text-slate-500 hover:text-slate-900">
             <Edit2 className="w-3.5 h-3.5" />
           </Button>
@@ -307,10 +332,25 @@ export default function ChartOfAccountsPage() {
           onSearchChange={setSearch}
           filterElement={typeFilterElement}
           actionsElement={inactiveToggleElement}
+          onExport={() => setIsExportOpen(true)}
           enableSelection={false}
           getRowId={(acc) => acc.id}
           emptyTitle="No Accounts Found"
           emptyMessage="No accounts found matching search criteria."
+        />
+
+        {/* Export Modal */}
+        <ExportModal
+          isOpen={isExportOpen}
+          onClose={() => setIsExportOpen(false)}
+          title="Export Chart of Accounts"
+          description="Choose your export preferences and columns."
+          fileNamePrefix="chart_of_accounts"
+          sheetName="Chart of Accounts"
+          subtitle="MERCON Logistics Chart of Accounts Ledger"
+          filteredData={accounts}
+          columns={CHART_OF_ACCOUNTS_EXPORT_COLUMNS}
+          formats={['xlsx', 'csv']}
         />
 
         {/* Modal */}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, CheckCircle2, RefreshCw } from 'lucide-react';
 
@@ -19,6 +20,7 @@ function formatMoney(amount: number): string {
 }
 
 export default function TrialBalancePage() {
+  const navigate = useNavigate();
   const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
 
   const { data: periodsRes } = useQuery({
@@ -155,7 +157,11 @@ export default function TrialBalancePage() {
                     </tr>
                   ) : (
                     items.map((item) => (
-                      <tr key={item.account_code} className="hover:bg-slate-50/50 transition-colors">
+                      <tr
+                        key={item.account_code}
+                        onClick={() => item.account_id && navigate(`/finance/general-ledger?account_id=${item.account_id}`)}
+                        className="hover:bg-slate-100/70 cursor-pointer transition-colors"
+                      >
                         <td className="py-2.5 px-4 font-mono text-xs font-semibold text-slate-700">
                           {item.account_code}
                         </td>
