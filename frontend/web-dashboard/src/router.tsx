@@ -104,6 +104,7 @@ const ARAgeingPage            = lazyWithRetry(() => import('@/pages/finance/ARAg
 const APAgeingPage            = lazyWithRetry(() => import('@/pages/finance/APAgeingPage'));
 const CashFlowPage            = lazyWithRetry(() => import('@/pages/finance/CashFlowPage'));
 const GeneralLedgerPage       = lazyWithRetry(() => import('@/pages/finance/GeneralLedgerPage'));
+const FinanceKitPage          = lazyWithRetry(() => import('@/pages/finance/FinanceKitPage'));
 
 // Documents
 const DocumentsCenterPage     = lazyWithRetry(() => import('@/pages/documents/DocumentsCenterPage'));
@@ -302,9 +303,11 @@ export default function AppRouter() {
             <Route path="/finance/balance-sheet"     element={<RequireModule moduleKey="finance"><BalanceSheetPage /></RequireModule>} />
             <Route path="/finance/ar-ageing"          element={<RequireModule moduleKey="finance"><ARAgeingPage /></RequireModule>} />
             <Route path="/finance/ap-ageing"          element={<RequireModule moduleKey="finance"><APAgeingPage /></RequireModule>} />
-            <Route path="/finance/cash-flow text"      element={<Navigate to="/finance/cash-flow" replace />} />
             <Route path="/finance/cash-flow"          element={<RequireModule moduleKey="finance"><CashFlowPage /></RequireModule>} />
             <Route path="/finance/general-ledger"     element={<RequireModule moduleKey="finance"><GeneralLedgerPage /></RequireModule>} />
+            {import.meta.env.DEV && (
+              <Route path="/finance/_kit"              element={<RequireModule moduleKey="finance"><FinanceKitPage /></RequireModule>} />
+            )}
             <Route path="/finance"                   element={<Navigate to="/finance/chart-of-accounts" replace />} />
 
             {/* Documents */}
