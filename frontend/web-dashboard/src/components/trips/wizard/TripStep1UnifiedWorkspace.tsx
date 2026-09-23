@@ -11,6 +11,7 @@ import { MonthlyDaysSelector } from './MonthlyDaysSelector';
 import TransitTimeBadge from '@/components/trips/TransitTimeBadge';
 import { ComboboxOption } from '@/components/ui/combobox';
 import { cn } from '@/lib/utils';
+import { isRoundTripCategory } from '@mercon/shared-types';
 
 interface TripStep1UnifiedWorkspaceProps {
   contractCustomer: string;
@@ -154,7 +155,7 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
   setAwbNumber,
 }) => {
   const primarySlot = contractSlots[0] || {};
-  const isRoundTrip = isRoundTripProp ?? (isRoundTripCategory ? isRoundTripCategory(contractRateCategory) : contractRateCategory === 'Round Trip');
+  const isRoundTrip = isRoundTripProp ?? isRoundTripCategory(contractRateCategory);
 
   const isQuotationDefinedOrSelected = Boolean(
     primarySlot.matchedRateCard ||

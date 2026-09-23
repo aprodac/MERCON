@@ -15,6 +15,7 @@ import { ArrowLeft, RotateCcw, ArrowRight, Building2 } from 'lucide-react-native
 import { Colors, Spacing, Radius, Typography } from '../../theme/tokens';
 import { Button, Toast } from '../../components';
 import { operatorService, invalidateOperatorTrips, CreateTripStopInput } from '../../lib/operator';
+import { buildTripStops } from '@mercon/shared-types';
 import { API_URL } from '../../lib/api';
 import { useCreateTripForm } from './hooks/useCreateTripForm';
 import { CustomerQuotationSection } from './create-trip/CustomerQuotationSection';
@@ -161,63 +162,77 @@ export const CreateTripScreen = () => {
       const dropoffLatNum = parseFloat(form.dropoffLat) || 0;
       const dropoffLngNum = parseFloat(form.dropoffLng) || 0;
 
-      const stopsPayload: CreateTripStopInput[] = [
-        {
-          stop_type: 'Pickup',
-          leg_index: 0,
-          lat: pickupLatNum,
-          lng: pickupLngNum,
+      const isRound = form.rateCategory === 'ROUND_TRIP' && form.enableReturnLeg;
+
+      const outboundIntermediatesPayload = form.outboundStops
+        .filter((s) => s.name.trim())
+        .map((s) => ({
+          name: s.name.trim(),
+          location_id: s.locationId || null,
+          lat: !Number.isNaN(parseFloat(s.lat)) ? parseFloat(s.lat) : null,
+          lng: !Number.isNaN(parseFloat(s.lng)) ? parseFloat(s.lng) : null,
+        }));
+
+      const returnIntermediatesPayload = form.returnStops
+        .filter((s) => s.name.trim())
+        .map((s) => ({
+          name: s.name.trim(),
+          location_id: s.locationId || null,
+          lat: !Number.isNaN(parseFloat(s.lat)) ? parseFloat(s.lat) : null,
+          lng: !Number.isNaN(parseFloat(s.lng)) ? parseFloat(s.lng) : null,
+        }));
+
+      const returnStartName = form.returnPickupName.trim() || form.dropoffName.trim();
+      const returnEndName = form.returnDropoffName.trim() || form.pickupName.trim();
+
+      const rawStops = buildTripStops({
+        origin: {
+          name: form.pickupName.trim(),
+          location_id: form.pickupLocationId || null,
+          lat: !Number.isNaN(pickupLatNum) && pickupLatNum !== 0 ? pickupLatNum : null,
+          lng: !Number.isNaN(pickupLngNum) && pickupLngNum !== 0 ? pickupLngNum : null,
           planned_arrival: plannedPickup,
-          location_name: form.pickupName.trim() || undefined,
-          location_id: form.pickupLocationId,
         },
-      ];
-
-      form.outboundStops.forEach((s) => {
-        const lat = parseFloat(s.lat);
-        const lng = parseFloat(s.lng);
-        if (s.name.trim() && !Number.isNaN(lat) && !Number.isNaN(lng)) {
-          stopsPayload.push({
-            stop_type: 'Stop',
-            leg_index: 0,
-            lat, lng,
-            location_name: s.name.trim(),
-            location_id: s.locationId,
-          });
-        }
-      });
-
-      stopsPayload.push({
-        stop_type: 'Dropoff',
-        leg_index: 0,
-        lat: dropoffLatNum,
-        lng: dropoffLngNum,
-        planned_arrival: plannedDropoff,
-        location_name: form.dropoffName.trim() || undefined,
-        location_id: form.dropoffLocationId,
-      });
-
-      if (form.rateCategory === 'ROUND_TRIP' && form.enableReturnLeg) {
-        stopsPayload.push({
-          stop_type: 'Pickup',
-          leg_index: 1,
-          lat: dropoffLatNum,
-          lng: dropoffLngNum,
+        intermediates: outboundIntermediatesPayload,
+        destination: {
+          name: form.dropoffName.trim(),
+          location_id: form.dropoffLocationId || null,
+          lat: !Number.isNaN(dropoffLatNum) && dropoffLatNum !== 0 ? dropoffLatNum : null,
+          lng: !Number.isNaN(dropoffLngNum) && dropoffLngNum !== 0 ? dropoffLngNum : null,
           planned_arrival: plannedDropoff,
-          location_name: form.dropoffName.trim() || 'Return Pickup',
-          location_id: form.dropoffLocationId,
-        });
+        },
+        isRound,
+        returnOrigin: isRound
+          ? {
+              name: returnStartName,
+              location_id: form.returnPickupLocationId || (returnStartName === form.dropoffName.trim() ? form.dropoffLocationId : null),
+              lat: !Number.isNaN(parseFloat(form.returnPickupLat)) ? parseFloat(form.returnPickupLat) : null,
+              lng: !Number.isNaN(parseFloat(form.returnPickupLng)) ? parseFloat(form.returnPickupLng) : null,
+              planned_arrival: plannedDropoff,
+            }
+          : undefined,
+        returnIntermediates: isRound ? returnIntermediatesPayload : undefined,
+        returnDestination: isRound
+          ? {
+              name: returnEndName,
+              location_id: form.returnDropoffLocationId || (returnEndName === form.pickupName.trim() ? form.pickupLocationId : null),
+              lat: !Number.isNaN(parseFloat(form.returnDropoffLat)) ? parseFloat(form.returnDropoffLat) : null,
+              lng: !Number.isNaN(parseFloat(form.returnDropoffLng)) ? parseFloat(form.returnDropoffLng) : null,
+              planned_arrival: null,
+            }
+          : undefined,
+      });
 
-        stopsPayload.push({
-          stop_type: 'Dropoff',
-          leg_index: 1,
-          lat: pickupLatNum,
-          lng: pickupLngNum,
-          planned_arrival: new Date(new Date(plannedDropoff).getTime() + 4 * 3600000).toISOString(),
-          location_name: form.pickupName.trim() || 'Return Dropoff',
-          location_id: form.pickupLocationId,
-        });
-      }
+      const stopsPayload: CreateTripStopInput[] = rawStops.map((st) => ({
+        stop_sequence: st.stop_sequence,
+        leg_index: st.leg_index,
+        stop_type: st.stop_type,
+        location_name: st.location_name || undefined,
+        location_id: st.location_id || undefined,
+        lat: st.lat ?? undefined,
+        lng: st.lng ?? undefined,
+        planned_arrival: st.planned_arrival != null ? String(st.planned_arrival) : undefined,
+      }));
 
       const formattedCharges = form.additionalCharges.map((c) => ({
         charge_type: c.charge_type,
@@ -244,9 +259,9 @@ export const CreateTripScreen = () => {
           const dayStartIso = new Date(`${dStr}T${form.time || '08:00'}:00`).toISOString();
           const dayEndIso = new Date(new Date(dayStartIso).getTime() + durationMs).toISOString();
 
-          const dayStops = stopsPayload.map((s) => ({
+          const dayStops = stopsPayload.map((s, idx) => ({
             ...s,
-            planned_arrival: s.stop_type === 'Pickup' ? dayStartIso : s.stop_type === 'Dropoff' ? dayEndIso : s.planned_arrival,
+            planned_arrival: idx === 0 ? dayStartIso : idx === stopsPayload.length - 1 ? dayEndIso : s.planned_arrival,
           }));
 
           return {
@@ -347,7 +362,7 @@ export const CreateTripScreen = () => {
             })()
           )}
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {form.selectedCustomerObj ? form.selectedCustomerObj.name : 'Create New Trip'}
+            Create New Trip
           </Text>
         </View>
         <TouchableOpacity
@@ -486,6 +501,23 @@ export const CreateTripScreen = () => {
                 onSelectStopLocation={form.handleSelectStopLocation}
                 onRecalculateTravelTime={form.handleRecalculateTravelTime}
                 onSaveRecentRoute={form.saveToRecentRoutes}
+                onSelectPickupLocation={form.handleSetPickupLocation}
+                onSelectDropoffLocation={form.handleSetDropoffLocation}
+                onSelectRecentRoute={form.handleSelectRecentRoute}
+                onCreateLocation={form.handleCreateLocation}
+                returnPickupName={form.returnPickupName}
+                setReturnPickupName={form.setReturnPickupName}
+                returnPickupLocationId={form.returnPickupLocationId}
+                setReturnPickupLocationId={form.setReturnPickupLocationId}
+                returnDropoffName={form.returnDropoffName}
+                setReturnDropoffName={form.setReturnDropoffName}
+                returnDropoffLocationId={form.returnDropoffLocationId}
+                setReturnDropoffLocationId={form.setReturnDropoffLocationId}
+                returnStops={form.returnStops}
+                onAddReturnStop={form.handleAddReturnStop}
+                onRemoveReturnStop={form.handleRemoveReturnStop}
+                onUpdateReturnStop={form.handleUpdateReturnStop}
+                onSelectReturnStopLocation={form.handleSelectReturnStopLocation}
               />
 
               <AdditionalChargesSection

@@ -1,10 +1,11 @@
+import { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   Home, Bell, Truck, Users, Car, Building2,
   CreditCard, ReceiptText, Calculator, Files, FileBarChart,
   Settings, User, LogOut, Wrench, X, MapPin, TrendingUp, Trash2,
-  CalendarRange, Wallet, SlidersHorizontal, ChevronsLeft, ChevronsRight, FolderArchive, Lock, ShieldCheck, GraduationCap, AlertTriangle, FolderTree, BookOpen, BookOpenText, Scale, BarChart3, Clock, Coins
+  CalendarRange, Wallet, SlidersHorizontal, ChevronsLeft, ChevronsRight, FolderArchive, Lock, ShieldCheck, GraduationCap, AlertTriangle, FolderTree, BookOpen, BookOpenText, Scale, BarChart3, Clock, Coins, ChevronDown
 } from 'lucide-react';
 
 import { authStore } from '@/store/authStore';
@@ -93,34 +94,62 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
     badge?: number;
   }
 
-  const rawGroups: { label: string; items: NavItem[] }[] = [
+  interface FinanceSubGroup {
+    label: string;
+    items: NavItem[];
+  }
+
+  const financeSubGroupsRaw: FinanceSubGroup[] = [
+    {
+      label: 'Sales',
+      items: [
+        { icon: Calculator, label: 'Quotations', path: '/quotations', moduleKey: 'quotations', permissionKey: 'quotations.view' },
+        { icon: ReceiptText, label: 'Invoices', path: '/finance/invoices', moduleKey: 'finance' },
+        { icon: Clock, label: 'AR Ageing', path: '/finance/ar-ageing', moduleKey: 'finance' },
+      ],
+    },
+    {
+      label: 'Purchases',
+      items: [
+        { icon: CreditCard, label: 'Bills', path: '/finance/bills', moduleKey: 'finance' },
+        { icon: Wallet, label: 'Expenses', path: '/expenses', moduleKey: 'expenses', permissionKey: 'reports.view' },
+        { icon: Clock, label: 'AP Ageing', path: '/finance/ap-ageing', moduleKey: 'finance' },
+      ],
+    },
+    {
+      label: 'Banking',
+      items: [
+        { icon: Building2, label: 'Bank Accounts', path: '/finance/bank-accounts', moduleKey: 'finance' },
+        { icon: Scale, label: 'Reconciliation', path: '/finance/reconciliation', moduleKey: 'finance' },
+        { icon: Wallet, label: 'Advances', path: '/finance/advances', moduleKey: 'finance' },
+      ],
+    },
+    {
+      label: 'Accounting',
+      items: [
+        { icon: BookOpen, label: 'Journal Entries', path: '/finance/journal-entries', moduleKey: 'finance' },
+        { icon: BookOpenText, label: 'General Ledger', path: '/finance/general-ledger', moduleKey: 'finance' },
+        { icon: FolderTree, label: 'Chart of Accounts', path: '/finance/chart-of-accounts', moduleKey: 'finance' },
+        { icon: CalendarRange, label: 'Accounting Periods', path: '/finance/periods', moduleKey: 'finance' },
+      ],
+    },
+    {
+      label: 'Reports',
+      items: [
+        { icon: BarChart3, label: 'Profit & Loss', path: '/finance/profit-and-loss', moduleKey: 'finance' },
+        { icon: FileBarChart, label: 'Balance Sheet', path: '/finance/balance-sheet', moduleKey: 'finance' },
+        { icon: Scale, label: 'Trial Balance', path: '/finance/trial-balance', moduleKey: 'finance' },
+        { icon: Coins, label: 'Cash Flow', path: '/finance/cash-flow', moduleKey: 'finance' },
+        { icon: TrendingUp, label: 'Vehicle P&L', path: '/vehicles/financials', moduleKey: 'vehicles', permissionKey: 'fleet.financials' },
+      ],
+    },
+  ];
+
+  const nonFinanceGroups: { label: string; items: NavItem[] }[] = [
     {
       label: '',
       items: [
         { icon: Home, label: 'Dashboard', path: '/', moduleKey: 'dashboard' },
-      ],
-    },
-    {
-      label: 'FINANCE',
-      items: [
-        { icon: Calculator, label: 'Quotations', path: '/quotations', moduleKey: 'quotations', permissionKey: 'quotations.view' },
-        { icon: Wallet, label: 'Expenses', path: '/expenses', moduleKey: 'expenses', permissionKey: 'reports.view' },
-        { icon: FolderTree, label: 'Chart of Accounts', path: '/finance/chart-of-accounts', moduleKey: 'finance' },
-        { icon: CalendarRange, label: 'Accounting Periods', path: '/finance/periods', moduleKey: 'finance' },
-        { icon: BookOpen, label: 'Journal Entries', path: '/finance/journal-entries', moduleKey: 'finance' },
-        { icon: ReceiptText, label: 'Invoices', path: '/finance/invoices', moduleKey: 'finance' },
-        { icon: CreditCard, label: 'Bills', path: '/finance/bills', moduleKey: 'finance' },
-        { icon: Building2, label: 'Bank Accounts', path: '/finance/bank-accounts', moduleKey: 'finance' },
-        { icon: Wallet, label: 'Advances', path: '/finance/advances', moduleKey: 'finance' },
-        { icon: Scale, label: 'Reconciliation', path: '/finance/reconciliation', moduleKey: 'finance' },
-        { icon: Scale, label: 'Trial Balance', path: '/finance/trial-balance', moduleKey: 'finance' },
-        { icon: BarChart3, label: 'Profit & Loss', path: '/finance/profit-and-loss', moduleKey: 'finance' },
-        { icon: FileBarChart, label: 'Balance Sheet', path: '/finance/balance-sheet', moduleKey: 'finance' },
-        { icon: Clock, label: 'AR Ageing', path: '/finance/ar-ageing', moduleKey: 'finance' },
-        { icon: Clock, label: 'AP Ageing', path: '/finance/ap-ageing', moduleKey: 'finance' },
-        { icon: Coins, label: 'Cash Flow', path: '/finance/cash-flow', moduleKey: 'finance' },
-        { icon: BookOpenText, label: 'General Ledger', path: '/finance/general-ledger', moduleKey: 'finance' },
-        { icon: TrendingUp, label: 'Vehicle P&L', path: '/vehicles/financials', moduleKey: 'vehicles', permissionKey: 'fleet.financials' },
       ],
     },
     {
@@ -153,41 +182,188 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
     },
   ];
 
+  const [openSubGroups, setOpenSubGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('mercon_finance_sidebar_subgroups');
+      if (saved) return JSON.parse(saved);
+    } catch {
+      // ignore
+    }
+    return { Sales: true, Purchases: true, Banking: true, Accounting: true, Reports: true };
+  });
+
+  const toggleSubGroup = (label: string) => {
+    setOpenSubGroups((prev) => {
+      const next = { ...prev, [label]: !prev[label] };
+      try {
+        localStorage.setItem('mercon_finance_sidebar_subgroups', JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    financeSubGroupsRaw.forEach((sg) => {
+      const hasActive = sg.items.some((item) => isItemActive(item.path, item.end));
+      if (hasActive) {
+        setOpenSubGroups((prev) => {
+          if (!prev[sg.label]) {
+            const next = { ...prev, [sg.label]: true };
+            try {
+              localStorage.setItem('mercon_finance_sidebar_subgroups', JSON.stringify(next));
+            } catch {
+              // ignore
+            }
+            return next;
+          }
+          return prev;
+        });
+      }
+    });
+  }, [location.pathname]);
+
+  const isItemPermitted = (item: NavItem) => {
+    if (item.permissionKey && !can(item.permissionKey)) return false;
+    return true;
+  };
 
   const checkIsDisabled = (item: NavItem) => {
     return item.moduleKey && !isSuperAdmin && enabledModules && Array.isArray(enabledModules) && !enabledModules.includes(item.moduleKey);
   };
 
-  const processedGroups: { label: string; items: NavItem[] }[] = [];
-  const comingSoonItems: NavItem[] = [];
   const hiddenSet = new Set(hiddenModules || []);
+  const comingSoonItems: NavItem[] = [];
 
-  rawGroups.forEach((g) => {
-    const enabledItems: NavItem[] = [];
-    g.items.forEach((item) => {
+  // Filter finance sub-groups
+  const processedFinanceSubGroups: FinanceSubGroup[] = [];
+  financeSubGroupsRaw.forEach((sg) => {
+    const validItems: NavItem[] = [];
+    sg.items.forEach((item) => {
+      if (!isItemPermitted(item)) return;
       if (checkIsDisabled(item)) {
-        if (item.moduleKey && hiddenSet.has(item.moduleKey)) return; // fully hidden
+        if (item.moduleKey && hiddenSet.has(item.moduleKey)) return;
         comingSoonItems.push(item);
       } else {
-        enabledItems.push(item);
+        validItems.push(item);
       }
     });
-    if (enabledItems.length > 0) {
-      processedGroups.push({
+    if (validItems.length > 0) {
+      processedFinanceSubGroups.push({
+        label: sg.label,
+        items: validItems,
+      });
+    }
+  });
+
+  // Filter non-finance groups
+  const processedNonFinanceGroups: { label: string; items: NavItem[] }[] = [];
+  nonFinanceGroups.forEach((g) => {
+    const validItems: NavItem[] = [];
+    g.items.forEach((item) => {
+      if (!isItemPermitted(item)) return;
+      if (checkIsDisabled(item)) {
+        if (item.moduleKey && hiddenSet.has(item.moduleKey)) return;
+        comingSoonItems.push(item);
+      } else {
+        validItems.push(item);
+      }
+    });
+    if (validItems.length > 0) {
+      processedNonFinanceGroups.push({
         label: g.label,
-        items: enabledItems,
+        items: validItems,
       });
     }
   });
 
   if (comingSoonItems.length > 0) {
-    processedGroups.push({
+    processedNonFinanceGroups.push({
       label: 'COMING SOON',
       items: comingSoonItems,
     });
   }
 
-  const groups = processedGroups;
+  const renderNavItem = (item: NavItem, isNested = false) => {
+    const isActive = isItemActive(item.path, item.end);
+    const isDisabledModule = item.moduleKey && !isSuperAdmin && enabledModules && Array.isArray(enabledModules) && !enabledModules.includes(item.moduleKey);
+
+    if (isDisabledModule) {
+      return (
+        <div
+          key={item.label}
+          title={collapsed ? `${item.label} — Locked` : `${item.label} (Locked)`}
+          className={`flex items-center gap-3 ${isNested && !collapsed ? 'px-2.5 py-2 text-xs' : 'px-3 py-2.5'} rounded-xl opacity-45 cursor-not-allowed select-none transition-colors duration-200 relative overflow-hidden text-[#EEF1F6]/50 bg-white/5 font-medium`}
+        >
+          <span className="w-5 h-5 flex items-center justify-center shrink-0">
+            <item.icon size={17} className="stroke-[1.8] text-[#EEF1F6]/40" />
+          </span>
+          <div
+            className={`
+              flex items-center justify-between flex-1 min-w-0 transition-[opacity,max-width] duration-300 ease-in-out overflow-hidden whitespace-nowrap
+              ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:pointer-events-none' : 'lg:max-w-[180px] lg:opacity-100'}
+            `}
+          >
+            <span className="text-xs truncate">
+              {item.label}
+            </span>
+            <Lock size={13} className="text-amber-400/90 shrink-0 ml-1.5" />
+          </div>
+          {collapsed && (
+            <Lock size={12} className="hidden lg:block absolute top-1.5 right-1.5 text-amber-400/90" />
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <NavLink
+        key={item.label}
+        to={item.path}
+        onClick={onClose}
+        title={collapsed ? item.label : undefined}
+        className={`
+          flex items-center gap-3 ${isNested && !collapsed ? 'px-2.5 py-2 text-xs' : 'px-3 py-2.5'} rounded-xl cursor-pointer transition-colors duration-200 group relative overflow-hidden
+          ${isActive
+            ? 'bg-[#FA634E] text-white font-bold shadow-2xs'
+            : 'text-[#EEF1F6]/75 hover:bg-white/10 hover:text-white font-medium'
+          }
+        `}
+      >
+        <span className="w-5 h-5 flex items-center justify-center shrink-0">
+          <item.icon
+            size={17}
+            className={`transition-colors duration-150 ${
+              isActive ? 'stroke-[2.4] text-white' : 'stroke-[2] text-[#EEF1F6]/60 group-hover:text-white'
+            }`}
+          />
+        </span>
+        <div
+          className={`
+            flex items-center justify-between flex-1 min-w-0 transition-[opacity,max-width] duration-300 ease-in-out overflow-hidden whitespace-nowrap
+            ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:pointer-events-none' : 'lg:max-w-[180px] lg:opacity-100'}
+          `}
+        >
+          <span className="text-xs truncate">
+            {item.label}
+          </span>
+          {item.badge !== undefined && item.badge > 0 && !isActive && (
+            <span className="w-4 h-4 rounded-full bg-[#FA634E] text-white text-[9px] font-bold flex items-center justify-center shrink-0 ml-1.5">
+              {item.badge > 9 ? '9+' : item.badge}
+            </span>
+          )}
+        </div>
+        {collapsed && item.badge !== undefined && item.badge > 0 && !isActive && (
+          <span aria-hidden="true" className="hidden lg:block absolute top-1.5 right-2 w-2 h-2 rounded-full bg-[#FA634E]" />
+        )}
+      </NavLink>
+    );
+  };
+
+  // Find top group (Dashboard)
+  const dashboardGroup = processedNonFinanceGroups.find((g) => g.label === '');
+  const remainingNonFinanceGroups = processedNonFinanceGroups.filter((g) => g.label !== '');
 
   return (
     <>
@@ -286,7 +462,76 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
 
         {/* Nav groups */}
         <div className="flex-1 py-4 space-y-4 overflow-y-auto overflow-x-hidden px-3 sidebar-scrollbar">
-          {groups.map((g, idx) => (
+          {/* Dashboard Group */}
+          {dashboardGroup && (
+            <div className="space-y-1">
+              {dashboardGroup.items.map((item) => renderNavItem(item))}
+            </div>
+          )}
+
+          {/* FINANCE Group */}
+          {processedFinanceSubGroups.length > 0 && (
+            <div>
+              <p
+                className={`
+                  text-[10px] font-bold text-[#EEF1F6]/50 uppercase tracking-widest px-3 flex items-center gap-1.5 transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap
+                  ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:h-0 lg:mb-0' : 'lg:max-w-full lg:opacity-100 lg:h-4 lg:mb-1.5'}
+                `}
+              >
+                <span className="w-1 h-1 rounded-full bg-[#FA634E] shrink-0" />
+                <span>FINANCE</span>
+              </p>
+
+              {collapsed ? (
+                /* Flat icon strip in collapsed rail mode */
+                <div className="space-y-1">
+                  {processedFinanceSubGroups.flatMap((sg) => sg.items).map((item) => renderNavItem(item))}
+                </div>
+              ) : (
+                /* Grouped collapsible sub-groups in expanded mode */
+                <div className="space-y-2">
+                  {processedFinanceSubGroups.map((sg) => {
+                    const isOpen = Boolean(openSubGroups[sg.label]);
+                    return (
+                      <div key={sg.label} className="space-y-1">
+                        <button
+                          type="button"
+                          onClick={() => toggleSubGroup(sg.label)}
+                          aria-expanded={isOpen}
+                          aria-controls={`subgroup-${sg.label.toLowerCase()}`}
+                          className="w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-[13px] font-semibold text-[#EEF1F6]/90 hover:text-white hover:bg-white/5 transition-colors group cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span>{sg.label}</span>
+                            <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-[#FA634E]/15 text-[#FA634E] shrink-0">
+                              {sg.items.length}
+                            </span>
+                          </div>
+                          <ChevronDown
+                            size={14}
+                            className={`transition-transform duration-200 text-[#EEF1F6]/50 group-hover:text-white ${
+                              isOpen ? 'rotate-0' : '-rotate-90'
+                            }`}
+                          />
+                        </button>
+                        {isOpen && (
+                          <div
+                            id={`subgroup-${sg.label.toLowerCase()}`}
+                            className="pl-2.5 space-y-1 my-0.5 border-l border-white/10 ml-3.5"
+                          >
+                            {sg.items.map((item) => renderNavItem(item, true))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Other Nav Groups (COMPLIANCE & REPORTS, MASTER DATA, ACCOUNT, etc.) */}
+          {remainingNonFinanceGroups.map((g, idx) => (
             <div key={g.label || `group-${idx}`}>
               {g.label ? (
                 <p
@@ -300,81 +545,7 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
                 </p>
               ) : null}
               <div className="space-y-1">
-                {g.items.map((item: any) => {
-                  const isActive = isItemActive(item.path, item.end);
-                  const isDisabledModule = item.moduleKey && !isSuperAdmin && enabledModules && Array.isArray(enabledModules) && !enabledModules.includes(item.moduleKey);
-
-                  if (isDisabledModule) {
-                    return (
-                      <div
-                        key={item.label}
-                        title={collapsed ? `${item.label} — Locked` : `${item.label} (Locked)`}
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-xl opacity-45 cursor-not-allowed select-none transition-colors duration-200 relative overflow-hidden text-[#EEF1F6]/50 bg-white/5 font-medium"
-                      >
-                        <span className="w-5 h-5 flex items-center justify-center shrink-0">
-                          <item.icon size={17} className="stroke-[1.8] text-[#EEF1F6]/40" />
-                        </span>
-                        <div
-                          className={`
-                            flex items-center justify-between flex-1 min-w-0 transition-[opacity,max-width] duration-300 ease-in-out overflow-hidden whitespace-nowrap
-                            ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:pointer-events-none' : 'lg:max-w-[180px] lg:opacity-100'}
-                          `}
-                        >
-                          <span className="text-xs truncate">
-                            {item.label}
-                          </span>
-                          <Lock size={13} className="text-amber-400/90 shrink-0 ml-1.5" />
-                        </div>
-                        {collapsed && (
-                          <Lock size={12} className="hidden lg:block absolute top-1.5 right-1.5 text-amber-400/90" />
-                        )}
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <NavLink
-                      key={item.label}
-                      to={item.path}
-                      onClick={onClose}
-                      title={collapsed ? item.label : undefined}
-                      className={`
-                        flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-colors duration-200 group relative overflow-hidden
-                        ${isActive
-                          ? 'bg-[#FA634E] text-white font-bold shadow-2xs'
-                          : 'text-[#EEF1F6]/75 hover:bg-white/10 hover:text-white font-medium'
-                        }
-                      `}
-                    >
-                      <span className="w-5 h-5 flex items-center justify-center shrink-0">
-                        <item.icon
-                          size={17}
-                          className={`transition-colors duration-150 ${
-                            isActive ? 'stroke-[2.4] text-white' : 'stroke-[2] text-[#EEF1F6]/60 group-hover:text-white'
-                          }`}
-                        />
-                      </span>
-                      <div
-                        className={`
-                          flex items-center justify-between flex-1 min-w-0 transition-[opacity,max-width] duration-300 ease-in-out overflow-hidden whitespace-nowrap
-                          ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:pointer-events-none' : 'lg:max-w-[180px] lg:opacity-100'}
-                        `}
-                      >
-                        <span className="text-xs truncate">
-                          {item.label}
-                        </span>
-                        {item.badge !== undefined && item.badge > 0 && !isActive && (
-                          <span className="w-4 h-4 rounded-full bg-[#FA634E] text-white text-[9px] font-bold flex items-center justify-center shrink-0 ml-1.5">
-                            {item.badge > 9 ? '9+' : item.badge}
-                          </span>
-                        )}
-                      </div>
-                      {collapsed && item.badge !== undefined && item.badge > 0 && !isActive && (
-                        <span aria-hidden="true" className="hidden lg:block absolute top-1.5 right-2 w-2 h-2 rounded-full bg-[#FA634E]" />
-                      )}
-                    </NavLink>
-                  );
-                })}
+                {g.items.map((item) => renderNavItem(item))}
               </div>
             </div>
           ))}

@@ -12,7 +12,9 @@ import { ArrowLeft, MapPin, Truck, Siren, Clock, Banknote, ArrowUpRight, Navigat
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
 import { DelayReportModal, TripProgressStepper, DelayButton, GeotagPhotoModal } from '../../components';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop } from '../../lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints } from '../../lib/trips';
+
+import { targetFromWorkflowState, parseStopWorkflowState } from '../../lib/routeParser';
 import { choosePhoto, type CapturedPhoto } from '../../lib/camera';
 import { getApiErrorMessage } from '../../lib/api';
 import { useLanguage } from '../../lib/language-context';
@@ -70,73 +72,37 @@ const LiveNavigationScreen = () => {
   // Determine if heading to pickup or delivery directly from workflow state
   const isHeadingToPickup = ws === 'ASSIGNED' || ws === 'GOING_TO_PICKUP' || ws === 'ARRIVED_AT_PICKUP' || (isRound && ws === 'RETURN_LOADING');
 
-  // Authoritative leg index: 0 for first leg, 1 for return leg
-  const legIndex = authActive.currentLegIndex;
+  // Leg comes from the driver's workflow state. The stop records can't be
+  // trusted for this on their own: intermediate stops completed before
+  // their arrival/departure were stamped look "not yet visited", which made
+  // the return leg resolve as leg 0 (wrong destination, and the arrival
+  // photo filed under the outbound delivery).
+  const wsTarget = targetFromWorkflowState(ws, isRound);
+  const legIndex = wsTarget.kind === 'completed' ? authActive.currentLegIndex : wsTarget.leg;
 
-  // 1. Identify the trip's pickup stop for the active leg
-  const pickupStop = React.useMemo(() => {
-    if (!trip?.stops || trip.stops.length === 0) return null;
-    const stops = trip.stops;
-    const legStops = stops.filter((s) => (s.leg_index ?? 0) === legIndex);
-    if (legStops.length > 0) {
-      return legStops.find((s) => s.stop_type === 'Pickup') || legStops[0];
-    }
-    return stops.find((s) => s.stop_type === 'Pickup') ?? stops[0];
-  }, [trip?.stops, legIndex]);
+  const legEndpoints = React.useMemo(() => {
+    return getLegEndpoints(trip, legIndex as 0 | 1);
+  }, [trip, legIndex]);
+  const pickupStop = legEndpoints.loading;
+  const dropoffStop = legEndpoints.delivery;
 
-  // 2. Identify the trip's drop-off / delivery stop for the active leg
-  const dropoffStop = React.useMemo(() => {
-    if (!trip?.stops || trip.stops.length === 0) return null;
-    const stops = trip.stops;
-    const legStops = stops.filter((s) => (s.leg_index ?? 0) === legIndex);
-    if (legStops.length > 0) {
-      return legStops.filter((s) => s.stop_type === 'Dropoff').pop() || legStops[legStops.length - 1];
-    }
-    return stops.find((s) => s.stop_type === 'Dropoff') ?? stops[stops.length - 1];
-  }, [trip?.stops, legIndex]);
 
   // LiveNavigationScreen (the arrival image page) is strictly for Loading (Pickup) and Delivery (Dropoff).
   // Intermediate stops must NEVER show this arrival image page — they go directly to /trip/stop.
-  const isIntermediateStop = React.useMemo(() => {
-    if (!trip) return false;
-    const isStopWorkflow =
-      ws === 'GOING_TO_STOP' ||
-      ws === 'ARRIVED_AT_STOP' ||
-      ws === 'STOP_VERIFICATION' ||
-      ws === 'GOING_TO_RETURN_STOP' ||
-      ws === 'ARRIVED_AT_RETURN_STOP' ||
-      ws === 'RETURN_STOP_VERIFICATION';
-    if (isStopWorkflow) return true;
-
-    if (authActive.activeStop) {
-      const isPickup = pickupStop && authActive.activeStop.id === pickupStop.id;
-      const isDropoff = dropoffStop && authActive.activeStop.id === dropoffStop.id;
-      if (!isPickup && !isDropoff) {
-        return true;
-      }
-    }
-
-    // If in transit, check if there are uncompleted intermediate stops for this leg
-    if (ws === 'IN_TRANSIT' || ws === 'IN_TRANSIT_RETURN') {
-      const legStops = (trip.stops || []).filter((s) => (s.leg_index ?? 0) === legIndex);
-      const uncompletedStop = legStops.find(
-        (s) => s.stop_type !== 'Pickup' && s.stop_type !== 'Dropoff' && !s.actual_departure
-      );
-      if (uncompletedStop) return true;
-    }
-
-    return false;
-  }, [trip, ws, authActive.activeStop, pickupStop, dropoffStop, legIndex]);
+  //
+  // Decided by the workflow state alone. It used to also treat any stop
+  // record without actual_departure as "still pending", but intermediate
+  // stops were never stamped, so finishing the last stop (→ IN_TRANSIT)
+  // bounced the driver straight back to stop #1 — the stop ↔ navigate loop.
+  const pendingStop = parseStopWorkflowState(ws);
 
   useEffect(() => {
-    if (loading || !trip) return;
-    if (isIntermediateStop) {
-      router.replace({
-        pathname: '/trip/stop',
-        params: { legIndex: String(legIndex) },
-      } as any);
-    }
-  }, [loading, trip, isIntermediateStop, legIndex]);
+    if (loading || !trip || !pendingStop) return;
+    router.replace({
+      pathname: '/trip/stop',
+      params: { legIndex: String(pendingStop.leg), stopIndex: String(pendingStop.stopIndex) },
+    } as any);
+  }, [loading, trip, pendingStop?.leg, pendingStop?.stopIndex]);
 
   // 3. For LiveNavigationScreen, the active destination is strictly pickupStop or dropoffStop
   const activeStop = React.useMemo(() => {
@@ -388,7 +354,7 @@ const LiveNavigationScreen = () => {
       : `${Math.round(distanceToTarget)} m`;
   }
 
-  if (isIntermediateStop) {
+  if (pendingStop) {
     return (
       <View style={[styles.container, styles.centerBox]}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -449,7 +415,7 @@ const LiveNavigationScreen = () => {
 
             {/* Row 2: Full Width Connected 4-Stage Stepper */}
             <View style={styles.fullWidthStepperContainer}>
-              <TripProgressStepper currentStep={isHeadingToPickup ? 1 : 3} />
+              <TripProgressStepper trip={trip} target={targetFromWorkflowState(ws, isRound)} />
             </View>
           </View>
         </View>

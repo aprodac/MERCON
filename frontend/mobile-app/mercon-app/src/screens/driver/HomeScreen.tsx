@@ -15,10 +15,11 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens
 import { Badge, DelayReportModal, DriverChargePill, BilingualText } from '../../components';
 import { useAuth } from '../../lib/auth-context';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getNextExternalAppAction, getTripChargeValue, getMonthlyDriverPayout, type TripStatus, type MobileTrip } from '../../lib/trips';
+import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, parseStopWorkflowState, getNextExternalAppAction, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '../../lib/trips';
 import { getApiErrorMessage } from '../../lib/api';
 import { useLanguage, getLocalizedStatus } from '../../lib/language-context';
-import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, type TimelineStop } from '../../lib/routeParser';
+import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, targetFromWorkflowState, type TimelineStop } from '../../lib/routeParser';
+
 
 const WORKFLOW_URDU_LABEL: Record<string, string> = {
   ASSIGNED: 'ٹرپ شروع کریں',
@@ -171,6 +172,7 @@ const HomeScreen = () => {
 //    }
 //  }, [trip, loading]);
 
+
   const fetchScheduled = useCallback(async () => {
     setScheduledLoading(true);
     try {
@@ -238,38 +240,98 @@ const HomeScreen = () => {
       };
     }
     const ws = getEffectiveWorkflowState(t);
+    const isRound = isRoundTrip(t);
     const outboundStops = getOutboundIntermediateStops(t);
     const returnStops = getReturnIntermediateStops(t);
     const hasStops = outboundStops.length > 0;
     const hasReturnStops = returnStops.length > 0;
+    const target = targetFromWorkflowState(ws, isRound);
 
-    switch (ws) {
-      case 'ASSIGNED':
-      case 'GOING_TO_PICKUP':
+    if (target.kind === 'completed') {
+      return {
+        badgeLabel: isRound ? 'Return Delivery Completed' : 'Trip Completed',
+        btnLabel: 'View Completed Summary',
+        onPress: () => router.push('/trip/completed'),
+      };
+    }
+
+    if (target.kind === 'stop') {
+      if (target.leg === 1) {
         return {
-          badgeLabel: 'Assigned',
-          btnLabel: 'Start Trip',
-          onPress: async () => {
-            setAdvancing(true);
-            try {
-              const updated = await tripService.updateStatus(t.id, 'Scheduled', 'GOING_TO_PICKUP');
-              setTrip(updated);
-              router.push('/trip/navigate');
-            } catch (err) {
-              Alert.alert('Error', getApiErrorMessage(err));
-            } finally {
-              setAdvancing(false);
-            }
-          },
+          badgeLabel: 'At Return Stop',
+          btnLabel: 'Verify Return Stop & Upload Photo',
+          onPress: () => router.push({ pathname: '/trip/stop', params: { legIndex: '1' } }),
         };
-      case 'ARRIVED_AT_PICKUP':
-      case 'LOADING':
+      }
+      return {
+        badgeLabel: 'At Intermediate Stop',
+        btnLabel: 'Verify Stop & Upload Photo',
+        onPress: () => router.push('/trip/stop'),
+      };
+    }
+
+    if (target.kind === 'pickup') {
+      if (target.leg === 1) {
+        if (ws === 'RETURN_LOADING_COMPLETED') {
+          return {
+            badgeLabel: 'Return Loading Completed',
+            btnLabel: hasReturnStops ? 'Go to Return Intermediate Stop' : 'Go to Return Delivery',
+            onPress: () => {
+              if (hasReturnStops) {
+                router.push({ pathname: '/trip/stop', params: { legIndex: '1' } });
+              } else {
+                router.push('/trip/navigate');
+              }
+            },
+          };
+        }
+        return {
+          badgeLabel: 'Delivery Completed',
+          btnLabel: 'Start Return Loading',
+          onPress: () => router.push('/trip/pickup'),
+        };
+      }
+      if (ws === 'ARRIVED_AT_PICKUP' || ws === 'LOADING') {
         return {
           badgeLabel: 'At Pickup',
           btnLabel: 'Start Loading',
           onPress: () => router.push('/trip/pickup'),
         };
-      case 'LOADING_COMPLETED':
+      }
+      return {
+        badgeLabel: 'Assigned',
+        btnLabel: 'Start Trip',
+        onPress: async () => {
+          setAdvancing(true);
+          try {
+            const updated = await tripService.updateStatus(t.id, 'Scheduled', 'GOING_TO_PICKUP');
+            setTrip(updated);
+            router.push('/trip/navigate');
+          } catch (err) {
+            Alert.alert('Error', getApiErrorMessage(err));
+          } finally {
+            setAdvancing(false);
+          }
+        },
+      };
+    }
+
+    if (target.kind === 'delivery') {
+      if (target.leg === 1) {
+        if (ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'FINAL_DELIVERY_VERIFICATION') {
+          return {
+            badgeLabel: isRound ? 'At Return Delivery' : 'At Delivery',
+            btnLabel: isRound ? 'Final Unload & Verify' : 'Unload & Verify',
+            onPress: () => router.push('/trip/delivery'),
+          };
+        }
+        return {
+          badgeLabel: 'In Transit (Return)',
+          btnLabel: 'Go to Return Delivery',
+          onPress: () => router.push('/trip/navigate'),
+        };
+      }
+      if (ws === 'LOADING_COMPLETED') {
         return {
           badgeLabel: 'Loading Completed',
           btnLabel: hasStops ? 'Go to Intermediate Stop' : 'Go to Delivery',
@@ -281,118 +343,30 @@ const HomeScreen = () => {
             }
           },
         };
-      case 'GOING_TO_STOP':
-      case 'ARRIVED_AT_STOP':
-      case 'STOP_VERIFICATION':
-        return {
-          badgeLabel: 'At Intermediate Stop',
-          btnLabel: 'Verify Stop & Upload Photo',
-          onPress: () => router.push('/trip/stop'),
-        };
-      case 'IN_TRANSIT': {
-        const legStops = (t.stops || []).filter((s) => (s.leg_index ?? 0) === 0);
-        const uncompletedStop = legStops.find(
-          (s) => s.stop_type !== 'Pickup' && s.stop_type !== 'Dropoff' && !s.actual_departure
-        );
-        if (uncompletedStop || (hasStops && (t.driver_workflow_state || '').includes('STOP'))) {
-          return {
-            badgeLabel: 'At Intermediate Stop',
-            btnLabel: 'Verify Stop & Upload Photo',
-            onPress: () => router.push({ pathname: '/trip/stop', params: { legIndex: '0' } }),
-          };
-        }
-        return {
-          badgeLabel: 'In Transit',
-          btnLabel: 'Go to Delivery',
-          onPress: () => router.push('/trip/navigate'),
-        };
       }
-      case 'ARRIVED_AT_DELIVERY':
-      case 'DELIVERY_VERIFICATION':
+      if (ws === 'ARRIVED_AT_DELIVERY' || ws === 'DELIVERY_VERIFICATION') {
         return {
           badgeLabel: 'At Delivery',
           btnLabel: 'Unload & Verify',
           onPress: () => router.push('/trip/delivery'),
         };
-      case 'DELIVERY_COMPLETED':
-      case 'FIRST_DELIVERY_COMPLETED':
-      case 'RETURN_LOADING':
-        if (!isRoundTrip(t)) {
-          return {
-            badgeLabel: 'Delivery Completed',
-            btnLabel: 'View Completed Summary',
-            onPress: () => router.push('/trip/completed'),
-          };
-        }
-        return {
-          badgeLabel: 'Delivery Completed',
-          btnLabel: 'Start Return Loading',
-          onPress: () => router.push('/trip/pickup'),
-        };
-      case 'RETURN_LOADING_COMPLETED':
-        return {
-          badgeLabel: 'Return Loading Completed',
-          btnLabel: hasReturnStops ? 'Go to Return Intermediate Stop' : 'Go to Return Delivery',
-          onPress: () => {
-            if (hasReturnStops) {
-              router.push({ pathname: '/trip/stop', params: { legIndex: '1' } });
-            } else {
-              router.push('/trip/navigate');
-            }
-          },
-        };
-      case 'GOING_TO_RETURN_STOP':
-      case 'ARRIVED_AT_RETURN_STOP':
-      case 'RETURN_STOP_VERIFICATION':
-        return {
-          badgeLabel: 'At Return Stop',
-          btnLabel: 'Verify Return Stop & Upload Photo',
-          onPress: () => router.push({ pathname: '/trip/stop', params: { legIndex: '1' } }),
-        };
-      case 'IN_TRANSIT_RETURN': {
-        const legStops = (t.stops || []).filter((s) => (s.leg_index ?? 0) === 1);
-        const uncompletedStop = legStops.find(
-          (s) => s.stop_type !== 'Pickup' && s.stop_type !== 'Dropoff' && !s.actual_departure
-        );
-        if (uncompletedStop || (hasReturnStops && (t.driver_workflow_state || '').includes('STOP'))) {
-          return {
-            badgeLabel: 'At Return Stop',
-            btnLabel: 'Verify Return Stop & Upload Photo',
-            onPress: () => router.push({ pathname: '/trip/stop', params: { legIndex: '1' } }),
-          };
-        }
-        return {
-          badgeLabel: 'In Transit (Return)',
-          btnLabel: 'Go to Return Delivery',
-          onPress: () => router.push('/trip/navigate'),
-        };
       }
-      case 'ARRIVED_AT_FINAL_DELIVERY':
-      case 'FINAL_DELIVERY_VERIFICATION':
-        return {
-          badgeLabel: isRoundTrip(t) ? 'At Return Delivery' : 'At Delivery',
-          btnLabel: isRoundTrip(t) ? 'Final Unload & Verify' : 'Unload & Verify',
-          onPress: () => router.push('/trip/delivery'),
-        };
-      case 'RETURN_DELIVERY_COMPLETED':
-      case 'REVIEW_COMPLETE':
-      case 'COMPLETED':
-        return {
-          badgeLabel: isRoundTrip(t) ? 'Return Delivery Completed' : 'Trip Completed',
-          btnLabel: 'View Completed Summary',
-          onPress: () => router.push('/trip/completed'),
-        };
-      default:
-        return {
-          badgeLabel: statusLabel(t.status),
-          btnLabel: 'Start Trip',
-          onPress: () => {
-            if (t.status === 'Scheduled' || t.status === 'Draft') { router.push('/trip/navigate'); }
-            else if (t.status === 'Loading' || t.status === 'AtPickup') { router.push('/trip/pickup'); }
-            else { router.push('/trip/delivery'); }
-          }
-        };
+      return {
+        badgeLabel: 'In Transit',
+        btnLabel: 'Go to Delivery',
+        onPress: () => router.push('/trip/navigate'),
+      };
     }
+
+    return {
+      badgeLabel: statusLabel(t.status),
+      btnLabel: 'Start Trip',
+      onPress: () => {
+        if (t.status === 'Scheduled' || t.status === 'Draft') { router.push('/trip/navigate'); }
+        else if (t.status === 'Loading' || t.status === 'AtPickup') { router.push('/trip/pickup'); }
+        else { router.push('/trip/delivery'); }
+      }
+    };
   };
 
   return (

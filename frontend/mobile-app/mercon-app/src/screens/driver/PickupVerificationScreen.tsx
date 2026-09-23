@@ -10,7 +10,8 @@ import { Info, Camera, MapPin, Trash2, Package, ArrowRight, Clock, FileText, Che
 import { Colors } from '../../theme/tokens';
 import { GoogleMapsGeotagPreview, GeotagPhotoModal, TripProgressStepper, FadedBottomIllustration, DelayReportModal, DelayButton, ReturnLoadingModal } from '../../components';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState } from '../../lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints } from '../../lib/trips';
+
 import { choosePhoto, type CapturedPhoto } from '../../lib/camera';
 import { API_URL, getApiErrorMessage } from '../../lib/api';
 import { safeSecureStore as SecureStore } from '../../lib/secure-store';
@@ -93,17 +94,11 @@ const PickupVerificationScreen = () => {
   const isStarted = ws === 'LOADING' || ws === 'ARRIVED_AT_PICKUP' || isReturnLoading;
 
   const legIndex = isReturnLoading ? 1 : 0;
-  const legStops = (trip?.stops ?? []).filter((s) => (s.leg_index ?? 0) === legIndex);
-  const pickupStop =
-    legStops.length > 0
-      ? (legStops.find((s) => s.stop_type === 'Pickup') ?? legStops[0])
-      : (isReturnLoading
-          ? (trip?.stops?.find((s) => s.stop_type === 'Pickup' && s.stop_sequence > 1) ??
-             trip?.stops?.find((s) => s.stop_sequence === 3) ??
-             trip?.stops?.[1])
-          : trip?.stops?.find((s) => s.stop_type === 'Pickup')) ??
-        trip?.stops?.[0] ?? null;
+  const pickupStop = getLegEndpoints(trip, legIndex).loading;
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
+  // URIs already uploaded in this session — a retry after a failed upload
+  // must not send them again.
+  const uploadedUrisRef = useRef<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const [showDelayModal, setShowDelayModal] = useState(false);
@@ -330,14 +325,11 @@ const PickupVerificationScreen = () => {
         } else {
           await SecureStore.setItemAsync('last_pickup_photos', JSON.stringify(photos));
         }
-        const stopKey = pickupStop?.id ? `pickup_draft_${trip.id}_${pickupStop.id}` : null;
-        if (stopKey) await SecureStore.deleteItemAsync(stopKey).catch(() => {});
-        const draftKey = isReturnLoading ? `return_pickup_draft_photos_${trip.id}` : `pickup_draft_photos_${trip.id}`;
-        await SecureStore.deleteItemAsync(draftKey).catch(() => {});
       }
       // Upload photos via tripService.uploadPhoto
+      let failedUploads = 0;
       for (const p of photos) {
-        if (p.uri) {
+        if (p.uri && !uploadedUrisRef.current.has(p.uri)) {
           try {
             await tripService.uploadPhoto(
               trip.id,
@@ -354,10 +346,29 @@ const PickupVerificationScreen = () => {
               isReturnLoading ? 'return_loading' : 'pickup',
               pickupStop?.id
             );
+            uploadedUrisRef.current.add(p.uri);
           } catch (photoErr) {
             console.warn('Cargo photo upload warning:', photoErr);
+            failedUploads++;
           }
         }
+      }
+      // Don't advance the trip with evidence missing — the photos would be
+      // lost for good once this screen is left.
+      if (failedUploads > 0) {
+        Alert.alert(
+          t('err_upload_failed_title', 'Upload failed'),
+          t('err_upload_failed_retry', `${failedUploads} photo(s) could not be uploaded. Check your connection and tap the button again.`),
+        );
+        return;
+      }
+
+      // ONLY delete draft photos AFTER all uploads succeeded
+      if (trip?.id) {
+        const stopKey = pickupStop?.id ? `pickup_draft_${trip.id}_${pickupStop.id}` : null;
+        if (stopKey) await SecureStore.deleteItemAsync(stopKey).catch(() => {});
+        const draftKey = isReturnLoading ? `return_pickup_draft_photos_${trip.id}` : `pickup_draft_photos_${trip.id}`;
+        await SecureStore.deleteItemAsync(draftKey).catch(() => {});
       }
       const nextWorkflowState = isReturnLoading
         ? (hasStopsForLeg ? 'GOING_TO_RETURN_STOP' : 'IN_TRANSIT_RETURN')
@@ -433,10 +444,8 @@ const PickupVerificationScreen = () => {
 
         {/* 4-Step Progress Stepper: Pickup -> Loading -> Delivery -> Complete */}
         <TripProgressStepper
-          currentStep={isStarted ? 2 : 1}
-          customStep1Label={isReturnLoading ? (language === 'ur' ? 'واپسی لوڈنگ ↩' : language === 'ur-en' ? 'واپسی لوڈنگ / Return Loading ↩' : 'Return Loading ↩') : undefined}
-          customStep2Label={isReturnLoading ? (language === 'ur' ? 'لوڈنگ ↩' : language === 'ur-en' ? 'لوڈنگ / Loading ↩' : 'Loading ↩') : undefined}
-          customStep3Label={isReturnLoading ? (language === 'ur' ? 'ڈلیوری ↩' : language === 'ur-en' ? 'ڈلیوری / Delivery ↩' : 'Delivery ↩') : undefined}
+          trip={trip}
+          target={{ kind: 'pickup', leg: isReturnLoading ? 1 : 0 }}
         />
 
         {/* Location Card (Horizontal Side-by-Side matching Screenshot 2) */}

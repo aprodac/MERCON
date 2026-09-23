@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { quotationService, RateCard } from '@/services/quotationService';
 import { normalizeVehicleClass, normalizeRateCategory, normalizeBillingType } from './useCreateTripForm';
+import { isRoundTripCategory } from '@mercon/shared-types';
 
 export function useTripRateLookup(
   contractCustomer: string,
@@ -202,8 +203,7 @@ export function useTripRateLookup(
       return customerRateCards;
     }
 
-    const targetCategory = norm(rCat);
-    const isRoundTrip = targetCategory.includes('roundtrip') || targetCategory.includes('round');
+    const isRoundTrip = isRoundTripCategory(rCat || '');
 
     const matchLocation = (cardLocRaw: any, targetLocRaw: any) => {
       if (!cardLocRaw || !targetLocRaw) return false;

@@ -76,18 +76,6 @@ export default function CreateTripPage() {
   const form = useCreateTripForm();
   const [isReviewModalOpen, setIsReviewModalOpen] = React.useState(false);
 
-  // Auto-enter full screen when opening the trip wizard, exit when leaving it
-  React.useEffect(() => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-    }
-    return () => {
-      if (document.fullscreenElement) {
-        document.exitFullscreen().catch(() => {});
-      }
-    };
-  }, []);
-
   // Step Transition Focus Management
   React.useEffect(() => {
     if (form.submissionResult) return;

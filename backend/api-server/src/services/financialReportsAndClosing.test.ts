@@ -1,6 +1,14 @@
+import path from 'path';
+import dotenv from 'dotenv';
+dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/mercon_db?schema=public';
+}
+
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '../db';
+
 import { getARAgeing, getAPAgeing } from '../controllers/ageingReportsController';
 import { getCashFlow } from '../controllers/financeReportsController';
 import { closeFiscalYear } from '../utils/fiscalYearClosingEngine';
@@ -340,7 +348,7 @@ describe('Financial Reports & Fiscal Year-End Closing Integration Suite', () => 
   it('6. closeFiscalYear: correctly zeroes Revenue & Expense accounts and posts net to Retained Earnings', async () => {
     const postedLines = await prisma.journalLine.findMany({
       where: {
-        journalEntry: { status: 'Posted', entry_date: { lte: closingDate } },
+        journalEntry: { status: { in: ['Posted', 'Voided'] }, entry_date: { lte: closingDate } },
         account: { account_type: { in: ['Revenue', 'Expense'] } },
       },
       include: { account: true },

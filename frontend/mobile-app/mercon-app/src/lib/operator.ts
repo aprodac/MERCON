@@ -112,9 +112,10 @@ export interface OperatorTripDetail {
 
 export interface CreateTripStopInput {
   stop_type: 'Pickup' | 'Dropoff' | 'Stop' | 'Rest' | 'Refuel';
+  stop_sequence?: number;
   leg_index?: number;
-  lat: number;
-  lng: number;
+  lat?: number | null;
+  lng?: number | null;
   planned_arrival?: string;
   location_name?: string;
   /** Set when the operator picked a saved Location via search, instead of typing raw coordinates. */
@@ -167,6 +168,7 @@ export interface OperatorLocation {
   id: string;
   name: string;
   address?: string | null;
+  city?: string | null;
   lat?: number | null;
   lng?: number | null;
 }
@@ -403,10 +405,29 @@ export const operatorService = {
   },
 
   /** Same `/locations` endpoint the web dashboard's location combobox uses — Locations are customer-scoped. */
+  async locations(customerId?: string): Promise<OperatorLocation[]> {
+    const { data } = await api.get('/locations', {
+      params: { per_page: 250, active_only: 'true', ...(customerId ? { customerId } : {}) },
+    });
+    return (data.data ?? []) as OperatorLocation[];
+  },
+
   async searchLocations(customerId: string, query: string): Promise<OperatorLocation[]> {
     if (!customerId || !query.trim()) return [];
     const { data } = await api.get('/locations', { params: { customerId, search: query.trim(), active_only: true } });
     return (data.data ?? []) as OperatorLocation[];
+  },
+
+  async createLocation(payload: {
+    name: string;
+    city?: string;
+    address?: string;
+    customer_id?: string;
+    lat?: number;
+    lng?: number;
+  }): Promise<OperatorLocation> {
+    const { data } = await api.post('/locations', payload);
+    return data.data as OperatorLocation;
   },
 
   async thirdPartyProviders(): Promise<OperatorThirdPartyProvider[]> {
@@ -560,11 +581,6 @@ export const operatorService = {
   async documents(): Promise<OperatorDocument[]> {
     const { data } = await api.get('/documents', { params: { per_page: 50 } });
     return (data.data ?? []) as OperatorDocument[];
-  },
-
-  async locations(): Promise<OperatorLocation[]> {
-    const { data } = await api.get('/locations', { params: { per_page: 100 } });
-    return (data.data ?? []) as OperatorLocation[];
   },
 };
 

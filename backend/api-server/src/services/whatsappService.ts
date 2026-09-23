@@ -159,7 +159,7 @@ export class WhatsAppService {
         customer: true,
         driver: true,
         vehicle: true,
-        stops: true,
+        stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' } },
         documents: true,
       },
     });

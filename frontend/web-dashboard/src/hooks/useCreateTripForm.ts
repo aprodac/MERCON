@@ -11,7 +11,7 @@ import { tripService, BulkImportTripRow, BulkImportResult, TripStatus, Trip } fr
 import { quotationService, RateCard } from '@/services/quotationService';
 import { estimateTravelTimeByName, calculateArrivalDropoffTime } from '@/services/travelTimeService';
 import { useDeploymentTimezone, localDateTimeToUtcIso } from '@/lib/datetime';
-import { VEHICLE_TYPES, RATE_CATEGORIES } from '@mercon/shared-types';
+import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory } from '@mercon/shared-types';
 import { parseSheet, TRIP_COLUMNS } from '@/utils/importUtils';
 import { analyzePastDateRows, applyPastStatusToRows, PastDateAnalysis } from '@/utils/pastDateTripUtils';
 import { getCompatibilityRuleForClass } from '@/utils/vehicleCompatibilityRegistry';
@@ -45,11 +45,7 @@ export const MODAL_RATE_CATEGORIES = RATE_CATEGORIES.filter(
   (cat) => !REMOVED_MODAL_CATEGORIES.includes(cat as any)
 ).map((cat) => ((cat as any) === 'Trip/Round Trip' ? 'Round Trip' : cat));
 
-export const isRoundTripCategory = (cat: string) => {
-  if (!cat) return false;
-  const c = String(cat).toLowerCase().replace(/_/g, ' ').trim();
-  return c.includes('round') || c === 'round trip' || c === 'trip/round trip';
-};
+export { isRoundTripCategory };
 
 export const getVehicleTypeFromCapacity = (capacityKg?: number | null): string => {
   if (capacityKg == null || capacityKg <= 0) return '40 FEET';

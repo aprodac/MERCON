@@ -11,7 +11,7 @@ import {
   House, Package, UserCheck, ChevronDown,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
-import { tripService, statusLabel, stopLabel, stopAddress, getTripChargeValue, type MobileTrip, type TripStatus } from '../../lib/trips';
+import { tripService, statusLabel, stopLabel, stopAddress, getTripChargeValue, getLegEndpoints, type MobileTrip, type TripStatus } from '../../lib/trips';
 import { BilingualText } from '../../components';
 import { useLanguage, formatCurrency, getLocalizedStatus } from '../../lib/language-context';
 import { API_URL } from '../../lib/api';
@@ -88,9 +88,10 @@ export default function DriverTripDetailsScreen() {
     fetchTrip();
   };
 
-  const pickupStop = trip?.stops?.find((s) => s.stop_type === 'Pickup') ?? null;
-  const dropoffStop = trip?.stops?.find((s) => s.stop_type === 'Dropoff') ?? null;
-  const intermediateStops = trip?.stops?.filter((s) => s.stop_type !== 'Pickup' && s.stop_type !== 'Dropoff') ?? [];
+  const outboundEndpoints = getLegEndpoints(trip, 0);
+  const pickupStop = outboundEndpoints.loading ?? null;
+  const dropoffStop = outboundEndpoints.delivery ?? null;
+  const intermediateStops = outboundEndpoints.intermediates;
 
   const rawLogo = trip?.customer?.logo_url || null;
   const logoUrl = resolveLogoUrl(rawLogo);

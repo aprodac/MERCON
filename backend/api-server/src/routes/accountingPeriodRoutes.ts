@@ -4,6 +4,8 @@ import {
   createAccountingPeriod,
   closeAccountingPeriod,
   lockAccountingPeriod,
+  reopenAccountingPeriod,
+  getAccountingPeriodActivity,
   closeFiscalYearHandler,
 } from '../controllers/accountingPeriodController';
 import { authenticateJWT } from '../middlewares/auth';
@@ -19,6 +21,9 @@ router.get('/', getAccountingPeriods);
 router.post('/', createAccountingPeriod);
 router.post('/close-fiscal-year', authorizeRoles('Admin'), closeFiscalYearHandler);
 router.post('/:id/close', authorizeRoles('Admin'), closeAccountingPeriod);
+router.post('/:id/reopen', authorizeRoles('Admin'), reopenAccountingPeriod);
 router.post('/:id/lock', authorizeRoles('Admin'), lockAccountingPeriod);
+router.get('/:id/activity', getAccountingPeriodActivity);
 
 export default router;
+

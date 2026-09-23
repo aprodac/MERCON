@@ -510,6 +510,9 @@ export interface Account {
   children?: Account[];
   description?: string | null;
   is_postable: boolean;
+  current_balance?: number;
+  total_debit?: number;
+  total_credit?: number;
   journalLines?: JournalLine[];
   created_by?: string | null;
   updated_by?: string | null;
@@ -709,6 +712,14 @@ export interface BankAccount {
   opening_balance: number | string;
   opening_date?: string | null;
   currency: string;
+  ledger_balance?: number;
+  book_balance?: number;
+  month_in?: number;
+  month_out?: number;
+  last_reconciled_at?: string | null;
+  last_reconciled_balance?: number | null;
+  unreconciled_count?: number;
+  balance_series?: Array<{ date: string; balance: number }>;
   reconciliations?: BankReconciliation[];
   created_by?: string | null;
   updated_by?: string | null;
@@ -716,6 +727,44 @@ export interface BankAccount {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface BankTransactionRow {
+  line_id: string;
+  date: string;
+  journal_entry: {
+    id: string;
+    ref_id: string;
+    source_type: string | null;
+    source_id: string | null;
+    memo: string | null;
+    status: string;
+  };
+  description: string | null;
+  money_in: number;
+  money_out: number;
+  running_balance: number;
+  reconciled: boolean;
+  reconciliation_id: string | null;
+}
+
+export interface BankTransactionsResponse {
+  opening_balance: number;
+  closing_balance: number;
+  rows: BankTransactionRow[];
+  pagination: {
+    page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+  };
+}
+
+export interface BankBalanceHistoryPoint {
+  date: string;
+  balance: number;
+  money_in: number;
+  money_out: number;
 }
 
 export interface BankReconciliation {
@@ -732,11 +781,18 @@ export interface BankReconciliation {
   createdAt: string;
 }
 
+export interface AdvanceParty {
+  id: string;
+  name: string;
+  type: AdvancePartyType;
+}
+
 export interface Advance {
   id: string;
   ref_id?: string | null;
   party_type: AdvancePartyType;
   party_id?: string | null;
+  party?: AdvanceParty | null;
   direction: AdvanceDirection;
   amount: number | string;
   applied_amount: number | string;
@@ -867,6 +923,8 @@ export interface CreateLearningResourceDTO {
 export * from './quotationMatching';
 export * from './quotationSearch';
 export * from './monthlyRotation';
+export * from './tripRoute';
+
 
 
 

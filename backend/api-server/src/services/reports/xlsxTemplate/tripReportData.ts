@@ -71,7 +71,7 @@ export async function fetchTripRows(
         customer: { select: { name: true } },
         driver: { select: { first_name: true, last_name: true, phone_primary: true } },
         vehicle: { select: { plate_number: true, capacity_kg: true, asset_type: true } },
-        stops: { orderBy: { stop_sequence: 'asc' } },
+        stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' } },
         charges: true,
       },
     });

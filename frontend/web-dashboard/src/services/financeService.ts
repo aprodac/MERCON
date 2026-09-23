@@ -227,10 +227,21 @@ export const financeService = {
     return response.data;
   },
 
+  reopenAccountingPeriod: async (id: string, reason: string) => {
+    const response = await api.post(`/accounting-periods/${id}/reopen`, { reason });
+    return response.data;
+  },
+
+  getAccountingPeriodActivity: async (id: string) => {
+    const response = await api.get(`/accounting-periods/${id}/activity`);
+    return response.data;
+  },
+
   closeFiscalYear: async (closing_date: string) => {
     const response = await api.post('/accounting-periods/close-fiscal-year', { closing_date });
     return response.data;
   },
+
 
   // Journal Entries
   getJournalEntries: async (params?: {
@@ -275,6 +286,11 @@ export const financeService = {
 
   voidJournalEntry: async (id: string, memo?: string) => {
     const response = await api.post(`/journal-entries/${id}/void`, { memo });
+    return response.data;
+  },
+
+  getJournalEntryActivity: async (id: string) => {
+    const response = await api.get(`/journal-entries/${id}/activity`);
     return response.data;
   },
 
@@ -392,12 +408,12 @@ export const financeService = {
     return response.data;
   },
 
-  getARAgeing: async (params?: { as_of?: string }): Promise<ApiResponse<AgeingReportData>> => {
+  getARAgeing: async (params?: GetAgeingParams): Promise<ApiResponse<AgeingReportData>> => {
     const response = await api.get('/finance/reports/ar-ageing', { params });
     return response.data;
   },
 
-  getAPAgeing: async (params?: { as_of?: string }): Promise<ApiResponse<AgeingReportData>> => {
+  getAPAgeing: async (params?: GetAgeingParams): Promise<ApiResponse<AgeingReportData>> => {
     const response = await api.get('/finance/reports/ap-ageing', { params });
     return response.data;
   },
@@ -420,6 +436,30 @@ export const financeService = {
 
   getBankAccountById: async (id: string): Promise<ApiResponse<BankAccount>> => {
     const response = await api.get(`/bank-accounts/${id}`);
+    return response.data;
+  },
+
+  getBankAccountTransactions: async (
+    id: string,
+    params?: {
+      date_from?: string;
+      date_to?: string;
+      direction?: 'in' | 'out';
+      reconciled?: boolean | string;
+      search?: string;
+      page?: number;
+      per_page?: number;
+    }
+  ): Promise<ApiResponse<import('@mercon/shared-types').BankTransactionsResponse>> => {
+    const response = await api.get(`/bank-accounts/${id}/transactions`, { params });
+    return response.data;
+  },
+
+  getBankAccountBalanceHistory: async (
+    id: string,
+    params?: { days?: number }
+  ): Promise<ApiResponse<import('@mercon/shared-types').BankBalanceHistoryPoint[]>> => {
+    const response = await api.get(`/bank-accounts/${id}/balance-history`, { params });
     return response.data;
   },
 
@@ -529,8 +569,34 @@ export interface BalanceSheetData {
   is_balanced: boolean;
 }
 
-export interface AgeingRow {
-  party_name: string;
+export interface GetAgeingParams {
+  as_of?: string;
+  basis?: 'due' | 'bill';
+  include_bills?: boolean;
+  include_documents?: boolean;
+  provider_id?: string;
+  customer_id?: string;
+}
+
+export interface AgeingBillDetail {
+  id: string;
+  ref_id: string | null;
+  bill_date: string;
+  due_date: string | null;
+  days_overdue: number;
+  balance: number;
+  bucket: 'current' | '1-30' | '31-60' | '61-90' | '90+';
+}
+
+export interface AgeingPartyContact {
+  type: 'provider' | 'payee' | 'customer';
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+}
+
+export interface AgeingBucketCounts {
   current: number;
   days_1_30: number;
   days_31_60: number;
@@ -539,10 +605,35 @@ export interface AgeingRow {
   total: number;
 }
 
+export interface AgeingRow {
+  party_id: string;
+  party_name: string;
+  party?: AgeingPartyContact;
+  current: number;
+  days_1_30: number;
+  days_31_60: number;
+  days_61_90: number;
+  days_90_plus: number;
+  total: number;
+  bills?: AgeingBillDetail[];
+  invoices?: AgeingBillDetail[];
+}
+
 export interface AgeingReportData {
   as_of: string;
-  rows: AgeingRow[];
+  as_of_date?: string;
+  basis?: 'due' | 'bill';
+  summary: {
+    total_current: number;
+    total_1_30: number;
+    total_31_60: number;
+    total_61_90: number;
+    total_90_plus: number;
+    total_outstanding: number;
+  };
   grand_total: AgeingRow;
+  bucket_counts?: AgeingBucketCounts;
+  rows: AgeingRow[];
 }
 
 export interface CashFlowData {

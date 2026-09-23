@@ -34,10 +34,13 @@ export interface TripSlot {
   intermediateStopFees?: string[];
   returnOrigin?: string;
   returnDestination?: string;
+  returnOriginLocationId?: string | null;
+  returnDestinationLocationId?: string | null;
   returnPickupTime?: string;
   returnDropoffTime?: string;
   returnIsOvernight?: boolean;
   returnIntermediateLocations?: string[];
+  returnIntermediateLocationIds?: (string | null)[];
   returnIntermediateStopFees?: string[];
   originLat?: number | null;
   originLng?: number | null;

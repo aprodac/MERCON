@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Check, Navigation, Truck, MapPin, Flag, Clock } from 'lucide-react';
 import { formatInDeploymentTz } from '@/lib/datetime';
 import { cn } from '@/lib/utils';
+import { isRoundTrip as checkIsRoundTrip, parseTripRouteNodes } from '@mercon/shared-types';
 
 interface VisualRouteProgressProps {
   stops: any[];
@@ -18,6 +19,7 @@ interface VisualRouteProgressProps {
    * different route for the same trip again.
    */
   timeline?: any[];
+  trip?: any;
 }
 
 interface NormalizedStop {
@@ -73,7 +75,7 @@ function isTurnaroundPair(prevStop: any, nextStop: any): boolean {
   return (isLegTransition || isDropoffToPickup) && sameLocation;
 }
 
-export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges, hidePulseAnimation, timeline }: VisualRouteProgressProps) {
+export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges, hidePulseAnimation, timeline, trip }: VisualRouteProgressProps) {
   const isTripFullyCompleted = ['completed', 'invoiced'].includes(String(tripStatus || '').trim().toLowerCase());
   const hasServerTimeline = Array.isArray(timeline) && timeline.length >= 2;
   const isDelayed =
@@ -81,121 +83,40 @@ export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges,
     (stops && stops.some((st: any) => st.is_delayed || (st.delay_minutes && st.delay_minutes > 0)));
 
   const isRoundTrip = useMemo(() => {
-    if (hasServerTimeline) return timeline!.some((n: any) => (n.legIndex ?? 0) === 1);
-    if (!stops || stops.length < 2) return false;
-    return (
-      stops.some((st: any) => (st.leg_index ?? 0) === 1) ||
-      (stops.length >= 3 && getCanonicalCity(stops[0]).toLowerCase() === getCanonicalCity(stops[stops.length - 1]).toLowerCase())
-    );
-  }, [stops, timeline, hasServerTimeline]);
+    return checkIsRoundTrip(trip || { stops, route_timeline: timeline });
+  }, [stops, timeline, trip]);
 
   const normalizedStops: NormalizedStop[] = useMemo(() => {
-    // Prefer the server-computed timeline (same function the driver app
-    // renders) over re-deriving one from raw stops here — see the `timeline`
-    // prop doc for why.
-    if (hasServerTimeline) {
-      let prevAllCompleted = true;
-      return timeline!.map((node: any, idx: number) => {
-        const isFirst = idx === 0;
-        const isLast = idx === timeline!.length - 1;
-        const completed = !!node.actualArrival || isTripFullyCompleted;
-        const isCurrent = !completed && prevAllCompleted;
-        if (!completed) prevAllCompleted = false;
+    const nodes = (hasServerTimeline ? timeline : (trip?.route_timeline || parseTripRouteNodes(trip || { stops }))) || [];
+    if (!nodes || nodes.length === 0) return DEFAULT_STOPS;
 
-        const relevantTime = node.actualArrival || node.plannedArrival;
-        const timeStr = relevantTime
-          ? formatInDeploymentTz(relevantTime, tz, 'hh:mm a')
-          : isLast && !isTripFullyCompleted
-          ? 'ETA 20:30 PM'
-          : '12:00 PM';
-
-        return {
-          id: node.stopId || node.id || `m-${idx}`,
-          seq: idx + 1,
-          label: node.typeEn || (isFirst ? 'Pickup' : isLast ? 'Destination' : `Stop ${idx}`),
-          city: node.name,
-          time: timeStr,
-          status: completed ? 'completed' : isCurrent ? 'current' : 'upcoming',
-          isFirst,
-          isLast,
-        };
-      });
-    }
-
-    if (!stops || stops.length < 2) return DEFAULT_STOPS;
-
-    const groupedItems: { stops: any[]; isTurnaround: boolean }[] = [];
-    let i = 0;
-    while (i < stops.length) {
-      const currentStop = stops[i];
-      const nextStop = stops[i + 1];
-
-      if (
-        nextStop &&
-        i > 0 &&
-        i + 1 < stops.length &&
-        isTurnaroundPair(currentStop, nextStop)
-      ) {
-        groupedItems.push({
-          stops: [currentStop, nextStop],
-          isTurnaround: true,
-        });
-        i += 2;
-      } else {
-        groupedItems.push({
-          stops: [currentStop],
-          isTurnaround: false,
-        });
-        i += 1;
-      }
-    }
-
-    const totalMilestones = groupedItems.length;
     let prevAllCompleted = true;
+    return nodes.map((node: any, idx: number) => {
+      const isFirst = idx === 0;
+      const isLast = idx === nodes.length - 1;
+      const completed = !!node.actualArrival || isTripFullyCompleted;
+      const isCurrent = !completed && prevAllCompleted;
+      if (!completed) prevAllCompleted = false;
 
-    return groupedItems.map((group, mIdx) => {
-      const isFirst = mIdx === 0;
-      const isLast = mIdx === totalMilestones - 1;
-      const isTurnaround = group.isTurnaround;
-
-      const allStopsCompleted = group.stops.every((st) => !!st.actual_arrival) || isTripFullyCompleted;
-      const isCurrent = !allStopsCompleted && prevAllCompleted;
-      if (!allStopsCompleted) {
-        prevAllCompleted = false;
-      }
-
-      const primaryStop = group.stops[group.stops.length - 1] || group.stops[0];
-      const firstStopInGroup = group.stops[0];
-
-      const city = getCanonicalCity(firstStopInGroup) || (isFirst ? 'Origin' : isLast ? 'Destination' : `Stop ${mIdx}`);
-
-      const relevantTime = primaryStop.actual_arrival || firstStopInGroup.actual_arrival || primaryStop.planned_arrival || firstStopInGroup.planned_arrival;
+      const relevantTime = node.actualArrival || node.plannedArrival;
       const timeStr = relevantTime
         ? formatInDeploymentTz(relevantTime, tz, 'hh:mm a')
         : isLast && !isTripFullyCompleted
         ? 'ETA 20:30 PM'
         : '12:00 PM';
 
-      let label = isFirst
-        ? 'Pickup'
-        : isLast
-        ? (isRoundTrip ? 'Return Delivery' : 'Destination')
-        : isTurnaround
-        ? 'Turnaround'
-        : `Stop ${mIdx}`;
-
       return {
-        id: group.stops.map((s) => s.id || s.seq || s.stop_sequence).join('-') || `m-${mIdx}`,
-        seq: mIdx + 1,
-        label,
-        city,
+        id: node.stopId || node.id || `m-${idx}`,
+        seq: idx + 1,
+        label: node.typeEn || (isFirst ? 'Pickup' : isLast ? 'Destination' : `Stop ${idx}`),
+        city: node.name,
         time: timeStr,
-        status: allStopsCompleted ? 'completed' : isCurrent ? 'current' : 'upcoming',
+        status: completed ? 'completed' : isCurrent ? 'current' : 'upcoming',
         isFirst,
         isLast,
       };
     });
-  }, [stops, timeline, hasServerTimeline, tz, tripStatus, isTripFullyCompleted, isRoundTrip]);
+  }, [stops, timeline, hasServerTimeline, isTripFullyCompleted, tz, trip]);
 
   const totalStops = normalizedStops.length;
   const completedCount = normalizedStops.filter((s) => s.status === 'completed').length;

@@ -323,21 +323,27 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                     <LocationCombobox
                       customerId={contractCustomer}
                       value={stopVal}
+                      disabled={isRouteLocked}
                       onChange={(locId, locObj) => {
                         const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
                         handleUpdateSlotIntermediate(slot.id, idx, val);
                       }}
                       placeholder={`Search intermediate stop #${idx + 1}...`}
-                      triggerClassName="h-8 text-xs font-semibold"
+                      triggerClassName={cn(
+                        "h-8 text-xs font-semibold",
+                        isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                      )}
                     />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveSlotIntermediate(slot.id, idx)}
-                    className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {!isRouteLocked && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSlotIntermediate(slot.id, idx)}
+                      className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -473,12 +479,16 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                 <LocationCombobox
                   customerId={contractCustomer}
                   value={slot.returnOrigin || slot.destination}
+                  disabled={isRouteLocked}
                   onChange={(locId, locObj) => {
                     const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
                     handleUpdateTripSlot(slot.id, { returnOrigin: val, returnOriginLocationId: locObj?.id || (isUuid(locId) ? locId : null) });
                   }}
                   placeholder="Return loading (defaults to Outbound Destination)..."
-                  triggerClassName="h-9 border-slate-200 bg-[#FFFFFF] text-xs font-bold text-[#3E3C3D] dark:text-slate-100 shadow-2xs w-full"
+                  triggerClassName={cn(
+                    "h-9 border-slate-200 bg-[#FFFFFF] text-xs font-bold text-[#3E3C3D] dark:text-slate-100 shadow-2xs w-full",
+                    isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                  )}
                 />
               </div>
 
@@ -490,18 +500,22 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                 <LocationCombobox
                   customerId={contractCustomer}
                   value={slot.returnDestination || slot.origin}
+                  disabled={isRouteLocked}
                   onChange={(locId, locObj) => {
                     const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
                     handleUpdateTripSlot(slot.id, { returnDestination: val, returnDestinationLocationId: locObj?.id || (isUuid(locId) ? locId : null) });
                   }}
                   placeholder="Return destination (defaults to Origin)..."
-                  triggerClassName="h-9 border-slate-200 bg-[#FFFFFF] text-xs font-bold text-[#3E3C3D] dark:text-slate-100 shadow-2xs w-full"
+                  triggerClassName={cn(
+                    "h-9 border-slate-200 bg-[#FFFFFF] text-xs font-bold text-[#3E3C3D] dark:text-slate-100 shadow-2xs w-full",
+                    isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                  )}
                 />
               </div>
             </div>
 
             <div className="flex items-center gap-2 pt-1">
-              {handleAddSlotReturnIntermediate && (
+              {handleAddSlotReturnIntermediate && !isRouteLocked && (
                 <Button
                   type="button"
                   variant="outline"
@@ -526,15 +540,19 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                       <LocationCombobox
                         customerId={contractCustomer}
                         value={rStop}
+                        disabled={isRouteLocked}
                         onChange={(locId, locObj) => {
                           const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
                           handleUpdateSlotReturnIntermediate && handleUpdateSlotReturnIntermediate(slot.id, rIdx, val);
                         }}
                         placeholder={`Search return stop #${rIdx + 1}...`}
-                        triggerClassName="h-8 text-xs font-semibold"
+                        triggerClassName={cn(
+                          "h-8 text-xs font-semibold",
+                          isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                        )}
                       />
                     </div>
-                    {handleRemoveSlotReturnIntermediate && (
+                    {handleRemoveSlotReturnIntermediate && !isRouteLocked && (
                       <button
                         type="button"
                         onClick={() => handleRemoveSlotReturnIntermediate(slot.id, rIdx)}

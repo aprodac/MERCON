@@ -90,12 +90,18 @@ const ExpenseDetailsPage      = lazyWithRetry(() => import('@/pages/expenses/Exp
 const ChartOfAccountsPage     = lazyWithRetry(() => import('@/pages/finance/ChartOfAccountsPage'));
 const AccountingPeriodsPage   = lazyWithRetry(() => import('@/pages/finance/AccountingPeriodsPage'));
 const JournalEntriesPage      = lazyWithRetry(() => import('@/pages/finance/JournalEntriesPage'));
+const JournalEntryDetailPage  = lazyWithRetry(() => import('@/pages/finance/JournalEntryDetailPage'));
+const JournalEntryEditorPage  = lazyWithRetry(() => import('@/pages/finance/JournalEntryEditorPage'));
 const InvoicesPage            = lazyWithRetry(() => import('@/pages/finance/InvoicesPage'));
 const InvoiceCreatePage       = lazyWithRetry(() => import('@/pages/finance/InvoiceCreatePage'));
 const BillsPage               = lazyWithRetry(() => import('@/pages/finance/BillsPage'));
 const BillCreatePage          = lazyWithRetry(() => import('@/pages/finance/BillCreatePage'));
 const BankAccountsPage        = lazyWithRetry(() => import('@/pages/finance/BankAccountsPage'));
+const BankAccountDetailPage   = lazyWithRetry(() => import('@/pages/finance/BankAccountDetailPage'));
+const BankAccountEditorPage   = lazyWithRetry(() => import('@/pages/finance/BankAccountEditorPage'));
 const AdvancesPage            = lazyWithRetry(() => import('@/pages/finance/AdvancesPage'));
+const AdvanceDetailPage      = lazyWithRetry(() => import('@/pages/finance/AdvanceDetailPage'));
+const AdvanceEditorPage      = lazyWithRetry(() => import('@/pages/finance/AdvanceEditorPage'));
 const ReconciliationPage      = lazyWithRetry(() => import('@/pages/finance/ReconciliationPage'));
 const TrialBalancePage        = lazyWithRetry(() => import('@/pages/finance/TrialBalancePage'));
 const ProfitAndLossPage       = lazyWithRetry(() => import('@/pages/finance/ProfitAndLossPage'));
@@ -104,6 +110,7 @@ const ARAgeingPage            = lazyWithRetry(() => import('@/pages/finance/ARAg
 const APAgeingPage            = lazyWithRetry(() => import('@/pages/finance/APAgeingPage'));
 const CashFlowPage            = lazyWithRetry(() => import('@/pages/finance/CashFlowPage'));
 const GeneralLedgerPage       = lazyWithRetry(() => import('@/pages/finance/GeneralLedgerPage'));
+const FinanceKitPage          = lazyWithRetry(() => import('@/pages/finance/FinanceKitPage'));
 
 // Documents
 const DocumentsCenterPage     = lazyWithRetry(() => import('@/pages/documents/DocumentsCenterPage'));
@@ -290,21 +297,31 @@ export default function AppRouter() {
             <Route path="/finance/chart-of-accounts" element={<RequireModule moduleKey="finance"><ChartOfAccountsPage /></RequireModule>} />
             <Route path="/finance/periods"           element={<RequireModule moduleKey="finance"><AccountingPeriodsPage /></RequireModule>} />
             <Route path="/finance/journal-entries"   element={<RequireModule moduleKey="finance"><JournalEntriesPage /></RequireModule>} />
+            <Route path="/finance/journal-entries/new" element={<RequireModule moduleKey="finance"><JournalEntryEditorPage /></RequireModule>} />
+            <Route path="/finance/journal-entries/:id" element={<RequireModule moduleKey="finance"><WithIdKey Page={JournalEntryDetailPage} /></RequireModule>} />
+            <Route path="/finance/journal-entries/:id/edit" element={<RequireModule moduleKey="finance"><WithIdKey Page={JournalEntryEditorPage} /></RequireModule>} />
             <Route path="/finance/invoices/new"      element={<RequireModule moduleKey="finance"><InvoiceCreatePage /></RequireModule>} />
             <Route path="/finance/invoices"          element={<RequireModule moduleKey="finance"><InvoicesPage /></RequireModule>} />
             <Route path="/finance/bills/new"        element={<RequireModule moduleKey="finance"><BillCreatePage /></RequireModule>} />
             <Route path="/finance/bills"             element={<RequireModule moduleKey="finance"><BillsPage /></RequireModule>} />
-            <Route path="/finance/bank-accounts"     element={<RequireModule moduleKey="finance"><BankAccountsPage /></RequireModule>} />
+            <Route path="/finance/bank-accounts/new"      element={<RequireModule moduleKey="finance"><BankAccountEditorPage /></RequireModule>} />
+            <Route path="/finance/bank-accounts/:id/edit" element={<RequireModule moduleKey="finance"><WithIdKey Page={BankAccountEditorPage} /></RequireModule>} />
+            <Route path="/finance/bank-accounts/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={BankAccountDetailPage} /></RequireModule>} />
+            <Route path="/finance/bank-accounts"          element={<RequireModule moduleKey="finance"><BankAccountsPage /></RequireModule>} />
             <Route path="/finance/advances"          element={<RequireModule moduleKey="finance"><AdvancesPage /></RequireModule>} />
+            <Route path="/finance/advances/new"      element={<RequireModule moduleKey="finance"><AdvanceEditorPage /></RequireModule>} />
+            <Route path="/finance/advances/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={AdvanceDetailPage} /></RequireModule>} />
             <Route path="/finance/reconciliation"    element={<RequireModule moduleKey="finance"><ReconciliationPage /></RequireModule>} />
             <Route path="/finance/trial-balance"     element={<RequireModule moduleKey="finance"><TrialBalancePage /></RequireModule>} />
             <Route path="/finance/profit-and-loss"    element={<RequireModule moduleKey="finance"><ProfitAndLossPage /></RequireModule>} />
             <Route path="/finance/balance-sheet"     element={<RequireModule moduleKey="finance"><BalanceSheetPage /></RequireModule>} />
             <Route path="/finance/ar-ageing"          element={<RequireModule moduleKey="finance"><ARAgeingPage /></RequireModule>} />
             <Route path="/finance/ap-ageing"          element={<RequireModule moduleKey="finance"><APAgeingPage /></RequireModule>} />
-            <Route path="/finance/cash-flow text"      element={<Navigate to="/finance/cash-flow" replace />} />
             <Route path="/finance/cash-flow"          element={<RequireModule moduleKey="finance"><CashFlowPage /></RequireModule>} />
             <Route path="/finance/general-ledger"     element={<RequireModule moduleKey="finance"><GeneralLedgerPage /></RequireModule>} />
+            {import.meta.env.DEV && (
+              <Route path="/finance/_kit"              element={<RequireModule moduleKey="finance"><FinanceKitPage /></RequireModule>} />
+            )}
             <Route path="/finance"                   element={<Navigate to="/finance/chart-of-accounts" replace />} />
 
             {/* Documents */}

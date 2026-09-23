@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   StatusBar, Image, Alert, Linking, Platform,
@@ -10,7 +10,8 @@ import { Info, Camera, MapPin, Trash2, Package, ArrowRight, Clock, Check, Messag
 import { Colors } from '../../theme/tokens';
 import { GoogleMapsGeotagPreview, GeotagPhotoModal, TripProgressStepper, FadedBottomIllustration, DelayReportModal, DelayButton, ReturnLoadingModal } from '../../components';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState } from '../../lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints } from '../../lib/trips';
+
 import { choosePhoto, type CapturedPhoto } from '../../lib/camera';
 import { API_URL, getApiErrorMessage } from '../../lib/api';
 import { safeSecureStore as SecureStore } from '../../lib/secure-store';
@@ -105,18 +106,12 @@ const DeliveryVerificationScreen = () => {
   const isReturnDelivery = isRound && (ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'FINAL_DELIVERY_VERIFICATION' || ws === 'IN_TRANSIT_RETURN' || ws === 'COMPLETED');
 
   const legIndex = isReturnDelivery ? 1 : 0;
-  const legStops = (trip?.stops ?? []).filter((s) => (s.leg_index ?? 0) === legIndex);
-  const dropoffStop =
-    legStops.length > 0
-      ? (legStops.filter((s) => s.stop_type === 'Dropoff').pop() ?? legStops[legStops.length - 1])
-      : (isReturnDelivery
-          ? (trip?.stops?.filter((s) => s.stop_type === 'Dropoff').pop() ??
-             trip?.stops?.find((s) => s.stop_sequence === 4) ??
-             trip?.stops?.[(trip?.stops?.length ?? 1) - 1])
-          : (trip?.stops?.find((s) => s.stop_sequence === 2) ?? trip?.stops?.find((s) => s.stop_type === 'Dropoff'))) ??
-        trip?.stops?.[(trip?.stops?.length ?? 1) - 1] ?? null;
+  const dropoffStop = getLegEndpoints(trip, legIndex).delivery;
 
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
+  // URIs already uploaded in this session — a retry after a failed upload
+  // must not send them again.
+  const uploadedUrisRef = useRef<Set<string>>(new Set());
   const [submitting, setSubmitting] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const [showDelayModal, setShowDelayModal] = useState(false);
@@ -306,8 +301,9 @@ const DeliveryVerificationScreen = () => {
       const targetOp = isRound && isFinalLeg ? 'return_delivery' : 'delivery';
 
       // Upload POD photos via tripService.uploadPhoto
+      let failedUploads = 0;
       for (const p of photos) {
-        if (p.uri) {
+        if (p.uri && !uploadedUrisRef.current.has(p.uri)) {
           try {
             await tripService.uploadPhoto(
               trip.id,
@@ -324,10 +320,21 @@ const DeliveryVerificationScreen = () => {
               targetOp,
               dropoffStop?.id
             );
+            uploadedUrisRef.current.add(p.uri);
           } catch (photoErr) {
             console.warn('POD photo upload warning:', photoErr);
+            failedUploads++;
           }
         }
+      }
+      // Don't advance the trip with evidence missing — the photos would be
+      // lost for good once this screen is left.
+      if (failedUploads > 0) {
+        Alert.alert(
+          t('err_upload_failed_title', 'Upload failed'),
+          t('err_upload_failed_retry', `${failedUploads} photo(s) could not be uploaded. Check your connection and tap the button again.`),
+        );
+        return;
       }
 
       triggerGPayHapticsAndSound();
@@ -396,10 +403,8 @@ const DeliveryVerificationScreen = () => {
 
         {/* 4-Step Progress Stepper: Pickup ✓ -> Loading ✓ -> Delivery ● -> Complete */}
         <TripProgressStepper
-          currentStep={3}
-          customStep1Label={isReturnDelivery ? (language === 'ur' ? 'واپسی لوڈنگ ↩' : language === 'ur-en' ? 'واپسی لوڈنگ / Return Loading ↩' : 'Return Loading ↩') : undefined}
-          customStep2Label={isReturnDelivery ? (language === 'ur' ? 'لوڈنگ ↩' : language === 'ur-en' ? 'لوڈنگ / Loading ↩' : 'Loading ↩') : undefined}
-          customStep3Label={isReturnDelivery ? (language === 'ur' ? 'ڈلیوری ↩' : language === 'ur-en' ? 'ڈلیوری / Delivery ↩' : 'Delivery ↩') : undefined}
+          trip={trip}
+          target={{ kind: 'delivery', leg: isReturnDelivery ? 1 : 0 }}
         />
 
         {/* Location Card (Horizontal Side-by-Side matching Screenshot 2) */}

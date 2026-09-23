@@ -618,3 +618,48 @@ export const clientErrorBody = z.object({
   route: z.string().trim().min(1).max(500),
 });
 
+const locationInputSchema = z.union([
+  z.string().trim(),
+  z.object({
+    name: z.string().trim().optional(),
+    location_name: z.string().trim().optional(),
+    address: z.string().trim().optional(),
+    location_address: z.string().trim().optional(),
+    location_id: z.string().trim().nullable().optional(),
+    locationId: z.string().trim().nullable().optional(),
+    lat: z.coerce.number().optional().nullable(),
+    lng: z.coerce.number().optional().nullable(),
+    coordinate_precision: z.string().optional().nullable(),
+    update_canonical_location: z.boolean().optional().nullable(),
+  }),
+]);
+
+export const updateTripStopsRouteBody = z.object({
+  origin: locationInputSchema.optional(),
+  destination: locationInputSchema.optional(),
+  intermediates: z.array(locationInputSchema).optional(),
+  isRound: z.boolean().optional(),
+  returnOrigin: locationInputSchema.optional(),
+  returnDestination: locationInputSchema.optional(),
+  returnIntermediates: z.array(locationInputSchema).optional(),
+  stops: z.array(z.object({
+    stop_sequence: z.number().int().optional(),
+    leg_index: z.number().int().optional(),
+    stop_type: z.string().optional(),
+    name: z.string().trim().optional(),
+    location_name: z.string().trim().optional(),
+    address: z.string().trim().optional(),
+    location_address: z.string().trim().optional(),
+    location_id: z.string().trim().nullable().optional(),
+    locationId: z.string().trim().nullable().optional(),
+    lat: z.coerce.number().optional().nullable(),
+    lng: z.coerce.number().optional().nullable(),
+    coordinate_precision: z.string().optional().nullable(),
+    update_canonical_location: z.boolean().optional().nullable(),
+    planned_arrival: z.string().optional().nullable(),
+    notes: z.string().optional().nullable(),
+  })).optional(),
+  planned_start: z.string().optional().nullable(),
+  planned_end: z.string().optional().nullable(),
+});
+

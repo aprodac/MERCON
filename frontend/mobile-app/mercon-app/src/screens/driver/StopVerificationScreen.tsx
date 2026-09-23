@@ -10,8 +10,8 @@ import { ArrowLeft, ArrowRight, Camera, MapPin, Trash2, Check, Navigation, Send,
 import { Colors } from '../../theme/tokens';
 import { GoogleMapsGeotagPreview, GeotagPhotoModal, TripProgressStepper, BilingualText, DelayReportModal, DelayButton, FadedBottomIllustration } from '../../components';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, stopAddress, isRoundTrip } from '../../lib/trips';
-import { parseTripRouteNodes, TimelineStop } from '../../lib/routeParser';
+import { tripService, stopAddress, isRoundTrip, getLegIntermediateDbStops } from '../../lib/trips';
+import { parseTripRouteNodes, parseStopWorkflowState, TimelineStop } from '../../lib/routeParser';
 import { choosePhoto, type CapturedPhoto } from '../../lib/camera';
 import { getApiErrorMessage } from '../../lib/api';
 import { safeSecureStore as SecureStore } from '../../lib/secure-store';
@@ -103,8 +103,20 @@ export default function StopVerificationScreen() {
   // Fallback to any intermediate stop if specific leg list is empty
   const activeStopsList = intermediateStops.length > 0 ? intermediateStops : allStops.filter((s) => s.isIntermediate);
 
-  const parsedIndex = paramStopIndex ? parseInt(paramStopIndex, 10) : 0;
+  // Route param wins; otherwise resume from the indexed workflow state
+  // (e.g. ARRIVED_AT_STOP_1) so a restart doesn't send the driver back to stop #1.
+  const wsStop = parseStopWorkflowState(trip?.driver_workflow_state);
+  const parsedIndex = paramStopIndex
+    ? parseInt(paramStopIndex, 10)
+    : (wsStop && wsStop.leg === (isReturnLeg ? 1 : 0) ? wsStop.stopIndex : 0);
   const activeStop: TimelineStop | undefined = activeStopsList[parsedIndex] || activeStopsList[0] || allStops[1];
+  // The TripStop row behind this stop. Photos and the stop's arrival/departure
+  // stamps must reference this id — the timeline node id (`outbound-stop-0`)
+  // exists only in the app, so photos tagged with it never matched a stop on
+  // the web trip page.
+  const dbStopId: string | undefined =
+    getLegIntermediateDbStops(trip, isReturnLeg ? 1 : 0)[parsedIndex]?.id ??
+    ((activeStop as any)?.stopId || undefined);
 
   useEffect(() => {
     if (trip?.driver_workflow === 'EXTERNAL_APP') {
@@ -157,7 +169,10 @@ export default function StopVerificationScreen() {
     setSubmitting(true);
 
     try {
-      // 1. Upload intermediate stop photos if captured
+      // 1. Upload intermediate stop photos if captured. Each photo is dropped
+      // from the pending list as soon as it uploads, so a retry after a
+      // failure doesn't upload the earlier ones a second time.
+      let pending = photos;
       for (const p of photos) {
         await tripService.uploadPhoto(
           trip.id,
@@ -176,8 +191,10 @@ export default function StopVerificationScreen() {
           },
           isReturnLeg ? 1 : 0,
           isReturnLeg ? 'return_intermediate_stop' : 'intermediate_stop',
-          activeStop?.id
+          dbStopId
         );
+        pending = pending.filter((x) => x !== p);
+        savePhotosState(pending);
       }
 
       // 2. Clear saved photos for this stop
@@ -191,12 +208,12 @@ export default function StopVerificationScreen() {
       if (hasNextStop) {
         const nextIdx = parsedIndex + 1;
         const nextState = isReturnLeg ? `ARRIVED_AT_RETURN_STOP_${nextIdx}` : `ARRIVED_AT_STOP_${nextIdx}`;
-        await tripService.updateStatus(trip.id, 'InTransit', nextState);
+        await tripService.updateStatus(trip.id, 'InTransit', nextState, undefined, dbStopId);
         router.replace({ pathname: '/trip/stop', params: { stopIndex: String(nextIdx), legIndex: isReturnLeg ? '1' : '0' } } as any);
       } else {
         // Proceed to Delivery / Return Delivery
         const nextState = isReturnLeg ? 'IN_TRANSIT_RETURN' : 'IN_TRANSIT';
-        await tripService.updateStatus(trip.id, 'InTransit', nextState);
+        await tripService.updateStatus(trip.id, 'InTransit', nextState, undefined, dbStopId);
         router.replace('/trip/navigate' as any);
       }
     } catch (e) {
@@ -229,10 +246,8 @@ export default function StopVerificationScreen() {
 
       {/* Stepper Bar */}
       <TripProgressStepper
-        currentStep={2}
-        customStep1Label={isReturnLeg ? (language === 'ur' ? 'واپسی لوڈنگ ↩' : language === 'ur-en' ? 'واپسی لوڈنگ / Return Loading ↩' : 'Return Loading ↩') : undefined}
-        customStep2Label={isReturnLeg ? (language === 'ur' ? 'واپسی اسٹاپ ↩' : 'Return Stop ↩') : (language === 'ur' ? 'اسٹاپ' : 'Stop')}
-        customStep3Label={isReturnLeg ? (language === 'ur' ? 'ڈلیوری ↩' : 'Delivery ↩') : undefined}
+        trip={trip}
+        target={{ kind: 'stop', leg: isReturnLeg ? 1 : 0, stopIndex: parsedIndex }}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>

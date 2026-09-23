@@ -9,7 +9,9 @@ import {
   ArrowLeft, Upload, CheckCircle2, Camera, Image as ImageIcon, RefreshCw, Building2, ArrowRight,
 } from 'lucide-react-native';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, getEffectiveWorkflowState, getNextExternalAppAction, statusLabel, stopLabel } from '../../lib/trips';
+import { tripService, getEffectiveWorkflowState, getNextExternalAppAction, statusLabel, stopLabel, isRoundTrip, getLegEndpoints } from '../../lib/trips';
+
+import { targetFromWorkflowState } from '../../lib/routeParser';
 import { pickFromGallery, capturePhoto, type CapturedPhoto } from '../../lib/camera';
 import { API_URL, getApiErrorMessage } from '../../lib/api';
 import { TripProgressStepper, DelayButton, DelayReportModal, BilingualText } from '../../components';
@@ -54,13 +56,6 @@ export const ExternalAppWorkflowScreen = () => {
   const ws = getEffectiveWorkflowState(trip);
   const action = getNextExternalAppAction(trip);
 
-  const getStepperStep = () => {
-    if (trip?.status === 'Completed' || ws === 'COMPLETED') return 4;
-    if (ws === 'ARRIVED_AT_DELIVERY' || ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'IN_TRANSIT_RETURN' || ws === 'RETURN_LOADING' || ws === 'RETURN_LOADING_COMPLETED') return 3;
-    if (ws === 'ARRIVED_AT_PICKUP' || ws === 'LOADING_COMPLETED' || ws === 'IN_TRANSIT') return 2;
-    return 1;
-  };
-
   const resetPhotoState = () => setSelectedPhoto(null);
 
   const handlePickGallery = async () => {
@@ -81,17 +76,17 @@ export const ExternalAppWorkflowScreen = () => {
     }
   };
 
-  const pickupStop = trip?.stops?.find((s) => s.stop_sequence === 1 || s.stop_type === 'Pickup') ?? trip?.stops?.[0];
-  const dropoffStop = trip?.stops?.find((s) => s.stop_sequence === (trip?.stops?.length ?? 2) || s.stop_type === 'Dropoff') ?? trip?.stops?.[trip?.stops?.length - 1];
+  const pickupStop = getLegEndpoints(trip, 0).loading;
+  const dropoffStop = getLegEndpoints(trip, 0).delivery;
   const isCompleted = trip?.status === 'Completed' || trip?.status === 'Invoiced';
 
   const stopIdForAction = () => {
     if (!action || !trip?.stops) return undefined;
-    const legStops = trip.stops.filter((s) => (s.leg_index ?? 0) === action.legIndex);
+    const endpoints = getLegEndpoints(trip, action.legIndex);
     const wantsDelivery = action.operation.includes('delivery');
-    const match = legStops.find((s) => s.stop_type === (wantsDelivery ? 'Dropoff' : 'Pickup'));
-    return (match ?? legStops[0])?.id;
+    return (wantsDelivery ? endpoints.delivery : endpoints.loading)?.id;
   };
+
 
   const handleConfirmAndAdvance = async () => {
     if (!trip || !selectedPhoto || !action) return;
@@ -140,11 +135,8 @@ export const ExternalAppWorkflowScreen = () => {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* 4-Step Progress Stepper showing route location names */}
         <TripProgressStepper
-          currentStep={getStepperStep()}
-          isCompletedAll={isCompleted}
-          customStep1Label={stopLabel(pickupStop) ?? 'Pickup'}
-          customStep2Label="In Transit"
-          customStep3Label={stopLabel(dropoffStop) ?? 'Delivery'}
+          trip={trip}
+          target={isCompleted ? { kind: 'completed' } : targetFromWorkflowState(ws, isRoundTrip(trip))}
         />
 
         {/* Card 1: Hero Overview */}

@@ -128,10 +128,19 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
   const [customChargeType, setCustomChargeType] = useState('');
   const [customChargeAmount, setCustomChargeAmount] = useState('');
 
-  // Round-trip Return Leg Override
+  // Round-trip Return Leg Override & Endpoints
   const [enableReturnLeg, setEnableReturnLeg] = useState(false);
   const [returnLegDriverFeeInput, setReturnLegDriverFeeInput] = useState('');
   const [returnLegRateInput, setReturnLegRateInput] = useState('');
+  const [returnPickupName, setReturnPickupName] = useState('');
+  const [returnPickupLat, setReturnPickupLat] = useState('');
+  const [returnPickupLng, setReturnPickupLng] = useState('');
+  const [returnPickupLocationId, setReturnPickupLocationId] = useState<string | undefined>(undefined);
+  const [returnDropoffName, setReturnDropoffName] = useState('');
+  const [returnDropoffLat, setReturnDropoffLat] = useState('');
+  const [returnDropoffLng, setReturnDropoffLng] = useState('');
+  const [returnDropoffLocationId, setReturnDropoffLocationId] = useState<string | undefined>(undefined);
+  const [returnStops, setReturnStops] = useState<IntermediateStop[]>([]);
 
   // Schedule & Time State
   const [date, setDate] = useState(formatDateDDMMYYYY(new Date()));
@@ -325,25 +334,42 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
     [thirdPartyProviders, thirdPartyProviderId]
   );
 
-  // Fetch quotations specifically for the selected customer whenever customerId changes
+  // Fetch quotations & locations specifically for the selected customer whenever customerId changes
   useEffect(() => {
-    if (!customerId) return;
     let unmounted = false;
     operatorService
-      .getQuotationsForCustomer(customerId)
-      .then((custQuots) => {
-        if (unmounted || !custQuots || custQuots.length === 0) return;
-        setQuotations((prev) => {
-          const existingIds = new Set(prev.map((q) => q.id));
-          const newItems = custQuots.filter((q) => !existingIds.has(q.id));
-          if (newItems.length === 0) return prev;
-          return [...newItems, ...prev];
-        });
+      .locations(customerId || undefined)
+      .then((custLocs) => {
+        if (!unmounted && custLocs) setLocations(custLocs);
       })
       .catch(() => {});
+
+    if (customerId) {
+      operatorService
+        .getQuotationsForCustomer(customerId)
+        .then((custQuots) => {
+          if (unmounted || !custQuots || custQuots.length === 0) return;
+          setQuotations((prev) => {
+            const existingIds = new Set(prev.map((q) => q.id));
+            const newItems = custQuots.filter((q) => !existingIds.has(q.id));
+            if (newItems.length === 0) return prev;
+            return [...newItems, ...prev];
+          });
+        })
+        .catch(() => {});
+    }
     return () => {
       unmounted = true;
     };
+  }, [customerId]);
+
+  const handleCreateLocation = useCallback(async (payload: { name: string; city?: string; address?: string }): Promise<OperatorLocation> => {
+    const created = await operatorService.createLocation({
+      ...payload,
+      customer_id: customerId || undefined,
+    });
+    setLocations((prev) => [created, ...prev]);
+    return created;
   }, [customerId]);
 
   // Active customer quotations
@@ -485,6 +511,82 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
       setMatchedRateCard(null);
     }
   }, [customerId, activeCustomerQuotations, pickupName, dropoffName, pickupLocationId, dropoffLocationId, rateCategory, billingType]);
+
+  // Location setters that auto-trigger quotation rematching & travel time estimate
+  const handleSetPickupLocation = useCallback((name: string, loc?: OperatorLocation) => {
+    setPickupName(name);
+    const locId = loc?.id;
+    setPickupLocationId(locId);
+    if (loc?.lat != null) setPickupLat(String(loc.lat));
+    if (loc?.lng != null) setPickupLng(String(loc.lng));
+
+    if (name && dropoffName) {
+      estimateTravelTimeByName(name, dropoffName).then((est) => {
+        if (est) {
+          const hrsStr = (est.durationMinutes / 60).toFixed(1);
+          setEstimatedHours(hrsStr);
+          setIsEstTravelCalculated(true);
+          calculateAutoEta(date, time, hrsStr);
+        }
+      });
+    }
+
+    invalidateOrRematchQuotation(name, dropoffName, locId, dropoffLocationId, rateCategory, billingType);
+  }, [dropoffName, dropoffLocationId, rateCategory, billingType, date, time, calculateAutoEta, invalidateOrRematchQuotation]);
+
+  const handleSetDropoffLocation = useCallback((name: string, loc?: OperatorLocation) => {
+    setDropoffName(name);
+    const locId = loc?.id;
+    setDropoffLocationId(locId);
+    if (loc?.lat != null) setDropoffLat(String(loc.lat));
+    if (loc?.lng != null) setDropoffLng(String(loc.lng));
+
+    if (pickupName && name) {
+      estimateTravelTimeByName(pickupName, name).then((est) => {
+        if (est) {
+          const hrsStr = (est.durationMinutes / 60).toFixed(1);
+          setEstimatedHours(hrsStr);
+          setIsEstTravelCalculated(true);
+          calculateAutoEta(date, time, hrsStr);
+        }
+      });
+    }
+
+    invalidateOrRematchQuotation(pickupName, name, pickupLocationId, locId, rateCategory, billingType);
+  }, [pickupName, pickupLocationId, rateCategory, billingType, date, time, calculateAutoEta, invalidateOrRematchQuotation]);
+
+  const handleSelectRecentRoute = useCallback((r: RecentRouteItem) => {
+    setPickupName(r.originName);
+    setPickupLocationId(r.originLocationId);
+    if (r.originLat) setPickupLat(r.originLat);
+    if (r.originLng) setPickupLng(r.originLng);
+
+    setDropoffName(r.destName);
+    setDropoffLocationId(r.destLocationId);
+    if (r.destLat) setDropoffLat(r.destLat);
+    if (r.destLng) setDropoffLng(r.destLng);
+
+    estimateTravelTimeByName(r.originName, r.destName).then((est) => {
+      if (est) {
+        const hrsStr = (est.durationMinutes / 60).toFixed(1);
+        setEstimatedHours(hrsStr);
+        setIsEstTravelCalculated(true);
+        calculateAutoEta(date, time, hrsStr);
+      }
+    });
+
+    invalidateOrRematchQuotation(r.originName, r.destName, r.originLocationId, r.destLocationId, rateCategory, billingType);
+  }, [rateCategory, billingType, date, time, calculateAutoEta, invalidateOrRematchQuotation]);
+
+  const handleSetRateCategory = useCallback((cat: RateCategoryType) => {
+    setRateCategory(cat);
+    invalidateOrRematchQuotation(undefined, undefined, undefined, undefined, cat);
+  }, [invalidateOrRematchQuotation]);
+
+  const handleSetBillingType = useCallback((bType: 'Monthly' | 'Extra') => {
+    setBillingType(bType);
+    invalidateOrRematchQuotation(undefined, undefined, undefined, undefined, undefined, bType);
+  }, [invalidateOrRematchQuotation]);
 
   // Sync master driver / vehicle to rotation slot 0 when master values change
   useEffect(() => {
@@ -675,6 +777,44 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
     );
   }, []);
 
+  // Handlers for Return Leg Intermediate Stops
+  const handleAddReturnStop = useCallback(() => {
+    setReturnStops((prev) => [
+      ...prev,
+      { id: String(Date.now()), name: '', lat: '', lng: '', results: [], showResults: false },
+    ]);
+  }, []);
+
+  const handleRemoveReturnStop = useCallback((id: string) => {
+    setReturnStops((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const handleUpdateReturnStop = useCallback((id: string, name: string) => {
+    setReturnStops((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const matches = locations.filter((l) => l.name.toLowerCase().includes(name.toLowerCase())).slice(0, 5);
+        return { ...s, name, results: matches, showResults: matches.length > 0 };
+      })
+    );
+  }, [locations]);
+
+  const handleSelectReturnStopLocation = useCallback((stopId: string, loc: OperatorLocation) => {
+    setReturnStops((prev) =>
+      prev.map((s) => {
+        if (s.id !== stopId) return s;
+        return {
+          ...s,
+          name: loc.name,
+          lat: String(loc.lat ?? 0),
+          lng: String(loc.lng ?? 0),
+          locationId: loc.id,
+          showResults: false,
+        };
+      })
+    );
+  }, []);
+
   // Draft Save/Restore/Discard
   const saveDraft = useCallback(async () => {
     const draftData = {
@@ -848,9 +988,13 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
     defineDriverFeeInput, setDefineDriverFeeInput,
     defineBillingType, setDefineBillingType,
     definingQuotation, setDefiningQuotation,
-    rateCategory, setRateCategory,
-    billingType, setBillingType,
+    rateCategory, setRateCategory: handleSetRateCategory,
+    billingType, setBillingType: handleSetBillingType,
     pickupName, setPickupName,
+    handleSetPickupLocation,
+    handleSetDropoffLocation,
+    handleSelectRecentRoute,
+    handleCreateLocation,
     pickupLat, setPickupLat,
     pickupLng, setPickupLng,
     pickupLocationId, setPickupLocationId,
@@ -869,6 +1013,19 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
     enableReturnLeg, setEnableReturnLeg,
     returnLegDriverFeeInput, setReturnLegDriverFeeInput,
     returnLegRateInput, setReturnLegRateInput,
+    returnPickupName, setReturnPickupName,
+    returnPickupLat, setReturnPickupLat,
+    returnPickupLng, setReturnPickupLng,
+    returnPickupLocationId, setReturnPickupLocationId,
+    returnDropoffName, setReturnDropoffName,
+    returnDropoffLat, setReturnDropoffLat,
+    returnDropoffLng, setReturnDropoffLng,
+    returnDropoffLocationId, setReturnDropoffLocationId,
+    returnStops, setReturnStops,
+    handleAddReturnStop,
+    handleRemoveReturnStop,
+    handleUpdateReturnStop,
+    handleSelectReturnStopLocation,
     date, setDate,
     time, setTime,
     estimatedHours, setEstimatedHours,
