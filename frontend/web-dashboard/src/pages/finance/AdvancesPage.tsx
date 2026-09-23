@@ -21,6 +21,13 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -576,29 +583,31 @@ export default function AdvancesPage() {
             searchPlaceholder="Search ref, memo, party..."
             filterElement={
               <div className="flex items-center gap-2">
-                {/* Status Filter Dropdown */}
-                <select
-                  value={currentTab}
-                  onChange={(e) => handleTabChange(e.target.value)}
-                  className="h-8 px-2.5 rounded-lg text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
-                >
-                  <option value="all">All Statuses ({tabCounts.all})</option>
-                  <option value="Open">Open ({tabCounts.Open})</option>
-                  <option value="PartiallyApplied">Partially applied ({tabCounts.PartiallyApplied})</option>
-                  <option value="FullyApplied">Fully applied ({tabCounts.FullyApplied})</option>
-                  <option value="Void">Void ({tabCounts.Void})</option>
-                </select>
+                {/* Modern Status Select Dropdown */}
+                <Select value={currentTab} onValueChange={(val) => handleTabChange(val)}>
+                  <SelectTrigger className="w-[175px] h-8 text-xs font-semibold bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
+                    <SelectValue placeholder="All Statuses" />
+                  </SelectTrigger>
+                  <SelectContent align="end" className="w-[185px]">
+                    <SelectItem value="all">All Statuses ({tabCounts.all})</SelectItem>
+                    <SelectItem value="Open">Open ({tabCounts.Open})</SelectItem>
+                    <SelectItem value="PartiallyApplied">Partially applied ({tabCounts.PartiallyApplied})</SelectItem>
+                    <SelectItem value="FullyApplied">Fully applied ({tabCounts.FullyApplied})</SelectItem>
+                    <SelectItem value="Void">Void ({tabCounts.Void})</SelectItem>
+                  </SelectContent>
+                </Select>
 
-                {/* Direction Filter Dropdown */}
-                <select
-                  value={directionParam}
-                  onChange={(e) => handleDirectionChange(e.target.value)}
-                  className="h-8 px-2.5 rounded-lg text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
-                >
-                  <option value="all">All Directions</option>
-                  <option value="Received">Money in</option>
-                  <option value="Paid">Money out</option>
-                </select>
+                {/* Modern Direction Select Dropdown */}
+                <Select value={directionParam} onValueChange={(val) => handleDirectionChange(val)}>
+                  <SelectTrigger className="w-[145px] h-8 text-xs font-semibold bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
+                    <SelectValue placeholder="All Directions" />
+                  </SelectTrigger>
+                  <SelectContent align="end" className="w-[155px]">
+                    <SelectItem value="all">All Directions</SelectItem>
+                    <SelectItem value="Received">Money in</SelectItem>
+                    <SelectItem value="Paid">Money out</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             }
             actionsElement={

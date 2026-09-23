@@ -1,6 +1,13 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -63,14 +70,15 @@ export function BulkGeneratePeriodsSheet({
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
                 Frequency
               </label>
-              <select
-                value={generateFreq}
-                onChange={(e) => setGenerateFreq(e.target.value as any)}
-                className="w-full h-9 text-xs px-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
-              >
-                <option value="monthly">Monthly (12 periods)</option>
-                <option value="quarterly">Quarterly (4 periods)</option>
-              </select>
+              <Select value={generateFreq} onValueChange={(val) => setGenerateFreq(val as any)}>
+                <SelectTrigger className="w-full h-9 text-xs font-medium">
+                  <SelectValue placeholder="Frequency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="monthly">Monthly (12 periods)</SelectItem>
+                  <SelectItem value="quarterly">Quarterly (4 periods)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
