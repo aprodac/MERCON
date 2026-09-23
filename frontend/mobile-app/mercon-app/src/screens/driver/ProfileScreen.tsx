@@ -635,11 +635,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#FA634E',
   },
   headerContainer: {
-    height: 290,
     position: 'relative',
     backgroundColor: '#FA634E',
     overflow: 'hidden',
-    
+    paddingBottom: 24,
   },
   headerSafe: {
     paddingHorizontal: 16,
@@ -747,10 +746,8 @@ const styles = StyleSheet.create({
   /* Menu List Container (Flat full width) */
   menuListContainer: {
     backgroundColor: '#FFFFFF',
-    paddingVertical: 8,
-    marginTop: -15, /* slight overlap for seamless look */
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    paddingTop: 8,
+    paddingBottom: 32,
     minHeight: 500,
   },
   menuItem: {
