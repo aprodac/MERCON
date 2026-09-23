@@ -84,14 +84,19 @@ function parseDateInput(d: Date | string | number | null | undefined): Date | nu
 }
 
 /**
- * Format date to "15 Sep 2026"
+ * Format date to "15 Sep 2026" or custom format string
  */
-export function formatDate(d: Date | string | number | null | undefined): string {
+export function formatDate(d: Date | string | number | null | undefined, fmt?: string): string {
   const dt = parseDateInput(d);
   if (!dt) return '—';
   const day = dt.getDate();
   const month = MONTH_SHORT[dt.getMonth()];
   const year = dt.getFullYear();
+
+  if (fmt === 'MMM d, yyyy') {
+    return `${month} ${day}, ${year}`;
+  }
+
   return `${day} ${month} ${year}`;
 }
 

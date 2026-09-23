@@ -5,3 +5,8 @@ export * from './SummaryStrip';
 export * from './StatusTabs';
 export * from './FilterBar';
 export * from './FinanceEmptyState';
+export * from './DocStatusBar';
+export * from './RecordLayout';
+export * from './SidePanelTabs';
+export * from './JournalLinesTable';
+export * from './ActivityTimeline';

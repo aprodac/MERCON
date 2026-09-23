@@ -370,3 +370,31 @@ export const voidJournalEntryHandler = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
 };
+
+/**
+ * Get audit log history / activity for a journal entry
+ */
+export const getJournalEntryActivity = async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        entityType: 'JournalEntry',
+        entityId: id,
+      },
+      include: {
+        user: {
+          select: { id: true, username: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return res.json({ success: true, data: logs });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to fetch journal entry activity');
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};
+

@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 export interface FinanceCrumb {
   label: string;
   to?: string;
+  href?: string;
 }
 
 export interface FinancePageHeaderProps {
@@ -29,14 +30,15 @@ export function FinancePageHeader({
         <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-[12px] text-[#6E6E80] dark:text-slate-400">
           {crumbs.map((crumb, idx) => {
             const isLast = idx === crumbs.length - 1;
+            const target = crumb.to || crumb.href;
             return (
               <React.Fragment key={idx}>
                 {idx > 0 && (
                   <span className="text-[#6E6E80]/40 dark:text-slate-600 select-none">/</span>
                 )}
-                {crumb.to && !isLast ? (
+                {target && !isLast ? (
                   <Link
-                    to={crumb.to}
+                    to={target}
                     className="hover:text-[#FA634E] transition-colors"
                   >
                     {crumb.label}

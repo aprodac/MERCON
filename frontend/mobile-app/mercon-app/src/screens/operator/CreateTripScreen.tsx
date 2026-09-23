@@ -347,7 +347,7 @@ export const CreateTripScreen = () => {
             })()
           )}
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {form.selectedCustomerObj ? form.selectedCustomerObj.name : 'Create New Trip'}
+            Create New Trip
           </Text>
         </View>
         <TouchableOpacity

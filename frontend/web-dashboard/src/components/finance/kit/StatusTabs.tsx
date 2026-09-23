@@ -2,24 +2,31 @@ import React from 'react';
 import { cn } from '@/lib/utils';
 
 export interface StatusTabItem {
-  key: string;
+  key?: string;
+  id?: string;
   label: string;
   count?: number;
 }
 
 export interface StatusTabsProps {
   tabs: StatusTabItem[];
-  value: string;
-  onChange: (key: string) => void;
+  value?: string;
+  activeTab?: string;
+  onChange?: (key: string) => void;
+  onTabChange?: (key: string) => void;
   className?: string;
 }
 
 export function StatusTabs({
   tabs,
   value,
+  activeTab,
   onChange,
+  onTabChange,
   className,
 }: StatusTabsProps) {
+  const selectedTab = activeTab !== undefined ? activeTab : value || '';
+  const handleChange = onTabChange || onChange;
   return (
     <div
       role="tablist"
@@ -30,14 +37,15 @@ export function StatusTabs({
       )}
     >
       {tabs.map((tab) => {
-        const isActive = tab.key === value;
+        const tabKey = tab.key || tab.id || '';
+        const isActive = tabKey === selectedTab;
         return (
           <button
-            key={tab.key}
+            key={tabKey}
             type="button"
             role="tab"
             aria-selected={isActive}
-            onClick={() => onChange(tab.key)}
+            onClick={() => handleChange?.(tabKey)}
             className={cn(
               'relative inline-flex items-center gap-2 px-3.5 py-3 text-[13px] font-semibold transition-all whitespace-nowrap outline-none cursor-pointer border-b-2 -mb-[1px]',
               isActive

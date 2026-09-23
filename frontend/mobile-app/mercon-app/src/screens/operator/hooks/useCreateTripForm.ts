@@ -486,6 +486,11 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
     }
   }, [customerId, activeCustomerQuotations, pickupName, dropoffName, pickupLocationId, dropoffLocationId, rateCategory, billingType]);
 
+  const handleSetRateCategory = useCallback((cat: RateCategoryType) => {
+    setRateCategory(cat);
+    invalidateOrRematchQuotation(undefined, undefined, undefined, undefined, cat);
+  }, [invalidateOrRematchQuotation]);
+
   // Sync master driver / vehicle to rotation slot 0 when master values change
   useEffect(() => {
     if (driverId && rotationDrivers[0] !== driverId) {
@@ -848,7 +853,7 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
     defineDriverFeeInput, setDefineDriverFeeInput,
     defineBillingType, setDefineBillingType,
     definingQuotation, setDefiningQuotation,
-    rateCategory, setRateCategory,
+    rateCategory, setRateCategory: handleSetRateCategory,
     billingType, setBillingType,
     pickupName, setPickupName,
     pickupLat, setPickupLat,

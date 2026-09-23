@@ -1,30 +1,117 @@
-import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, FileText, Trash2, Eye, BookOpen, CheckCircle2, XCircle } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
+import { useQuery as useQueryHook, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Plus,
+  FileText,
+  Trash2,
+  Eye,
+  ChevronDown,
+  ChevronRight,
+  MoreHorizontal,
+  PenLine,
+  ReceiptText,
+  BadgeDollarSign,
+  CreditCard,
+  Wallet,
+  HandCoins,
+  ArrowRightLeft,
+  Building2,
+  Truck,
+  Lock,
+  Upload,
+  HelpCircle,
+  AlertCircle,
+  Download,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import KpiCard from '@/components/ui/KpiCard';
-import DataTable, { Column } from '@/components/ui/DataTable';
 import ExportModal, { ExportColumn } from '@/components/ui/ExportModal';
-import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
-import { financeService, CreateJournalEntryDTO, JournalLineDTO } from '@/services/financeService';
+import { financeService } from '@/services/financeService';
 import type { JournalEntry, JournalEntryStatus, Account, AccountingPeriod } from '@mercon/shared-types';
+import {
+  FinancePageHeader,
+  StatusTabs,
+  FilterBar,
+  FilterChip,
+  StatusPill,
+  MoneyText,
+  FinanceEmptyState,
+  JournalLinesTable,
+} from '@/components/finance/kit';
+import { formatDate, formatMoney } from '@/lib/finance';
 
-const STATUS_BADGES: Record<JournalEntryStatus, string> = {
-  Draft: 'bg-amber-50 text-amber-700 border-amber-200',
-  Posted: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  Voided: 'bg-rose-50 text-rose-700 border-rose-200',
+// Source badge mapping
+const SOURCE_CONFIG: Record<string, { icon: React.ElementType; label: string; link?: (id?: string | null) => string }> = {
+  Manual: { icon: PenLine, label: 'Manual' },
+  Invoice: { icon: ReceiptText, label: 'Invoice', link: (id) => (id ? `/finance/invoices` : `/finance/invoices`) },
+  InvoicePayment: { icon: BadgeDollarSign, label: 'Invoice payment', link: () => `/finance/invoices` },
+  Bill: { icon: FileText, label: 'Bill', link: (id) => (id ? `/finance/bills` : `/finance/bills`) },
+  BillPayment: { icon: CreditCard, label: 'Bill payment', link: () => `/finance/bills` },
+  Expense: { icon: Wallet, label: 'Expense', link: () => `/finance/expenses` },
+  Advance: { icon: HandCoins, label: 'Advance', link: () => `/finance/advances` },
+  AdvanceApplication: { icon: ArrowRightLeft, label: 'Advance applied', link: () => `/finance/advances` },
+  BankTransfer: { icon: Building2, label: 'Bank transfer', link: () => `/finance/bank-accounts` },
+  TripSubcontract: { icon: Truck, label: 'Trip subcontract' },
+  FiscalYearClosing: { icon: Lock, label: 'Year-end closing' },
+  IMPORT: { icon: Upload, label: 'Import' },
 };
 
-const JOURNAL_ENTRIES_EXPORT_COLUMNS: ExportColumn<JournalEntry>[] = [
+function renderSourceBadge(sourceType?: string, sourceId?: string | null) {
+  const config = SOURCE_CONFIG[sourceType || ''] || { icon: HelpCircle, label: sourceType || 'System' };
+  const Icon = config.icon;
+  const link = config.link?.(sourceId);
+
+  const badgeContent = (
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors border border-slate-200 shrink-0">
+      <Icon className="w-3 h-3 text-slate-500" />
+      {config.label}
+    </span>
+  );
+
+  if (link) {
+    return (
+      <Link to={link} onClick={(e) => e.stopPropagation()}>
+        {badgeContent}
+      </Link>
+    );
+  }
+
+  return badgeContent;
+}
+
+// Account flow summary text helper ("Accounts Receivable → Freight Revenue +1")
+function formatAccountFlow(lines?: JournalEntry['lines']) {
+  if (!lines || lines.length === 0) return '';
+
+  const drLines = lines.filter((l) => Number(l.debit) > 0);
+  const crLines = lines.filter((l) => Number(l.credit) > 0);
+
+  const drText = drLines.length > 0
+    ? `${drLines[0].account?.name || drLines[0].account?.account_code || 'Account'}${drLines.length > 1 ? ` +${drLines.length - 1}` : ''}`
+    : '—';
+
+  const crText = crLines.length > 0
+    ? `${crLines[0].account?.name || crLines[0].account?.account_code || 'Account'}${crLines.length > 1 ? ` +${crLines.length - 1}` : ''}`
+    : '—';
+
+  return `${drText} → ${crText}`;
+}
+
+const EXPORT_COLUMNS: ExportColumn<JournalEntry>[] = [
   { id: 'ref_id', label: 'Reference ID', accessor: (e) => e.ref_id || e.id },
+  { id: 'source_type', label: 'Source', accessor: (e) => e.source_type || 'Manual' },
   { id: 'entry_date', label: 'Entry Date', accessor: (e) => (e.entry_date ? new Date(e.entry_date).toLocaleDateString() : '—') },
   { id: 'period_name', label: 'Period Name', accessor: (e) => e.period?.name || '—' },
   { id: 'memo', label: 'Memo / Description', accessor: (e) => e.memo || '—' },
@@ -43,80 +130,144 @@ const JOURNAL_ENTRIES_EXPORT_COLUMNS: ExportColumn<JournalEntry>[] = [
 
 export default function JournalEntriesPage() {
   const queryClient = useQueryClient();
-  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [selectedStatus, setSelectedStatus] = useState<JournalEntryStatus | 'all'>('all');
-  const [selectedPeriod, setSelectedPeriod] = useState<string>('all');
-  const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [page, setPage] = useState(1);
+  // URL State
+  const activeTab = (searchParams.get('status') as JournalEntryStatus | 'all') || 'all';
+  const selectedPeriod = searchParams.get('period_id') || 'all';
+  const selectedSource = searchParams.get('source_type') || 'all';
+  const selectedAccount = searchParams.get('account_id') || 'all';
+  const dateFrom = searchParams.get('date_from') || '';
+  const dateTo = searchParams.get('date_to') || '';
+  const search = searchParams.get('search') || '';
+  const page = parseInt(searchParams.get('page') || '1', 10);
   const perPage = 25;
 
-  // Modals & Detail State
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  // Local State
+  const [expandedRowIds, setExpandedRowIds] = useState<Set<string>>(new Set());
   const [isExportOpen, setIsExportOpen] = useState(false);
-  const [viewingEntry, setViewingEntry] = useState<JournalEntry | null>(null);
 
-  // Form State
-  const [entryDate, setEntryDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [periodId, setPeriodId] = useState<string>('');
-  const [memo, setMemo] = useState<string>('');
-  const [lines, setLines] = useState<JournalLineDTO[]>([
-    { accountId: '', debit: 0, credit: 0, description: '' },
-    { accountId: '', debit: 0, credit: 0, description: '' },
-  ]);
+  // Modals state
+  const [postTarget, setPostTarget] = useState<JournalEntry | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<JournalEntry | null>(null);
+  const [voidTarget, setVoidTarget] = useState<JournalEntry | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+
+  // Helper to update search params cleanly
+  const updateParams = (updates: Record<string, string | null>) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      Object.entries(updates).forEach(([key, val]) => {
+        if (val === null || val === '' || val === 'all') {
+          next.delete(key);
+        } else {
+          next.set(key, val);
+        }
+      });
+      return next;
+    });
+  };
 
   // Queries
-  const { data: entriesRes, isLoading } = useQuery({
-    queryKey: ['journal-entries', selectedStatus, selectedPeriod, search, page],
+  const { data: entriesRes, isLoading } = useQueryHook({
+    queryKey: ['journal-entries', activeTab, selectedPeriod, selectedSource, selectedAccount, dateFrom, dateTo, search, page],
     queryFn: () =>
       financeService.getJournalEntries({
-        status: selectedStatus,
-        period_id: selectedPeriod,
-        search,
+        status: activeTab === 'all' ? undefined : activeTab,
+        period_id: selectedPeriod === 'all' ? undefined : selectedPeriod,
+        source_type: selectedSource === 'all' ? undefined : selectedSource,
+        account_id: selectedAccount === 'all' ? undefined : selectedAccount,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+        search: search || undefined,
         page,
         per_page: perPage,
       }),
   });
 
-  const { data: accountsRes } = useQuery({
-    queryKey: ['accounts', 'all'],
-    queryFn: () => financeService.getAccounts({ include_inactive: false }),
+  // Cheap count queries for StatusTabs (staleTime 30s)
+  const { data: countAll } = useQueryHook({
+    queryKey: ['je-count', 'all'],
+    queryFn: () => financeService.getJournalEntries({ per_page: 1 }),
+    staleTime: 30000,
   });
 
-  const { data: periodsRes } = useQuery({
-    queryKey: ['accounting-periods', 'Open'],
-    queryFn: () => financeService.getAccountingPeriods({ status: 'Open' }),
+  const { data: countDraft } = useQueryHook({
+    queryKey: ['je-count', 'Draft'],
+    queryFn: () => financeService.getJournalEntries({ status: 'Draft', per_page: 1 }),
+    staleTime: 30000,
+  });
+
+  const { data: countPosted } = useQueryHook({
+    queryKey: ['je-count', 'Posted'],
+    queryFn: () => financeService.getJournalEntries({ status: 'Posted', per_page: 1 }),
+    staleTime: 30000,
+  });
+
+  const { data: countVoided } = useQueryHook({
+    queryKey: ['je-count', 'Voided'],
+    queryFn: () => financeService.getJournalEntries({ status: 'Voided', per_page: 1 }),
+    staleTime: 30000,
+  });
+
+  // Periods & Accounts metadata queries for filter dropdowns
+  const { data: periodsRes } = useQueryHook({
+    queryKey: ['accounting-periods', 'all'],
+    queryFn: () => financeService.getAccountingPeriods(),
+  });
+
+  const { data: accountsRes } = useQueryHook({
+    queryKey: ['accounts', 'all'],
+    queryFn: () => financeService.getAccounts(),
   });
 
   const entries: JournalEntry[] = entriesRes?.data || [];
-  const pagination = entriesRes?.pagination || { page: 1, per_page: perPage, total: entries.length, total_pages: 1 };
-  const postableAccounts: Account[] = (accountsRes?.data || []).filter((a: Account) => a.is_postable);
-  const openPeriods: AccountingPeriod[] = periodsRes?.data || [];
+  const pagination = entriesRes?.pagination || { page: 1, per_page: perPage, total: 0, total_pages: 1 };
+  const draftCount = countDraft?.pagination?.total || 0;
 
-  // Total debits / credits calculation
-  const totalDebit = lines.reduce((sum, l) => sum + (Number(l.debit) || 0), 0);
-  const totalCredit = lines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
-  const isBalanced = totalDebit > 0 && Math.abs(totalDebit - totalCredit) < 0.001;
+  const periods: AccountingPeriod[] = periodsRes?.data || [];
+  const accounts: Account[] = accountsRes?.data || [];
+
+  // Group entries by date for Daybook view
+  const groupedEntries = useMemo(() => {
+    const groups: { dateKey: string; dateObj: Date; totalDebit: number; items: JournalEntry[] }[] = [];
+    const map = new Map<string, { dateKey: string; dateObj: Date; totalDebit: number; items: JournalEntry[] }>();
+
+    entries.forEach((entry) => {
+      const dateObj = new Date(entry.entry_date);
+      const dateKey = formatDate(dateObj, 'MMM d, yyyy'); // e.g. Tue, Sep 23, 2026
+      const entryDebit = (entry.lines || []).reduce((s, l) => s + (Number(l.debit) || 0), 0);
+
+      if (!map.has(dateKey)) {
+        const newGroup = { dateKey, dateObj, totalDebit: 0, items: [] };
+        map.set(dateKey, newGroup);
+        groups.push(newGroup);
+      }
+      const g = map.get(dateKey)!;
+      g.items.push(entry);
+      g.totalDebit += entryDebit;
+    });
+
+    return groups;
+  }, [entries]);
+
+  // Status Tab Counts
+  const tabCounts = {
+    all: countAll?.pagination?.total || 0,
+    Draft: draftCount,
+    Posted: countPosted?.pagination?.total || 0,
+    Voided: countVoided?.pagination?.total || 0,
+  };
 
   // Mutations
-  const createDraftMutation = useMutation({
-    mutationFn: financeService.createDraftJournalEntry,
-    onSuccess: () => {
-      toast.success('Draft journal entry created');
-      queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
-      closeCreateModal();
-    },
-    onError: (err: any) => {
-      toast.error(err?.response?.data?.error?.message || 'Failed to create draft entry');
-    },
-  });
-
   const postMutation = useMutation({
     mutationFn: financeService.postJournalEntry,
-    onSuccess: () => {
-      toast.success('Journal entry posted successfully');
+    onSuccess: (data) => {
+      toast.success(`Journal entry ${data.ref_id || ''} posted successfully`);
       queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
-      setViewingEntry(null);
+      queryClient.invalidateQueries({ queryKey: ['je-count'] });
+      setPostTarget(null);
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error?.message || 'Failed to post entry');
@@ -124,12 +275,13 @@ export default function JournalEntriesPage() {
   });
 
   const voidMutation = useMutation({
-    mutationFn: ({ id, memo }: { id: string; memo?: string }) =>
-      financeService.voidJournalEntry(id, memo),
+    mutationFn: ({ id, memo }: { id: string; memo?: string }) => financeService.voidJournalEntry(id, memo),
     onSuccess: () => {
       toast.success('Journal entry voided and reversal posted');
       queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
-      setViewingEntry(null);
+      queryClient.invalidateQueries({ queryKey: ['je-count'] });
+      setVoidTarget(null);
+      setVoidReason('');
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error?.message || 'Failed to void entry');
@@ -139,251 +291,472 @@ export default function JournalEntriesPage() {
   const deleteDraftMutation = useMutation({
     mutationFn: financeService.deleteDraftJournalEntry,
     onSuccess: () => {
-      toast.success('Draft journal entry deleted');
+      toast.success('Draft entry deleted');
       queryClient.invalidateQueries({ queryKey: ['journal-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['je-count'] });
+      setDeleteTarget(null);
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error?.message || 'Failed to delete draft');
     },
   });
 
-  const openCreateModal = () => {
-    setEntryDate(new Date().toISOString().split('T')[0]);
-    setPeriodId(openPeriods.length > 0 ? openPeriods[0].id : '');
-    setMemo('');
-    setLines([
-      { accountId: '', debit: 0, credit: 0, description: '' },
-      { accountId: '', debit: 0, credit: 0, description: '' },
-    ]);
-    setIsCreateModalOpen(true);
-  };
-
-  const closeCreateModal = () => {
-    setIsCreateModalOpen(false);
-  };
-
-  const handleAddLine = () => {
-    setLines([...lines, { accountId: '', debit: 0, credit: 0, description: '' }]);
-  };
-
-  const handleRemoveLine = (index: number) => {
-    if (lines.length <= 2) {
-      toast.error('Journal entry must have at least 2 lines');
-      return;
-    }
-    setLines(lines.filter((_, i) => i !== index));
-  };
-
-  const handleLineChange = (index: number, field: keyof JournalLineDTO, value: any) => {
-    const updated = [...lines];
-    updated[index] = { ...updated[index], [field]: value };
-
-    // If typing debit > 0, set credit to 0
-    if (field === 'debit' && Number(value) > 0) {
-      updated[index].credit = 0;
-    }
-    // If typing credit > 0, set debit to 0
-    if (field === 'credit' && Number(value) > 0) {
-      updated[index].debit = 0;
-    }
-
-    setLines(updated);
-  };
-
-  const handleSaveDraft = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!periodId) {
-      toast.error('Please select an open accounting period');
-      return;
-    }
-    if (lines.some((l) => !l.accountId)) {
-      toast.error('Please select an account for every line');
-      return;
-    }
-
-    createDraftMutation.mutate({
-      entry_date: entryDate,
-      periodId,
-      memo,
-      lines: lines.map((l) => ({
-        accountId: l.accountId,
-        debit: Number(l.debit) || 0,
-        credit: Number(l.credit) || 0,
-        description: l.description,
-      })),
+  const toggleExpandRow = (id: string) => {
+    setExpandedRowIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
   };
 
-  const kpis = {
-    total: pagination.total,
-    draft: entries.filter((e) => e.status === 'Draft').length,
-    posted: entries.filter((e) => e.status === 'Posted').length,
-    voided: entries.filter((e) => e.status === 'Voided').length,
+  const hasActiveFilters =
+    selectedPeriod !== 'all' ||
+    selectedSource !== 'all' ||
+    selectedAccount !== 'all' ||
+    Boolean(dateFrom) ||
+    Boolean(dateTo) ||
+    Boolean(search);
+
+  const clearFilters = () => {
+    updateParams({
+      period_id: null,
+      source_type: null,
+      account_id: null,
+      date_from: null,
+      date_to: null,
+      search: null,
+      page: '1',
+    });
   };
-
-  const columns: Column<JournalEntry>[] = [
-    {
-      header: 'Ref ID',
-      accessor: (entry) => <span className="font-mono font-bold text-[#3E3C3D]">{entry.ref_id || `JE-${entry.id.slice(0, 6)}`}</span>,
-      mobilePriority: 'primary',
-    },
-    {
-      header: 'Entry Date',
-      accessor: (entry) => <span className="font-mono text-slate-600">{new Date(entry.entry_date).toLocaleDateString()}</span>,
-      mobilePriority: 'secondary',
-    },
-    {
-      header: 'Period',
-      accessor: (entry) => <span className="font-medium text-slate-700">{entry.period?.name || '—'}</span>,
-      mobilePriority: 'meta',
-    },
-    {
-      header: 'Memo / Description',
-      accessor: (entry) => <span className="text-slate-800 max-w-xs truncate block">{entry.memo || '—'}</span>,
-      mobilePriority: 'primary',
-    },
-    {
-      header: 'Lines',
-      accessor: (entry) => <span className="text-slate-600 font-semibold">{entry.lines?.length || 0} line(s)</span>,
-      mobilePriority: 'meta',
-    },
-    {
-      header: 'Status',
-      accessor: (entry) => <Badge className={`${STATUS_BADGES[entry.status]} border`}>{entry.status}</Badge>,
-      mobilePriority: 'secondary',
-    },
-    {
-      header: 'Actions',
-      headerClassName: 'text-right',
-      className: 'text-right',
-      accessor: (entry) => (
-        <div className="space-x-1">
-          <Button variant="ghost" size="sm" onClick={() => setViewingEntry(entry)} className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900">
-            <Eye className="w-3.5 h-3.5 mr-1" />
-            View
-          </Button>
-          {entry.status === 'Draft' && (
-            <>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => postMutation.mutate(entry.id)}
-                disabled={postMutation.isPending}
-                className="h-7 px-2 text-xs border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-              >
-                Post
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  if (confirm(`Delete draft entry ${entry.ref_id}?`)) deleteDraftMutation.mutate(entry.id);
-                }}
-                className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </Button>
-            </>
-          )}
-          {entry.status === 'Posted' && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const reason = prompt('Reason for voiding journal entry:');
-                if (reason !== null) voidMutation.mutate({ id: entry.id, memo: reason });
-              }}
-              disabled={voidMutation.isPending}
-              className="h-7 px-2 text-xs border-rose-200 text-rose-700 hover:bg-rose-50"
-            >
-              Void
-            </Button>
-          )}
-        </div>
-      ),
-      mobilePriority: 'hidden',
-    },
-  ];
-
-  const statusFilterElement = (
-    <div className="flex items-center gap-1.5 overflow-x-auto">
-      <button
-        onClick={() => {
-          setSelectedStatus('all');
-          setPage(1);
-        }}
-        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
-          selectedStatus === 'all' ? 'bg-[#3E3C3D] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-        }`}
-      >
-        All Statuses
-      </button>
-      {(['Draft', 'Posted', 'Voided'] as JournalEntryStatus[]).map((st) => (
-        <button
-          key={st}
-          onClick={() => {
-            setSelectedStatus(st);
-            setPage(1);
-          }}
-          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${
-            selectedStatus === st ? 'bg-[#FA634E] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-          }`}
-        >
-          {st}
-        </button>
-      ))}
-    </div>
-  );
 
   return (
     <DashboardLayout active="finance" title="Journal Entries">
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-[#3E3C3D]">Journal Entries</h1>
-            <p className="text-sm text-slate-500">General ledger transaction posting & double-entry engine</p>
-          </div>
-          <Button
-            onClick={openCreateModal}
-            className="bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-sm font-medium"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            New Journal Entry
-          </Button>
-        </div>
-
-        {/* KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 shrink-0">
-          <KpiCard title="TOTAL ENTRIES" value={kpis.total} variant="slate" icon={BookOpen} description="Across all statuses" />
-          <KpiCard title="DRAFT" value={kpis.draft} variant="amber" icon={FileText} description="This page — awaiting posting" />
-          <KpiCard title="POSTED" value={kpis.posted} variant="emerald" icon={CheckCircle2} description="This page — in the ledger" />
-          <KpiCard title="VOIDED" value={kpis.voided} variant="rose" icon={XCircle} description="This page — reversed" />
-        </div>
-
-        {/* Table */}
-        <DataTable<JournalEntry>
+      <div className="p-6 space-y-5 max-w-7xl mx-auto">
+        {/* Page Header */}
+        <FinancePageHeader
+          crumbs={[
+            { label: 'Finance', to: '/finance' },
+            { label: 'Accounting', to: '/finance/periods' },
+            { label: 'Journal Entries' },
+          ]}
           title="Journal Entries"
-          columns={columns}
-          data={entries}
-          isLoading={isLoading}
-          searchPlaceholder="Search reference or memo..."
-          searchValue={search}
-          onSearchChange={(val) => {
-            setSearch(val);
-            setPage(1);
-          }}
-          filterElement={statusFilterElement}
-          onExport={() => setIsExportOpen(true)}
-          enableSelection={false}
-          getRowId={(entry) => entry.id}
-          currentPage={pagination.page}
-          totalPages={pagination.total_pages}
-          totalRecords={pagination.total}
-          onPageChange={setPage}
-          emptyTitle="No Journal Entries"
-          emptyMessage="No journal entries found matching criteria."
+          subtitle="Every posting to the general ledger, by date."
+          actions={
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsExportOpen(true)}
+                className="h-9 text-xs font-semibold"
+              >
+                <Download className="w-3.5 h-3.5 mr-1.5" />
+                Export
+              </Button>
+              <Button
+                onClick={() => navigate('/finance/journal-entries/new')}
+                className="bg-[#FA634E] hover:bg-[#e0523d] text-white h-9 text-xs font-semibold px-3.5 shadow-sm"
+              >
+                <Plus className="w-4 h-4 mr-1.5" />
+                New entry
+              </Button>
+            </div>
+          }
         />
+
+        {/* Drafts notice info bar */}
+        {draftCount > 0 && activeTab !== 'Draft' && (
+          <div className="bg-[var(--fin-brand-tint)] border border-[#FA634E]/20 text-[#3E3C3D] px-4 py-2.5 rounded-xl flex items-center justify-between text-xs font-medium shadow-xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-[#FA634E] shrink-0" />
+              <span>
+                <strong>{draftCount}</strong> draft {draftCount === 1 ? 'entry' : 'entries'} waiting to post
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => updateParams({ status: 'Draft', page: '1' })}
+              className="h-7 text-xs bg-white text-[#FA634E] border-[#FA634E]/30 hover:bg-rose-50 hover:text-[#FA634E] font-semibold"
+            >
+              Review drafts
+            </Button>
+          </div>
+        )}
+
+        {/* Status Tabs */}
+        <StatusTabs
+          value={activeTab}
+          onChange={(tab) => updateParams({ status: tab === 'all' ? null : tab, page: '1' })}
+          tabs={[
+            { key: 'all', label: 'All', count: tabCounts.all },
+            { key: 'Draft', label: 'Draft', count: tabCounts.Draft },
+            { key: 'Posted', label: 'Posted', count: tabCounts.Posted },
+            { key: 'Voided', label: 'Voided', count: tabCounts.Voided },
+          ]}
+        />
+
+        {/* FilterBar */}
+        <FilterBar
+          searchValue={search}
+          onSearchChange={(val) => updateParams({ search: val || null, page: '1' })}
+          searchPlaceholder="Search reference, memo, description..."
+          onClearFilters={clearFilters}
+          hasActiveFilters={hasActiveFilters}
+        >
+          {/* Period Filter */}
+          <FilterChip
+            label="Period"
+            value={selectedPeriod}
+            onChange={(val) => updateParams({ period_id: val === 'all' ? null : val, page: '1' })}
+            options={[
+              { value: 'all', label: 'All Periods' },
+              ...periods.map((p) => ({ value: p.id, label: `${p.name} (${p.status})` })),
+            ]}
+          />
+
+          {/* Source Filter */}
+          <FilterChip
+            label="Source"
+            value={selectedSource}
+            onChange={(val) => updateParams({ source_type: val === 'all' ? null : val, page: '1' })}
+            options={[
+              { value: 'all', label: 'All Sources' },
+              { value: 'Manual', label: 'Manual' },
+              { value: 'Invoice', label: 'Invoice' },
+              { value: 'InvoicePayment', label: 'Invoice Payment' },
+              { value: 'Bill', label: 'Bill' },
+              { value: 'BillPayment', label: 'Bill Payment' },
+              { value: 'Expense', label: 'Expense' },
+              { value: 'Advance', label: 'Advance' },
+              { value: 'AdvanceApplication', label: 'Advance Application' },
+              { value: 'BankTransfer', label: 'Bank Transfer' },
+              { value: 'TripSubcontract', label: 'Trip Subcontract' },
+              { value: 'FiscalYearClosing', label: 'Fiscal Year Closing' },
+              { value: 'IMPORT', label: 'Import' },
+            ]}
+          />
+
+          {/* Account Filter */}
+          <FilterChip
+            label="Account"
+            value={selectedAccount}
+            onChange={(val) => updateParams({ account_id: val === 'all' ? null : val, page: '1' })}
+            options={[
+              { value: 'all', label: 'All Accounts' },
+              ...accounts.map((a) => ({ value: a.id, label: `${a.account_code} - ${a.name}` })),
+            ]}
+          />
+
+          {/* Date Range Filters */}
+          <div className="flex items-center gap-1">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => updateParams({ date_from: e.target.value || null, page: '1' })}
+              className="h-8 text-xs px-2 rounded-lg border border-slate-200 bg-white text-slate-700"
+            />
+            <span className="text-slate-400 text-xs">–</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => updateParams({ date_to: e.target.value || null, page: '1' })}
+              className="h-8 text-xs px-2 rounded-lg border border-slate-200 bg-white text-slate-700"
+            />
+          </div>
+        </FilterBar>
+
+        {/* Daybook List View */}
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+          {isLoading ? (
+            <div className="p-8 space-y-4">
+              <div className="h-6 w-48 bg-slate-100 rounded-lg animate-pulse" />
+              <div className="space-y-2">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <div key={n} className="h-14 bg-slate-50 rounded-xl animate-pulse" />
+                ))}
+              </div>
+            </div>
+          ) : entries.length === 0 ? (
+            <FinanceEmptyState
+              icon={<FileText className="w-6 h-6" />}
+              title={hasActiveFilters ? 'Nothing matches these filters' : 'No journal entries yet'}
+              description={
+                hasActiveFilters
+                  ? 'Try clearing some filters or changing your search terms.'
+                  : 'Get started by creating your first manual journal entry.'
+              }
+              action={
+                hasActiveFilters ? (
+                  <Button variant="outline" size="sm" onClick={clearFilters}>
+                    Clear filters
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={() => navigate('/finance/journal-entries/new')}
+                    className="bg-[#FA634E] text-white hover:bg-[#e0523d]"
+                  >
+                    New entry
+                  </Button>
+                )
+              }
+            />
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {groupedEntries.map((group: any) => (
+                <div key={group.dateKey} className="group-container">
+                  {/* Sunken Daybook Sticky Header */}
+                  <div className="sticky top-0 z-10 bg-[var(--fin-surface-sunken)] px-4 py-2 border-y border-slate-200/80 text-xs font-semibold text-slate-700 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-900 font-bold">{group.dateKey}</span>
+                      <span className="text-slate-400">·</span>
+                      <span className="text-slate-500 font-normal">
+                        {group.items.length} {group.items.length === 1 ? 'entry' : 'entries'}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-slate-400 font-normal mr-1">Dr</span>
+                      <span className="font-mono text-slate-900 font-bold">
+                        {formatMoney(group.totalDebit, { currency: 'SAR' })}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Entry Rows */}
+                  <div className="divide-y divide-slate-100">
+                    {group.items.map((entry: JournalEntry) => {
+                      const isExpanded = expandedRowIds.has(entry.id);
+                      const totalDebit = (entry.lines || []).reduce((sum: number, l: any) => sum + (Number(l.debit) || 0), 0);
+                      const accountFlow = formatAccountFlow(entry.lines);
+                      const isVoided = entry.status === 'Voided';
+                      const isReversal = Boolean(entry.reversalOfId || entry.reversalOf);
+
+                      return (
+                        <div key={entry.id} className="transition-colors">
+                          <div
+                            onClick={() => toggleExpandRow(entry.id)}
+                            className="h-14 px-4 flex items-center justify-between gap-3 hover:bg-[var(--fin-row-hover)] cursor-pointer text-xs group"
+                          >
+                            {/* Chevron + Ref ID + Source badge */}
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <button
+                                type="button"
+                                aria-expanded={isExpanded}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleExpandRow(entry.id);
+                                }}
+                                className="p-1 rounded text-slate-400 hover:text-slate-600 focus:outline-none"
+                              >
+                                {isExpanded ? (
+                                  <ChevronDown className="w-4 h-4 text-slate-700" />
+                                ) : (
+                                  <ChevronRight className="w-4 h-4" />
+                                )}
+                              </button>
+
+                              <span className="font-mono font-bold text-slate-900 .fin-num shrink-0">
+                                {entry.ref_id || `JE-${entry.id.slice(0, 6)}`}
+                              </span>
+
+                              {renderSourceBadge(entry.source_type, entry.source_id)}
+
+                              {isReversal && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                                  Reversal
+                                </span>
+                              )}
+
+                              {/* Memo + Account flow */}
+                              <div className="min-w-0 flex-1 pl-2">
+                                <div className={`truncate font-medium text-slate-900 ${isVoided ? 'line-through text-slate-400' : ''}`}>
+                                  {entry.memo || '—'}
+                                </div>
+                                {accountFlow && (
+                                  <div className="truncate text-[11px] text-slate-400 font-normal">
+                                    {accountFlow}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Total Debit + StatusPill + Hover Menu */}
+                            <div className="flex items-center gap-4 shrink-0">
+                              <div className="text-right">
+                                <MoneyText
+                                  value={totalDebit}
+                                  currency="SAR"
+                                  className={`text-xs font-semibold ${isVoided ? 'line-through text-slate-400' : ''}`}
+                                />
+                              </div>
+
+                              <StatusPill kind="journal" status={entry.status} />
+
+                              {/* Hover-reveal menu */}
+                              <div onClick={(e) => e.stopPropagation()}>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-700 transition-opacity"
+                                    >
+                                      <MoreHorizontal className="w-4 h-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" className="w-36 text-xs">
+                                    <DropdownMenuItem onClick={() => navigate(`/finance/journal-entries/${entry.id}`)}>
+                                      <Eye className="w-3.5 h-3.5 mr-2 text-slate-500" />
+                                      Open
+                                    </DropdownMenuItem>
+                                    {entry.status === 'Draft' && (
+                                      <>
+                                        <DropdownMenuItem onClick={() => navigate(`/finance/journal-entries/${entry.id}/edit`)}>
+                                          <PenLine className="w-3.5 h-3.5 mr-2 text-slate-500" />
+                                          Edit
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => setPostTarget(entry)}
+                                          className="text-emerald-700 font-medium"
+                                        >
+                                          <FileText className="w-3.5 h-3.5 mr-2" />
+                                          Post
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onClick={() => setDeleteTarget(entry)}
+                                          className="text-rose-600"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5 mr-2" />
+                                          Delete
+                                        </DropdownMenuItem>
+                                      </>
+                                    )}
+                                    {entry.status === 'Posted' && (
+                                      <DropdownMenuItem onClick={() => setVoidTarget(entry)} className="text-rose-600">
+                                        <Trash2 className="w-3.5 h-3.5 mr-2" />
+                                        Void
+                                      </DropdownMenuItem>
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Inline Expansion details */}
+                          {isExpanded && (
+                            <div className="bg-slate-50/70 p-4 border-b border-slate-200/80 space-y-3 pl-11">
+                              <JournalLinesTable lines={entry.lines} />
+
+                              <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-1 gap-2">
+                                <div className="flex items-center gap-3">
+                                  <span>
+                                    Period: <strong className="text-slate-700">{entry.period?.name || '—'}</strong>
+                                  </span>
+                                  <span>·</span>
+                                  <span>
+                                    {entry.posted_at ? `Posted on ${formatDate(entry.posted_at)}` : 'Draft entry'}
+                                  </span>
+                                  {entry.reversalOf && (
+                                    <>
+                                      <span>·</span>
+                                      <Link
+                                        to={`/finance/journal-entries/${entry.reversalOf.id}`}
+                                        className="text-[#FA634E] hover:underline font-medium"
+                                      >
+                                        Reversal of {entry.reversalOf.ref_id || 'JE'}
+                                      </Link>
+                                    </>
+                                  )}
+                                  {entry.reversedBy && (
+                                    <>
+                                      <span>·</span>
+                                      <Link
+                                        to={`/finance/journal-entries/${entry.reversedBy.id}`}
+                                        className="text-purple-600 hover:underline font-medium"
+                                      >
+                                        Reversed by {entry.reversedBy.ref_id || 'JE'}
+                                      </Link>
+                                    </>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => navigate(`/finance/journal-entries/${entry.id}`)}
+                                    className="h-7 text-xs bg-white"
+                                  >
+                                    Open record
+                                  </Button>
+                                  {entry.status === 'Draft' && (
+                                    <>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => navigate(`/finance/journal-entries/${entry.id}/edit`)}
+                                        className="h-7 text-xs bg-white"
+                                      >
+                                        Edit
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        onClick={() => setPostTarget(entry)}
+                                        className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                                      >
+                                        Post
+                                      </Button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Footer Pagination */}
+          {pagination.total > 0 && (
+            <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between text-xs text-slate-500">
+              <div>
+                Showing {(pagination.page - 1) * pagination.per_page + 1}–
+                {Math.min(pagination.page * pagination.per_page, pagination.total)} of {pagination.total} entries
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page <= 1}
+                  onClick={() => updateParams({ page: String(pagination.page - 1) })}
+                  className="h-7 text-xs px-2.5"
+                >
+                  Previous
+                </Button>
+                <span className="px-2 font-mono text-slate-700 font-semibold">
+                  {pagination.page} / {pagination.total_pages || 1}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={pagination.page >= pagination.total_pages}
+                  onClick={() => updateParams({ page: String(pagination.page + 1) })}
+                  className="h-7 text-xs px-2.5"
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Export Modal */}
         <ExportModal
@@ -393,261 +766,72 @@ export default function JournalEntriesPage() {
           description="Choose your export preferences and columns."
           fileNamePrefix="journal_entries"
           sheetName="Journal Entries"
-          subtitle="MERCON Logistics Journal Entries Ledger"
+          subtitle="MERCON Logistics General Ledger Daybook"
           filteredData={entries}
-          columns={JOURNAL_ENTRIES_EXPORT_COLUMNS}
+          columns={EXPORT_COLUMNS}
           formats={['xlsx', 'csv']}
           totalCount={pagination.total}
         />
 
-        {/* Create Modal */}
-        <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="text-lg font-bold text-[#3E3C3D]">
-                New Journal Entry (Draft)
-              </DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handleSaveDraft} className="space-y-4 py-2">
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 mb-1 block">
-                    Entry Date *
-                  </label>
-                  <Input
-                    type="date"
-                    value={entryDate}
-                    onChange={(e) => setEntryDate(e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 mb-1 block">
-                    Accounting Period *
-                  </label>
-                  <Select value={periodId} onValueChange={setPeriodId}>
-                    <SelectTrigger className="h-9 text-xs">
-                      <SelectValue placeholder="Select period" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {openPeriods.map((p) => (
-                        <SelectItem key={p.id} value={p.id}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-slate-700 mb-1 block">
-                    Memo / Reference
-                  </label>
-                  <Input
-                    placeholder="e.g. Monthly Accrual"
-                    value={memo}
-                    onChange={(e) => setMemo(e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                </div>
-              </div>
+        {/* Post Confirmation Modal */}
+        {postTarget && (
+          <ConfirmModal
+            isOpen={!!postTarget}
+            onClose={() => setPostTarget(null)}
+            onConfirm={() => postMutation.mutate(postTarget.id)}
+            isLoading={postMutation.isPending}
+            title={`Post Journal Entry ${postTarget.ref_id || ''}?`}
+            description="This posts to the general ledger and cannot be edited afterwards. Verify the double-entry lines before posting."
+            confirmLabel="Post to General Ledger"
+            variant="default"
+          >
+            <div className="my-3">
+              <JournalLinesTable lines={postTarget.lines} />
+            </div>
+          </ConfirmModal>
+        )}
 
-              {/* Lines Table */}
-              <div className="border border-slate-200 rounded-lg overflow-hidden">
-                <div className="bg-slate-50 px-3 py-2 border-b border-slate-200 flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-700">Line Items (Double-Entry)</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleAddLine}
-                    className="h-7 text-xs text-[#FA634E] hover:bg-rose-50"
-                  >
-                    <Plus className="w-3.5 h-3.5 mr-1" /> Add Line
-                  </Button>
-                </div>
-                <div className="p-3 space-y-2 max-h-60 overflow-y-auto">
-                  {lines.map((line, idx) => (
-                    <div key={idx} className="flex items-center gap-2">
-                      <div className="w-5/12">
-                        <Select
-                          value={line.accountId}
-                          onValueChange={(val) => handleLineChange(idx, 'accountId', val)}
-                        >
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Select Account" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {postableAccounts.map((acc) => (
-                              <SelectItem key={acc.id} value={acc.id}>
-                                {acc.account_code} - {acc.name} ({acc.account_type})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="w-2/12">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="Debit"
-                          value={line.debit || ''}
-                          onChange={(e) => handleLineChange(idx, 'debit', parseFloat(e.target.value) || 0)}
-                          className="h-8 text-xs text-right font-mono"
-                        />
-                      </div>
-                      <div className="w-2/12">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="Credit"
-                          value={line.credit || ''}
-                          onChange={(e) => handleLineChange(idx, 'credit', parseFloat(e.target.value) || 0)}
-                          className="h-8 text-xs text-right font-mono"
-                        />
-                      </div>
-                      <div className="w-3/12 flex items-center gap-1">
-                        <Input
-                          placeholder="Line note"
-                          value={line.description || ''}
-                          onChange={(e) => handleLineChange(idx, 'description', e.target.value)}
-                          className="h-8 text-xs"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRemoveLine(idx)}
-                          className="h-8 w-8 p-0 text-slate-400 hover:text-rose-600 shrink-0"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+        {/* Delete Draft Modal */}
+        {deleteTarget && (
+          <ConfirmModal
+            isOpen={!!deleteTarget}
+            onClose={() => setDeleteTarget(null)}
+            onConfirm={() => deleteDraftMutation.mutate(deleteTarget.id)}
+            isLoading={deleteDraftMutation.isPending}
+            title={`Delete Draft Entry ${deleteTarget.ref_id || ''}?`}
+            description="Are you sure you want to permanently delete this draft journal entry? This action cannot be undone."
+            confirmLabel="Delete Draft"
+            variant="destructive"
+          />
+        )}
 
-                {/* Balancing Footer */}
-                <div className="bg-slate-50 px-3 py-2 border-t border-slate-200 flex justify-between items-center text-xs font-semibold">
-                  <span>Totals</span>
-                  <div className="flex items-center space-x-4">
-                    <span className="text-slate-600">
-                      Debits: <strong className="font-mono text-slate-900">SAR {totalDebit.toFixed(2)}</strong>
-                    </span>
-                    <span className="text-slate-600">
-                      Credits: <strong className="font-mono text-slate-900">SAR {totalCredit.toFixed(2)}</strong>
-                    </span>
-                    {isBalanced ? (
-                      <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 border">
-                        Balanced ✓
-                      </Badge>
-                    ) : (
-                      <Badge className="bg-rose-50 text-rose-700 border-rose-200 border">
-                        Unbalanced ⚠
-                      </Badge>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <DialogFooter className="pt-2">
-                <Button type="button" variant="outline" size="sm" onClick={closeCreateModal}>
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  size="sm"
-                  className="bg-[#FA634E] hover:bg-[#e0523d] text-white"
-                  disabled={createDraftMutation.isPending}
-                >
-                  Save as Draft
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-
-        {/* View Detail Modal */}
-        <Dialog open={!!viewingEntry} onOpenChange={() => setViewingEntry(null)}>
-          <DialogContent className="sm:max-w-xl">
-            <DialogHeader>
-              <DialogTitle className="text-lg font-bold text-[#3E3C3D]">
-                Journal Entry {viewingEntry?.ref_id || viewingEntry?.id}
-              </DialogTitle>
-            </DialogHeader>
-            {viewingEntry && (
-              <div className="space-y-4 py-2 text-xs">
-                <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
-                  <div>
-                    <span className="text-slate-400 block font-medium">Status</span>
-                    <Badge className={`${STATUS_BADGES[viewingEntry.status]} mt-0.5 border`}>
-                      {viewingEntry.status}
-                    </Badge>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block font-medium">Entry Date</span>
-                    <span className="font-mono text-slate-800 font-bold">
-                      {new Date(viewingEntry.entry_date).toLocaleDateString()}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-slate-400 block font-medium">Period</span>
-                    <span className="text-slate-800 font-bold">{viewingEntry.period?.name || '—'}</span>
-                  </div>
-                </div>
-
-                {viewingEntry.memo && (
-                  <div>
-                    <span className="text-slate-500 font-medium block mb-1">Memo</span>
-                    <p className="text-slate-800 bg-slate-50 p-2.5 rounded border border-slate-200">
-                      {viewingEntry.memo}
-                    </p>
-                  </div>
-                )}
-
-                {/* Lines Table */}
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
-                        <th className="p-2.5">Account</th>
-                        <th className="p-2.5 text-right">Debit</th>
-                        <th className="p-2.5 text-right">Credit</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {viewingEntry.lines?.map((line) => (
-                        <tr key={line.id}>
-                          <td className="p-2.5">
-                            <div className="font-medium text-slate-900">
-                              {line.account?.account_code} - {line.account?.name}
-                            </div>
-                            {line.description && (
-                              <div className="text-slate-400 text-[11px]">{line.description}</div>
-                            )}
-                          </td>
-                          <td className="p-2.5 text-right font-mono text-slate-800">
-                            {Number(line.debit) > 0 ? `SAR ${Number(line.debit).toFixed(2)}` : '—'}
-                          </td>
-                          <td className="p-2.5 text-right font-mono text-slate-800">
-                            {Number(line.credit) > 0 ? `SAR ${Number(line.credit).toFixed(2)}` : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-
-                <DialogFooter className="pt-2">
-                  <Button variant="outline" size="sm" onClick={() => setViewingEntry(null)}>
-                    Close
-                  </Button>
-                </DialogFooter>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
+        {/* Void Modal */}
+        {voidTarget && (
+          <ConfirmModal
+            isOpen={!!voidTarget}
+            onClose={() => {
+              setVoidTarget(null);
+              setVoidReason('');
+            }}
+            onConfirm={() => voidMutation.mutate({ id: voidTarget.id, memo: voidReason })}
+            isLoading={voidMutation.isPending}
+            title={`Void Journal Entry ${voidTarget.ref_id || ''}?`}
+            description="Voiding will create an automated reversing journal entry with swapped debit and credit lines posted to an open period."
+            confirmLabel="Void & Post Reversal"
+            variant="destructive"
+          >
+            <div className="my-3 space-y-2">
+              <label className="text-xs font-semibold text-slate-700 block">Reason for voiding (optional):</label>
+              <textarea
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+                placeholder="e.g. Duplicated invoice entry / incorrect posting date"
+                rows={2}
+                className="w-full text-xs p-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-rose-500"
+              />
+            </div>
+          </ConfirmModal>
+        )}
       </div>
     </DashboardLayout>
   );

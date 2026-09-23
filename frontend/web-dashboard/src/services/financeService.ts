@@ -278,6 +278,11 @@ export const financeService = {
     return response.data;
   },
 
+  getJournalEntryActivity: async (id: string) => {
+    const response = await api.get(`/journal-entries/${id}/activity`);
+    return response.data;
+  },
+
   // Invoices (Accounts Receivable)
   getInvoices: async (params?: {
     customer_id?: string;

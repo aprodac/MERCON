@@ -238,7 +238,7 @@ export const CustomerQuotationSection: React.FC<CustomerQuotationSectionProps> =
                   <TouchableOpacity
                     key={`${quotation.id}-${route.id || route.rate}`}
                     style={[styles.rateCard, isSelected && styles.rateCardActive]}
-                    onPress={() => setSelectedQuotationId(quotation.id)}
+                    onPress={() => setSelectedQuotationId(isSelected ? '' : quotation.id)}
                     activeOpacity={0.8}
                   >
                     <View style={styles.rateCardHeader}>

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   getJournalEntries,
   getJournalEntryById,
+  getJournalEntryActivity,
   createDraftJournalEntry,
   updateDraftJournalEntry,
   deleteDraftJournalEntry,
@@ -19,6 +20,7 @@ router.use(requireModuleEnabled('finance'));
 
 router.get('/', getJournalEntries);
 router.post('/', createDraftJournalEntry);
+router.get('/:id/activity', getJournalEntryActivity);
 router.get('/:id', getJournalEntryById);
 router.patch('/:id', updateDraftJournalEntry);
 router.delete('/:id', deleteDraftJournalEntry);
