@@ -29,7 +29,20 @@ export default function ARAgeingPage() {
 
   const report = reportRes?.data;
   const rows = report?.rows || [];
-  const grandTotal = report?.grand_total;
+  const grandTotal =
+    report?.grand_total ||
+    (report?.summary
+      ? {
+          party_id: 'TOTAL',
+          party_name: 'Grand Total',
+          current: report.summary.total_current,
+          days_1_30: report.summary.total_1_30,
+          days_31_60: report.summary.total_31_60,
+          days_61_90: report.summary.total_61_90,
+          days_90_plus: report.summary.total_90_plus,
+          total: report.summary.total_outstanding,
+        }
+      : undefined);
 
   return (
     <DashboardLayout active="finance" title="AR Ageing Report">
