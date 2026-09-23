@@ -49,7 +49,7 @@ export default function PersonalInfoScreen() {
           <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('nav_personal_info', 'Personal Information')}</Text>
-        <View style={{ width: 44 }} /> {/* Spacer */}
+        <View style={{ width: 44 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
