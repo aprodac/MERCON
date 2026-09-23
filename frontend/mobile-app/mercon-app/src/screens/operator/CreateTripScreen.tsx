@@ -486,6 +486,9 @@ export const CreateTripScreen = () => {
                 onSelectStopLocation={form.handleSelectStopLocation}
                 onRecalculateTravelTime={form.handleRecalculateTravelTime}
                 onSaveRecentRoute={form.saveToRecentRoutes}
+                onSelectPickupLocation={form.handleSetPickupLocation}
+                onSelectDropoffLocation={form.handleSetDropoffLocation}
+                onSelectRecentRoute={form.handleSelectRecentRoute}
               />
 
               <AdditionalChargesSection

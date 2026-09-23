@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Switch } from 'react-native';
-import { MapPin, Plus, Trash2, ChevronDown, Check } from 'lucide-react-native';
+import { MapPin, Plus, Trash2, ChevronDown, Check, X } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography } from '../../../theme/tokens';
 import { Card } from '../../../components/Card';
 import { Input } from '../../../components/Input';
@@ -44,6 +44,124 @@ const TAXONOMY_LINE_TYPES: Array<{
   },
 ];
 
+interface LocationPickerInputProps {
+  label: string;
+  value: string;
+  locationId?: string;
+  locations: OperatorLocation[];
+  onChangeText: (text: string) => void;
+  onSelectLocation: (name: string, loc?: OperatorLocation) => void;
+  onBlur?: () => void;
+  placeholder: string;
+  style?: any;
+}
+
+const LocationPickerInput: React.FC<LocationPickerInputProps> = ({
+  label,
+  value,
+  locationId,
+  locations,
+  onChangeText,
+  onSelectLocation,
+  onBlur,
+  placeholder,
+  style,
+}) => {
+  const [showSuggestions, setShowSuggestions] = useState(false);
+
+  // Match canonical location by ID or name
+  const matchedLoc = useMemo(() => {
+    if (locationId) {
+      return locations.find((l) => l.id === locationId) || null;
+    }
+    if (!value || !value.trim()) return null;
+    const clean = value.trim().toLowerCase();
+    return locations.find((l) => l.name?.toLowerCase() === clean) || null;
+  }, [locationId, value, locations]);
+
+  const filteredLocations = useMemo(() => {
+    if (!value || !value.trim()) return locations.slice(0, 5);
+    const clean = value.trim().toLowerCase();
+    return locations
+      .filter(
+        (l) =>
+          (l.name && l.name.toLowerCase().includes(clean)) ||
+          (l.city && l.city.toLowerCase().includes(clean)) ||
+          (l.address && l.address.toLowerCase().includes(clean))
+      )
+      .slice(0, 5);
+  }, [value, locations]);
+
+  return (
+    <View style={[styles.locationPickerContainer, style]}>
+      <View style={styles.labelRow}>
+        <Text style={styles.fieldLabel}>{label}</Text>
+        {matchedLoc ? (
+          <View style={styles.masterBadge}>
+            <Check size={10} color={Colors.statusCompleted} strokeWidth={3} />
+            <Text style={styles.masterBadgeText}>Master Location</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <View style={styles.inputWrapper}>
+        <Input
+          value={value}
+          onChangeText={(text) => {
+            onChangeText(text);
+            setShowSuggestions(true);
+          }}
+          onBlur={() => {
+            setTimeout(() => setShowSuggestions(false), 250);
+            if (onBlur) onBlur();
+          }}
+          placeholder={placeholder}
+        />
+        {value.length > 0 && (
+          <TouchableOpacity
+            style={styles.clearBtn}
+            onPress={() => {
+              onSelectLocation('', undefined);
+              setShowSuggestions(false);
+            }}
+          >
+            <X size={14} color={Colors.gray500} />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {showSuggestions && filteredLocations.length > 0 && (
+        <View style={styles.suggestionsContainer}>
+          {filteredLocations.map((loc) => (
+            <TouchableOpacity
+              key={loc.id}
+              style={styles.suggestionRow}
+              onPress={() => {
+                onSelectLocation(loc.name, loc);
+                setShowSuggestions(false);
+              }}
+            >
+              <View style={styles.suggestionIconBox}>
+                <MapPin size={14} color={Colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.suggestionTitle} numberOfLines={1}>
+                  {loc.name}
+                </Text>
+                {loc.city || loc.address ? (
+                  <Text style={styles.suggestionSubtitle} numberOfLines={1}>
+                    {[loc.city, loc.address].filter(Boolean).join(' • ')}
+                  </Text>
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+};
+
 interface RouteSectionProps {
   pickupName: string;
   setPickupName: (val: string) => void;
@@ -78,6 +196,9 @@ interface RouteSectionProps {
   onSelectStopLocation: (stopId: string, loc: OperatorLocation) => void;
   onRecalculateTravelTime: (oName: string, dName: string) => void;
   onSaveRecentRoute: (oName: string, dName: string) => void;
+  onSelectPickupLocation?: (name: string, loc?: OperatorLocation) => void;
+  onSelectDropoffLocation?: (name: string, loc?: OperatorLocation) => void;
+  onSelectRecentRoute?: (r: RecentRouteItem) => void;
 }
 
 export const RouteSection: React.FC<RouteSectionProps> = ({
@@ -114,9 +235,54 @@ export const RouteSection: React.FC<RouteSectionProps> = ({
   onSelectStopLocation,
   onRecalculateTravelTime,
   onSaveRecentRoute,
+  onSelectPickupLocation,
+  onSelectDropoffLocation,
+  onSelectRecentRoute,
 }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const activeTaxonomy = TAXONOMY_LINE_TYPES.find((t) => t.key === rateCategory) || TAXONOMY_LINE_TYPES[0];
+
+  const handlePickupSelect = (name: string, loc?: OperatorLocation) => {
+    if (onSelectPickupLocation) {
+      onSelectPickupLocation(name, loc);
+    } else {
+      setPickupName(name);
+      setPickupLocationId(loc?.id);
+      if (loc?.lat) setPickupLat(String(loc.lat));
+      if (loc?.lng) setPickupLng(String(loc.lng));
+      if (dropoffName) onRecalculateTravelTime(name, dropoffName);
+    }
+  };
+
+  const handleDropoffSelect = (name: string, loc?: OperatorLocation) => {
+    if (onSelectDropoffLocation) {
+      onSelectDropoffLocation(name, loc);
+    } else {
+      setDropoffName(name);
+      setDropoffLocationId(loc?.id);
+      if (loc?.lat) setDropoffLat(String(loc.lat));
+      if (loc?.lng) setDropoffLng(String(loc.lng));
+      if (pickupName) onRecalculateTravelTime(pickupName, name);
+    }
+  };
+
+  const handleRecentRoutePress = (r: RecentRouteItem) => {
+    if (onSelectRecentRoute) {
+      onSelectRecentRoute(r);
+    } else {
+      setPickupName(r.originName);
+      if (r.originLat) setPickupLat(r.originLat);
+      if (r.originLng) setPickupLng(r.originLng);
+      if (r.originLocationId) setPickupLocationId(r.originLocationId);
+
+      setDropoffName(r.destName);
+      if (r.destLat) setDropoffLat(r.destLat);
+      if (r.destLng) setDropoffLng(r.destLng);
+      if (r.destLocationId) setDropoffLocationId(r.destLocationId);
+
+      onRecalculateTravelTime(r.originName, r.destName);
+    }
+  };
 
   return (
     <View style={styles.sectionContainer}>
@@ -131,19 +297,7 @@ export const RouteSection: React.FC<RouteSectionProps> = ({
                 <TouchableOpacity
                   key={r.id}
                   style={styles.recentRouteChip}
-                  onPress={() => {
-                    setPickupName(r.originName);
-                    if (r.originLat) setPickupLat(r.originLat);
-                    if (r.originLng) setPickupLng(r.originLng);
-                    if (r.originLocationId) setPickupLocationId(r.originLocationId);
-
-                    setDropoffName(r.destName);
-                    if (r.destLat) setDropoffLat(r.destLat);
-                    if (r.destLng) setDropoffLng(r.destLng);
-                    if (r.destLocationId) setDropoffLocationId(r.destLocationId);
-
-                    onRecalculateTravelTime(r.originName, r.destName);
-                  }}
+                  onPress={() => handleRecentRoutePress(r)}
                 >
                   <MapPin size={12} color={Colors.primary} />
                   <Text style={styles.recentRouteText}>{r.originName} → {r.destName}</Text>
@@ -153,25 +307,34 @@ export const RouteSection: React.FC<RouteSectionProps> = ({
           </View>
         )}
 
-        {/* Origin / Pickup Input */}
-        <Input
+        {/* Origin / Pickup Input with Autocomplete */}
+        <LocationPickerInput
           label="Pickup Origin"
           value={pickupName}
-          onChangeText={(val) => {
-            setPickupName(val);
-            if (dropoffName) onRecalculateTravelTime(val, dropoffName);
-          }}
+          locationId={pickupLocationId}
+          locations={locations}
+          onChangeText={(text) => handlePickupSelect(text, undefined)}
+          onSelectLocation={(name, loc) => handlePickupSelect(name, loc)}
           onBlur={() => onSaveRecentRoute(pickupName, dropoffName)}
           placeholder="e.g. Riyadh Main Warehouse"
         />
 
-        {/* Intermediate Stops */}
+        {/* Intermediate Waypoint Stops with Autocomplete */}
         {outboundStops.map((stop, idx) => (
           <View key={stop.id} style={styles.stopRow}>
-            <Input
+            <LocationPickerInput
               label={`Intermediate Stop #${idx + 1}`}
               value={stop.name}
-              onChangeText={(val) => onUpdateStop(stop.id, val)}
+              locationId={stop.locationId}
+              locations={locations}
+              onChangeText={(text) => onUpdateStop(stop.id, text)}
+              onSelectLocation={(_, loc) => {
+                if (loc) {
+                  onSelectStopLocation(stop.id, loc);
+                } else {
+                  onUpdateStop(stop.id, stop.name);
+                }
+              }}
               placeholder="e.g. Al Hasa Waypoint"
               style={{ flex: 1 }}
             />
@@ -186,14 +349,14 @@ export const RouteSection: React.FC<RouteSectionProps> = ({
           <Text style={styles.addStopText}>+ Add Waypoint Stop</Text>
         </TouchableOpacity>
 
-        {/* Destination / Dropoff Input */}
-        <Input
+        {/* Destination / Dropoff Input with Autocomplete */}
+        <LocationPickerInput
           label="Dropoff Destination"
           value={dropoffName}
-          onChangeText={(val) => {
-            setDropoffName(val);
-            if (pickupName) onRecalculateTravelTime(pickupName, val);
-          }}
+          locationId={dropoffLocationId}
+          locations={locations}
+          onChangeText={(text) => handleDropoffSelect(text, undefined)}
+          onSelectLocation={(name, loc) => handleDropoffSelect(name, loc)}
           onBlur={() => onSaveRecentRoute(pickupName, dropoffName)}
           placeholder="e.g. Dammam Port Terminal"
           style={{ marginTop: Spacing.xs }}
@@ -308,6 +471,81 @@ const styles = StyleSheet.create({
     color: Colors.gray600,
     textTransform: 'uppercase',
     marginBottom: 4,
+  },
+  locationPickerContainer: {
+    position: 'relative',
+    zIndex: 10,
+    marginBottom: Spacing.xs,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  masterBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: Colors.statusCompletedBg,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  masterBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.statusCompleted,
+  },
+  inputWrapper: {
+    position: 'relative',
+  },
+  clearBtn: {
+    position: 'absolute',
+    right: 12,
+    top: 14,
+    zIndex: 2,
+  },
+  suggestionsContainer: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+    marginTop: 4,
+    shadowColor: Colors.black,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm + 2,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray100,
+  },
+  suggestionIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.gray100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestionTitle: {
+    fontSize: Typography.xs,
+    fontWeight: '700',
+    color: Colors.charcoal,
+  },
+  suggestionSubtitle: {
+    fontSize: Typography.micro,
+    color: Colors.gray500,
   },
   recentRoutesContainer: {
     marginBottom: Spacing.xs,

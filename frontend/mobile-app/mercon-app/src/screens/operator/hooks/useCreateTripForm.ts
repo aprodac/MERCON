@@ -486,9 +486,80 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
     }
   }, [customerId, activeCustomerQuotations, pickupName, dropoffName, pickupLocationId, dropoffLocationId, rateCategory, billingType]);
 
+  // Location setters that auto-trigger quotation rematching & travel time estimate
+  const handleSetPickupLocation = useCallback((name: string, loc?: OperatorLocation) => {
+    setPickupName(name);
+    const locId = loc?.id;
+    setPickupLocationId(locId);
+    if (loc?.lat != null) setPickupLat(String(loc.lat));
+    if (loc?.lng != null) setPickupLng(String(loc.lng));
+
+    if (name && dropoffName) {
+      estimateTravelTimeByName(name, dropoffName).then((est) => {
+        if (est) {
+          const hrsStr = (est.durationMinutes / 60).toFixed(1);
+          setEstimatedHours(hrsStr);
+          setIsEstTravelCalculated(true);
+          calculateAutoEta(date, time, hrsStr);
+        }
+      });
+    }
+
+    invalidateOrRematchQuotation(name, dropoffName, locId, dropoffLocationId, rateCategory, billingType);
+  }, [dropoffName, dropoffLocationId, rateCategory, billingType, date, time, calculateAutoEta, invalidateOrRematchQuotation]);
+
+  const handleSetDropoffLocation = useCallback((name: string, loc?: OperatorLocation) => {
+    setDropoffName(name);
+    const locId = loc?.id;
+    setDropoffLocationId(locId);
+    if (loc?.lat != null) setDropoffLat(String(loc.lat));
+    if (loc?.lng != null) setDropoffLng(String(loc.lng));
+
+    if (pickupName && name) {
+      estimateTravelTimeByName(pickupName, name).then((est) => {
+        if (est) {
+          const hrsStr = (est.durationMinutes / 60).toFixed(1);
+          setEstimatedHours(hrsStr);
+          setIsEstTravelCalculated(true);
+          calculateAutoEta(date, time, hrsStr);
+        }
+      });
+    }
+
+    invalidateOrRematchQuotation(pickupName, name, pickupLocationId, locId, rateCategory, billingType);
+  }, [pickupName, pickupLocationId, rateCategory, billingType, date, time, calculateAutoEta, invalidateOrRematchQuotation]);
+
+  const handleSelectRecentRoute = useCallback((r: RecentRouteItem) => {
+    setPickupName(r.originName);
+    setPickupLocationId(r.originLocationId);
+    if (r.originLat) setPickupLat(r.originLat);
+    if (r.originLng) setPickupLng(r.originLng);
+
+    setDropoffName(r.destName);
+    setDropoffLocationId(r.destLocationId);
+    if (r.destLat) setDropoffLat(r.destLat);
+    if (r.destLng) setDropoffLng(r.destLng);
+
+    estimateTravelTimeByName(r.originName, r.destName).then((est) => {
+      if (est) {
+        const hrsStr = (est.durationMinutes / 60).toFixed(1);
+        setEstimatedHours(hrsStr);
+        setIsEstTravelCalculated(true);
+        calculateAutoEta(date, time, hrsStr);
+      }
+    });
+
+    invalidateOrRematchQuotation(r.originName, r.destName, r.originLocationId, r.destLocationId, rateCategory, billingType);
+  }, [rateCategory, billingType, date, time, calculateAutoEta, invalidateOrRematchQuotation]);
+
   const handleSetRateCategory = useCallback((cat: RateCategoryType) => {
     setRateCategory(cat);
     invalidateOrRematchQuotation(undefined, undefined, undefined, undefined, cat);
+  }, [invalidateOrRematchQuotation]);
+
+  const handleSetBillingType = useCallback((bType: 'Monthly' | 'Extra') => {
+    setBillingType(bType);
+    invalidateOrRematchQuotation(undefined, undefined, undefined, undefined, undefined, bType);
   }, [invalidateOrRematchQuotation]);
 
   // Sync master driver / vehicle to rotation slot 0 when master values change
@@ -854,8 +925,11 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
     defineBillingType, setDefineBillingType,
     definingQuotation, setDefiningQuotation,
     rateCategory, setRateCategory: handleSetRateCategory,
-    billingType, setBillingType,
+    billingType, setBillingType: handleSetBillingType,
     pickupName, setPickupName,
+    handleSetPickupLocation,
+    handleSetDropoffLocation,
+    handleSelectRecentRoute,
     pickupLat, setPickupLat,
     pickupLng, setPickupLng,
     pickupLocationId, setPickupLocationId,

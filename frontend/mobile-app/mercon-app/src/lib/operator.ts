@@ -167,6 +167,7 @@ export interface OperatorLocation {
   id: string;
   name: string;
   address?: string | null;
+  city?: string | null;
   lat?: number | null;
   lng?: number | null;
 }
