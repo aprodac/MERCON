@@ -4,7 +4,7 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, StatusBar, RefreshControl, ActivityIndicator, Alert, Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Svg, { Path, G, Circle } from 'react-native-svg';
 import {
@@ -123,6 +123,7 @@ const HomeScreen = () => {
   const [scheduledTrips, setScheduledTrips] = useState<MobileTrip[]>([]);
   const [scheduledLoading, setScheduledLoading] = useState(true);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const timeOfDay = React.useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 12) return { key: 'greeting_morning', fallback: 'Good Morning,' };
@@ -421,7 +422,7 @@ const HomeScreen = () => {
         <View style={styles.headerContainer}>
           <HeaderWaveBg width={SCREEN_WIDTH} height={310} />
 
-          <SafeAreaView style={styles.headerSafe}>
+          <View style={[styles.headerSafe, { paddingTop: Math.max(insets.top, 8) }]}>
             {/* Top Header Row: Language Top-Left, Driver Charge Top-Right */}
             <View style={styles.topHeaderRow}>
               {/* Select Language on Top-Left */}
@@ -440,7 +441,7 @@ const HomeScreen = () => {
               <Text style={styles.greetingSub} adjustsFontSizeToFit numberOfLines={1}>{t(timeOfDay.key, timeOfDay.fallback)}</Text>
               <Text style={styles.greetingMain} adjustsFontSizeToFit numberOfLines={1}>{t('msg_drive_safe', 'Drive Safe Today')}</Text>
             </View>
-          </SafeAreaView>
+          </View>
         </View>
 
         {/* ── Current Trip Card Section (Overlapping Header naturally) ── */}
