@@ -528,3 +528,133 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: error.message });
   }
 };
+
+export const getGeneralLedger = async (req: Request, res: Response) => {
+  try {
+    const { account_id, date_from, date_to } = req.query;
+
+    if (!account_id) {
+      return res.json({
+        success: true,
+        data: {
+          account: null,
+          opening_balance: 0,
+          lines: [],
+          closing_balance: 0,
+        },
+      });
+    }
+
+    const accountIdStr = String(account_id);
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(accountIdStr)) {
+      return res.status(400).json({ error: { code: 'INVALID_ACCOUNT_ID' } });
+    }
+
+    const account = await prisma.account.findUnique({
+      where: { id: accountIdStr },
+    });
+
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        error: 'Account not found',
+      });
+    }
+
+    const isDebitNormal = account.account_type === 'Asset' || account.account_type === 'Expense';
+
+    const fromDate = date_from ? new Date(String(date_from)) : undefined;
+    const toDate = date_to ? new Date(String(date_to)) : undefined;
+
+    let openingBalance = new Prisma.Decimal(0);
+
+    if (fromDate) {
+      const priorLines = await prisma.journalLine.findMany({
+        where: {
+          accountId: account.id,
+          journalEntry: {
+            status: 'Posted',
+            entry_date: { lt: fromDate },
+          },
+        },
+      });
+
+      for (const line of priorLines) {
+        const debit = new Prisma.Decimal(line.debit || 0);
+        const credit = new Prisma.Decimal(line.credit || 0);
+        if (isDebitNormal) {
+          openingBalance = openingBalance.plus(debit.minus(credit));
+        } else {
+          openingBalance = openingBalance.plus(credit.minus(debit));
+        }
+      }
+    }
+
+    const entryDateFilter: Prisma.DateTimeFilter = {};
+    if (fromDate) entryDateFilter.gte = fromDate;
+    if (toDate) entryDateFilter.lte = toDate;
+
+    const lines = await prisma.journalLine.findMany({
+      where: {
+        accountId: account.id,
+        journalEntry: {
+          status: 'Posted',
+          entry_date: Object.keys(entryDateFilter).length > 0 ? entryDateFilter : undefined,
+        },
+      },
+      include: {
+        journalEntry: {
+          select: {
+            ref_id: true,
+            entry_date: true,
+            memo: true,
+            source_type: true,
+            source_id: true,
+          },
+        },
+      },
+      orderBy: [
+        { journalEntry: { entry_date: 'asc' } },
+        { journalEntry: { createdAt: 'asc' } },
+      ],
+    });
+
+    let currentBalance = openingBalance;
+    const formattedLines = lines.map((line) => {
+      const debit = new Prisma.Decimal(line.debit || 0);
+      const credit = new Prisma.Decimal(line.credit || 0);
+      const lineImpact = isDebitNormal ? debit.minus(credit) : credit.minus(debit);
+      currentBalance = currentBalance.plus(lineImpact);
+
+      return {
+        entry_date: line.journalEntry.entry_date.toISOString(),
+        ref_id: line.journalEntry.ref_id,
+        memo: line.description || line.journalEntry.memo || null,
+        source_type: line.journalEntry.source_type || null,
+        source_id: line.journalEntry.source_id || null,
+        debit: debit.toNumber(),
+        credit: credit.toNumber(),
+        running_balance: currentBalance.toNumber(),
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        account: {
+          id: account.id,
+          account_code: account.account_code,
+          name: account.name,
+          account_type: account.account_type,
+        },
+        opening_balance: openingBalance.toNumber(),
+        lines: formattedLines,
+        closing_balance: currentBalance.toNumber(),
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+

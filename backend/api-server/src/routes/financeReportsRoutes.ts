@@ -4,6 +4,7 @@ import {
   getProfitAndLoss,
   getBalanceSheet,
   getCashFlow,
+  getGeneralLedger,
 } from '../controllers/financeReportsController';
 import { getARAgeing, getAPAgeing } from '../controllers/ageingReportsController';
 import { authenticateJWT } from '../middlewares/auth';
@@ -21,5 +22,6 @@ router.get('/reports/balance-sheet', getBalanceSheet);
 router.get('/reports/ar-ageing', getARAgeing);
 router.get('/reports/ap-ageing', getAPAgeing);
 router.get('/reports/cash-flow', getCashFlow);
+router.get('/reports/general-ledger', getGeneralLedger);
 
 export default router;

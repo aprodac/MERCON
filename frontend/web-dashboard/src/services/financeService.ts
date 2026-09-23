@@ -407,6 +407,11 @@ export const financeService = {
     return response.data;
   },
 
+  getGeneralLedger: async (params?: { account_id?: string; date_from?: string; date_to?: string }): Promise<ApiResponse<GeneralLedgerData>> => {
+    const response = await api.get('/finance/reports/general-ledger', { params });
+    return response.data;
+  },
+
   // Bank Accounts
   getBankAccounts: async (): Promise<ApiResponse<BankAccount[]>> => {
     const response = await api.get('/bank-accounts');
@@ -557,5 +562,28 @@ export interface CashFlowData {
   net_change_in_cash: number;
   opening_cash: number;
   closing_cash: number;
+}
+
+export interface GeneralLedgerLineItem {
+  entry_date: string;
+  ref_id: string | null;
+  memo: string | null;
+  source_type: string | null;
+  source_id: string | null;
+  debit: number;
+  credit: number;
+  running_balance: number;
+}
+
+export interface GeneralLedgerData {
+  account: {
+    id: string;
+    account_code: string;
+    name: string;
+    account_type: AccountType;
+  } | null;
+  opening_balance: number;
+  lines: GeneralLedgerLineItem[];
+  closing_balance: number;
 }
 
