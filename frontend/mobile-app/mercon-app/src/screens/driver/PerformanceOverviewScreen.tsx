@@ -2,19 +2,27 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Target, Route, CheckCircle2, TrendingUp, AlertCircle } from 'lucide-react-native';
+import { ArrowLeft, MapPin, CheckCircle2, Clock, Truck, ChevronRight } from 'lucide-react-native';
 import { useLanguage } from '../../lib/language-context';
 import { useProfile } from '../../lib/use-profile';
+
+// Mock recent trips data for the UI
+const RECENT_TRIPS = [
+  { id: 'TRP-1042', route: 'Riyadh → Dammam', date: '21 Sep 2026', vehicle: 'NXA-8210', status: 'ON_TIME' },
+  { id: 'TRP-1038', route: 'Jeddah → Riyadh', date: '18 Sep 2026', vehicle: 'NXA-8210', status: 'DELAYED' },
+  { id: 'TRP-1031', route: 'Dammam → Jubail', date: '15 Sep 2026', vehicle: 'NXA-8210', status: 'ON_TIME' },
+  { id: 'TRP-1025', route: 'Riyadh → Al Kharj', date: '12 Sep 2026', vehicle: 'NXA-8210', status: 'ON_TIME' },
+];
 
 export default function PerformanceOverviewScreen() {
   const router = useRouter();
   const { t } = useLanguage();
   const { profile } = useProfile();
 
-  // Fallbacks in case the backend deployment isn't updated yet
-  const totalTrips = profile?.stats?.totalTrips ?? 18;
+  // Fallbacks
+  const totalTrips = profile?.stats?.totalTrips ?? 142;
   const onTimePercentage = profile?.stats?.onTimePercentage ?? 98;
-  const totalDistance = profile?.stats?.totalDistanceKm ?? 3450;
+  const totalDistance = profile?.stats?.totalDistanceKm ?? 12500;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -31,50 +39,77 @@ export default function PerformanceOverviewScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        <View style={styles.heroCard}>
-          <View style={styles.heroHeader}>
-            <TrendingUp size={24} color="#FA634E" strokeWidth={2} />
-            <Text style={styles.heroTitle}>Your Driving Stats</Text>
+        {/* HERO SCORECARD */}
+        <View style={styles.scorecard}>
+          <Text style={styles.scorecardTitle}>On-Time Delivery Rate</Text>
+          <View style={styles.mainScoreRow}>
+            <Text style={styles.mainScore}>{onTimePercentage}</Text>
+            <Text style={styles.mainScorePercent}>%</Text>
           </View>
-          <Text style={styles.heroSubtitle}>
-            Great job! You have maintained excellent performance over the last 30 days.
-          </Text>
-        </View>
-
-        <View style={styles.metricsGrid}>
-          {/* Total Trips */}
-          <View style={styles.metricCard}>
-            <View style={[styles.metricIconBox, { backgroundColor: '#F0F9EA' }]}>
-              <Target size={24} color="#65A30D" />
+          
+          <View style={styles.scorecardDivider} />
+          
+          <View style={styles.statsRow}>
+            <View style={styles.statCol}>
+              <Text style={styles.statLabel}>Total Trips</Text>
+              <Text style={styles.statValue}>{totalTrips}</Text>
             </View>
-            <Text style={styles.metricValue}>{totalTrips}</Text>
-            <Text style={styles.metricLabel}>Total Trips</Text>
-          </View>
-
-          {/* On-Time % */}
-          <View style={styles.metricCard}>
-            <View style={[styles.metricIconBox, { backgroundColor: '#ECFDF5' }]}>
-              <CheckCircle2 size={24} color="#059669" />
+            <View style={styles.statDivider} />
+            <View style={styles.statCol}>
+              <Text style={styles.statLabel}>Total Distance</Text>
+              <Text style={styles.statValue}>{totalDistance.toLocaleString()} km</Text>
             </View>
-            <Text style={styles.metricValue}>{onTimePercentage}%</Text>
-            <Text style={styles.metricLabel}>On-Time Rating</Text>
-          </View>
-
-          {/* Total Distance */}
-          <View style={styles.metricCard}>
-            <View style={[styles.metricIconBox, { backgroundColor: '#EFF6FF' }]}>
-              <Route size={24} color="#3B82F6" />
-            </View>
-            <Text style={styles.metricValue}>{totalDistance.toLocaleString()} km</Text>
-            <Text style={styles.metricLabel}>Distance Driven</Text>
           </View>
         </View>
 
-        <View style={styles.infoBox}>
-          <AlertCircle size={20} color="#CA8A04" />
-          <Text style={styles.infoText}>
-            Statistics are updated at the end of each completed trip and reflect your lifetime performance on the platform.
-          </Text>
+        {/* DUTY STATUS (Optional mini-card) */}
+        <View style={styles.dutyCard}>
+          <View style={styles.dutyIconBox}>
+            <Clock size={20} color="#059669" />
+          </View>
+          <View style={styles.dutyTextCol}>
+            <Text style={styles.dutyTitle}>Duty Status: Active</Text>
+            <Text style={styles.dutySub}>You have 42 hours logged this week.</Text>
+          </View>
+        </View>
+
+        {/* RECENT TRIPS HISTORY */}
+        <Text style={styles.sectionTitle}>Recent Trip History</Text>
+        
+        <View style={styles.tripsContainer}>
+          {RECENT_TRIPS.map((trip, index) => {
+            const isOnTime = trip.status === 'ON_TIME';
+            return (
+              <React.Fragment key={trip.id}>
+                <TouchableOpacity style={styles.tripRow} activeOpacity={0.7}>
+                  <View style={[styles.statusIconBox, { backgroundColor: isOnTime ? '#ECFDF5' : '#FFFBEB' }]}>
+                    {isOnTime ? (
+                      <CheckCircle2 size={20} color="#059669" />
+                    ) : (
+                      <Clock size={20} color="#D97706" />
+                    )}
+                  </View>
+                  
+                  <View style={styles.tripInfo}>
+                    <Text style={styles.tripRoute}>{trip.route}</Text>
+                    <View style={styles.tripMetaRow}>
+                      <Text style={styles.tripDate}>{trip.date} • {trip.id}</Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.tripStatusCol}>
+                    <View style={[styles.badge, { backgroundColor: isOnTime ? '#ECFDF5' : '#FFFBEB' }]}>
+                      <Text style={[styles.badgeText, { color: isOnTime ? '#059669' : '#D97706' }]}>
+                        {isOnTime ? 'On Time' : 'Delayed'}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+                
+                {index < RECENT_TRIPS.length - 1 && <View style={styles.listDivider} />}
+              </React.Fragment>
+            );
+          })}
         </View>
 
       </ScrollView>
@@ -114,83 +149,174 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 40,
   },
-  heroCard: {
-    backgroundColor: '#FFFFFF',
+  
+  /* Hero Scorecard */
+  scorecard: {
+    backgroundColor: '#3E3C3D',
     borderRadius: 20,
     padding: 24,
     marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
   },
-  heroHeader: {
+  scorecardTitle: {
+    color: '#A1A1AA',
+    fontSize: 14,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  mainScoreRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+  },
+  mainScore: {
+    fontSize: 56,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  mainScorePercent: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#FA634E',
+    marginLeft: 4,
+  },
+  scorecardDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginVertical: 20,
+  },
+  statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
   },
-  heroTitle: {
-    fontSize: 18,
+  statCol: {
+    flex: 1,
+  },
+  statLabel: {
+    color: '#A1A1AA',
+    fontSize: 13,
+    marginBottom: 4,
+  },
+  statValue: {
+    color: '#FFFFFF',
+    fontSize: 20,
     fontWeight: '700',
-    color: '#18181B',
-    marginLeft: 8,
   },
-  heroSubtitle: {
-    fontSize: 14,
-    color: '#71717A',
-    lineHeight: 20,
+  statDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    marginHorizontal: 16,
   },
-  metricsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    marginBottom: 24,
-  },
-  metricCard: {
+  
+  /* Duty Card */
+  dutyCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: 20,
-    flex: 1,
-    minWidth: '45%',
+    padding: 16,
+    flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 24,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.04,
     shadowRadius: 4,
     elevation: 2,
   },
-  metricIconBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+  dutyIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#ECFDF5',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 12,
+    marginRight: 16,
   },
-  metricValue: {
-    fontSize: 24,
-    fontWeight: '800',
+  dutyTextCol: {
+    flex: 1,
+  },
+  dutyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#18181B',
+    marginBottom: 2,
+  },
+  dutySub: {
+    fontSize: 13,
+    color: '#71717A',
+  },
+
+  /* Trips List */
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#18181B',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  tripsContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  tripRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+  },
+  statusIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  tripInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  tripRoute: {
+    fontSize: 15,
+    fontWeight: '600',
     color: '#18181B',
     marginBottom: 4,
   },
-  metricLabel: {
+  tripMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tripDate: {
     fontSize: 13,
-    fontWeight: '500',
     color: '#71717A',
   },
-  infoBox: {
-    flexDirection: 'row',
-    backgroundColor: '#FEF9C3',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'flex-start',
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 13,
-    color: '#854D0E',
-    lineHeight: 18,
+  tripStatusCol: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
     marginLeft: 12,
-  }
+  },
+  badge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  listDivider: {
+    height: 1,
+    backgroundColor: '#F4F4F5',
+    marginLeft: 68,
+  },
 });
