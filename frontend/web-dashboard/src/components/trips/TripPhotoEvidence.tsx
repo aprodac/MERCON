@@ -17,7 +17,8 @@ import {
 import { GeotagEvidenceData } from './GeotagEvidenceCard';
 import { EvidenceLightboxModal, LightboxPhotoItem } from './EvidenceLightboxModal';
 import { openPhotoEvidenceWhatsapp } from '@/utils/whatsappFormatter';
-import { isRoundTrip as checkIsRoundTrip, getLegEndpoints } from '@mercon/shared-types';
+import { isRoundTrip as checkIsRoundTrip, getLegEndpoints, type StopRole } from '@mercon/shared-types';
+import { stopRoleClasses } from './StopRole';
 
 export interface PhotoPreviewItem {
   url: string;
@@ -556,33 +557,25 @@ export default function TripPhotoEvidence({
         ? `Est: ${formatDocTime(st.planned_arrival)}`
         : 'Pending';
 
-      let badgeText = 'STOP';
-      let badgeColor = 'bg-orange-50 text-orange-700 border-orange-200';
-      let seqBgColor = 'bg-orange-500 text-white';
-
-      if (role === 'pickup') {
-        badgeText = 'PICKUP';
-        badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-        seqBgColor = 'bg-emerald-600 text-white';
-      } else if (role === 'delivery') {
-        badgeText = isRoundTrip ? 'STOP 1' : 'DELIVERY';
-        badgeColor = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-        seqBgColor = 'bg-emerald-600 text-white';
-      } else if (role === 'return_loading') {
-        badgeText = 'RETURN LOADING';
-        badgeColor = 'bg-blue-50 text-blue-700 border-blue-200';
-        seqBgColor = 'bg-blue-600 text-white';
-      } else if (role === 'return_delivery') {
-        badgeText = 'RETURN DELIVERY';
-        badgeColor = 'bg-blue-50 text-blue-700 border-blue-200';
-        seqBgColor = 'bg-blue-600 text-white';
-      } else if (role === 'return_stop') {
-        badgeText = `RETURN STOP ${overallIdx - 2}`;
-        badgeColor = 'bg-purple-50 text-purple-700 border-purple-200';
-        seqBgColor = 'bg-purple-600 text-white';
-      } else {
-        badgeText = `STOP ${overallIdx}`;
-      }
+      // Labels are per leg (Stop 1, Stop 2… / Return Stop 1…) and colours follow
+      // the shared stop-role palette: loading = blue, stops = red, delivery = green.
+      const stopRole: StopRole =
+        role === 'pickup' || role === 'return_loading' ? 'origin' : role === 'delivery' || role === 'return_delivery' ? 'destination' : 'stop';
+      const roleClasses = stopRoleClasses(stopRole);
+      const badgeColor = roleClasses.badge;
+      const seqBgColor = roleClasses.solid;
+      const badgeText =
+        role === 'pickup'
+          ? 'PICKUP'
+          : role === 'delivery'
+          ? 'DELIVERY'
+          : role === 'return_loading'
+          ? 'RETURN LOADING'
+          : role === 'return_delivery'
+          ? 'RETURN DELIVERY'
+          : role === 'return_stop'
+          ? `RETURN STOP ${intermediateIndex + 1}`
+          : `STOP ${intermediateIndex + 1}`;
 
       const photos: PhotoCardItem[] = [];
 

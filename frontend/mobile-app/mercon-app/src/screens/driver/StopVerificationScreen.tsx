@@ -103,8 +103,11 @@ export default function StopVerificationScreen() {
     ? allStops.filter((s) => s.isIntermediate && s.isReturnStop)
     : allStops.filter((s) => s.isIntermediate && !s.isReturnStop);
 
-  // Fallback to any intermediate stop if specific leg list is empty
-  const activeStopsList = intermediateStops.length > 0 ? intermediateStops : allStops.filter((s) => s.isIntermediate);
+  // Only this leg's stops. The old fallback to "any intermediate stop" showed an
+  // OUTBOUND stop as "Return Stop #1" when the return leg had none (e.g.
+  // A→X→B | B→A). Only trips without leg data (legacy one-way) keep it.
+  const hasLegData = (trip?.stops ?? []).some((s) => (s.leg_index ?? 0) === 1) || !isRound;
+  const activeStopsList = intermediateStops.length > 0 || hasLegData ? intermediateStops : allStops.filter((s) => s.isIntermediate);
 
   // Route param wins; otherwise resume from the indexed workflow state
   // (e.g. ARRIVED_AT_STOP_1) so a restart doesn't send the driver back to stop #1.
@@ -120,6 +123,13 @@ export default function StopVerificationScreen() {
   const dbStopId: string | undefined =
     getLegIntermediateDbStops(trip, isReturnLeg ? 1 : 0)[parsedIndex]?.id ??
     ((activeStop as any)?.stopId || undefined);
+
+  useEffect(() => {
+    if (loading || !trip || trip.driver_workflow === 'EXTERNAL_APP') return;
+    if (activeStopsList.length === 0) {
+      router.replace('/trip/navigate' as any);
+    }
+  }, [loading, trip, activeStopsList.length]);
 
   useEffect(() => {
     if (trip?.driver_workflow === 'EXTERNAL_APP') {

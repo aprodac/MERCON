@@ -41,3 +41,18 @@ export const StopRoleBadge: React.FC<{ role: StopRole; children?: React.ReactNod
     </span>
   );
 };
+
+/**
+ * Tailwind class pairs for a role, for components that style with classNames.
+ * Same colours as STOP_ROLE_COLORS (blue-600 / red-600 / green-600); the class
+ * strings are written out in full so Tailwind generates them.
+ */
+const STOP_ROLE_CLASSES: Record<StopRole, { badge: string; solid: string }> = {
+  origin: { badge: 'bg-blue-50 text-blue-700 border-blue-200', solid: 'bg-blue-600 text-white' },
+  stop: { badge: 'bg-red-50 text-red-700 border-red-200', solid: 'bg-red-600 text-white' },
+  destination: { badge: 'bg-green-50 text-green-700 border-green-200', solid: 'bg-green-600 text-white' },
+};
+
+export function stopRoleClasses(role: StopRole) {
+  return STOP_ROLE_CLASSES[role];
+}
