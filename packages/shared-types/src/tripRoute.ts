@@ -649,6 +649,32 @@ export function targetFromWorkflowState(ws: string | null | undefined, isRound: 
   }
 }
 
+export type TimelineStopProgress = 'completed' | 'current' | 'upcoming';
+
+/**
+ * Progress of each timeline node from the recorded stop timestamps, for
+ * route-progress displays (web trip details). A stop is only done once the
+ * driver has LEFT it: arriving at the pickup (loading) keeps the pickup
+ * current — marking it done on arrival put the truck on the next stop while
+ * the driver was still loading. The current node is the one after the last
+ * departure, or a later stop the driver has already arrived at (covers
+ * legacy trips whose intermediate stops were never timestamped).
+ */
+export function getTimelineProgress(
+  nodes: Pick<TimelineStop, 'actualArrival' | 'actualDeparture'>[],
+  tripCompleted: boolean,
+): TimelineStopProgress[] {
+  if (tripCompleted) return nodes.map(() => 'completed');
+  let lastDeparted = -1;
+  let lastArrived = -1;
+  nodes.forEach((n, i) => {
+    if (n.actualDeparture) lastDeparted = i;
+    if (n.actualArrival) lastArrived = i;
+  });
+  const current = Math.min(Math.max(lastDeparted + 1, lastArrived), nodes.length - 1);
+  return nodes.map((_, i) => (i < current ? 'completed' : i === current ? 'current' : 'upcoming'));
+}
+
 export function findTimelineIndex(nodes: TimelineStop[], target: TimelineTarget): number {
   if (target.kind === 'completed') return nodes.length;
 

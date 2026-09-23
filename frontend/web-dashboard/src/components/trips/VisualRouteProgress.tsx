@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { Check, Navigation, Truck, MapPin, Flag, Clock } from 'lucide-react';
 import { formatInDeploymentTz } from '@/lib/datetime';
 import { cn } from '@/lib/utils';
-import { isRoundTrip as checkIsRoundTrip, parseTripRouteNodes } from '@mercon/shared-types';
+import { isRoundTrip as checkIsRoundTrip, parseTripRouteNodes, getTimelineProgress } from '@mercon/shared-types';
 
 interface VisualRouteProgressProps {
   stops: any[];
@@ -90,13 +90,14 @@ export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges,
     const nodes = (hasServerTimeline ? timeline : (trip?.route_timeline || parseTripRouteNodes(trip || { stops }))) || [];
     if (!nodes || nodes.length === 0) return DEFAULT_STOPS;
 
-    let prevAllCompleted = true;
+    // Same rule as the driver app: a stop is done once the driver LEFT it,
+    // so the truck stays on the pickup while loading.
+    const progress = getTimelineProgress(nodes, isTripFullyCompleted);
     return nodes.map((node: any, idx: number) => {
       const isFirst = idx === 0;
       const isLast = idx === nodes.length - 1;
-      const completed = !!node.actualArrival || isTripFullyCompleted;
-      const isCurrent = !completed && prevAllCompleted;
-      if (!completed) prevAllCompleted = false;
+      const completed = progress[idx] === 'completed';
+      const isCurrent = progress[idx] === 'current';
 
       const relevantTime = node.actualArrival || node.plannedArrival;
       const timeStr = relevantTime

@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { getTimelineProgress } from '@mercon/shared-types';
 
 import { validateTripStops } from './tripValidationService';
 import { stampWorkflowTransition, stampStopTransition, resolveAuthoritativeActiveStop, stampIntermediateStopVisit } from './tripLifecycle';
@@ -1773,6 +1774,31 @@ describe('DEEP CODE-LEVEL TEST SUITE — INDEPENDENT OUTBOUND + RETURN ARCHITECT
       );
     });
   });
+
+  // ============================================================
+  // TEST CASE #18 — Web route progress (truck position)
+  // A stop is done only after the driver LEFT it.
+  // ============================================================
+  describe('Test Case #18 — getTimelineProgress', () => {
+    const n = (a?: boolean, d?: boolean) => ({ actualArrival: a ? 't' : null, actualDeparture: d ? 't' : null });
+    it('nothing recorded → first stop current', () => {
+      assert.deepEqual(getTimelineProgress([n(), n(), n(), n()], false), ['current', 'upcoming', 'upcoming', 'upcoming']);
+    });
+    it('arrived at pickup, still loading → pickup stays current (truck NOT on next stop)', () => {
+      assert.deepEqual(getTimelineProgress([n(true), n(), n(), n()], false), ['current', 'upcoming', 'upcoming', 'upcoming']);
+    });
+    it('loading complete (departed pickup) → heading to next stop', () => {
+      assert.deepEqual(getTimelineProgress([n(true, true), n(), n(), n()], false), ['completed', 'current', 'upcoming', 'upcoming']);
+    });
+    it('round trip at B unloading → B current', () => {
+      assert.deepEqual(getTimelineProgress([n(true, true), n(true), n(), n()], false), ['completed', 'current', 'upcoming', 'upcoming']);
+    });
+    it('legacy: intermediate never stamped but driver already at delivery → delivery current', () => {
+      assert.deepEqual(getTimelineProgress([n(true, true), n(), n(true)], false), ['completed', 'completed', 'current']);
+    });
+    it('arrived at final stop, not yet completed → final current; trip completed → all done', () => {
+      assert.deepEqual(getTimelineProgress([n(true, true), n(true, true), n(true)], false), ['completed', 'completed', 'current']);
+      assert.deepEqual(getTimelineProgress([n(true, true), n(true, true), n(true)], true), ['completed', 'completed', 'completed']);
+    });
+  });
 });
-
-
