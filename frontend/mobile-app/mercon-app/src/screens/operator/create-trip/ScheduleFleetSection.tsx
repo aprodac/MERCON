@@ -10,6 +10,7 @@ import { OperatorDriver, OperatorVehicle, OperatorThirdPartyProvider } from '../
 import { DriverAvatar, DRIVER_AVATAR_SIZES } from '../../../features/drivers/components/DriverAvatar';
 import { MonthlyCalendarSection } from './MonthlyCalendarSection';
 import { DayAssignmentOverride } from '../../../components/MonthlyCalendarSelector';
+import { DatePickerModal, TimePickerModal } from '../../../components/common/DateTimePickerModal';
 
 interface ScheduleFleetSectionProps {
   date: string;
@@ -333,75 +334,25 @@ export const ScheduleFleetSection: React.FC<ScheduleFleetSectionProps> = ({
       </Card>
 
       {/* Modal Pickers */}
-      <AppModal
+      <DatePickerModal
         visible={showDatePicker}
         onClose={() => setShowDatePicker(false)}
-        type="dialog"
-        title="Select Departure Date"
-      >
-        <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-          {upcomingDates.map((item) => (
-            <TouchableOpacity
-              key={item.formatted}
-              style={[
-                styles.pickerListItem,
-                date === item.formatted && styles.pickerListItemActive,
-              ]}
-              onPress={() => {
-                setDate(item.formatted);
-                onCalculateAutoEta(item.formatted, time);
-                setShowDatePicker(false);
-              }}
-            >
-              <Calendar size={16} color={date === item.formatted ? Colors.primary : Colors.gray500} />
-              <Text
-                style={[
-                  styles.pickerListItemText,
-                  date === item.formatted && styles.pickerListItemTextActive,
-                ]}
-              >
-                {item.label}
-              </Text>
-              {date === item.formatted && <Check size={16} color={Colors.primary} strokeWidth={3} />}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </AppModal>
+        selectedDate={date}
+        onSelectDate={(newDate) => {
+          setDate(newDate);
+          onCalculateAutoEta(newDate, time);
+        }}
+      />
 
-      <AppModal
+      <TimePickerModal
         visible={showTimePicker}
         onClose={() => setShowTimePicker(false)}
-        type="dialog"
-        title="Select Departure Time"
-      >
-        <ScrollView style={{ maxHeight: 320 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
-          {TIME_SLOTS.map((slot) => (
-            <TouchableOpacity
-              key={slot.value}
-              style={[
-                styles.pickerListItem,
-                time === slot.value && styles.pickerListItemActive,
-              ]}
-              onPress={() => {
-                setTime(slot.value);
-                onCalculateAutoEta(date, slot.value);
-                setShowTimePicker(false);
-              }}
-            >
-              <Clock size={16} color={time === slot.value ? Colors.primary : Colors.gray500} />
-              <Text
-                style={[
-                  styles.pickerListItemText,
-                  time === slot.value && styles.pickerListItemTextActive,
-                ]}
-              >
-                {slot.label}
-              </Text>
-              {time === slot.value && <Check size={16} color={Colors.primary} strokeWidth={3} />}
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </AppModal>
+        selectedTime={time}
+        onSelectTime={(newTime) => {
+          setTime(newTime);
+          onCalculateAutoEta(date, newTime);
+        }}
+      />
 
       <AppModal
         visible={showDurationPicker}
