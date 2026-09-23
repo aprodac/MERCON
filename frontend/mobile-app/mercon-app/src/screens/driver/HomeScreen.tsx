@@ -61,7 +61,7 @@ function HeaderWaveBg({ width = SCREEN_WIDTH, height = 310 }: { width?: number; 
 
       {/* 3. Subtle Dotted Pattern Grid on the Charcoal area extending upwards */}
       <G opacity={0.18}>
-        {[-150, -120, -90, -60, -30, 0, 30, 45, 60, 75, 90, 105, 120, 135, 150].map((yVal) => (
+        {[90, 105, 120, 135, 150, 165, 180, 195, 210, 225, 240].map((yVal) => (
           <React.Fragment key={yVal}>
             <Circle cx="35" cy={yVal} r="2.2" fill="#FFFFFF" />
             <Circle cx="50" cy={yVal} r="2.2" fill="#FFFFFF" />
@@ -981,12 +981,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 30,
+    minHeight: 260,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
     elevation: 4,
     marginTop: 10,
   },
