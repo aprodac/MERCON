@@ -107,7 +107,7 @@ export default function PerformanceOverviewScreen() {
 
               return (
                 <React.Fragment key={trip.id}>
-                  <TouchableOpacity style={styles.tripRow} activeOpacity={0.7} onPress={() => router.push(`/trip/${trip.id}` as any)}>
+                  <TouchableOpacity style={styles.tripRow} activeOpacity={0.7} onPress={() => router.push(`/trip/details?tripId=${trip.id}` as any)}>
                     <View style={[styles.statusIconBox, { backgroundColor: isOnTime ? '#ECFDF5' : '#FFFBEB' }]}>
                       {isOnTime ? (
                         <CheckCircle2 size={20} color="#059669" />
