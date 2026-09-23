@@ -167,3 +167,68 @@ export function dueLabel(doc: DueLabelParams, today: Date = new Date()): string 
     return `Overdue ${overdueDays} day${overdueDays === 1 ? '' : 's'}`;
   }
 }
+
+/**
+ * Converts a numeric amount to English words for payment/receipt vouchers.
+ * E.g., 3000.00 -> "Three Thousand SAR Only"
+ * E.g., 2000.50 -> "Two Thousand SAR and 50/100 Only"
+ */
+export function amountInWords(amount: number | string | null | undefined, currency = 'SAR'): string {
+  let num = typeof amount === 'number' ? amount : parseFloat(String(amount || 0));
+  if (isNaN(num) || num <= 0) return `Zero ${currency} Only`;
+
+  const units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+  const convertChunk = (n: number): string => {
+    let str = '';
+    if (n >= 100) {
+      str += `${units[Math.floor(n / 100)]} Hundred `;
+      n %= 100;
+    }
+    if (n >= 20) {
+      str += `${tens[Math.floor(n / 10)]} `;
+      n %= 10;
+    }
+    if (n > 0) {
+      str += `${units[n]} `;
+    }
+    return str.trim();
+  };
+
+  const integerPart = Math.floor(Math.abs(num));
+  const cents = Math.round((Math.abs(num) - integerPart) * 100);
+
+  if (integerPart === 0 && cents === 0) return `Zero ${currency} Only`;
+
+  let words = '';
+  let temp = integerPart;
+
+  if (temp >= 1_000_000_000) {
+    words += `${convertChunk(Math.floor(temp / 1_000_000_000))} Billion `;
+    temp %= 1_000_000_000;
+  }
+  if (temp >= 1_000_000) {
+    words += `${convertChunk(Math.floor(temp / 1_000_000))} Million `;
+    temp %= 1_000_000;
+  }
+  if (temp >= 1_000) {
+    words += `${convertChunk(Math.floor(temp / 1_000))} Thousand `;
+    temp %= 1_000;
+  }
+  if (temp > 0) {
+    words += convertChunk(temp);
+  }
+
+  words = words.trim();
+  if (!words) words = 'Zero';
+
+  let result = `${words} ${currency}`;
+  if (cents > 0) {
+    result += ` and ${cents.toString().padStart(2, '0')}/100`;
+  }
+  result += ' Only';
+
+  return result;
+}
+

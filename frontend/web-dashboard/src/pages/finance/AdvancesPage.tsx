@@ -1,146 +1,167 @@
-import { useState } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useSearchParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Wallet, ArrowUpRight, ArrowDownLeft, FileText, Ban, CheckCircle2 } from 'lucide-react';
+import { Plus, Download, ChevronDown, MoreHorizontal, FileText, Ban, CheckCircle2, ArrowDownLeft, ArrowUpRight, User } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
+import {
+  FinancePageHeader,
+  SummaryStrip,
+  StatusTabs,
+  FilterBar,
+  MoneyText,
+  StatusPill,
+  FinanceEmptyState,
+} from '@/components/finance/kit';
+import ExportModal, { ExportColumn } from '@/components/ui/ExportModal';
+import DataTable, { Column } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import DataTable, { Column } from '@/components/ui/DataTable';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
+import { Switch } from '@/components/ui/switch';
+import { Progress } from '@/components/ui/progress';
 import {
-  financeService,
-  CreateAdvanceDTO,
-  ApplyAdvanceDTO,
-} from '@/services/financeService';
-import type {
-  Advance,
-  Account,
-  BankAccount,
-  AdvancePartyType,
-  AdvanceDirection,
-  AdvanceStatus,
-} from '@mercon/shared-types';
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 
-const STATUS_COLORS: Record<AdvanceStatus, string> = {
-  Open: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-  PartiallyApplied: 'bg-blue-50 text-blue-700 border-blue-200',
-  FullyApplied: 'bg-gray-100 text-gray-700 border-gray-200',
-  Void: 'bg-rose-50 text-rose-700 border-rose-200',
-};
+import { AdvanceGroupRow } from '@/components/finance/advances/AdvanceGroupRow';
+import { AdvancePrintVoucher } from '@/components/finance/advances/AdvancePrintVoucher';
+import { AdvanceApplySheet } from '@/components/finance/advances/AdvanceApplySheet';
+import { formatDate } from '@/lib/finance/format';
+import { financeService } from '@/services/financeService';
+import type { Advance, AdvanceStatus, AdvancePartyType, AdvanceDirection } from '@mercon/shared-types';
 
-const PARTY_COLORS: Record<AdvancePartyType, string> = {
-  Customer: 'bg-indigo-50 text-indigo-700 border-indigo-200',
-  Provider: 'bg-amber-50 text-amber-700 border-amber-200',
-  Employee: 'bg-teal-50 text-teal-700 border-teal-200',
+const PARTY_TINTS: Record<AdvancePartyType, { bg: string; text: string; avatarBg: string; dot: string }> = {
+  Customer: { bg: 'bg-sky-50 dark:bg-sky-950/40', text: 'text-sky-700 dark:text-sky-300', avatarBg: 'bg-sky-100 dark:bg-sky-900 text-sky-700 dark:text-sky-200', dot: 'bg-sky-500' },
+  Provider: { bg: 'bg-purple-50 dark:bg-purple-950/40', text: 'text-purple-700 dark:text-purple-300', avatarBg: 'bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-200', dot: 'bg-purple-500' },
+  Employee: { bg: 'bg-teal-50 dark:bg-teal-950/40', text: 'text-teal-700 dark:text-teal-300', avatarBg: 'bg-teal-100 dark:bg-teal-900 text-teal-700 dark:text-teal-200', dot: 'bg-teal-500' },
 };
 
 export default function AdvancesPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const [search, setSearch] = useState('');
-  const [selectedDirection, setSelectedDirection] = useState<AdvanceDirection | 'all'>('all');
-  const [selectedStatus, setSelectedStatus] = useState<AdvanceStatus | 'all'>('all');
+  // URL state
+  const currentTab = (searchParams.get('tab') as AdvanceStatus | 'all') || 'all';
+  const searchTerm = searchParams.get('search') || '';
+  const directionParam = searchParams.get('direction') || 'all';
+  const partyTypeParam = searchParams.get('party_type') || ''; // comma-separated
+  const groupByParty = searchParams.get('group_by_party') === 'true';
 
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [selectedAdvanceId, setSelectedAdvanceId] = useState<string | null>(null);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [printAdvance, setPrintAdvance] = useState<Advance | null>(null);
+  const [applyAdvance, setApplyAdvance] = useState<Advance | null>(null);
 
-  // Apply Action inside Detail Modal State
-  const [applyData, setApplyData] = useState<ApplyAdvanceDTO>({
-    targetId: '',
-    targetType: 'Invoice',
-    amount: 0,
-  });
-
-  // Create Form State
-  const [formData, setFormData] = useState<CreateAdvanceDTO>({
-    party_type: 'Customer',
-    party_id: '',
-    direction: 'Received',
-    amount: 0,
-    advance_date: new Date().toISOString().split('T')[0],
-    accountId: '',
-    memo: '',
-    currency: 'SAR',
-  });
-
-  // Fetch Advances List
+  // Fetch Advances
   const { data: advancesRes, isLoading } = useQuery({
-    queryKey: ['advances', selectedDirection, selectedStatus],
-    queryFn: () =>
-      financeService.getAdvances({
-        direction: selectedDirection === 'all' ? undefined : selectedDirection,
-        status: selectedStatus === 'all' ? undefined : selectedStatus,
-      }),
+    queryKey: ['advances'],
+    queryFn: () => financeService.getAdvances(),
   });
 
   const advances: Advance[] = advancesRes?.data || [];
 
-  // Fetch Selected Advance Details
-  const { data: advanceDetailRes, isLoading: isDetailLoading } = useQuery({
-    queryKey: ['advance', selectedAdvanceId],
-    queryFn: () => (selectedAdvanceId ? financeService.getAdvanceById(selectedAdvanceId) : null),
-    enabled: Boolean(selectedAdvanceId),
-  });
+  // Summary strip computations
+  const summaryMetrics = useMemo(() => {
+    let customerTotal = 0;
+    let customerCount = 0;
+    let providerTotal = 0;
+    let providerCount = 0;
+    let employeeTotal = 0;
+    let employeeCount = 0;
 
-  const selectedAdvance: Advance | null = advanceDetailRes?.data || null;
+    for (const adv of advances) {
+      if (adv.status === 'Void') continue;
+      const rem = Number(adv.remaining_amount || 0);
 
-  // Fetch Bank Accounts / GL Asset Accounts for picker
-  const { data: bankAccountsRes } = useQuery({
-    queryKey: ['bankAccounts'],
-    queryFn: financeService.getBankAccounts,
-  });
+      if (adv.party_type === 'Customer' && adv.direction === 'Received') {
+        customerTotal += rem;
+        customerCount++;
+      } else if (adv.party_type === 'Provider' && adv.direction === 'Paid') {
+        providerTotal += rem;
+        providerCount++;
+      } else if (adv.party_type === 'Employee' && adv.direction === 'Paid') {
+        employeeTotal += rem;
+        employeeCount++;
+      }
+    }
 
-  const { data: assetAccountsRes } = useQuery({
-    queryKey: ['accounts', 'Asset'],
-    queryFn: () => financeService.getAccounts({ type: 'Asset' }),
-  });
+    return { customerTotal, customerCount, providerTotal, providerCount, employeeTotal, employeeCount };
+  }, [advances]);
 
-  const bankAccounts: BankAccount[] = bankAccountsRes?.data || [];
-  const assetAccounts: Account[] = (assetAccountsRes?.data || []).filter(
-    (a: Account) => a.account_type === 'Asset' && a.is_postable
-  );
+  // Tab counts
+  const tabCounts = useMemo(() => {
+    const counts = { all: advances.length, Open: 0, PartiallyApplied: 0, FullyApplied: 0, Void: 0 };
+    for (const a of advances) {
+      if (counts[a.status] !== undefined) {
+        counts[a.status]++;
+      }
+    }
+    return counts;
+  }, [advances]);
 
-  // Mutations
-  const createMutation = useMutation({
-    mutationFn: financeService.createAdvance,
-    onSuccess: () => {
-      toast.success('Advance recorded successfully');
-      queryClient.invalidateQueries({ queryKey: ['advances'] });
-      setIsCreateModalOpen(false);
-      resetCreateForm();
-    },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.error || err?.message || 'Failed to record advance';
-      toast.error(msg);
-    },
-  });
+  // Filtering
+  const selectedPartyTypes = partyTypeParam ? partyTypeParam.split(',') : [];
 
-  const applyMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: ApplyAdvanceDTO }) =>
-      financeService.applyAdvance(id, data),
-    onSuccess: () => {
-      toast.success('Advance applied successfully');
-      queryClient.invalidateQueries({ queryKey: ['advances'] });
-      queryClient.invalidateQueries({ queryKey: ['advance', selectedAdvanceId] });
-      setApplyData({ targetId: '', targetType: 'Invoice', amount: 0 });
-    },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.error || err?.message || 'Failed to apply advance';
-      toast.error(msg);
-    },
-  });
+  const filteredAdvances = useMemo(() => {
+    return advances.filter((adv) => {
+      // Tab filter
+      if (currentTab !== 'all' && adv.status !== currentTab) return false;
 
+      // Direction filter
+      if (directionParam !== 'all' && adv.direction !== directionParam) return false;
+
+      // Party Type multi-select
+      if (selectedPartyTypes.length > 0 && !selectedPartyTypes.includes(adv.party_type)) return false;
+
+      // Search term (ref, memo, party name)
+      if (searchTerm) {
+        const q = searchTerm.toLowerCase();
+        const ref = (adv.ref_id || '').toLowerCase();
+        const memo = (adv.memo || '').toLowerCase();
+        const partyName = (adv.party?.name || '').toLowerCase();
+        const partyId = (adv.party_id || '').toLowerCase();
+
+        if (!ref.includes(q) && !memo.includes(q) && !partyName.includes(q) && !partyId.includes(q)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [advances, currentTab, directionParam, selectedPartyTypes, searchTerm]);
+
+  // Grouping by party
+  const groupedAdvances = useMemo(() => {
+    if (!groupByParty) return null;
+
+    const map = new Map<string, { partyName: string; partyType?: AdvancePartyType; items: Advance[]; totalRemaining: number }>();
+    for (const adv of filteredAdvances) {
+      const partyKey = adv.party_id || adv.party?.name || 'General';
+      const partyName = adv.party?.name || (adv.party_id ? `Party ID: ${adv.party_id}` : 'General / Not Linked');
+
+      if (!map.has(partyKey)) {
+        map.set(partyKey, { partyName, partyType: adv.party_type, items: [], totalRemaining: 0 });
+      }
+      const entry = map.get(partyKey)!;
+      entry.items.push(adv);
+      if (adv.status !== 'Void') {
+        entry.totalRemaining += Number(adv.remaining_amount || 0);
+      }
+    }
+    return Array.from(map.values());
+  }, [filteredAdvances, groupByParty]);
+
+  // Void mutation
   const voidMutation = useMutation({
     mutationFn: financeService.voidAdvance,
     onSuccess: () => {
       toast.success('Advance voided successfully');
       queryClient.invalidateQueries({ queryKey: ['advances'] });
-      queryClient.invalidateQueries({ queryKey: ['advance', selectedAdvanceId] });
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.error || err?.message || 'Failed to void advance';
@@ -148,580 +169,431 @@ export default function AdvancesPage() {
     },
   });
 
-  const resetCreateForm = () => {
-    setFormData({
-      party_type: 'Customer',
-      party_id: '',
-      direction: 'Received',
-      amount: 0,
-      advance_date: new Date().toISOString().split('T')[0],
-      accountId: '',
-      memo: '',
-      currency: 'SAR',
-    });
+  const handleTabChange = (tab: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (tab === 'all') next.delete('tab');
+    else next.set('tab', tab);
+    setSearchParams(next);
   };
 
-  const handleCreateSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.accountId) {
-      toast.error('Please select a Bank / Cash Account');
-      return;
-    }
-    if (!formData.amount || Number(formData.amount) <= 0) {
-      toast.error('Please enter a valid amount');
-      return;
-    }
-
-    createMutation.mutate({
-      ...formData,
-      amount: Number(formData.amount),
-    });
+  const handleSearchChange = (q: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (q) next.set('search', q);
+    else next.delete('search');
+    setSearchParams(next);
   };
 
-  const handleApplySubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedAdvance) return;
-    if (!applyData.targetId) {
-      toast.error(`Please enter a valid ${applyData.targetType} ID`);
-      return;
-    }
-    const applyAmt = Number(applyData.amount);
-    const remaining = Number(selectedAdvance.remaining_amount);
-
-    if (!applyAmt || applyAmt <= 0) {
-      toast.error('Please enter a valid application amount');
-      return;
-    }
-
-    if (applyAmt > remaining) {
-      toast.error(
-        `Application amount (${applyAmt} SAR) exceeds remaining advance balance (${remaining} SAR)`
-      );
-      return;
-    }
-
-    applyMutation.mutate({
-      id: selectedAdvance.id,
-      data: {
-        targetId: applyData.targetId,
-        targetType: applyData.targetType,
-        amount: applyAmt,
-      },
-    });
+  const handleDirectionChange = (dir: string) => {
+    const next = new URLSearchParams(searchParams);
+    if (dir === 'all') next.delete('direction');
+    else next.set('direction', dir);
+    setSearchParams(next);
   };
 
-  // Filter advances by search term
-  const filteredAdvances = advances.filter((adv) => {
-    const q = search.toLowerCase();
-    const ref = (adv.ref_id || '').toLowerCase();
-    const partyId = (adv.party_id || '').toLowerCase();
-    const memo = (adv.memo || '').toLowerCase();
-    const partyType = adv.party_type.toLowerCase();
-    return ref.includes(q) || partyId.includes(q) || memo.includes(q) || partyType.includes(q);
-  });
+  const handlePartyTypeToggle = (type: string) => {
+    let list = [...selectedPartyTypes];
+    if (list.includes(type)) {
+      list = list.filter((t) => t !== type);
+    } else {
+      list.push(type);
+    }
+    const next = new URLSearchParams(searchParams);
+    if (list.length > 0) next.set('party_type', list.join(','));
+    else next.delete('party_type');
+    setSearchParams(next);
+  };
 
+  const handleGroupByToggle = (checked: boolean) => {
+    const next = new URLSearchParams(searchParams);
+    if (checked) next.set('group_by_party', 'true');
+    else next.delete('group_by_party');
+    setSearchParams(next);
+  };
+
+  // Helper for age chip calculation
+  const getAgeChip = (dateStr: string, status: AdvanceStatus) => {
+    if (status === 'FullyApplied' || status === 'Void') return null;
+    const advDate = new Date(dateStr);
+    const now = new Date();
+    const diffDays = Math.floor((now.getTime() - advDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays > 60) {
+      return <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300 border-none text-[10px] py-0 px-1.5 font-bold">&gt;60 days</Badge>;
+    }
+    if (diffDays > 30) {
+      return <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border-none text-[10px] py-0 px-1.5 font-bold">&gt;30 days</Badge>;
+    }
+    return null;
+  };
+
+  // Columns definition for DataTable
   const columns: Column<Advance>[] = [
     {
-      header: 'Advance Ref',
+      header: 'Ref',
       accessor: (row) => (
-        <div className="font-mono font-medium text-gray-900">
+        <span className="fin-num font-bold text-slate-900 dark:text-slate-100">
           {row.ref_id || row.id.slice(0, 8)}
-        </div>
+        </span>
       ),
     },
     {
-      header: 'Party Type',
-      accessor: (row) => (
-        <Badge className={PARTY_COLORS[row.party_type] || 'bg-gray-100 text-gray-700'}>
-          {row.party_type}
-        </Badge>
-      ),
-    },
-    {
-      header: 'Party ID',
-      accessor: (row) =>
-        row.party_id ? (
-          <span className="font-mono text-xs text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
-            {row.party_id.length > 12 ? `${row.party_id.slice(0, 10)}...` : row.party_id}
-          </span>
-        ) : (
-          <span className="text-gray-400">—</span>
-        ),
+      header: 'Party',
+      accessor: (row) => {
+        const partyName = row.party?.name || (row.party_id ? `Party ID: ${row.party_id.slice(0, 8)}` : 'General / Not Linked');
+        const initials = partyName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'P';
+        const tint = PARTY_TINTS[row.party_type] || PARTY_TINTS.Customer;
+
+        return (
+          <div className="flex items-center gap-2.5">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${tint.avatarBg}`}>
+              {initials}
+            </div>
+            <div>
+              <div className="font-semibold text-slate-900 dark:text-slate-100 leading-tight">
+                {partyName}
+              </div>
+              <Badge variant="outline" className={`${tint.bg} ${tint.text} border-transparent text-[10px] py-0 px-1.5 mt-0.5`}>
+                {row.party_type}
+              </Badge>
+            </div>
+          </div>
+        );
+      },
     },
     {
       header: 'Direction',
+      accessor: (row) =>
+        row.direction === 'Received' ? (
+          <Badge variant="outline" className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200/60 dark:border-emerald-800/60 gap-1 font-semibold">
+            <ArrowDownLeft className="w-3 h-3 text-emerald-600 dark:text-emerald-400 stroke-[2.5]" />
+            Money in
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200/60 dark:border-amber-800/60 gap-1 font-semibold">
+            <ArrowUpRight className="w-3 h-3 text-amber-600 dark:text-amber-400 stroke-[2.5]" />
+            Money out
+          </Badge>
+        ),
+    },
+    {
+      header: 'Date',
       accessor: (row) => (
-        <div className="flex items-center gap-1">
-          {row.direction === 'Received' ? (
-            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 gap-1">
-              <ArrowDownLeft className="w-3 h-3 text-emerald-600" />
-              Received
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1">
-              <ArrowUpRight className="w-3 h-3 text-amber-600" />
-              Paid
-            </Badge>
-          )}
+        <div className="flex items-center gap-2">
+          <span className="text-slate-700 dark:text-slate-300 font-medium">{formatDate(row.advance_date)}</span>
+          {getAgeChip(row.advance_date, row.status)}
         </div>
       ),
     },
     {
-      header: 'Total Amount',
-      accessor: (row) => (
-        <div className="font-mono font-medium text-right text-gray-900">
-          {Number(row.amount).toLocaleString('en-US', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}{' '}
-          <span className="text-xs text-gray-500">{row.currency || 'SAR'}</span>
-        </div>
-      ),
+      header: 'Amount',
+      accessor: (row) => <MoneyText value={row.amount} currency={row.currency || 'SAR'} className="font-bold text-slate-900 dark:text-slate-100" />,
     },
     {
       header: 'Applied / Remaining',
-      accessor: (row) => (
-        <div className="text-right text-xs space-y-0.5 font-mono">
-          <div className="text-gray-500">
-            App: {Number(row.applied_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+      accessor: (row) => {
+        const total = Number(row.amount || 0);
+        const applied = Number(row.applied_amount || 0);
+        const remaining = Number(row.remaining_amount || 0);
+        const pct = total > 0 ? Math.min(100, Math.round((applied / total) * 100)) : 0;
+
+        return (
+          <div className="w-36 space-y-1">
+            <Progress value={pct} className="h-1.5 bg-slate-100 dark:bg-slate-800" />
+            <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400 flex items-center justify-between">
+              <span>remaining</span>
+              <span className="font-semibold text-slate-900 dark:text-slate-100"><MoneyText value={remaining} /></span>
+            </div>
           </div>
-          <div className="font-semibold text-gray-900">
-            Rem: {Number(row.remaining_amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </div>
-        </div>
-      ),
+        );
+      },
     },
     {
       header: 'Status',
-      accessor: (row) => (
-        <Badge className={STATUS_COLORS[row.status] || 'bg-gray-100 text-gray-700'}>
-          {row.status}
-        </Badge>
-      ),
+      accessor: (row) => <StatusPill kind="advance" status={row.status} />,
+    },
+    {
+      header: '',
+      accessor: (row) => {
+        const canApply = (row.direction === 'Received' && row.party_type === 'Customer') || (row.direction === 'Paid' && row.party_type === 'Provider');
+        const isUnapplied = Number(row.applied_amount || 0) === 0;
+
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <MoreHorizontal className="w-4 h-4 text-slate-500" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={() => navigate(`/finance/advances/${row.id}`)}>
+                Open details
+              </DropdownMenuItem>
+              {canApply && Number(row.remaining_amount || 0) > 0 && row.status !== 'Void' && (
+                <DropdownMenuItem onClick={() => setApplyAdvance(row)}>
+                  Apply credits…
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={() => setPrintAdvance(row)}>
+                Print voucher
+              </DropdownMenuItem>
+              {isUnapplied && row.status !== 'Void' && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={() => voidMutation.mutate(row.id)}
+                    className="text-rose-600 dark:text-rose-400 font-semibold"
+                  >
+                    Void advance
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        );
+      },
     },
   ];
+
+  // Export Modal columns definition
+  const exportColumns: ExportColumn<Advance>[] = [
+    { id: 'ref_id', label: 'Advance Ref', accessor: (row) => row.ref_id || row.id.slice(0, 8) },
+    { id: 'party_type', label: 'Party Type', accessor: (row) => row.party_type },
+    { id: 'party_name', label: 'Party Name', accessor: (row) => row.party?.name || row.party_id || 'General' },
+    { id: 'direction', label: 'Direction', accessor: (row) => row.direction },
+    { id: 'advance_date', label: 'Advance Date', accessor: (row) => formatDate(row.advance_date) },
+    {
+      id: 'age',
+      label: 'Age (Days)',
+      accessor: (row) => {
+        if (!row.advance_date) return '';
+        const diffTime = Math.abs(Date.now() - new Date(row.advance_date).getTime());
+        return Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      },
+    },
+    { id: 'amount', label: 'Amount', accessor: (row) => row.amount },
+    { id: 'applied_amount', label: 'Applied Amount', accessor: (row) => row.applied_amount },
+    { id: 'remaining_amount', label: 'Remaining Amount', accessor: (row) => row.remaining_amount },
+    { id: 'status', label: 'Status', accessor: (row) => row.status },
+    { id: 'memo', label: 'Memo', accessor: (row) => row.memo || '' },
+  ];
+
+  const exportData = filteredAdvances;
 
   return (
     <DashboardLayout active="finance" title="Advances">
       <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Advances</h1>
+        <FinancePageHeader
+          crumbs={[
+            { label: 'Finance', href: '/finance' },
+            { label: 'Banking', href: '/finance/bank-accounts' },
+            { label: 'Advances' },
+          ]}
+          title="Advances"
+          subtitle="Money held on account — received from customers or paid out ahead to providers and employees."
+          actions={
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsExportModalOpen(true)}
+                className="gap-2 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200"
+              >
+                <Download className="w-4 h-4" />
+                <span>Export</span>
+              </Button>
+
+              {/* Split Button for New Advance */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button className="gap-1.5 bg-[#FA634E] hover:bg-[#E54D38] text-white font-semibold">
+                    <Plus className="w-4 h-4" />
+                    <span>New advance</span>
+                    <ChevronDown className="w-3.5 h-3.5 ml-1 opacity-80" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onClick={() => navigate('/finance/advances/new?type=customer')}>
+                    <span className="w-2 h-2 rounded-full bg-sky-500 mr-2" />
+                    <span>Customer advance (Money in)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/finance/advances/new?type=provider')}>
+                    <span className="w-2 h-2 rounded-full bg-purple-500 mr-2" />
+                    <span>Provider advance (Money out)</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => navigate('/finance/advances/new?type=employee')}>
+                    <span className="w-2 h-2 rounded-full bg-teal-500 mr-2" />
+                    <span>Employee advance (Money out)</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          }
+        />
+
+        {/* Summary Strip (3 cells) */}
+        <SummaryStrip
+          items={[
+            {
+              label: 'Customer advances held',
+              value: summaryMetrics.customerTotal,
+              sub: `${summaryMetrics.customerCount} advances · owed back or to be applied`,
+              tone: 'default',
+            },
+            {
+              label: 'Paid to providers',
+              value: summaryMetrics.providerTotal,
+              sub: `${summaryMetrics.providerCount} advances`,
+              tone: 'default',
+            },
+            {
+              label: 'Employee advances',
+              value: summaryMetrics.employeeTotal,
+              sub: `${summaryMetrics.employeeCount} advances`,
+              tone: 'default',
+            },
+          ]}
+          isLoading={isLoading}
+        />
+
+        {/* Status Tabs */}
+        <StatusTabs
+          activeTab={currentTab}
+          onTabChange={handleTabChange}
+          tabs={[
+            { id: 'all', label: 'All', count: tabCounts.all },
+            { id: 'Open', label: 'Open', count: tabCounts.Open },
+            { id: 'PartiallyApplied', label: 'Partially applied', count: tabCounts.PartiallyApplied },
+            { id: 'FullyApplied', label: 'Fully applied', count: tabCounts.FullyApplied },
+            { id: 'Void', label: 'Void', count: tabCounts.Void },
+          ]}
+        />
+
+        {/* FilterBar with Group by Party Switch */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+          <div className="flex-1">
+            <FilterBar
+              searchValue={searchTerm}
+              onSearchChange={handleSearchChange}
+              searchPlaceholder="Search ref, memo, party name..."
+              rightSlot={
+                <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
+                  {/* Type Chips */}
+                  {(['Customer', 'Provider', 'Employee'] as const).map((type) => {
+                    const active = selectedPartyTypes.includes(type);
+                    const tint = PARTY_TINTS[type];
+
+                    return (
+                      <button
+                        key={type}
+                        type="button"
+                        onClick={() => handlePartyTypeToggle(type)}
+                        className={`h-7 px-2.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-colors border ${
+                          active
+                            ? `${tint.bg} ${tint.text} border-transparent ring-1 ring-inset ring-current`
+                            : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${tint.dot}`} />
+                        <span>{type}</span>
+                      </button>
+                    );
+                  })}
+
+                  {/* Direction filter */}
+                  <select
+                    value={directionParam}
+                    onChange={(e) => handleDirectionChange(e.target.value)}
+                    className="h-7 px-2 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none"
+                  >
+                    <option value="all">All Directions</option>
+                    <option value="Received">Money in</option>
+                    <option value="Paid">Money out</option>
+                  </select>
+                </div>
+              }
+            />
           </div>
-          <Button
-            onClick={() => setIsCreateModalOpen(true)}
-            className="gap-2 bg-[#FA634E] hover:bg-[#E54D38] text-white"
-          >
-            <Plus className="w-4 h-4" />
-            <span>New Advance</span>
-          </Button>
+
+          {/* Group By Switch */}
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shrink-0">
+            <Switch id="group-by-party" checked={groupByParty} onCheckedChange={handleGroupByToggle} />
+            <label htmlFor="group-by-party" className="text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+              Group by party
+            </label>
+          </div>
         </div>
 
-        {/* Filter Pills */}
-        <div className="flex flex-wrap items-center gap-4 bg-white p-3 rounded-xl border border-gray-200 shadow-sm">
-          {/* Direction Filter */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-medium text-gray-500 mr-1">Direction:</span>
-            {(['all', 'Received', 'Paid'] as const).map((dir) => (
-              <Button
-                key={dir}
-                variant={selectedDirection === dir ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setSelectedDirection(dir)}
-                className={`h-7 text-xs capitalize ${
-                  selectedDirection === dir ? 'bg-gray-900 text-white' : 'text-gray-600'
-                }`}
-              >
-                {dir}
-              </Button>
-            ))}
+        {/* Data List (Grouped or Flat) */}
+        {isLoading ? (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4">
+            <DataTable data={[]} columns={columns} isLoading={true} />
           </div>
-
-          <div className="h-4 w-px bg-gray-200 hidden sm:block" />
-
-          {/* Status Filter */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-medium text-gray-500 mr-1">Status:</span>
-            {(['all', 'Open', 'PartiallyApplied', 'FullyApplied', 'Void'] as const).map((st) => (
-              <Button
-                key={st}
-                variant={selectedStatus === st ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setSelectedStatus(st)}
-                className={`h-7 text-xs capitalize ${
-                  selectedStatus === st ? 'bg-gray-900 text-white' : 'text-gray-600'
-                }`}
-              >
-                {st}
+        ) : filteredAdvances.length === 0 ? (
+          <FinanceEmptyState
+            title="No advances found"
+            description={searchTerm ? "No advances match your current search and filters." : "Record money held on account or paid ahead to providers and employees."}
+            action={
+              <Button onClick={() => navigate('/finance/advances/new')} className="bg-[#FA634E] hover:bg-[#E54D38] text-white">
+                <Plus className="w-4 h-4 mr-2" />
+                New advance
               </Button>
-            ))}
-          </div>
-        </div>
-
-        {/* Data Table */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
-          <DataTable
-            data={filteredAdvances}
-            columns={columns}
-            isLoading={isLoading}
-            searchValue={search}
-            searchPlaceholder="Search advance ref, party ID, memo..."
-            onSearchChange={setSearch}
-            onRowClick={(row) => setSelectedAdvanceId(row.id)}
-            emptyMessage="No advances found."
+            }
           />
-        </div>
-
-        {/* Create Advance Dialog */}
-        <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle className="text-lg font-bold text-gray-900">New Advance</DialogTitle>
-            </DialogHeader>
-
-            <form onSubmit={handleCreateSubmit} className="space-y-4 py-2">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-700">
-                    Party Type <span className="text-rose-500">*</span>
-                  </Label>
-                  <Select
-                    value={formData.party_type}
-                    onValueChange={(val: AdvancePartyType) =>
-                      setFormData((prev) => ({ ...prev, party_type: val }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Customer">Customer</SelectItem>
-                      <SelectItem value="Provider">Provider</SelectItem>
-                      <SelectItem value="Employee">Employee</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-700">Party ID</Label>
-                  <Input
-                    placeholder="ID / Code"
-                    value={formData.party_id || ''}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, party_id: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-700">
-                    Direction <span className="text-rose-500">*</span>
-                  </Label>
-                  <Select
-                    value={formData.direction}
-                    onValueChange={(val: AdvanceDirection) =>
-                      setFormData((prev) => ({ ...prev, direction: val }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Received">Received (Deposit In)</SelectItem>
-                      <SelectItem value="Paid">Paid (Deposit Out)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-700">
-                    Amount (SAR) <span className="text-rose-500">*</span>
-                  </Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={formData.amount || ''}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))
-                    }
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-700">
-                    Advance Date <span className="text-rose-500">*</span>
-                  </Label>
-                  <Input
-                    type="date"
-                    value={formData.advance_date}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, advance_date: e.target.value }))}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-700">
-                    Bank / Cash Account <span className="text-rose-500">*</span>
-                  </Label>
-                  <Select
-                    value={formData.accountId}
-                    onValueChange={(val) => setFormData((prev) => ({ ...prev, accountId: val }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select Account" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {bankAccounts.length > 0
-                        ? bankAccounts.map((b) => (
-                            <SelectItem key={b.accountId} value={b.accountId}>
-                              <span>{b.is_cash ? 'Cash Drawer' : b.bank_name || 'Bank Account'}</span>
-                              {b.account && <span className="text-xs text-gray-400 ml-1">({b.account.account_code})</span>}
-                            </SelectItem>
-                          ))
-                        : assetAccounts.map((acc) => (
-                            <SelectItem key={acc.id} value={acc.id}>
-                              <span className="font-mono font-semibold mr-1">{acc.account_code}</span>
-                              <span>{acc.name}</span>
-                            </SelectItem>
-                          ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-gray-700">Memo / Reference</Label>
-                <Input
-                  placeholder="Notes or advance purpose..."
-                  value={formData.memo || ''}
-                  onChange={(e) => setFormData((prev) => ({ ...prev, memo: e.target.value }))}
+        ) : groupByParty && groupedAdvances ? (
+          <div className="space-y-6">
+            {groupedAdvances.map((group) => (
+              <div key={group.partyName} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+                <AdvanceGroupRow
+                  partyName={group.partyName}
+                  partyType={group.partyType}
+                  totalRemaining={group.totalRemaining}
+                  count={group.items.length}
+                />
+                <DataTable
+                  data={group.items}
+                  columns={columns}
+                  onRowClick={(row) => navigate(`/finance/advances/${row.id}`)}
                 />
               </div>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
+            <DataTable
+              data={filteredAdvances}
+              columns={columns}
+              onRowClick={(row) => navigate(`/finance/advances/${row.id}`)}
+            />
+          </div>
+        )}
 
-              <DialogFooter className="pt-3">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsCreateModalOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  disabled={createMutation.isPending}
-                  className="bg-[#FA634E] hover:bg-[#E54D38] text-white"
-                >
-                  {createMutation.isPending ? 'Saving...' : 'Record Advance'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {/* Export Modal */}
+        <ExportModal
+          isOpen={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
+          title="Export Advances Report"
+          fileNamePrefix="advances-report"
+          filteredData={exportData}
+          columns={exportColumns}
+        />
 
-        {/* Advance Detail & Action Modal */}
-        <Dialog open={Boolean(selectedAdvanceId)} onOpenChange={() => setSelectedAdvanceId(null)}>
-          <DialogContent className="sm:max-w-[650px] max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="text-lg font-bold text-gray-900 flex items-center justify-between">
-                <span>Advance Details</span>
-                {selectedAdvance && (
-                  <Badge className={STATUS_COLORS[selectedAdvance.status]}>
-                    {selectedAdvance.status}
-                  </Badge>
-                )}
-              </DialogTitle>
-            </DialogHeader>
+        {/* Print Voucher Modal */}
+        {printAdvance && (
+          <AdvancePrintVoucher
+            advance={printAdvance}
+            onClose={() => setPrintAdvance(null)}
+          />
+        )}
 
-            {isDetailLoading || !selectedAdvance ? (
-              <div className="p-8 text-center text-gray-500">Loading advance details...</div>
-            ) : (
-              <div className="space-y-6 py-2">
-                {/* Summary Grid */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-                  <div>
-                    <span className="text-xs text-gray-500 block">Ref / ID</span>
-                    <span className="font-mono font-semibold text-sm text-gray-900">
-                      {selectedAdvance.ref_id || selectedAdvance.id.slice(0, 10)}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-gray-500 block">Party</span>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <Badge className={PARTY_COLORS[selectedAdvance.party_type]}>
-                        {selectedAdvance.party_type}
-                      </Badge>
-                      {selectedAdvance.party_id && (
-                        <span className="font-mono text-xs text-gray-600">
-                          {selectedAdvance.party_id.slice(0, 8)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-xs text-gray-500 block">Direction</span>
-                    <span className="font-semibold text-sm text-gray-900">
-                      {selectedAdvance.direction}
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-gray-500 block">Total Amount</span>
-                    <span className="font-mono font-bold text-sm text-gray-900">
-                      {Number(selectedAdvance.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}{' '}
-                      SAR
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-gray-500 block">Applied Amount</span>
-                    <span className="font-mono text-sm text-gray-700">
-                      {Number(selectedAdvance.applied_amount || 0).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                      })}{' '}
-                      SAR
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-xs text-gray-500 block">Remaining</span>
-                    <span className="font-mono font-bold text-sm text-emerald-600">
-                      {Number(selectedAdvance.remaining_amount || 0).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                      })}{' '}
-                      SAR
-                    </span>
-                  </div>
-                </div>
-
-                {/* Applications List */}
-                <div className="space-y-2">
-                  <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                    Applications History ({selectedAdvance.applications?.length || 0})
-                  </h3>
-                  {selectedAdvance.applications && selectedAdvance.applications.length > 0 ? (
-                    <div className="border border-gray-200 rounded-lg overflow-hidden divide-y divide-gray-100">
-                      {selectedAdvance.applications.map((app) => (
-                        <div key={app.id} className="p-3 bg-white flex items-center justify-between text-xs">
-                          <div className="space-y-0.5">
-                            <div className="font-medium text-gray-900 flex items-center gap-2">
-                              <Badge variant="outline" className="text-[10px]">
-                                {app.invoiceId ? 'Invoice' : 'Bill'}
-                              </Badge>
-                              <span className="font-mono">
-                                {app.invoice?.ref_id || app.bill?.ref_id || app.invoiceId || app.billId}
-                              </span>
-                            </div>
-                            <div className="text-gray-400">
-                              Applied on {new Date(app.applied_date).toLocaleDateString()}
-                            </div>
-                          </div>
-                          <div className="font-mono font-semibold text-gray-900">
-                            {Number(app.amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} SAR
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="p-4 bg-gray-50 border border-dashed border-gray-200 rounded-lg text-center text-xs text-gray-400">
-                      No applications recorded yet.
-                    </div>
-                  )}
-                </div>
-
-                {/* Apply Action Form (Only when remaining > 0 and not void) */}
-                {Number(selectedAdvance.remaining_amount) > 0 && selectedAdvance.status !== 'Void' && (
-                  <form
-                    onSubmit={handleApplySubmit}
-                    className="p-4 bg-blue-50/50 border border-blue-100 rounded-xl space-y-3"
-                  >
-                    <h3 className="text-xs font-bold text-blue-900 uppercase tracking-wider">
-                      Apply to Invoice / Bill
-                    </h3>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                      <div className="space-y-1">
-                        <Label className="text-[11px] font-semibold text-gray-700">Target Type</Label>
-                        <Select
-                          value={applyData.targetType}
-                          onValueChange={(val: 'Invoice' | 'Bill') =>
-                            setApplyData((prev) => ({ ...prev, targetType: val }))
-                          }
-                        >
-                          <SelectTrigger className="h-8 text-xs bg-white">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Invoice">Invoice</SelectItem>
-                            <SelectItem value="Bill">Bill</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-[11px] font-semibold text-gray-700">
-                          {applyData.targetType} ID <span className="text-rose-500">*</span>
-                        </Label>
-                        <Input
-                          placeholder={`Enter ${applyData.targetType} ID`}
-                          value={applyData.targetId}
-                          onChange={(e) => setApplyData((prev) => ({ ...prev, targetId: e.target.value }))}
-                          className="h-8 text-xs bg-white"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label className="text-[11px] font-semibold text-gray-700">
-                          Amount (SAR) <span className="text-rose-500">*</span>
-                        </Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="0.00"
-                          value={applyData.amount || ''}
-                          onChange={(e) =>
-                            setApplyData((prev) => ({ ...prev, amount: parseFloat(e.target.value) || 0 }))
-                          }
-                          className="h-8 text-xs bg-white"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end">
-                      <Button
-                        type="submit"
-                        size="sm"
-                        disabled={applyMutation.isPending}
-                        className="h-8 text-xs bg-blue-600 hover:bg-blue-700 text-white"
-                      >
-                        {applyMutation.isPending ? 'Applying...' : 'Confirm Application'}
-                      </Button>
-                    </div>
-                  </form>
-                )}
-
-                {/* Void Action (Only when applied_amount === 0 and status !== 'Void') */}
-                {Number(selectedAdvance.applied_amount || 0) === 0 && selectedAdvance.status !== 'Void' && (
-                  <div className="flex justify-between items-center pt-2 border-t border-gray-100">
-                    <span className="text-xs text-gray-500">
-                      Unapplied advances can be voided to reverse accounting entries.
-                    </span>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => voidMutation.mutate(selectedAdvance.id)}
-                      disabled={voidMutation.isPending}
-                      className="text-rose-600 border-rose-200 hover:bg-rose-50 gap-1.5 h-8 text-xs"
-                    >
-                      <Ban className="w-3.5 h-3.5" />
-                      {voidMutation.isPending ? 'Voiding...' : 'Void Advance'}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
+        {/* Apply Credit Sheet */}
+        {applyAdvance && (
+          <AdvanceApplySheet
+            open={Boolean(applyAdvance)}
+            onOpenChange={(open) => !open && setApplyAdvance(null)}
+            advance={applyAdvance}
+          />
+        )}
       </div>
     </DashboardLayout>
   );

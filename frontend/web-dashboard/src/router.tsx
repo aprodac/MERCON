@@ -98,6 +98,8 @@ const BillsPage               = lazyWithRetry(() => import('@/pages/finance/Bill
 const BillCreatePage          = lazyWithRetry(() => import('@/pages/finance/BillCreatePage'));
 const BankAccountsPage        = lazyWithRetry(() => import('@/pages/finance/BankAccountsPage'));
 const AdvancesPage            = lazyWithRetry(() => import('@/pages/finance/AdvancesPage'));
+const AdvanceDetailPage      = lazyWithRetry(() => import('@/pages/finance/AdvanceDetailPage'));
+const AdvanceEditorPage      = lazyWithRetry(() => import('@/pages/finance/AdvanceEditorPage'));
 const ReconciliationPage      = lazyWithRetry(() => import('@/pages/finance/ReconciliationPage'));
 const TrialBalancePage        = lazyWithRetry(() => import('@/pages/finance/TrialBalancePage'));
 const ProfitAndLossPage       = lazyWithRetry(() => import('@/pages/finance/ProfitAndLossPage'));
@@ -302,6 +304,8 @@ export default function AppRouter() {
             <Route path="/finance/bills"             element={<RequireModule moduleKey="finance"><BillsPage /></RequireModule>} />
             <Route path="/finance/bank-accounts"     element={<RequireModule moduleKey="finance"><BankAccountsPage /></RequireModule>} />
             <Route path="/finance/advances"          element={<RequireModule moduleKey="finance"><AdvancesPage /></RequireModule>} />
+            <Route path="/finance/advances/new"      element={<RequireModule moduleKey="finance"><AdvanceEditorPage /></RequireModule>} />
+            <Route path="/finance/advances/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={AdvanceDetailPage} /></RequireModule>} />
             <Route path="/finance/reconciliation"    element={<RequireModule moduleKey="finance"><ReconciliationPage /></RequireModule>} />
             <Route path="/finance/trial-balance"     element={<RequireModule moduleKey="finance"><TrialBalancePage /></RequireModule>} />
             <Route path="/finance/profit-and-loss"    element={<RequireModule moduleKey="finance"><ProfitAndLossPage /></RequireModule>} />

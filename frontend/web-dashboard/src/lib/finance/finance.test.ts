@@ -4,6 +4,7 @@ import {
   formatMoney,
   formatPct,
   dueLabel,
+  amountInWords,
   FIN_STATUS,
   FIN_TONE_CLASSES,
   getDisplayStatus,
@@ -43,6 +44,24 @@ describe('Finance Formatting Helpers (format.ts)', () => {
     it('supports currency option', () => {
       expect(formatMoney(12650, { currency: 'SAR' })).toBe('SAR 12,650.00');
       expect(formatMoney(-1200, { currency: 'SAR', signed: true })).toBe('SAR −1,200.00');
+    });
+  });
+
+  describe('amountInWords', () => {
+    it('converts whole numbers to English words with currency', () => {
+      expect(amountInWords(3000, 'SAR')).toBe('Three Thousand SAR Only');
+      expect(amountInWords(1250, 'USD')).toBe('One Thousand Two Hundred Fifty USD Only');
+    });
+
+    it('converts numbers with cents/halalas', () => {
+      expect(amountInWords(2000.5, 'SAR')).toBe('Two Thousand SAR and 50/100 Only');
+      expect(amountInWords('150.25', 'SAR')).toBe('One Hundred Fifty SAR and 25/100 Only');
+    });
+
+    it('handles zero or negative amounts gracefully', () => {
+      expect(amountInWords(0, 'SAR')).toBe('Zero SAR Only');
+      expect(amountInWords(-100, 'SAR')).toBe('Zero SAR Only');
+      expect(amountInWords(null, 'SAR')).toBe('Zero SAR Only');
     });
   });
 

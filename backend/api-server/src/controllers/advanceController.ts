@@ -45,17 +45,25 @@ export const attachPartyNames = async (advances: any[]) => {
   const providerIds = Array.from(new Set(advances.filter((a) => a.party_type === 'Provider' && a.party_id).map((a) => a.party_id)));
   const employeeIds = Array.from(new Set(advances.filter((a) => a.party_type === 'Employee' && a.party_id).map((a) => a.party_id)));
 
-  const [customers, providers, drivers] = await Promise.all([
-    customerIds.length > 0
-      ? prisma.customer.findMany({ where: { id: { in: customerIds } }, select: { id: true, name: true } })
-      : [],
-    providerIds.length > 0
-      ? prisma.thirdPartyProvider.findMany({ where: { id: { in: providerIds } }, select: { id: true, name: true } })
-      : [],
-    employeeIds.length > 0
-      ? prisma.driver.findMany({ where: { id: { in: employeeIds } }, select: { id: true, first_name: true, last_name: true } })
-      : [],
-  ]);
+  let customers: any[] = [];
+  let providers: any[] = [];
+  let drivers: any[] = [];
+
+  try {
+    [customers, providers, drivers] = await Promise.all([
+      customerIds.length > 0
+        ? prisma.customer.findMany({ where: { id: { in: customerIds } }, select: { id: true, name: true } })
+        : [],
+      providerIds.length > 0
+        ? prisma.thirdPartyProvider.findMany({ where: { id: { in: providerIds } }, select: { id: true, name: true } })
+        : [],
+      employeeIds.length > 0
+        ? prisma.driver.findMany({ where: { id: { in: employeeIds } }, select: { id: true, first_name: true, last_name: true } })
+        : [],
+    ]);
+  } catch (err) {
+    console.error('Failed to resolve party names for advances:', err);
+  }
 
   const customerMap = new Map(customers.map((c) => [c.id, c.name]));
   const providerMap = new Map(providers.map((p) => [p.id, p.name]));

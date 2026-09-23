@@ -10,3 +10,4 @@ export * from './RecordLayout';
 export * from './SidePanelTabs';
 export * from './JournalLinesTable';
 export * from './ActivityTimeline';
+export * from './BalanceHeroCard';
