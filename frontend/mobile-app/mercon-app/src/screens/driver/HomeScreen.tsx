@@ -1189,9 +1189,9 @@ const styles = StyleSheet.create({
   },
   /* Short dashed line that runs through the divider row to bridge the two legs */
   returnLegConnector: {
-    width: 1,
+    width: 0,
     height: 36,
-    borderWidth: 1,
+    borderLeftWidth: 2,
     borderColor: '#D8D8DC',
     borderStyle: 'dashed',
   },
@@ -1212,9 +1212,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FA634E',
   },
   dashedLine: {
-    width: 1,
+    width: 0,
     height: 46,
-    borderWidth: 1,
+    borderLeftWidth: 2,
     borderColor: '#D8D8DC',
     borderStyle: 'dashed',
     marginVertical: 2,
