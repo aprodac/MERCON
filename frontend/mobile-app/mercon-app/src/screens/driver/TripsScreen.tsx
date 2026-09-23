@@ -10,7 +10,7 @@ import {
   ArrowRight, ArrowLeft, CalendarClock, TriangleAlert,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
-import { SearchInput, DriverChargePill } from '../../components';
+import { SearchInput } from '../../components';
 import { useCurrentTrip } from '../../lib/use-current-trip';
 import { useScheduledTrips } from '../../lib/use-scheduled-trips';
 import { useTripHistory } from '../../lib/use-trip-history';
@@ -280,12 +280,9 @@ const TripsScreen = ({ navigation }: any) => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#EEF1F6" />
 
-      {/* Top Header Row: "Trips" on Left, Driver Charge Pill on Right */}
+      {/* Top Header Row: "Trips" on Left */}
       <View style={styles.topHeaderBar}>
         <Text style={styles.screenTitle}>{t('nav_trips', 'Trips')}</Text>
-
-        {/* Driver Charge Pill matching Home and Profile screen exactly */}
-        <DriverChargePill />
       </View>
 
       {/* Search Input Bar */}
