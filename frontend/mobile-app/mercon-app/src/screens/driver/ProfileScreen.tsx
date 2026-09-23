@@ -771,7 +771,7 @@ const styles = StyleSheet.create({
   },
   avatarWrapper: {
     position: 'relative',
-    borderRadius: 40,
+    borderRadius: 999,
     borderWidth: 3,
     borderColor: '#FFFFFF',
     shadowColor: '#000',
