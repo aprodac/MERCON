@@ -61,7 +61,7 @@ export async function closeAccountingPeriodWithSnapshot(periodId: string, userId
       where: {
         journalEntry: {
           periodId: period.id,
-          status: 'Posted',
+          status: { in: ['Posted', 'Voided'] },
         },
       },
       _sum: {

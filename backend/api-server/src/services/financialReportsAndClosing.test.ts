@@ -340,7 +340,7 @@ describe('Financial Reports & Fiscal Year-End Closing Integration Suite', () => 
   it('6. closeFiscalYear: correctly zeroes Revenue & Expense accounts and posts net to Retained Earnings', async () => {
     const postedLines = await prisma.journalLine.findMany({
       where: {
-        journalEntry: { status: 'Posted', entry_date: { lte: closingDate } },
+        journalEntry: { status: { in: ['Posted', 'Voided'] }, entry_date: { lte: closingDate } },
         account: { account_type: { in: ['Revenue', 'Expense'] } },
       },
       include: { account: true },

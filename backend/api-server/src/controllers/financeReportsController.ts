@@ -20,7 +20,7 @@ export const getTrialBalance = async (req: Request, res: Response) => {
       by: ['accountId'],
       where: {
         journalEntry: {
-          status: 'Posted',
+          status: { in: ['Posted', 'Voided'] },
           periodId: period_id ? String(period_id) : undefined,
         },
       },
@@ -102,7 +102,7 @@ export const calculateProfitAndLossData = async (date_from?: string, date_to?: s
   const lines = await prisma.journalLine.findMany({
     where: {
       journalEntry: {
-        status: 'Posted',
+        status: { in: ['Posted', 'Voided'] },
         entry_date: Object.keys(entryDateFilter).length > 0 ? entryDateFilter : undefined,
       },
       account: {
@@ -215,7 +215,7 @@ export const getCashFlow = async (req: Request, res: Response) => {
     const lines = await prisma.journalLine.findMany({
       where: {
         journalEntry: {
-          status: 'Posted',
+          status: { in: ['Posted', 'Voided'] },
           entry_date: Object.keys(entryDateFilter).length > 0 ? entryDateFilter : undefined,
         },
         account: {
@@ -288,7 +288,7 @@ export const getCashFlow = async (req: Request, res: Response) => {
       const priorLines = await prisma.journalLine.findMany({
         where: {
           journalEntry: {
-            status: 'Posted',
+            status: { in: ['Posted', 'Voided'] },
             entry_date: { lt: fromDate },
           },
           account: {
@@ -437,7 +437,7 @@ export const getBalanceSheet = async (req: Request, res: Response) => {
       const lines = await prisma.journalLine.findMany({
         where: {
           journalEntry: {
-            status: 'Posted',
+            status: { in: ['Posted', 'Voided'] },
             entry_date: { lte: asOfDate },
           },
         },
@@ -585,7 +585,7 @@ export const getGeneralLedger = async (req: Request, res: Response) => {
         where: {
           accountId: account.id,
           journalEntry: {
-            status: 'Posted',
+            status: { in: ['Posted', 'Voided'] },
             entry_date: { lt: fromDate },
           },
         },
@@ -610,7 +610,7 @@ export const getGeneralLedger = async (req: Request, res: Response) => {
       where: {
         accountId: account.id,
         journalEntry: {
-          status: 'Posted',
+          status: { in: ['Posted', 'Voided'] },
           entry_date: Object.keys(entryDateFilter).length > 0 ? entryDateFilter : undefined,
         },
       },

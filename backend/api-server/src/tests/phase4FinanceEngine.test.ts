@@ -4,9 +4,10 @@ import { prisma } from '../db';
 import { transferFunds, reconcileBankAccount } from '../utils/cashBankEngine';
 import { recordAdvance, applyAdvance, voidAdvance } from '../utils/advanceEngine';
 import { closeAccountingPeriodWithSnapshot } from '../utils/periodClosingEngine';
-import { issueInvoice } from '../utils/invoiceEngine';
+import { issueInvoice, voidInvoice } from '../utils/invoiceEngine';
 import { approveBill } from '../utils/billEngine';
 import { AccountingError } from '../utils/accountingEngine';
+import { calculateProfitAndLossData, getTrialBalance } from '../controllers/financeReportsController';
 
 const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -365,9 +366,9 @@ test('Real Phase 4 Finance Engine Integration Test Suite', async (t) => {
     // Apply valid amount 1000 SAR
     const result = await applyAdvance(advance.id, issuedInvoice.id, 'Invoice', 1000, TEST_USER_ID);
 
-    assert.equal(result.advance.status, 'FullyApplied');
-    assert.equal(Number(result.advance.remaining_amount), 0);
-    assert.equal(Number(result.advance.applied_amount), 1000);
+    assert.equal(result.advance!.status, 'FullyApplied');
+    assert.equal(Number(result.advance!.remaining_amount), 0);
+    assert.equal(Number(result.advance!.applied_amount), 1000);
 
     assert.equal(result.invoice.status, 'PartiallyPaid');
     assert.equal(Number(result.invoice.paid_amount), 1000);
@@ -493,5 +494,59 @@ test('Real Phase 4 Finance Engine Integration Test Suite', async (t) => {
     assert.ok(closedPeriod);
     assert.equal(closedPeriod!.status, 'Closed');
     assert.ok(closedPeriod!.closed_at);
+  });
+
+  await t.test('8. Regression: voiding an issued invoice leaves trial balance, P&L revenue, and AR balance unchanged', async () => {
+    // 1. Initial baseline measurements
+    const initialPnL = await calculateProfitAndLossData();
+    let initialTbResponse: any;
+    await getTrialBalance({ query: {} } as any, { json: (data: any) => { initialTbResponse = data; } } as any);
+    const initialArItem = initialTbResponse.data.items.find((i: any) => i.account_id === arAccount.id);
+    const initialArBalance = initialArItem ? initialArItem.balance : 0;
+
+    // 2. Create and issue draft invoice for 6,900 SAR
+    const draftInv = await prisma.invoice.create({
+      data: {
+        ref_id: `INV-VOID-TEST-${Date.now()}`,
+        customerId: customer.id,
+        invoice_date: new Date(),
+        due_date: new Date(),
+        status: 'Draft',
+        total_amount: 6900,
+        paid_amount: 0,
+        balance_due: 6900,
+        lines: {
+          create: [
+            {
+              description: 'Freight service test',
+              quantity: 1,
+              rate: 6900,
+              amount: 6900,
+            },
+          ],
+        },
+      },
+    });
+
+    await issueInvoice(draftInv.id, TEST_USER_ID);
+
+    // Verify invoice issuing increased revenue by 6900
+    const issuedPnL = await calculateProfitAndLossData();
+    assert.equal(issuedPnL.total_revenue, initialPnL.total_revenue + 6900);
+
+    // 3. Void the issued invoice
+    await voidInvoice(draftInv.id, TEST_USER_ID);
+
+    // 4. Assert post-void measurements net back to initial baseline
+    const postVoidPnL = await calculateProfitAndLossData();
+    let postVoidTbResponse: any;
+    await getTrialBalance({ query: {} } as any, { json: (data: any) => { postVoidTbResponse = data; } } as any);
+
+    const postVoidArItem = postVoidTbResponse.data.items.find((i: any) => i.account_id === arAccount.id);
+    const postVoidArBalance = postVoidArItem ? postVoidArItem.balance : 0;
+
+    assert.equal(postVoidPnL.total_revenue, initialPnL.total_revenue, 'P&L total_revenue must net back to initial baseline after void');
+    assert.equal(postVoidArBalance, initialArBalance, 'AR balance in Trial Balance must net back to initial baseline after void');
+    assert.ok(postVoidTbResponse.data.is_balanced, 'Trial Balance must remain balanced after void');
   });
 });

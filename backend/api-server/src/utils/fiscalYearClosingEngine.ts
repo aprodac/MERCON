@@ -51,7 +51,7 @@ export async function closeFiscalYear(closingDate: Date, userId: string) {
   const lines = await prisma.journalLine.findMany({
     where: {
       journalEntry: {
-        status: 'Posted',
+        status: { in: ['Posted', 'Voided'] },
         entry_date: { lte: closingDate },
       },
       account: {
