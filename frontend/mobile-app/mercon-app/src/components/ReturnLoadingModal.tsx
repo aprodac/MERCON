@@ -7,7 +7,7 @@ import {
   StyleSheet,
   Dimensions,
 } from 'react-native';
-import { CheckCircle2, RotateCcw, MapPin, ArrowRight, ArrowLeft, X } from 'lucide-react-native';
+import { CheckCircle2, RotateCcw, ArrowRight, ArrowLeft, X } from 'lucide-react-native';
 import { useLanguage } from '../lib/language-context';
 
 export interface ReturnLoadingModalProps {
@@ -15,6 +15,7 @@ export interface ReturnLoadingModalProps {
   onConfirm: () => void;
   onClose?: () => void;
   destinationName?: string;
+  /** @deprecated No longer shown — the modal only names the return loading point. */
   destinationAddress?: string;
 }
 
@@ -23,7 +24,6 @@ export const ReturnLoadingModal: React.FC<ReturnLoadingModalProps> = ({
   onConfirm,
   onClose,
   destinationName,
-  destinationAddress,
 }) => {
   const { t, language } = useLanguage();
   if (!visible) return null;
@@ -60,38 +60,24 @@ export const ReturnLoadingModal: React.FC<ReturnLoadingModalProps> = ({
             </View>
           </View>
 
-          {/* Modal Title */}
-          <Text style={styles.title}>{t('title_return_modal', 'Delivery Completed!')}</Text>
-
-          {/* Pill Badge */}
-          <View style={styles.pillBadge}>
-            <Text style={styles.pillText}>{t('badge_outbound_finished', 'Outbound Leg Finished · Round Trip')}</Text>
-          </View>
-
-          {/* Subtitle Description */}
-          <Text style={styles.description}>
-            {t('desc_proceed_return', 'Outbound delivery confirmed. Proceed to Return Cargo Loading at:')}
-          </Text>
-
-          {/* Return Loading Depot Highlight Box */}
-          <View style={styles.locationBox}>
-            <View style={styles.locationHeaderRow}>
-              <View style={styles.locationPinCircle}>
-                <MapPin size={13} color="#FA634E" strokeWidth={2.5} />
-              </View>
-              <Text style={styles.locationStepHeader}>{t('label_return_point', 'RETURN LOADING POINT')}</Text>
+          {/* Round progress: round 1 done, round 2 next */}
+          <View style={styles.roundTrack}>
+            <View style={[styles.roundSeg, styles.roundSegDone]}>
+              <Text style={styles.roundSegTextDone}>1</Text>
             </View>
-
-            <Text style={styles.locationName} numberOfLines={2}>
-              {destinationName || t('label_return_loading_depot', 'Return Loading Depot')}
-            </Text>
-
-            {destinationAddress ? (
-              <Text style={styles.locationAddr} numberOfLines={2}>
-                {destinationAddress}
-              </Text>
-            ) : null}
+            <View style={[styles.roundSeg, styles.roundSegNext]}>
+              <Text style={styles.roundSegTextNext}>2</Text>
+            </View>
           </View>
+
+          <Text style={styles.title}>{t('title_round_1_done', 'Round 1 of 2 completed')}</Text>
+
+          <Text style={styles.description} numberOfLines={2}>
+            {t('label_next_return_loading', 'Next: return loading at {place}').replace(
+              '{place}',
+              destinationName || t('label_return_loading_depot', 'Return Loading Depot'),
+            )}
+          </Text>
 
           {/* Primary Action Button */}
           <TouchableOpacity
@@ -99,7 +85,7 @@ export const ReturnLoadingModal: React.FC<ReturnLoadingModalProps> = ({
             activeOpacity={0.85}
             onPress={onConfirm}
           >
-            <Text style={styles.primaryBtnText}>{t('action_start_return_loading', 'Start Return Loading')}</Text>
+            <Text style={styles.primaryBtnText}>{t('action_start_round_2', 'Start Round 2 of 2')}</Text>
             {language === 'ur' ? (
               <ArrowLeft size={18} color="#FFFFFF" strokeWidth={2.6} style={styles.btnArrowIcon} />
             ) : (
@@ -113,6 +99,38 @@ export const ReturnLoadingModal: React.FC<ReturnLoadingModalProps> = ({
 };
 
 const styles = StyleSheet.create({
+  roundTrack: {
+    flexDirection: 'row',
+    gap: 6,
+    width: '60%',
+    marginBottom: 14,
+  },
+  roundSeg: {
+    flex: 1,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  roundSegDone: {
+    backgroundColor: '#10B981',
+  },
+  roundSegNext: {
+    backgroundColor: '#FFF1EF',
+    borderWidth: 1.5,
+    borderColor: '#FA634E',
+    borderStyle: 'dashed',
+  },
+  roundSegTextDone: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  roundSegTextNext: {
+    color: '#FA634E',
+    fontWeight: '800',
+    fontSize: 12,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(15, 23, 42, 0.65)',
@@ -185,18 +203,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     letterSpacing: -0.3,
   },
-  pillBadge: {
-    backgroundColor: '#EEF1F6',
-    paddingHorizontal: 11,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginTop: 6,
-  },
-  pillText: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: '#475569',
-  },
   description: {
     fontSize: 13.5,
     color: '#64748B',
@@ -204,49 +210,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
     lineHeight: 19,
     paddingHorizontal: 4,
-  },
-  locationBox: {
-    width: '100%',
-    backgroundColor: '#FFF5F4',
-    borderWidth: 1,
-    borderColor: '#FED7D2',
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginVertical: 16,
-  },
-  locationHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  locationPinCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#FEE2E2',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 6,
-  },
-  locationStepHeader: {
-    fontSize: 10.5,
-    fontWeight: '800',
-    color: '#FA634E',
-    letterSpacing: 0.6,
-  },
-  locationName: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#1E293B',
-    lineHeight: 20,
-  },
-  locationAddr: {
-    fontSize: 11.5,
-    fontWeight: '500',
-    color: '#64748B',
-    marginTop: 3,
-    lineHeight: 16,
   },
   primaryBtn: {
     width: '100%',

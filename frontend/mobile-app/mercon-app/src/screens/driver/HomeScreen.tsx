@@ -29,7 +29,7 @@ const WORKFLOW_URDU_LABEL: Record<string, string> = {
   IN_TRANSIT: 'ڈلیوری پر جائیں',
   ARRIVED_AT_DELIVERY: 'ڈلیوری مکمل کریں',
   DELIVERY_VERIFICATION: 'ڈلیوری مکمل کریں',
-  FIRST_DELIVERY_COMPLETED: 'واپسی لوڈنگ شروع کریں',
+  FIRST_DELIVERY_COMPLETED: 'راؤنڈ 2 از 2 شروع کریں',
   RETURN_LOADING: 'واپسی لوڈنگ مکمل کریں',
   IN_TRANSIT_RETURN: 'واپسی ڈلیوری پر جائیں',
   ARRIVED_AT_FINAL_DELIVERY: 'واپسی ڈلیوری مکمل کریں',
@@ -286,8 +286,8 @@ const HomeScreen = () => {
           };
         }
         return {
-          badgeLabel: 'Delivery Completed',
-          btnLabel: 'Start Return Loading',
+          badgeLabel: 'Round 1 of 2 completed',
+          btnLabel: 'Start Round 2 of 2',
           onPress: () => router.push('/trip/pickup'),
         };
       }

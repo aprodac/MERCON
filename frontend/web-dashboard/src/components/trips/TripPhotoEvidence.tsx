@@ -4,7 +4,7 @@ import {
   ArrowUpRight, PackageCheck, Flag, FileText,
   Play, Video, AlertTriangle, UploadCloud,
   MessageCircle, ListFilter, Share2, Sparkles, Filter, CheckCircle2, MapPin,
-  LayoutGrid, Layers, List
+  LayoutGrid, Layers, List, Smartphone
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -94,7 +94,43 @@ interface PhotoCardItem {
   isDelayEvidence?: boolean;
   aiVerification?: LightboxPhotoItem['aiVerification'];
   timeReview?: LightboxPhotoItem['timeReview'];
+  /** Where the evidence came from: the driver's camera, or a screenshot of
+   * the customer's app (EXTERNAL_APP workflow). Drives the card styling. */
+  source?: EvidenceSource;
 }
+
+type EvidenceSource = 'camera' | 'app_screenshot';
+
+/** Screenshots from the driver's EXTERNAL_APP flow are tagged at upload
+ * (mobileTripController uploadTripPhoto) — see extractTimeReview below. */
+export const checkIsAppScreenshot = (doc?: any): boolean =>
+  doc?.ai_extracted_json?.source === 'external_app_screenshot' || !!doc?.ai_extracted_json?.detected_event_type;
+
+const evidenceSource = (doc?: any): EvidenceSource => (checkIsAppScreenshot(doc) ? 'app_screenshot' : 'camera');
+
+/** Footer status for a card: a screenshot shows its review outcome instead of a generic "Received". */
+function evidenceStatusChip(photo: { source?: EvidenceSource; status: string; aiVerification?: LightboxPhotoItem['aiVerification'] }) {
+  if (photo.source !== 'app_screenshot') {
+    return { label: photo.status, className: 'bg-emerald-50 text-emerald-700 border-emerald-200/70' };
+  }
+  const st = String(photo.aiVerification?.docStatus || '').toLowerCase();
+  if (st.includes('reject')) return { label: 'Rejected', className: 'bg-red-50 text-red-700 border-red-200' };
+  if (st.includes('verif') || st.includes('approv')) return { label: 'Verified', className: 'bg-emerald-50 text-emerald-700 border-emerald-200/70' };
+  if (st.includes('pending') || st.includes('review')) return { label: 'Pending review', className: 'bg-amber-50 text-amber-800 border-amber-200' };
+  return { label: photo.status, className: 'bg-sky-50 text-sky-700 border-sky-200' };
+}
+
+/** Small "Camera photo" / "App screenshot" label used in every view. */
+const EvidenceSourceTag: React.FC<{ source?: EvidenceSource; className?: string }> = ({ source, className = '' }) =>
+  source === 'app_screenshot' ? (
+    <span className={`inline-flex items-center gap-1 rounded-md bg-sky-600 text-white px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wide shadow-2xs ${className}`}>
+      <Smartphone size={9} strokeWidth={2.6} /> App screenshot
+    </span>
+  ) : (
+    <span className={`inline-flex items-center gap-1 rounded-md bg-[#3E3C3D]/85 text-white px-1.5 py-0.5 text-[8.5px] font-extrabold uppercase tracking-wide shadow-2xs ${className}`}>
+      <Camera size={9} strokeWidth={2.6} /> Camera photo
+    </span>
+  );
 
 export const checkIsVideo = (doc?: any, url?: string): boolean => {
   const u = (url || doc?.file_url || '').toLowerCase();
@@ -119,6 +155,9 @@ const resolveCardTitle = (defaultTitle: string, doc?: any): string => {
   }
   if (isVid) {
     return defaultTitle.replace(/Photo/i, 'Video');
+  }
+  if (checkIsAppScreenshot(doc)) {
+    return /photo/i.test(defaultTitle) ? defaultTitle.replace(/Photo/i, 'Screenshot') : `${defaultTitle} Screenshot`;
   }
   return defaultTitle;
 };
@@ -239,7 +278,7 @@ export default function TripPhotoEvidence({
 }: TripPhotoEvidenceProps) {
   const [selectedLocation, setSelectedLocation] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'grid' | 'stacks' | 'timeline'>('grid');
-  const [categoryFilter, setCategoryFilter] = useState<'all' | 'loading' | 'pod' | 'geotag'>('all');
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'loading' | 'pod' | 'geotag' | 'screenshot'>('all');
   const [lightboxOpen, setLightboxOpen] = useState<boolean>(false);
   const [lightboxIndex, setLightboxIndex] = useState<number>(0);
   const [lightboxPhotos, setLightboxPhotos] = useState<LightboxPhotoItem[]>([]);
@@ -598,6 +637,7 @@ export default function TripPhotoEvidence({
             isVideo: checkIsVideo(arrivalDoc),
             isDelayEvidence: checkIsDelay(arrivalDoc),
             aiVerification: extractAiVerification(arrivalDoc),
+            source: evidenceSource(arrivalDoc),
             timeReview: extractTimeReview(arrivalDoc, st),
           });
         }
@@ -618,6 +658,7 @@ export default function TripPhotoEvidence({
             isVideo: checkIsVideo(doc),
             isDelayEvidence: checkIsDelay(doc),
             aiVerification: extractAiVerification(doc),
+            source: evidenceSource(doc),
             timeReview: extractTimeReview(doc, st),
           });
         });
@@ -671,6 +712,7 @@ export default function TripPhotoEvidence({
             isVideo: checkIsVideo(arrivalDoc),
             isDelayEvidence: checkIsDelay(arrivalDoc),
             aiVerification: extractAiVerification(arrivalDoc),
+            source: evidenceSource(arrivalDoc),
             timeReview: extractTimeReview(arrivalDoc, st),
           });
         }
@@ -690,6 +732,7 @@ export default function TripPhotoEvidence({
             isVideo: checkIsVideo(doc),
             isDelayEvidence: checkIsDelay(doc),
             aiVerification: extractAiVerification(doc),
+            source: evidenceSource(doc),
             timeReview: extractTimeReview(doc, st),
           });
         });
@@ -750,6 +793,7 @@ export default function TripPhotoEvidence({
             isVideo: checkIsVideo(arrivalDoc),
             isDelayEvidence: checkIsDelay(arrivalDoc),
             aiVerification: extractAiVerification(arrivalDoc),
+            source: evidenceSource(arrivalDoc),
             timeReview: extractTimeReview(arrivalDoc, st),
           });
         }
@@ -770,6 +814,7 @@ export default function TripPhotoEvidence({
             isVideo: checkIsVideo(doc),
             isDelayEvidence: checkIsDelay(doc),
             aiVerification: extractAiVerification(doc),
+            source: evidenceSource(doc),
             timeReview: extractTimeReview(doc, st),
           });
         });
@@ -844,6 +889,10 @@ export default function TripPhotoEvidence({
   const allLocationsList = useMemo(() => {
     return effectiveEvidence.flatMap((leg) => leg.locations);
   }, [effectiveEvidence]);
+
+  const allEvidencePhotos = allLocationsList.flatMap((l) => l.photos).filter((p) => !!p.sampleImg);
+  const hasAppScreenshots = allEvidencePhotos.some((p) => p.source === 'app_screenshot');
+  const hasCameraPhotos = allEvidencePhotos.some((p) => p.source !== 'app_screenshot');
 
   const totalPhotosCount = useMemo(() => {
     return effectiveEvidence.reduce(
@@ -1031,6 +1080,26 @@ export default function TripPhotoEvidence({
         >
           Geotagged Only
         </button>
+        {hasAppScreenshots && (
+          <button
+            type="button"
+            onClick={() => setCategoryFilter('screenshot')}
+            className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 ${
+              categoryFilter === 'screenshot'
+                ? 'bg-sky-600 text-white shadow-2xs'
+                : 'bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200'
+            }`}
+          >
+            <Smartphone size={10} /> App Screenshots
+          </button>
+        )}
+        {hasAppScreenshots && hasCameraPhotos && (
+          <div className="ml-auto hidden md:flex items-center gap-1.5 shrink-0 pl-2">
+            <span className="text-[9.5px] font-semibold text-slate-400">Legend:</span>
+            <EvidenceSourceTag source="camera" />
+            <EvidenceSourceTag source="app_screenshot" />
+          </div>
+        )}
       </div>
 
       {/* ── LEGS & LOCATIONS CONTAINER ── */}
@@ -1072,6 +1141,9 @@ export default function TripPhotoEvidence({
                       }
                       if (categoryFilter === 'geotag') {
                         return p.geotag?.latitude != null && p.geotag?.longitude != null;
+                      }
+                      if (categoryFilter === 'screenshot') {
+                        return p.source === 'app_screenshot';
                       }
                       return true;
                     });
@@ -1131,19 +1203,42 @@ export default function TripPhotoEvidence({
                             {photosToDisplay.map((photo, pIdx) => {
                               const isArrival = photo.type === 'arrival';
                               const isDoc = photo.type === 'document';
+                              const isShot = photo.source === 'app_screenshot';
+                              const statusChip = evidenceStatusChip(photo);
 
                               return (
                                 <div
                                   key={photo.id || pIdx}
                                   onClick={() => handleOpenLightbox(photosToDisplay, pIdx)}
-                                  className={`group bg-white border rounded-xl overflow-hidden shadow-2xs transition-all cursor-pointer flex flex-col justify-between min-w-0 ${
+                                  className={`group border rounded-xl overflow-hidden shadow-2xs transition-all cursor-pointer flex flex-col justify-between min-w-0 ${
                                     photo.timeReview
-                                      ? 'border-amber-400 ring-2 ring-amber-300/60 hover:border-amber-500'
-                                      : 'border-slate-200 hover:border-[#FA634E]'
+                                      ? 'bg-white border-amber-400 ring-2 ring-amber-300/60 hover:border-amber-500'
+                                      : isArrival
+                                      ? 'bg-gradient-to-b from-indigo-50/70 via-indigo-50/20 to-white border-indigo-400/90 ring-2 ring-indigo-500/20 hover:border-indigo-600 hover:shadow-md'
+                                      : isShot
+                                      ? 'bg-sky-50/60 border-sky-300 hover:border-sky-500'
+                                      : 'bg-white border-slate-200 hover:border-[#FA634E]'
                                   }`}
                                 >
-                                  {/* Image Box */}
-                                  <div className="relative w-full aspect-[4/3] bg-slate-900 overflow-hidden shrink-0">
+                                  {/* Arrival Banner Bar for Arrival Photos */}
+                                  {isArrival && (
+                                    <div className="bg-gradient-to-r from-indigo-950 via-indigo-900 to-slate-900 text-white px-2 py-0.5 flex items-center justify-between text-[8.5px] font-black uppercase tracking-wider shrink-0 border-b border-indigo-850">
+                                      <span className="flex items-center gap-1 text-indigo-200">
+                                        <MapPin size={9} className="text-emerald-400" />
+                                        <span>LOCATION ARRIVAL</span>
+                                      </span>
+                                      <span className="text-[7.5px] font-mono text-emerald-300 bg-emerald-950/80 px-1 rounded border border-emerald-500/30">
+                                        CHECK-IN
+                                      </span>
+                                    </div>
+                                  )}
+                                  {/* Image Box — camera photos fill the frame; app screenshots are shown
+                                      whole inside a phone-style frame so they read as screenshots. */}
+                                  <div
+                                    className={`relative w-full aspect-[4/3] overflow-hidden shrink-0 ${
+                                      isShot ? 'bg-gradient-to-b from-sky-100 to-sky-200/70 flex items-center justify-center py-2' : 'bg-slate-900'
+                                    }`}
+                                  >
                                     {photo.timeReview && (
                                       <Badge className="absolute top-1.5 right-1.5 z-10 bg-amber-500 text-black border-0 text-[8.5px] font-extrabold px-1.5 py-0.5 shadow-sm animate-pulse">
                                         Needs Time
@@ -1158,15 +1253,25 @@ export default function TripPhotoEvidence({
                                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                         />
                                       ) : (
-                                        <img
-                                          src={photo.sampleImg}
-                                          alt={photo.title}
-                                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                        />
+                                        isShot ? (
+                                          <div className="h-full aspect-[9/16] max-w-[70%] rounded-[10px] border-[3px] border-slate-800 bg-slate-800 shadow-md overflow-hidden">
+                                            <img
+                                              src={photo.sampleImg}
+                                              alt={photo.title}
+                                              className="w-full h-full object-contain bg-white group-hover:scale-[1.03] transition-transform duration-300"
+                                            />
+                                          </div>
+                                        ) : (
+                                          <img
+                                            src={photo.sampleImg}
+                                            alt={photo.title}
+                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                          />
+                                        )
                                       )
                                     ) : (
                                       <div className="w-full h-full bg-slate-100 flex items-center justify-center text-slate-400">
-                                        <Camera size={20} />
+                                        {isShot ? <Smartphone size={20} /> : <Camera size={20} />}
                                       </div>
                                     )}
 
@@ -1174,6 +1279,9 @@ export default function TripPhotoEvidence({
                                     <Badge className="absolute top-1.5 left-1.5 bg-black/65 backdrop-blur-xs text-white border-white/20 text-[8.5px] font-extrabold px-1.5 py-0.5 shadow-2xs max-w-[85%] truncate">
                                       {photo.title}
                                     </Badge>
+
+                                    {/* Bottom-Left Source Tag: camera photo vs app screenshot */}
+                                    <EvidenceSourceTag source={photo.source} className="absolute bottom-1.5 left-1.5 z-[1]" />
 
                                     {/* Top-Right Geotag Indicator Dot */}
                                     {photo.geotag?.latitude != null && (
@@ -1191,14 +1299,27 @@ export default function TripPhotoEvidence({
                                   </div>
 
                                   {/* Card Footer Info Line */}
-                                  <div className="px-2 py-1.5 bg-white flex items-center justify-between text-[9.5px] border-t border-slate-100 shrink-0">
-                                    <span className="font-mono text-slate-500 font-semibold flex items-center gap-1">
-                                      <Clock size={10} className="text-slate-400" />
+                                  <div className={`px-2 py-1.5 flex items-center justify-between text-[9.5px] border-t shrink-0 ${
+                                    isArrival
+                                      ? 'bg-indigo-50/90 border-indigo-200/80'
+                                      : isShot
+                                      ? 'bg-sky-50 border-sky-200'
+                                      : 'bg-white border-slate-100'
+                                  }`}>
+                                    <span className={`font-mono font-semibold flex items-center gap-1 ${isArrival ? 'text-indigo-900 font-bold' : 'text-slate-500'}`}>
+                                      <Clock size={10} className={isArrival ? 'text-indigo-600' : 'text-slate-400'} />
                                       {photo.time}
                                     </span>
-                                    <span className="px-1 py-0.2 rounded text-[7.5px] font-bold border bg-emerald-50 text-emerald-700 border-emerald-200/70">
-                                      {photo.status}
-                                    </span>
+                                    {isArrival ? (
+                                      <span className="px-1.5 py-0.2 rounded text-[7.5px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300/80 flex items-center gap-0.5 shadow-2xs">
+                                        <CheckCircle2 size={8} className="text-emerald-600" />
+                                        Arrived
+                                      </span>
+                                    ) : (
+                                      <span className={`px-1 py-0.2 rounded text-[7.5px] font-bold border ${statusChip.className}`}>
+                                        {statusChip.label}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               );
@@ -1291,9 +1412,24 @@ export default function TripPhotoEvidence({
                               {/* Stack Overlay Layer */}
                               <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent flex flex-col justify-between p-2 text-white">
                                 <div className="flex items-center justify-between gap-1">
-                                  <Badge className="bg-black/60 backdrop-blur-xs text-white border-white/20 text-[9px] font-bold px-1.5 py-0.5">
-                                    {mainPhoto.title}
-                                  </Badge>
+                                  <div className="flex flex-col items-start gap-1 min-w-0">
+                                    <Badge className="bg-black/60 backdrop-blur-xs text-white border-white/20 text-[9px] font-bold px-1.5 py-0.5 max-w-full truncate">
+                                      {mainPhoto.title}
+                                    </Badge>
+                                    {/* How many camera photos vs app screenshots this stop holds */}
+                                    <div className="flex items-center gap-1">
+                                      {validPhotos.some((p) => p.source !== 'app_screenshot') && (
+                                        <span className="inline-flex items-center gap-0.5 rounded bg-[#3E3C3D]/85 px-1 py-0.5 text-[8.5px] font-extrabold">
+                                          <Camera size={9} /> {validPhotos.filter((p) => p.source !== 'app_screenshot').length}
+                                        </span>
+                                      )}
+                                      {validPhotos.some((p) => p.source === 'app_screenshot') && (
+                                        <span className="inline-flex items-center gap-0.5 rounded bg-sky-600 px-1 py-0.5 text-[8.5px] font-extrabold">
+                                          <Smartphone size={9} /> {validPhotos.filter((p) => p.source === 'app_screenshot').length}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
                                   {extraCount > 0 && (
                                     <div className="bg-[#FA634E] text-white font-extrabold text-[10px] px-2 py-0.5 rounded-full shadow-md">
                                       +{extraCount} more
@@ -1350,19 +1486,34 @@ export default function TripPhotoEvidence({
                   {filteredLocations.flatMap((loc) => loc.photos).filter((p) => !!p.sampleImg).map((photo, idx) => (
                     <div
                       key={photo.id || idx}
-                      className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between gap-4 hover:bg-slate-100/80 transition-colors"
+                      className={`rounded-xl p-3 flex items-center justify-between gap-4 transition-colors border ${
+                        photo.source === 'app_screenshot'
+                          ? 'bg-sky-50/70 border-sky-200 hover:bg-sky-100/70'
+                          : 'bg-slate-50 border-slate-200 hover:bg-slate-100/80'
+                      }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div
                           onClick={() => handleOpenLightbox(allLocationsList.flatMap(l => l.photos), idx)}
-                          className="w-14 h-14 rounded-lg overflow-hidden bg-slate-900 border border-slate-300 cursor-pointer shrink-0"
+                          className={`h-14 rounded-lg overflow-hidden cursor-pointer shrink-0 ${
+                            photo.source === 'app_screenshot'
+                              ? 'w-9 border-[2px] border-slate-800 bg-white'
+                              : 'w-14 bg-slate-900 border border-slate-300'
+                          }`}
                         >
-                          <img src={photo.sampleImg} alt="" className="w-full h-full object-cover" />
+                          <img
+                            src={photo.sampleImg}
+                            alt=""
+                            className={`w-full h-full ${photo.source === 'app_screenshot' ? 'object-contain' : 'object-cover'}`}
+                          />
                         </div>
                         <div className="min-w-0">
-                          <h4 className="font-extrabold text-xs text-slate-900 truncate">
-                            {photo.title}
-                          </h4>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <h4 className="font-extrabold text-xs text-slate-900 truncate">
+                              {photo.title}
+                            </h4>
+                            <EvidenceSourceTag source={photo.source} className="shrink-0" />
+                          </div>
                           <p className="text-[11px] text-slate-600 truncate flex items-center gap-1">
                             <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
                             <span>{photo.location}</span> • <span className="font-mono text-slate-500">{photo.time}</span>
