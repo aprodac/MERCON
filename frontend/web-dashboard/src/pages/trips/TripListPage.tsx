@@ -36,6 +36,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { TruckMotion, CheckBadge, RouteLine, ClockIcon, RiskAlert } from '@/components/ui/kpi-icons';
+import { parseTripRouteNodes, getLegEndpoints } from '@mercon/shared-types';
 
 import { format, subDays, addDays } from 'date-fns';
 import { DateRange } from 'react-day-picker';
@@ -149,46 +150,34 @@ const TRIP_EXPORT_HEADERS = [
 
 const formatExportDate = (value: string | null, tz: string = 'Asia/Riyadh') => (value ? formatInDeploymentTz(value, tz, 'yyyy-MM-dd') : '');
 
+const getRouteNodes = (trip: Trip) => {
+  if (Array.isArray((trip as any).route_timeline) && (trip as any).route_timeline.length >= 2) {
+    return (trip as any).route_timeline;
+  }
+  return parseTripRouteNodes(trip);
+};
+
 const getPickupInfo = (trip: Trip) => {
-  const pickup = trip.stops?.find((s) => s.stop_type === 'Pickup') || trip.stops?.[0];
-  if (!pickup) return { name: '—', address: null };
-  const name = pickup.location_name || pickup.location?.name || pickup.location_address || pickup.location?.address || (pickup.location_lat ? `${pickup.location_lat.toFixed(3)}, ${pickup.location_lng.toFixed(3)}` : '—');
-  const address = (pickup.location_name && (pickup.location_address || pickup.location?.address)) ? (pickup.location_address || pickup.location?.address) : null;
-  return { name, address };
+  const nodes = getRouteNodes(trip);
+  if (nodes.length > 0) {
+    return { name: nodes[0].name || '—', address: nodes[0].address || null };
+  }
+  return { name: '—', address: null };
 };
 
 const getDropoffInfo = (trip: Trip) => {
-  const stops = trip.stops || [];
-  if (!stops.length) {
-    const fallback = trip.rateCard?.route_destination || (trip as any).quotation?.route_destination || (trip as any).route_destination || '—';
-    return { name: fallback, address: null };
+  const endpoints0 = getLegEndpoints(trip, 0);
+  if (endpoints0.delivery) {
+    const dest = endpoints0.delivery;
+    return { name: (dest as any).name || (dest as any).location_name || '—', address: (dest as any).address || (dest as any).location_address || null };
   }
-
-  const pickupStop = stops.find((s) => s.stop_type === 'Pickup') || stops[0];
-  const pickupName = (pickupStop?.location_name || pickupStop?.location?.name || '').toLowerCase().trim();
-
-  const outboundStops = stops.filter((s: any) => ((s as any).leg_index ?? 0) === 0);
-  let dropoff = outboundStops.length > 1 ? outboundStops[outboundStops.length - 1] : null;
-
-  if (!dropoff || (outboundStops.length > 1 && (dropoff.location_name || dropoff.location?.name || '').toLowerCase().trim() === pickupName)) {
-    const distinctStop = stops.find((s) => {
-      const sName = (s.location_name || s.location?.name || '').toLowerCase().trim();
-      return sName && sName !== pickupName;
-    });
-    if (distinctStop) {
-      dropoff = distinctStop;
-    }
+  const nodes = getRouteNodes(trip);
+  if (nodes.length > 1) {
+    const lastNode = nodes[nodes.length - 1];
+    return { name: lastNode.name || '—', address: lastNode.address || null };
   }
-
-  if (!dropoff && stops.length > 1) dropoff = stops[stops.length - 1];
-  if (!dropoff && stops.length > 0) dropoff = stops[0];
-  if (!dropoff) return { name: '—', address: null };
-
-  let name = dropoff.location_name || dropoff.location?.name || dropoff.location_address || dropoff.location?.address || (dropoff.location_lat ? `${dropoff.location_lat.toFixed(3)}, ${dropoff.location_lng.toFixed(3)}` : '—');
-  name = name.replace(/🔁\s*/g, '').replace(/\[RETURN:.*?\]/gi, '').trim();
-
-  const address = (dropoff.location_name && (dropoff.location_address || dropoff.location?.address)) ? (dropoff.location_address || dropoff.location?.address) : null;
-  return { name, address };
+  const fallback = trip.rateCard?.route_destination || (trip as any).quotation?.route_destination || (trip as any).route_destination || '—';
+  return { name: fallback, address: null };
 };
 
 const TRIP_EXPORT_COLUMNS: ExportColumn<Trip>[] = [

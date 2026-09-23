@@ -17,6 +17,7 @@ import {
 import { GeotagEvidenceData } from './GeotagEvidenceCard';
 import { EvidenceLightboxModal, LightboxPhotoItem } from './EvidenceLightboxModal';
 import { openPhotoEvidenceWhatsapp } from '@/utils/whatsappFormatter';
+import { isRoundTrip as checkIsRoundTrip, getLegEndpoints } from '@mercon/shared-types';
 
 export interface PhotoPreviewItem {
   url: string;
@@ -441,14 +442,7 @@ export default function TripPhotoEvidence({
     }
 
     // Determine if it is a round trip
-    const firstCity = cleanCityName(stops[0], 'Origin');
-    const lastCity = cleanCityName(stops[stops.length - 1], 'Destination');
-    const isRoundTrip =
-      (stops.length >= 4 && firstCity.toLowerCase() === lastCity.toLowerCase()) ||
-      trip?.trip_type === 'round_trip' ||
-      trip?.quotation?.line_type?.toUpperCase().includes('ROUND') ||
-      trip?.rateCard?.rate_category?.toUpperCase().includes('ROUND') ||
-      stops.some((s: any) => s.is_return || s.leg_index === 1);
+    const isRoundTrip = checkIsRoundTrip(trip || { stops });
 
     // Extract valid photo documents (photos only; delay videos and delay reports belong exclusively in Delay Alerts)
     const photoDocs = (documents || []).filter((d: any) => {
@@ -506,7 +500,8 @@ export default function TripPhotoEvidence({
       st: any,
       overallIdx: number,
       role: 'pickup' | 'stop' | 'delivery' | 'return_loading' | 'return_stop' | 'return_delivery',
-      isReturn: boolean
+      isReturn: boolean,
+      intermediateIndex: number = 0
     ): LocationGroup => {
       // `photoDocs` inside this function's heuristics below is scoped to only
       // the legacy (no stop_id) pool, plus this stop's own exact matches —
@@ -514,7 +509,7 @@ export default function TripPhotoEvidence({
       // unambiguously tagged for a different, specific stop.
       const exactStopDocs: any[] = (st?.id && docsByStopId.get(st.id)) || [];
       const photoDocs = [...exactStopDocs, ...legacyPhotoDocs];
-      const city = cleanCityName(st, isReturn ? (role === 'return_delivery' ? firstCity : 'Stop') : (role === 'pickup' ? firstCity : 'Stop'));
+      const city = cleanCityName(st, isReturn ? (role === 'return_delivery' ? 'Destination' : 'Stop') : (role === 'pickup' ? 'Origin' : 'Stop'));
       const seqStr = String(overallIdx + 1).padStart(2, '0');
       const stopArrivalTime = st.actual_arrival
         ? formatDocTime(st.actual_arrival)
@@ -636,11 +631,14 @@ export default function TripPhotoEvidence({
         // Intermediate stop inspection photos
         const candidateStopDocs = photoDocs.filter((d: any) => {
           const op = d.ai_extracted_json?.operation;
-          return (
+          const isStopDoc =
             op?.includes('stop') ||
             d.ai_extracted_json?.operation === 'intermediate_stop' ||
-            d.ai_extracted_json?.operation === 'return_intermediate_stop'
-          );
+            d.ai_extracted_json?.operation === 'return_intermediate_stop';
+          if (!isStopDoc) return false;
+          const isExactMatch = exactStopDocs.includes(d);
+          if (!isExactMatch && intermediateIndex > 0) return false;
+          return true;
         });
 
         if (!arrivalDoc && candidateStopDocs.length > 0) {
@@ -783,31 +781,30 @@ export default function TripPhotoEvidence({
       };
     };
 
+    const outboundEndpoints = getLegEndpoints(trip || { stops }, 0);
+    const returnEndpoints = isRoundTrip ? getLegEndpoints(trip || { stops }, 1) : { loading: undefined, delivery: undefined, intermediates: [] };
+
+    const outboundStops: { stop: any; role: 'pickup' | 'stop' | 'delivery'; interIdx: number }[] = [];
+    if (outboundEndpoints.loading) outboundStops.push({ stop: outboundEndpoints.loading, role: 'pickup', interIdx: 0 });
+    outboundEndpoints.intermediates.forEach((st: any, idx: number) => {
+      outboundStops.push({ stop: st, role: 'stop', interIdx: idx });
+    });
+    if (outboundEndpoints.delivery) outboundStops.push({ stop: outboundEndpoints.delivery, role: 'delivery', interIdx: 0 });
+
+    const outboundLocations = outboundStops.map((item, idx) => {
+      return buildLocation(item.stop, idx, item.role, false, item.interIdx);
+    });
+
     if (isRoundTrip) {
-      // Split by leg_index, the actual source of truth, whenever it's
-      // present — NOT by cutting the stops array in half. A half-split
-      // silently misassigns stops on any round trip where the outbound and
-      // return legs don't have the same number of stops (e.g. 4 outbound +
-      // 2 return): the last outbound stop would land in the "RETURN LEG"
-      // section with the wrong role/badge and its photos matched against
-      // return-leg heuristics. Only fall back to the half-split for legacy
-      // trips with no leg_index data at all.
-      const hasLegIndex = stops.some((s: any) => s.leg_index === 1);
-      const outboundStops = hasLegIndex ? stops.filter((s: any) => (s.leg_index ?? 0) === 0) : stops.slice(0, Math.ceil(stops.length / 2));
-      const returnStops = hasLegIndex ? stops.filter((s: any) => (s.leg_index ?? 0) === 1) : stops.slice(Math.ceil(stops.length / 2));
-
-      const outboundLocations = outboundStops.map((st: any, idx: number) => {
-        const isFirst = idx === 0;
-        const isLast = idx === outboundStops.length - 1;
-        const role = isFirst ? 'pickup' : (isLast ? 'delivery' : 'stop');
-        return buildLocation(st, idx, role, false);
+      const returnStops: { stop: any; role: 'return_loading' | 'return_stop' | 'return_delivery'; interIdx: number }[] = [];
+      if (returnEndpoints.loading) returnStops.push({ stop: returnEndpoints.loading, role: 'return_loading', interIdx: 0 });
+      returnEndpoints.intermediates.forEach((st: any, idx: number) => {
+        returnStops.push({ stop: st, role: 'return_stop', interIdx: idx });
       });
+      if (returnEndpoints.delivery) returnStops.push({ stop: returnEndpoints.delivery, role: 'return_delivery', interIdx: 0 });
 
-      const returnLocations = returnStops.map((st: any, idx: number) => {
-        const isFirst = idx === 0;
-        const isLast = idx === returnStops.length - 1;
-        const role = isFirst ? 'return_loading' : (isLast ? 'return_delivery' : 'return_stop');
-        return buildLocation(st, outboundStops.length + idx, role, true);
+      const returnLocations = returnStops.map((item, idx) => {
+        return buildLocation(item.stop, outboundLocations.length + idx, item.role, true, item.interIdx);
       });
 
       return [
@@ -827,20 +824,13 @@ export default function TripPhotoEvidence({
         },
       ];
     } else {
-      const locations = stops.map((st: any, idx: number) => {
-        const isFirst = idx === 0;
-        const isLast = idx === stops.length - 1;
-        const role = isFirst ? 'pickup' : (isLast ? 'delivery' : 'stop');
-        return buildLocation(st, idx, role, false);
-      });
-
       return [
         {
           id: 'outbound',
           title: 'OUTBOUND LEG',
           icon: '↗',
           pillColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-          locations,
+          locations: outboundLocations,
         },
       ];
     }

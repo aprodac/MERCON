@@ -18,6 +18,7 @@ import DeletedBadge from '@/components/ui/DeletedBadge';
 import { cn } from '@/lib/utils';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import { reverseGeocode } from '@/services/addressSearch';
+import { isRoundTrip, parseTripRouteNodes } from '@mercon/shared-types';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -78,14 +79,10 @@ const stopFullLabel = (stop: TripStop | undefined) => {
 const getTripTypeLabel = (trip: Trip): string => {
   if (trip.is_third_party) return '3PL Trip';
   const stopsCount = trip.stops?.length ?? 0;
-  const stops = trip.stops || [];
-  if (stops.some((s: any) => s.leg_index === 1) || (trip.line_type?.name && /round/i.test(trip.line_type.name))) {
+  if (isRoundTrip(trip)) {
     return 'Round Trip';
   }
   if (stopsCount >= 3) {
-    const firstLoc = (stops[0]?.location_name || stops[0]?.location?.name || '').toLowerCase().trim();
-    const lastLoc = (stops[stopsCount - 1]?.location_name || stops[stopsCount - 1]?.location?.name || '').toLowerCase().trim();
-    if (firstLoc && lastLoc && firstLoc === lastLoc) return 'Round Trip';
     return 'Multi-Stop';
   }
   return 'Single Trip';
@@ -96,11 +93,7 @@ const getActiveLegInfo = (trip: Trip) => {
   const stopsCount = stops.length;
   if (stopsCount === 0) return null;
 
-  const firstLoc = (stops[0]?.location_name || stops[0]?.location?.name || '').toLowerCase().trim();
-  const lastLoc = (stops[stopsCount - 1]?.location_name || stops[stopsCount - 1]?.location?.name || '').toLowerCase().trim();
-  const isRound = stops.some((s: any) => s.leg_index === 1) ||
-    Boolean(trip.line_type?.name && /round/i.test(trip.line_type.name)) ||
-    Boolean(stopsCount >= 3 && firstLoc && lastLoc && firstLoc === lastLoc);
+  const isRound = isRoundTrip(trip);
 
   // Find active stop: first stop without actual_departure
   const activeIdx = stops.findIndex((s) => !s.actual_departure);
@@ -141,10 +134,13 @@ export default function TripKanbanCard({
   const tz = useDeploymentTimezone();
   const [isDragging, setIsDragging] = useState(false);
 
+  const routeNodes = Array.isArray((trip as any).route_timeline) && (trip as any).route_timeline.length >= 2
+    ? (trip as any).route_timeline
+    : parseTripRouteNodes(trip);
   const pickup = trip.stops?.find((s) => s.stop_type === 'Pickup') || trip.stops?.[0];
   const dropoff = trip.stops?.find((s) => s.stop_type === 'Dropoff') || (trip.stops && trip.stops.length > 1 ? trip.stops[trip.stops.length - 1] : undefined);
-  const pickupName = getPickupName(trip);
-  const dropoffName = getDropoffName(trip);
+  const pickupName = routeNodes[0]?.name || getPickupName(trip);
+  const dropoffName = routeNodes[routeNodes.length - 1]?.name || getDropoffName(trip);
   const capacity = getTripPayloadCapacity(trip);
   const tripType = getTripTypeLabel(trip);
   const legInfo = getActiveLegInfo(trip);
