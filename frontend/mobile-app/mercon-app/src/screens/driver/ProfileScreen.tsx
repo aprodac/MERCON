@@ -9,7 +9,7 @@ import Svg, { Path, G, Circle } from 'react-native-svg';
 import {
   FileText, Truck, Settings, IdCard, Globe, ShieldCheck,
   ChevronRight, ChevronLeft, ChevronDown, Camera, CheckCircle2, Award, Check, Wallet, X, Lock, ExternalLink,
-} from 'lucide-react-native';
+User, HeartPulse, HelpCircle, LogOut, ChevronRight as ChevronRightIcon } from 'lucide-react-native';
 import { Avatar, DriverChargePill } from '../../components';
 import { useAuth } from '../../lib/auth-context';
 import { useProfile } from '../../lib/use-profile';
@@ -308,22 +308,64 @@ export default function ProfileScreen() {
               <DriverChargePill />
             </View>
 
-            {/* Elegant Driver Identity Row */}
-            <View style={styles.identityRow}>
+            {/* Elegant Driver Identity Column (Centered) */}
+            <View style={styles.identityColumn}>
               <TouchableOpacity
                 style={styles.avatarWrapper}
                 activeOpacity={0.85}
                 onPress={() => setAvatarZoomed(true)}
               >
-                <Avatar initials={initialsOf(name)} imageUri={avatarUrl} size={76} />
+                <Avatar initials={initialsOf(name)} imageUri={avatarUrl} size={84} />
               </TouchableOpacity>
-
-              <View style={styles.identityTextCol}>
-                <Text style={styles.driverNameText} numberOfLines={1}>{name}</Text>
-              </View>
+              <Text style={styles.driverNameTextCentered} numberOfLines={1}>{name}</Text>
+              <Text style={styles.driverVehicleSubText}>Vehicle: {plateNumber}</Text>
             </View>
           </SafeAreaView>
         </View>
+                {/* ── NAVIGATION MENU CARD ── */}
+        <View style={styles.menuCard}>
+          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
+            <User size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <Text style={styles.menuItemText}>Personal Information</Text>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
+          </TouchableOpacity>
+          <View style={styles.menuDivider} />
+
+          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
+            <HeartPulse size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <Text style={styles.menuItemText}>Emergency Contact</Text>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
+          </TouchableOpacity>
+          <View style={styles.menuDivider} />
+
+          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/settings' as any)}>
+            <Settings size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <Text style={styles.menuItemText}>App Settings</Text>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
+          </TouchableOpacity>
+          <View style={styles.menuDivider} />
+
+          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
+            <HelpCircle size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <Text style={styles.menuItemText}>Help & Support</Text>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
+          </TouchableOpacity>
+          <View style={styles.menuDivider} />
+
+          <TouchableOpacity 
+            style={styles.menuItem} 
+            activeOpacity={0.7} 
+            onPress={() => {
+              signOut();
+              router.replace('/login');
+            }}
+          >
+            <LogOut size={20} color="#771B1B" strokeWidth={2} style={styles.menuIcon} />
+            <Text style={styles.menuItemText}>Logout</Text>
+            <ChevronRightIcon size={18} color="#A1A1AA" />
+          </TouchableOpacity>
+        </View>
+
         {/* ── SECTION A: PERFORMANCE OVERVIEW ── */}
         <View style={styles.sectionSurface}>
           <Text style={styles.sectionTitleText}>
@@ -452,17 +494,6 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* Account Controls */}
-        <TouchableOpacity
-          style={styles.signOutBtn}
-          activeOpacity={0.8}
-          onPress={() => {
-            signOut();
-            router.replace('/login');
-          }}
-        >
-          <Text style={styles.signOutBtnText}>{t('action_sign_out', 'Sign Out')}</Text>
-        </TouchableOpacity>
       </ScrollView>
 
       {/* ── Document Preview & WhatsApp Share Modal ── */}
@@ -763,6 +794,59 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
 
+
+  /* Identity Column */
+  identityColumn: {
+    alignItems: 'center',
+    marginTop: 10,
+    paddingHorizontal: 4,
+  },
+  driverNameTextCentered: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginTop: 12,
+  },
+  driverVehicleSubText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 4,
+  },
+  /* Menu Card */
+  menuCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 4,
+    marginHorizontal: 16,
+    marginTop: -20,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  menuIcon: {
+    marginRight: 14,
+  },
+  menuItemText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#3E3C3D',
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#F4F4F5',
+    marginHorizontal: 16,
+  },
   /* Identity Row */
   identityRow: {
     flexDirection: 'row',
