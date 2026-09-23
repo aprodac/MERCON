@@ -1,35 +1,40 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { 
-  BookOpen, 
-  Video, 
-  Award, 
-  CheckCircle2, 
-  ArrowRight, 
-  PlayCircle, 
-  Search, 
-  Clock, 
-  Check, 
-  X, 
-  Plus, 
-  Sparkles, 
-  ChevronRight, 
-  Eye, 
-  Calculator, 
-  Truck, 
-  Users, 
-  Wrench, 
-  Smartphone, 
+import React, { useState, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  BookOpen,
+  Video,
+  CheckCircle2,
+  PlayCircle,
+  Search,
+  Clock,
+  Check,
+  Plus,
+  Trash2,
+  Sparkles,
+  ChevronRight,
+  Calculator,
+  Truck,
+  Wrench,
+  Smartphone,
   FolderOpen,
-  HelpCircle
+  Upload,
+  X,
+  FileVideo,
 } from 'lucide-react';
+import { toast } from 'sonner';
+
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import Btn from '@/components/ui/Btn';
+import KpiCard from '@/components/ui/KpiCard';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Progress } from '@/components/ui/progress';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+
 import { authStore } from '@/store/authStore';
-import { learningService, type VideoTutorial } from '@/services/learningService';
+import { learningService, type LearningResource, type TimestampedStep } from '@/services/learningService';
 
 const CATEGORY_ICON_MAP: Record<string, any> = {
   dispatch: Truck,
@@ -39,676 +44,689 @@ const CATEGORY_ICON_MAP: Record<string, any> = {
   mobile: Smartphone,
 };
 
-export default function LearningPage() {
-  const user = authStore.getUser();
-  const isAdmin = user?.role === 'Admin' || user?.role === 'SuperAdmin' || (user as any)?.isSuperAdmin;
+const CATEGORY_LABEL_MAP: Record<string, string> = {
+  dispatch: 'Dispatch & Trips',
+  payouts: 'Driver Payouts',
+  quotations: 'Quotations & Rates',
+  fleet: 'Fleet & Maint.',
+  mobile: 'Mobile & POD',
+};
 
-  const [tutorials, setTutorials] = useState<VideoTutorial[]>([]);
-  const [watchedMap, setWatchedMap] = useState<Record<string, boolean>>({});
+function formatDuration(seconds: number): string {
+  if (!seconds || isNaN(seconds)) return '0:00';
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+}
+
+export default function LearningPage() {
+  const queryClient = useQueryClient();
+  const user = authStore.getUser();
+  const canManage = user?.role === 'Admin' || user?.role === 'SuperAdmin' || (user as any)?.isSuperAdmin;
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [activeVideo, setActiveVideo] = useState<VideoTutorial | null>(null);
+  const [activeVideo, setActiveVideo] = useState<LearningResource | null>(null);
   const [activeStepIdx, setActiveStepIdx] = useState<number>(0);
 
-  // Add new video modal state
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newCategory, setNewCategory] = useState('dispatch');
-  const [newDesc, setNewDesc] = useState('');
-  const [newDuration, setNewDuration] = useState('3:30');
-  const [newUrl, setNewUrl] = useState('');
+  // Upload modal state
+  const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('dispatch');
+  const [categoryLabel, setCategoryLabel] = useState('Dispatch & Trips');
+  const [description, setDescription] = useState('');
+  const [durationMins, setDurationMins] = useState('3');
+  const [durationSecs, setDurationSecs] = useState('30');
+  const [directVideoUrl, setDirectVideoUrl] = useState('');
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [stepInput, setStepInput] = useState<{ time: string; title: string; description: string }>({
+    time: '00:00',
+    title: '',
+    description: '',
+  });
+  const [stepsList, setStepsList] = useState<TimestampedStep[]>([]);
+  const [takeawayInput, setTakeawayInput] = useState('');
+  const [takeawaysList, setTakeawaysList] = useState<string[]>([]);
 
-  // Load dynamic data on mount
-  useEffect(() => {
-    const loaded = learningService.getAll();
-    setTutorials(loaded);
-    setWatchedMap(learningService.getWatchedMap());
-  }, []);
+  // Delete modal state
+  const [deletingResource, setDeletingResource] = useState<LearningResource | null>(null);
 
-  // Dynamic Category list & counts
-  const categoryList = useMemo(() => {
-    const uniqueCats = Array.from(new Set(tutorials.map(t => t.category)));
-    const catLabels: Record<string, string> = {
-      dispatch: 'Dispatch & Trips',
-      payouts: 'Driver Payouts',
-      quotations: 'Quotations & Rates',
-      fleet: 'Fleet & Maint.',
-      mobile: 'Mobile & POD',
-    };
+  // Query resources
+  const { data: resources = [], isLoading } = useQuery({
+    queryKey: ['learning-resources'],
+    queryFn: learningService.getResources,
+  });
 
-    const result = [
-      { key: 'all', label: 'All Courses', icon: BookOpen, count: tutorials.length }
+  // Watch mutation
+  const watchMutation = useMutation({
+    mutationFn: (id: string) => learningService.toggleWatched(id),
+    onSuccess: (data, id) => {
+      queryClient.invalidateQueries({ queryKey: ['learning-resources'] });
+      if (activeVideo && activeVideo.id === id) {
+        setActiveVideo({ ...activeVideo, isWatched: data.watched });
+      }
+      toast.success(data.watched ? 'Marked as completed' : 'Marked as uncompleted');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error?.message || 'Failed to update watch status');
+    },
+  });
+
+  // Upload mutation
+  const uploadMutation = useMutation({
+    mutationFn: (formData: FormData) =>
+      learningService.uploadResource(formData, (progressEvent) => {
+        if (progressEvent.total) {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          setUploadProgress(percent);
+        }
+      }),
+    onSuccess: () => {
+      toast.success('Learning video published successfully');
+      queryClient.invalidateQueries({ queryKey: ['learning-resources'] });
+      closeUploadModal();
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error?.message || 'Failed to upload video resource');
+    },
+  });
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => learningService.deleteResource(id),
+    onSuccess: () => {
+      toast.success('Learning resource deleted');
+      queryClient.invalidateQueries({ queryKey: ['learning-resources'] });
+      setDeletingResource(null);
+      if (activeVideo && activeVideo.id === deletingResource?.id) {
+        setActiveVideo(null);
+      }
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error?.message || 'Failed to delete resource');
+    },
+  });
+
+  // Metrics
+  const watchedCount = useMemo(() => resources.filter((r) => r.isWatched).length, [resources]);
+  const completionPercent = useMemo(() => {
+    if (!resources.length) return 0;
+    return Math.round((watchedCount / resources.length) * 100);
+  }, [resources, watchedCount]);
+
+  // Categories list
+  const categories = useMemo(() => {
+    const cats: { key: string; label: string; count: number; icon: any }[] = [
+      { key: 'all', label: 'All Courses', count: resources.length, icon: BookOpen },
     ];
-
-    uniqueCats.forEach(cat => {
-      const count = tutorials.filter(t => t.category === cat).length;
-      result.push({
-        key: cat,
-        label: catLabels[cat] || cat.toUpperCase(),
-        icon: CATEGORY_ICON_MAP[cat] || Video,
-        count
+    const unique = Array.from(new Set(resources.map((r) => r.category)));
+    unique.forEach((catKey) => {
+      const count = resources.filter((r) => r.category === catKey).length;
+      cats.push({
+        key: catKey,
+        label: CATEGORY_LABEL_MAP[catKey] || catKey.toUpperCase(),
+        count,
+        icon: CATEGORY_ICON_MAP[catKey] || Video,
       });
     });
+    return cats;
+  }, [resources]);
 
-    return result;
-  }, [tutorials]);
-
-  // Dynamic Watched & Completion metrics
-  const watchedCount = useMemo(() => {
-    return Object.keys(watchedMap).filter(k => watchedMap[k]).length;
-  }, [watchedMap]);
-
-  // Filtered tutorials
-  const filteredTutorials = useMemo(() => {
-    return tutorials.filter(t => {
-      const matchesCat = selectedCategory === 'all' || t.category === selectedCategory;
+  // Filtered resources
+  const filteredResources = useMemo(() => {
+    return resources.filter((r) => {
+      const matchesCat = selectedCategory === 'all' || r.category === selectedCategory;
       const q = searchQuery.toLowerCase().trim();
-      const matchesQuery = !q || 
-        t.title.toLowerCase().includes(q) || 
-        t.description.toLowerCase().includes(q) ||
-        t.categoryLabel.toLowerCase().includes(q) ||
-        t.steps.some(s => s.title.toLowerCase().includes(q) || s.description.toLowerCase().includes(q));
+      const matchesQuery =
+        !q ||
+        r.title.toLowerCase().includes(q) ||
+        r.description.toLowerCase().includes(q) ||
+        (r.categoryLabel && r.categoryLabel.toLowerCase().includes(q)) ||
+        (r.steps && r.steps.some((s: TimestampedStep) => s.title.toLowerCase().includes(q) || s.description.toLowerCase().includes(q)));
       return matchesCat && matchesQuery;
     });
-  }, [tutorials, selectedCategory, searchQuery]);
+  }, [resources, selectedCategory, searchQuery]);
 
-  const handleToggleWatched = (id: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    const updated = learningService.toggleWatched(id);
-    setWatchedMap(updated);
+  const closeUploadModal = () => {
+    setIsUploadOpen(false);
+    setFile(null);
+    setTitle('');
+    setCategory('dispatch');
+    setCategoryLabel('Dispatch & Trips');
+    setDescription('');
+    setDurationMins('3');
+    setDurationSecs('30');
+    setDirectVideoUrl('');
+    setUploadProgress(0);
+    setStepsList([]);
+    setTakeawaysList([]);
   };
 
-  const handleAddVideo = (e: React.FormEvent) => {
+  const handleCategoryChange = (val: string) => {
+    setCategory(val);
+    setCategoryLabel(CATEGORY_LABEL_MAP[val] || val);
+  };
+
+  const handleAddStep = () => {
+    if (!stepInput.title.trim()) return;
+    setStepsList([...stepsList, { ...stepInput }]);
+    setStepInput({ time: '01:00', title: '', description: '' });
+  };
+
+  const handleAddTakeaway = () => {
+    if (!takeawayInput.trim()) return;
+    setTakeawaysList([...takeawaysList, takeawayInput.trim()]);
+    setTakeawayInput('');
+  };
+
+  const handleUploadSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim() || !newDesc.trim()) return;
+    if (!title.trim() || !description.trim()) {
+      toast.error('Please fill in title and description');
+      return;
+    }
+    if (!file && !directVideoUrl.trim()) {
+      toast.error('Please select a video file or provide a video URL');
+      return;
+    }
 
-    const catLabels: Record<string, string> = {
-      dispatch: 'Dispatch & Trips',
-      payouts: 'Driver Payouts',
-      quotations: 'Quotations & Rates',
-      fleet: 'Fleet & Maintenance',
-      mobile: 'Mobile & POD',
-    };
+    const totalSecs = (parseInt(durationMins, 10) || 0) * 60 + (parseInt(durationSecs, 10) || 0);
 
-    const gradients = [
-      'from-amber-600 via-orange-600 to-red-700',
-      'from-blue-600 via-indigo-600 to-purple-700',
-      'from-emerald-600 via-teal-600 to-cyan-700',
-      'from-violet-600 via-purple-600 to-pink-700'
-    ];
+    const formData = new FormData();
+    if (file) {
+      formData.append('video', file);
+    } else if (directVideoUrl.trim()) {
+      formData.append('videoUrl', directVideoUrl.trim());
+    }
+    formData.append('title', title.trim());
+    formData.append('category', category);
+    formData.append('categoryLabel', categoryLabel);
+    formData.append('description', description.trim());
+    formData.append('durationSeconds', String(totalSecs));
+    if (stepsList.length > 0) {
+      formData.append('steps', JSON.stringify(stepsList));
+    }
+    if (takeawaysList.length > 0) {
+      formData.append('keyTakeaways', JSON.stringify(takeawaysList));
+    }
 
-    const updatedList = learningService.addTutorial({
-      title: newTitle.trim(),
-      category: newCategory,
-      categoryLabel: catLabels[newCategory] || 'Operations',
-      description: newDesc.trim(),
-      duration: newDuration || '3:30',
-      thumbnailGradient: gradients[Math.floor(Math.random() * gradients.length)],
-      videoUrl: newUrl.trim() || undefined,
-      steps: [
-        { time: '00:00', title: '1. Operational Overview', description: newDesc.trim() },
-        { time: '01:30', title: '2. Detailed Procedure', description: 'Follow step-by-step instructions shown in the video.' },
-        { time: '03:00', title: '3. Verification & Save', description: 'Confirm operational accuracy in MERCON dashboard.' }
-      ],
-      keyTakeaways: [
-        'Always double-check trip parameters before dispatch.',
-        'Refer to saved rate cards for canonical pricing logic.'
-      ]
-    });
-
-    setTutorials(updatedList);
-    setShowAddModal(false);
-    setNewTitle('');
-    setNewDesc('');
-    setNewUrl('');
+    uploadMutation.mutate(formData);
   };
 
   return (
-    <DashboardLayout active="/learning" title="Learning Center & Course Overview">
-      <div className="space-y-8 pb-12 bg-[#F8FAFC] -m-6 p-6 sm:p-8 min-h-screen">
-        
-        {/* ── Page Header Title & Upload Button ── */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <DashboardLayout active="learning" title="Learning Hub">
+      <div className="space-y-6">
+        {/* Page Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
-              Course Overview
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Operational training, video walkthroughs, and driver certification library.
+            <h1 className="text-2xl font-bold tracking-tight text-[#3E3C3D]">MERCON Learning Hub</h1>
+            <p className="text-sm text-slate-500 mt-1">
+              Operational video tutorials, driver payout rules, and system guides
             </p>
           </div>
-
-          <div className="flex items-center gap-3">
-            {isAdmin && (
-              <Button 
-                onClick={() => setShowAddModal(true)}
-                className="bg-[#FA634E] hover:bg-[#DF4834] text-white shadow-sm font-medium text-xs sm:text-sm gap-2 rounded-xl h-10 px-4"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Upload Video Guide</span>
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* ── TOP SECTION: 4 Soft Pastel KPI Cards (Matches User Reference Image) ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          
-          {/* Card 1: Total Courses (Mint Green) */}
-          <div className="relative overflow-hidden rounded-2xl bg-[#E6F7F2] border border-[#C2EFE1] p-5 flex flex-col justify-between h-36 transition-all hover:shadow-md group">
-            <div className="absolute right-[-10px] bottom-[-10px] w-24 h-24 rounded-full bg-[#00A884]/10 blur-xl pointer-events-none" />
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-white text-[#00A884] flex items-center justify-center shadow-sm shrink-0">
-                <BookOpen className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
-                  {tutorials.length}
-                </div>
-                <div className="text-xs font-semibold text-slate-500 mt-0.5">
-                  Total Courses
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-[#C2EFE1]/60 flex items-center justify-between text-xs font-semibold text-[#00A884]">
-              <span>See Details</span>
-              <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Card 2: Total Workshop / Video Guides (Lavender Purple) */}
-          <div className="relative overflow-hidden rounded-2xl bg-[#F0ECFE] border border-[#DDD4FE] p-5 flex flex-col justify-between h-36 transition-all hover:shadow-md group">
-            <div className="absolute right-[-10px] bottom-[-10px] w-24 h-24 rounded-full bg-[#7C4DFF]/10 blur-xl pointer-events-none" />
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-white text-[#7C4DFF] flex items-center justify-center shadow-sm shrink-0">
-                <Video className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
-                  {tutorials.length}
-                </div>
-                <div className="text-xs font-semibold text-slate-500 mt-0.5">
-                  Total Workshops
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-[#DDD4FE]/60 flex items-center justify-between text-xs font-semibold text-[#7C4DFF]">
-              <span>See Details</span>
-              <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Card 3: Average Completion / Progress (Soft Peach / Orange) */}
-          <div className="relative overflow-hidden rounded-2xl bg-[#FFF0E4] border border-[#FFE0C9] p-5 flex flex-col justify-between h-36 transition-all hover:shadow-md group">
-            <div className="absolute right-[-10px] bottom-[-10px] w-24 h-24 rounded-full bg-[#FF8800]/10 blur-xl pointer-events-none" />
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-white text-[#FF8800] flex items-center justify-center shadow-sm shrink-0">
-                <CheckCircle2 className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
-                  {watchedCount}/{tutorials.length}
-                </div>
-                <div className="text-xs font-semibold text-slate-500 mt-0.5">
-                  Completed Courses
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-[#FFE0C9]/60 flex items-center justify-between text-xs font-semibold text-[#FF8800]">
-              <span>See Details</span>
-              <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-          {/* Card 4: Total Certificates (Sky Blue) */}
-          <div className="relative overflow-hidden rounded-2xl bg-[#E3F2FD] border border-[#BBDEFB] p-5 flex flex-col justify-between h-36 transition-all hover:shadow-md group">
-            <div className="absolute right-[-10px] bottom-[-10px] w-24 h-24 rounded-full bg-[#0288D1]/10 blur-xl pointer-events-none" />
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-white text-[#0288D1] flex items-center justify-center shadow-sm shrink-0">
-                <Award className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
-                  3
-                </div>
-                <div className="text-xs font-semibold text-slate-500 mt-0.5">
-                  Total Certificates
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-3 border-t border-[#BBDEFB]/60 flex items-center justify-between text-xs font-semibold text-[#0288D1]">
-              <span>See Details</span>
-              <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
-            </div>
-          </div>
-
-        </div>
-
-        {/* ── MIDDLE SECTION: Recent Enrolled Course (Exact Match to User UI) ── */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-sm space-y-6">
-          
-          {/* Section Header + View All */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-100">
-            <div className="flex items-center gap-3">
-              <h2 className="text-lg font-bold text-slate-900">
-                Recent Enrolled Course ({filteredTutorials.length})
-              </h2>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Button 
-                variant="ghost" 
-                size="sm"
-                className="text-xs font-semibold text-[#00A884] bg-[#E6F7F2] hover:bg-[#D3F3E8] hover:text-[#008F70] rounded-xl px-4"
-              >
-                View All
-              </Button>
-            </div>
-          </div>
-
-          {/* Search & Category Filter Bar */}
-          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
-            <div className="relative flex-1 min-w-[260px]">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <Input 
-                type="text"
-                placeholder="Search course title, operational topic, or lesson step..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10 pr-8 h-10 border-slate-200 bg-slate-50 focus:bg-white focus:border-[#FA634E] text-xs rounded-xl"
+          {canManage && (
+            <div>
+              <Btn
+                label="Upload Video"
+                icon={<Plus className="w-4 h-4" />}
+                variant="primary"
+                onClick={() => setIsUploadOpen(true)}
               />
-              {searchQuery && (
-                <button 
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            {/* Dynamic Category Pill Tabs */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 lg:pb-0 scrollbar-none">
-              {categoryList.map(cat => {
-                const Icon = cat.icon;
-                const isSelected = selectedCategory === cat.key;
-
-                return (
-                  <button
-                    key={cat.key}
-                    onClick={() => setSelectedCategory(cat.key)}
-                    className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                      isSelected
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80 hover:text-slate-900'
-                    }`}
-                  >
-                    <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-[#FA634E]' : 'text-slate-500'}`} />
-                    <span>{cat.label}</span>
-                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                      isSelected ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-                    }`}>
-                      {cat.count}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* ── COURSE CARDS GRID (Exact Layout & Aesthetics from Reference Image) ── */}
-          {filteredTutorials.length === 0 ? (
-            <div className="py-12 text-center max-w-md mx-auto">
-              <div className="w-12 h-12 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
-                <HelpCircle className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-semibold text-slate-900">No Enrolled Courses Found</h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Try adjusting your search terms or select a different course category.
-              </p>
-              <Button 
-                variant="outline" 
-                onClick={() => { setSearchQuery(''); setSelectedCategory('all'); }}
-                className="mt-4 text-xs rounded-xl"
-              >
-                Reset Filters
-              </Button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {filteredTutorials.map((course) => {
-                const isWatched = !!watchedMap[course.id];
-                const totalSteps = course.steps.length;
-                const completedSteps = isWatched ? totalSteps : 1;
-                const progressPct = Math.round((completedSteps / totalSteps) * 100);
-
-                return (
-                  <div 
-                    key={course.id}
-                    onClick={() => { setActiveVideo(course); setActiveStepIdx(0); }}
-                    className="group cursor-pointer rounded-2xl border border-slate-200/90 bg-white hover:border-slate-300 hover:shadow-xl transition-all duration-300 flex flex-col justify-between overflow-hidden p-4 space-y-4"
-                  >
-                    {/* Top Grey Illustration Container + Floating Badge (Matching Reference UI) */}
-                    <div className="relative h-44 w-full bg-[#F4F5F9] rounded-xl flex items-center justify-center overflow-hidden p-4 group-hover:bg-[#EEF1F6] transition-colors">
-                      
-                      {/* Floating App Badge Top Right (Figma / Webflow aesthetic) */}
-                      <div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center text-slate-800 text-xs font-bold shrink-0">
-                        <div className="w-5 h-5 rounded-md bg-[#FA634E] text-white flex items-center justify-center text-[10px] font-black">
-                          M
-                        </div>
-                      </div>
-
-                      {/* Center Play Graphic */}
-                      <div className="w-14 h-14 rounded-full bg-white/90 text-slate-900 group-hover:scale-110 group-hover:bg-[#FA634E] group-hover:text-white shadow-lg flex items-center justify-center transition-all duration-300">
-                        <PlayCircle className="w-8 h-8 ml-0.5" />
-                      </div>
-
-                      {/* Duration Pill Bottom Left */}
-                      <div className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md text-white px-2 py-0.5 rounded-lg text-[11px] font-semibold flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-amber-300" />
-                        <span>{course.duration} mins</span>
-                      </div>
-                    </div>
-
-                    {/* Middle Info: Author & Course Title */}
-                    <div className="space-y-1.5 flex-1 flex flex-col justify-between">
-                      <div>
-                        <div className="text-[11px] font-medium text-slate-400">
-                          A Course by MERCON Logistics
-                        </div>
-                        <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#FA634E] transition-colors line-clamp-2 mt-1 leading-snug">
-                          {course.title}
-                        </h3>
-                      </div>
-                    </div>
-
-                    {/* Bottom Progress Bar & Step Counter (Exact match to Reference Image) */}
-                    <div className="pt-2 border-t border-slate-100 space-y-2">
-                      <div className="flex items-center justify-between text-xs font-bold">
-                        <span className="text-slate-900">{progressPct}%</span>
-                        <span className="text-slate-400 font-medium">{completedSteps}/{totalSteps} lessons</span>
-                      </div>
-
-                      {/* Smooth Progress Bar */}
-                      <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                        <div 
-                          className="h-full bg-[#00A884] rounded-full transition-all duration-500"
-                          style={{ width: `${progressPct}%` }}
-                        />
-                      </div>
-                    </div>
-
-                  </div>
-                );
-              })}
             </div>
           )}
-
         </div>
 
-      </div>
+        {/* Metric Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <KpiCard
+            title="Total Courses"
+            value={resources.length}
+            icon={<BookOpen className="w-5 h-5 text-slate-600" />}
+            description="Available video tutorials"
+            variant="slate"
+          />
+          <KpiCard
+            title="Completed"
+            value={watchedCount}
+            icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />}
+            description={`${completionPercent}% module completion`}
+            variant="emerald"
+          />
+          <KpiCard
+            title="Learning Progress"
+            value={`${completionPercent}%`}
+            completionGauge={{ percentage: completionPercent, label: 'Completion' }}
+            variant="brand"
+          />
+        </div>
 
-      {/* ── CINEMA VIDEO PLAYER MODAL ── */}
-      {activeVideo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="relative w-full max-w-5xl bg-[#1E1E1E] text-white rounded-2xl shadow-2xl overflow-hidden border border-white/10 flex flex-col max-h-[92vh]">
-            
-            {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#262626]">
-              <div className="flex items-center gap-3">
-                <Badge className="bg-[#FA634E] text-white border-0 text-xs">
-                  {activeVideo.categoryLabel}
-                </Badge>
-                <h2 className="text-base sm:text-lg font-bold text-white truncate max-w-xl">
-                  {activeVideo.title}
-                </h2>
-              </div>
+        {/* Filter Bar & Category Pills */}
+        <div className="bg-white border border-slate-200 rounded-lg p-4 space-y-4 shadow-xs">
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="relative w-full sm:w-80">
+              <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <Input
+                type="text"
+                placeholder="Search tutorials, routes, rates..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 bg-slate-50 border-slate-200 text-sm"
+              />
+            </div>
+            <div className="text-xs text-slate-500 font-medium">
+              Showing <span className="font-semibold text-slate-800">{filteredResources.length}</span> of {resources.length} courses
+            </div>
+          </div>
 
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleToggleWatched(activeVideo.id)}
-                  className={`text-xs gap-1.5 ${
-                    watchedMap[activeVideo.id] 
-                      ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' 
-                      : 'bg-white/10 text-gray-300 hover:bg-white/20'
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {categories.map((cat) => {
+              const IconComp = cat.icon;
+              const isActive = selectedCategory === cat.key;
+              return (
+                <button
+                  key={cat.key}
+                  onClick={() => setSelectedCategory(cat.key)}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap transition-all border ${
+                    isActive
+                      ? 'bg-[#3E3C3D] text-white border-[#3E3C3D] shadow-xs'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:text-slate-900'
                   }`}
                 >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>{watchedMap[activeVideo.id] ? 'Reviewed' : 'Mark Reviewed'}</span>
-                </Button>
-
-                <button 
-                  onClick={() => setActiveVideo(null)}
-                  className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Body: Player + Steps Panel */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 overflow-y-auto">
-              
-              {/* Left Column: Interactive Video Player Screen (8 cols) */}
-              <div className="lg:col-span-8 p-6 space-y-4 bg-black flex flex-col justify-between min-h-[320px]">
-                {/* Simulated / Real Video Container */}
-                <div className="relative w-full aspect-video rounded-xl bg-gradient-to-br from-gray-900 to-black overflow-hidden border border-white/10 flex flex-col items-center justify-center p-6 text-center group">
-                  <div className="absolute inset-0 bg-cover bg-center opacity-30 blur-sm bg-gradient-to-r from-red-900 to-slate-900" />
-                  
-                  {/* Floating Step Banner Overlay */}
-                  <div className="absolute top-4 left-4 right-4 bg-black/70 backdrop-blur-md p-3 rounded-lg border border-white/10 text-left">
-                    <div className="flex items-center justify-between text-xs text-amber-400 font-semibold mb-1">
-                      <span>STEP {activeStepIdx + 1} OF {activeVideo.steps.length}</span>
-                      <span>TIMESTAMP: {activeVideo.steps[activeStepIdx]?.time || '00:00'}</span>
-                    </div>
-                    <div className="text-sm font-bold text-white">
-                      {activeVideo.steps[activeStepIdx]?.title}
-                    </div>
-                    <div className="text-xs text-gray-300 mt-0.5 line-clamp-1">
-                      {activeVideo.steps[activeStepIdx]?.description}
-                    </div>
-                  </div>
-
-                  {/* Center Big Play Button */}
-                  <div className="relative z-10 w-20 h-20 rounded-full bg-[#FA634E] text-white shadow-2xl flex items-center justify-center transform group-hover:scale-110 transition-all cursor-pointer">
-                    <PlayCircle className="w-12 h-12 ml-1" />
-                  </div>
-                  <span className="relative z-10 text-xs text-gray-300 mt-3 font-medium">
-                    Click to Play Full HD Walkthrough ({activeVideo.duration} mins)
+                  <IconComp className="w-3.5 h-3.5" />
+                  <span>{cat.label}</span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                      isActive ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    {cat.count}
                   </span>
-
-                  {/* Bottom Video Timeline Simulation */}
-                  <div className="absolute bottom-4 left-4 right-4 flex items-center gap-3 bg-black/60 backdrop-blur-md px-3 py-2 rounded-lg text-xs text-gray-300">
-                    <button className="hover:text-white"><PlayCircle className="w-4 h-4 text-[#FA634E]" /></button>
-                    <span className="text-[11px] font-mono">{activeVideo.steps[activeStepIdx]?.time || '00:00'} / {activeVideo.duration}</span>
-                    <div className="flex-1 h-1.5 rounded-full bg-gray-700 overflow-hidden cursor-pointer">
-                      <div 
-                        className="h-full bg-[#FA634E] transition-all duration-300"
-                        style={{ width: `${((activeStepIdx + 1) / activeVideo.steps.length) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Video Info & Summary */}
-                <div className="space-y-3 pt-2">
-                  <h3 className="text-lg font-bold text-white">{activeVideo.title}</h3>
-                  <p className="text-xs text-gray-300 leading-relaxed">{activeVideo.description}</p>
-                </div>
-              </div>
-
-              {/* Right Column: Step-by-Step Timeline & Takeaways (4 cols) */}
-              <div className="lg:col-span-4 p-6 bg-[#262626] border-l border-white/10 space-y-6 flex flex-col justify-between">
-                <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-4 flex items-center gap-2">
-                    <Sparkles className="w-3.5 h-3.5 text-[#FA634E]" />
-                    <span>TIMESTAMPE WORKFLOW STEPS</span>
-                  </h4>
-
-                  {/* Steps Timeline List */}
-                  <div className="space-y-3">
-                    {activeVideo.steps.map((step, idx) => {
-                      const isActive = idx === activeStepIdx;
-                      return (
-                        <div 
-                          key={idx}
-                          onClick={() => setActiveStepIdx(idx)}
-                          className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                            isActive 
-                              ? 'bg-[#3E3C3D] border-[#FA634E] text-white shadow-md' 
-                              : 'bg-white/5 border-white/5 text-gray-300 hover:bg-white/10'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between text-xs mb-1">
-                            <span className={`font-mono px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                              isActive ? 'bg-[#FA634E] text-white' : 'bg-white/10 text-gray-400'
-                            }`}>
-                              {step.time}
-                            </span>
-                            <span className="text-[11px] text-gray-400 font-medium">Step {idx + 1}</span>
-                          </div>
-                          <div className="text-xs font-bold text-white leading-snug">{step.title}</div>
-                          <div className="text-[11px] text-gray-300 mt-1 line-clamp-2 leading-relaxed">
-                            {step.description}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Key Takeaways Section */}
-                <div className="p-4 rounded-xl bg-black/40 border border-white/10 space-y-2">
-                  <div className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>OPERATOR KEY TAKEAWAYS</span>
-                  </div>
-                  <ul className="space-y-1.5 text-xs text-gray-300">
-                    {activeVideo.keyTakeaways.map((takeaway, i) => (
-                      <li key={i} className="flex items-start gap-2">
-                        <span className="text-[#FA634E] font-bold">•</span>
-                        <span>{takeaway}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-              </div>
-
-            </div>
-
+                </button>
+              );
+            })}
           </div>
         </div>
-      )}
 
-      {/* ── UPLOAD VIDEO GUIDE MODAL (FOR ADMINS & OPS LEADS) ── */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-200">
-            <div className="flex items-center justify-between px-6 py-4 bg-[#3E3C3D] text-white">
-              <div className="flex items-center gap-2">
-                <Video className="w-5 h-5 text-[#FA634E]" />
-                <h3 className="text-base font-bold">Upload New Video Tutorial</h3>
-              </div>
-              <button 
-                onClick={() => setShowAddModal(false)}
-                className="text-gray-300 hover:text-white"
+        {/* Video Tutorial Grid */}
+        {isLoading ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i} className="h-64 bg-slate-100 animate-pulse rounded-lg border border-slate-200" />
+            ))}
+          </div>
+        ) : filteredResources.length === 0 ? (
+          <div className="bg-white border border-slate-200 rounded-lg p-12 text-center space-y-3">
+            <Video className="w-10 h-10 text-slate-300 mx-auto" />
+            <h3 className="text-base font-semibold text-slate-800">No tutorials found</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              No learning videos match your search or filter criteria.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredResources.map((resource) => (
+              <div
+                key={resource.id}
+                className="bg-white border border-slate-200 hover:border-slate-300 rounded-lg overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col group"
               >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+                {/* Thumbnail / Header Banner */}
+                <div
+                  className="h-36 bg-slate-900 relative p-4 flex flex-col justify-between cursor-pointer"
+                  onClick={() => {
+                    setActiveVideo(resource);
+                    setActiveStepIdx(0);
+                  }}
+                >
+                  <div className="flex items-center justify-between z-10">
+                    <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-black/40 text-white backdrop-blur-xs">
+                      {resource.categoryLabel || resource.category}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-black/40 text-white backdrop-blur-xs flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {formatDuration(resource.durationSeconds)}
+                      </span>
+                    </div>
+                  </div>
 
-            <form onSubmit={handleAddVideo} className="p-6 space-y-4">
+                  <div className="flex items-center justify-center my-auto z-10 group-hover:scale-110 transition-transform">
+                    <div className="w-12 h-12 rounded-full bg-[#FA634E] text-white flex items-center justify-center shadow-lg">
+                      <PlayCircle className="w-7 h-7 fill-white/20" />
+                    </div>
+                  </div>
+
+                  {resource.isWatched && (
+                    <div className="absolute bottom-2 right-2 bg-emerald-500 text-white px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1 shadow-xs z-10">
+                      <Check className="w-3 h-3" /> Watched
+                    </div>
+                  )}
+                </div>
+
+                {/* Card Content */}
+                <div className="p-4 flex-1 flex flex-col justify-between space-y-3">
+                  <div>
+                    <h3
+                      className="font-bold text-slate-800 text-sm line-clamp-2 hover:text-[#FA634E] cursor-pointer transition-colors"
+                      onClick={() => {
+                        setActiveVideo(resource);
+                        setActiveStepIdx(0);
+                      }}
+                    >
+                      {resource.title}
+                    </h3>
+                    <p className="text-xs text-slate-500 line-clamp-2 mt-1 leading-relaxed">
+                      {resource.description}
+                    </p>
+                  </div>
+
+                  {/* Actions Bar */}
+                  <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <Btn
+                      label="Watch Video"
+                      icon={<PlayCircle className="w-3.5 h-3.5" />}
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        setActiveVideo(resource);
+                        setActiveStepIdx(0);
+                      }}
+                    />
+                    <div className="flex items-center gap-1">
+                      <Btn
+                        label={resource.isWatched ? 'Watched' : 'Mark Watched'}
+                        icon={<Check className="w-3.5 h-3.5" />}
+                        variant={resource.isWatched ? 'success' : 'ghost'}
+                        size="sm"
+                        onClick={() => watchMutation.mutate(resource.id)}
+                      />
+                      {canManage && (
+                        <Btn
+                          label=""
+                          icon={<Trash2 className="w-3.5 h-3.5 text-rose-600" />}
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeletingResource(resource)}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Video Player Modal */}
+        <Dialog open={!!activeVideo} onOpenChange={(open) => !open && setActiveVideo(null)}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto p-0 gap-0">
+            {activeVideo && (
+              <div className="flex flex-col">
+                {/* Media Container */}
+                <div className="bg-black aspect-video w-full flex items-center justify-center relative">
+                  {activeVideo.videoUrl.endsWith('.mp4') || activeVideo.videoUrl.endsWith('.webm') || activeVideo.videoUrl.startsWith('/uploads/') ? (
+                    <video
+                      src={activeVideo.videoUrl}
+                      controls
+                      autoPlay
+                      className="w-full h-full max-h-[480px] object-contain"
+                    />
+                  ) : (
+                    <iframe
+                      src={activeVideo.videoUrl}
+                      title={activeVideo.title}
+                      className="w-full h-full min-h-[360px]"
+                      allowFullScreen
+                    />
+                  )}
+                </div>
+
+                {/* Details Section */}
+                <div className="p-6 space-y-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="px-2.5 py-0.5 rounded text-xs font-semibold bg-slate-100 text-slate-700">
+                          {activeVideo.categoryLabel || activeVideo.category}
+                        </span>
+                        <span className="text-xs text-slate-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {formatDuration(activeVideo.durationSeconds)}
+                        </span>
+                      </div>
+                      <h2 className="text-xl font-bold text-slate-900">{activeVideo.title}</h2>
+                    </div>
+
+                    <Btn
+                      label={activeVideo.isWatched ? 'Completed' : 'Mark as Watched'}
+                      icon={<Check className="w-4 h-4" />}
+                      variant={activeVideo.isWatched ? 'success' : 'primary'}
+                      onClick={() => watchMutation.mutate(activeVideo.id)}
+                    />
+                  </div>
+
+                  <p className="text-sm text-slate-600 leading-relaxed">{activeVideo.description}</p>
+
+                  {/* Steps Breakdown */}
+                  {activeVideo.steps && Array.isArray(activeVideo.steps) && activeVideo.steps.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                        <ChevronRight className="w-4 h-4 text-[#FA634E]" /> Timestamped Lesson Steps
+                      </h3>
+                      <div className="space-y-2">
+                        {activeVideo.steps.map((step: TimestampedStep, idx: number) => (
+                          <div
+                            key={idx}
+                            onClick={() => setActiveStepIdx(idx)}
+                            className={`p-3 rounded-lg border transition-all cursor-pointer flex items-start gap-3 ${
+                              activeStepIdx === idx
+                                ? 'bg-orange-50/50 border-orange-200'
+                                : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            <span className="px-2 py-0.5 rounded bg-white text-xs font-mono font-bold text-slate-700 border border-slate-200">
+                              {step.time}
+                            </span>
+                            <div className="flex-1">
+                              <h4 className="text-xs font-bold text-slate-800">{step.title}</h4>
+                              <p className="text-xs text-slate-500 mt-0.5">{step.description}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Key Takeaways */}
+                  {activeVideo.keyTakeaways && Array.isArray(activeVideo.keyTakeaways) && activeVideo.keyTakeaways.length > 0 && (
+                    <div className="space-y-3 pt-2">
+                      <h3 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-500" /> Key Takeaways
+                      </h3>
+                      <ul className="space-y-2 bg-amber-50/40 border border-amber-200/70 p-4 rounded-lg">
+                        {activeVideo.keyTakeaways.map((point: string, idx: number) => (
+                          <li key={idx} className="text-xs text-amber-900 flex items-start gap-2">
+                            <Check className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
+                            <span>{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Upload Video Modal */}
+        <Dialog open={isUploadOpen} onOpenChange={(open) => !open && closeUploadModal()}>
+          <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold text-[#3E3C3D]">Upload Learning Video</DialogTitle>
+            </DialogHeader>
+
+            <form onSubmit={handleUploadSubmit} className="space-y-4 py-2">
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Video Title</Label>
-                <Input 
-                  type="text"
+                <Label className="text-xs font-semibold text-slate-700">Video File (MP4, WEBM, MOV up to 500MB)</Label>
+                <div className="border-2 border-dashed border-slate-200 rounded-lg p-4 text-center bg-slate-50 hover:bg-slate-100 transition-colors cursor-pointer relative">
+                  <input
+                    type="file"
+                    accept="video/*"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <FileVideo className="w-8 h-8 text-slate-400 mx-auto mb-1" />
+                  {file ? (
+                    <p className="text-xs font-bold text-emerald-700">{file.name} ({(file.size / (1024 * 1024)).toFixed(1)} MB)</p>
+                  ) : (
+                    <p className="text-xs text-slate-500">Drag & drop video file here or click to browse</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold text-slate-700">Course Title *</Label>
+                <Input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="e.g. How to Dispatch a Multi-Stop Trip"
                   required
-                  placeholder="e.g. How to Resolve Quotation Discrepancies"
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  className="h-10 text-xs rounded-xl"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">Category</Label>
-                  <select
-                    value={newCategory}
-                    onChange={(e: any) => setNewCategory(e.target.value)}
-                    className="w-full h-10 px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-1 focus:ring-[#FA634E]"
-                  >
-                    <option value="dispatch">Dispatch & Trips</option>
-                    <option value="payouts">Driver Payouts</option>
-                    <option value="quotations">Quotations & Rates</option>
-                    <option value="fleet">Fleet & Maintenance</option>
-                    <option value="mobile">Mobile & POD</option>
-                  </select>
+                  <Select value={category} onValueChange={handleCategoryChange}>
+                    <SelectTrigger className="bg-white">
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="dispatch">Dispatch & Trips</SelectItem>
+                      <SelectItem value="payouts">Driver Payouts</SelectItem>
+                      <SelectItem value="quotations">Quotations & Rates</SelectItem>
+                      <SelectItem value="fleet">Fleet & Maintenance</SelectItem>
+                      <SelectItem value="mobile">Mobile & POD</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700">Runtime Duration</Label>
-                  <Input 
-                    type="text"
-                    required
-                    placeholder="e.g. 4:15"
-                    value={newDuration}
-                    onChange={(e) => setNewDuration(e.target.value)}
-                    className="h-10 text-xs rounded-xl"
-                  />
+                  <Label className="text-xs font-semibold text-slate-700">Duration (Minutes : Seconds)</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min="0"
+                      value={durationMins}
+                      onChange={(e) => setDurationMins(e.target.value)}
+                      placeholder="Mins"
+                    />
+                    <span className="text-xs font-bold text-slate-400">:</span>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="59"
+                      value={durationSecs}
+                      onChange={(e) => setDurationSecs(e.target.value)}
+                      placeholder="Secs"
+                    />
+                  </div>
                 </div>
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Operational Description</Label>
-                <textarea 
-                  required
+                <Label className="text-xs font-semibold text-slate-700">Description *</Label>
+                <Textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Summary of what operators will learn from this video..."
                   rows={3}
-                  placeholder="Briefly explain what operational task or doubt this video resolves for operators..."
-                  value={newDesc}
-                  onChange={(e) => setNewDesc(e.target.value)}
-                  className="w-full p-3 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-1 focus:ring-[#FA634E]"
+                  required
                 />
               </div>
 
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700">Video Link / Embed URL (Optional)</Label>
-                <Input 
-                  type="url"
-                  placeholder="https://youtube.com/... or Vimeo / MP4 link"
-                  value={newUrl}
-                  onChange={(e) => setNewUrl(e.target.value)}
-                  className="h-10 text-xs rounded-xl"
-                />
+              {/* Optional Steps Builder */}
+              <div className="space-y-2 border-t border-slate-100 pt-3">
+                <Label className="text-xs font-semibold text-slate-700">Add Timestamped Steps (Optional)</Label>
+                <div className="grid grid-cols-4 gap-2">
+                  <Input
+                    placeholder="00:45"
+                    value={stepInput.time}
+                    onChange={(e) => setStepInput({ ...stepInput, time: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Step Title"
+                    className="col-span-3"
+                    value={stepInput.title}
+                    onChange={(e) => setStepInput({ ...stepInput, title: e.target.value })}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Step Description"
+                    className="flex-1"
+                    value={stepInput.description}
+                    onChange={(e) => setStepInput({ ...stepInput, description: e.target.value })}
+                  />
+                  <Btn label="Add" variant="secondary" size="sm" type="button" onClick={handleAddStep} />
+                </div>
+
+                {stepsList.length > 0 && (
+                  <div className="space-y-1 pt-1">
+                    {stepsList.map((s, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-xs bg-slate-50 p-2 rounded border border-slate-200">
+                        <span><strong className="font-mono">{s.time}</strong> — {s.title}</span>
+                        <button type="button" onClick={() => setStepsList(stepsList.filter((_, i) => i !== idx))}>
+                          <X className="w-3.5 h-3.5 text-slate-400 hover:text-rose-600" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => setShowAddModal(false)}
-                  className="text-xs rounded-xl"
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  type="submit" 
-                  className="bg-[#FA634E] hover:bg-[#DF4834] text-white text-xs font-semibold px-5 rounded-xl"
-                >
-                  Publish Video Guide
-                </Button>
-              </div>
+              {/* Upload Progress Bar */}
+              {uploadMutation.isPending && (
+                <div className="space-y-1">
+                  <div className="flex justify-between text-xs font-medium text-slate-600">
+                    <span>Uploading file...</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                    <div className="bg-[#FA634E] h-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="pt-2">
+                <Btn label="Cancel" variant="secondary" type="button" onClick={closeUploadModal} />
+                <Btn
+                  label={uploadMutation.isPending ? 'Uploading...' : 'Publish Video'}
+                  icon={<Upload className="w-4 h-4" />}
+                  variant="primary"
+                  type="submit"
+                  isLoading={uploadMutation.isPending}
+                />
+              </DialogFooter>
             </form>
-          </div>
-        </div>
-      )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Modal */}
+        {deletingResource && (
+          <ConfirmModal
+            isOpen={!!deletingResource}
+            onClose={() => setDeletingResource(null)}
+            onConfirm={() => deleteMutation.mutate(deletingResource.id)}
+            title="Delete Learning Video"
+            message={`Are you sure you want to delete "${deletingResource.title}"? This cannot be undone.`}
+            confirmLabel="Delete Video"
+            isDestructive={true}
+            isLoading={deleteMutation.isPending}
+          />
+        )}
+      </div>
     </DashboardLayout>
   );
 }

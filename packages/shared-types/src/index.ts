@@ -173,8 +173,16 @@ export const MODULE_KEYS = [
   'aprodac-documents',
   'learning',
   'recycle-bin',
+  'finance',
 ] as const;
 export type ModuleKey = (typeof MODULE_KEYS)[number];
+
+export type AccountType = 'Asset' | 'Liability' | 'Equity' | 'Revenue' | 'Expense';
+export type CashFlowCategory = 'Operating' | 'Investing' | 'Financing';
+export type PeriodStatus = 'Open' | 'Closed' | 'Locked';
+export type JournalEntryStatus = 'Draft' | 'Posted' | 'Voided';
+export type InvoiceStatus = 'Draft' | 'Issued' | 'PartiallyPaid' | 'Paid' | 'Void';
+export type BillStatus = 'Draft' | 'Approved' | 'PartiallyPaid' | 'Paid' | 'Void';
 
 /**
  * Canonical fields a company-specific Excel report template's columns can be
@@ -320,6 +328,13 @@ export interface Settings {
   defaultCountryCode?: string;
   /** Default dial code (e.g. "+966") for phone number fields across the deployment. */
   defaultCountryDialCode?: string;
+  defaultReceivableAccountId?: string | null;
+  defaultRevenueAccountId?: string | null;
+  defaultPayableAccountId?: string | null;
+  defaultCustomerAdvanceAccountId?: string | null;
+  defaultProviderAdvanceAccountId?: string | null;
+  defaultEmployeeAdvanceAccountId?: string | null;
+  defaultRetainedEarningsAccountId?: string | null;
   updatedAt: string;
 }
 
@@ -480,4 +495,379 @@ export type PricingRule = Quotation;
 export type PricingRuleStop = QuotationStop;
 export type PricingRuleHistory = QuotationHistory;
 export type RateCard = Quotation;
+
+// ─── Accounting / Finance Types ──────────────────────────────
+export interface Account {
+  id: string;
+  account_code: string;
+  name: string;
+  account_type: AccountType;
+  cash_flow_category?: CashFlowCategory | null;
+  parentId?: string | null;
+  parent?: Account | null;
+  children?: Account[];
+  description?: string | null;
+  is_postable: boolean;
+  journalLines?: JournalLine[];
+  created_by?: string | null;
+  updated_by?: string | null;
+  deleted_by?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string | null;
+  isActive: boolean;
+  version?: number;
+}
+
+export interface AccountingPeriod {
+  id: string;
+  name: string;
+  start_date: string;
+  end_date: string;
+  status: PeriodStatus;
+  journalEntries?: JournalEntry[];
+  closed_by?: string | null;
+  closed_at?: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JournalEntry {
+  id: string;
+  ref_id?: string | null;
+  entry_date: string;
+  memo?: string | null;
+  status: JournalEntryStatus;
+  periodId: string;
+  period?: AccountingPeriod;
+  source_type: string;
+  source_id?: string | null;
+  reversalOfId?: string | null;
+  reversalOf?: JournalEntry | null;
+  reversedBy?: JournalEntry | null;
+  lines?: JournalLine[];
+  created_by?: string | null;
+  posted_by?: string | null;
+  posted_at?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  version?: number;
+}
+
+export interface JournalLine {
+  id: string;
+  journalEntryId: string;
+  journalEntry?: JournalEntry;
+  accountId: string;
+  account?: Account;
+  debit: number | string;
+  credit: number | string;
+  currency: string;
+  description?: string | null;
+  createdAt: string;
+}
+
+export interface Invoice {
+  id: string;
+  ref_id?: string | null;
+  customerId: string;
+  customer?: any;
+  invoice_date: string;
+  due_date?: string | null;
+  status: InvoiceStatus;
+  subtotal: number | string;
+  tax_rate: number | string;
+  tax_amount: number | string;
+  total_amount: number | string;
+  paid_amount: number | string;
+  balance_due: number | string;
+  currency: string;
+  lines?: InvoiceLine[];
+  payments?: InvoicePayment[];
+  trips?: any[];
+  journalEntryId?: string | null;
+  journalEntry?: JournalEntry | null;
+  created_by?: string | null;
+  updated_by?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface InvoiceLine {
+  id: string;
+  invoiceId: string;
+  invoice?: Invoice;
+  tripId?: string | null;
+  trip?: any;
+  description: string;
+  quantity: number;
+  rate: number | string;
+  amount: number | string;
+  createdAt: string;
+}
+
+export interface InvoicePayment {
+  id: string;
+  invoiceId: string;
+  invoice?: Invoice;
+  amount: number | string;
+  payment_date: string;
+  payment_method?: string | null;
+  reference?: string | null;
+  accountId: string;
+  account?: Account;
+  journalEntryId?: string | null;
+  journalEntry?: JournalEntry | null;
+  created_by?: string | null;
+  createdAt: string;
+}
+
+export interface Bill {
+  id: string;
+  ref_id?: string | null;
+  providerId?: string | null;
+  provider?: any;
+  payee_name?: string | null;
+  bill_date: string;
+  due_date?: string | null;
+  status: BillStatus;
+  subtotal: number | string;
+  tax_amount: number | string;
+  total_amount: number | string;
+  paid_amount: number | string;
+  balance_due: number | string;
+  currency: string;
+  lines?: BillLine[];
+  payments?: BillPayment[];
+  journalEntryId?: string | null;
+  journalEntry?: JournalEntry | null;
+  created_by?: string | null;
+  updated_by?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BillLine {
+  id: string;
+  billId: string;
+  bill?: Bill;
+  source_type: string;
+  source_id?: string | null;
+  accountId?: string | null;
+  account?: Account | null;
+  description: string;
+  amount: number | string;
+  createdAt: string;
+}
+
+export interface BillPayment {
+  id: string;
+  billId: string;
+  bill?: Bill;
+  amount: number | string;
+  payment_date: string;
+  payment_method?: string | null;
+  reference?: string | null;
+  accountId: string;
+  account?: Account;
+  journalEntryId?: string | null;
+  journalEntry?: JournalEntry | null;
+  created_by?: string | null;
+  createdAt: string;
+}
+
+export interface AuditLog {
+  id: string;
+  userId?: string | null;
+  user?: { id: string; name: string | null; username: string; role: string } | null;
+  action: string;
+  entityType: string;
+  entityId?: string | null;
+  metadata?: Record<string, any> | null;
+  createdAt: string;
+}
+
+// ─── Phase 4 Finance Types ──────────────────────────────────────────
+export type ReconciliationStatus = 'Draft' | 'Completed';
+export type AdvancePartyType = 'Customer' | 'Provider' | 'Employee';
+export type AdvanceDirection = 'Received' | 'Paid';
+export type AdvanceStatus = 'Open' | 'PartiallyApplied' | 'FullyApplied' | 'Void';
+
+export interface BankAccount {
+  id: string;
+  accountId: string;
+  account?: Account;
+  bank_name?: string | null;
+  account_number?: string | null;
+  iban?: string | null;
+  swift_code?: string | null;
+  is_cash: boolean;
+  opening_balance: number | string;
+  opening_date?: string | null;
+  currency: string;
+  reconciliations?: BankReconciliation[];
+  created_by?: string | null;
+  updated_by?: string | null;
+  deletedAt?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BankReconciliation {
+  id: string;
+  bankAccountId: string;
+  bankAccount?: BankAccount;
+  statement_date: string;
+  statement_closing_balance: number | string;
+  status: ReconciliationStatus;
+  lines?: JournalLine[];
+  _count?: { lines: number };
+  reconciled_by?: string | null;
+  reconciled_at?: string | null;
+  createdAt: string;
+}
+
+export interface Advance {
+  id: string;
+  ref_id?: string | null;
+  party_type: AdvancePartyType;
+  party_id?: string | null;
+  direction: AdvanceDirection;
+  amount: number | string;
+  applied_amount: number | string;
+  remaining_amount: number | string;
+  advance_date: string;
+  status: AdvanceStatus;
+  currency: string;
+  memo?: string | null;
+  accountId: string;
+  account?: Account;
+  journalEntryId?: string | null;
+  journalEntry?: JournalEntry | null;
+  applications?: AdvanceApplication[];
+  created_by?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdvanceApplication {
+  id: string;
+  advanceId: string;
+  advance?: Advance;
+  invoiceId?: string | null;
+  invoice?: Invoice | null;
+  billId?: string | null;
+  bill?: Bill | null;
+  amount: number | string;
+  applied_date: string;
+  journalEntryId?: string | null;
+  journalEntry?: JournalEntry | null;
+  created_by?: string | null;
+  createdAt: string;
+}
+
+export interface AccountClosingBalance {
+  id: string;
+  periodId: string;
+  period?: AccountingPeriod;
+  accountId: string;
+  account?: Account;
+  closing_debit_total: number | string;
+  closing_credit_total: number | string;
+  closing_balance: number | string;
+  computed_at: string;
+}
+
+export interface TrialBalanceItem {
+  account_code: string;
+  name: string;
+  account_type: string;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+export interface TrialBalanceReport {
+  period_id?: string;
+  period_name?: string;
+  items: TrialBalanceItem[];
+  total_debit: number;
+  total_credit: number;
+  is_balanced: boolean;
+}
+
+export interface ProfitAndLossReport {
+  date_from?: string;
+  date_to?: string;
+  revenues: { account_code: string; name: string; amount: number }[];
+  expenses: { account_code: string; name: string; amount: number }[];
+  total_revenue: number;
+  total_expense: number;
+  net_profit: number;
+}
+
+export interface BalanceSheetReport {
+  as_of?: string;
+  using_snapshot: boolean;
+  assets: { account_code: string; name: string; amount: number }[];
+  liabilities: { account_code: string; name: string; amount: number }[];
+  equity: { account_code: string; name: string; amount: number }[];
+  total_assets: number;
+  total_liabilities: number;
+  total_equity: number;
+  is_balanced: boolean;
+}
+
+export interface TimestampedStep {
+  time: string;
+  title: string;
+  description: string;
+}
+
+export interface LearningResource {
+  id: string;
+  title: string;
+  category: string;
+  categoryLabel: string;
+  courseName?: string | null;
+  episodeNumber?: number | null;
+  targetRoute?: string | null;
+  description: string;
+  durationSeconds: number;
+  videoUrl: string;
+  thumbnailUrl?: string | null;
+  steps?: TimestampedStep[] | null;
+  keyTakeaways?: string[] | null;
+  created_by?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  isWatched?: boolean;
+  createdBy?: {
+    id: string;
+    name?: string | null;
+  } | null;
+}
+
+export interface CreateLearningResourceDTO {
+  title: string;
+  category: string;
+  categoryLabel?: string;
+  courseName?: string;
+  episodeNumber?: number;
+  targetRoute?: string;
+  description: string;
+  durationSeconds?: number;
+  videoUrl?: string;
+  steps?: TimestampedStep[];
+  keyTakeaways?: string[];
+}
+
+
+
+
+
+
 

@@ -28,6 +28,8 @@ import {
   Shield,
   Settings,
   LayoutDashboard,
+  Maximize,
+  Minimize,
 } from 'lucide-react';
 import { Link, useNavigate, useLocation, NavLink } from 'react-router-dom';
 import { authStore } from '@/store/authStore';
@@ -286,6 +288,7 @@ export default function Header({ title, icon, breadcrumb, hideBackButton, onBack
   const isSuperAdmin = user?.role === 'SuperAdmin' || (user as any)?.isSuperAdmin === true;
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -308,6 +311,20 @@ export default function Header({ title, icon, breadcrumb, hideBackButton, onBack
   const shouldHideBack = hideBackButton ?? (isMainPage || title === 'Dashboard' || location.pathname === '/');
   const resolved = getRouteIcon(location.pathname, title);
   const ResolvedIcon = resolved?.icon;
+
+  useEffect(() => {
+    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  };
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -459,6 +476,16 @@ export default function Header({ title, icon, breadcrumb, hideBackButton, onBack
               );
             })}
           </div>
+
+          {/* Fullscreen toggle */}
+          <button
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? 'Exit full screen' : 'Enter full screen'}
+            title={isFullscreen ? 'Exit full screen' : 'Enter full screen (F11)'}
+            className="hidden sm:inline-flex items-center justify-center w-9 h-9 rounded-xl text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/80 hover:text-brand dark:hover:text-brand transition-all shrink-0 cursor-pointer shadow-2xs"
+          >
+            {isFullscreen ? <Minimize size={17} /> : <Maximize size={17} />}
+          </button>
 
           {/* Notifications trigger (temporarily hidden) */}
           {/* 

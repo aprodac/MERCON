@@ -25,6 +25,39 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { formatInDeploymentTz } from '@/lib/datetime';
 import { getUpcomingScheduledDates } from '@/utils/scheduleUtils';
+import { cn } from '@/lib/utils';
+
+/** GPS status cell shared by the "GPS" column — mirrors the Kanban card's location states. */
+function GpsStatusCell({ driver }: { driver: Driver }) {
+  const activeTrip = driver.trips?.[0];
+  const vehicle = driver.assignedVehicle || activeTrip?.vehicle;
+  const resolvedLoc = vehicle?.resolved_location;
+
+  if (!vehicle || !activeTrip) {
+    return <span className="text-[10px] text-slate-300 dark:text-slate-600">—</span>;
+  }
+
+  if (!resolvedLoc || resolvedLoc.display_state === 'UNAVAILABLE') {
+    return (
+      <div className="flex items-center gap-1.5">
+        <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600 shrink-0" />
+        <span className="text-[10.5px] font-semibold text-slate-400 dark:text-slate-500">Not Active</span>
+      </div>
+    );
+  }
+
+  const isCurrent = resolvedLoc.display_state === 'CURRENT';
+  const timeAgo = resolvedLoc.formatted_time_ago;
+
+  return (
+    <div className="flex items-center gap-1.5" title={isCurrent ? 'Live GPS' : 'Last known GPS location'}>
+      <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', isCurrent ? 'bg-emerald-500' : 'bg-amber-500')} />
+      <span className={cn('text-[10.5px] font-semibold', isCurrent ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
+        {isCurrent ? 'Live' : 'Last seen'}{timeAgo ? ` · ${timeAgo}` : ''}
+      </span>
+    </div>
+  );
+}
 
 export interface UseDriverTableColumnsOptions {
   tz: string;
@@ -120,6 +153,10 @@ export function useDriverTableColumns({
             </div>
           );
         },
+      },
+      {
+        header: 'GPS',
+        accessor: (row: Driver) => <GpsStatusCell driver={row} />,
       },
       {
         header: 'Capacity',

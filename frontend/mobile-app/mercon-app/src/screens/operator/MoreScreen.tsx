@@ -1,75 +1,157 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
-  Users, Truck, FileText, CalendarClock, User, LogOut, ChevronRight, type LucideIcon,
+  Users,
+  Truck,
+  FileText,
+  CalendarClock,
+  User,
+  LogOut,
+  ChevronRight,
+  Wrench,
+  Building2,
+  Tag,
+  CreditCard,
+  FolderOpen,
+  Menu,
+  type LucideIcon,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
 import { useAuth } from '../../lib/auth-context';
+import { OperatorSidebarDrawer } from '../../components/OperatorSidebarDrawer';
 
-const OPERATIONS_ROWS: { Icon: LucideIcon; label: string; desc: string; route: string }[] = [
-  { Icon: Truck, label: 'Fleet', desc: 'View and edit vehicles', route: '/operator/vehicles' },
-  { Icon: FileText, label: 'Invoices', desc: 'View invoices and record payments', route: '/operator/invoices' },
-  { Icon: Users, label: 'Customers', desc: 'View, add and edit customers', route: '/operator/customers' },
-  { Icon: CalendarClock, label: 'Vehicle Renewals', desc: 'Documents expiring soon', route: '/operator/vehicle-renewals' },
+interface MenuItem {
+  Icon: LucideIcon;
+  label: string;
+  desc: string;
+  route: string;
+}
+
+interface MenuSection {
+  title: string;
+  items: MenuItem[];
+}
+
+const MENU_SECTIONS: MenuSection[] = [
+  {
+    title: 'Fleet',
+    items: [
+      { Icon: Truck, label: 'Vehicles', desc: 'Fleet trucks & trailers', route: '/operator/vehicles' },
+      { Icon: Building2, label: '3rd Party Fleet', desc: 'Subcontractors & 3PL carriers', route: '/operator/third-party' },
+      { Icon: Wrench, label: 'Maintenance', desc: 'Service & repair records', route: '/operator/maintenance' },
+      { Icon: CalendarClock, label: 'Vehicle Renewals', desc: 'Expiring vehicle documents', route: '/operator/vehicle-renewals' },
+    ],
+  },
+  {
+    title: 'Finance',
+    items: [
+      { Icon: Tag, label: 'Quotations', desc: 'Commercial rates & lanes', route: '/operator/quotations' },
+      { Icon: FileText, label: 'Invoices', desc: 'View invoices and record payments', route: '/operator/invoices' },
+      { Icon: CreditCard, label: 'Expenses', desc: 'Operational costs & receipts', route: '/operator/expenses' },
+    ],
+  },
+  {
+    title: 'Compliance',
+    items: [
+      { Icon: FolderOpen, label: 'Documents', desc: 'Driver & fleet document center', route: '/operator/documents' },
+    ],
+  },
+  {
+    title: 'Partners',
+    items: [
+      { Icon: Users, label: 'Customers', desc: 'View, add and edit customers', route: '/operator/customers' },
+    ],
+  },
 ];
 
 const MoreScreen = () => {
   const router = useRouter();
   const { profile, role, signOut } = useAuth();
+  const [drawerVisible, setDrawerVisible] = useState(false);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
+      
+      {/* Header with Top-Right Hamburger Button */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>More</Text>
+        <TouchableOpacity
+          onPress={() => setDrawerVisible(true)}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel="Open sidebar menu"
+          style={styles.hamburgerBtn}
+        >
+          <Menu size={22} color={Colors.gray800} strokeWidth={2.2} />
+        </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {/* Profile Card */}
         <View style={styles.profileCard}>
           <View style={styles.avatarBox}>
             <User size={22} color={Colors.white} strokeWidth={2} />
           </View>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.profileName}>{profile?.name ?? 'Operator'}</Text>
             <Text style={styles.profileRole}>{role ?? 'Operator'}</Text>
           </View>
         </View>
 
-        <Text style={styles.groupLabel}>Operations</Text>
-        <View style={styles.groupCard}>
-          {OPERATIONS_ROWS.map((row, i) => (
-            <TouchableOpacity
-              key={row.label}
-              style={[styles.row, i < OPERATIONS_ROWS.length - 1 ? styles.rowBorder : null]}
-              activeOpacity={0.8}
-              onPress={() => router.push(row.route as any)}
-            >
-              <View style={styles.rowIconBox}>
-                <row.Icon size={18} color={Colors.gray600} strokeWidth={2} />
-              </View>
-              <View style={styles.rowContent}>
-                <Text style={styles.rowLabel}>{row.label}</Text>
-                <Text style={styles.rowDesc}>{row.desc}</Text>
-              </View>
-              <ChevronRight size={18} color={Colors.gray400} strokeWidth={2} />
-            </TouchableOpacity>
-          ))}
-        </View>
+        {/* Grouped Menu Sections */}
+        {MENU_SECTIONS.map((section) => (
+          <View key={section.title} style={styles.sectionBlock}>
+            <Text style={styles.groupLabel}>{section.title}</Text>
+            <View style={styles.groupCard}>
+              {section.items.map((row, i) => (
+                <TouchableOpacity
+                  key={row.label}
+                  style={[styles.row, i < section.items.length - 1 ? styles.rowBorder : null]}
+                  activeOpacity={0.8}
+                  onPress={() => router.push(row.route as any)}
+                >
+                  <View style={styles.rowIconBox}>
+                    <row.Icon size={18} color={Colors.gray600} strokeWidth={2} />
+                  </View>
+                  <View style={styles.rowContent}>
+                    <Text style={styles.rowLabel}>{row.label}</Text>
+                    <Text style={styles.rowDesc}>{row.desc}</Text>
+                  </View>
+                  <ChevronRight size={18} color={Colors.gray400} strokeWidth={2} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ))}
 
+        {/* Logout Button */}
         <TouchableOpacity
           style={styles.logoutBtn}
           activeOpacity={0.8}
-          onPress={() => Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Sign Out', style: 'destructive', onPress: async () => { await signOut(); router.replace('/login'); } },
-          ])}
+          onPress={() =>
+            Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Sign Out',
+                style: 'destructive',
+                onPress: async () => {
+                  await signOut();
+                  router.replace('/login');
+                },
+              },
+            ])
+          }
         >
           <LogOut size={20} color={Colors.error} strokeWidth={2.2} />
           <Text style={styles.logoutText}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Sidebar Drawer */}
+      <OperatorSidebarDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </SafeAreaView>
   );
 };
@@ -81,16 +163,26 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   headerTitle: {
     fontSize: Typography.xl,
     fontWeight: '800',
     color: Colors.gray900,
   },
+  hamburgerBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.gray100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   scroll: {
     padding: Spacing.lg,
-    paddingBottom: 100,
-    gap: Spacing.xs,
+    paddingBottom: 110,
   },
   profileCard: {
     flexDirection: 'row',
@@ -121,13 +213,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 1,
   },
+  sectionBlock: {
+    marginBottom: Spacing.md,
+  },
   groupLabel: {
     fontSize: Typography.xs,
     color: Colors.gray500,
-    fontWeight: '700',
+    fontWeight: '800',
     letterSpacing: 1,
     textTransform: 'uppercase',
-    marginTop: Spacing.md,
     marginBottom: Spacing.xs,
     paddingHorizontal: Spacing.xs,
   },
@@ -179,7 +273,7 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     borderWidth: 1.5,
     borderColor: Colors.error,
-    marginTop: Spacing.lg,
+    marginTop: Spacing.md,
   },
   logoutText: {
     fontSize: Typography.base,

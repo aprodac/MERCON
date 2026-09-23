@@ -1,35 +1,73 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, Text, View, type ImageSourcePropType } from 'react-native';
+import { Colors } from '@/theme/tokens';
+import { SkeletonBlock } from '@/shared/components';
 import { DriverStatusIndicator } from './DriverStatusIndicator';
 import type { DriverDisplayStatus } from '../types';
 
 interface DriverAvatarProps {
   initials: string;
-  /** The backend has no driver-photo field yet — pass this once it does; falls back to an initials avatar. */
+  avatarUrl?: string | null;
   imageUri?: ImageSourcePropType;
   status?: DriverDisplayStatus;
   size?: number;
   className?: string;
 }
 
-/** Large rounded-square driver photo/initials tile with a bottom-right status dot. */
-export function DriverAvatar({ initials, imageUri, status, size = 64, className }: DriverAvatarProps) {
-  const radius = Math.round(size * 0.28);
+/** Helper to resolve avatar source string to ImageSourcePropType */
+function resolveAvatarSource(avatarUrl?: string | null, imageUri?: ImageSourcePropType): ImageSourcePropType | null {
+  if (imageUri) return imageUri;
+  if (!avatarUrl || typeof avatarUrl !== 'string' || !avatarUrl.trim()) return null;
+
+  const url = avatarUrl.trim();
+  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image/')) {
+    return { uri: url };
+  }
+  // Relative URL fallback
+  return { uri: url.startsWith('/') ? `https://dev.mercon.tech${url}` : `https://dev.mercon.tech/${url}` };
+}
+
+/** Purely circular driver avatar component with image loading skeleton & status dot indicator. */
+export function DriverAvatar({ initials, avatarUrl, imageUri, status, size = 52, className }: DriverAvatarProps) {
+  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const source = !hasError ? resolveAvatarSource(avatarUrl, imageUri) : null;
+  const halfSize = Math.round(size / 2);
+
   return (
-    <View style={{ width: size, height: size }} className={`relative ${className ?? ''}`}>
-      {imageUri ? (
-        <Image source={imageUri} resizeMode="cover" style={{ width: size, height: size, borderRadius: radius }} />
-      ) : (
-        <View
-          style={{ width: size, height: size, borderRadius: radius }}
-          className="items-center justify-center bg-primary"
-        >
-          <Text style={{ fontSize: size * 0.32 }} className="font-bold text-white">{initials}</Text>
-        </View>
-      )}
+    <View style={{ width: size, height: size }} className={`relative items-center justify-center ${className ?? ''}`}>
+      <View
+        style={{ width: size, height: size, borderRadius: halfSize, backgroundColor: Colors.primary, borderColor: Colors.gray200 }}
+        className="overflow-hidden items-center justify-center border"
+      >
+        {source ? (
+          <>
+            {isLoading && (
+              <View className="absolute inset-0 z-10">
+                <SkeletonBlock width={size} height={size} radius={halfSize} />
+              </View>
+            )}
+            <Image
+              source={source}
+              resizeMode="cover"
+              onLoadStart={() => setIsLoading(true)}
+              onLoadEnd={() => setIsLoading(false)}
+              onError={() => {
+                setHasError(true);
+                setIsLoading(false);
+              }}
+              style={{ width: size, height: size, borderRadius: halfSize }}
+            />
+          </>
+        ) : (
+          <Text style={{ fontSize: Math.round(size * 0.38) }} className="font-bold text-white tracking-wide text-center">
+            {initials}
+          </Text>
+        )}
+      </View>
       {status && (
-        <View className="absolute -bottom-1 -right-1">
-          <DriverStatusIndicator status={status} size={Math.round(size * 0.24)} />
+        <View className="absolute bottom-0 right-0 z-20">
+          <DriverStatusIndicator status={status} size={Math.round(size * 0.28)} />
         </View>
       )}
     </View>

@@ -19,10 +19,11 @@ export default function SystemHealthPage() {
     refetchInterval: 15000, // auto-refresh every 15 sec
   });
 
-  const { data: auditLogs = [], isLoading: isAuditLoading } = useQuery({
+  const { data: auditLogsRes, isLoading: isAuditLoading } = useQuery({
     queryKey: ['system-audit-logs'],
-    queryFn: settingsService.getAuditLogs,
+    queryFn: () => settingsService.getAuditLogs({ per_page: 20 }),
   });
+  const auditLogs = auditLogsRes?.data || [];
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -202,10 +203,13 @@ export default function SystemHealthPage() {
 
         {/* Audit Log Stream */}
         <Card className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl shadow-xs">
-          <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
+          <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800 flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
               <Shield className="w-4 h-4 text-purple-600" /> Platform Security & Audit Trail
             </CardTitle>
+            <a href="/settings/audit-log" className="text-xs font-semibold text-brand hover:underline">
+              View Full Audit Log →
+            </a>
           </CardHeader>
           <CardContent className="pt-4">
             {isAuditLoading ? (
@@ -218,12 +222,15 @@ export default function SystemHealthPage() {
                   <div key={log.id} className="p-2.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
                     <div className="flex items-center gap-3">
                       <Badge variant="outline" className="text-[10px] font-bold bg-white dark:bg-slate-900">
-                        {log.category}
+                        {log.entityType}
                       </Badge>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{log.description}</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        {log.action}
+                        {log.user?.name && <span className="text-slate-400 font-normal"> — by {log.user.name}</span>}
+                      </span>
                     </div>
                     <span className="text-[11px] text-slate-400 font-mono">
-                      {new Date(log.timestamp).toLocaleTimeString()}
+                      {new Date(log.createdAt).toLocaleTimeString()}
                     </span>
                   </div>
                 ))}

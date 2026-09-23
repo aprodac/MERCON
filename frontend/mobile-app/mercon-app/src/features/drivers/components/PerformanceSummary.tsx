@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
-import { CircleCheck, Clock, ShieldCheck, Star } from 'lucide-react-native';
+import { CircleCheck, Clock, ShieldCheck, Truck } from 'lucide-react-native';
 import { Colors } from '@/theme/tokens';
 import { Section, SectionCard } from './SectionCard';
 import { PerformanceMetricCard } from './PerformanceMetricCard';
@@ -45,10 +45,10 @@ export function PerformanceSummary({ performance }: PerformanceSummaryProps) {
             tone={Colors.info}
           />
           <PerformanceMetricCard
-            Icon={Star}
-            value={performance.averageRating !== null ? performance.averageRating.toFixed(1) : '—'}
-            label="Average Rating"
-            caption="not yet tracked"
+            Icon={Truck}
+            value={String(performance.totalTrips)}
+            label="Total Trips"
+            caption="all time recorded"
             tone={Colors.accent}
           />
           <PerformanceMetricCard

@@ -4,7 +4,7 @@ import {
   Home, Bell, Truck, Users, Car, Building2,
   CreditCard, ReceiptText, Calculator, Files, FileBarChart,
   Settings, User, LogOut, Wrench, X, MapPin, TrendingUp, Trash2,
-  CalendarRange, Wallet, SlidersHorizontal, ChevronsLeft, ChevronsRight, FolderArchive, Lock, ShieldCheck, GraduationCap, AlertTriangle
+  CalendarRange, Wallet, SlidersHorizontal, ChevronsLeft, ChevronsRight, FolderArchive, Lock, ShieldCheck, GraduationCap, AlertTriangle, FolderTree, BookOpen, Scale, BarChart3, Clock, Coins
 } from 'lucide-react';
 
 import { authStore } from '@/store/authStore';
@@ -105,6 +105,20 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
       items: [
         { icon: Calculator, label: 'Quotations', path: '/quotations', moduleKey: 'quotations', permissionKey: 'quotations.view' },
         { icon: Wallet, label: 'Expenses', path: '/expenses', moduleKey: 'expenses', permissionKey: 'reports.view' },
+        { icon: FolderTree, label: 'Chart of Accounts', path: '/finance/chart-of-accounts', moduleKey: 'finance' },
+        { icon: CalendarRange, label: 'Accounting Periods', path: '/finance/periods', moduleKey: 'finance' },
+        { icon: BookOpen, label: 'Journal Entries', path: '/finance/journal-entries', moduleKey: 'finance' },
+        { icon: ReceiptText, label: 'Invoices', path: '/finance/invoices', moduleKey: 'finance' },
+        { icon: CreditCard, label: 'Bills', path: '/finance/bills', moduleKey: 'finance' },
+        { icon: Building2, label: 'Bank Accounts', path: '/finance/bank-accounts', moduleKey: 'finance' },
+        { icon: Wallet, label: 'Advances', path: '/finance/advances', moduleKey: 'finance' },
+        { icon: Scale, label: 'Reconciliation', path: '/finance/reconciliation', moduleKey: 'finance' },
+        { icon: Scale, label: 'Trial Balance', path: '/finance/trial-balance', moduleKey: 'finance' },
+        { icon: BarChart3, label: 'Profit & Loss', path: '/finance/profit-and-loss', moduleKey: 'finance' },
+        { icon: FileBarChart, label: 'Balance Sheet', path: '/finance/balance-sheet', moduleKey: 'finance' },
+        { icon: Clock, label: 'AR Ageing', path: '/finance/ar-ageing', moduleKey: 'finance' },
+        { icon: Clock, label: 'AP Ageing', path: '/finance/ap-ageing', moduleKey: 'finance' },
+        { icon: Coins, label: 'Cash Flow', path: '/finance/cash-flow', moduleKey: 'finance' },
         { icon: TrendingUp, label: 'Vehicle P&L', path: '/vehicles/financials', moduleKey: 'vehicles', permissionKey: 'fleet.financials' },
       ],
     },
@@ -130,6 +144,7 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
         { icon: Settings, label: 'Settings', path: '/settings', end: true },
         { icon: Trash2, label: 'Recycle Bin', path: '/settings/recycle-bin', moduleKey: 'recycle-bin' },
         ...(isSuperAdmin ? [{ icon: SlidersHorizontal, label: 'Module Governance', path: '/settings/module-governance', permissionKey: 'settings.deployment' }] : []),
+        ...(isSuperAdmin ? [{ icon: ShieldCheck, label: 'Audit Log', path: '/settings/audit-log' }] : []),
         ...(can('users.view') ? [{ icon: Users, label: 'User Management', path: '/settings/users', permissionKey: 'users.view' }] : []),
         ...(userRole === 'Admin' || isSuperAdmin ? [{ icon: AlertTriangle, label: 'Error Console', path: '/settings/error-console' }] : []),
         { icon: FolderArchive, label: 'Aprodac Vault', path: '/aprodac-documents', moduleKey: 'aprodac-documents' },

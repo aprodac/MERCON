@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import type { LucideIcon } from 'lucide-react-native';
+import { Colors, Radius, Shadows } from '@/theme/tokens';
 
 interface DriverStatCardProps {
   label: string;
@@ -11,21 +12,30 @@ interface DriverStatCardProps {
   className?: string;
 }
 
-/** Compact horizontal KPI tile — icon left, value + label + caption right. */
+/** Compact KPI card styled with design system tokens (Colors.navBg background, Colors.primary icon accent). */
 export function DriverStatCard({ label, value, Icon, caption, className }: DriverStatCardProps) {
   return (
-    <View className={`flex-1 flex-row items-center gap-3 overflow-hidden rounded-2xl bg-navbg py-4 pl-4 pr-3 ${className ?? ''}`}>
-      <View className="h-11 w-11 items-center justify-center rounded-full bg-white/10">
-        <Icon size={19} color="#F24822" strokeWidth={2.2} />
+    <View
+      style={{
+        backgroundColor: Colors.navBg,
+        borderColor: 'rgba(238, 241, 246, 0.15)',
+        borderWidth: 1,
+        borderRadius: Radius.lg,
+        ...Shadows.md,
+      }}
+      className={`flex-1 flex-row items-center gap-3.5 overflow-hidden py-3.5 px-4 ${className ?? ''}`}
+    >
+      <View className="h-10 w-10 items-center justify-center rounded-xl bg-white/10">
+        <Icon size={18} color={Colors.primary} strokeWidth={2.4} />
       </View>
 
       <View className="flex-1 gap-0.5">
-        <Text numberOfLines={1} className="text-2xl font-extrabold leading-[26px] text-white">
+        <Text numberOfLines={1} className="text-[22px] font-extrabold leading-[26px] text-white">
           {value.toLocaleString()}
         </Text>
-        <Text numberOfLines={1} className="text-xs font-medium text-white/60">{label}</Text>
+        <Text numberOfLines={1} className="text-[12px] font-semibold text-white/80">{label}</Text>
         {caption ? (
-          <Text numberOfLines={1} className="mt-0.5 text-[10px] text-white/35">{caption}</Text>
+          <Text numberOfLines={1} className="text-[10px] font-medium text-white/50">{caption}</Text>
         ) : null}
       </View>
     </View>

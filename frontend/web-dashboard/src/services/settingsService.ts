@@ -46,9 +46,23 @@ export const settingsService = {
     return res.data.data;
   },
 
-  async getAuditLogs(): Promise<any[]> {
-    const res = await api.get<ApiResponse<any[]>>('/settings/audit-logs');
-    return res.data.data;
+  async getAuditLogs(params?: {
+    action?: string;
+    entityType?: string;
+    userId?: string;
+    date_from?: string;
+    date_to?: string;
+    search?: string;
+    page?: number;
+    per_page?: number;
+  }): Promise<{
+    success: boolean;
+    data: any[];
+    pagination: { page: number; per_page: number; total: number; total_pages: number };
+    filters: { actions: string[]; entityTypes: string[] };
+  }> {
+    const res = await api.get('/settings/audit-logs', { params });
+    return res.data;
   },
 
   /**

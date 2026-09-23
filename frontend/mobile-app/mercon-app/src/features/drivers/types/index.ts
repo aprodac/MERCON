@@ -21,6 +21,12 @@ export interface DriverActiveTrip {
   vehiclePlate: string | null;
 }
 
+/** The vehicle permanently assigned to a driver from the Drivers module (Driver.assignedVehicleId) — independent of any active trip. */
+export interface DriverListVehicle {
+  plateNumber: string;
+  assetType: string;
+}
+
 export interface DriverListItem {
   id: string;
   ref_id: string | null;
@@ -30,10 +36,20 @@ export interface DriverListItem {
   status: DriverStatus;
   licenseNumber: string;
   licenseExpiry: string;
+  /** Whole days until the licence expires; negative once expired, null when unparseable. */
+  licenseDaysLeft: number | null;
+  avatarUrl: string | null;
   createdAt: string;
   activeTrip: DriverActiveTrip | null;
+  assignedVehicle: DriverListVehicle | null;
   /** All-time trip count from GET /reports/drivers — null while that join hasn't resolved yet. */
   totalTrips: number | null;
+  /** Monthly payout for current calendar month from GET /reports/drivers — null while query hasn't resolved yet. */
+  monthlyPayout: number | null;
+  /** Nearest document expiry date ISO string from GET /reports/drivers — null if no document expiry recorded. */
+  nearestDocExpiry: string | null;
+  /** Whole days until nearest document expires; negative once expired, null when no document expiry is recorded. */
+  docDaysLeft: number | null;
   /**
    * The backend has no driver rating field (only `ai_risk_score`, a
    * different metric) — always null until one exists. DriverRating renders
@@ -168,6 +184,7 @@ export interface DriverDetail {
   status: DriverStatus;
   licenseNumber: string;
   licenseExpiry: string;
+  avatarUrl: string | null;
   /** Whole days until the licence expires; negative once expired. */
   licenseDaysLeft: number;
   aiRiskScore: number | null;

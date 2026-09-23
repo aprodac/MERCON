@@ -329,13 +329,61 @@ Badges use `rounded-full`, `text-[9.5px]` or `text-[11px] font-bold leading-none
 
 ---
 
+## Mobile App (React Native / Expo)
+
+`frontend/mobile-app/mercon-app` is the Operator + Driver mobile app. It does **not** share the web dashboard's Tailwind/shadcn stack — its canonical design source is a plain RN token file, and screens are expected to read from it (via inline `style` props or `StyleSheet.create`) rather than hardcoding hex/shadow values or leaning on NativeWind's generic utility classes (`shadow-sm`, `bg-[#hex]`), which was the exact drift found and fixed on the Drivers list page (2026-09).
+
+### Token Source (`src/theme/tokens.ts`)
+
+All mobile screens should import `Colors`, `Spacing`, `Radius`, `Typography`, `Shadows` from this file. Never redeclare these values locally.
+
+**Colors** (subset — see file for full neutral/semantic ramps):
+
+| Token | Hex | Notes |
+|---|---|---|
+| `Colors.primary` | `#FA634E` (client-overridable via `app.config.ts` → `extra.brandColor`) | Matches the web dashboard's Coral Red — the mobile app's actual primary, **not** the `#E8450F` in `tailwind.config.js` (see Known Inconsistencies) |
+| `Colors.primaryLight` / `primaryDark` | `#FFF0EB` / `#D94E38` | |
+| `Colors.accent` | `#F24822` | Drivers-feature accent (status pills, "On Trip" banner) — intentionally distinct from `primary`, do not merge |
+| `Colors.charcoal` / `charcoalDark` | `#3E3C3D` / `#2D2B2C` | Primary text, dark/executive surfaces — matches web's Dark Charcoal |
+| `Colors.coolGray` | `#EEF1F6` | Card borders / canvas — matches web's Canvas Background |
+| `Colors.success` / `warning` / `danger` / `info` | `#16A34A` / `#D97706` / `#DC2626` / `#2563EB` | Same semantic hexes as the web dashboard's semantic palette |
+
+**Spacing** (8pt-ish grid): `xs 4 · sm 8 · md 12 · base 16 · lg 20 · xl 24 · 2xl 32 · 3xl 40 · 4xl 48 · 5xl 64`
+
+**Radius**: `xs 4 · sm 8 · md 12 · lg 16 · xl 20 · 2xl 24 · 3xl 32 · full 9999`
+
+**Shadows** (named RN `shadow*`+`elevation` pairs — always use these, never a one-off inline shadow object):
+| Token | shadowOffset | shadowOpacity | shadowRadius | elevation |
+|---|---|---|---|---|
+| `sm` | 0/1 | 0.06 | 3 | 2 |
+| `md` | 0/4 | 0.08 | 12 | 4 |
+| `lg` | 0/8 | 0.12 | 24 | 8 |
+| `xl` | 0/12 | 0.16 | 32 | 12 |
+| `primary` | 0/4 | 0.35 (colored `#E8450F`) | 12 | 6 | Coral CTA shadows |
+| `nav` | 0/8 | 0.45 | 24 | 12 | Bottom tab bar |
+
+### List / Card Pattern (established on the Drivers screen, reusable for Vehicles/Trips-style lists)
+
+- **Search bar**: white pill, `Radius.lg`, `Shadows.sm`, `Colors.coolGray` border — not NativeWind's bare `shadow-sm` (that class has no real `shadowColor`/`elevation` and renders as an off-brand default shadow).
+- **List card**: white, `Radius.xl` corners, `Shadows.sm`, `Colors.coolGray` 1px border, `Spacing.md` internal padding rhythm.
+  - Header row: circular avatar (with status dot overlay) → name + status pill + secondary meta (phone) → an optional trailing quantity (e.g. trip count).
+  - Divider (`Colors.coolGray`), then one or more **contextual info rows** (icon + text) for the item's operational state.
+  - **Conditional warning chip(s)**: icon (`TriangleAlert`) + colored text (`Colors.warning`/`Colors.danger`), rendered *only* when the condition is actually true (e.g. license/document expiring within 30 days) — never shown as a permanent/empty row. Multiple warnings stack rather than collapsing into one generic line.
+  - Full card surface is the primary tap target (opens details); nested interactive rows (e.g. an active-trip banner, the bottom action buttons) own their own tap handling and must not double-fire the card's navigation.
+  - Footer: full-width row of 2 action buttons (`DriverActionButton`-style: icon + label, white, `Radius.md`, `Shadows.sm`, `Colors.gray100` border).
+- **Loading skeletons must structurally mirror the real component** (same corner radius, avatar shape, row order, footer shape) — a skeleton built against an older card design causes a visible layout "pop" once real data replaces it. Keep skeleton and real component in sync whenever the card layout changes.
+- **Icons**: `lucide-react-native`, same icon vocabulary as the web dashboard's `lucide-react` (e.g. `Truck`, `Navigation`, `TriangleAlert`, `FileText`).
+
+---
+
 ## Known Design Inconsistencies
 
 During the design system audit, the following inconsistencies and legacy deviations were identified for future cleanup:
 
-1.  **Mobile App vs. Web Dashboard Brand Color Divergence**:
-    *   `frontend/mobile-app/mercon-app/tailwind.config.js` and legacy docs still reference `#E8450F` (an older orange) as `primary`.
-    *   The Web Dashboard (`frontend/web-dashboard/src/index.css`, `UI_GUIDELINES.md`, `AGENTS.md`) uses **Coral Red (`#FA634E`)** as the single canonical brand color.
+1.  **Mobile App vs. Web Dashboard Brand Color Divergence** (still open as of 2026-09):
+    *   `frontend/mobile-app/mercon-app/tailwind.config.js` (`mercon.DEFAULT`) still defines `primary` as `#E8450F` (an older orange), and `Shadows.primary` in `theme/tokens.ts` still uses that same `#E8450F` for its `shadowColor` (colored CTA shadow) — a leftover from before the token file was updated to `#FA634E`.
+    *   `theme/tokens.ts`'s `Colors.primary` itself is already correct (`#FA634E`, matching the Web Dashboard's Coral Red) and is what components should — and increasingly do — import from; the divergence is specifically in the unused Tailwind config value and the one stale shadow color, not in the actual token values screens consume.
+    *   Fix: update `tailwind.config.js`'s `mercon.DEFAULT` to `#FA634E` (or remove it if nothing still resolves classes from it — check usage first) and update `Shadows.primary.shadowColor` in `theme/tokens.ts` to `#FA634E`.
 2.  **Legacy Dark Card Surfaces**:
     *   Older documentation specified `#1C1C2E` (Dark Navy Blue) for dark cards.
     *   The active codebase (`index.css`, `UI_GUIDELINES.md`, `Sidebar.tsx`) uses **Dark Charcoal (`#3E3C3D`)**.

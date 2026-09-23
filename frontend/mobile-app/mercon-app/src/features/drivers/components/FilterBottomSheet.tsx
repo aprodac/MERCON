@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native';
 import { Check, X } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
 import type { DriverStatus } from '../types';
 
 const STATUS_OPTIONS: { value: DriverStatus | null; label: string }[] = [
@@ -19,6 +20,12 @@ interface FilterBottomSheetProps {
 }
 
 export function FilterBottomSheet({ visible, value, onChange, onClose }: FilterBottomSheetProps) {
+  const handleSelect = (val: DriverStatus | null) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    onChange(val);
+    onClose();
+  };
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable className="flex-1 justify-end bg-black/30" onPress={onClose}>
@@ -32,11 +39,11 @@ export function FilterBottomSheet({ visible, value, onChange, onClose }: FilterB
           {STATUS_OPTIONS.map((opt) => (
             <TouchableOpacity
               key={opt.label}
-              onPress={() => { onChange(opt.value); onClose(); }}
+              onPress={() => handleSelect(opt.value)}
               className="flex-row items-center justify-between rounded-xl px-3 py-3"
             >
               <Text className="text-sm text-gray-700">{opt.label}</Text>
-              {value === opt.value && <Check size={16} color="#F24822" />}
+              {value === opt.value && <Check size={16} color="#FA634E" />}
             </TouchableOpacity>
           ))}
         </Pressable>

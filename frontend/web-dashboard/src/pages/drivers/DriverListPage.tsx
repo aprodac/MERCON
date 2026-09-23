@@ -278,6 +278,12 @@ export default function DriverListPage() {
   const availableCount = driverStats?.available ?? drivers.filter(d => d.status === 'Available').length;
   const onTripCount = driverStats?.on_trip ?? drivers.filter(d => d.status === 'OnTrip').length;
 
+  // Drivers on this page currently reporting a fresh GPS ping (resolver's `CURRENT` state).
+  const liveGpsCount = drivers.filter(d => {
+    const vehicle = d.assignedVehicle || d.trips?.[0]?.vehicle;
+    return vehicle?.resolved_location?.display_state === 'CURRENT';
+  }).length;
+
   const expiredLicenseCount = driverStats?.expired_licenses ?? drivers.filter(d => new Date(d.license_expiry) < new Date()).length;
   const clearDriversCount = Math.max(0, totalCount - expiredLicenseCount);
 
@@ -864,7 +870,7 @@ export default function DriverListPage() {
             }}
             livePulseTrack={{
               statusText: `${onTripCount} Drivers Active On-Route`,
-              subText: 'GPS Telemetry'
+              subText: `${liveGpsCount} of ${onTripCount} reporting live GPS`
             }}
           />
 

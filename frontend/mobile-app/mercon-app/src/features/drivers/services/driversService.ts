@@ -2,13 +2,39 @@
  * Drivers business logic — pure transforms over API-layer data. Nothing
  * here talks to the network.
  */
+import { daysUntil } from './driverDetailsService';
 import type { DriverTripCount, RawDriver } from '../api/driversApi';
 import type { DriverListItem, DriverSortOption, DriverStats } from '../types';
 
 const ACTIVE_TRIP_STATUSES = ['Scheduled', 'Loading', 'InTransit', 'Delayed', 'Emergency'];
 
-export function toDriverListItem(raw: RawDriver, tripCountById: Map<string, number>): DriverListItem {
+export interface DriverPerfData {
+  totalTrips: number;
+  monthlyPayout: number;
+  nearestDocExpiry: string | null;
+}
+
+export function toDriverListItem(
+  raw: RawDriver,
+  tripCountById: Map<string, DriverPerfData | number>,
+): DriverListItem {
   const activeTrip = raw.trips?.find((t) => ACTIVE_TRIP_STATUSES.includes(t.status));
+  const rawPerf = tripCountById.get(raw.id);
+
+  let totalTrips: number | null = null;
+  let monthlyPayout: number | null = null;
+  let nearestDocExpiry: string | null = null;
+
+  if (typeof rawPerf === 'number') {
+    totalTrips = rawPerf;
+  } else if (rawPerf) {
+    totalTrips = rawPerf.totalTrips;
+    monthlyPayout = rawPerf.monthlyPayout;
+    nearestDocExpiry = rawPerf.nearestDocExpiry;
+  }
+
+  const docDaysLeft = nearestDocExpiry ? daysUntil(nearestDocExpiry) : null;
+
   return {
     id: raw.id,
     ref_id: raw.ref_id,
@@ -18,11 +44,19 @@ export function toDriverListItem(raw: RawDriver, tripCountById: Map<string, numb
     status: raw.status,
     licenseNumber: raw.license_number,
     licenseExpiry: raw.license_expiry,
+    licenseDaysLeft: daysUntil(raw.license_expiry),
+    avatarUrl: raw.avatar_url ?? null,
     createdAt: raw.createdAt,
     activeTrip: activeTrip
       ? { id: activeTrip.id, status: activeTrip.status, vehiclePlate: activeTrip.vehicle?.plate_number ?? null }
       : null,
-    totalTrips: tripCountById.get(raw.id) ?? null,
+    assignedVehicle: raw.assignedVehicle
+      ? { plateNumber: raw.assignedVehicle.plate_number, assetType: raw.assignedVehicle.asset_type }
+      : null,
+    totalTrips,
+    monthlyPayout,
+    nearestDocExpiry,
+    docDaysLeft,
     rating: null,
   };
 }
@@ -60,8 +94,17 @@ export function computeDriverStats(drivers: Pick<DriverListItem, 'status'>[]): D
   );
 }
 
-export function tripCountMap(counts: DriverTripCount[]): Map<string, number> {
-  return new Map(counts.map((c) => [c.id, c.total_trips]));
+export function tripCountMap(counts: DriverTripCount[]): Map<string, DriverPerfData> {
+  return new Map(
+    counts.map((c) => [
+      c.id,
+      {
+        totalTrips: c.total_trips,
+        monthlyPayout: c.monthly_payout ?? 0,
+        nearestDocExpiry: c.nearest_doc_expiry ?? null,
+      },
+    ]),
+  );
 }
 
 /**
