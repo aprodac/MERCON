@@ -123,6 +123,13 @@ const HomeScreen = () => {
   const [scheduledTrips, setScheduledTrips] = useState<MobileTrip[]>([]);
   const [scheduledLoading, setScheduledLoading] = useState(true);
   const router = useRouter();
+  const timeOfDay = React.useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return { key: 'greeting_morning', fallback: 'Good Morning,' };
+    if (hour < 17) return { key: 'greeting_afternoon', fallback: 'Good Afternoon,' };
+    return { key: 'greeting_evening', fallback: 'Good Evening,' };
+  }, []);
+
 
 //  // Restore current trip workflow screen on mount
 //  const restoredRef = useRef(false);
@@ -430,8 +437,8 @@ const HomeScreen = () => {
 
             {/* Welcome back / Greeting below Language on the Left */}
             <View style={styles.greetingBox}>
-              <Text style={styles.greetingSub}>{t('title_welcome_back', 'Good Morning,')}</Text>
-              <Text style={styles.greetingMain}>{t('msg_drive_safe', 'Drive Safe Today!')}</Text>
+              <Text style={styles.greetingSub} adjustsFontSizeToFit numberOfLines={1}>{t(timeOfDay.key, timeOfDay.fallback)}</Text>
+              <Text style={styles.greetingMain} adjustsFontSizeToFit numberOfLines={1}>{t('msg_drive_safe', 'Drive Safe Today')}</Text>
             </View>
           </SafeAreaView>
         </View>
@@ -471,8 +478,8 @@ const HomeScreen = () => {
               <View style={styles.cardHeaderRow}>
                 <View style={styles.cardTitleCol}>
                   <BilingualText
-                    ur={displayTrip.status === 'Scheduled' || displayTrip.status === 'Draft' ? 'اگلا شیڈول شدہ ٹرپ' : 'موجودہ ٹرپ'}
-                    en={displayTrip.status === 'Scheduled' || displayTrip.status === 'Draft' ? 'Next Scheduled Trip' : 'Current Trip'}
+                    ur={getEffectiveWorkflowState(displayTrip) === 'ASSIGNED' || displayTrip.status === 'Draft' ? 'اگلا شیڈول شدہ ٹرپ' : 'موجودہ ٹرپ'}
+                    en={getEffectiveWorkflowState(displayTrip) === 'ASSIGNED' || displayTrip.status === 'Draft' ? 'Next Scheduled Trip' : 'Ongoing Trip'}
                     primaryStyle={styles.cardTitleUrduPrimary}
                     subStyle={styles.cardTitleSubEn}
                   />

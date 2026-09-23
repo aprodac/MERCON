@@ -71,7 +71,7 @@ export function getLocalizedStatus(rawStatus?: string | null, mode?: LanguageMod
   }
   const targetMode = mode || currentAppLanguage;
   if (targetMode === 'ur') return item.ur;
-  if (targetMode === 'ur-en') return `${item.ur} / ${item.en}`;
+  if (targetMode === 'ur-en') return `${item.ur}\u200E / ${item.en}`;
   return item.en;
 }
 
@@ -92,7 +92,7 @@ export function translate(key: string, fallback?: string, mode?: LanguageMode): 
   if (!item) return fallback || key;
   const targetMode = mode || currentAppLanguage;
   if (targetMode === 'ur') return item.ur;
-  if (targetMode === 'ur-en') return `${item.ur} / ${item.en}`;
+  if (targetMode === 'ur-en') return `${item.ur}\u200E / ${item.en}`;
   return item.en;
 }
 
@@ -143,7 +143,7 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
       return item.ur;
     } else if (language === 'ur-en') {
       // Format requested: "urdu and english both should come with urdu written/ english written"
-      return `${item.ur} / ${item.en}`;
+      return `${item.ur}\u200E / ${item.en}`;
     }
 
     return item.en;

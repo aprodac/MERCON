@@ -97,8 +97,10 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   msg_operator_notified: { en: 'Your operator has been notified. They will help you log in.', ur: 'آپ کے آپریٹر کو مطلع کر دیا گیا ہے۔ وہ جلد آپ سے رابطہ کریں گے۔' },
 
   // Driver Home Screen
-  title_welcome_back: { en: 'Good Morning,', ur: 'صبح بخیر،' },
-  msg_drive_safe: { en: 'Drive Safe Today!', ur: 'آج کا سفر محفوظ بنائیں!' },
+  greeting_morning: { en: 'Good Morning,', ur: 'صبح بخیر،' },
+  greeting_afternoon: { en: 'Good Afternoon,', ur: 'دوپہر بخیر،' },
+  greeting_evening: { en: 'Good Evening,', ur: 'شام بخیر،' },
+  msg_drive_safe: { en: 'Drive Safe Today', ur: 'آج کا سفر محفوظ بنائیں' },
   title_next_trip: { en: 'Next Scheduled Trip', ur: 'اگلا شیڈول شدہ ٹرپ' },
   title_route_stops: { en: 'Route & Stops', ur: 'روٹ اور اسٹاپس' },
   msg_no_active_trip: { en: 'No Active Trips', ur: 'فی الوقت کوئی ٹرپ نہیں' },
