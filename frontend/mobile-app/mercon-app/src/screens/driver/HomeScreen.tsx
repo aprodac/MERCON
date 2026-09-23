@@ -539,9 +539,6 @@ const HomeScreen = () => {
                       {getLocalizedStatus(displayTrip.driver_workflow_state || displayTrip.status, language)}
                     </Text>
                   </View>
-                  <TouchableOpacity style={styles.moreOptionsBtn}>
-                    <MoreVertical size={18} color="#3E3C3D" />
-                  </TouchableOpacity>
                 </View>
               </View>
 
