@@ -18,22 +18,20 @@ import {
   Globe,
   Info,
   Bug,
-  LogOut,
   ArrowLeft,
   ChevronRight,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useAuth } from '../../lib/auth-context';
 import { useLanguage } from '../../lib/language-context';
 import { useTheme } from '../../lib/theme-context';
 
 const SettingsScreen = () => {
   const router = useRouter();
-  const { signOut } = useAuth();
   const { language, openLanguageModal, t } = useLanguage();
   const { isDark, toggleDark, colors } = useTheme();
 
   const [locationSharing, setLocationSharing] = React.useState(true);
+  const [soundAlerts, setSoundAlerts] = React.useState(true);
 
   const getLanguageLabel = () => {
     if (language === 'en') return 'English';
@@ -68,6 +66,15 @@ const SettingsScreen = () => {
       defaultDesc: 'Share location during active trips',
       value: locationSharing,
       onChange: setLocationSharing,
+    },
+    {
+      Icon: Volume2,
+      labelKey: 'setting_sound_alerts',
+      defaultLabel: 'Sound Alerts',
+      descKey: 'setting_sound_desc',
+      defaultDesc: 'Play audio for navigation & alerts',
+      value: soundAlerts,
+      onChange: setSoundAlerts,
     },
     {
       Icon: Moon,
@@ -170,31 +177,7 @@ const SettingsScreen = () => {
 
 
 
-        {/* Logout */}
-        <TouchableOpacity
-          style={s.logoutBtn}
-          activeOpacity={0.8}
-          onPress={() =>
-            Alert.alert(
-              'Logout',
-              'Are you sure you want to logout?',
-              [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                  text: 'Logout',
-                  style: 'destructive',
-                  onPress: async () => {
-                    await signOut();
-                    router.replace('/login');
-                  },
-                },
-              ],
-            )
-          }
-        >
-          <LogOut size={20} color="#DC2626" strokeWidth={2.2} />
-          <Text style={s.logoutText}>{t('action_logout', 'Logout')}</Text>
-        </TouchableOpacity>
+        
 
         <Text style={s.footer}>
           {'MERCON Logistics Platform · Saudi Arabia\nsupport@mercon.sa'}
@@ -301,23 +284,7 @@ function makeStyles(colors: ReturnType<typeof import('../../lib/theme-context').
       fontSize: 12,
       color: colors.textSecondary,
     },
-    logoutBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 10,
-      backgroundColor: colors.surface,
-      borderRadius: 16,
-      padding: 16,
-      borderWidth: 1.5,
-      borderColor: '#DC2626',
-      marginTop: 20,
-    },
-    logoutText: {
-      fontSize: 15,
-      fontWeight: '700',
-      color: '#DC2626',
-    },
+    
     footer: {
       textAlign: 'center',
       fontSize: 12,
