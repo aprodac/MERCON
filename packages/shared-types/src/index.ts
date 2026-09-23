@@ -735,11 +735,18 @@ export interface BankReconciliation {
   createdAt: string;
 }
 
+export interface AdvanceParty {
+  id: string;
+  name: string;
+  type: AdvancePartyType;
+}
+
 export interface Advance {
   id: string;
   ref_id?: string | null;
   party_type: AdvancePartyType;
   party_id?: string | null;
+  party?: AdvanceParty | null;
   direction: AdvanceDirection;
   amount: number | string;
   applied_amount: number | string;
