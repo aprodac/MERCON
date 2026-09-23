@@ -256,6 +256,30 @@ export function isRoundTrip(trip: MobileTrip | null | undefined): boolean {
 }
 
 /**
+ * The real TripStop rows for a leg's intermediate stops, in route order —
+ * every stop of the leg except its first (loading) and last (delivery).
+ * Positional on purpose: trips are created as [Pickup, …stops, Dropoff] per
+ * leg, and intermediate stops are typed Dropoff (or Rest), so stop_type alone
+ * can't tell them apart from the leg's delivery.
+ */
+export function getLegIntermediateDbStops(trip: MobileTrip | null | undefined, leg: 0 | 1): TripStop[] {
+  const sorted = [...(trip?.stops ?? [])].sort((a, b) => a.stop_sequence - b.stop_sequence);
+  const legStops = sorted.filter((s) => (s.leg_index ?? 0) === leg);
+  return legStops.length >= 3 ? legStops.slice(1, -1) : [];
+}
+
+/**
+ * Parses intermediate-stop workflow states, including the indexed variants
+ * StopVerificationScreen writes when moving to the next stop
+ * (`ARRIVED_AT_STOP_1`, `ARRIVED_AT_RETURN_STOP_2`, …).
+ */
+export function parseStopWorkflowState(ws?: string | null): { leg: 0 | 1; stopIndex: number } | null {
+  const m = (ws || '').match(/^(?:GOING_TO_|ARRIVED_AT_)?(RETURN_)?STOP(?:_VERIFICATION)?(?:_(\d+))?$/);
+  if (!m) return null;
+  return { leg: m[1] ? 1 : 0, stopIndex: m[2] ? parseInt(m[2], 10) : 0 };
+}
+
+/**
  * Intelligently derives the true driver workflow state from both the explicit
  * driver_workflow_state and the real-world stop progress (actual_arrival and actual_departure).
  * This ensures that completed stops (e.g. Stop 1 arrived or loaded or departed)
@@ -307,7 +331,7 @@ export function getEffectiveWorkflowState(trip: MobileTrip | null | undefined): 
     if (isRound && s3) {
       if (s3.actual_departure) {
         // Return loading completed and departed -> In transit to return delivery
-        return (ws && ['IN_TRANSIT_RETURN', 'ARRIVED_AT_FINAL_DELIVERY', 'FINAL_DELIVERY_VERIFICATION'].includes(ws))
+        return (ws && (['IN_TRANSIT_RETURN', 'ARRIVED_AT_FINAL_DELIVERY', 'FINAL_DELIVERY_VERIFICATION'].includes(ws) || parseStopWorkflowState(ws)?.leg === 1))
           ? ws
           : 'IN_TRANSIT_RETURN';
       }
@@ -337,7 +361,7 @@ export function getEffectiveWorkflowState(trip: MobileTrip | null | undefined): 
     if (s1) {
       if (s1.actual_departure) {
         // Pickup departed -> In transit to delivery
-        return (ws && ['IN_TRANSIT', 'GOING_TO_STOP', 'ARRIVED_AT_STOP', 'STOP_VERIFICATION', 'ARRIVED_AT_DELIVERY', 'DELIVERY_VERIFICATION'].includes(ws))
+        return (ws && (['IN_TRANSIT', 'ARRIVED_AT_DELIVERY', 'DELIVERY_VERIFICATION'].includes(ws) || parseStopWorkflowState(ws)?.leg === 0))
           ? ws
           : 'IN_TRANSIT';
       }
@@ -639,7 +663,14 @@ export const tripService = {
     }
   },
 
-  async updateStatus(id: string, status: TripStatus, driver_workflow_state?: string, reason?: string): Promise<MobileTrip> {
+  async updateStatus(
+    id: string,
+    status: TripStatus,
+    driver_workflow_state?: string,
+    reason?: string,
+    /** TripStop id of an intermediate stop the driver just finished — stamps its arrival/departure. */
+    completedStopId?: string,
+  ): Promise<MobileTrip> {
     if (driver_workflow_state) {
       if (driver_workflow_state === 'COMPLETED') {
         await workflowStateStore.clearState(id);
@@ -647,7 +678,9 @@ export const tripService = {
         await workflowStateStore.saveState(id, driver_workflow_state);
       }
     }
-    const { data } = await api.post(`/mobile/trips/${id}/status`, { status, driver_workflow_state, reason, notes: reason });
+    const { data } = await api.post(`/mobile/trips/${id}/status`, {
+      status, driver_workflow_state, reason, notes: reason, completed_stop_id: completedStopId,
+    });
     const trip = data.data as MobileTrip;
     if (driver_workflow_state && !trip.driver_workflow_state) {
       trip.driver_workflow_state = driver_workflow_state;

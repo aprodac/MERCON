@@ -1,4 +1,6 @@
-import { MobileTrip, TripStop, stopLabel, stopAddress, isRoundTrip } from './trips';
+import { MobileTrip, TripStop, stopLabel, stopAddress, isRoundTrip, parseStopWorkflowState } from './trips';
+
+export { parseStopWorkflowState };
 
 export interface TimelineStop {
   id: string;
@@ -356,6 +358,74 @@ export function parseTripRouteNodes(trip: MobileTrip | null): TimelineStop[] {
   }
 
   return [];
+}
+
+// ─── Stepper position ────────────────────────────────────────────────────────
+
+/** Where the driver is in the route, independent of node ids/positions. */
+export type TimelineTarget =
+  | { kind: 'pickup'; leg: 0 | 1 }
+  | { kind: 'stop'; leg: 0 | 1; stopIndex: number }
+  | { kind: 'delivery'; leg: 0 | 1 }
+  | { kind: 'completed' };
+
+/** Maps a driver workflow state to the route node the driver is at / heading to. */
+export function targetFromWorkflowState(ws: string | null | undefined, isRound: boolean): TimelineTarget {
+  const stop = parseStopWorkflowState(ws);
+  if (stop) return { kind: 'stop', ...stop };
+
+  switch (ws) {
+    case 'COMPLETED':
+    case 'RETURN_DELIVERY_COMPLETED':
+    case 'REVIEW_COMPLETE':
+      return { kind: 'completed' };
+    case 'DELIVERY_COMPLETED':
+    case 'FIRST_DELIVERY_COMPLETED':
+      return isRound ? { kind: 'pickup', leg: 1 } : { kind: 'completed' };
+    case 'RETURN_LOADING':
+      return { kind: 'pickup', leg: 1 };
+    case 'LOADING_COMPLETED':
+    case 'IN_TRANSIT':
+    case 'ARRIVED_AT_DELIVERY':
+    case 'DELIVERY_VERIFICATION':
+      return { kind: 'delivery', leg: 0 };
+    case 'RETURN_LOADING_COMPLETED':
+    case 'IN_TRANSIT_RETURN':
+    case 'ARRIVED_AT_FINAL_DELIVERY':
+    case 'FINAL_DELIVERY_VERIFICATION':
+      return { kind: 'delivery', leg: 1 };
+    default:
+      return { kind: 'pickup', leg: 0 };
+  }
+}
+
+/**
+ * Index of `target` in a timeline from parseTripRouteNodes. Resolves by
+ * leg + role rather than node id, since server (`origin`) and local
+ * (`pickup`) timelines name the first node differently. Returns
+ * `nodes.length` for a completed trip (every node done).
+ */
+export function findTimelineIndex(nodes: TimelineStop[], target: TimelineTarget): number {
+  if (target.kind === 'completed') return nodes.length;
+
+  const legOf = (n: TimelineStop) => n.legIndex ?? (n.isReturnStop ? 1 : 0);
+  const inLeg = nodes
+    .map((n, i) => ({ n, i }))
+    .filter(({ n }) => legOf(n) === target.leg);
+  // No explicit return leg in the timeline → fall back to the outbound leg.
+  const pool = inLeg.length > 0 ? inLeg : nodes.map((n, i) => ({ n, i }));
+  const endpoints = pool.filter(({ n }) => !n.isIntermediate);
+
+  let idx = -1;
+  if (target.kind === 'pickup') {
+    idx = endpoints[0]?.i ?? -1;
+  } else if (target.kind === 'delivery') {
+    idx = endpoints[endpoints.length - 1]?.i ?? -1;
+  } else {
+    const stops = pool.filter(({ n }) => n.isIntermediate);
+    idx = (stops[target.stopIndex] ?? stops[stops.length - 1])?.i ?? -1;
+  }
+  return idx === -1 ? 0 : idx;
 }
 
 // ─── Convenience filters ─────────────────────────────────────────────────────

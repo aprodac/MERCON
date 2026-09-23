@@ -4,7 +4,7 @@ import path from 'path';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { TripStatus, DocType } from '@prisma/client';
-import { isValidTransition, completeTripAndInvoice, stampStopTransition, stampWorkflowTransition, resolveAuthoritativeActiveStop, type DelayDetection } from '../services/tripLifecycle';
+import { isValidTransition, completeTripAndInvoice, stampStopTransition, stampWorkflowTransition, stampIntermediateStopVisit, resolveAuthoritativeActiveStop, type DelayDetection } from '../services/tripLifecycle';
 import { buildTripRouteTimeline } from '../services/tripRouteTimeline';
 import { notifyOperatorsOfDelay } from './notificationController';
 import { getDrivingRoute, RoutingUnavailableError } from '../services/routing/routeProvider';
@@ -231,7 +231,7 @@ export const getMobileTripDetails = async (req: Request, res: Response) => {
 export const updateTripStatus = async (req: Request, res: Response) => {
   const driverId = (req as any).user?.driver_id;
   const id = req.params.id as string;
-  const { status, driver_workflow_state, reason } = req.body;
+  const { status, driver_workflow_state, reason, completed_stop_id } = req.body;
 
   if (!driverId) return res.status(403).json({ success: false, error: { message: 'Driver not authenticated' } });
   
@@ -280,6 +280,9 @@ export const updateTripStatus = async (req: Request, res: Response) => {
     // report. Wrapped in a transaction so status and clock cannot diverge.
     let delay: DelayDetection | null = null;
     const updatedTrip = await prisma.$transaction(async (tx) => {
+      if (typeof completed_stop_id === 'string' && completed_stop_id) {
+        await stampIntermediateStopVisit(tx, id, completed_stop_id);
+      }
       if (driver_workflow_state) {
         await stampWorkflowTransition(tx, id, driver_workflow_state);
       }
