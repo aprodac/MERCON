@@ -12,18 +12,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
-  Bell,
-  ScanFace,
   MapPin,
   Volume2,
   Moon,
   Globe,
   Info,
-  ShieldCheck,
-  ScrollText,
   Bug,
-  KeyRound,
-  Trash2,
   LogOut,
   ArrowLeft,
   ChevronRight,
@@ -39,11 +33,7 @@ const SettingsScreen = () => {
   const { language, openLanguageModal, t } = useLanguage();
   const { isDark, toggleDark, colors } = useTheme();
 
-  // Local toggles — these would persist via AsyncStorage in a full implementation
-  const [pushNotifications, setPushNotifications] = React.useState(true);
-  const [biometric, setBiometric] = React.useState(false);
   const [locationSharing, setLocationSharing] = React.useState(true);
-  const [soundAlerts, setSoundAlerts] = React.useState(true);
 
   const getLanguageLabel = () => {
     if (language === 'en') return 'English';
@@ -71,24 +61,6 @@ const SettingsScreen = () => {
 
   const TOGGLE_ROWS: ToggleRow[] = [
     {
-      Icon: Bell,
-      labelKey: 'setting_push_notifications',
-      defaultLabel: 'Push Notifications',
-      descKey: 'setting_push_desc',
-      defaultDesc: 'Trip updates, reminders and alerts',
-      value: pushNotifications,
-      onChange: setPushNotifications,
-    },
-    {
-      Icon: ScanFace,
-      labelKey: 'setting_biometric',
-      defaultLabel: 'Biometric Login',
-      descKey: 'setting_biometric_desc',
-      defaultDesc: 'Use fingerprint or face to sign in',
-      value: biometric,
-      onChange: setBiometric,
-    },
-    {
       Icon: MapPin,
       labelKey: 'setting_location_sharing',
       defaultLabel: 'Location Sharing',
@@ -96,15 +68,6 @@ const SettingsScreen = () => {
       defaultDesc: 'Share location during active trips',
       value: locationSharing,
       onChange: setLocationSharing,
-    },
-    {
-      Icon: Volume2,
-      labelKey: 'setting_sound_alerts',
-      defaultLabel: 'Sound Alerts',
-      descKey: 'setting_sound_desc',
-      defaultDesc: 'Play audio for navigation & alerts',
-      value: soundAlerts,
-      onChange: setSoundAlerts,
     },
     {
       Icon: Moon,
@@ -133,22 +96,11 @@ const SettingsScreen = () => {
         Alert.alert('MERCON', 'MERCON Logistics Platform\nVersion 1.0.0\nSaudi Arabia'),
     },
     {
-      Icon: ShieldCheck,
-      labelKey: 'setting_privacy',
-      defaultLabel: 'Privacy Policy',
-      onPress: () => Alert.alert('Privacy Policy', 'Contact your administrator for details.'),
-    },
-    {
-      Icon: ScrollText,
-      labelKey: 'setting_terms',
-      defaultLabel: 'Terms of Service',
-      onPress: () => Alert.alert('Terms of Service', 'Contact your administrator for details.'),
-    },
-    {
       Icon: Bug,
       labelKey: 'setting_report_issue',
       defaultLabel: 'Report an Issue',
-      onPress: () => Alert.alert('Report Issue', 'Contact your operator or administrator to report issues.'),
+      onPress: () =>
+        Alert.alert('Report Issue', 'Contact your operator or administrator to report issues.'),
     },
   ];
 
@@ -216,40 +168,7 @@ const SettingsScreen = () => {
           ))}
         </View>
 
-        {/* Account */}
-        <Text style={s.groupLabel}>{t('title_account', 'ACCOUNT')}</Text>
-        <View style={s.groupCard}>
-          <TouchableOpacity
-            style={[s.row, s.rowBorder]}
-            activeOpacity={0.8}
-            onPress={() => router.push('/change-password' as any)}
-          >
-            <View style={s.rowIconBox}>
-              <KeyRound size={18} color={colors.textSecondary} strokeWidth={2} />
-            </View>
-            <Text style={s.rowLabelSingle}>{t('setting_change_password', 'Change Password')}</Text>
-            <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={s.row}
-            activeOpacity={0.8}
-            onPress={() =>
-              Alert.alert(
-                'Delete Account',
-                'To delete your account, contact your fleet operator.',
-                [{ text: 'OK' }],
-              )
-            }
-          >
-            <View style={s.rowIconBox}>
-              <Trash2 size={18} color={colors.dangerText} strokeWidth={2} />
-            </View>
-            <Text style={[s.rowLabelSingle, { color: colors.dangerText }]}>
-              {t('setting_delete_account', 'Delete Account')}
-            </Text>
-            <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
-          </TouchableOpacity>
-        </View>
+
 
         {/* Logout */}
         <TouchableOpacity
