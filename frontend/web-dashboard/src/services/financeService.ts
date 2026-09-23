@@ -227,10 +227,21 @@ export const financeService = {
     return response.data;
   },
 
+  reopenAccountingPeriod: async (id: string, reason: string) => {
+    const response = await api.post(`/accounting-periods/${id}/reopen`, { reason });
+    return response.data;
+  },
+
+  getAccountingPeriodActivity: async (id: string) => {
+    const response = await api.get(`/accounting-periods/${id}/activity`);
+    return response.data;
+  },
+
   closeFiscalYear: async (closing_date: string) => {
     const response = await api.post('/accounting-periods/close-fiscal-year', { closing_date });
     return response.data;
   },
+
 
   // Journal Entries
   getJournalEntries: async (params?: {

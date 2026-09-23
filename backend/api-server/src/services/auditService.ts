@@ -44,6 +44,9 @@ function sanitizeMetadata(data?: Record<string, any>): Record<string, any> | und
   return sanitized;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const toUuidOrNull = (id?: string | null): string | null => (id && UUID_REGEX.test(id) ? id : null);
+
 /**
  * Records a security or administrative audit log entry in PostgreSQL.
  */
@@ -52,7 +55,9 @@ export async function logAuditEvent(options: AuditLogOptions): Promise<void> {
     const { req, userId: explicitUserId, action, entityType, entityId, metadata } = options;
 
     const authReq = req as AuthenticatedRequest | undefined;
-    const actorId = explicitUserId || authReq?.user?.id || undefined;
+    const rawActorId = explicitUserId || authReq?.user?.id || undefined;
+    const actorId = toUuidOrNull(rawActorId);
+
 
     const ipAddress =
       req?.headers?.['x-forwarded-for'] ||

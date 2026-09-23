@@ -2,8 +2,10 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { AccountingError, postJournalEntryTx } from './accountingEngine';
 import { nextJournalEntryRefId } from './refId';
+import { logAuditEvent } from '../services/auditService';
 
 export async function closeFiscalYear(closingDate: Date, userId: string) {
+
   // 1. Validate all AccountingPeriods with end_date <= closingDate are Closed or Locked
   const openPeriods = await prisma.accountingPeriod.findMany({
     where: {
@@ -245,6 +247,18 @@ export async function closeFiscalYear(closingDate: Date, userId: string) {
       });
     }
 
+    await logAuditEvent({
+      userId: userId || undefined,
+      action: 'FISCAL_YEAR_CLOSED',
+      entityType: 'AccountingPeriod',
+      entityId: openPeriod.id,
+      metadata: {
+        closing_date: closingDate.toISOString().split('T')[0],
+        journalEntryId: draftEntry.id,
+      },
+    });
+
     return posted;
   });
 }
+

@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { AccountingError } from './accountingEngine';
+import { logAuditEvent } from '../services/auditService';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const toUuidOrNull = (id?: string | null): string | null => (id && UUID_REGEX.test(id) ? id : null);
@@ -54,6 +55,15 @@ export async function closeAccountingPeriodWithSnapshot(periodId: string, userId
         closed_at: new Date(),
       },
     });
+
+    await logAuditEvent({
+      userId: userId || undefined,
+      action: 'PERIOD_CLOSED',
+      entityType: 'AccountingPeriod',
+      entityId: period.id,
+      metadata: { name: period.name },
+    });
+
 
     // 4. Query aggregated debits & credits for all accounts with Posted JournalLines in this period
     const lineAggregations = await tx.journalLine.groupBy({

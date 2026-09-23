@@ -1,6 +1,14 @@
+import path from 'path';
+import dotenv from 'dotenv';
+dotenv.config({ path: path.resolve(__dirname, '../../../../.env') });
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/mercon_db?schema=public';
+}
+
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '../db';
+
 import { getARAgeing, getAPAgeing } from '../controllers/ageingReportsController';
 import { getCashFlow } from '../controllers/financeReportsController';
 import { closeFiscalYear } from '../utils/fiscalYearClosingEngine';
