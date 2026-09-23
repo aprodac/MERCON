@@ -56,12 +56,64 @@ export const getAccounts = async (req: Request, res: Response) => {
       orderBy: { account_code: 'asc' },
     });
 
+    // Calculate live balances from posted journal lines
+    const balances = await prisma.journalLine.groupBy({
+      by: ['accountId'],
+      where: {
+        journalEntry: { status: 'Posted', deletedAt: null },
+      },
+      _sum: {
+        debit: true,
+        credit: true,
+      },
+    });
+
+    const balanceMap = new Map<string, { debit: number; credit: number }>();
+    balances.forEach((b) => {
+      balanceMap.set(b.accountId, {
+        debit: Number(b._sum?.debit || 0),
+        credit: Number(b._sum?.credit || 0),
+      });
+    });
+
+    const accountsWithBalance = accounts.map((acc) => {
+      const b = balanceMap.get(acc.id) || { debit: 0, credit: 0 };
+      let currentBalance = 0;
+      if (acc.account_type === 'Asset' || acc.account_type === 'Expense') {
+        currentBalance = b.debit - b.credit;
+      } else {
+        currentBalance = b.credit - b.debit;
+      }
+      return {
+        ...acc,
+        current_balance: currentBalance,
+        total_debit: b.debit,
+        total_credit: b.credit,
+      };
+    });
+
+    // Rollup child balances to parent accounts if header/non-postable
+    accountsWithBalance.forEach((acc) => {
+      if (!acc.is_postable && acc.children && acc.children.length > 0) {
+        const childIds = new Set(acc.children.map((c: any) => c.id));
+        let childSum = 0;
+        accountsWithBalance.forEach((child) => {
+          if (childIds.has(child.id)) {
+            childSum += child.current_balance;
+          }
+        });
+        if (childSum !== 0) {
+          acc.current_balance = childSum;
+        }
+      }
+    });
+
     if (tree === 'true') {
-      const rootAccounts = accounts.filter((acc) => !acc.parentId);
-      return res.json({ success: true, data: rootAccounts, total: accounts.length });
+      const rootAccounts = accountsWithBalance.filter((acc) => !acc.parentId);
+      return res.json({ success: true, data: rootAccounts, total: accountsWithBalance.length });
     }
 
-    return res.json({ success: true, data: accounts, total: accounts.length });
+    return res.json({ success: true, data: accountsWithBalance, total: accountsWithBalance.length });
   } catch (error: any) {
     logger.error({ err: error }, 'Failed to fetch accounts');
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });

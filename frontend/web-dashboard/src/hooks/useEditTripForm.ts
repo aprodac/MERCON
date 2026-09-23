@@ -218,11 +218,30 @@ export function useEditTripForm() {
       setMasterVehicle(tripData.vehicle?.id || '');
     }
 
-    // Process Stops into slot structure
+    // Process Stops into slot structure separating Outbound (leg_index = 0) vs Return (leg_index = 1)
     const sortedStops = (tripData.stops ?? []).slice().sort((a, b) => a.stop_sequence - b.stop_sequence);
-    const pickupStop = sortedStops.find((s) => s.stop_type === 'Pickup') || sortedStops[0];
-    const dropoffStop = sortedStops.find((s) => s.stop_type === 'Dropoff') || (sortedStops.length > 1 ? sortedStops[sortedStops.length - 1] : null);
-    const intermediates = sortedStops.filter((s) => s !== pickupStop && s !== dropoffStop);
+
+    let outboundStopsList = sortedStops.filter((s: any) => s.leg_index === 0);
+    let returnStopsList = sortedStops.filter((s: any) => s.leg_index === 1);
+
+    // Fallback if leg_index was not explicitly populated on legacy trip records
+    if (outboundStopsList.length === 0 && returnStopsList.length === 0 && sortedStops.length > 0) {
+      const isRound = isRoundTripCategory(String(tripData.rate_category || ''));
+      if (isRound && sortedStops.length >= 4) {
+        outboundStopsList = sortedStops.slice(0, 2);
+        returnStopsList = sortedStops.slice(2);
+      } else {
+        outboundStopsList = sortedStops;
+      }
+    }
+
+    const pickupStop = outboundStopsList.find((s) => s.stop_type === 'Pickup') || outboundStopsList[0];
+    const dropoffStop = outboundStopsList.slice().reverse().find((s) => s.stop_type === 'Dropoff') || (outboundStopsList.length > 1 ? outboundStopsList[outboundStopsList.length - 1] : null);
+    const intermediates = outboundStopsList.filter((s) => s !== pickupStop && s !== dropoffStop);
+
+    const returnPickupStop = returnStopsList.find((s) => s.stop_type === 'Pickup') || returnStopsList[0];
+    const returnDropoffStop = returnStopsList.slice().reverse().find((s) => s.stop_type === 'Dropoff') || (returnStopsList.length > 1 ? returnStopsList[returnStopsList.length - 1] : null);
+    const returnIntermediates = returnStopsList.filter((s) => s !== returnPickupStop && s !== returnDropoffStop);
 
     const rawDate = (tripData as any).pickup_date || (tripData as any).scheduled_date || (tripData as any).date;
     const dateStr = rawDate ? String(rawDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
@@ -242,6 +261,9 @@ export function useEditTripForm() {
       destinationLocationId: (dropoffStop as any)?.location_id || (dropoffStop as any)?.locationId || null,
       intermediateLocations: intermediates.map((s) => s.location_name || s.location_address || ''),
       intermediateLocationIds: intermediates.map((s) => (s as any)?.location_id || (s as any)?.locationId || null),
+      returnOrigin: returnPickupStop?.location_name || returnPickupStop?.location_address || '',
+      returnDestination: returnDropoffStop?.location_name || returnDropoffStop?.location_address || '',
+      returnIntermediateLocations: returnIntermediates.map((s) => s.location_name || s.location_address || ''),
       billingAmount: tripData.billing_amount !== undefined && tripData.billing_amount !== null ? String(tripData.billing_amount) : '',
       tripCharges: driverPayoutVal,
       driverPayout: driverPayoutVal,

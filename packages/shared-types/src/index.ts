@@ -510,6 +510,9 @@ export interface Account {
   children?: Account[];
   description?: string | null;
   is_postable: boolean;
+  current_balance?: number;
+  total_debit?: number;
+  total_credit?: number;
   journalLines?: JournalLine[];
   created_by?: string | null;
   updated_by?: string | null;
