@@ -1,82 +1,32 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, Link } from 'react-router-dom';
-import {
-  Plus,
-  Lock,
-  CheckCircle2,
-  AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
-  ChevronDown,
-  ArrowRight,
-  RefreshCw,
-  Info,
-  Check,
-  X,
-  AlertCircle,
-  Clock,
-  Download,
-} from 'lucide-react';
 import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import ConfirmModal from '@/components/ui/ConfirmModal';
-import ExportModal, { ExportColumn } from '@/components/ui/ExportModal';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetFooter,
-} from '@/components/ui/sheet';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
-
 import { financeService } from '@/services/financeService';
 import { usePermissions } from '@/hooks/usePermissions';
-import type { AccountingPeriod, BankAccount, BankReconciliation } from '@mercon/shared-types';
-import {
-  StatusPill,
-  MoneyText,
-  ActivityTimeline,
-  JournalLinesTable,
-} from '@/components/finance/kit';
-import { formatDate } from '@/lib/finance';
+import type { BankAccount, BankReconciliation } from '@mercon/shared-types';
 import { api } from '@/lib/api';
 
-type PeriodRow = AccountingPeriod & { _count?: { journalEntries: number } };
-
-const ACCOUNTING_PERIODS_EXPORT_COLUMNS: ExportColumn<PeriodRow>[] = [
-  { id: 'name', label: 'Period Name', accessor: (p) => p.name },
-  { id: 'start_date', label: 'Start Date', accessor: (p) => formatDate(p.start_date) },
-  { id: 'end_date', label: 'End Date', accessor: (p) => formatDate(p.end_date) },
-  { id: 'status', label: 'Status', accessor: (p) => p.status },
-  { id: 'journal_entries_count', label: 'Journal Entries Count', accessor: (p) => p._count?.journalEntries || 0 },
-];
-
-const MONTH_NAMES = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
-
-const FULL_MONTH_NAMES = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
+import {
+  PeriodRow,
+  PeriodChecklist,
+  FULL_MONTH_NAMES,
+  PeriodControlBar,
+  MonthlyPeriodRibbon,
+  PeriodChecklistCard,
+  PeriodDetailsCard,
+  HistoricalPeriodsTable,
+  NewPeriodSheet,
+  BulkGeneratePeriodsSheet,
+  GuidedFiscalYearCloseSheet,
+  ReopenPeriodSheet,
+  TypedLockPeriodModal,
+  CloseWarningModal,
+} from '@/components/finance/periods';
 
 export default function AccountingPeriodsPage() {
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const { userRole, isSuperAdmin } = usePermissions();
   const isAdmin = isSuperAdmin || userRole === 'Admin';
 
@@ -86,7 +36,6 @@ export default function AccountingPeriodsPage() {
   // Selected State
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [selectedPeriodId, setSelectedPeriodId] = useState<string | null>(null);
-  const [isAllPeriodsCollapsed, setIsAllPeriodsCollapsed] = useState(true);
 
   // Modals & Sheets State
   const [isNewSheetOpen, setIsNewSheetOpen] = useState(false);
@@ -95,7 +44,6 @@ export default function AccountingPeriodsPage() {
   const [isReopenSheetOpen, setIsReopenSheetOpen] = useState(false);
   const [isLockConfirmOpen, setIsLockConfirmOpen] = useState(false);
   const [isCloseWarningModalOpen, setIsCloseWarningModalOpen] = useState(false);
-  const [isExportOpen, setIsExportOpen] = useState(false);
 
   // Forms State
   const [newPeriodForm, setNewPeriodForm] = useState({
@@ -178,7 +126,9 @@ export default function AccountingPeriodsPage() {
     }
 
     if (!lastClosedOrLockedPeriod) return 'Nothing closed yet';
-    return formatDate(lastClosedOrLockedPeriod.end_date);
+
+    const endDate = new Date(lastClosedOrLockedPeriod.end_date);
+    return endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }, [periods]);
 
   // Selected period date strings (formatted for API queries)
@@ -268,7 +218,7 @@ export default function AccountingPeriodsPage() {
   });
 
   // Checklist Evaluations
-  const checklist = useMemo(() => {
+  const checklist: PeriodChecklist = useMemo(() => {
     const draftJeCount = draftJesRes?.pagination?.total || 0;
     const draftInvoiceCount = draftInvoicesRes?.pagination?.total || 0;
     const draftBillCount = draftBillsRes?.pagination?.total || 0;
@@ -482,7 +432,7 @@ export default function AccountingPeriodsPage() {
   };
 
   const handleClosePeriodClick = () => {
-    if (!checklist.check1_blocker) return;
+    if (!selectedPeriod) return;
     if (checklist.hasWarnings) {
       setIsCloseWarningModalOpen(true);
     } else {
@@ -490,20 +440,21 @@ export default function AccountingPeriodsPage() {
     }
   };
 
+  // FY Pre-checks evaluation
   const fyPreChecks = useMemo(() => {
-    const closingDateObj = new Date(fyClosingDate);
+    const fyEnd = new Date(fyClosingDate);
     const openPeriodsBefore = periods.filter(
-      (p) => new Date(p.end_date) <= closingDateObj && p.status === 'Open'
+      (p) => new Date(p.end_date) <= fyEnd && p.status === 'Open'
     );
-    const retainedAccSet = Boolean(settingsRes?.data?.defaultRetainedEarningsAccountId);
 
-    return {
-      openPeriodsBefore,
-      retainedAccSet,
-      canPass: openPeriodsBefore.length === 0 && retainedAccSet,
-    };
+    const defaultRetainedAccId = settingsRes?.defaultRetainedEarningsAccountId;
+    const retainedAccSet = Boolean(defaultRetainedAccId);
+
+    const canPass = openPeriodsBefore.length === 0 && retainedAccSet;
+    return { openPeriodsBefore, retainedAccSet, canPass };
   }, [periods, fyClosingDate, settingsRes]);
 
+  // FY Closing Journal Entry Lines Preview
   const fyClosingPreviewLines = useMemo(() => {
     const pnlData = pnlRes?.data;
     if (!pnlData) return [];
@@ -512,7 +463,7 @@ export default function AccountingPeriodsPage() {
     const revs = pnlData.revenues || [];
     const exps = pnlData.expenses || [];
 
-    revs.forEach((r) => {
+    revs.forEach((r: any) => {
       if (r.amount > 0) {
         lines.push({
           account: { account_code: r.account_code, name: r.name },
@@ -522,7 +473,7 @@ export default function AccountingPeriodsPage() {
       }
     });
 
-    exps.forEach((e) => {
+    exps.forEach((e: any) => {
       if (e.amount > 0) {
         lines.push({
           account: { account_code: e.account_code, name: e.name },
@@ -602,7 +553,7 @@ export default function AccountingPeriodsPage() {
     }
 
     setIsGenerating(false);
-    toast.success(`Generated ${createdCount} periods for FY ${generateYear}`);
+    toast.success(`Generated ${createdCount} accounting period(s) for ${generateYear}`);
     queryClient.invalidateQueries({ queryKey: ['accounting-periods'] });
     setIsGenerateSheetOpen(false);
   };
@@ -611,1286 +562,156 @@ export default function AccountingPeriodsPage() {
     <DashboardLayout active="finance" title="Period Close">
       <div className="p-6 space-y-5 max-w-7xl mx-auto">
         {/* Top Control Bar: Fiscal-Year Switcher + Lock Line + Action Buttons */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl px-5 py-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-xs">
-          <div className="flex flex-wrap items-center gap-4">
-            {/* FY Switcher */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-[#3E3C3D] dark:text-slate-200 uppercase tracking-wider">
-                Fiscal Year
-              </span>
-              <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const idx = availableYears.indexOf(selectedYear);
-                    if (idx < availableYears.length - 1) setSelectedYear(availableYears[idx + 1]);
-                    else setSelectedYear(selectedYear - 1);
-                  }}
-                  className="p-1 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-
-                <span className="px-3 text-xs font-bold font-mono text-slate-900 dark:text-white">
-                  FY {selectedYear}
-                </span>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const idx = availableYears.indexOf(selectedYear);
-                    if (idx > 0) setSelectedYear(availableYears[idx - 1]);
-                    else setSelectedYear(selectedYear + 1);
-                  }}
-                  className="p-1 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Lock Line */}
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300">
-              <Lock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-              <span>
-                Books locked through <strong className="text-slate-900 dark:text-white font-mono">{booksLockedThroughLabel}</strong>
-              </span>
-            </div>
-          </div>
-
-          {/* Header Action Buttons */}
-          {isAdmin && (
-            <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setIsGenerateSheetOpen(true)}
-                className="h-9 text-xs font-semibold rounded-xl"
-              >
-                <RefreshCw className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
-                Generate periods
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setFyClosingDate(`${selectedYear}-12-31`);
-                  setFyStep(1);
-                  setIsFySheetOpen(true);
-                }}
-                className="h-9 text-xs font-semibold rounded-xl border-slate-300 text-slate-700 hover:bg-slate-50"
-              >
-                <Lock className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
-                Close fiscal year
-              </Button>
-              <Button
-                onClick={() => {
-                  setNewPeriodForm({ name: '', start_date: '', end_date: '' });
-                  setIsNewSheetOpen(true);
-                }}
-                className="bg-[#FA634E] hover:bg-[#e0523d] text-white h-9 text-xs font-semibold px-3.5 rounded-xl shadow-xs"
-              >
-                <Plus className="w-4 h-4 mr-1.5" />
-                New period
-              </Button>
-            </div>
-          )}
-        </div>
+        <PeriodControlBar
+          selectedYear={selectedYear}
+          availableYears={availableYears}
+          booksLockedThroughLabel={booksLockedThroughLabel}
+          isAdmin={isAdmin}
+          onSelectYear={setSelectedYear}
+          onOpenGenerateSheet={() => setIsGenerateSheetOpen(true)}
+          onOpenFySheet={() => {
+            setFyClosingDate(`${selectedYear}-12-31`);
+            setFyStep(1);
+            setIsFySheetOpen(true);
+          }}
+          onOpenNewSheet={() => {
+            setNewPeriodForm({ name: '', start_date: '', end_date: '' });
+            setIsNewSheetOpen(true);
+          }}
+        />
 
         {/* Year Ribbon Tiles */}
-        <div className="overflow-x-auto pb-2 scrollbar-thin">
-          <div className="flex items-center gap-2.5 min-w-max">
-            {MONTH_NAMES.map((mName, mIdx) => {
-              const matchingPeriod = periods.find((p) => {
-                const sDate = new Date(p.start_date);
-                return sDate.getFullYear() === selectedYear && sDate.getMonth() === mIdx;
-              });
-
-              const isCurrentMonth = selectedYear === currentYear && mIdx === currentMonthIdx;
-
-              if (!matchingPeriod) {
-                return (
-                  <div
-                    key={mName}
-                    onClick={() => isAdmin && handleOpenNewPeriodForMonth(mIdx)}
-                    className={`w-[88px] h-[96px] rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center p-2 transition-all ${
-                      isAdmin ? 'hover:border-[#FA634E] hover:bg-rose-50/30 cursor-pointer group' : 'opacity-60 cursor-not-allowed'
-                    }`}
-                  >
-                    <span className="text-xs font-bold text-slate-400 group-hover:text-[#FA634E]">{mName}</span>
-                    <Plus className="w-4 h-4 my-1 text-slate-300 group-hover:text-[#FA634E]" />
-                    <span className="text-[10px] text-slate-400 font-medium">Not created</span>
-                  </div>
-                );
-              }
-
-              const isSelected = selectedPeriodId === matchingPeriod.id;
-              const status = matchingPeriod.status;
-
-              let tileClass = 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100';
-              if (status === 'Closed') {
-                tileClass = 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-200/90 dark:border-amber-800/80 text-amber-950 dark:text-amber-200';
-              } else if (status === 'Locked') {
-                tileClass = 'bg-[#3E3C3D] text-white border-transparent';
-              }
-
-              const jeCount = matchingPeriod._count?.journalEntries || 0;
-
-              return (
-                <button
-                  key={matchingPeriod.id}
-                  type="button"
-                  role="button"
-                  aria-pressed={isSelected}
-                  onClick={() => setSelectedPeriodId(matchingPeriod.id)}
-                  className={`relative w-[88px] h-[96px] rounded-2xl border p-2 flex flex-col justify-between items-center text-center transition-all select-none focus:outline-none ${tileClass} ${
-                    isCurrentMonth ? 'ring-2 ring-[#FA634E]' : ''
-                  } ${isSelected ? 'border-2 border-[#FA634E] shadow-xs' : 'hover:border-slate-300 dark:hover:border-slate-700'}`}
-                >
-                  <div className="w-full flex items-center justify-between">
-                    <span className={`text-xs font-extrabold ${status === 'Locked' ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
-                      {mName}
-                    </span>
-                    {status === 'Open' && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />}
-                    {status === 'Closed' && <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
-                    {status === 'Locked' && <Lock className="w-3.5 h-3.5 text-slate-300 shrink-0" />}
-                  </div>
-
-                  <div className="text-[11px] font-medium opacity-80">
-                    <span className="font-mono font-bold">{jeCount}</span> JEs
-                  </div>
-
-                  {isCurrentMonth ? (
-                    <span className="px-1.5 py-0.5 rounded-full text-[9.5px] font-bold bg-[#FA634E] text-white tracking-wider uppercase">
-                      now
-                    </span>
-                  ) : (
-                    <span className={`text-[10px] font-semibold uppercase tracking-wider opacity-60`}>
-                      {status}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <MonthlyPeriodRibbon
+          selectedYear={selectedYear}
+          periods={periods}
+          selectedPeriodId={selectedPeriodId}
+          isAdmin={isAdmin}
+          currentYear={currentYear}
+          currentMonthIdx={currentMonthIdx}
+          onSelectPeriod={setSelectedPeriodId}
+          onOpenNewPeriodForMonth={handleOpenNewPeriodForMonth}
+        />
 
         {/* Main Workspace Grid */}
-        {selectedPeriod ? (
+        {selectedPeriod && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* Left Main Column: Close Checklist Card (8 cols) */}
-            <div className="lg:col-span-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-6 space-y-6">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-bold text-[#3E3C3D] dark:text-white">
-                      Close checklist · {selectedPeriod.name}
-                    </h2>
-                    <StatusPill kind="period" status={selectedPeriod.status} />
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    Verify account balances and operational checks before closing this month.
-                  </p>
-                </div>
+            {/* Close Checklist Card (8 cols) */}
+            <PeriodChecklistCard
+              selectedPeriod={selectedPeriod}
+              checklist={checklist}
+              reopenedAuditLog={reopenedAuditLog}
+              isAdmin={isAdmin}
+              selectedStartDateStr={selectedStartDateStr}
+              selectedEndDateStr={selectedEndDateStr}
+              isClosePending={closeMutation.isPending}
+              onClosePeriodClick={handleClosePeriodClick}
+              onOpenReopenSheet={() => {
+                setReopenReason('');
+                setIsReopenSheetOpen(true);
+              }}
+              onOpenLockModal={() => {
+                setLockTypedConfirm('');
+                setIsLockConfirmOpen(true);
+              }}
+            />
 
-                <div className="flex items-center gap-3 shrink-0 bg-slate-50 dark:bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-200/60 dark:border-slate-700">
-                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    {checklist.checksPassedCount} of 6 passed
-                  </span>
-                  <div className="w-20 h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full transition-all duration-300 ${
-                        checklist.checksPassedCount === 6 ? 'bg-emerald-500' : 'bg-[#FA634E]'
-                      }`}
-                      style={{ width: `${(checklist.checksPassedCount / 6) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {reopenedAuditLog && (
-                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800 p-3 rounded-xl text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2.5">
-                  <Clock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                  <div>
-                    <strong>Reopened on {formatDate(reopenedAuditLog.createdAt)}</strong>
-                    <span className="mx-1">·</span>
-                    <span>Reason: &quot;{(reopenedAuditLog.metadata as any)?.reason}&quot;</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Checklist Rows */}
-              <div className="divide-y divide-slate-100 dark:divide-slate-800">
-                {/* Row a: Draft JEs (BLOCKER) */}
-                <div className="py-3.5 flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 min-w-0">
-                    {checklist.check1_blocker ? (
-                      <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      </span>
-                    ) : (
-                      <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <X className="w-3.5 h-3.5 stroke-[3]" />
-                      </span>
-                    )}
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                        <span>Draft journal entries</span>
-                        {!checklist.check1_blocker && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-rose-100 text-rose-800 uppercase tracking-wider">
-                            BLOCKER
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        {checklist.draftJeCount > 0
-                          ? `${checklist.draftJeCount} unposted draft journal entry(ies) exist in this period.`
-                          : 'No draft journal entries in this period.'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {checklist.draftJeCount > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => navigate(`/finance/journal-entries?period_id=${selectedPeriod.id}&status=Draft`)}
-                      className="h-7 text-xs font-semibold text-[#FA634E] hover:text-[#e0523d] hover:bg-rose-50 shrink-0"
-                    >
-                      Review drafts →
-                    </Button>
-                  )}
-                </div>
-
-                {/* Row b: Draft Invoices (WARNING) */}
-                <div className="py-3.5 flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 min-w-0">
-                    {checklist.check2_warning ? (
-                      <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      </span>
-                    ) : (
-                      <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <AlertCircle className="w-3.5 h-3.5 stroke-[3]" />
-                      </span>
-                    )}
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                        Draft invoices in period
-                      </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        {checklist.draftInvoiceCount > 0
-                          ? `${checklist.draftInvoiceCount} draft invoice(s) dated in this period.`
-                          : 'No draft invoices dated in this period.'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {checklist.draftInvoiceCount > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => navigate(`/finance/invoices?status=Draft&date_from=${selectedStartDateStr}&date_to=${selectedEndDateStr}`)}
-                      className="h-7 text-xs font-semibold text-amber-700 hover:bg-amber-50 shrink-0"
-                    >
-                      Review invoices →
-                    </Button>
-                  )}
-                </div>
-
-                {/* Row c: Draft Bills (WARNING) */}
-                <div className="py-3.5 flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 min-w-0">
-                    {checklist.check3_warning ? (
-                      <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      </span>
-                    ) : (
-                      <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <AlertCircle className="w-3.5 h-3.5 stroke-[3]" />
-                      </span>
-                    )}
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                        Draft bills in period
-                      </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        {checklist.draftBillCount > 0
-                          ? `${checklist.draftBillCount} draft bill(s) dated in this period.`
-                          : 'No draft bills dated in this period.'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {checklist.draftBillCount > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => navigate(`/finance/bills?status=Draft&date_from=${selectedStartDateStr}&date_to=${selectedEndDateStr}`)}
-                      className="h-7 text-xs font-semibold text-amber-700 hover:bg-amber-50 shrink-0"
-                    >
-                      Review bills →
-                    </Button>
-                  )}
-                </div>
-
-                {/* Row d: Bank Accounts Reconciled (WARNING) */}
-                <div className="py-3.5 flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 min-w-0">
-                    {checklist.check4_warning ? (
-                      <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      </span>
-                    ) : (
-                      <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <AlertCircle className="w-3.5 h-3.5 stroke-[3]" />
-                      </span>
-                    )}
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                        Bank accounts reconciliation
-                      </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        {checklist.unreconciledAccountNames.length > 0
-                          ? `${checklist.unreconciledAccountNames.join(', ')} not reconciled past period end.`
-                          : 'All active bank accounts reconciled through period end.'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {checklist.unreconciledAccountNames.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => navigate('/finance/reconciliation')}
-                      className="h-7 text-xs font-semibold text-amber-700 hover:bg-amber-50 shrink-0"
-                    >
-                      Reconcile →
-                    </Button>
-                  )}
-                </div>
-
-                {/* Row e: Trial Balance Check (CHECK) */}
-                <div className="py-3.5 flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 min-w-0">
-                    {checklist.check5_check ? (
-                      <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      </span>
-                    ) : (
-                      <span className="w-6 h-6 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <X className="w-3.5 h-3.5 stroke-[3]" />
-                      </span>
-                    )}
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                        Trial balance health
-                      </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        {checklist.check5_check
-                          ? 'Trial balance is fully balanced for this period.'
-                          : 'Trial balance has debit/credit imbalance.'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Row f: Previous Period Closed (WARNING) */}
-                <div className="py-3.5 flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 min-w-0">
-                    {checklist.check6_warning ? (
-                      <span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <Check className="w-3.5 h-3.5 stroke-[3]" />
-                      </span>
-                    ) : (
-                      <span className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
-                        <AlertCircle className="w-3.5 h-3.5 stroke-[3]" />
-                      </span>
-                    )}
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                        Sequential period close order
-                      </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        {checklist.prevPeriod
-                          ? checklist.isPrevPeriodClosed
-                            ? `Previous period (${checklist.prevPeriod.name}) is closed.`
-                            : `Previous period (${checklist.prevPeriod.name}) is still open.`
-                          : 'No earlier period defined.'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Row g: Overdue Invoices (INFO ONLY) */}
-                <div className="py-3.5 flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3 min-w-0">
-                    <span className="w-6 h-6 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center shrink-0 mt-0.5">
-                      <Info className="w-3.5 h-3.5 stroke-[2.5]" />
-                    </span>
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                        Overdue invoices at period end
-                      </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        {checklist.overdueInvoiceCount > 0
-                          ? `${checklist.overdueInvoiceCount} invoice(s) overdue.`
-                          : 'No overdue invoices.'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {checklist.overdueInvoiceCount > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => navigate('/finance/invoices?status=overdue')}
-                      className="h-7 text-xs font-semibold text-slate-600 hover:bg-slate-100 shrink-0"
-                    >
-                      View overdue →
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {/* Checklist Card Footer by Status */}
-              <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-2">
-                {!isAdmin ? (
-                  <div className="text-xs text-slate-500 italic flex items-center gap-2">
-                    <Lock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Only Admins can close, reopen or lock periods.</span>
-                  </div>
-                ) : selectedPeriod.status === 'Open' ? (
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Closing takes a snapshot of every account balance and stops new postings in this period.
-                    </p>
-
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger>
-                          <Button
-                            onClick={handleClosePeriodClick}
-                            disabled={!checklist.check1_blocker || closeMutation.isPending}
-                            className="bg-[#FA634E] hover:bg-[#e0523d] text-white text-xs font-semibold h-9 px-4 rounded-xl shadow-xs"
-                          >
-                            <CheckCircle2 className="w-4 h-4 mr-1.5" />
-                            Close {selectedPeriod.name}
-                          </Button>
-                        </TooltipTrigger>
-                        {!checklist.check1_blocker && (
-                          <TooltipContent side="top">
-                            <p className="text-xs">Cannot close period while unposted draft journal entries exist.</p>
-                          </TooltipContent>
-                        )}
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                ) : selectedPeriod.status === 'Closed' ? (
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                    <div className="text-xs text-slate-600 dark:text-slate-300">
-                      Closed period · Account balances snapshotted.
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setReopenReason('');
-                          setIsReopenSheetOpen(true);
-                        }}
-                        className="h-9 text-xs font-semibold rounded-xl"
-                      >
-                        Reopen period
-                      </Button>
-
-                      <Button
-                        size="sm"
-                        onClick={() => {
-                          setLockTypedConfirm('');
-                          setIsLockConfirmOpen(true);
-                        }}
-                        className="bg-[#3E3C3D] hover:bg-[#2D2B2C] text-white text-xs font-semibold h-9 px-3.5 rounded-xl shadow-xs"
-                      >
-                        <Lock className="w-3.5 h-3.5 mr-1.5 text-slate-300" />
-                        Lock permanently
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-xs text-slate-600 dark:text-slate-400 font-medium flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-3 rounded-xl border border-slate-200/60 dark:border-slate-700">
-                    <Lock className="w-4 h-4 text-slate-500 shrink-0" />
-                    <span>Locked periods are permanent and cannot be reopened.</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right Column: Period Details Card (4 cols ~360px) */}
-            <div className="lg:col-span-4 space-y-6">
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-5 space-y-5">
-                <div className="border-b border-slate-100 dark:border-slate-800 pb-3 flex items-center justify-between">
-                  <div>
-                    <h3 className="text-sm font-bold text-[#3E3C3D] dark:text-white">
-                      Period details
-                    </h3>
-                    <div className="text-xs font-mono text-slate-500 dark:text-slate-400 mt-0.5">
-                      {formatDate(selectedPeriod.start_date)} – {formatDate(selectedPeriod.end_date)}
-                    </div>
-                  </div>
-                  <StatusPill kind="period" status={selectedPeriod.status} />
-                </div>
-
-                {/* Mini Status Trail */}
-                <div className="space-y-1.5">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#757583]">
-                    Lifecycle state
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs font-medium">
-                    <span className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200/70 font-semibold">
-                      Created
-                    </span>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                    <span
-                      className={`px-2 py-1 rounded-lg border font-semibold ${
-                        selectedPeriod.status === 'Closed' || selectedPeriod.status === 'Locked'
-                          ? 'bg-amber-50 text-amber-800 border-amber-200'
-                          : 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800'
-                      }`}
-                    >
-                      Closed
-                    </span>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                    <span
-                      className={`px-2 py-1 rounded-lg border font-semibold ${
-                        selectedPeriod.status === 'Locked'
-                          ? 'bg-[#3E3C3D] text-white border-transparent'
-                          : 'bg-slate-100 text-slate-400 border-slate-200 dark:bg-slate-800'
-                      }`}
-                    >
-                      Locked
-                    </span>
-                  </div>
-                </div>
-
-                {/* Entry Counts Breakdown */}
-                <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-700 space-y-2">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#757583]">
-                    Journal entries in period
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 text-center">
-                    <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200/70 dark:border-slate-800">
-                      <div className="text-xs font-bold text-emerald-700 dark:text-emerald-400 font-mono">
-                        {periodJeBreakdown.posted}
-                      </div>
-                      <div className="text-[10px] text-slate-500 font-medium">Posted</div>
-                    </div>
-                    <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200/70 dark:border-slate-800">
-                      <div className="text-xs font-bold text-amber-700 dark:text-amber-400 font-mono">
-                        {periodJeBreakdown.draft}
-                      </div>
-                      <div className="text-[10px] text-slate-500 font-medium">Draft</div>
-                    </div>
-                    <div className="bg-white dark:bg-slate-900 p-2 rounded-lg border border-slate-200/70 dark:border-slate-800">
-                      <div className="text-xs font-bold text-slate-500 font-mono">
-                        {periodJeBreakdown.voided}
-                      </div>
-                      <div className="text-[10px] text-slate-500 font-medium">Voided</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Financial Result for Period */}
-                <div className="space-y-2">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#757583]">
-                    Period result
-                  </div>
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-                      <span>Revenue</span>
-                      <MoneyText value={periodFinSummary.revenue} currency="SAR" className="font-semibold text-slate-900 dark:text-slate-100" />
-                    </div>
-                    <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-                      <span>Expenses</span>
-                      <MoneyText value={periodFinSummary.expenses} currency="SAR" className="font-semibold text-slate-900 dark:text-slate-100" />
-                    </div>
-                    <div className="flex justify-between items-center pt-1.5 border-t border-slate-100 dark:border-slate-800 font-bold">
-                      <span className="text-slate-900 dark:text-white">Net result</span>
-                      <MoneyText
-                        value={periodFinSummary.netResult}
-                        currency="SAR"
-                        tone={periodFinSummary.netResult >= 0 ? 'positive' : 'negative'}
-                        className="text-xs"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Quick Navigation Links */}
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1">
-                  <Link
-                    to={`/finance/reports/trial-balance?period_id=${selectedPeriod.id}`}
-                    className="flex items-center justify-between text-xs text-[#FA634E] hover:underline font-semibold py-1"
-                  >
-                    <span>Trial balance for this period</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                  <Link
-                    to={`/finance/journal-entries?period_id=${selectedPeriod.id}`}
-                    className="flex items-center justify-between text-xs text-[#FA634E] hover:underline font-semibold py-1"
-                  >
-                    <span>Journal entries in this period</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-
-                {/* Activity Feed */}
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-[#757583]">
-                    Activity timeline
-                  </div>
-                  <ActivityTimeline items={activityLogs} isLoading={isActivityLoading} />
-                </div>
-              </div>
-            </div>
+            {/* Period Details Card (4 cols) */}
+            <PeriodDetailsCard
+              selectedPeriod={selectedPeriod}
+              periodJeBreakdown={periodJeBreakdown}
+              periodFinSummary={periodFinSummary}
+              activityLogs={activityLogs}
+              isActivityLoading={isActivityLoading}
+            />
           </div>
-        ) : null}
+        )}
 
         {/* All Periods Collapsible Ledger Table */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setIsAllPeriodsCollapsed(!isAllPeriodsCollapsed)}
-            className="w-full px-6 py-4 flex items-center justify-between text-left bg-slate-50/50 dark:bg-slate-800/40 hover:bg-slate-100/50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-sm text-[#3E3C3D] dark:text-white">
-                All accounting periods ({periods.length})
-              </span>
-              <Badge variant="outline" className="text-[10px] rounded-md font-mono">
-                Historical ledger
-              </Badge>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsExportOpen(true);
-                }}
-                className="h-7 text-xs font-semibold rounded-lg"
-              >
-                <Download className="w-3.5 h-3.5 mr-1" />
-                Export
-              </Button>
-
-              <ChevronDown
-                className={`w-4 h-4 text-slate-500 transition-transform ${
-                  isAllPeriodsCollapsed ? 'rotate-180' : ''
-                }`}
-              />
-            </div>
-          </button>
-
-          {!isAllPeriodsCollapsed && (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 border-t border-slate-200/80 dark:border-slate-800">
-              <div className="bg-[#FAFAFB] dark:bg-slate-800/40 px-6 py-2.5 grid grid-cols-12 text-[10px] font-bold uppercase tracking-wider text-[#757583]">
-                <div className="col-span-3">Period Name</div>
-                <div className="col-span-3">Date Range</div>
-                <div className="col-span-2 text-center">JEs Count</div>
-                <div className="col-span-2 text-center">Status</div>
-                <div className="col-span-2 text-right">Closed At</div>
-              </div>
-
-              {periods.map((p) => {
-                const isSel = selectedPeriodId === p.id;
-                return (
-                  <div
-                    key={p.id}
-                    onClick={() => {
-                      setSelectedPeriodId(p.id);
-                      setSelectedYear(new Date(p.start_date).getFullYear());
-                    }}
-                    className={`px-6 py-3 grid grid-cols-12 items-center text-xs hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors ${
-                      isSel ? 'bg-rose-50/40 dark:bg-rose-950/20 font-semibold' : ''
-                    }`}
-                  >
-                    <div className="col-span-3 font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                      <span>{p.name}</span>
-                      {isSel && <span className="w-1.5 h-1.5 rounded-full bg-[#FA634E]" />}
-                    </div>
-
-                    <div className="col-span-3 font-mono text-slate-600 dark:text-slate-400">
-                      {formatDate(p.start_date)} – {formatDate(p.end_date)}
-                    </div>
-
-                    <div className="col-span-2 text-center font-mono font-bold text-slate-800 dark:text-slate-200">
-                      {p._count?.journalEntries || 0}
-                    </div>
-
-                    <div className="col-span-2 text-center">
-                      <StatusPill kind="period" status={p.status} />
-                    </div>
-
-                    <div className="col-span-2 text-right font-mono text-slate-500 text-[11px]">
-                      {p.closed_at ? formatDate(p.closed_at) : '—'}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* EXPORT MODAL */}
-        <ExportModal
-          isOpen={isExportOpen}
-          onClose={() => setIsExportOpen(false)}
-          title="Export Accounting Periods"
-          description="Choose export format and settings."
-          fileNamePrefix="accounting_periods"
-          sheetName="Accounting Periods"
-          subtitle="MERCON Logistics Accounting Periods"
-          filteredData={periods}
-          columns={ACCOUNTING_PERIODS_EXPORT_COLUMNS}
-          formats={['xlsx', 'csv']}
+        <HistoricalPeriodsTable
+          periods={periods}
+          selectedPeriodId={selectedPeriodId}
+          onSelectPeriod={(id, year) => {
+            setSelectedPeriodId(id);
+            setSelectedYear(year);
+          }}
         />
 
         {/* NEW PERIOD SHEET */}
-        <Sheet open={isNewSheetOpen} onOpenChange={setIsNewSheetOpen}>
-          <SheetContent className="w-full sm:max-w-md p-6 overflow-y-auto">
-            <SheetHeader>
-              <SheetTitle>New Accounting Period</SheetTitle>
-              <SheetDescription>
-                Define a new period for journal entries and financial postings.
-              </SheetDescription>
-            </SheetHeader>
-
-            <div className="space-y-4 py-4">
-              <div>
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
-                  Quick Presets
-                </label>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const nextMIdx = (currentMonthIdx + 1) % 12;
-                      const nextYear = nextMIdx === 0 ? currentYear + 1 : currentYear;
-                      const mName = FULL_MONTH_NAMES[nextMIdx];
-                      const startDate = `${nextYear}-${String(nextMIdx + 1).padStart(2, '0')}-01`;
-                      const lastDay = new Date(nextYear, nextMIdx + 1, 0).getDate();
-                      const endDate = `${nextYear}-${String(nextMIdx + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59.999Z`;
-
-                      setNewPeriodForm({
-                        name: `${mName} ${nextYear}`,
-                        start_date: startDate,
-                        end_date: endDate,
-                      });
-                    }}
-                    className="h-7 text-xs font-semibold rounded-lg"
-                  >
-                    Next Month
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const currQ = Math.floor(currentMonthIdx / 3) + 1;
-                      const nextQ = currQ === 4 ? 1 : currQ + 1;
-                      const qYear = nextQ === 1 ? currentYear + 1 : currentYear;
-                      const startMonth = (nextQ - 1) * 3 + 1;
-                      const endMonth = nextQ * 3;
-                      const startDate = `${qYear}-${String(startMonth).padStart(2, '0')}-01`;
-                      const lastDay = new Date(qYear, endMonth, 0).getDate();
-                      const endDate = `${qYear}-${String(endMonth).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}T23:59:59.999Z`;
-
-                      setNewPeriodForm({
-                        name: `FY${qYear}-Q${nextQ}`,
-                        start_date: startDate,
-                        end_date: endDate,
-                      });
-                    }}
-                    className="h-7 text-xs font-semibold rounded-lg"
-                  >
-                    Next Quarter
-                  </Button>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Period Name *
-                </label>
-                <Input
-                  placeholder="e.g. September 2026 or FY2026-Q4"
-                  value={newPeriodForm.name}
-                  onChange={(e) => setNewPeriodForm({ ...newPeriodForm, name: e.target.value })}
-                  className="h-9 text-xs"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Start Date *
-                  </label>
-                  <Input
-                    type="date"
-                    value={newPeriodForm.start_date.split('T')[0]}
-                    onChange={(e) => setNewPeriodForm({ ...newPeriodForm, start_date: e.target.value })}
-                    className="h-9 text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    End Date *
-                  </label>
-                  <Input
-                    type="date"
-                    value={newPeriodForm.end_date.split('T')[0]}
-                    onChange={(e) => {
-                      const dateVal = e.target.value;
-                      setNewPeriodForm({
-                        ...newPeriodForm,
-                        end_date: dateVal ? `${dateVal}T23:59:59.999Z` : '',
-                      });
-                    }}
-                    className="h-9 text-xs"
-                  />
-                </div>
-              </div>
-
-              {newPeriodForm.start_date && newPeriodForm.end_date && (() => {
-                const sTime = new Date(newPeriodForm.start_date).getTime();
-                const eTime = new Date(newPeriodForm.end_date).getTime();
-                const isOverlapping = periods.some((p) => {
-                  const pStart = new Date(p.start_date).getTime();
-                  const pEnd = new Date(p.end_date).getTime();
-                  return sTime <= pEnd && eTime >= pStart;
-                });
-
-                if (isOverlapping) {
-                  return (
-                    <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 text-xs text-amber-800 dark:text-amber-200 p-2.5 rounded-xl flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span>Warning: Selected date range overlaps with an existing period.</span>
-                    </div>
-                  );
-                }
-                return null;
-              })()}
-            </div>
-
-            <SheetFooter className="pt-4 border-t border-slate-100 dark:border-slate-800">
-              <Button variant="outline" size="sm" onClick={() => setIsNewSheetOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => {
-                  if (!newPeriodForm.name || !newPeriodForm.start_date || !newPeriodForm.end_date) {
-                    toast.error('All fields are required');
-                    return;
-                  }
-                  createMutation.mutate(newPeriodForm);
-                }}
-                disabled={createMutation.isPending}
-                className="bg-[#FA634E] hover:bg-[#e0523d] text-white font-semibold"
-              >
-                Create Period
-              </Button>
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
+        <NewPeriodSheet
+          isOpen={isNewSheetOpen}
+          onOpenChange={setIsNewSheetOpen}
+          periods={periods}
+          currentYear={currentYear}
+          currentMonthIdx={currentMonthIdx}
+          newPeriodForm={newPeriodForm}
+          setNewPeriodForm={setNewPeriodForm}
+          onSubmit={(form) => createMutation.mutate(form)}
+          isPending={createMutation.isPending}
+        />
 
         {/* BULK GENERATE PERIODS SHEET */}
-        <Sheet open={isGenerateSheetOpen} onOpenChange={setIsGenerateSheetOpen}>
-          <SheetContent className="w-full sm:max-w-md p-6 overflow-y-auto">
-            <SheetHeader>
-              <SheetTitle>Generate Accounting Periods</SheetTitle>
-              <SheetDescription>
-                Bulk generate monthly or quarterly periods for a full fiscal year.
-              </SheetDescription>
-            </SheetHeader>
-
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Fiscal Year
-                  </label>
-                  <Input
-                    type="number"
-                    value={generateYear}
-                    onChange={(e) => setGenerateYear(Number(e.target.value))}
-                    className="h-9 text-xs"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Frequency
-                  </label>
-                  <select
-                    value={generateFreq}
-                    onChange={(e) => setGenerateFreq(e.target.value as any)}
-                    className="w-full h-9 text-xs px-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
-                  >
-                    <option value="monthly">Monthly (12 periods)</option>
-                    <option value="quarterly">Quarterly (4 periods)</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="space-y-1.5 pt-2">
-                <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Generation Preview
-                </div>
-                <div className="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl p-2 space-y-1 bg-slate-50 dark:bg-slate-900/50 divide-y divide-slate-100 dark:divide-slate-800">
-                  {Array.from({ length: generateFreq === 'monthly' ? 12 : 4 }).map((_, idx) => {
-                    let pName = '';
-                    if (generateFreq === 'monthly') {
-                      pName = `${FULL_MONTH_NAMES[idx]} ${generateYear}`;
-                    } else {
-                      pName = `FY${generateYear}-Q${idx + 1}`;
-                    }
-
-                    const exists = periods.some((p) => p.name.toLowerCase() === pName.toLowerCase());
-
-                    return (
-                      <div key={idx} className="py-1 flex items-center justify-between text-xs px-2">
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">{pName}</span>
-                        {exists ? (
-                          <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded">
-                            Exists (skip)
-                          </span>
-                        ) : (
-                          <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded">
-                            Will create
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {isGenerating && (
-                <div className="space-y-1">
-                  <div className="text-xs text-slate-500 font-medium">Generating periods... {generateProgress}%</div>
-                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-[#FA634E] transition-all" style={{ width: `${generateProgress}%` }} />
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <SheetFooter className="pt-4 border-t border-slate-100 dark:border-slate-800">
-              <Button variant="outline" size="sm" onClick={() => setIsGenerateSheetOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleBulkGenerate}
-                disabled={isGenerating}
-                className="bg-[#FA634E] hover:bg-[#e0523d] text-white font-semibold"
-              >
-                Generate Periods
-              </Button>
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
+        <BulkGeneratePeriodsSheet
+          isOpen={isGenerateSheetOpen}
+          onOpenChange={setIsGenerateSheetOpen}
+          periods={periods}
+          generateYear={generateYear}
+          setGenerateYear={setGenerateYear}
+          generateFreq={generateFreq}
+          setGenerateFreq={setGenerateFreq}
+          isGenerating={isGenerating}
+          generateProgress={generateProgress}
+          onBulkGenerate={handleBulkGenerate}
+        />
 
         {/* GUIDED CLOSE FISCAL YEAR SHEET */}
-        <Sheet open={isFySheetOpen} onOpenChange={setIsFySheetOpen}>
-          <SheetContent className="w-full sm:max-w-lg p-6 overflow-y-auto">
-            <SheetHeader>
-              <SheetTitle>Close Fiscal Year {selectedYear}</SheetTitle>
-              <SheetDescription>
-                Guided process to finalize year-end revenue and expense closing.
-              </SheetDescription>
-            </SheetHeader>
-
-            <div className="flex items-center justify-between py-4 border-b border-slate-100 dark:border-slate-800 my-2">
-              {[1, 2, 3, 4].map((stepNum) => (
-                <div key={stepNum} className="flex items-center gap-1.5">
-                  <span
-                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                      fyStep === stepNum
-                        ? 'bg-[#FA634E] text-white'
-                        : fyStep > stepNum
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
-                    }`}
-                  >
-                    {fyStep > stepNum ? <Check className="w-3.5 h-3.5" /> : stepNum}
-                  </span>
-                  <span className={`text-xs font-semibold ${fyStep === stepNum ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
-                    {stepNum === 1 ? 'Date' : stepNum === 2 ? 'Checks' : stepNum === 3 ? 'Preview' : 'Confirm'}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {fyStep === 1 && (
-              <div className="space-y-4 py-4">
-                <p className="text-xs text-slate-600 dark:text-slate-400">
-                  Select the fiscal year closing date. All Revenue and Expense accounts up to this date will be zeroed out.
-                </p>
-                <div>
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Closing Date *
-                  </label>
-                  <Input
-                    type="date"
-                    value={fyClosingDate}
-                    onChange={(e) => setFyClosingDate(e.target.value)}
-                    className="h-9 text-xs"
-                  />
-                </div>
-              </div>
-            )}
-
-            {fyStep === 2 && (
-              <div className="space-y-4 py-4">
-                <div className="space-y-3">
-                  <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 flex items-start gap-2.5">
-                    {fyPreChecks.openPeriodsBefore.length === 0 ? (
-                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    ) : (
-                      <X className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                    )}
-                    <div className="text-xs">
-                      <div className="font-bold text-slate-900 dark:text-white">
-                        All prior accounting periods closed/locked
-                      </div>
-                      {fyPreChecks.openPeriodsBefore.length > 0 ? (
-                        <div className="text-rose-600 mt-0.5 font-medium">
-                          The following periods are still Open:{' '}
-                          {fyPreChecks.openPeriodsBefore.map((p) => p.name).join(', ')}
-                        </div>
-                      ) : (
-                        <div className="text-slate-500 mt-0.5">All periods in range are closed or locked.</div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 flex items-start gap-2.5">
-                    {fyPreChecks.retainedAccSet ? (
-                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    ) : (
-                      <X className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                    )}
-                    <div className="text-xs">
-                      <div className="font-bold text-slate-900 dark:text-white">
-                        Default Retained Earnings account configured
-                      </div>
-                      {!fyPreChecks.retainedAccSet ? (
-                        <div className="text-rose-600 mt-0.5 font-medium">
-                          Retained earnings account is missing in settings.{' '}
-                          <Link to="/settings" className="underline font-bold">
-                            Configure in Settings →
-                          </Link>
-                        </div>
-                      ) : (
-                        <div className="text-slate-500 mt-0.5">Retained Earnings GL account is valid.</div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {fyStep === 3 && (
-              <div className="space-y-4 py-4">
-                <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200/60 dark:border-slate-700 text-xs flex justify-between items-center">
-                  <span className="font-bold text-slate-700 dark:text-slate-300">Estimated FY Net Income</span>
-                  <MoneyText
-                    value={pnlRes?.data?.net_profit || 0}
-                    currency="SAR"
-                    tone={(pnlRes?.data?.net_profit || 0) >= 0 ? 'positive' : 'negative'}
-                    className="font-bold text-xs"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    Estimated Closing Journal Entry Preview
-                  </div>
-                  <div className="max-h-60 overflow-y-auto border border-slate-200/80 dark:border-slate-800 rounded-xl p-2">
-                    <JournalLinesTable lines={fyClosingPreviewLines} />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {fyStep === 4 && (
-              <div className="space-y-4 py-4">
-                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 p-3 rounded-xl text-xs text-amber-900 dark:text-amber-200 space-y-1">
-                  <div className="font-bold">Irreversible Action</div>
-                  <p>
-                    Closing the fiscal year posts a permanent FiscalYearClosing journal entry and zeros out income accounts.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                    Type &quot;CLOSE FY{selectedYear}&quot; to confirm:
-                  </label>
-                  <Input
-                    placeholder={`CLOSE FY${selectedYear}`}
-                    value={fyTypedConfirm}
-                    onChange={(e) => setFyTypedConfirm(e.target.value)}
-                    className="h-9 text-xs font-mono"
-                  />
-                </div>
-              </div>
-            )}
-
-            <SheetFooter className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
-              {fyStep > 1 ? (
-                <Button variant="outline" size="sm" onClick={() => setFyStep((s) => (s - 1) as any)}>
-                  Back
-                </Button>
-              ) : (
-                <Button variant="outline" size="sm" onClick={() => setIsFySheetOpen(false)}>
-                  Cancel
-                </Button>
-              )}
-
-              {fyStep < 4 ? (
-                <Button
-                  size="sm"
-                  onClick={() => setFyStep((s) => (s + 1) as any)}
-                  disabled={fyStep === 2 && !fyPreChecks.canPass}
-                  className="bg-[#FA634E] hover:bg-[#e0523d] text-white font-semibold"
-                >
-                  Next Step →
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  onClick={() => fyClosingMutation.mutate(fyClosingDate)}
-                  disabled={fyTypedConfirm.trim() !== `CLOSE FY${selectedYear}` || fyClosingMutation.isPending}
-                  className="bg-[#FA634E] hover:bg-[#e0523d] text-white font-semibold"
-                >
-                  {fyClosingMutation.isPending ? 'Closing FY...' : 'Confirm & Close FY'}
-                </Button>
-              )}
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
+        <GuidedFiscalYearCloseSheet
+          isOpen={isFySheetOpen}
+          onOpenChange={setIsFySheetOpen}
+          selectedYear={selectedYear}
+          fyStep={fyStep}
+          setFyStep={setFyStep}
+          fyClosingDate={fyClosingDate}
+          setFyClosingDate={setFyClosingDate}
+          fyPreChecks={fyPreChecks}
+          pnlRes={pnlRes}
+          fyClosingPreviewLines={fyClosingPreviewLines}
+          fyTypedConfirm={fyTypedConfirm}
+          setFyTypedConfirm={setFyTypedConfirm}
+          onSubmitFyClose={(dateStr) => fyClosingMutation.mutate(dateStr)}
+          isPending={fyClosingMutation.isPending}
+        />
 
         {/* REOPEN PERIOD SHEET */}
-        <Sheet open={isReopenSheetOpen} onOpenChange={setIsReopenSheetOpen}>
-          <SheetContent className="w-full sm:max-w-md p-6 overflow-y-auto">
-            <SheetHeader>
-              <SheetTitle>Reopen {selectedPeriod?.name}</SheetTitle>
-              <SheetDescription>
-                Reopening a closed period allows new journal entries to be posted.
-              </SheetDescription>
-            </SheetHeader>
-
-            <div className="space-y-4 py-4">
-              <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 p-3 rounded-xl text-xs text-amber-900 dark:text-amber-200 space-y-1">
-                <div className="font-bold flex items-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                  Important Note
-                </div>
-                <p>
-                  The AccountClosingBalance snapshot for this period will be discarded and automatically rebuilt when the period is closed again.
-                </p>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
-                  Reason for reopening * (10–500 characters)
-                </label>
-                <Textarea
-                  placeholder="Explain why this period needs to be reopened..."
-                  value={reopenReason}
-                  onChange={(e) => setReopenReason(e.target.value)}
-                  maxLength={500}
-                  className="text-xs h-24"
-                />
-                <div className="text-[10px] text-slate-400 text-right mt-1 font-mono">
-                  {reopenReason.length} / 500
-                </div>
-              </div>
-            </div>
-
-            <SheetFooter className="pt-4 border-t border-slate-100 dark:border-slate-800">
-              <Button variant="outline" size="sm" onClick={() => setIsReopenSheetOpen(false)}>
-                Cancel
-              </Button>
-              <Button
-                size="sm"
-                onClick={() => reopenMutation.mutate({ id: selectedPeriod.id, reason: reopenReason })}
-                disabled={reopenReason.trim().length < 10 || reopenMutation.isPending}
-                className="bg-[#FA634E] hover:bg-[#e0523d] text-white font-semibold"
-              >
-                Reopen Period
-              </Button>
-            </SheetFooter>
-          </SheetContent>
-        </Sheet>
+        <ReopenPeriodSheet
+          isOpen={isReopenSheetOpen}
+          onOpenChange={setIsReopenSheetOpen}
+          selectedPeriod={selectedPeriod}
+          reopenReason={reopenReason}
+          setReopenReason={setReopenReason}
+          onConfirmReopen={(params) => reopenMutation.mutate(params)}
+          isPending={reopenMutation.isPending}
+        />
 
         {/* LOCK PERMANENTLY CONFIRM MODAL */}
-        <ConfirmModal
+        <TypedLockPeriodModal
           isOpen={isLockConfirmOpen}
           onClose={() => setIsLockConfirmOpen(false)}
-          onConfirm={() => lockMutation.mutate(selectedPeriod.id)}
-          title={`Lock ${selectedPeriod?.name} Permanently`}
-          confirmLabel="Lock Period Permanently"
-          variant="destructive"
-          isLoading={lockMutation.isPending}
-        >
-          <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
-            <p className="text-rose-600 font-bold bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200">
-              Locking is permanent and CANNOT be undone. The period will become permanently read-only.
-            </p>
-            <p>
-              Type period name <strong className="font-mono text-slate-900 dark:text-white">{selectedPeriod?.name}</strong> to confirm:
-            </p>
-            <Input
-              placeholder={selectedPeriod?.name}
-              value={lockTypedConfirm}
-              onChange={(e) => setLockTypedConfirm(e.target.value)}
-              className="h-9 text-xs font-mono"
-            />
-          </div>
-        </ConfirmModal>
+          selectedPeriod={selectedPeriod}
+          lockTypedConfirm={lockTypedConfirm}
+          setLockTypedConfirm={setLockTypedConfirm}
+          onConfirmLock={(id) => lockMutation.mutate(id)}
+          isPending={lockMutation.isPending}
+        />
 
         {/* CLOSE WITH WARNINGS CONFIRM MODAL */}
-        <ConfirmModal
+        <CloseWarningModal
           isOpen={isCloseWarningModalOpen}
           onClose={() => setIsCloseWarningModalOpen(false)}
-          onConfirm={() => closeMutation.mutate(selectedPeriod?.id)}
-          title={`Close ${selectedPeriod?.name} with Warnings`}
-          confirmLabel="Close Anyway"
-          isLoading={closeMutation.isPending}
-        >
-          <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
-            <p className="text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-200">
-              Some non-blocking checks have warnings. Are you sure you want to close this period anyway?
-            </p>
-            <ul className="list-disc pl-4 space-y-1">
-              {!checklist.check2_warning && <li>Draft invoices remain in this period</li>}
-              {!checklist.check3_warning && <li>Draft bills remain in this period</li>}
-              {!checklist.check4_warning && <li>Bank accounts are not reconciled through period end</li>}
-              {!checklist.check6_warning && <li>Previous period is still open</li>}
-            </ul>
-          </div>
-        </ConfirmModal>
+          selectedPeriod={selectedPeriod}
+          checklist={checklist}
+          onConfirmClose={() => selectedPeriod && closeMutation.mutate(selectedPeriod.id)}
+          isPending={closeMutation.isPending}
+        />
       </div>
     </DashboardLayout>
   );
