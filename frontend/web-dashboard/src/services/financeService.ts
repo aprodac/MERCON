@@ -439,6 +439,30 @@ export const financeService = {
     return response.data;
   },
 
+  getBankAccountTransactions: async (
+    id: string,
+    params?: {
+      date_from?: string;
+      date_to?: string;
+      direction?: 'in' | 'out';
+      reconciled?: boolean | string;
+      search?: string;
+      page?: number;
+      per_page?: number;
+    }
+  ): Promise<ApiResponse<import('@mercon/shared-types').BankTransactionsResponse>> => {
+    const response = await api.get(`/bank-accounts/${id}/transactions`, { params });
+    return response.data;
+  },
+
+  getBankAccountBalanceHistory: async (
+    id: string,
+    params?: { days?: number }
+  ): Promise<ApiResponse<import('@mercon/shared-types').BankBalanceHistoryPoint[]>> => {
+    const response = await api.get(`/bank-accounts/${id}/balance-history`, { params });
+    return response.data;
+  },
+
   createBankAccount: async (data: CreateBankAccountDTO): Promise<ApiResponse<BankAccount>> => {
     const response = await api.post('/bank-accounts', data);
     return response.data;
