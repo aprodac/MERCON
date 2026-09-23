@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 
 import { validateTripStops } from './tripValidationService';
 import { stampWorkflowTransition, stampStopTransition, resolveAuthoritativeActiveStop, stampIntermediateStopVisit } from './tripLifecycle';
-import { isRoundTrip, getEffectiveWorkflowState, type MobileTrip, type TripStop, parseTripRouteNodes, parseStopWorkflowState, getLegEndpoints, targetFromWorkflowState } from './tripRouteTimeline';
+import { isRoundTrip, getEffectiveWorkflowState, type MobileTrip, type TripStop, parseTripRouteNodes, parseStopWorkflowState, getLegEndpoints, targetFromWorkflowState, buildTripStops, type BuiltTripStop, isRouteLocked, isRouteEditable, ROUTE_EDITABLE_STATUSES, buildTripRouteTimeline } from './tripRouteTimeline';
+import { findQuotationForLane } from './rateLookup';
+import { writeTripStops } from './tripStopWriter';
+import { parseFullTripStops } from './legacyStopStringParser';
 
 describe('DEEP CODE-LEVEL TEST SUITE — INDEPENDENT OUTBOUND + RETURN ARCHITECTURE', () => {
 
@@ -1305,6 +1308,19 @@ describe('DEEP CODE-LEVEL TEST SUITE — INDEPENDENT OUTBOUND + RETURN ARCHITECT
       ]);
     });
 
+    it('one-way trip with a stop is NOT completed after the stop is visited (A → X → B)', () => {
+      const s = [
+        S('a', 1, 0, 'Pickup', 'A'),
+        S('x', 2, 0, 'Dropoff', 'X'),
+        S('b', 3, 0, 'Dropoff', 'B'),
+      ];
+      for (const id of ['a', 'x']) Object.assign(s.find((y) => y.id === id)!, { actual_arrival: 'x', actual_departure: 'x' });
+      const trip: MobileTrip = { id: 't10o', status: 'InTransit', stops: s, driver_workflow_state: 'IN_TRANSIT' };
+      assert.equal(getEffectiveWorkflowState(trip), 'IN_TRANSIT');
+      Object.assign(s[2], { actual_arrival: 'x' });
+      assert.equal(getEffectiveWorkflowState({ ...trip, driver_workflow_state: 'ARRIVED_AT_DELIVERY' }), 'ARRIVED_AT_DELIVERY');
+    });
+
     it('keeps return-stop workflow states instead of collapsing them to IN_TRANSIT_RETURN', () => {
       const s = stops();
       for (const id of ['a0', 'b0', 'b1']) Object.assign(s.find((x) => x.id === id)!, { actual_arrival: 'x', actual_departure: 'x' });
@@ -1411,5 +1427,352 @@ describe('DEEP CODE-LEVEL TEST SUITE — INDEPENDENT OUTBOUND + RETURN ARCHITECT
       assert.deepEqual(targetFromWorkflowState('FIRST_DELIVERY_COMPLETED', true), { kind: 'pickup', leg: 1 });
     });
   });
+
+  describe('Test Case #12 — buildTripStops Construction Tests', () => {
+    it('builds a basic one-way trip (A -> B)', () => {
+      const stops = buildTripStops({
+        origin: { name: 'Riyadh', location_id: 'loc-1' },
+        destination: { name: 'Dammam', location_id: 'loc-2' },
+      });
+
+      assert.equal(stops.length, 2);
+      assert.deepEqual(stops[0], {
+        stop_sequence: 1,
+        leg_index: 0,
+        stop_type: 'Pickup',
+        location_name: 'Riyadh',
+        location_id: 'loc-1',
+      });
+      assert.deepEqual(stops[1], {
+        stop_sequence: 2,
+        leg_index: 0,
+        stop_type: 'Dropoff',
+        location_name: 'Dammam',
+        location_id: 'loc-2',
+      });
+    });
+
+    it('builds a one-way trip with 2 intermediate stops (A -> X -> Y -> B)', () => {
+      const stops = buildTripStops({
+        origin: { name: 'Riyadh', location_id: 'loc-1' },
+        intermediates: [
+          { name: 'Al Hasa', location_id: 'loc-x' },
+          { name: 'Jubail', location_id: 'loc-y' },
+        ],
+        destination: { name: 'Dammam', location_id: 'loc-2' },
+      });
+
+      assert.equal(stops.length, 4);
+      assert.equal(stops[0].stop_type, 'Pickup');
+      assert.equal(stops[0].leg_index, 0);
+      assert.equal(stops[1].stop_type, 'Dropoff');
+      assert.equal(stops[1].location_name, 'Al Hasa');
+      assert.equal(stops[2].stop_type, 'Dropoff');
+      assert.equal(stops[2].location_name, 'Jubail');
+      assert.equal(stops[3].stop_type, 'Dropoff');
+      assert.equal(stops[3].location_name, 'Dammam');
+      assert.deepEqual(stops.map((s: BuiltTripStop) => s.stop_sequence), [1, 2, 3, 4]);
+    });
+
+    it('builds a round trip with stops on both legs (A -> X -> B | B -> Y -> A)', () => {
+      const stops = buildTripStops({
+        origin: { name: 'Riyadh', location_id: 'loc-a' },
+        intermediates: [{ name: 'Waypoint 1' }],
+        destination: { name: 'Dammam', location_id: 'loc-b' },
+        isRound: true,
+        returnIntermediates: [{ name: 'Waypoint 2' }],
+      });
+
+      assert.equal(stops.length, 6);
+      // Leg 0
+      assert.equal(stops[0].leg_index, 0);
+      assert.equal(stops[0].stop_type, 'Pickup');
+      assert.equal(stops[0].location_name, 'Riyadh');
+
+      assert.equal(stops[1].leg_index, 0);
+      assert.equal(stops[1].stop_type, 'Dropoff');
+      assert.equal(stops[1].location_name, 'Waypoint 1');
+
+      assert.equal(stops[2].leg_index, 0);
+      assert.equal(stops[2].stop_type, 'Dropoff');
+      assert.equal(stops[2].location_name, 'Dammam');
+
+      // Leg 1
+      assert.equal(stops[3].leg_index, 1);
+      assert.equal(stops[3].stop_type, 'Pickup');
+      assert.equal(stops[3].location_name, 'Dammam');
+      assert.equal(stops[3].location_id, 'loc-b');
+
+      assert.equal(stops[4].leg_index, 1);
+      assert.equal(stops[4].stop_type, 'Dropoff');
+      assert.equal(stops[4].location_name, 'Waypoint 2');
+
+      assert.equal(stops[5].leg_index, 1);
+      assert.equal(stops[5].stop_type, 'Dropoff');
+      assert.equal(stops[5].location_name, 'Riyadh');
+      assert.equal(stops[5].location_id, 'loc-a');
+
+      assert.deepEqual(stops.map((s: BuiltTripStop) => s.stop_sequence), [1, 2, 3, 4, 5, 6]);
+    });
+
+    it('builds a round trip with final drop not at origin A (B -> C -> D)', () => {
+      const stops = buildTripStops({
+        origin: { name: 'Location A', location_id: 'loc-a' },
+        destination: { name: 'Location B', location_id: 'loc-b' },
+        isRound: true,
+        returnOrigin: { name: 'Location C', location_id: 'loc-c' },
+        returnDestination: { name: 'Location D', location_id: 'loc-d' },
+      });
+
+      assert.equal(stops.length, 4);
+      assert.equal(stops[0].location_name, 'Location A');
+      assert.equal(stops[0].leg_index, 0);
+      assert.equal(stops[0].stop_type, 'Pickup');
+
+      assert.equal(stops[1].location_name, 'Location B');
+      assert.equal(stops[1].leg_index, 0);
+      assert.equal(stops[1].stop_type, 'Dropoff');
+
+      assert.equal(stops[2].location_name, 'Location C');
+      assert.equal(stops[2].leg_index, 1);
+      assert.equal(stops[2].stop_type, 'Pickup');
+      assert.equal(stops[2].location_id, 'loc-c');
+
+      assert.equal(stops[3].location_name, 'Location D');
+      assert.equal(stops[3].leg_index, 1);
+      assert.equal(stops[3].stop_type, 'Dropoff');
+      assert.equal(stops[3].location_id, 'loc-d');
+    });
+  });
+
+  // ============================================================
+  // TEST CASE #13 — TRIP ROUTE EDIT & LOCKED STATUS RULES
+  // ============================================================
+  describe('Test Case #13 — Trip Route Edit & Locked Status Rules', () => {
+    it('permits route editing only on Draft and Scheduled status for every TripStatus value', () => {
+      assert.equal(isRouteEditable('Draft'), true);
+      assert.equal(isRouteEditable('Scheduled'), true);
+
+      assert.equal(isRouteEditable('Loading'), false);
+      assert.equal(isRouteEditable('InTransit'), false);
+      assert.equal(isRouteEditable('Delayed'), false);
+      assert.equal(isRouteEditable('Completed'), false);
+      assert.equal(isRouteEditable('Invoiced'), false);
+      assert.equal(isRouteEditable('Cancelled'), false);
+
+      assert.equal(isRouteLocked('Draft'), false);
+      assert.equal(isRouteLocked('Scheduled'), false);
+      assert.equal(isRouteLocked('Loading'), true);
+      assert.equal(isRouteLocked('InTransit'), true);
+      assert.equal(isRouteLocked('Delayed'), true);
+      assert.equal(isRouteLocked('Completed'), true);
+      assert.equal(isRouteLocked('Invoiced'), true);
+      assert.equal(isRouteLocked('Cancelled'), true);
+    });
+
+    it('parses single-location return chains correctly in parseFullTripStops', () => {
+      const parsedStops = parseFullTripStops('Riyadh', 'Medina [RETURN: Riyadh]');
+      assert.equal(parsedStops.length, 4);
+
+      // Leg 0
+      assert.equal(parsedStops[0].leg_index, 0);
+      assert.equal(parsedStops[0].stop_type, 'Pickup');
+      assert.equal(parsedStops[0].location_name, 'Riyadh');
+
+      assert.equal(parsedStops[1].leg_index, 0);
+      assert.equal(parsedStops[1].stop_type, 'Dropoff');
+      assert.equal(parsedStops[1].location_name, 'Medina');
+
+      // Leg 1
+      assert.equal(parsedStops[2].leg_index, 1);
+      assert.equal(parsedStops[2].stop_type, 'Pickup');
+      assert.equal(parsedStops[2].location_name, 'Medina'); // Pickup at last outbound location
+
+      assert.equal(parsedStops[3].leg_index, 1);
+      assert.equal(parsedStops[3].stop_type, 'Dropoff');
+      assert.equal(parsedStops[3].location_name, 'Riyadh'); // Dropoff at return location
+
+      const validation = validateTripStops(parsedStops as any);
+      assert.equal(validation.isValid, true);
+    });
+
+    it('re-builds stops and timeline nodes when editing a Draft trip destination', () => {
+      const draftTripOriginal: MobileTrip = {
+        id: 'trip-draft-1',
+        ref_id: 'TRP-DRAFT-01',
+        status: 'Draft',
+        origin: 'Riyadh',
+        destination: 'Jeddah',
+        stops: [
+          { id: 's1', stop_sequence: 1, leg_index: 0, stop_type: 'Pickup', location_name: 'Riyadh' },
+          { id: 's2', stop_sequence: 2, leg_index: 0, stop_type: 'Dropoff', location_name: 'Jeddah' },
+        ],
+      };
+
+      assert.equal(isRouteLocked(draftTripOriginal.status), false);
+
+      // Edit destination from Jeddah to Dammam
+      const newStops = buildTripStops({
+        origin: { name: 'Riyadh' },
+        destination: { name: 'Dammam' },
+      });
+
+      const updatedDraftTrip: MobileTrip = {
+        ...draftTripOriginal,
+        destination: 'Dammam',
+        stops: newStops.map((st, i) => ({
+          id: `new-s${i + 1}`,
+          stop_sequence: st.stop_sequence,
+          leg_index: st.leg_index,
+          stop_type: st.stop_type,
+          location_name: st.location_name,
+        })),
+      };
+
+      const timeline = buildTripRouteTimeline(updatedDraftTrip);
+      assert.equal(timeline.length, 2);
+      assert.equal(timeline[0].name, 'Riyadh');
+      assert.equal(timeline[1].name, 'Dammam');
+    });
+
+    it('prevents route edit on an InTransit trip', () => {
+      const inTransitTrip: MobileTrip = {
+        id: 'trip-intransit-1',
+        ref_id: 'TRP-FLY-01',
+        status: 'InTransit',
+        origin: 'Riyadh',
+        destination: 'Jeddah',
+        stops: [
+          { id: 's1', stop_sequence: 1, leg_index: 0, stop_type: 'Pickup', location_name: 'Riyadh' },
+          { id: 's2', stop_sequence: 2, leg_index: 0, stop_type: 'Dropoff', location_name: 'Jeddah' },
+        ],
+      };
+
+      assert.equal(isRouteLocked(inTransitTrip.status), true);
+    });
+  });
+
+  // ============================================================
+  // TEST CASE #17 — QUOTATION LANE LOOKUP & ROUND-TRIP TRUTH
+  // ============================================================
+  describe('Test Case #17 — Quotation Lane Lookup & Round-Trip Truth', () => {
+    it('RUH -> MED round trip does NOT match a RUH -> DMM round-trip quotation', async () => {
+      const mockQuotationDmm = {
+        id: 'q-ruh-dmm-round',
+        customerId: 'cust-1',
+        line_type: 'ROUND_TRIP',
+        is_active: true,
+        deletedAt: null,
+        stops: [
+          { sequence: 1, leg_index: 0, locationId: 'loc-ruh', location_name: 'RUH' },
+          { sequence: 2, leg_index: 0, locationId: 'loc-dmm', location_name: 'DMM' },
+          { sequence: 3, leg_index: 1, locationId: 'loc-dmm', location_name: 'DMM' },
+          { sequence: 4, leg_index: 1, locationId: 'loc-ruh', location_name: 'RUH' },
+        ],
+      };
+
+      const mockTx = {
+        quotation: {
+          findMany: async () => [mockQuotationDmm],
+        },
+      };
+
+      // Searching for RUH -> MED round trip (origin RUH, destination MED)
+      const res = await findQuotationForLane(mockTx as any, {
+        customerId: 'cust-1',
+        originLocationId: 'loc-ruh',
+        destinationLocationId: 'loc-med',
+        lineType: 'ROUND_TRIP',
+      });
+
+      assert.equal(res.quotation, null);
+    });
+
+    it('RUH -> MED round trip DOES match a RUH -> MED round-trip quotation', async () => {
+      const mockQuotationMed = {
+        id: 'q-ruh-med-round',
+        customerId: 'cust-1',
+        line_type: 'ROUND_TRIP',
+        is_active: true,
+        deletedAt: null,
+        stops: [
+          { sequence: 1, leg_index: 0, locationId: 'loc-ruh', location_name: 'RUH' },
+          { sequence: 2, leg_index: 0, locationId: 'loc-med', location_name: 'MED' },
+          { sequence: 3, leg_index: 1, locationId: 'loc-med', location_name: 'MED' },
+          { sequence: 4, leg_index: 1, locationId: 'loc-ruh', location_name: 'RUH' },
+        ],
+      };
+
+      const mockTx = {
+        quotation: {
+          findMany: async () => [mockQuotationMed],
+        },
+      };
+
+      const res = await findQuotationForLane(mockTx as any, {
+        customerId: 'cust-1',
+        originLocationId: 'loc-ruh',
+        destinationLocationId: 'loc-med',
+        lineType: 'ROUND_TRIP',
+      });
+
+      assert.equal(res.quotation?.id, 'q-ruh-med-round');
+    });
+
+    it('rejects round-trip rate_category when stops have NO leg_index = 1', async () => {
+      const mockTx = {
+        location: {
+          findFirst: async () => ({ id: 'loc-1', name: 'RUH', address: null, code: 'RUH', customerId: 'cust-1', deletedAt: null, is_active: true }),
+          findMany: async () => [],
+          update: async () => ({ id: 'loc-1' }),
+        },
+      };
+
+      const oneWayStops = [
+        { stop_sequence: 1, leg_index: 0, location_name: 'RUH' },
+        { stop_sequence: 2, leg_index: 0, location_name: 'DMM' },
+      ];
+
+      await assert.rejects(
+        async () => {
+          await writeTripStops(mockTx as any, {
+            customerId: 'cust-1',
+            stops: oneWayStops,
+            rateCategory: 'ROUND_TRIP',
+          });
+        },
+        (err: any) => err.message.includes('ROUND_TRIP_MISMATCH')
+      );
+    });
+
+    it('rejects non-round-trip rate_category when stops HAVE leg_index = 1', async () => {
+      const mockTx = {
+        location: {
+          findFirst: async () => ({ id: 'loc-1', name: 'RUH', address: null, code: 'RUH', customerId: 'cust-1', deletedAt: null, is_active: true }),
+          findMany: async () => [],
+          update: async () => ({ id: 'loc-1' }),
+        },
+      };
+
+      const roundStops = [
+        { stop_sequence: 1, leg_index: 0, location_name: 'RUH' },
+        { stop_sequence: 2, leg_index: 0, location_name: 'DMM' },
+        { stop_sequence: 3, leg_index: 1, location_name: 'DMM' },
+        { stop_sequence: 4, leg_index: 1, location_name: 'RUH' },
+      ];
+
+      await assert.rejects(
+        async () => {
+          await writeTripStops(mockTx as any, {
+            customerId: 'cust-1',
+            stops: roundStops,
+            rateCategory: 'SINGLE_TRIP',
+          });
+        },
+        (err: any) => err.message.includes('ROUND_TRIP_MISMATCH')
+      );
+    });
+  });
 });
+
 

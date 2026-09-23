@@ -1,6 +1,31 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { api } from './api';
+import {
+  isRoundTrip,
+  getLegIntermediateDbStops,
+  getEffectiveWorkflowState,
+  resolveAuthoritativeActiveStop,
+  parseStopWorkflowState,
+  stopLabel as sharedStopLabel,
+  stopAddress as sharedStopAddress,
+  DRIVER_WORKFLOW_STATES,
+  getLegEndpoints,
+  getLegStops,
+  type AuthoritativeActiveStop,
+} from '@mercon/shared-types';
+
+export {
+  isRoundTrip,
+  getLegIntermediateDbStops,
+  getEffectiveWorkflowState,
+  resolveAuthoritativeActiveStop,
+  parseStopWorkflowState,
+  DRIVER_WORKFLOW_STATES,
+  getLegEndpoints,
+  getLegStops,
+  type AuthoritativeActiveStop,
+};
 
 export const workflowStateStore = {
   async getState(tripId: string): Promise<string | null> {
@@ -86,10 +111,12 @@ export function cleanAddress(rawAddress?: string | null): string | null {
 /** The best single line address for a stop, rejecting raw ID strings and UUID segments. */
 export function stopAddress(stop: TripStop | null | undefined, fallback?: string): string | null {
   if (!stop) return fallback ?? null;
-  const rawAddr = stop.location_address || stop.location?.address;
-  const cleaned = cleanAddress(rawAddr);
-  if (cleaned) {
-    return cleaned;
+  const rawAddr = sharedStopAddress(stop as any);
+  if (rawAddr) {
+    const cleaned = cleanAddress(rawAddr);
+    if (cleaned) {
+      return cleaned;
+    }
   }
   const label = stopLabel(stop, fallback);
   if (label && label !== fallback) {
@@ -102,17 +129,12 @@ export function stopAddress(stop: TripStop | null | undefined, fallback?: string
 export function stopLabel(stop: TripStop | null | undefined, fallback?: string): string | null {
   if (!stop) return fallback ?? null;
 
-  // 1. Nested Location object's name if valid and not an ID
-  if (stop.location?.name && !isIdString(stop.location.name)) {
-    return stop.location.name.trim();
+  const shared = sharedStopLabel(stop as any);
+  if (shared && shared !== 'Stop' && !isIdString(shared)) {
+    return shared.trim();
   }
 
-  // 2. Direct stop location_name if valid and not an ID
-  if (stop.location_name && !isIdString(stop.location_name)) {
-    return stop.location_name.trim();
-  }
-
-  // 3. Extract city / area from location_address or location.address if present (reject country names)
+  // Extract city / area from location_address or location.address if present (reject country names)
   const rawAddr = stop.location_address || stop.location?.address;
   const cleanedAddr = cleanAddress(rawAddr);
   if (cleanedAddr) {
@@ -221,159 +243,6 @@ export function getMonthlyDriverPayout(trips: (MobileTrip | null | undefined)[],
   }, 0);
 }
 
-/** Check whether a trip is genuinely a Round Trip */
-export function isRoundTrip(trip: MobileTrip | null | undefined): boolean {
-  if (!trip) return false;
-
-  // Primary check: explicit return leg in structured stops
-  if (trip.stops?.some((s) => (s.leg_index ?? 0) === 1)) return true;
-
-  const lineType = (
-    trip.quotation_line_type ||
-    trip.trip_type ||
-    (trip as any).rate_category ||
-    ''
-  ).toLowerCase().trim();
-  if (lineType.includes('round')) return true;
-
-  if (trip.destination?.includes('[RETURN:')) return true;
-  if (trip.stops?.some((s) => (s.location_name || '').includes('[RETURN:'))) return true;
-
-  const hasSecondPickup = (trip.stops ?? []).some((s, idx) => idx > 0 && s.stop_type === 'Pickup');
-  if (hasSecondPickup) return true;
-
-  // Check if first and last stop locations are identical (circular round trip)
-  const stops = trip.stops ?? [];
-  if (stops.length >= 3) {
-    const first = (stops[0].location_name || stops[0].location?.name || '').toLowerCase().trim();
-    const last = (stops[stops.length - 1].location_name || stops[stops.length - 1].location?.name || '').toLowerCase().trim();
-    if (first && last && first === last) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-/**
- * The real TripStop rows for a leg's intermediate stops, in route order —
- * every stop of the leg except its first (loading) and last (delivery).
- * Positional on purpose: trips are created as [Pickup, …stops, Dropoff] per
- * leg, and intermediate stops are typed Dropoff (or Rest), so stop_type alone
- * can't tell them apart from the leg's delivery.
- */
-export function getLegIntermediateDbStops(trip: MobileTrip | null | undefined, leg: 0 | 1): TripStop[] {
-  const sorted = [...(trip?.stops ?? [])].sort((a, b) => a.stop_sequence - b.stop_sequence);
-  const legStops = sorted.filter((s) => (s.leg_index ?? 0) === leg);
-  return legStops.length >= 3 ? legStops.slice(1, -1) : [];
-}
-
-/**
- * Parses intermediate-stop workflow states, including the indexed variants
- * StopVerificationScreen writes when moving to the next stop
- * (`ARRIVED_AT_STOP_1`, `ARRIVED_AT_RETURN_STOP_2`, …).
- */
-export function parseStopWorkflowState(ws?: string | null): { leg: 0 | 1; stopIndex: number } | null {
-  const m = (ws || '').match(/^(?:GOING_TO_|ARRIVED_AT_)?(RETURN_)?STOP(?:_VERIFICATION)?(?:_(\d+))?$/);
-  if (!m) return null;
-  return { leg: m[1] ? 1 : 0, stopIndex: m[2] ? parseInt(m[2], 10) : 0 };
-}
-
-/**
- * Intelligently derives the true driver workflow state from both the explicit
- * driver_workflow_state and the real-world stop progress (actual_arrival and actual_departure).
- * This ensures that completed stops (e.g. Stop 1 arrived or loaded or departed)
- * NEVER regress to ASSIGNED or GOING_TO_PICKUP if the cache or local state was cleared.
- */
-export function getEffectiveWorkflowState(trip: MobileTrip | null | undefined): string {
-  if (!trip) return 'ASSIGNED';
-  const ws = trip.driver_workflow_state;
-  const stops = [...(trip.stops || [])].sort((a, b) => a.stop_sequence - b.stop_sequence);
-  const isRound = isRoundTrip(trip);
-
-  if (trip.status === 'Completed' || trip.status === 'Invoiced' || ws === 'COMPLETED') {
-    return 'COMPLETED';
-  }
-
-  if (stops.length > 0) {
-    const outboundStops = stops.filter((s) => (s.leg_index ?? 0) === 0);
-    const returnStops = stops.filter((s) => (s.leg_index ?? 0) === 1);
-    const hasExplicitLegs = returnStops.length > 0;
-
-    const s1 = outboundStops[0] || stops[0];
-    const s2 = hasExplicitLegs
-      ? (outboundStops.filter((s) => s.stop_type === 'Dropoff').pop() || outboundStops[outboundStops.length - 1])
-      : (stops.find((s) => s.stop_sequence === 2) || stops[1] || stops[stops.length - 1]);
-
-    const s3 = isRound
-      ? (hasExplicitLegs
-          ? (returnStops.find((s) => s.stop_type === 'Pickup') || returnStops[0])
-          : stops.find((s) => s.stop_sequence === 3))
-      : null;
-
-    const s4 = isRound
-      ? (hasExplicitLegs
-          ? (returnStops.filter((s) => s.stop_type === 'Dropoff').pop() || returnStops[returnStops.length - 1])
-          : (stops.find((s) => s.stop_sequence === 4) || stops[stops.length - 1]))
-      : null;
-
-    // 1. Final Delivery (Stop 4 for round trip, Stop 2 for single trip)
-    if (isRound && s4) {
-      if (s4.actual_departure || ws === 'RETURN_DELIVERY_COMPLETED' || ws === 'COMPLETED') {
-        return 'COMPLETED';
-      }
-      if (s4.actual_arrival || ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'FINAL_DELIVERY_VERIFICATION') {
-        return ws && ['ARRIVED_AT_FINAL_DELIVERY', 'FINAL_DELIVERY_VERIFICATION'].includes(ws) ? ws : 'ARRIVED_AT_FINAL_DELIVERY';
-      }
-    }
-
-    // 2. Return Loading (Stop 3 for round trip)
-    if (isRound && s3) {
-      if (s3.actual_departure) {
-        // Return loading completed and departed -> In transit to return delivery
-        return (ws && (['IN_TRANSIT_RETURN', 'ARRIVED_AT_FINAL_DELIVERY', 'FINAL_DELIVERY_VERIFICATION'].includes(ws) || parseStopWorkflowState(ws)?.leg === 1))
-          ? ws
-          : 'IN_TRANSIT_RETURN';
-      }
-      if (s3.actual_arrival || ws === 'RETURN_LOADING' || ws === 'RETURN_LOADING_COMPLETED') {
-        return ws && ['RETURN_LOADING', 'RETURN_LOADING_COMPLETED'].includes(ws) ? ws : 'RETURN_LOADING';
-      }
-    }
-
-    // 3. Outbound Delivery (Stop 2)
-    if (s2) {
-      if (s2.actual_departure) {
-        if (isRound) {
-          // First delivery completed and departed -> Ready for return loading
-          return (ws && ['RETURN_LOADING', 'RETURN_LOADING_COMPLETED', 'IN_TRANSIT_RETURN', 'ARRIVED_AT_FINAL_DELIVERY'].includes(ws))
-            ? ws
-            : 'RETURN_LOADING';
-        } else {
-          return 'COMPLETED';
-        }
-      }
-      if (s2.actual_arrival || ws === 'ARRIVED_AT_DELIVERY' || ws === 'DELIVERY_VERIFICATION' || ws === 'FIRST_DELIVERY_COMPLETED') {
-        return ws && ['ARRIVED_AT_DELIVERY', 'DELIVERY_VERIFICATION', 'FIRST_DELIVERY_COMPLETED'].includes(ws) ? ws : 'ARRIVED_AT_DELIVERY';
-      }
-    }
-
-    // 4. Initial Pickup (Stop 1)
-    if (s1) {
-      if (s1.actual_departure) {
-        // Pickup departed -> In transit to delivery
-        return (ws && (['IN_TRANSIT', 'ARRIVED_AT_DELIVERY', 'DELIVERY_VERIFICATION'].includes(ws) || parseStopWorkflowState(ws)?.leg === 0))
-          ? ws
-          : 'IN_TRANSIT';
-      }
-      if (s1.actual_arrival || ws === 'ARRIVED_AT_PICKUP' || ws === 'LOADING' || ws === 'LOADING_COMPLETED') {
-        return ws && ['ARRIVED_AT_PICKUP', 'LOADING', 'LOADING_COMPLETED'].includes(ws) ? ws : 'ARRIVED_AT_PICKUP';
-      }
-    }
-  }
-
-  return ws || 'ASSIGNED';
-}
-
 export interface ExternalAppAction {
   label: string;
   targetStatus: TripStatus;
@@ -394,15 +263,7 @@ export interface ExternalAppAction {
 export function getNextExternalAppAction(trip: MobileTrip | null | undefined): ExternalAppAction | null {
   if (!trip) return null;
   const ws = getEffectiveWorkflowState(trip);
-  // `isRoundTrip()` also fires on weak signals (quotation line-type text,
-  // destination markers) that don't guarantee a real return-leg stop exists.
-  // `getEffectiveWorkflowState` itself only takes the round-trip path when
-  // there's an actual 3rd/4th stop (or an explicit leg_index:1 stop) to
-  // visit — match that same real-data gate here, or a "round trip" with no
-  // real return stop sends the driver through phantom return-leg stages
-  // that never resolve to Completed.
-  const stops = trip.stops ?? [];
-  const isRound = stops.some((s) => (s.leg_index ?? 0) === 1) || stops.length >= 3;
+  const isRound = isRoundTrip(trip);
 
   switch (ws) {
     case 'ASSIGNED':
@@ -433,120 +294,6 @@ export function getNextExternalAppAction(trip: MobileTrip | null | undefined): E
     default:
       return null;
   }
-}
-
-export interface AuthoritativeActiveStop {
-  activeStop: TripStop | null;
-  activeStopId: string | null;
-  activeStopSequence: number | null;
-  currentLegIndex: number;
-  nextStop: TripStop | null;
-  nextStopId: string | null;
-  isOutboundCompleted: boolean;
-  isReturnAllowedToStart: boolean;
-  isTripCompleted: boolean;
-  effectiveWorkflowState: string;
-}
-
-/**
- * Single authoritative active stop resolver across MERCON.
- * Resolves current active stop, next stop, active leg, and return readiness
- * dynamically from stop records without hardcoding stop sequences or array positions.
- */
-export function resolveAuthoritativeActiveStop(
-  trip?: { stops?: TripStop[]; status?: string; driver_workflow_state?: string | null } | null
-): AuthoritativeActiveStop {
-  const stops = trip?.stops || [];
-  const statusUpper = (trip?.status || '').toUpperCase();
-  const ws = trip?.driver_workflow_state || null;
-  const sortedStops = [...stops].sort((a, b) => a.stop_sequence - b.stop_sequence);
-
-  if (statusUpper === 'COMPLETED' || statusUpper === 'INVOICED' || ws === 'COMPLETED') {
-    return {
-      activeStop: null,
-      activeStopId: null,
-      activeStopSequence: null,
-      currentLegIndex: sortedStops.some((s) => (s.leg_index ?? 0) === 1) ? 1 : 0,
-      nextStop: null,
-      nextStopId: null,
-      isOutboundCompleted: true,
-      isReturnAllowedToStart: true,
-      isTripCompleted: true,
-      effectiveWorkflowState: 'COMPLETED',
-    };
-  }
-
-  if (sortedStops.length === 0) {
-    return {
-      activeStop: null,
-      activeStopId: null,
-      activeStopSequence: null,
-      currentLegIndex: 0,
-      nextStop: null,
-      nextStopId: null,
-      isOutboundCompleted: false,
-      isReturnAllowedToStart: false,
-      isTripCompleted: false,
-      effectiveWorkflowState: ws || (['IN_TRANSIT', 'DISPATCHED', 'ACTIVE'].includes(statusUpper) ? 'AT_PICKUP' : 'SCHEDULED'),
-    };
-  }
-
-  const outboundStops = sortedStops.filter((s) => (s.leg_index ?? 0) === 0);
-  const returnStops = sortedStops.filter((s) => (s.leg_index ?? 0) === 1);
-  const isRound = returnStops.length > 0 || (trip ? isRoundTrip(trip as any) : false);
-
-  const outboundDelivery = outboundStops.filter((s) => s.stop_type === 'Dropoff').pop() ||
-    (outboundStops.length > 0 ? outboundStops[outboundStops.length - 1] : null);
-
-  const isOutboundCompleted = Boolean(
-    outboundDelivery && (outboundDelivery.actual_departure != null || outboundDelivery.actual_arrival != null)
-  );
-
-  const isReturnAllowedToStart = isRound ? isOutboundCompleted : false;
-
-  // Find active stop: first stop that has not departed yet
-  let activeIdx = sortedStops.findIndex((s) => !s.actual_departure);
-
-  if (activeIdx === -1) {
-    return {
-      activeStop: null,
-      activeStopId: null,
-      activeStopSequence: null,
-      currentLegIndex: returnStops.length > 0 ? 1 : 0,
-      nextStop: null,
-      nextStopId: null,
-      isOutboundCompleted: true,
-      isReturnAllowedToStart: true,
-      isTripCompleted: true,
-      effectiveWorkflowState: 'COMPLETED',
-    };
-  }
-
-  let activeStop = sortedStops[activeIdx];
-  const activeLeg = activeStop.leg_index ?? 0;
-
-  // STRICT RETURN START GUARD:
-  // If active stop is on return leg (leg 1), but outbound delivery has NOT arrived,
-  // return leg CANNOT be active. The active stop must remain the outbound delivery stop.
-  if (activeLeg === 1 && !isOutboundCompleted && outboundDelivery) {
-    activeStop = outboundDelivery;
-    activeIdx = sortedStops.findIndex((s) => s.id === outboundDelivery.id);
-  }
-
-  const nextStop = activeIdx + 1 < sortedStops.length ? sortedStops[activeIdx + 1] : null;
-
-  return {
-    activeStop,
-    activeStopId: activeStop?.id || null,
-    activeStopSequence: activeStop?.stop_sequence || null,
-    currentLegIndex: activeStop?.leg_index ?? 0,
-    nextStop,
-    nextStopId: nextStop?.id || null,
-    isOutboundCompleted,
-    isReturnAllowedToStart,
-    isTripCompleted: false,
-    effectiveWorkflowState: getEffectiveWorkflowState(trip as any),
-  };
 }
 
 /** A road route to the trip's next stop, as MERCON returns it. */

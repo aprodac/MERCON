@@ -637,7 +637,12 @@ export default function TripPhotoEvidence({
             d.ai_extracted_json?.operation === 'return_intermediate_stop';
           if (!isStopDoc) return false;
           const isExactMatch = exactStopDocs.includes(d);
-          if (!isExactMatch && intermediateIndex > 0) return false;
+          if (!isExactMatch) {
+            if (intermediateIndex > 0) return false;
+            const isReturnDoc = Boolean(op?.startsWith('return_') || d.ai_extracted_json?.leg_index === 1);
+            if (isReturn && !isReturnDoc) return false;
+            if (!isReturn && isReturnDoc) return false;
+          }
           return true;
         });
 

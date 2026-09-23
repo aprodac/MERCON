@@ -12,7 +12,8 @@ import { ArrowLeft, MapPin, Truck, Siren, Clock, Banknote, ArrowUpRight, Navigat
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
 import { DelayReportModal, TripProgressStepper, DelayButton, GeotagPhotoModal } from '../../components';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop } from '../../lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints } from '../../lib/trips';
+
 import { targetFromWorkflowState, parseStopWorkflowState } from '../../lib/routeParser';
 import { choosePhoto, type CapturedPhoto } from '../../lib/camera';
 import { getApiErrorMessage } from '../../lib/api';
@@ -79,27 +80,12 @@ const LiveNavigationScreen = () => {
   const wsTarget = targetFromWorkflowState(ws, isRound);
   const legIndex = wsTarget.kind === 'completed' ? authActive.currentLegIndex : wsTarget.leg;
 
-  // 1. Identify the trip's pickup stop for the active leg
-  const pickupStop = React.useMemo(() => {
-    if (!trip?.stops || trip.stops.length === 0) return null;
-    const stops = trip.stops;
-    const legStops = stops.filter((s) => (s.leg_index ?? 0) === legIndex);
-    if (legStops.length > 0) {
-      return legStops.find((s) => s.stop_type === 'Pickup') || legStops[0];
-    }
-    return stops.find((s) => s.stop_type === 'Pickup') ?? stops[0];
-  }, [trip?.stops, legIndex]);
+  const legEndpoints = React.useMemo(() => {
+    return getLegEndpoints(trip, legIndex as 0 | 1);
+  }, [trip, legIndex]);
+  const pickupStop = legEndpoints.loading;
+  const dropoffStop = legEndpoints.delivery;
 
-  // 2. Identify the trip's drop-off / delivery stop for the active leg
-  const dropoffStop = React.useMemo(() => {
-    if (!trip?.stops || trip.stops.length === 0) return null;
-    const stops = trip.stops;
-    const legStops = stops.filter((s) => (s.leg_index ?? 0) === legIndex);
-    if (legStops.length > 0) {
-      return legStops.filter((s) => s.stop_type === 'Dropoff').pop() || legStops[legStops.length - 1];
-    }
-    return stops.find((s) => s.stop_type === 'Dropoff') ?? stops[stops.length - 1];
-  }, [trip?.stops, legIndex]);
 
   // LiveNavigationScreen (the arrival image page) is strictly for Loading (Pickup) and Delivery (Dropoff).
   // Intermediate stops must NEVER show this arrival image page — they go directly to /trip/stop.

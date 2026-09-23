@@ -9,7 +9,8 @@ import {
   ArrowLeft, Upload, CheckCircle2, Camera, Image as ImageIcon, RefreshCw, Building2, ArrowRight,
 } from 'lucide-react-native';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, getEffectiveWorkflowState, getNextExternalAppAction, statusLabel, stopLabel, isRoundTrip } from '../../lib/trips';
+import { tripService, getEffectiveWorkflowState, getNextExternalAppAction, statusLabel, stopLabel, isRoundTrip, getLegEndpoints } from '../../lib/trips';
+
 import { targetFromWorkflowState } from '../../lib/routeParser';
 import { pickFromGallery, capturePhoto, type CapturedPhoto } from '../../lib/camera';
 import { API_URL, getApiErrorMessage } from '../../lib/api';
@@ -75,21 +76,17 @@ export const ExternalAppWorkflowScreen = () => {
     }
   };
 
-  const pickupStop = trip?.stops?.find((s) => s.stop_sequence === 1 || s.stop_type === 'Pickup') ?? trip?.stops?.[0];
-  const dropoffStop = trip?.stops?.find((s) => s.stop_sequence === (trip?.stops?.length ?? 2) || s.stop_type === 'Dropoff') ?? trip?.stops?.[trip?.stops?.length - 1];
+  const pickupStop = getLegEndpoints(trip, 0).loading;
+  const dropoffStop = getLegEndpoints(trip, 0).delivery;
   const isCompleted = trip?.status === 'Completed' || trip?.status === 'Invoiced';
 
   const stopIdForAction = () => {
     if (!action || !trip?.stops) return undefined;
-    const legStops = trip.stops.filter((s) => (s.leg_index ?? 0) === action.legIndex);
+    const endpoints = getLegEndpoints(trip, action.legIndex);
     const wantsDelivery = action.operation.includes('delivery');
-    // Delivery is the leg's LAST dropoff — intermediate stops are typed
-    // Dropoff too, so the first one would file the POD under a stop.
-    const match = wantsDelivery
-      ? legStops.filter((s) => s.stop_type === 'Dropoff').pop()
-      : legStops.find((s) => s.stop_type === 'Pickup');
-    return (match ?? (wantsDelivery ? legStops[legStops.length - 1] : legStops[0]))?.id;
+    return (wantsDelivery ? endpoints.delivery : endpoints.loading)?.id;
   };
+
 
   const handleConfirmAndAdvance = async () => {
     if (!trip || !selectedPhoto || !action) return;

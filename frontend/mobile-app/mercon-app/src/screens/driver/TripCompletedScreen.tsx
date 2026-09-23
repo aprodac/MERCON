@@ -9,7 +9,7 @@ import { GeotagPhotoModal } from '../../components';
 import { API_URL } from '../../lib/api';
 import { useCurrentTrip } from '../../lib/use-current-trip';
 import { useCargoPodPhotos } from '../../lib/documents';
-import { tripService, isRoundTrip as checkIsRoundTrip, type MobileTrip } from '../../lib/trips';
+import { tripService, isRoundTrip, type MobileTrip } from '../../lib/trips';
 import { safeSecureStore as SecureStore } from '../../lib/secure-store';
 import { useLanguage } from '../../lib/language-context';
 
@@ -159,9 +159,7 @@ const TripCompletedScreen = () => {
   const returnPolList = apiReturnCargo.length > 0 ? apiReturnCargo : localReturnPickupPhotos;
   const returnPodList = apiReturnPod.length > 0 ? apiReturnPod : localReturnDeliveryPhotos;
 
-  const isRoundTrip =
-    checkIsRoundTrip(activeTrip) ||
-    (returnPolList.length > 0 && returnPodList.length > 0);
+  const isRound = isRoundTrip(activeTrip);
 
   const handleShare = async () => {
     try {
@@ -377,7 +375,7 @@ const TripCompletedScreen = () => {
             </View>
 
             {/* Grid Row 3: Loading Completed (Left) | Return Loading Completed (Right) */}
-            <View style={[styles.gridRow, !isRoundTrip && { borderBottomWidth: 0 }]}>
+            <View style={[styles.gridRow, !isRound && { borderBottomWidth: 0 }]}>
               <View style={[styles.gridCell, styles.gridCellLeft]}>
                 <View style={styles.cellIconRing}>
                   <PackageCheck size={11} color="#10B981" strokeWidth={2.2} />
@@ -388,7 +386,7 @@ const TripCompletedScreen = () => {
                 </View>
               </View>
 
-              {isRoundTrip ? (
+              {isRound ? (
                 <View style={styles.gridCell}>
                   <View style={styles.cellIconRing}>
                     <PackageCheck size={11} color="#FA634E" strokeWidth={2.2} />
@@ -404,7 +402,7 @@ const TripCompletedScreen = () => {
             </View>
 
             {/* Grid Row 4 (Round Trip): Return Delivery Completed */}
-            {isRoundTrip && (
+            {isRound && (
               <View style={[styles.gridRow, { borderBottomWidth: 0 }]}>
                 <View style={[styles.gridCell, styles.gridCellLeft]}>
                   <View style={styles.cellIconRing}>
@@ -508,7 +506,7 @@ const TripCompletedScreen = () => {
           )}
 
           {/* Return Proof of Loading (Return POL) */}
-          {isRoundTrip && (
+          {isRound && (
             <>
               <View style={styles.cardDivider} />
               <View style={styles.mediaSectionHeader}>
@@ -554,7 +552,7 @@ const TripCompletedScreen = () => {
           )}
 
           {/* Return Proof of Delivery (Return POD) */}
-          {isRoundTrip && (
+          {isRound && (
             <>
               <View style={styles.cardDivider} />
               <View style={styles.mediaSectionHeader}>

@@ -128,10 +128,19 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
   const [customChargeType, setCustomChargeType] = useState('');
   const [customChargeAmount, setCustomChargeAmount] = useState('');
 
-  // Round-trip Return Leg Override
+  // Round-trip Return Leg Override & Endpoints
   const [enableReturnLeg, setEnableReturnLeg] = useState(false);
   const [returnLegDriverFeeInput, setReturnLegDriverFeeInput] = useState('');
   const [returnLegRateInput, setReturnLegRateInput] = useState('');
+  const [returnPickupName, setReturnPickupName] = useState('');
+  const [returnPickupLat, setReturnPickupLat] = useState('');
+  const [returnPickupLng, setReturnPickupLng] = useState('');
+  const [returnPickupLocationId, setReturnPickupLocationId] = useState<string | undefined>(undefined);
+  const [returnDropoffName, setReturnDropoffName] = useState('');
+  const [returnDropoffLat, setReturnDropoffLat] = useState('');
+  const [returnDropoffLng, setReturnDropoffLng] = useState('');
+  const [returnDropoffLocationId, setReturnDropoffLocationId] = useState<string | undefined>(undefined);
+  const [returnStops, setReturnStops] = useState<IntermediateStop[]>([]);
 
   // Schedule & Time State
   const [date, setDate] = useState(formatDateDDMMYYYY(new Date()));
@@ -768,6 +777,44 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
     );
   }, []);
 
+  // Handlers for Return Leg Intermediate Stops
+  const handleAddReturnStop = useCallback(() => {
+    setReturnStops((prev) => [
+      ...prev,
+      { id: String(Date.now()), name: '', lat: '', lng: '', results: [], showResults: false },
+    ]);
+  }, []);
+
+  const handleRemoveReturnStop = useCallback((id: string) => {
+    setReturnStops((prev) => prev.filter((s) => s.id !== id));
+  }, []);
+
+  const handleUpdateReturnStop = useCallback((id: string, name: string) => {
+    setReturnStops((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const matches = locations.filter((l) => l.name.toLowerCase().includes(name.toLowerCase())).slice(0, 5);
+        return { ...s, name, results: matches, showResults: matches.length > 0 };
+      })
+    );
+  }, [locations]);
+
+  const handleSelectReturnStopLocation = useCallback((stopId: string, loc: OperatorLocation) => {
+    setReturnStops((prev) =>
+      prev.map((s) => {
+        if (s.id !== stopId) return s;
+        return {
+          ...s,
+          name: loc.name,
+          lat: String(loc.lat ?? 0),
+          lng: String(loc.lng ?? 0),
+          locationId: loc.id,
+          showResults: false,
+        };
+      })
+    );
+  }, []);
+
   // Draft Save/Restore/Discard
   const saveDraft = useCallback(async () => {
     const draftData = {
@@ -966,6 +1013,19 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
     enableReturnLeg, setEnableReturnLeg,
     returnLegDriverFeeInput, setReturnLegDriverFeeInput,
     returnLegRateInput, setReturnLegRateInput,
+    returnPickupName, setReturnPickupName,
+    returnPickupLat, setReturnPickupLat,
+    returnPickupLng, setReturnPickupLng,
+    returnPickupLocationId, setReturnPickupLocationId,
+    returnDropoffName, setReturnDropoffName,
+    returnDropoffLat, setReturnDropoffLat,
+    returnDropoffLng, setReturnDropoffLng,
+    returnDropoffLocationId, setReturnDropoffLocationId,
+    returnStops, setReturnStops,
+    handleAddReturnStop,
+    handleRemoveReturnStop,
+    handleUpdateReturnStop,
+    handleSelectReturnStopLocation,
     date, setDate,
     time, setTime,
     estimatedHours, setEstimatedHours,

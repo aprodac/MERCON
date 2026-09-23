@@ -78,7 +78,7 @@ export async function getRecommendedDriversForTrip(params: {
       trips: {
         where: { deletedAt: null },
         include: {
-          stops: { include: { location: true }, orderBy: { stop_sequence: 'asc' } },
+          stops: { where: { deletedAt: null }, include: { location: true }, orderBy: { stop_sequence: 'asc' } },
         },
       },
     },

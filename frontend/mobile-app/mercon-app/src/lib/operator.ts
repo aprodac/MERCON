@@ -112,9 +112,10 @@ export interface OperatorTripDetail {
 
 export interface CreateTripStopInput {
   stop_type: 'Pickup' | 'Dropoff' | 'Stop' | 'Rest' | 'Refuel';
+  stop_sequence?: number;
   leg_index?: number;
-  lat: number;
-  lng: number;
+  lat?: number | null;
+  lng?: number | null;
   planned_arrival?: string;
   location_name?: string;
   /** Set when the operator picked a saved Location via search, instead of typing raw coordinates. */

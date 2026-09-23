@@ -510,6 +510,12 @@ export const tripService = {
     return res.data.data;
   },
 
+  /** Re-construct whole trip route/stops and schedule for a Draft or Scheduled trip. */
+  async updateStops(id: string, payload: any): Promise<Trip> {
+    const res = await api.put<ApiResponse<Trip>>(`/trips/${id}/stops`, payload);
+    return res.data.data;
+  },
+
   async logStopDelay(tripId: string, stopId: string, payload: LogStopDelayPayload): Promise<TripStop> {
     const res = await api.patch<ApiResponse<TripStop>>(`/trips/${tripId}/stops/${stopId}/delay`, payload);
     return res.data.data;

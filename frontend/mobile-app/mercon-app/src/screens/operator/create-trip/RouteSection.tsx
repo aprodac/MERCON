@@ -229,6 +229,19 @@ interface RouteSectionProps {
   onSelectDropoffLocation?: (name: string, loc?: OperatorLocation) => void;
   onSelectRecentRoute?: (r: RecentRouteItem) => void;
   onCreateLocation?: (payload: { name: string; city?: string; address?: string }) => Promise<OperatorLocation>;
+  returnPickupName?: string;
+  setReturnPickupName?: (val: string) => void;
+  returnPickupLocationId?: string;
+  setReturnPickupLocationId?: (id?: string) => void;
+  returnDropoffName?: string;
+  setReturnDropoffName?: (val: string) => void;
+  returnDropoffLocationId?: string;
+  setReturnDropoffLocationId?: (id?: string) => void;
+  returnStops?: IntermediateStop[];
+  onAddReturnStop?: () => void;
+  onRemoveReturnStop?: (id: string) => void;
+  onUpdateReturnStop?: (id: string, name: string) => void;
+  onSelectReturnStopLocation?: (stopId: string, loc: OperatorLocation) => void;
 }
 
 export const RouteSection: React.FC<RouteSectionProps> = ({
@@ -269,6 +282,19 @@ export const RouteSection: React.FC<RouteSectionProps> = ({
   onSelectDropoffLocation,
   onSelectRecentRoute,
   onCreateLocation,
+  returnPickupName = '',
+  setReturnPickupName,
+  returnPickupLocationId,
+  setReturnPickupLocationId,
+  returnDropoffName = '',
+  setReturnDropoffName,
+  returnDropoffLocationId,
+  setReturnDropoffLocationId,
+  returnStops = [],
+  onAddReturnStop,
+  onRemoveReturnStop,
+  onUpdateReturnStop,
+  onSelectReturnStopLocation,
 }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const activeTaxonomy = TAXONOMY_LINE_TYPES.find((t) => t.key === rateCategory) || TAXONOMY_LINE_TYPES[0];
@@ -345,6 +371,12 @@ export const RouteSection: React.FC<RouteSectionProps> = ({
         handlePickupSelect(created.name, created);
       } else if (targetField === 'dropoff') {
         handleDropoffSelect(created.name, created);
+      } else if (targetField === 'returnPickup') {
+        setReturnPickupName?.(created.name);
+        setReturnPickupLocationId?.(created.id);
+      } else if (targetField === 'returnDropoff') {
+        setReturnDropoffName?.(created.name);
+        setReturnDropoffLocationId?.(created.id);
       } else {
         onSelectStopLocation(targetField, created);
       }
@@ -512,22 +544,89 @@ export const RouteSection: React.FC<RouteSectionProps> = ({
             </View>
 
             {enableReturnLeg && (
-              <View style={styles.returnLegInputsRow}>
-                <Input
-                  label="Return Rate (SAR)"
-                  value={returnLegRateInput}
-                  onChangeText={setReturnLegRateInput}
-                  placeholder="e.g. 1200"
-                  keyboardType="numeric"
-                  style={{ flex: 1 }}
+              <View style={{ gap: Spacing.xs, marginTop: Spacing.xs }}>
+                <View style={styles.returnLegInputsRow}>
+                  <Input
+                    label="Return Rate (SAR)"
+                    value={returnLegRateInput}
+                    onChangeText={setReturnLegRateInput}
+                    placeholder="e.g. 1200"
+                    keyboardType="numeric"
+                    style={{ flex: 1 }}
+                  />
+                  <Input
+                    label="Return Driver Fee (SAR)"
+                    value={returnLegDriverFeeInput}
+                    onChangeText={setReturnLegDriverFeeInput}
+                    placeholder="e.g. 600"
+                    keyboardType="numeric"
+                    style={{ flex: 1 }}
+                  />
+                </View>
+
+                {/* Return Loading Location */}
+                <LocationPickerInput
+                  label="Return Loading Point"
+                  value={returnPickupName || (dropoffName ? dropoffName : '')}
+                  locationId={returnPickupLocationId}
+                  locations={locations}
+                  onChangeText={(text) => setReturnPickupName?.(text)}
+                  onSelectLocation={(name, loc) => {
+                    setReturnPickupName?.(name);
+                    setReturnPickupLocationId?.(loc?.id);
+                  }}
+                  onOpenCreateModal={(initialName) => handleOpenCreateModal('returnPickup', initialName)}
+                  placeholder={dropoffName || "e.g. Dammam Port Terminal"}
                 />
-                <Input
-                  label="Return Driver Fee (SAR)"
-                  value={returnLegDriverFeeInput}
-                  onChangeText={setReturnLegDriverFeeInput}
-                  placeholder="e.g. 600"
-                  keyboardType="numeric"
-                  style={{ flex: 1 }}
+
+                {/* Return Intermediate Stops */}
+                {returnStops.map((stop, idx) => (
+                  <View key={stop.id} style={styles.stopRow}>
+                    <LocationPickerInput
+                      label={`Return Intermediate Stop #${idx + 1}`}
+                      value={stop.name}
+                      locationId={stop.locationId}
+                      locations={locations}
+                      onChangeText={(text) => onUpdateReturnStop?.(stop.id, text)}
+                      onSelectLocation={(_, loc) => {
+                        if (loc) {
+                          onSelectReturnStopLocation?.(stop.id, loc);
+                        } else {
+                          onUpdateReturnStop?.(stop.id, stop.name);
+                        }
+                      }}
+                      onOpenCreateModal={(initialName) => handleOpenCreateModal(stop.id, initialName)}
+                      placeholder="e.g. Al Hasa Return Waypoint"
+                      style={{ flex: 1 }}
+                    />
+                    {onRemoveReturnStop && (
+                      <TouchableOpacity style={styles.removeStopBtn} onPress={() => onRemoveReturnStop(stop.id)}>
+                        <Trash2 size={16} color={Colors.danger} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ))}
+
+                {onAddReturnStop && (
+                  <TouchableOpacity style={styles.addStopBtn} onPress={onAddReturnStop}>
+                    <Plus size={14} color={Colors.primary} />
+                    <Text style={styles.addStopText}>+ Add Return Waypoint Stop</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Return Final Dropoff Location */}
+                <LocationPickerInput
+                  label="Return Final Dropoff"
+                  value={returnDropoffName || (pickupName ? pickupName : '')}
+                  locationId={returnDropoffLocationId}
+                  locations={locations}
+                  onChangeText={(text) => setReturnDropoffName?.(text)}
+                  onSelectLocation={(name, loc) => {
+                    setReturnDropoffName?.(name);
+                    setReturnDropoffLocationId?.(loc?.id);
+                  }}
+                  onOpenCreateModal={(initialName) => handleOpenCreateModal('returnDropoff', initialName)}
+                  placeholder={pickupName || "e.g. Riyadh Main Warehouse"}
                 />
               </View>
             )}

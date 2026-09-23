@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { getLegEndpoints } from '@mercon/shared-types';
 
 /**
  * The one rule for "what does this lane cost for this customer".
@@ -98,10 +99,9 @@ export const findQuotationForLane = async (
     whereClause.source_vehicle_label = sourceVehicleLabel;
   }
 
-  if (originLocationId && destinationLocationId) {
+  if (originLocationId) {
     whereClause.AND = [
       { stops: { some: { locationId: originLocationId, sequence: 1 } } },
-      { stops: { some: { locationId: destinationLocationId } } },
     ];
   }
 
@@ -111,7 +111,14 @@ export const findQuotationForLane = async (
     orderBy: { updatedAt: 'desc' },
   });
 
-  let q: any | null = candidates[0] || null;
+  let q: any | null = candidates.find((cand: any) => {
+    const leg0 = getLegEndpoints(cand, 0);
+    const candOriginId = leg0.loading?.locationId || leg0.loading?.location_id;
+    const candDestId = leg0.delivery?.locationId || leg0.delivery?.location_id;
+    if (originLocationId && candOriginId !== originLocationId) return false;
+    if (destinationLocationId && candDestId !== destinationLocationId) return false;
+    return true;
+  }) || null;
 
   // Fallback: If exact locationId match returned null, try name token matching across active customer quotations
   if (!q && originLocationId && destinationLocationId && (tx as any).location) {
@@ -164,8 +171,9 @@ export const findQuotationForLane = async (
         };
 
         const match = tokenCandidates.find((cand: any) => {
-          const firstStop = cand.stops && cand.stops.length > 0 ? cand.stops[0] : null;
-          const lastStop = cand.stops && cand.stops.length > 1 ? cand.stops[cand.stops.length - 1] : firstStop;
+          const leg0 = getLegEndpoints(cand, 0);
+          const firstStop = leg0.loading;
+          const lastStop = leg0.delivery || firstStop;
 
           const candO = String(
             firstStop?.source_label ||
@@ -204,17 +212,16 @@ export const findQuotationForLane = async (
   let candidateQuotation: any | null = null;
 
   if (q) {
-    const tripStopsCount = stops && stops.length > 0 ? stops.length : (originLocationId && destinationLocationId ? 2 : 0);
-    const quotationStopsCount = q.stops ? q.stops.length : 2;
+    const qIntermediates = [...getLegEndpoints(q, 0).intermediates, ...getLegEndpoints(q, 1).intermediates];
+    const tripIntermediates = stops ? [...getLegEndpoints({ stops } as any, 0).intermediates, ...getLegEndpoints({ stops } as any, 1).intermediates] : [];
 
-    if (tripStopsCount > 2 || quotationStopsCount > 2) {
-      // Check if exact stop counts and intermediate stops match
-      if (tripStopsCount === quotationStopsCount) {
+    if (qIntermediates.length > 0) {
+      if (tripIntermediates.length === qIntermediates.length) {
         matchStatus = 'EXACT_MATCH';
       } else {
         matchStatus = 'MULTISTOP_MISMATCH';
         candidateQuotation = q;
-        q = null; // Do not treat direct quotation as exact match when trip has extra intermediate stops
+        q = null;
       }
     } else {
       matchStatus = 'EXACT_MATCH';

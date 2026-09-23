@@ -67,7 +67,11 @@ export function parseFullTripStops(originStr: string, destinationStr: string) {
 
   if (returnStr) {
     const returnItems = splitChain(returnStr);
-    if (returnItems.length > 0) {
+    if (returnItems.length === 1) {
+      const lastOutboundLoc = stopsList[stopsList.length - 1]?.location_name || returnItems[0];
+      stopsList.push({ stop_sequence: seq++, leg_index: 1, stop_type: 'Pickup', location_name: lastOutboundLoc });
+      stopsList.push({ stop_sequence: seq++, leg_index: 1, stop_type: 'Dropoff', location_name: returnItems[0] });
+    } else if (returnItems.length > 1) {
       stopsList.push({ stop_sequence: seq++, leg_index: 1, stop_type: 'Pickup', location_name: returnItems[0] });
       returnItems.slice(1).forEach((item) => {
         stopsList.push({ stop_sequence: seq++, leg_index: 1, stop_type: 'Dropoff', location_name: item });

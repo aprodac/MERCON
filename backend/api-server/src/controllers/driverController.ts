@@ -345,7 +345,7 @@ export const getDriverById = async (req: Request, res: Response) => {
               where: { deletedAt: null, status: { notIn: ['Cancelled'] } },
               take: 100,
               orderBy: { planned_start: 'desc' },
-              include: { vehicle: true, customer: true, stops: true }
+              include: { vehicle: true, customer: true, stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' } } }
             },
             assignedVehicle: true
           }

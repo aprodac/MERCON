@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DataTable from '@/components/ui/DataTable';
 import { formatInDeploymentTz, useDeploymentTimezone } from '@/lib/datetime';
+import { isRoundTrip, parseTripRouteNodes, getLegEndpoints } from '@mercon/shared-types';
 
 interface CustomerTripsTabProps {
   customerId: string;
@@ -218,27 +219,17 @@ export default function CustomerTripsTab({ customerId, customerName }: CustomerT
                 {
                   header: 'Operational Route',
                   accessor: (t: Trip) => {
-                    const stops = t.stops || [];
-                    const isRoundTrip =
-                      stops.some((s: any) => (s.leg_index ?? 0) === 1) ||
-                      Boolean((t as any).line_type?.name && /round/i.test((t as any).line_type.name)) ||
-                      Boolean((t as any).quotation_line_type && /round/i.test((t as any).quotation_line_type));
+                    const isRound = isRoundTrip(t);
+                    const nodes = (Array.isArray((t as any).route_timeline) && (t as any).route_timeline.length >= 2)
+                      ? (t as any).route_timeline
+                      : parseTripRouteNodes(t);
 
-                    const origin = stops[0]?.location_name || (t as any).origin_city || 'Origin';
-                    
-                    let dest = 'Destination';
-                    let via: string | null = null;
+                    const origin = nodes[0]?.name || (t as any).origin_city || 'Origin';
+                    const endpoints0 = getLegEndpoints(t, 0);
+                    const dest = (endpoints0.delivery as any)?.name || endpoints0.delivery?.location_name || endpoints0.delivery?.location?.name || nodes[nodes.length - 1]?.name || (t as any).destination_city || 'Destination';
 
-                    if (isRoundTrip) {
-                      const outboundStops = stops.filter((s: any) => (s.leg_index ?? 0) === 0);
-                      const targetDropoff = outboundStops.length > 1
-                        ? outboundStops[outboundStops.length - 1]
-                        : stops.find((s: any) => s.stop_type === 'Dropoff') || (stops.length > 1 ? stops[1] : undefined);
-                      dest = targetDropoff?.location_name || (t as any).destination_city || 'Destination';
-                    } else {
-                      dest = stops[stops.length - 1]?.location_name || (t as any).destination_city || 'Destination';
-                      via = stops.length > 2 ? stops.slice(1, -1).map((s: any) => s.location_name).filter(Boolean).join(', ') : null;
-                    }
+                    const intermediateNodes = endpoints0.intermediates;
+                    const via = intermediateNodes.length > 0 ? intermediateNodes.map((n: any) => n.name).filter(Boolean).join(', ') : null;
 
                     return (
                       <div className="space-y-0.5">

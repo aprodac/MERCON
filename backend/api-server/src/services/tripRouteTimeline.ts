@@ -31,4 +31,13 @@ export {
   getIntermediateStops,
   getOutboundIntermediateStops,
   getReturnIntermediateStops,
+  buildTripStops,
+  type BuildTripStopLocationInput,
+  type BuildTripStopsInput,
+  type BuiltTripStop,
+  ROUTE_EDITABLE_STATUSES,
+  ROUTE_LOCKED_STATUSES,
+  STOPS_FROZEN_IN,
+  isRouteLocked,
+  isRouteEditable,
 } from '@mercon/shared-types';

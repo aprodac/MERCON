@@ -19,20 +19,18 @@ import {
   normalizeVehicleClass,
 } from '@/utils/taxonomyRegistry';
 import { formatDriverDetails } from '@/utils/driverStatusUtils';
+import { isRoundTripCategory, getLegEndpoints, isRouteLocked as isSharedRouteLocked, STOPS_FROZEN_IN } from '@mercon/shared-types';
+import { formatInDeploymentTz, localDateTimeToUtcIso, useDeploymentTimezone } from '@/lib/datetime';
+import { buildStopsFromSlot } from '@/utils/tripStopsHelper';
 
 export {
   normalizeBillingType,
   normalizeRateCategory,
   normalizeVehicleClass,
+  isRoundTripCategory,
+  STOPS_FROZEN_IN,
 };
 
-export const STOPS_FROZEN_IN: TripStatus[] = ['Completed', 'Invoiced', 'Cancelled'];
-
-export const isRoundTripCategory = (cat: string) => {
-  if (!cat) return false;
-  const c = String(cat).toLowerCase().replace(/_/g, ' ').trim();
-  return c.includes('round') || c === 'round trip' || c === 'trip/round trip';
-};
 
 export const getVehicleTypeFromCapacity = (capacityKg?: number | null): string => {
   if (capacityKg == null || capacityKg <= 0) return '40 FEET';
@@ -54,6 +52,7 @@ export function useEditTripForm() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const tz = useDeploymentTimezone();
 
   const [status, setStatus] = useState<TripStatus>('Draft');
   const [contractCustomer, setContractCustomerRaw] = useState('');
@@ -218,33 +217,33 @@ export function useEditTripForm() {
       setMasterVehicle(tripData.vehicle?.id || '');
     }
 
-    // Process Stops into slot structure separating Outbound (leg_index = 0) vs Return (leg_index = 1)
-    const sortedStops = (tripData.stops ?? []).slice().sort((a, b) => a.stop_sequence - b.stop_sequence);
+    const outboundEndpoints = getLegEndpoints(tripData, 0);
+    const returnEndpoints = getLegEndpoints(tripData, 1);
 
-    let outboundStopsList = sortedStops.filter((s: any) => s.leg_index === 0);
-    let returnStopsList = sortedStops.filter((s: any) => s.leg_index === 1);
+    const pickupStop = outboundEndpoints.loading;
+    const dropoffStop = outboundEndpoints.delivery;
+    const intermediates = outboundEndpoints.intermediates;
 
-    // Fallback if leg_index was not explicitly populated on legacy trip records
-    if (outboundStopsList.length === 0 && returnStopsList.length === 0 && sortedStops.length > 0) {
-      const isRound = isRoundTripCategory(String(tripData.rate_category || ''));
-      if (isRound && sortedStops.length >= 4) {
-        outboundStopsList = sortedStops.slice(0, 2);
-        returnStopsList = sortedStops.slice(2);
-      } else {
-        outboundStopsList = sortedStops;
-      }
-    }
-
-    const pickupStop = outboundStopsList.find((s) => s.stop_type === 'Pickup') || outboundStopsList[0];
-    const dropoffStop = outboundStopsList.slice().reverse().find((s) => s.stop_type === 'Dropoff') || (outboundStopsList.length > 1 ? outboundStopsList[outboundStopsList.length - 1] : null);
-    const intermediates = outboundStopsList.filter((s) => s !== pickupStop && s !== dropoffStop);
-
-    const returnPickupStop = returnStopsList.find((s) => s.stop_type === 'Pickup') || returnStopsList[0];
-    const returnDropoffStop = returnStopsList.slice().reverse().find((s) => s.stop_type === 'Dropoff') || (returnStopsList.length > 1 ? returnStopsList[returnStopsList.length - 1] : null);
-    const returnIntermediates = returnStopsList.filter((s) => s !== returnPickupStop && s !== returnDropoffStop);
+    const returnPickupStop = returnEndpoints.loading;
+    const returnDropoffStop = returnEndpoints.delivery;
+    const returnIntermediates = returnEndpoints.intermediates;
 
     const rawDate = (tripData as any).pickup_date || (tripData as any).scheduled_date || (tripData as any).date;
-    const dateStr = rawDate ? String(rawDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const fallbackDateStr = rawDate ? String(rawDate).slice(0, 10) : new Date().toISOString().slice(0, 10);
+
+    const startDateStr = tripData.planned_start
+      ? formatInDeploymentTz(tripData.planned_start, tz, 'yyyy-MM-dd')
+      : fallbackDateStr;
+    const pickupTimeStr = tripData.planned_start
+      ? formatInDeploymentTz(tripData.planned_start, tz, 'HH:mm')
+      : '08:00';
+
+    const endDateStr = tripData.planned_end
+      ? formatInDeploymentTz(tripData.planned_end, tz, 'yyyy-MM-dd')
+      : startDateStr;
+    const dropoffTimeStr = tripData.planned_end
+      ? formatInDeploymentTz(tripData.planned_end, tz, 'HH:mm')
+      : '18:00';
 
     const driverPayoutVal =
       (tripData as any).driver_payout != null
@@ -257,24 +256,41 @@ export function useEditTripForm() {
       id: 'slot-1',
       origin: pickupStop?.location_name || pickupStop?.location_address || '',
       originLocationId: (pickupStop as any)?.location_id || (pickupStop as any)?.locationId || null,
+      // Carry the saved address/coordinates through, so a route save that
+      // rebuilds the stops doesn't wipe them (navigation + geofence need them).
+      originAddress: pickupStop?.location_address || undefined,
+      originLat: pickupStop?.location_lat ?? null,
+      originLng: pickupStop?.location_lng ?? null,
+      originPrecision: (pickupStop as any)?.location_coordinate_precision || undefined,
       destination: dropoffStop?.location_name || dropoffStop?.location_address || '',
       destinationLocationId: (dropoffStop as any)?.location_id || (dropoffStop as any)?.locationId || null,
+      destinationAddress: dropoffStop?.location_address || undefined,
+      destinationLat: dropoffStop?.location_lat ?? null,
+      destinationLng: dropoffStop?.location_lng ?? null,
+      destinationPrecision: (dropoffStop as any)?.location_coordinate_precision || undefined,
+      returnOriginLat: returnPickupStop?.location_lat ?? null,
+      returnOriginLng: returnPickupStop?.location_lng ?? null,
+      returnDestinationLat: returnDropoffStop?.location_lat ?? null,
+      returnDestinationLng: returnDropoffStop?.location_lng ?? null,
       intermediateLocations: intermediates.map((s) => s.location_name || s.location_address || ''),
       intermediateLocationIds: intermediates.map((s) => (s as any)?.location_id || (s as any)?.locationId || null),
       returnOrigin: returnPickupStop?.location_name || returnPickupStop?.location_address || '',
+      returnOriginLocationId: (returnPickupStop as any)?.location_id || (returnPickupStop as any)?.locationId || null,
       returnDestination: returnDropoffStop?.location_name || returnDropoffStop?.location_address || '',
+      returnDestinationLocationId: (returnDropoffStop as any)?.location_id || (returnDropoffStop as any)?.locationId || null,
       returnIntermediateLocations: returnIntermediates.map((s) => s.location_name || s.location_address || ''),
+      returnIntermediateLocationIds: returnIntermediates.map((s) => (s as any)?.location_id || (s as any)?.locationId || null),
       billingAmount: tripData.billing_amount !== undefined && tripData.billing_amount !== null ? String(tripData.billing_amount) : '',
       tripCharges: driverPayoutVal,
       driverPayout: driverPayoutVal,
-      date: dateStr,
-      dropoffDate: dateStr,
-      pickupTime: '08:00',
-      dropoffTime: '18:00',
+      date: startDateStr,
+      dropoffDate: endDateStr,
+      pickupTime: pickupTimeStr,
+      dropoffTime: dropoffTimeStr,
     };
 
     setContractSlots([slotObj]);
-  }, [customers, setContractSlots]);
+  }, [customers, setContractSlots, tz]);
 
   useEffect(() => {
     if (trip) {
@@ -283,9 +299,9 @@ export function useEditTripForm() {
   }, [trip, customers, populateFormWithTrip]);
 
   // Edit Rules based on Trip Status
-  const isRouteLocked = ['Dispatched', 'AtPickup', 'InTransit', 'Completed', 'Invoiced', 'Cancelled'].includes(status);
-  const isScheduleLocked = ['Completed', 'Invoiced', 'Cancelled'].includes(status);
-  const isAssignmentLocked = ['Completed', 'Invoiced', 'Cancelled'].includes(status);
+  const isRouteLocked = isSharedRouteLocked(status);
+  const isScheduleLocked = STOPS_FROZEN_IN.includes(status);
+  const isAssignmentLocked = STOPS_FROZEN_IN.includes(status);
   const isBaseBillingLocked = ['InTransit', 'Completed', 'Invoiced', 'Cancelled'].includes(status);
   const isFinancialsLocked = ['Invoiced', 'Cancelled'].includes(status);
   const isStopsFrozen = STOPS_FROZEN_IN.includes(status);
@@ -303,7 +319,11 @@ export function useEditTripForm() {
     mutationFn: (payload: { billing_amount?: number; trip_charges?: number; driver_payout?: number; update_quotation_driver_payout?: boolean }) => tripService.updateFinancials(id!, payload),
   });
 
-  const isSubmitting = updateStatusMutation.isPending || dispatchMutation.isPending || updateFinancialsMutation.isPending;
+  const updateStopsMutation = useMutation({
+    mutationFn: (payload: any) => tripService.updateStops(id!, payload),
+  });
+
+  const isSubmitting = updateStatusMutation.isPending || dispatchMutation.isPending || updateFinancialsMutation.isPending || updateStopsMutation.isPending;
 
   const handleReset = () => {
     if (trip) {
@@ -316,9 +336,76 @@ export function useEditTripForm() {
     if (!trip || !id) return;
 
     try {
-      // 1. Status Update
-      if (status !== trip.status) {
-        await updateStatusMutation.mutateAsync(status);
+      // 1. Route & Schedule Update (if trip.status is editable)
+      const isCurrentRouteLocked = isSharedRouteLocked(trip.status);
+      if (!isCurrentRouteLocked) {
+        const primarySlot = contractSlots[0] || {};
+        const isRound = isRoundTripCategory(contractRateCategory);
+        const proposedStops = buildStopsFromSlot(primarySlot, isRound);
+
+        let proposedStartIso: string | null = null;
+        if (primarySlot.date && primarySlot.pickupTime) {
+          proposedStartIso = localDateTimeToUtcIso(primarySlot.date, primarySlot.pickupTime, tz);
+        }
+
+        let proposedEndIso: string | null = null;
+        if ((primarySlot.dropoffDate || primarySlot.date) && primarySlot.dropoffTime) {
+          proposedEndIso = localDateTimeToUtcIso(primarySlot.dropoffDate || primarySlot.date, primarySlot.dropoffTime, tz);
+        }
+
+        const dbStops = (trip.stops || []).filter((s) => !(s as any).deletedAt);
+        let routeOrScheduleChanged = false;
+
+        if (proposedStartIso) {
+          const currentStartIso = trip.planned_start ? new Date(trip.planned_start).toISOString() : null;
+          if (!currentStartIso || new Date(currentStartIso).getTime() !== new Date(proposedStartIso).getTime()) {
+            routeOrScheduleChanged = true;
+          }
+        }
+
+        if (proposedEndIso) {
+          const currentEndIso = trip.planned_end ? new Date(trip.planned_end).toISOString() : null;
+          if (!currentEndIso || new Date(currentEndIso).getTime() !== new Date(proposedEndIso).getTime()) {
+            routeOrScheduleChanged = true;
+          }
+        }
+
+        if (!routeOrScheduleChanged) {
+          if (dbStops.length !== proposedStops.length) {
+            routeOrScheduleChanged = true;
+          } else {
+            for (let i = 0; i < dbStops.length; i++) {
+              const dbS = dbStops[i];
+              const propS = proposedStops[i];
+              const dbLocId = (dbS as any).location_id || (dbS as any).locationId || null;
+              const propLocId = propS.location_id || null;
+              const dbName = (dbS.location_name || dbS.location?.name || '').trim().toLowerCase();
+              const propName = (propS.location_name || '').trim().toLowerCase();
+
+              // No stop_type comparison: roles are positional, and older trips
+              // store intermediate stops as 'Rest' where the builder emits
+              // 'Dropoff' — comparing it would rewrite them on every save.
+              if (
+                (dbS.leg_index ?? 0) !== propS.leg_index ||
+                dbLocId !== propLocId ||
+                dbName !== propName
+              ) {
+                routeOrScheduleChanged = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (routeOrScheduleChanged) {
+          const routePayload = {
+            stops: proposedStops,
+            planned_start: proposedStartIso || undefined,
+            planned_end: proposedEndIso || undefined,
+            isRound,
+          };
+          await updateStopsMutation.mutateAsync(routePayload);
+        }
       }
 
       // 2. Dispatch / Assignment Update (if not locked)
@@ -333,7 +420,12 @@ export function useEditTripForm() {
         }
       }
 
-      // 3. Financials Update (if not locked)
+      // 3. Status Update
+      if (status !== trip.status) {
+        await updateStatusMutation.mutateAsync(status);
+      }
+
+      // 4. Financials Update (if not locked)
       if (!isFinancialsLocked) {
         const currentSlot = contractSlots[0] || {};
         const parsedBilling = parseFloat(currentSlot.billingAmount || '0');

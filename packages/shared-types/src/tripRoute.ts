@@ -11,6 +11,8 @@ export interface TripStopLike {
   leg_index?: number | null;
   stop_type?: string | null;
   location_id?: string | null;
+  locationId?: string | null;
+  source_label?: string | null;
   location_name?: string | null;
   location_address?: string | null;
   location_lat?: number | null;
@@ -95,6 +97,21 @@ export const DRIVER_WORKFLOW_STATES = [
 
 export type DriverWorkflowState = (typeof DRIVER_WORKFLOW_STATES)[number];
 
+export const ROUTE_EDITABLE_STATUSES: string[] = ['Draft', 'Scheduled'];
+/** @deprecated Legacy backward compatibility fallback. Prefer ROUTE_EDITABLE_STATUSES. */
+export const ROUTE_LOCKED_STATUSES: string[] = ['Loading', 'InTransit', 'Delayed', 'Completed', 'Invoiced', 'Cancelled'];
+export const STOPS_FROZEN_IN: string[] = ['Completed', 'Invoiced', 'Cancelled'];
+
+export function isRouteEditable(status?: string | null): boolean {
+  if (!status) return true;
+  return ROUTE_EDITABLE_STATUSES.includes(status);
+}
+
+export function isRouteLocked(status?: string | null): boolean {
+  if (!status) return false;
+  return !isRouteEditable(status);
+}
+
 export function isRoundTripCategory(category: string): boolean {
   if (!category) return false;
   const c = String(category).toLowerCase().replace(/_/g, ' ').trim();
@@ -125,9 +142,10 @@ export function isRoundTrip(trip?: Partial<TripLike> | null): boolean {
   const hasSecondPickup = (trip.stops ?? []).some((s, idx) => idx > 0 && s.stop_type === 'Pickup');
   if (hasSecondPickup) return true;
 
-  // Circular round trip: first and last stop are the same place.
+  // Circular round trip: first and last stop are the same place (LEGACY ONLY for trips with no explicit leg_index).
   const stops = trip.stops ?? [];
-  if (stops.length >= 3) {
+  const hasStructuredLegs = stops.some((s) => s.leg_index !== undefined && s.leg_index !== null);
+  if (!hasStructuredLegs && stops.length >= 3) {
     const first = (stops[0].location_name || stops[0].location?.name || '').toLowerCase().trim();
     const last = (stops[stops.length - 1].location_name || stops[stops.length - 1].location?.name || '').toLowerCase().trim();
     if (first && last && first === last) return true;
@@ -389,9 +407,15 @@ export function getEffectiveWorkflowState(trip: Partial<TripLike> | null | undef
     const hasExplicitLegs = returnStops.length > 0;
 
     const s1 = outboundStops[0] || stops[0];
+    // One-way trip: the delivery is the LAST stop. "stop_sequence 2" is only a
+    // valid guess for legacy round trips without leg_index data — on a one-way
+    // trip with intermediate stops it is the first intermediate stop, and once
+    // that stop's departure is stamped the whole trip would read as COMPLETED.
     const s2 = hasExplicitLegs
       ? (outboundStops.filter((s) => s.stop_type === 'Dropoff').pop() || outboundStops[outboundStops.length - 1])
-      : (stops.find((s) => s.stop_sequence === 2) || stops[1] || stops[stops.length - 1]);
+      : isRound
+        ? (stops.find((s) => s.stop_sequence === 2) || stops[1] || stops[stops.length - 1])
+        : stops[stops.length - 1];
 
     const s3 = isRound
       ? (hasExplicitLegs
@@ -660,7 +684,7 @@ export function getLegStops<T extends TripStopLike = TripStopLike>(
   if (!trip?.stops || !Array.isArray(trip.stops)) return [];
   return [...trip.stops]
     .filter((s) => (s.leg_index ?? 0) === leg)
-    .sort((a, b) => a.stop_sequence - b.stop_sequence);
+    .sort((a, b) => ((a.stop_sequence ?? (a as any).sequence ?? 0) - (b.stop_sequence ?? (b as any).sequence ?? 0)));
 }
 
 export function getLegEndpoints<T extends TripStopLike = TripStopLike>(
@@ -692,3 +716,144 @@ export function getOutboundIntermediateStops(trip: TripLike | null): TimelineSto
 export function getReturnIntermediateStops(trip: TripLike | null): TimelineStop[] {
   return parseTripRouteNodes(trip).filter((s) => s.isIntermediate && s.isReturnStop);
 }
+
+export interface BuildTripStopLocationInput {
+  name?: string | null;
+  location_name?: string | null;
+  address?: string | null;
+  location_address?: string | null;
+  location_id?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  coordinate_precision?: string | null;
+  update_canonical_location?: boolean | null;
+  planned_arrival?: Date | string | null;
+  notes?: string | null;
+}
+
+export interface BuildTripStopsInput {
+  origin: BuildTripStopLocationInput;
+  intermediates?: BuildTripStopLocationInput[];
+  destination: BuildTripStopLocationInput;
+  isRound?: boolean;
+  returnOrigin?: BuildTripStopLocationInput;
+  returnIntermediates?: BuildTripStopLocationInput[];
+  returnDestination?: BuildTripStopLocationInput;
+}
+
+export interface BuiltTripStop {
+  stop_sequence: number;
+  leg_index: 0 | 1;
+  stop_type: 'Pickup' | 'Dropoff';
+  location_name: string;
+  location_address?: string | null;
+  location_id?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  coordinate_precision?: string | null;
+  update_canonical_location?: boolean;
+  planned_arrival?: Date | string | null;
+  notes?: string | null;
+}
+
+export function buildTripStops(input: BuildTripStopsInput): BuiltTripStop[] {
+  const result: BuiltTripStop[] = [];
+  let seq = 1;
+
+  const sanitizeName = (loc?: BuildTripStopLocationInput | null): string => {
+    if (!loc) return '';
+    return (loc.name ?? loc.location_name ?? '').trim();
+  };
+
+  const sanitizeLocationId = (loc?: BuildTripStopLocationInput | null): string | null => {
+    if (!loc || !loc.location_id) return null;
+    const trimmed = String(loc.location_id).trim();
+    return trimmed.length > 0 ? trimmed : null;
+  };
+
+  const makeStop = (
+    loc: BuildTripStopLocationInput,
+    legIndex: 0 | 1,
+    stopType: 'Pickup' | 'Dropoff',
+    fallbackName?: string,
+    fallbackLocationId?: string | null
+  ): BuiltTripStop => {
+    const locName = sanitizeName(loc) || fallbackName || '';
+    const locId = sanitizeLocationId(loc) ?? fallbackLocationId ?? null;
+
+    const stop: BuiltTripStop = {
+      stop_sequence: seq++,
+      leg_index: legIndex,
+      stop_type: stopType,
+      location_name: locName,
+    };
+
+    if (locId != null) stop.location_id = locId;
+    if (loc.address ?? loc.location_address) stop.location_address = (loc.address ?? loc.location_address) || null;
+    if (loc.lat !== undefined) stop.lat = loc.lat;
+    if (loc.lng !== undefined) stop.lng = loc.lng;
+    if (loc.coordinate_precision !== undefined) stop.coordinate_precision = loc.coordinate_precision;
+    if (loc.update_canonical_location !== undefined && loc.update_canonical_location !== null) {
+      stop.update_canonical_location = Boolean(loc.update_canonical_location);
+    }
+    if (loc.planned_arrival !== undefined) stop.planned_arrival = loc.planned_arrival;
+    if (loc.notes !== undefined) stop.notes = loc.notes;
+
+    return stop;
+  };
+
+  // 1. Outbound Origin (leg 0)
+  result.push(makeStop(input.origin, 0, 'Pickup'));
+
+  // 2. Outbound Intermediates (leg 0)
+  if (Array.isArray(input.intermediates)) {
+    for (const inter of input.intermediates) {
+      if (sanitizeName(inter) || inter.location_id) {
+        result.push(makeStop(inter, 0, 'Dropoff'));
+      }
+    }
+  }
+
+  // 3. Outbound Destination (leg 0)
+  result.push(makeStop(input.destination, 0, 'Dropoff'));
+
+  // 4. Return Leg (leg 1) if round trip
+  if (input.isRound) {
+    const defaultReturnOriginName = sanitizeName(input.destination);
+    const defaultReturnOriginLocId = sanitizeLocationId(input.destination);
+    const returnOriginInput = input.returnOrigin || {};
+    result.push(
+      makeStop(
+        returnOriginInput,
+        1,
+        'Pickup',
+        defaultReturnOriginName,
+        defaultReturnOriginLocId
+      )
+    );
+
+    if (Array.isArray(input.returnIntermediates)) {
+      for (const inter of input.returnIntermediates) {
+        if (sanitizeName(inter) || inter.location_id) {
+          result.push(makeStop(inter, 1, 'Dropoff'));
+        }
+      }
+    }
+
+    const defaultReturnDestName = sanitizeName(input.origin);
+    const defaultReturnDestLocId = sanitizeLocationId(input.origin);
+    const returnDestInput = input.returnDestination || {};
+    result.push(
+      makeStop(
+        returnDestInput,
+        1,
+        'Dropoff',
+        defaultReturnDestName,
+        defaultReturnDestLocId
+      )
+    );
+  }
+
+  return result;
+}
+

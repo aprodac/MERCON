@@ -5,7 +5,7 @@ import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { TripStatus, DocType } from '@prisma/client';
 import { isValidTransition, completeTripAndInvoice, stampStopTransition, stampWorkflowTransition, stampIntermediateStopVisit, resolveAuthoritativeActiveStop, type DelayDetection } from '../services/tripLifecycle';
-import { buildTripRouteTimeline } from '../services/tripRouteTimeline';
+import { buildTripRouteTimeline, getLegEndpoints } from '../services/tripRouteTimeline';
 import { notifyOperatorsOfDelay } from './notificationController';
 import { getDrivingRoute, RoutingUnavailableError } from '../services/routing/routeProvider';
 import { compressUploadedImage } from '../services/imageCompressor';
@@ -41,6 +41,7 @@ const tripInclude = {
     },
   },
   stops: {
+    where: { deletedAt: null },
     orderBy: { stop_sequence: 'asc' as const },
     include: { location: { select: { id: true, name: true, address: true, code: true } } },
   },
@@ -308,6 +309,35 @@ export const updateTripStatus = async (req: Request, res: Response) => {
   }
 };
 
+export function resolveTripPhotoStopId(
+  trip: { stops?: Array<{ id: string; leg_index?: number | null; stop_sequence: number; stop_type?: string | null }> | null },
+  stopIdInput?: string | null
+): string | undefined {
+  if (!stopIdInput || typeof stopIdInput !== 'string') return undefined;
+  const rawId = stopIdInput.trim();
+  if (!rawId) return undefined;
+
+  const validStops = trip.stops || [];
+
+  // 1. Direct match on active TripStop ID of THIS trip
+  const directMatch = validStops.find((s) => s.id === rawId);
+  if (directMatch) return directMatch.id;
+
+  // 2. Legacy timeline ID match: outbound-stop-N or return-stop-N
+  const match = rawId.match(/^(outbound|return)-stop-(\d+)$/);
+  if (match) {
+    const legIndex = match[1] === 'return' ? 1 : 0;
+    const intermediateIdx = parseInt(match[2], 10);
+    const endpoints = getLegEndpoints(trip as any, legIndex);
+    const targetIntermediate = endpoints.intermediates[intermediateIdx];
+    if (targetIntermediate?.id) {
+      return targetIntermediate.id;
+    }
+  }
+
+  return undefined;
+}
+
 /**
  * Upload a trip photo (cargo at pickup, or POD at delivery) and attach it to the
  * trip as a Document. Expects multipart form-data: file field "file" + "kind".
@@ -321,7 +351,18 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
   if (!req.file) return res.status(400).json({ success: false, error: { message: 'No photo uploaded' } });
 
   try {
-    const trip = await prisma.trip.findFirst({ where: { id, driverId, deletedAt: null } });
+    const trip = await prisma.trip.findFirst({
+      where: { id, driverId, deletedAt: null },
+      select: {
+        id: true,
+        driver_workflow: true,
+        stops: {
+          where: { deletedAt: null },
+          orderBy: { stop_sequence: 'asc' },
+          select: { id: true, leg_index: true, stop_sequence: true, stop_type: true },
+        },
+      },
+    });
     if (!trip) return res.status(404).json({ success: false, error: { message: 'Trip not found or not assigned to you' } });
 
     // Tags evidence from the EXTERNAL_APP workflow so the web dashboard can
@@ -333,6 +374,8 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
     const notes = (location_lat && location_lng)
       ? `📍 [GPS: ${location_lat}, ${location_lng}] Captured: ${captured_at || new Date().toISOString()}`
       : undefined;
+
+    const resolvedStopId = resolveTripPhotoStopId(trip, stop_id);
 
     // Compress image to save disk space & mobile data bandwidth
     await compressUploadedImage(req.file.path);
@@ -360,7 +403,7 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
           gps: (location_lat && location_lng) ? { latitude: location_lat, longitude: location_lng, captured_at } : undefined,
           leg_index: leg_index !== undefined ? Number(leg_index) : undefined,
           operation: operation || undefined,
-          stop_id: stop_id || undefined,
+          stop_id: resolvedStopId,
           source: isExternalAppEvidence ? 'external_app_screenshot' : undefined,
         },
         created_by: isValidUuid ? userId : undefined,

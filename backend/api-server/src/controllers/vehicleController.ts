@@ -265,7 +265,7 @@ export const getVehicleById = async (req: Request, res: Response) => {
           include: {
             driver: { select: { id: true, first_name: true, last_name: true, phone_primary: true } },
             customer: true,
-            stops: true
+            stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' } }
           },
           orderBy: {
             planned_start: 'desc'

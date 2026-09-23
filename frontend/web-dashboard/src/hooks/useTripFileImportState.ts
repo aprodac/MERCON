@@ -1,6 +1,32 @@
 import { useState, useRef } from 'react';
 import { parseSheet, TRIP_COLUMNS } from '@/utils/importUtils';
 import { BulkImportTripRow } from '@/services/tripService';
+import { buildTripStops, isRoundTripCategory } from '@mercon/shared-types';
+
+/**
+ * Stops for an imported row. A "stops" column lists only the intermediate
+ * stops; sending them alone made the backend treat them as the whole route
+ * and silently drop the row's origin and destination. When both are present,
+ * build the full route (origin → stops → destination, plus the default
+ * return leg for a round-trip category). Rows using the legacy
+ * "[RETURN: …]" destination text, or missing origin/destination, keep the
+ * old shape and are resolved by the backend's legacy string parser.
+ */
+function importRowStops(stopsRaw: unknown, origin?: string, destination?: string, rateCategory?: string) {
+  const parts = String(stopsRaw ?? '').split(',').map((s) => s.trim()).filter((s) => s.length > 0);
+  if (parts.length === 0) return undefined;
+  const o = (origin ?? '').trim();
+  const d = (destination ?? '').trim();
+  if (o && d && !d.includes('[RETURN')) {
+    return buildTripStops({
+      origin: { name: o },
+      intermediates: parts.map((name) => ({ name })),
+      destination: { name: d },
+      isRound: isRoundTripCategory(rateCategory ?? ''),
+    });
+  }
+  return parts.map((name, idx) => ({ stop_sequence: idx + 1, stop_type: 'Rest', location_name: name }));
+}
 
 export function useTripFileImportState() {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -45,14 +71,7 @@ export function useTripFileImportState() {
           });
 
           if (rowObj.stops_raw) {
-            const parts = String(rowObj.stops_raw).split(',').map(s => s.trim()).filter(s => s.length > 0);
-            if (parts.length > 0) {
-              rowObj.stops = parts.map((name, idx) => ({
-                stop_sequence: idx + 1,
-                stop_type: 'Rest',
-                location_name: name
-              }));
-            }
+            rowObj.stops = importRowStops(rowObj.stops_raw, rowObj.origin, rowObj.destination, rowObj.rate_category);
           }
 
           if (rowObj.customer_name) {
@@ -63,18 +82,15 @@ export function useTripFileImportState() {
       } else {
         const result = await parseSheet(file, TRIP_COLUMNS, 'trip');
         const rows: BulkImportTripRow[] = result.rows.map((r) => {
-          let parsedStops = undefined;
-          if (r.stops) {
-            const parts = String(r.stops).split(',').map(s => s.trim()).filter(s => s.length > 0);
-            if (parts.length > 0) {
-              parsedStops = parts.map((name, idx) => ({
-                stop_sequence: idx + 1,
-                stop_type: 'Rest',
-                location_name: name
-              }));
-            }
-          }
-          
+          const parsedStops = r.stops
+            ? importRowStops(
+                r.stops,
+                r.origin ? String(r.origin) : undefined,
+                r.destination ? String(r.destination) : undefined,
+                r.rate_category ? String(r.rate_category) : undefined,
+              )
+            : undefined;
+
           return {
             customer_name: String(r.customer_name || ''),
             planned_start: r.planned_start ? String(r.planned_start) : undefined,

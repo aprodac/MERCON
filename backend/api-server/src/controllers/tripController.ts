@@ -15,8 +15,9 @@ import { computeTripChargesTotal, calculateBackendTripFinancials, resolveDriverP
 import { resolveMonth, toDayKey } from '../utils/tripBoard';
 import { validateTripDrivers, TripDriverInput, validateTripSchedule, validateTripStops } from '../services/tripValidationService';
 import { recordAssignmentEvent } from '../services/fleetDispatchService';
-import { buildTripRouteTimeline } from '../services/tripRouteTimeline';
+import { buildTripRouteTimeline, isRouteLocked, buildTripStops } from '../services/tripRouteTimeline';
 import { parseFullTripStops } from '../services/legacyStopStringParser';
+import { writeTripStops } from '../services/tripStopWriter';
 import { whatsappService } from '../services/whatsappService';
 
 /** Fields the trip ledger search bar looks at. */
@@ -404,6 +405,7 @@ export const getTrips = async (req: Request, res: Response) => {
             }
           },
           stops: {
+            where: { deletedAt: null },
             orderBy: { stop_sequence: 'asc' },
             select: {
               id: true,
@@ -520,7 +522,7 @@ export const getTripById = async (req: Request, res: Response) => {
             orderBy: { changedAt: 'desc' },
           },
           charges: true,
-          stops: { orderBy: { stop_sequence: 'asc' }, include: { location: true } }
+          stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' }, include: { location: true } }
         }
       });
     } catch (err: any) {
@@ -536,7 +538,7 @@ export const getTripById = async (req: Request, res: Response) => {
           quotation: { include: { customer: true, stops: { include: { location: true } } } },
           subcontract: { include: { provider: true } },
           charges: true,
-          stops: { orderBy: { stop_sequence: 'asc' }, include: { location: true } }
+          stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' }, include: { location: true } }
         }
       });
       if (trip) {
@@ -777,64 +779,21 @@ export const createTrip = async (req: Request, res: Response) => {
             }
           }
 
-          // The lane this trip runs, taken from the stops.
-          const rawStops: any[] = Array.isArray(stops) ? stops : [];
-          const resolvedStops = await Promise.all(
-            rawStops.map(async (stop: any) => {
-              const stopName = String(stop.location_name ?? '').trim();
-              let locId = stop.location_id || null;
-              if (locId) {
-                const loc = await resolveLocation(tx, { id: locId, customerId: customer_id, skipCanonicalUpdate: true }, createdBy);
-                if (loc) locId = loc.id;
-              } else if (stopName) {
-                try {
-                  const loc = await resolveLocation(
-                    tx,
-                    {
-                      customerId: customer_id,
-                      name: stopName,
-                      address: String(stop.location_address ?? '').trim() || null,
-                      lat: parseOptionalFloat(stop.lat),
-                      lng: parseOptionalFloat(stop.lng),
-                      skipCanonicalUpdate: !stop.update_canonical_location,
-                    },
-                    createdBy
-                  );
-                  if (loc) locId = loc.id;
-                } catch (e) {
-                  logger.warn({ err: e }, 'Failed to resolve location for trip stop');
-                }
-              }
+          const stopWriterResult = await writeTripStops(tx, {
+            customerId: customer_id,
+            createdBy,
+            stops: Array.isArray(stops) ? stops : [],
+            plannedStart: parsedPlannedStart,
+            plannedEnd: parsedPlannedEnd,
+            rateCategory: rate_category || null,
+          });
 
-              if (stop.update_canonical_location === true && locId) {
-                const parsedLat = parseOptionalFloat(stop.lat);
-                const parsedLng = parseOptionalFloat(stop.lng);
-                try {
-                  await tx.location.update({
-                    where: { id: locId },
-                    data: {
-                      ...(parsedLat != null ? { lat: parsedLat } : {}),
-                      ...(parsedLng != null ? { lng: parsedLng } : {}),
-                      ...(stop.location_address ? { address: String(stop.location_address).trim() } : {}),
-                      coordinate_precision: 'EXACT',
-                      updated_by: createdBy,
-                    },
-                  });
-                } catch (uErr) {
-                  logger.warn({ err: uErr }, 'Failed to update canonical location master data during trip creation');
-                }
-              }
-
-              return { ...stop, location_id: locId };
-            })
-          );
-
-          const originLocationId =
-            resolvedStops.find((s) => s.stop_type === 'Pickup')?.location_id ?? resolvedStops[0]?.location_id ?? null;
-          const destinationLocationId =
-            [...resolvedStops].reverse().find((s) => s.stop_type === 'Dropoff')?.location_id ??
-            resolvedStops[resolvedStops.length - 1]?.location_id ??
-            null;
+          const {
+            stopsToCreate,
+            originLocationId,
+            destinationLocationId,
+            normalizedRateCategory,
+          } = stopWriterResult;
 
           const targetQuotationId = req.body.quotation_id || req.body.pricing_rule_id || rate_card_id;
           let appliedQuotation = null;
@@ -853,14 +812,14 @@ export const createTrip = async (req: Request, res: Response) => {
               originLocationId,
               destinationLocationId,
               ...(vehicle_type !== undefined ? { vehicleType: vehicle_type } : {}),
-              ...(rate_category !== undefined ? { lineType: rate_category } : {}),
+              ...(normalizedRateCategory !== null ? { lineType: normalizedRateCategory } : {}),
               ...(billing_type !== undefined ? { billingType: billing_type } : {}),
             });
             appliedQuotation = quotation;
           }
 
           const finalVehicleType = vehicle_type !== undefined ? vehicle_type : (appliedQuotation?.source_vehicle_label ?? appliedQuotation?.vehicle_class ?? null);
-          const finalRateCategory = rate_category !== undefined ? rate_category : (appliedQuotation?.line_type ?? null);
+          const finalRateCategory = normalizedRateCategory || (appliedQuotation?.line_type ?? null);
           const finalBillingType = billing_type !== undefined ? billing_type : (appliedQuotation?.billing_type ?? null);
 
           let defaultBilling: number | null = null;
@@ -972,43 +931,12 @@ export const createTrip = async (req: Request, res: Response) => {
                   })),
                 },
               } : {}),
-              stops: {
-                create: resolvedStops.map((stop: any, index: number) => {
-                  const rawLat = parseOptionalFloat(stop.lat);
-                  const rawLng = parseOptionalFloat(stop.lng);
-                  const isValidCoord = rawLat != null && rawLng != null && (rawLat !== 0 || rawLng !== 0) && rawLat >= -90 && rawLat <= 90 && rawLng >= -180 && rawLng <= 180;
-                  const latVal = isValidCoord ? rawLat : null;
-                  const lngVal = isValidCoord ? rawLng : null;
-                  const precisionVal = stop.coordinate_precision || stop.location_coordinate_precision || (latVal == null || lngVal == null ? 'UNKNOWN' : 'APPROXIMATE');
-                  let stopPlannedArrival: Date | null = null;
-                  if (stop.planned_arrival && !isNaN(Date.parse(stop.planned_arrival))) {
-                    stopPlannedArrival = new Date(stop.planned_arrival);
-                  } else if (index === 0 && parsedPlannedStart) {
-                    stopPlannedArrival = parsedPlannedStart;
-                  } else if (index === resolvedStops.length - 1 && parsedPlannedEnd) {
-                    stopPlannedArrival = parsedPlannedEnd;
-                  }
-                  const rawStopType = String(stop.stop_type || 'Dropoff');
-                  const normalizedStopType: StopType = (rawStopType === 'Stop' ? 'Rest' : rawStopType) as StopType;
-                  const calculatedLegIndex = stop.leg_index !== undefined
-                    ? Number(stop.leg_index)
-                    : ((finalRateCategory === 'ROUND_TRIP' || rate_category === 'ROUND_TRIP') && index >= 2 ? 1 : 0);
-
-                  return {
-                    stop_sequence: index + 1,
-                    leg_index: calculatedLegIndex,
-                    stop_type: normalizedStopType,
-                    location_lat: latVal,
-                    location_lng: lngVal,
-                    location_coordinate_precision: precisionVal,
-                    location_name: String(stop.location_name ?? '').trim() || null,
-                    location_address: String(stop.location_address ?? '').trim() || null,
-                    locationId: stop.location_id || null,
-                    planned_arrival: stopPlannedArrival,
-                  };
-                }),
-              }
-            },
+              ...(stopsToCreate.length > 0 ? {
+                stops: {
+                  create: stopsToCreate,
+                }
+              } : {})
+            } as any,
             include: {
               stops: { orderBy: { stop_sequence: 'asc' }, include: { location: true } },
               subcontract: { include: { provider: true } },
@@ -1218,88 +1146,22 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
           });
         }
 
-        // Structured `row.stops` (leg_index-aware, built by the trip wizard) is the
-        // authoritative source whenever it's present. `parseFullTripStops` only
-        // exists to derive stops from the legacy origin/destination strings for
-        // rows that don't carry structured stops (true CSV imports). It used to
-        // run unconditionally and splice its own first/last stop onto the front
-        // and back of `row.stops` even when structured stops were already
-        // correct — silently duplicating the origin and destination on every
-        // trip created through the wizard (see TRP-0252 investigation).
-        let parsedStops = Array.isArray(row.stops) && row.stops.length > 0
-          ? row.stops.map((st, idx) => ({
-              stop_sequence: st.stop_sequence ?? (idx + 1),
-              leg_index: st.leg_index !== undefined ? Number(st.leg_index) : 0,
-              stop_type: (st.stop_type || 'Rest') as 'Pickup' | 'Dropoff' | 'Rest',
-              location_name: String(st.location_name ?? '').trim(),
-              location_id: st.location_id || null,
-              lat: st.lat ?? null,
-              lng: st.lng ?? null,
-            }))
-          : ((row.origin || row.destination) ? parseFullTripStops(row.origin || '', row.destination || '') : []);
+        const stopWriterResult = await writeTripStops(prisma, {
+          customerId: customer.id,
+          createdBy,
+          stops: Array.isArray(row.stops) && row.stops.length > 0 ? row.stops : undefined,
+          origin: row.origin || undefined,
+          destination: row.destination || undefined,
+          plannedStart: parsedPlannedStart,
+          plannedEnd: parsedPlannedEnd,
+          rateCategory: row.rate_category || undefined,
+          quotationStops: appliedQuotation?.stops,
+        });
 
-        if (parsedStops.length === 0 && appliedQuotation?.stops && appliedQuotation.stops.length > 0) {
-          const isQuoRound = (appliedQuotation.line_type || row.rate_category || '').toLowerCase().includes('round');
-          parsedStops = appliedQuotation.stops.map((qs: any, idx: number) => ({
-            stop_sequence: idx + 1,
-            leg_index: (qs.leg_index !== undefined && qs.leg_index !== null) ? Number(qs.leg_index) : 0,
-            stop_type: (qs.stop_type || (idx === 0 ? 'Pickup' : 'Dropoff')) as 'Pickup' | 'Dropoff',
-            location_name: qs.location_name || qs.source_label || qs.location?.name || '',
-            location_id: qs.location_id || qs.locationId || null,
-            lat: qs.lat ?? qs.location?.lat ?? null,
-            lng: qs.lng ?? qs.location?.lng ?? null,
-          }));
-        }
-
-        if (parsedStops.length > 0) {
-          const stopValidation = validateTripStops(parsedStops);
-          if (!stopValidation.isValid) {
-            throw new Error(stopValidation.error || 'Invalid trip stops configuration.');
-          }
-        }
-
-        const resolvedImportStops = await Promise.all(
-          parsedStops.map(async (st, idx, arr) => {
-            let latVal = st.lat ?? null;
-            let lngVal = st.lng ?? null;
-            let addressVal: string | null = null;
-            let locIdVal: string | null = st.location_id ?? null;
-
-            if (locIdVal) {
-              const loc = await prisma.location.findFirst({ where: { id: locIdVal, deletedAt: null } });
-              if (loc) {
-                if (latVal == null) latVal = loc.lat;
-                if (lngVal == null) lngVal = loc.lng;
-                addressVal = loc.address;
-              }
-            } else if (st.location_name) {
-              const coords = await resolveStopCoords(st.location_name, customer.id);
-              if (coords) {
-                if (latVal == null) latVal = coords.lat;
-                if (lngVal == null) lngVal = coords.lng;
-                addressVal = coords.address;
-                locIdVal = coords.locationId;
-              }
-            }
-
-            // Enforce invariant: (0, 0) is never legitimate; unknown coordinates are strictly NULL
-            if (latVal === 0 && lngVal === 0) {
-              latVal = null;
-              lngVal = null;
-            }
-            return {
-              stop_sequence: st.stop_sequence,
-              leg_index: st.leg_index ?? 0,
-              stop_type: st.stop_type as any,
-              location_name: st.location_name || null,
-              location_address: addressVal,
-              locationId: locIdVal,
-              location_lat: latVal,
-              location_lng: lngVal,
-              planned_arrival: idx === 0 ? parsedPlannedStart : (idx === arr.length - 1 ? parsedPlannedEnd : null),
-            };
-          })
-        );
+        const {
+          stopsToCreate: resolvedImportStops,
+          normalizedRateCategory,
+        } = stopWriterResult;
 
         const rawRowPayout = (row as any).driver_payout ?? (row as any).driver_charge ?? (row as any).trip_charges;
         const totalRowPayout = (rawRowPayout !== undefined && rawRowPayout !== null && !isNaN(Number(rawRowPayout)))
@@ -2035,6 +1897,220 @@ export const updateTripStop = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error({ err: error }, 'Failed to update trip stop');
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to update this stop' } });
+  }
+};
+
+/**
+ * Re-constructs trip stops and schedule for a Draft or Scheduled trip.
+ * Replaces active stops in a single transaction, updates origin/destination,
+ * and returns updated trip details with route_timeline.
+ * Returns HTTP 409 if the trip status is locked (Dispatched, AtPickup, InTransit, Completed, Invoiced, Cancelled).
+ */
+export const updateTripStopsRoute = async (req: Request, res: Response) => {
+  try {
+    const rawTripId = (req.params.id as string || '').trim();
+    const tripId = isUuid(rawTripId) ? rawTripId : await resolveTripId(rawTripId);
+    if (!tripId) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+
+    const existingTrip = await prisma.trip.findFirst({
+      where: { id: tripId, deletedAt: null },
+      select: { id: true, status: true, customerId: true },
+    });
+    if (!existingTrip) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+
+    if (isRouteLocked(existingTrip.status)) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: 'ROUTE_LOCKED',
+          message: `Trip is in status ${existingTrip.status} — route stops cannot be edited.`,
+        },
+      });
+    }
+
+    const {
+      origin,
+      destination,
+      intermediates = [],
+      isRound = false,
+      returnOrigin,
+      returnDestination,
+      returnIntermediates = [],
+      stops: rawStopsInput,
+      date,
+      dropoffDate,
+      pickupTime,
+      dropoffTime,
+      planned_start,
+      planned_end,
+    } = req.body;
+
+    const createdBy = (req as any).user?.id ?? null;
+
+    let rawStops: any[] = [];
+    if (Array.isArray(rawStopsInput) && rawStopsInput.length > 0) {
+      rawStops = rawStopsInput;
+    } else if (origin || destination) {
+      rawStops = buildTripStops({
+        origin: typeof origin === 'object' ? origin : { name: String(origin || '') },
+        destination: typeof destination === 'object' ? destination : { name: String(destination || '') },
+        intermediates: Array.isArray(intermediates)
+          ? intermediates.map((i: any) => (typeof i === 'object' ? i : { name: String(i || '') }))
+          : [],
+        isRound: Boolean(isRound),
+        returnOrigin: typeof returnOrigin === 'object' ? returnOrigin : (returnOrigin ? { name: String(returnOrigin) } : undefined),
+        returnDestination: typeof returnDestination === 'object' ? returnDestination : (returnDestination ? { name: String(returnDestination) } : undefined),
+        returnIntermediates: Array.isArray(returnIntermediates)
+          ? returnIntermediates.map((i: any) => (typeof i === 'object' ? i : { name: String(i || '') }))
+          : [],
+      });
+    }
+
+    if (rawStops.length === 0) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'At least origin and destination stops are required.' } });
+    }
+
+    let parsedPlannedStart: Date | null = null;
+    if (planned_start && !isNaN(Date.parse(planned_start))) {
+      parsedPlannedStart = new Date(planned_start);
+    }
+
+    let parsedPlannedEnd: Date | null = null;
+    if (planned_end && !isNaN(Date.parse(planned_end))) {
+      parsedPlannedEnd = new Date(planned_end);
+    }
+
+    const resolvedStops = await Promise.all(
+      rawStops.map(async (stop: any) => {
+        const stopName = String(stop.location_name ?? stop.name ?? '').trim();
+        let locId = stop.location_id || stop.locationId || null;
+        let resolvedLoc: any = null;
+
+        if (locId) {
+          resolvedLoc = await resolveLocation(prisma, { id: locId, customerId: existingTrip.customerId, skipCanonicalUpdate: true }, createdBy);
+          if (resolvedLoc) locId = resolvedLoc.id;
+        } else if (stopName) {
+          try {
+            const loc = await resolveLocation(
+              prisma,
+              {
+                customerId: existingTrip.customerId,
+                name: stopName,
+                address: String(stop.location_address ?? stop.address ?? '').trim() || null,
+                lat: parseOptionalFloat(stop.lat ?? stop.location_lat),
+                lng: parseOptionalFloat(stop.lng ?? stop.location_lng),
+                skipCanonicalUpdate: !stop.update_canonical_location,
+              },
+              createdBy
+            );
+            if (loc) { locId = loc.id; resolvedLoc = loc; }
+          } catch (e) {
+            logger.warn({ err: e }, 'Failed to resolve location for trip stop edit');
+          }
+        }
+
+        // A stop sent without coordinates/address (e.g. an intermediate stop,
+        // which the edit form only holds as a name) falls back to its Location
+        // master record, so rebuilding the route never strips coordinates.
+        const hasCoords = parseOptionalFloat(stop.lat ?? stop.location_lat) != null && parseOptionalFloat(stop.lng ?? stop.location_lng) != null;
+        const fallback = !hasCoords && resolvedLoc?.lat != null && resolvedLoc?.lng != null
+          ? { lat: resolvedLoc.lat, lng: resolvedLoc.lng, coordinate_precision: stop.coordinate_precision || resolvedLoc.coordinate_precision || 'APPROXIMATE' }
+          : {};
+        const addressFallback = !(stop.location_address ?? stop.address) && resolvedLoc?.address ? { location_address: resolvedLoc.address } : {};
+
+        return { ...stop, ...fallback, ...addressFallback, location_id: locId, location_name: stopName };
+      })
+    );
+
+    const stopValidation = validateTripStops(resolvedStops);
+    if (!stopValidation.isValid) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: stopValidation.error } });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Soft-delete old stops
+      await tx.tripStop.updateMany({
+        where: { tripId: existingTrip.id, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+
+      // 2. Insert new stops
+      await tx.tripStop.createMany({
+        data: resolvedStops.map((stop: any, index: number) => {
+          const rawLat = parseOptionalFloat(stop.lat ?? stop.location_lat);
+          const rawLng = parseOptionalFloat(stop.lng ?? stop.location_lng);
+          const isValidCoord = rawLat != null && rawLng != null && (rawLat !== 0 || rawLng !== 0) && rawLat >= -90 && rawLat <= 90 && rawLng >= -180 && rawLng <= 180;
+          const latVal = isValidCoord ? rawLat : null;
+          const lngVal = isValidCoord ? rawLng : null;
+          const precisionVal = stop.coordinate_precision || stop.location_coordinate_precision || (latVal == null || lngVal == null ? 'UNKNOWN' : 'APPROXIMATE');
+          let stopPlannedArrival: Date | null = null;
+          if (stop.planned_arrival && !isNaN(Date.parse(stop.planned_arrival))) {
+            stopPlannedArrival = new Date(stop.planned_arrival);
+          } else if (index === 0 && parsedPlannedStart) {
+            stopPlannedArrival = parsedPlannedStart;
+          } else if (index === resolvedStops.length - 1 && parsedPlannedEnd) {
+            stopPlannedArrival = parsedPlannedEnd;
+          }
+          const rawStopType = String(stop.stop_type || (index === 0 ? 'Pickup' : 'Dropoff'));
+          const normalizedStopType: StopType = (rawStopType === 'Stop' ? 'Rest' : rawStopType) as StopType;
+
+          return {
+            tripId: existingTrip.id,
+            stop_sequence: index + 1,
+            leg_index: stop.leg_index !== undefined ? Number(stop.leg_index) : 0,
+            stop_type: normalizedStopType,
+            location_lat: latVal,
+            location_lng: lngVal,
+            location_coordinate_precision: precisionVal,
+            location_name: String(stop.location_name ?? '').trim() || null,
+            location_address: String(stop.location_address ?? '').trim() || null,
+            locationId: stop.location_id || null,
+            planned_arrival: stopPlannedArrival,
+          };
+        }),
+      });
+
+      // 3. Update trip planned times
+      await tx.trip.update({
+        where: { id: existingTrip.id },
+        data: {
+          ...(parsedPlannedStart ? { planned_start: parsedPlannedStart } : {}),
+          ...(parsedPlannedEnd ? { planned_end: parsedPlannedEnd } : {}),
+          updated_by: createdBy,
+        },
+      });
+    });
+
+    // Re-fetch updated trip with timeline
+    const updatedTrip = await prisma.trip.findFirst({
+      where: { id: existingTrip.id, deletedAt: null },
+      include: {
+        customer: true,
+        driver: true,
+        vehicle: true,
+        stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' }, include: { location: true } },
+        financials: true,
+      },
+    });
+
+    if (!updatedTrip) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found after update' } });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...updatedTrip,
+        route_timeline: buildTripRouteTimeline(updatedTrip as any),
+      },
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to update trip stops/route');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message || 'Failed to update trip route stops' } });
   }
 };
 
