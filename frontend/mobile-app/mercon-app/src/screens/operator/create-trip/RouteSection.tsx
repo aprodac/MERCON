@@ -1,9 +1,19 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Switch } from 'react-native';
-import { MapPin, Plus, Trash2, ChevronDown, Check, X } from 'lucide-react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Switch,
+  Modal,
+  ActivityIndicator,
+} from 'react-native';
+import { MapPin, Plus, Trash2, ChevronDown, Check, X, Building2 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography } from '../../../theme/tokens';
 import { Card } from '../../../components/Card';
 import { Input } from '../../../components/Input';
+import { Button } from '../../../components/Button';
 import { OperatorLocation } from '../../../lib/operator';
 import { RecentRouteItem, IntermediateStop, RateCategoryType } from '../hooks/useCreateTripForm';
 
@@ -51,6 +61,7 @@ interface LocationPickerInputProps {
   locations: OperatorLocation[];
   onChangeText: (text: string) => void;
   onSelectLocation: (name: string, loc?: OperatorLocation) => void;
+  onOpenCreateModal?: (initialName: string) => void;
   onBlur?: () => void;
   placeholder: string;
   style?: any;
@@ -63,6 +74,7 @@ const LocationPickerInput: React.FC<LocationPickerInputProps> = ({
   locations,
   onChangeText,
   onSelectLocation,
+  onOpenCreateModal,
   onBlur,
   placeholder,
   style,
@@ -130,7 +142,7 @@ const LocationPickerInput: React.FC<LocationPickerInputProps> = ({
         )}
       </View>
 
-      {showSuggestions && filteredLocations.length > 0 && (
+      {showSuggestions && (
         <View style={styles.suggestionsContainer}>
           {filteredLocations.map((loc) => (
             <TouchableOpacity
@@ -156,6 +168,23 @@ const LocationPickerInput: React.FC<LocationPickerInputProps> = ({
               </View>
             </TouchableOpacity>
           ))}
+
+          {onOpenCreateModal && (
+            <TouchableOpacity
+              style={styles.createSuggestionRow}
+              onPress={() => {
+                setShowSuggestions(false);
+                onOpenCreateModal(value.trim());
+              }}
+            >
+              <View style={styles.createIconBox}>
+                <Plus size={14} color={Colors.primary} />
+              </View>
+              <Text style={styles.createSuggestionText} numberOfLines={1}>
+                {value.trim() ? `+ Create "${value.trim()}" as New Location` : '+ Create New Master Location'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
     </View>
@@ -199,6 +228,7 @@ interface RouteSectionProps {
   onSelectPickupLocation?: (name: string, loc?: OperatorLocation) => void;
   onSelectDropoffLocation?: (name: string, loc?: OperatorLocation) => void;
   onSelectRecentRoute?: (r: RecentRouteItem) => void;
+  onCreateLocation?: (payload: { name: string; city?: string; address?: string }) => Promise<OperatorLocation>;
 }
 
 export const RouteSection: React.FC<RouteSectionProps> = ({
@@ -238,9 +268,26 @@ export const RouteSection: React.FC<RouteSectionProps> = ({
   onSelectPickupLocation,
   onSelectDropoffLocation,
   onSelectRecentRoute,
+  onCreateLocation,
 }) => {
   const [showDropdown, setShowDropdown] = useState(false);
   const activeTaxonomy = TAXONOMY_LINE_TYPES.find((t) => t.key === rateCategory) || TAXONOMY_LINE_TYPES[0];
+
+  // New Location Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [targetField, setTargetField] = useState<'pickup' | 'dropoff' | string>('pickup');
+  const [newLocName, setNewLocName] = useState('');
+  const [newLocCity, setNewLocCity] = useState('');
+  const [newLocAddress, setNewLocAddress] = useState('');
+  const [creatingLoc, setCreatingLoc] = useState(false);
+
+  const handleOpenCreateModal = (target: 'pickup' | 'dropoff' | string, initialName: string = '') => {
+    setTargetField(target);
+    setNewLocName(initialName);
+    setNewLocCity('');
+    setNewLocAddress('');
+    setIsModalOpen(true);
+  };
 
   const handlePickupSelect = (name: string, loc?: OperatorLocation) => {
     if (onSelectPickupLocation) {
@@ -284,9 +331,46 @@ export const RouteSection: React.FC<RouteSectionProps> = ({
     }
   };
 
+  const handleSaveNewLocation = async () => {
+    if (!newLocName.trim() || !onCreateLocation || creatingLoc) return;
+    try {
+      setCreatingLoc(true);
+      const created = await onCreateLocation({
+        name: newLocName.trim(),
+        city: newLocCity.trim() || undefined,
+        address: newLocAddress.trim() || undefined,
+      });
+
+      if (targetField === 'pickup') {
+        handlePickupSelect(created.name, created);
+      } else if (targetField === 'dropoff') {
+        handleDropoffSelect(created.name, created);
+      } else {
+        onSelectStopLocation(targetField, created);
+      }
+      setIsModalOpen(false);
+    } catch (_) {
+      // silent fallback
+    } finally {
+      setCreatingLoc(false);
+    }
+  };
+
   return (
     <View style={styles.sectionContainer}>
-      <Text style={styles.sectionTitle}>2. Route Configuration</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.sectionTitle}>2. Route Configuration</Text>
+        {onCreateLocation && (
+          <TouchableOpacity
+            style={styles.addLocationHeaderBtn}
+            onPress={() => handleOpenCreateModal('pickup', '')}
+          >
+            <Plus size={12} color={Colors.primary} />
+            <Text style={styles.addLocationHeaderText}>+ New Location</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       <Card style={styles.card}>
         {/* Saved Recent Routes Chips */}
         {savedRecentRoutes.length > 0 && (
@@ -315,6 +399,7 @@ export const RouteSection: React.FC<RouteSectionProps> = ({
           locations={locations}
           onChangeText={(text) => handlePickupSelect(text, undefined)}
           onSelectLocation={(name, loc) => handlePickupSelect(name, loc)}
+          onOpenCreateModal={(initialName) => handleOpenCreateModal('pickup', initialName)}
           onBlur={() => onSaveRecentRoute(pickupName, dropoffName)}
           placeholder="e.g. Riyadh Main Warehouse"
         />
@@ -335,6 +420,7 @@ export const RouteSection: React.FC<RouteSectionProps> = ({
                   onUpdateStop(stop.id, stop.name);
                 }
               }}
+              onOpenCreateModal={(initialName) => handleOpenCreateModal(stop.id, initialName)}
               placeholder="e.g. Al Hasa Waypoint"
               style={{ flex: 1 }}
             />
@@ -357,6 +443,7 @@ export const RouteSection: React.FC<RouteSectionProps> = ({
           locations={locations}
           onChangeText={(text) => handleDropoffSelect(text, undefined)}
           onSelectLocation={(name, loc) => handleDropoffSelect(name, loc)}
+          onOpenCreateModal={(initialName) => handleOpenCreateModal('dropoff', initialName)}
           onBlur={() => onSaveRecentRoute(pickupName, dropoffName)}
           placeholder="e.g. Dammam Port Terminal"
           style={{ marginTop: Spacing.xs }}
@@ -447,6 +534,55 @@ export const RouteSection: React.FC<RouteSectionProps> = ({
           </View>
         )}
       </Card>
+
+      {/* Quick Add Master Location Modal */}
+      <Modal visible={isModalOpen} animationType="slide" transparent onRequestClose={() => setIsModalOpen(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Building2 size={16} color={Colors.primary} />
+                <Text style={styles.modalTitle}>Create Master Location</Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsModalOpen(false)}>
+                <X size={18} color={Colors.gray500} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={{ gap: Spacing.sm, paddingVertical: Spacing.sm }}>
+              <Input
+                label="Location Name *"
+                value={newLocName}
+                onChangeText={setNewLocName}
+                placeholder="e.g. Riyadh Central Distribution Center"
+              />
+              <Input
+                label="City (Optional)"
+                value={newLocCity}
+                onChangeText={setNewLocCity}
+                placeholder="e.g. Riyadh"
+              />
+              <Input
+                label="Address / Google Maps Link (Optional)"
+                value={newLocAddress}
+                onChangeText={setNewLocAddress}
+                placeholder="e.g. https://maps.google.com/?q=..."
+              />
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <Button variant="outline" label="Cancel" onPress={() => setIsModalOpen(false)} style={{ flex: 1 }} />
+              <Button
+                variant="primary"
+                label={creatingLoc ? 'Saving…' : 'Create & Select'}
+                onPress={handleSaveNewLocation}
+                disabled={!newLocName.trim() || creatingLoc}
+                style={{ flex: 1 }}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -455,11 +591,30 @@ const styles = StyleSheet.create({
   sectionContainer: {
     marginBottom: Spacing.md,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.xs,
+  },
   sectionTitle: {
     fontSize: Typography.headingS.fontSize,
     fontWeight: Typography.headingS.fontWeight,
     color: Colors.charcoal,
-    marginBottom: Spacing.xs,
+  },
+  addLocationHeaderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.gray100,
+  },
+  addLocationHeaderText: {
+    fontSize: Typography.micro,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   card: {
     padding: Spacing.md,
@@ -546,6 +701,29 @@ const styles = StyleSheet.create({
   suggestionSubtitle: {
     fontSize: Typography.micro,
     color: Colors.gray500,
+  },
+  createSuggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.sm + 2,
+    paddingVertical: Spacing.sm,
+    backgroundColor: Colors.gray50,
+  },
+  createIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  createSuggestionText: {
+    fontSize: Typography.xs,
+    fontWeight: '700',
+    color: Colors.primary,
   },
   recentRoutesContainer: {
     marginBottom: Spacing.xs,
@@ -663,5 +841,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: Spacing.xs,
     marginTop: Spacing.sm,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: Spacing.md,
+  },
+  modalCard: {
+    backgroundColor: Colors.white,
+    borderRadius: Radius.xl,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  modalTitle: {
+    fontSize: Typography.headingM.fontSize,
+    fontWeight: Typography.headingM.fontWeight,
+    color: Colors.charcoal,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+    marginTop: Spacing.xs,
   },
 });

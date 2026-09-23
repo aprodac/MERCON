@@ -489,6 +489,7 @@ export const CreateTripScreen = () => {
                 onSelectPickupLocation={form.handleSetPickupLocation}
                 onSelectDropoffLocation={form.handleSetDropoffLocation}
                 onSelectRecentRoute={form.handleSelectRecentRoute}
+                onCreateLocation={form.handleCreateLocation}
               />
 
               <AdditionalChargesSection

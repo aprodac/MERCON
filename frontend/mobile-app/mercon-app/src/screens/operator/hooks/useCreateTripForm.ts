@@ -325,25 +325,42 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
     [thirdPartyProviders, thirdPartyProviderId]
   );
 
-  // Fetch quotations specifically for the selected customer whenever customerId changes
+  // Fetch quotations & locations specifically for the selected customer whenever customerId changes
   useEffect(() => {
-    if (!customerId) return;
     let unmounted = false;
     operatorService
-      .getQuotationsForCustomer(customerId)
-      .then((custQuots) => {
-        if (unmounted || !custQuots || custQuots.length === 0) return;
-        setQuotations((prev) => {
-          const existingIds = new Set(prev.map((q) => q.id));
-          const newItems = custQuots.filter((q) => !existingIds.has(q.id));
-          if (newItems.length === 0) return prev;
-          return [...newItems, ...prev];
-        });
+      .locations(customerId || undefined)
+      .then((custLocs) => {
+        if (!unmounted && custLocs) setLocations(custLocs);
       })
       .catch(() => {});
+
+    if (customerId) {
+      operatorService
+        .getQuotationsForCustomer(customerId)
+        .then((custQuots) => {
+          if (unmounted || !custQuots || custQuots.length === 0) return;
+          setQuotations((prev) => {
+            const existingIds = new Set(prev.map((q) => q.id));
+            const newItems = custQuots.filter((q) => !existingIds.has(q.id));
+            if (newItems.length === 0) return prev;
+            return [...newItems, ...prev];
+          });
+        })
+        .catch(() => {});
+    }
     return () => {
       unmounted = true;
     };
+  }, [customerId]);
+
+  const handleCreateLocation = useCallback(async (payload: { name: string; city?: string; address?: string }): Promise<OperatorLocation> => {
+    const created = await operatorService.createLocation({
+      ...payload,
+      customer_id: customerId || undefined,
+    });
+    setLocations((prev) => [created, ...prev]);
+    return created;
   }, [customerId]);
 
   // Active customer quotations
@@ -930,6 +947,7 @@ export function useCreateTripForm(presetCustomerId?: string, initialBillingType?
     handleSetPickupLocation,
     handleSetDropoffLocation,
     handleSelectRecentRoute,
+    handleCreateLocation,
     pickupLat, setPickupLat,
     pickupLng, setPickupLng,
     pickupLocationId, setPickupLocationId,
