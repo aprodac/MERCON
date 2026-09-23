@@ -337,7 +337,7 @@ export default function ProfileScreen() {
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
-          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
+          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/performance-overview' as any)}>
             <View style={[styles.iconCircle, { backgroundColor: '#FEF9C3' }]}>
               <Award size={20} color="#CA8A04" strokeWidth={1.8} />
             </View>
