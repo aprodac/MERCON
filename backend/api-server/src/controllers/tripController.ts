@@ -814,6 +814,8 @@ export const createTrip = async (req: Request, res: Response) => {
               ...(vehicle_type !== undefined ? { vehicleType: vehicle_type } : {}),
               ...(normalizedRateCategory !== null ? { lineType: normalizedRateCategory } : {}),
               ...(billing_type !== undefined ? { billingType: billing_type } : {}),
+              // Every stop must match (outbound + return), not just the lane.
+              stops: stopsToCreate as any,
             });
             appliedQuotation = quotation;
           }
