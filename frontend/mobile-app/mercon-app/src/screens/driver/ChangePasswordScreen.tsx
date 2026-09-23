@@ -1,5 +1,16 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, StatusBar, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  StatusBar,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Lock, Eye, EyeOff } from 'lucide-react-native';
@@ -13,10 +24,8 @@ export default function ChangePasswordScreen() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
-  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -24,7 +33,7 @@ export default function ChangePasswordScreen() {
   const handleSubmit = async () => {
     setError(null);
     setSuccess(false);
-    
+
     if (!currentPassword) {
       setError(t('error_current_password_required', 'Current password is required'));
       return;
@@ -42,14 +51,12 @@ export default function ChangePasswordScreen() {
     try {
       await api.post('/auth/change-password', {
         current_password: currentPassword,
-        new_password: newPassword
+        new_password: newPassword,
       });
       setSuccess(true);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      
-      // Navigate back after a short delay
       setTimeout(() => {
         router.back();
       }, 2000);
@@ -61,20 +68,59 @@ export default function ChangePasswordScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}><StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" /><View style={styles.header}><TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}><ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} /></TouchableOpacity><Text style={styles.headerTitle}>{t('nav_change_password', 'Change Password')}</Text><View style={{ width: 44 }} /></View><KeyboardAvoidingView 
-        style={{ flex: 1 }} 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      ><ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled"><View style={styles.iconContainer}><View style={styles.iconCircle}><Lock size={40} color="#FA634E" strokeWidth={1.5} /></View><Text style={styles.titleText}>Update Your Security</Text><Text style={styles.subText}>Create a strong, unique password to protect your MERCON driver account.</Text></View>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-          {error && (
-            <View style={styles.errorBox}><Text style={styles.errorText}>{error}</Text></View>
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          activeOpacity={0.8}
+          onPress={() => router.back()}
+        >
+          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {t('nav_change_password', 'Change Password')}
+        </Text>
+        <View style={{ width: 44 }} />
+      </View>
+
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.iconContainer}>
+            <View style={styles.iconCircle}>
+              <Lock size={40} color="#FA634E" strokeWidth={1.5} />
+            </View>
+            <Text style={styles.titleText}>{'Update Your Security'}</Text>
+            <Text style={styles.subText}>
+              {'Create a strong, unique password to protect your MERCON driver account.'}
+            </Text>
+          </View>
+
+          {error !== null && (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
           )}
 
           {success && (
-            <View style={styles.successBox}><Text style={styles.successText}>Password changed successfully! Returning...</Text></View>
+            <View style={styles.successBox}>
+              <Text style={styles.successText}>
+                {'Password changed successfully! Returning...'}
+              </Text>
+            </View>
           )}
 
-          <View style={styles.formGroup}><Text style={styles.label}>Current Password</Text><View style={styles.inputContainer}><TextInput
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>{'Current Password'}</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
                 style={styles.input}
                 value={currentPassword}
                 onChangeText={setCurrentPassword}
@@ -82,9 +128,24 @@ export default function ChangePasswordScreen() {
                 placeholder="Enter current password"
                 placeholderTextColor="#A1A1AA"
                 autoCapitalize="none"
-              /><TouchableOpacity onPress={() => setShowCurrent(!showCurrent)} style={styles.eyeBtn}>
-                {showCurrent ? <EyeOff size={20} color="#71717A" /> : <Eye size={20} color="#71717A" />}
-              </TouchableOpacity></View></View><View style={styles.formGroup}><Text style={styles.label}>New Password</Text><View style={styles.inputContainer}><TextInput
+              />
+              <TouchableOpacity
+                onPress={() => setShowCurrent(!showCurrent)}
+                style={styles.eyeBtn}
+              >
+                {showCurrent ? (
+                  <EyeOff size={20} color="#71717A" />
+                ) : (
+                  <Eye size={20} color="#71717A" />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>{'New Password'}</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
                 style={styles.input}
                 value={newPassword}
                 onChangeText={setNewPassword}
@@ -92,18 +153,40 @@ export default function ChangePasswordScreen() {
                 placeholder="Enter new password (min 8 chars)"
                 placeholderTextColor="#A1A1AA"
                 autoCapitalize="none"
-              /><TouchableOpacity onPress={() => setShowNew(!showNew)} style={styles.eyeBtn}>
-                {showNew ? <EyeOff size={20} color="#71717A" /> : <Eye size={20} color="#71717A" />}
-              </TouchableOpacity></View></View><View style={styles.formGroup}><Text style={styles.label}>Confirm New Password</Text><View style={styles.inputContainer}><TextInput
+              />
+              <TouchableOpacity
+                onPress={() => setShowNew(!showNew)}
+                style={styles.eyeBtn}
+              >
+                {showNew ? (
+                  <EyeOff size={20} color="#71717A" />
+                ) : (
+                  <Eye size={20} color="#71717A" />
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.formGroup}>
+            <Text style={styles.label}>{'Confirm New Password'}</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
                 style={styles.input}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
-                secureTextEntry={!showNew} // share the toggle with new password
+                secureTextEntry={!showNew}
                 placeholder="Confirm new password"
                 placeholderTextColor="#A1A1AA"
                 autoCapitalize="none"
-              /></View></View><TouchableOpacity 
-            style={[styles.submitBtn, (loading || success) && styles.submitBtnDisabled]} 
+              />
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[
+              styles.submitBtn,
+              (loading || success) && styles.submitBtnDisabled,
+            ]}
             activeOpacity={0.8}
             onPress={handleSubmit}
             disabled={loading || success}
@@ -111,9 +194,12 @@ export default function ChangePasswordScreen() {
             {loading ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
-              <Text style={styles.submitBtnText}>Update Password</Text>
+              <Text style={styles.submitBtnText}>{'Update Password'}</Text>
             )}
-          </TouchableOpacity></ScrollView></KeyboardAvoidingView></SafeAreaView>
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 

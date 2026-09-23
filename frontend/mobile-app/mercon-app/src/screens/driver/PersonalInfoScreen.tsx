@@ -1,11 +1,24 @@
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  StatusBar,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, User, Phone, BadgeCheck, Calendar, ShieldCheck, Mail } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  User,
+  Phone,
+  BadgeCheck,
+  Calendar,
+  ShieldCheck,
+} from 'lucide-react-native';
 import { useLanguage } from '../../lib/language-context';
 import { useProfile } from '../../lib/use-profile';
-import { Colors } from '../../theme/tokens';
 import { Avatar } from '../../components/Avatar';
 import { initialsOf } from '../../lib/profile';
 import { API_URL } from '../../lib/api';
@@ -22,27 +35,140 @@ function resolveAvatarUrl(rawUrl?: string | null): string | null {
   return trimmed;
 }
 
+function formatDate(isoStr?: string | null): string {
+  if (!isoStr) return '—';
+  try {
+    return new Date(isoStr).toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+  } catch {
+    return '—';
+  }
+}
+
 export default function PersonalInfoScreen() {
   const router = useRouter();
   const { t } = useLanguage();
   const { profile } = useProfile();
 
-  const avatarUrl = useMemo(() => resolveAvatarUrl(profile?.avatar_url), [profile?.avatar_url]);
-  const name = profile ? `${profile.first_name} ${profile.last_name}`.trim() : '—';
-  
-  const formatDate = (isoStr?: string | null) => {
-    if (!isoStr) return '—';
-    try {
-      return new Date(isoStr).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-    } catch {
-      return '—';
-    }
-  };
+  const avatarUrl = useMemo(
+    () => resolveAvatarUrl(profile?.avatar_url),
+    [profile?.avatar_url],
+  );
+  const name = profile
+    ? `${profile.first_name} ${profile.last_name}`.trim()
+    : '—';
 
   return (
-    <SafeAreaView style={styles.container}><StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" /><View style={styles.header}><TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}><ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} /></TouchableOpacity><Text style={styles.headerTitle}>{t('nav_personal_info', 'Personal Information')}</Text><View style={{ width: 44 }} /></View><ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}><View style={styles.avatarSection}><View style={styles.avatarWrapper}><Avatar initials={initialsOf(name)} imageUri={avatarUrl} size={100} /></View><Text style={styles.nameText}>{name}</Text><Text style={styles.refIdText}>{profile?.ref_id ? `ID: ${profile.ref_id}` : '—'}</Text></View><View style={styles.card}><Text style={styles.cardTitle}>Contact Details</Text><View style={styles.row}><View style={styles.iconBox}><Phone size={18} color="#65A30D" /></View><View style={styles.rowTextCol}><Text style={styles.rowLabel}>Phone Number</Text><Text style={styles.rowValue}>{profile?.phone_primary || '—'}</Text></View></View><View style={styles.divider} /><View style={styles.row}><View style={styles.iconBox}><User size={18} color="#2563EB" /></View><View style={styles.rowTextCol}><Text style={styles.rowLabel}>Full Name</Text><Text style={styles.rowValue}>{name}</Text></View></View></View><View style={styles.card}><Text style={styles.cardTitle}>Identity & Licensing</Text><View style={styles.row}><View style={styles.iconBox}><BadgeCheck size={18} color="#EA580C" /></View><View style={styles.rowTextCol}><Text style={styles.rowLabel}>License Number</Text><Text style={styles.rowValue}>{profile?.license_number || '—'}</Text></View></View><View style={styles.divider} /><View style={styles.row}><View style={styles.iconBox}><Calendar size={18} color="#DC2626" /></View><View style={styles.rowTextCol}><Text style={styles.rowLabel}>License Expiry</Text><Text style={styles.rowValue}>{formatDate(profile?.license_expiry)}</Text></View></View></View><View style={styles.card}><Text style={styles.cardTitle}>Account Info</Text><View style={styles.row}><View style={styles.iconBox}><ShieldCheck size={18} color="#059669" /></View><View style={styles.rowTextCol}><Text style={styles.rowLabel}>Status</Text><View style={styles.statusPill}><Text style={styles.statusText}>{profile?.status || 'Active'}</Text></View></View></View><View style={styles.divider} /><View style={styles.row}><View style={styles.iconBox}><Calendar size={18} color="#4B5563" /></View><View style={styles.rowTextCol}><Text style={styles.rowLabel}>Joined Date</Text><Text style={styles.rowValue}>{formatDate(profile?.createdAt)}</Text></View></View></View><Text style={styles.footerText}>
-          To edit your personal information, please contact your fleet administrator.
-        </Text></ScrollView></SafeAreaView>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+
+      <View style={styles.header}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          activeOpacity={0.8}
+          onPress={() => router.back()}
+        >
+          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>
+          {t('nav_personal_info', 'Personal Information')}
+        </Text>
+        <View style={{ width: 44 }} />
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.avatarSection}>
+          <View style={styles.avatarWrapper}>
+            <Avatar initials={initialsOf(name)} imageUri={avatarUrl} size={100} />
+          </View>
+          <Text style={styles.nameText}>{name}</Text>
+          <Text style={styles.refIdText}>
+            {profile?.ref_id ? `ID: ${profile.ref_id}` : '—'}
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>{'Contact Details'}</Text>
+          <View style={styles.row}>
+            <View style={styles.iconBox}>
+              <Phone size={18} color="#65A30D" />
+            </View>
+            <View style={styles.rowTextCol}>
+              <Text style={styles.rowLabel}>{'Phone Number'}</Text>
+              <Text style={styles.rowValue}>{profile?.phone_primary || '—'}</Text>
+            </View>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.row}>
+            <View style={styles.iconBox}>
+              <User size={18} color="#2563EB" />
+            </View>
+            <View style={styles.rowTextCol}>
+              <Text style={styles.rowLabel}>{'Full Name'}</Text>
+              <Text style={styles.rowValue}>{name}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>{'Identity & Licensing'}</Text>
+          <View style={styles.row}>
+            <View style={styles.iconBox}>
+              <BadgeCheck size={18} color="#EA580C" />
+            </View>
+            <View style={styles.rowTextCol}>
+              <Text style={styles.rowLabel}>{'License Number'}</Text>
+              <Text style={styles.rowValue}>{profile?.license_number || '—'}</Text>
+            </View>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.row}>
+            <View style={styles.iconBox}>
+              <Calendar size={18} color="#DC2626" />
+            </View>
+            <View style={styles.rowTextCol}>
+              <Text style={styles.rowLabel}>{'License Expiry'}</Text>
+              <Text style={styles.rowValue}>{formatDate(profile?.license_expiry)}</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>{'Account Info'}</Text>
+          <View style={styles.row}>
+            <View style={styles.iconBox}>
+              <ShieldCheck size={18} color="#059669" />
+            </View>
+            <View style={styles.rowTextCol}>
+              <Text style={styles.rowLabel}>{'Status'}</Text>
+              <View style={styles.statusPill}>
+                <Text style={styles.statusText}>{profile?.status || 'Active'}</Text>
+              </View>
+            </View>
+          </View>
+          <View style={styles.divider} />
+          <View style={styles.row}>
+            <View style={styles.iconBox}>
+              <Calendar size={18} color="#4B5563" />
+            </View>
+            <View style={styles.rowTextCol}>
+              <Text style={styles.rowLabel}>{'Joined Date'}</Text>
+              <Text style={styles.rowValue}>{formatDate(profile?.createdAt)}</Text>
+            </View>
+          </View>
+        </View>
+
+        <Text style={styles.footerText}>
+          {'To edit your personal information, please contact your fleet administrator.'}
+        </Text>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
