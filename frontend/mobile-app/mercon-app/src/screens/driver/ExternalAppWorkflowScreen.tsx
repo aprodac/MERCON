@@ -109,6 +109,14 @@ export const ExternalAppWorkflowScreen = () => {
     }
   };
 
+  if (loading && !trip) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#FA634E" />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatusBar barStyle="dark-content" backgroundColor="#EEF1F6" />
