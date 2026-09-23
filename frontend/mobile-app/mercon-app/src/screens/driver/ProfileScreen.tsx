@@ -285,29 +285,6 @@ export default function ProfileScreen() {
           <HeaderWaveBg width={SCREEN_WIDTH} height={300} />
 
           <SafeAreaView style={styles.headerSafe}>
-            {/* Top Controls Bar */}
-            <View style={styles.topHeaderRow}>
-              {/* Top-Left: Language Selector Pill & Settings Gear Button */}
-              <View style={styles.topLeftGroup}>
-                <TouchableOpacity onPress={openLanguageModal} activeOpacity={0.8} style={styles.langPill}>
-                  <Globe size={13} color="#3E3C3D" strokeWidth={2.2} />
-                  <Text style={styles.langPillText}>{langTag}</Text>
-                  <ChevronDown size={12} color="#3E3C3D" strokeWidth={2.2} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => router.push('/settings')}
-                  activeOpacity={0.8}
-                  style={styles.settingsPill}
-                >
-                  <Settings size={15} color="#3E3C3D" strokeWidth={2.2} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Top-Right: Driver Charge Pill */}
-              <DriverChargePill />
-            </View>
-
             {/* Elegant Driver Identity Column (Centered) */}
             <View style={styles.identityColumn}>
               <TouchableOpacity
@@ -638,11 +615,11 @@ const styles = StyleSheet.create({
     position: 'relative',
     backgroundColor: '#FA634E',
     overflow: 'hidden',
-    paddingBottom: 24,
+    paddingBottom: 16,
   },
   headerSafe: {
     paddingHorizontal: 16,
-    paddingTop: 6,
+    paddingTop: 16,
   },
   topHeaderRow: {
     flexDirection: 'row',
