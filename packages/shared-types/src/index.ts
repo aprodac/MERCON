@@ -870,6 +870,8 @@ export interface CreateLearningResourceDTO {
 export * from './quotationMatching';
 export * from './quotationSearch';
 export * from './monthlyRotation';
+export * from './tripRoute';
+
 
 
 

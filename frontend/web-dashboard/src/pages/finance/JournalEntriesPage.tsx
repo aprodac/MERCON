@@ -583,8 +583,8 @@ export default function JournalEntriesPage() {
                                 )}
                               </button>
 
-                              {/* Swiss Monospace Ref Badge */}
-                              <span className="font-mono font-bold text-[11.5px] tracking-tight bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-2 py-0.5 rounded-md shadow-2xs shrink-0">
+                              {/* Monospace Ref Badge */}
+                              <span className="font-mono font-bold text-xs tracking-tight text-slate-900 dark:text-slate-100 shrink-0">
                                 {entry.ref_id || `JE-${entry.id.slice(0, 6)}`}
                               </span>
 

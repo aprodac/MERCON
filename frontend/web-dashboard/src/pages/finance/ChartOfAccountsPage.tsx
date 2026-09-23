@@ -5,27 +5,20 @@ import {
   Plus,
   Trash2,
   Edit2,
-  FolderTree,
-  List,
   BookOpen,
   CheckCircle2,
-  ChevronRight,
-  ChevronDown,
   Download,
-  Search,
-  Filter,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import ExportModal, { ExportColumn } from '@/components/ui/ExportModal';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { StatusTabs, MoneyText } from '@/components/finance/kit';
+import { StatusTabs } from '@/components/finance/kit';
 import { formatMoney } from '@/lib/finance';
 
 import { financeService, CreateAccountDTO } from '@/services/financeService';
@@ -58,8 +51,6 @@ export default function ChartOfAccountsPage() {
   const [selectedType, setSelectedType] = useState<AccountType | 'all'>('all');
   const [search, setSearch] = useState('');
   const [showInactive, setShowInactive] = useState(false);
-  const [viewMode, setViewMode] = useState<'tree' | 'table'>('table');
-  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -92,21 +83,6 @@ export default function ChartOfAccountsPage() {
     });
     return counts;
   }, [accounts]);
-
-  // Hierarchical Tree Structure
-  const treeData = useMemo(() => {
-    const rootNodes = accounts.filter((a) => !a.parentId);
-    return rootNodes;
-  }, [accounts]);
-
-  const toggleTreeNode = (id: string) => {
-    setExpandedNodes((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
 
   const createMutation = useMutation({
     mutationFn: financeService.createAccount,
@@ -149,7 +125,7 @@ export default function ChartOfAccountsPage() {
     setFormData({
       account_code: '',
       name: '',
-      account_type: 'Asset',
+      account_type: selectedType !== 'all' ? selectedType : 'Asset',
       cash_flow_category: null,
       parentId: parentId || null,
       description: '',
@@ -159,17 +135,17 @@ export default function ChartOfAccountsPage() {
     setIsModalOpen(true);
   };
 
-  const openEditModal = (acc: Account) => {
-    setEditingAccount(acc);
+  const openEditModal = (account: Account) => {
+    setEditingAccount(account);
     setFormData({
-      account_code: acc.account_code,
-      name: acc.name,
-      account_type: acc.account_type,
-      cash_flow_category: acc.cash_flow_category || null,
-      parentId: acc.parentId || null,
-      description: acc.description || '',
-      is_postable: acc.is_postable,
-      isActive: acc.isActive,
+      account_code: account.account_code,
+      name: account.name,
+      account_type: account.account_type,
+      cash_flow_category: account.cash_flow_category || null,
+      parentId: account.parentId || null,
+      description: account.description || '',
+      is_postable: account.is_postable,
+      isActive: account.isActive,
     });
     setIsModalOpen(true);
   };
@@ -182,7 +158,7 @@ export default function ChartOfAccountsPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.account_code || !formData.name) {
-      toast.error('Account code and name are required');
+      toast.error('Please enter account code and name');
       return;
     }
 
@@ -193,7 +169,6 @@ export default function ChartOfAccountsPage() {
     }
   };
 
-  // Helper for Balance & Dr/Cr Tag
   const renderBalance = (acc: Account) => {
     const bal = (acc as any).current_balance ?? 0;
     const isAssetOrExpense = acc.account_type === 'Asset' || acc.account_type === 'Expense';
@@ -225,7 +200,7 @@ export default function ChartOfAccountsPage() {
         <button
           type="button"
           onClick={() => navigate(`/finance/general-ledger?account_id=${acc.id}`)}
-          className="font-mono font-bold text-[11.5px] tracking-tight bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-2.5 py-0.5 rounded-md hover:bg-[#FA634E] dark:hover:bg-[#FA634E] dark:hover:text-white transition-colors cursor-pointer shadow-2xs"
+          className="font-mono font-bold text-xs text-slate-900 dark:text-slate-100 hover:text-[#FA634E] dark:hover:text-[#FA634E] transition-colors cursor-pointer"
           title="Click to view General Ledger"
         >
           {acc.account_code}
@@ -302,7 +277,7 @@ export default function ChartOfAccountsPage() {
               size="sm"
               onClick={() => navigate(`/finance/general-ledger?account_id=${acc.id}`)}
               title="View General Ledger"
-              className="h-7 px-2 text-xs text-[#FA634E] hover:text-white hover:bg-[#FA634E] font-bold rounded-lg transition-colors"
+              className="h-7 px-2 text-xs text-[#FA634E] hover:text-white hover:bg-[#FA634E] font-bold rounded-lg transition-colors cursor-pointer"
             >
               <BookOpen className="w-3.5 h-3.5 mr-1" />
               Ledger
@@ -312,7 +287,7 @@ export default function ChartOfAccountsPage() {
             variant="ghost"
             size="sm"
             onClick={() => openEditModal(acc)}
-            className="h-7 w-7 p-0 text-slate-400 hover:text-slate-900 dark:hover:text-white"
+            className="h-7 w-7 p-0 text-slate-400 hover:text-slate-900 dark:hover:text-white cursor-pointer"
           >
             <Edit2 className="w-3.5 h-3.5" />
           </Button>
@@ -324,7 +299,7 @@ export default function ChartOfAccountsPage() {
                 if (confirm(`Deactivate account ${acc.account_code} - ${acc.name}?`)) deleteMutation.mutate(acc.id);
               }}
               title="Deactivate Account"
-              className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600"
+              className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </Button>
@@ -334,7 +309,7 @@ export default function ChartOfAccountsPage() {
               size="sm"
               onClick={() => updateMutation.mutate({ id: acc.id, data: { isActive: true } })}
               title="Reactivate Account"
-              className="h-7 px-2 text-xs font-semibold text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+              className="h-7 px-2 text-xs font-semibold text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 cursor-pointer"
             >
               Reactivate
             </Button>
@@ -348,37 +323,8 @@ export default function ChartOfAccountsPage() {
   return (
     <DashboardLayout active="finance" title="Chart of Accounts">
       <div className="p-6 space-y-4 max-w-7xl mx-auto">
-        {/* Top Header Card */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 rounded-2xl p-4 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 dark:text-white tracking-tight">Chart of Accounts</h1>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              General ledger accounts master registry & live financial balances
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsExportOpen(true)}
-              className="h-9 text-xs font-semibold rounded-xl"
-            >
-              <Download className="w-3.5 h-3.5 mr-1.5" />
-              Export
-            </Button>
-            <Button
-              onClick={() => openCreateModal()}
-              className="bg-[#FA634E] hover:bg-[#e0523d] text-white h-9 text-xs font-semibold px-3.5 rounded-xl shadow-xs"
-            >
-              <Plus className="w-4 h-4 mr-1.5" />
-              Add Account
-            </Button>
-          </div>
-        </div>
-
-        {/* Account Class Tabs (Odoo / Zoho style) */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 rounded-2xl px-4 py-1.5 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        {/* Control Bar: Class Tabs + Actions */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 rounded-2xl px-4 py-2 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <StatusTabs
             value={selectedType}
             onChange={(tab) => setSelectedType(tab as any)}
@@ -392,29 +338,7 @@ export default function ChartOfAccountsPage() {
             ]}
           />
 
-          {/* View Mode & Inactive Toggle */}
-          <div className="flex items-center gap-2 self-end sm:self-auto py-1">
-            <div className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl flex items-center border border-slate-200/80 dark:border-slate-700">
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer ${
-                  viewMode === 'table' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <List className="w-3.5 h-3.5" /> Table
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('tree')}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer ${
-                  viewMode === 'tree' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-2xs font-bold' : 'text-slate-500 hover:text-slate-800'
-                }`}
-              >
-                <FolderTree className="w-3.5 h-3.5" /> Tree View
-              </button>
-            </div>
-
+          <div className="flex items-center gap-2 self-end sm:self-auto">
             <label className="inline-flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 font-medium cursor-pointer select-none h-8 px-2.5 border border-slate-200/80 dark:border-slate-800 rounded-xl bg-white dark:bg-slate-900 shadow-2xs">
               <input
                 type="checkbox"
@@ -424,48 +348,38 @@ export default function ChartOfAccountsPage() {
               />
               Show Inactive
             </label>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsExportOpen(true)}
+              className="h-8 text-xs font-semibold rounded-xl cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 mr-1.5" />
+              Export
+            </Button>
+            <Button
+              onClick={() => openCreateModal()}
+              className="bg-[#FA634E] hover:bg-[#e0523d] text-white h-8 text-xs font-semibold px-3 rounded-xl shadow-xs cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 mr-1.5" />
+              Add Account
+            </Button>
           </div>
         </div>
 
-        {/* Tree View vs Flat Table View */}
-        {viewMode === 'tree' ? (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-800 rounded-2xl shadow-2xs overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
-            <div className="bg-[#F9FAFB] dark:bg-slate-800/90 px-4 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-300 grid grid-cols-12 gap-3 border-b border-slate-200/60 dark:border-slate-700">
-              <div className="col-span-5">Account Code & Name</div>
-              <div className="col-span-2">Account Type</div>
-              <div className="col-span-3 text-right">Live Balance</div>
-              <div className="col-span-2 text-right">Actions</div>
-            </div>
-
-            {treeData.map((node) => (
-              <TreeRow
-                key={node.id}
-                node={node}
-                allAccounts={accounts}
-                expandedNodes={expandedNodes}
-                toggleTreeNode={toggleTreeNode}
-                navigate={navigate}
-                openEditModal={openEditModal}
-                openCreateModal={openCreateModal}
-                deleteMutation={deleteMutation}
-                renderBalance={renderBalance}
-              />
-            ))}
-          </div>
-        ) : (
-          <DataTable<Account>
-            columns={columns}
-            data={accounts}
-            isLoading={isLoading}
-            searchPlaceholder="Search code, name, description..."
-            searchValue={search}
-            onSearchChange={setSearch}
-            enableSelection={false}
-            getRowId={(acc) => acc.id}
-            emptyTitle="No Accounts Found"
-            emptyMessage="No chart of accounts records found matching filter criteria."
-          />
-        )}
+        {/* Flat Ledger Table View */}
+        <DataTable<Account>
+          columns={columns}
+          data={accounts}
+          isLoading={isLoading}
+          searchPlaceholder="Search code, name, description..."
+          searchValue={search}
+          onSearchChange={setSearch}
+          enableSelection={false}
+          getRowId={(acc) => acc.id}
+          emptyTitle="No Accounts Found"
+          emptyMessage="No chart of accounts records found matching filter criteria."
+        />
 
         {/* Export Modal */}
         <ExportModal
@@ -499,7 +413,7 @@ export default function ChartOfAccountsPage() {
                     placeholder="e.g. 1010"
                     value={formData.account_code}
                     onChange={(e) => setFormData({ ...formData, account_code: e.target.value })}
-                    className="h-9 text-xs font-mono font-bold"
+                    required
                   />
                 </div>
                 <div>
@@ -510,7 +424,7 @@ export default function ChartOfAccountsPage() {
                     value={formData.account_type}
                     onValueChange={(val: AccountType) => setFormData({ ...formData, account_type: val })}
                   >
-                    <SelectTrigger className="h-9 text-xs">
+                    <SelectTrigger>
                       <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
@@ -529,26 +443,26 @@ export default function ChartOfAccountsPage() {
                   Account Name *
                 </label>
                 <Input
-                  placeholder="e.g. Main Cash Account"
+                  placeholder="e.g. Operating Cash Account"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="h-9 text-xs font-medium"
+                  required
                 />
               </div>
 
               <div>
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 block">
-                  Parent Header Account (Optional)
+                  Parent Account Header (Optional)
                 </label>
                 <Select
                   value={formData.parentId || 'none'}
                   onValueChange={(val) => setFormData({ ...formData, parentId: val === 'none' ? null : val })}
                 >
-                  <SelectTrigger className="h-9 text-xs">
-                    <SelectValue placeholder="No Parent (Root Header)" />
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select parent account (if sub-account)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No Parent (Root Header)</SelectItem>
+                    <SelectItem value="none">None (Top-Level Account)</SelectItem>
                     {accounts
                       .filter((a) => a.id !== editingAccount?.id)
                       .map((a) => (
@@ -562,37 +476,44 @@ export default function ChartOfAccountsPage() {
 
               <div>
                 <label className="text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1 block">
-                  Description
+                  Description / Remarks
                 </label>
                 <Input
-                  placeholder="Account purpose or memo"
+                  placeholder="Optional brief description..."
                   value={formData.description || ''}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="h-9 text-xs"
                 />
               </div>
 
-              <div className="flex items-center justify-between border-t border-slate-100 dark:border-slate-800 pt-3">
-                <label className="flex items-center space-x-2 text-xs font-medium text-slate-700 dark:text-slate-300 cursor-pointer">
+              <div className="flex items-center gap-4 pt-2">
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={formData.is_postable}
                     onChange={(e) => setFormData({ ...formData, is_postable: e.target.checked })}
-                    className="rounded text-[#FA634E] focus:ring-[#FA634E]"
+                    className="rounded border-slate-300 text-[#FA634E] focus:ring-[#FA634E]"
                   />
-                  <span>Allow Direct Postings (Postable Account)</span>
+                  Direct Posting Allowed
+                </label>
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.isActive}
+                    onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                    className="rounded border-slate-300 text-[#FA634E] focus:ring-[#FA634E]"
+                  />
+                  Active Account
                 </label>
               </div>
 
-              <DialogFooter className="pt-2">
-                <Button type="button" variant="outline" size="sm" onClick={closeModal}>
+              <DialogFooter className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                <Button type="button" variant="ghost" onClick={closeModal}>
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  size="sm"
-                  className="bg-[#FA634E] hover:bg-[#e0523d] text-white font-bold"
                   disabled={createMutation.isPending || updateMutation.isPending}
+                  className="bg-[#FA634E] hover:bg-[#e0523d] text-white"
                 >
                   {editingAccount ? 'Save Changes' : 'Create Account'}
                 </Button>
@@ -602,134 +523,5 @@ export default function ChartOfAccountsPage() {
         </Dialog>
       </div>
     </DashboardLayout>
-  );
-}
-
-// Tree Row Component for Hierarchical Display
-function TreeRow({
-  node,
-  allAccounts,
-  expandedNodes,
-  toggleTreeNode,
-  navigate,
-  openEditModal,
-  openCreateModal,
-  deleteMutation,
-  renderBalance,
-  depth = 0,
-}: {
-  node: Account;
-  allAccounts: Account[];
-  expandedNodes: Set<string>;
-  toggleTreeNode: (id: string) => void;
-  navigate: ReturnType<typeof useNavigate>;
-  openEditModal: (acc: Account) => void;
-  openCreateModal: (parentId?: string) => void;
-  deleteMutation: any;
-  renderBalance: (acc: Account) => React.ReactNode;
-  depth?: number;
-}) {
-  const children = allAccounts.filter((a) => a.parentId === node.id);
-  const hasChildren = children.length > 0;
-  const isExpanded = expandedNodes.has(node.id);
-  const cfg = TYPE_CONFIG[node.account_type] || TYPE_CONFIG.Asset;
-
-  return (
-    <div className="flex flex-col">
-      <div
-        className={`px-4 py-2.5 text-xs grid grid-cols-12 gap-3 items-center hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors ${
-          !node.is_postable ? 'bg-slate-50/50 dark:bg-slate-800/30 font-semibold' : ''
-        }`}
-        style={{ paddingLeft: `${16 + depth * 24}px` }}
-      >
-        <div className="col-span-5 flex items-center gap-2 min-w-0">
-          {hasChildren ? (
-            <button
-              type="button"
-              onClick={() => toggleTreeNode(node.id)}
-              className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 cursor-pointer"
-            >
-              {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-            </button>
-          ) : (
-            <span className="w-5" />
-          )}
-
-          <button
-            type="button"
-            onClick={() => navigate(`/finance/general-ledger?account_id=${node.id}`)}
-            className="font-mono font-bold text-[11px] tracking-tight bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 px-2 py-0.5 rounded shadow-2xs hover:bg-[#FA634E] dark:hover:bg-[#FA634E] dark:hover:text-white transition-colors cursor-pointer shrink-0"
-          >
-            {node.account_code}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => navigate(`/finance/general-ledger?account_id=${node.id}`)}
-            className="font-medium text-slate-900 dark:text-slate-100 hover:text-[#FA634E] truncate text-left cursor-pointer"
-          >
-            {node.name}
-          </button>
-        </div>
-
-        <div className="col-span-2">
-          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.bgClass} ${cfg.textClass} ${cfg.borderClass}`}>
-            {node.account_type}
-          </span>
-        </div>
-
-        <div className="col-span-3 text-right">{renderBalance(node)}</div>
-
-        <div className="col-span-2 flex items-center justify-end gap-1">
-          {node.is_postable && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate(`/finance/general-ledger?account_id=${node.id}`)}
-              className="h-6 px-1.5 text-[11px] text-[#FA634E] hover:bg-rose-50 font-bold"
-            >
-              <BookOpen className="w-3 h-3 mr-1" /> Ledger
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => openCreateModal(node.id)}
-            title="Add Sub-Account"
-            className="h-6 w-6 p-0 text-slate-400 hover:text-slate-700"
-          >
-            <Plus className="w-3 h-3" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => openEditModal(node)}
-            className="h-6 w-6 p-0 text-slate-400 hover:text-slate-700"
-          >
-            <Edit2 className="w-3 h-3" />
-          </Button>
-        </div>
-      </div>
-
-      {hasChildren && isExpanded && (
-        <div className="divide-y divide-slate-100 dark:divide-slate-800">
-          {children.map((child) => (
-            <TreeRow
-              key={child.id}
-              node={child}
-              allAccounts={allAccounts}
-              expandedNodes={expandedNodes}
-              toggleTreeNode={toggleTreeNode}
-              navigate={navigate}
-              openEditModal={openEditModal}
-              openCreateModal={openCreateModal}
-              deleteMutation={deleteMutation}
-              renderBalance={renderBalance}
-              depth={depth + 1}
-            />
-          ))}
-        </div>
-      )}
-    </div>
   );
 }
