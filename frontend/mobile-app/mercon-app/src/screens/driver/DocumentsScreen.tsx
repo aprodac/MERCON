@@ -37,7 +37,7 @@ const DocumentCard = ({ doc }: { doc: DriverDocument }) => {
           {(() => { const Icon = docIcon(doc.doc_type); return <Icon size={22} color={Colors.primary} strokeWidth={2} />; })()}
         </View>
         <View style={styles.cardInfo}>
-          <Text style={styles.docTitle}>{docTypeLabel(doc.doc_type)}</Text>
+          <Text style={styles.docTitle}>{doc.documentType?.name || docTypeLabel(doc.doc_type)}</Text>
           {doc.issue_date ? <Text style={styles.docNumber}>{language === 'ur' ? `تاریخ اجراء ${formatDate(doc.issue_date)}` : `Issued ${formatDate(doc.issue_date)}`}</Text> : null}
         </View>
         <StatusBadge status={st.label} />

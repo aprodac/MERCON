@@ -6,6 +6,7 @@ import { api, getApiErrorMessage } from './api';
 export interface DriverDocument {
   id: string;
   doc_type: string;
+  documentType?: { name: string } | null;
   status: string;
   file_url: string;
   mime_type: string | null;

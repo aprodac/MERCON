@@ -315,10 +315,9 @@ export default function DriverListPage() {
 
   const handleWhatsappSend = () => {
     const cleanPhone = whatsappCustomPhone.trim().replace(/\+/g, '').replace(/\D/g, '');
-    const baseUrl = cleanPhone
-      ? `https://api.whatsapp.com/send?phone=${cleanPhone}`
-      : `https://api.whatsapp.com/send`;
-    const shareUrl = `${baseUrl}?text=${encodeURIComponent(whatsappMessageText)}`;
+    const shareUrl = cleanPhone
+      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(whatsappMessageText)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsappMessageText)}`;
     window.open(shareUrl, '_blank');
     setWhatsappDriver(null);
   };
