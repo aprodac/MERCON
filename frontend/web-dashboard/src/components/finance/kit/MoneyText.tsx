@@ -53,3 +53,5 @@ export function MoneyText({
     </span>
   );
 }
+
+export default MoneyText;
