@@ -277,7 +277,7 @@ const DriverChargesScreen = ({ navigation }: any) => {
         {/* 3. Section 1: Earned Driver Charges */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>{t('title_earned_driver_charges', 'Earned Driver Charges')}</Text>
-          <TouchableOpacity onPress={() => router.push('/trips')} activeOpacity={0.8} style={styles.viewAllBtn}>
+          <TouchableOpacity onPress={() => router.push('/trips?tab=Completed')} activeOpacity={0.8} style={styles.viewAllBtn}>
             <Text style={styles.viewAllText}>{t('action_view_all', 'View All')} {language === 'ur' ? '←' : '→'}</Text>
           </TouchableOpacity>
         </View>
@@ -304,7 +304,7 @@ const DriverChargesScreen = ({ navigation }: any) => {
         {/* 4. Section 2: Upcoming Driver Charges */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>{t('title_upcoming_driver_charges', 'Upcoming Driver Charges')}</Text>
-          <TouchableOpacity onPress={() => router.push('/trips')} activeOpacity={0.8} style={styles.viewAllBtn}>
+          <TouchableOpacity onPress={() => router.push('/trips?tab=Scheduled')} activeOpacity={0.8} style={styles.viewAllBtn}>
             <Text style={styles.viewAllText}>{t('action_view_all', 'View All')} {language === 'ur' ? '←' : '→'}</Text>
           </TouchableOpacity>
         </View>

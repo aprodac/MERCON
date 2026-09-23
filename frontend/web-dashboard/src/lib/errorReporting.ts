@@ -9,6 +9,11 @@ import { errorConsoleService } from '@/services/errorConsoleService';
 let installed = false;
 
 function report(message: string, stack?: string) {
+  // Ignore harmless browser layout warnings that spam the error console
+  if (message.includes('ResizeObserver loop')) {
+    return;
+  }
+
   errorConsoleService
     .reportClientError({ message, stack, route: window.location.pathname })
     .catch(() => {});

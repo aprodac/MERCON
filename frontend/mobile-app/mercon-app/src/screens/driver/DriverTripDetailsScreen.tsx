@@ -274,6 +274,12 @@ export default function DriverTripDetailsScreen() {
             </View>
 
             <View style={styles.scheduleGrid}>
+              {trip.planned_distance != null && (
+                <View style={styles.scheduleRow}>
+                  <Text style={styles.scheduleLabel}>{t('label_distance', 'Distance')}</Text>
+                  <Text style={[styles.scheduleVal, { writingDirection: 'ltr' }]}>{trip.planned_distance.toLocaleString()} km</Text>
+                </View>
+              )}
               <View style={styles.scheduleRow}>
                 <Text style={styles.scheduleLabel}>{t('label_planned_start', 'Planned Start')}</Text>
                 <Text style={[styles.scheduleVal, { writingDirection: 'ltr' }]}>{formatDateTime(trip.planned_start)}</Text>
