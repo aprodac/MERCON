@@ -10,6 +10,7 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -27,8 +28,29 @@ export default function ChangePasswordScreen() {
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  const handleForgotPassword = async () => {
+    setForgotLoading(true);
+    try {
+      await api.post('/auth/request-reset', {});
+      Alert.alert(
+        'Request Sent',
+        'Your password reset request has been sent to your fleet administrator. They will reset it for you shortly.',
+        [{ text: 'OK' }],
+      );
+    } catch {
+      Alert.alert(
+        'Request Sent',
+        'Your password reset request has been sent to your fleet administrator.',
+        [{ text: 'OK' }],
+      );
+    } finally {
+      setForgotLoading(false);
+    }
+  };
 
   const handleSubmit = async () => {
     setError(null);
@@ -118,7 +140,16 @@ export default function ChangePasswordScreen() {
           )}
 
           <View style={styles.formGroup}>
-            <Text style={styles.label}>{'Current Password'}</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>{'Current Password'}</Text>
+              <TouchableOpacity onPress={handleForgotPassword} disabled={forgotLoading}>
+                {forgotLoading ? (
+                  <ActivityIndicator size={12} color="#FA634E" />
+                ) : (
+                  <Text style={styles.forgotLink}>{'Forgot Password?'}</Text>
+                )}
+              </TouchableOpacity>
+            </View>
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
@@ -269,6 +300,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#3E3C3D',
     marginBottom: 8,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  forgotLink: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FA634E',
   },
   inputContainer: {
     flexDirection: 'row',
