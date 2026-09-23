@@ -11,7 +11,8 @@ import { tripService, BulkImportTripRow, BulkImportResult, TripStatus, Trip } fr
 import { quotationService, RateCard } from '@/services/quotationService';
 import { estimateTravelTimeByName, calculateArrivalDropoffTime } from '@/services/travelTimeService';
 import { useDeploymentTimezone, localDateTimeToUtcIso } from '@/lib/datetime';
-import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory } from '@mercon/shared-types';
+import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory, quotationMatchesRoute } from '@mercon/shared-types';
+import { buildStopsFromSlot, routeLegsFromSlot } from '@/utils/tripStopsHelper';
 import { parseSheet, TRIP_COLUMNS } from '@/utils/importUtils';
 import { analyzePastDateRows, applyPastStatusToRows, PastDateAnalysis } from '@/utils/pastDateTripUtils';
 import { getCompatibilityRuleForClass } from '@/utils/vehicleCompatibilityRegistry';
@@ -387,21 +388,11 @@ export function useCreateTripForm() {
 
               if ((!slot.origin && !slot.originLocationId) || (!slot.destination && !slot.destinationLocationId)) return slot;
 
-              const intermediateStops = (slot.intermediateLocations || []).map((locVal, idx) => {
-                const locId = slot.intermediateLocationIds?.[idx] || (isUuid(locVal) ? locVal : null);
-                return {
-                  location_id: locId || null,
-                  location_name: locVal,
-                  stop_type: 'Dropoff',
-                  sequence: idx + 2,
-                };
-              });
-
-              const slotStops = [
-                { location_id: slot.originLocationId, stop_type: 'Pickup', sequence: 1 },
-                ...intermediateStops,
-                { location_id: slot.destinationLocationId, stop_type: 'Dropoff', sequence: intermediateStops.length + 2 },
-              ];
+              // The full route — every outbound and return stop with its leg — so
+              // the lookup only returns a quotation defined for exactly this route.
+              const slotIsRound = isRoundTripCategory(rCat || '');
+              const slotStops = buildStopsFromSlot(slot, slotIsRound);
+              const slotLegs = routeLegsFromSlot(slot, slotIsRound);
 
               try {
                 let card: RateCard | null = null;
@@ -416,7 +407,13 @@ export function useCreateTripForm() {
                     planned_start: slot.date || undefined,
                     stops: slotStops,
                   });
-                  card = exactRes?.quotation || exactRes?.candidate_quotation || exactRes?.candidateQuotation || exactRes?.rate_card || null;
+                  // Only an exact route match. `candidate_quotation` is the SAME lane with
+                  // DIFFERENT stops — applying it would price A→X→B at A→B's rate.
+                  card = exactRes?.quotation || exactRes?.rate_card || null;
+                  // Never trust a lane-only answer: an older API ignores the stops and
+                  // returns the A→B quotation for A→X→B, which re-selected it right
+                  // after "Define Quotation" opened (the flip-flop). Every stop must match.
+                  if (card && !quotationMatchesRoute(card as any, slotLegs, slotIsRound)) card = null;
                 }
 
                 if (!card) {
@@ -430,6 +427,9 @@ export function useCreateTripForm() {
                     slot.originLocationId,
                     slot.destinationLocationId
                   );
+                  // The local fallback only compares origin + destination; reject it
+                  // unless every stop of this route matches too.
+                  if (card && !quotationMatchesRoute(card as any, slotLegs, slotIsRound)) card = null;
                 }
 
                 if (card) {
@@ -484,6 +484,9 @@ export function useCreateTripForm() {
                 tripCharges: keepTripCharges,
                 ...(keepDriverPayout !== undefined ? { driverPayout: keepDriverPayout } : {}),
                 rateMatched: false,
+                // Clear the previous match too — the page treats any matchedRateCard as
+                // "matched", which kept "Define Quotation" from opening after a route change.
+                matchedRateCard: null,
                 rateCardId: undefined,
                 rateCardName: undefined,
                 rateCardBasePrice: undefined,
@@ -773,6 +776,40 @@ export function useCreateTripForm() {
       triggerRateLookupForSlots();
     }
   }, [contractCustomer, contractVehicleType, contractRateCategory, contractBillingType]);
+
+  // Any stop change — adding/removing/changing an intermediate stop or a
+  // return-leg stop — makes it a different route, so the previous quotation no
+  // longer applies: clear it and look up again (no match → "Define Quotation").
+  // Origin/destination changes already do this in handleSlotLocationChange.
+  const routeKey = useMemo(() => {
+    const isRound = isRoundTripCategory(contractRateCategory || '');
+    return JSON.stringify(contractSlots.map((slot) => routeLegsFromSlot(slot, isRound)));
+  }, [contractSlots, contractRateCategory]);
+  const prevRouteKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevRouteKeyRef.current;
+    prevRouteKeyRef.current = routeKey;
+    if (prev === null || prev === routeKey || !contractCustomer) return;
+    setContractSlots((slots) =>
+      slots.map((s) =>
+        s.rateMatched || s.matchedRateCard
+          ? {
+              ...s,
+              rateMatched: false,
+              matchedRateCard: null,
+              rateCardId: undefined,
+              // The price came from the old quotation (not typed by the user) — drop it
+              // so the old route's rate isn't carried into "Define Quotation".
+              ...(s.rateMatched && !s.saveAsQuotation && !s.driverPayoutModified
+                ? { billingAmount: '', tripCharges: '', driverPayout: undefined }
+                : {}),
+            }
+          : s,
+      ),
+    );
+    const t = setTimeout(() => triggerRateLookupForSlots(undefined, undefined, undefined, undefined, true), 150);
+    return () => clearTimeout(t);
+  }, [routeKey]);
 
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [dayAssignments, setDayAssignments] = useState<Record<string, { driverId: string; vehicleId: string; coDriverId?: string; driverPayoutOverride?: number; coDriverPayoutOverride?: number }>>({});

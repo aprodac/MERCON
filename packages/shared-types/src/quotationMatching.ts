@@ -171,3 +171,80 @@ export function findMatchingQuotation<T extends QuotationMatchTarget>(
 
   return matched || null;
 }
+
+// ─── Full-route matching (every stop, every leg) ─────────────────────────────
+
+/** One stop of a route: a Location id and/or a display name. */
+export interface RouteStopRef {
+  id?: string | null;
+  name?: string | null;
+}
+
+/** A trip route split into legs: [outbound] or [outbound, return], each in stop order. */
+export type RouteLegs = RouteStopRef[][];
+
+interface QuotationStopLike {
+  locationId?: string | null;
+  location_id?: string | null;
+  location_name?: string | null;
+  source_label?: string | null;
+  sequence?: number | null;
+  stop_sequence?: number | null;
+  leg_index?: number | null;
+  location?: QuotationMatchLocation | null;
+}
+
+const refOfQuotationStop = (s: QuotationStopLike): RouteStopRef => ({
+  id: s.locationId || s.location_id || s.location?.id || null,
+  name: s.source_label || s.location_name || s.location?.name || null,
+});
+
+/** Two stops are the same place: by Location id when both have one, otherwise by name. */
+export function sameRouteStop(a: RouteStopRef, b: RouteStopRef): boolean {
+  if (a.id && b.id) return a.id === b.id;
+  return matchLocationToken(a.name, b.name);
+}
+
+/** A quotation's stops as legs, in order. Quotations without leg_index are treated as one outbound leg. */
+export function quotationRouteLegs(q: { stops?: QuotationStopLike[] | null }): RouteLegs {
+  const stops = [...(q.stops ?? [])].sort(
+    (a, b) => (a.leg_index ?? 0) - (b.leg_index ?? 0) || (a.sequence ?? a.stop_sequence ?? 0) - (b.sequence ?? b.stop_sequence ?? 0),
+  );
+  const out: RouteStopRef[] = [];
+  const ret: RouteStopRef[] = [];
+  for (const s of stops) ((s.leg_index ?? 0) === 1 ? ret : out).push(refOfQuotationStop(s));
+  return ret.length > 0 ? [out, ret] : [out];
+}
+
+/** Trip stops (DB rows or request payload) as legs, in order. */
+export function tripRouteLegs(stops: QuotationStopLike[] | null | undefined): RouteLegs {
+  return quotationRouteLegs({ stops: stops ?? [] });
+}
+
+const legsEqual = (a: RouteStopRef[], b: RouteStopRef[]) =>
+  a.length === b.length && a.every((s, i) => sameRouteStop(s, b[i]));
+
+/**
+ * A quotation matches a trip only if EVERY stop matches, per leg and in order:
+ * the outbound leg (origin → stops → delivery) and, for a round trip, the
+ * return leg too (return loading → stops → final drop). Adding, removing or
+ * reordering any stop — including a return-leg stop — makes it a different
+ * route that needs its own quotation.
+ *
+ * A round-trip quotation that stores only its outbound leg (older quotations)
+ * implies the plain return B → A.
+ */
+export function quotationMatchesRoute(
+  q: { stops?: QuotationStopLike[] | null },
+  trip: RouteLegs,
+  isRoundTrip: boolean,
+): boolean {
+  const [qOut, qRetStored] = quotationRouteLegs(q);
+  const [tOut, tRet] = trip;
+  if (!qOut || qOut.length < 2 || !tOut || tOut.length < 2) return false;
+  if (!legsEqual(qOut, tOut)) return false;
+  if (!isRoundTrip) return true;
+  const qRet = qRetStored ?? [qOut[qOut.length - 1], qOut[0]];
+  const tripRet = tRet && tRet.length >= 2 ? tRet : [tOut[tOut.length - 1], tOut[0]];
+  return legsEqual(qRet, tripRet);
+}

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getTimelineProgress } from '@mercon/shared-types';
+import { getTimelineProgress, quotationMatchesRoute, getTimelineVehiclePosition, timelineStopRole, stopRoleAt, tripStopRole } from '@mercon/shared-types';
 
 import { validateTripStops } from './tripValidationService';
 import { stampWorkflowTransition, stampStopTransition, resolveAuthoritativeActiveStop, stampIntermediateStopVisit } from './tripLifecycle';
@@ -1799,6 +1799,75 @@ describe('DEEP CODE-LEVEL TEST SUITE — INDEPENDENT OUTBOUND + RETURN ARCHITECT
     it('arrived at final stop, not yet completed → final current; trip completed → all done', () => {
       assert.deepEqual(getTimelineProgress([n(true, true), n(true, true), n(true)], false), ['completed', 'completed', 'current']);
       assert.deepEqual(getTimelineProgress([n(true, true), n(true, true), n(true)], true), ['completed', 'completed', 'completed']);
+    });
+  });
+
+  // ============================================================
+  // TEST CASE #19 — Quotation matches only if EVERY stop matches
+  // ============================================================
+  describe('Test Case #19 — quotationMatchesRoute (all stops, both legs)', () => {
+    const q = (...legs: string[][]) => ({
+      stops: legs.flatMap((leg, li) => leg.map((id, i) => ({ locationId: id, leg_index: li, sequence: li * 10 + i + 1 }))),
+    });
+    const r = (...legs: string[][]) => legs.map((leg) => leg.map((id) => ({ id })));
+    it('one-way: adding a stop means A→B no longer matches', () => {
+      assert.equal(quotationMatchesRoute(q(['A', 'B']), r(['A', 'B']), false), true);
+      assert.equal(quotationMatchesRoute(q(['A', 'B']), r(['A', 'X', 'B']), false), false);
+    });
+    it('one-way: stops must be the same places in the same order', () => {
+      assert.equal(quotationMatchesRoute(q(['A', 'X', 'B']), r(['A', 'X', 'B']), false), true);
+      assert.equal(quotationMatchesRoute(q(['A', 'X', 'B']), r(['A', 'Y', 'B']), false), false);
+      assert.equal(quotationMatchesRoute(q(['A', 'X', 'Y', 'B']), r(['A', 'Y', 'X', 'B']), false), false);
+    });
+    it('round trip: return-leg stops must match too', () => {
+      assert.equal(quotationMatchesRoute(q(['A', 'B'], ['B', 'C', 'A']), r(['A', 'B'], ['B', 'C', 'A']), true), true);
+      assert.equal(quotationMatchesRoute(q(['A', 'B'], ['B', 'A']), r(['A', 'B'], ['B', 'C', 'A']), true), false);
+      assert.equal(quotationMatchesRoute(q(['A', 'B'], ['B', 'C', 'A']), r(['A', 'B'], ['B', 'A']), true), false);
+    });
+    it('round trip: older quotation without a stored return leg implies B → A', () => {
+      assert.equal(quotationMatchesRoute(q(['A', 'B']), r(['A', 'B'], ['B', 'A']), true), true);
+      assert.equal(quotationMatchesRoute(q(['A', 'B']), r(['A', 'B'], ['B', 'C', 'A']), true), false);
+      assert.equal(quotationMatchesRoute(q(['A', 'B']), r(['A', 'B'], ['B', 'D']), true), false);
+    });
+    it('matches by name when a stop has no location id', () => {
+      const qn = { stops: [{ source_label: 'RUH - Riyadh', sequence: 1 }, { source_label: 'Medina', sequence: 2 }] };
+      assert.equal(quotationMatchesRoute(qn, [[{ name: 'Riyadh' }, { name: 'MED - Medina' }]], false), true);
+      assert.equal(quotationMatchesRoute(qn, [[{ name: 'Riyadh' }, { name: 'Buraydah' }, { name: 'Medina' }]], false), false);
+    });
+  });
+
+  // ============================================================
+  // TEST CASE #20 — Truck position + stop role colours
+  // ============================================================
+  describe('Test Case #20 — getTimelineVehiclePosition / timelineStopRole', () => {
+    const n = (a?: boolean, d?: boolean) => ({ actualArrival: a ? 't' : null, actualDeparture: d ? 't' : null });
+    it('loading at pickup → on the pickup', () => {
+      assert.deepEqual(getTimelineVehiclePosition([n(true), n(), n()], false), { index: 0, enRoute: false });
+    });
+    it('left pickup → between pickup and next stop (not on the next stop)', () => {
+      assert.deepEqual(getTimelineVehiclePosition([n(true, true), n(), n()], false), { index: 1, enRoute: true });
+    });
+    it('arrived at next stop → on that stop', () => {
+      assert.deepEqual(getTimelineVehiclePosition([n(true, true), n(true), n()], false), { index: 1, enRoute: false });
+    });
+    it('left Buraydah (stop) → between Buraydah and Medina', () => {
+      assert.deepEqual(getTimelineVehiclePosition([n(true, true), n(true, true), n(), n(), n()], false), { index: 2, enRoute: true });
+    });
+    it('stopRoleAt: first = origin, last = destination, middle = stop', () => {
+      assert.deepEqual([0, 1, 2, 3].map((i) => stopRoleAt(i, 4)), ['origin', 'stop', 'stop', 'destination']);
+      assert.deepEqual([0, 1].map((i) => stopRoleAt(i, 2)), ['origin', 'destination']);
+    });
+    it('tripStopRole: role per leg for stored stops (A→X→B | B→C→A)', () => {
+      const t = { stops: [
+        { id: 'a', stop_sequence: 1, leg_index: 0 }, { id: 'x', stop_sequence: 2, leg_index: 0 }, { id: 'b', stop_sequence: 3, leg_index: 0 },
+        { id: 'b2', stop_sequence: 4, leg_index: 1 }, { id: 'c', stop_sequence: 5, leg_index: 1 }, { id: 'a2', stop_sequence: 6, leg_index: 1 },
+      ] };
+      assert.deepEqual(['a', 'x', 'b', 'b2', 'c', 'a2'].map((id) => tripStopRole(t, { id })), ['origin', 'stop', 'destination', 'origin', 'stop', 'destination']);
+    });
+    it('roles: loading = origin, in between = stop, delivery = destination', () => {
+      assert.equal(timelineStopRole({ iconType: 'House' }), 'origin');
+      assert.equal(timelineStopRole({ iconType: 'Route', isIntermediate: true }), 'stop');
+      assert.equal(timelineStopRole({ iconType: 'MapPin' }), 'destination');
     });
   });
 });

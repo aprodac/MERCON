@@ -423,25 +423,25 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
           side="right"
           align="start"
           sideOffset={12}
-          className="w-64 p-0 bg-[#2D2B2C] text-[#EEF1F6] border border-white/15 shadow-[0_12px_36px_rgba(0,0,0,0.45)] backdrop-blur-xl rounded-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150"
+          className="w-64 p-0 bg-white text-[#3E3C3D] border border-slate-200/90 shadow-[0_16px_40px_rgba(0,0,0,0.15),0_4px_16px_rgba(0,0,0,0.06)] backdrop-blur-xl rounded-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150"
         >
           {/* Flyout Card Header */}
-          <div className="px-3.5 py-2.5 bg-[#3E3C3D] border-b border-white/10 flex items-center justify-between">
+          <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="p-1 rounded-lg bg-[#FA634E]/20 text-[#FA634E]">
+              <span className="p-1.5 rounded-lg bg-[#FA634E]/10 text-[#FA634E]">
                 <item.icon size={15} />
               </span>
-              <span className="text-xs font-bold text-white tracking-wide truncate max-w-[150px]">
+              <span className="text-xs font-bold text-[#3E3C3D] tracking-wide truncate max-w-[150px]">
                 {item.label}
               </span>
             </div>
-            <span className="px-2 py-0.5 rounded-full bg-white/10 text-[10px] font-extrabold text-[#EEF1F6]/75">
+            <span className="px-2 py-0.5 rounded-full bg-slate-200/60 text-[10px] font-extrabold text-slate-600">
               {validSubRoutes.length} pages
             </span>
           </div>
 
           {/* Flyout Card Sub-Routes List */}
-          <div className="p-1.5 space-y-0.5 max-h-[320px] overflow-y-auto sidebar-scrollbar">
+          <div className="p-1.5 space-y-0.5 max-h-[320px] overflow-y-auto sidebar-scrollbar bg-white">
             {validSubRoutes.map((sr) => {
               const isSubActive = location.pathname === sr.path;
               const SubIcon = sr.icon || ChevronRight;
@@ -454,10 +454,10 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
                   className={`
                     flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-all duration-150 group/sr
                     ${isSubActive
-                      ? 'bg-[#FA634E] text-white font-bold shadow-xs'
+                      ? 'bg-[#FA634E] text-white font-bold shadow-sm shadow-[#FA634E]/30'
                       : sr.isAction
-                        ? 'bg-white/5 text-[#FA634E] hover:bg-[#FA634E]/20 hover:text-white font-semibold border border-[#FA634E]/30'
-                        : 'text-[#EEF1F6]/80 hover:bg-white/10 hover:text-white font-medium'
+                        ? 'bg-[#FA634E]/5 text-[#FA634E] hover:bg-[#FA634E] hover:text-white font-semibold border border-[#FA634E]/20'
+                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-medium'
                     }
                   `}
                 >
@@ -468,12 +468,16 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
                         ? 'text-white'
                         : sr.isAction
                           ? 'text-[#FA634E] group-hover/sr:text-white'
-                          : 'text-[#EEF1F6]/50 group-hover/sr:text-white'
+                          : 'text-slate-400 group-hover/sr:text-[#FA634E]'
                     }`}
                   />
                   <span className="flex-1 truncate">{sr.label}</span>
                   {sr.isAction && (
-                    <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase bg-[#FA634E] text-white shrink-0">
+                    <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase shrink-0 transition-colors ${
+                      isSubActive
+                        ? 'bg-white text-[#FA634E]'
+                        : 'bg-[#FA634E] text-white group-hover/sr:bg-white group-hover/sr:text-[#FA634E]'
+                    }`}>
                       NEW
                     </span>
                   )}

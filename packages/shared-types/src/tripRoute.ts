@@ -98,8 +98,6 @@ export const DRIVER_WORKFLOW_STATES = [
 export type DriverWorkflowState = (typeof DRIVER_WORKFLOW_STATES)[number];
 
 export const ROUTE_EDITABLE_STATUSES: string[] = ['Draft', 'Scheduled'];
-/** @deprecated Legacy backward compatibility fallback. Prefer ROUTE_EDITABLE_STATUSES. */
-export const ROUTE_LOCKED_STATUSES: string[] = ['Loading', 'InTransit', 'Delayed', 'Completed', 'Invoiced', 'Cancelled'];
 export const STOPS_FROZEN_IN: string[] = ['Completed', 'Invoiced', 'Cancelled'];
 
 export function isRouteEditable(status?: string | null): boolean {
@@ -673,6 +671,77 @@ export function getTimelineProgress(
   });
   const current = Math.min(Math.max(lastDeparted + 1, lastArrived), nodes.length - 1);
   return nodes.map((_, i) => (i < current ? 'completed' : i === current ? 'current' : 'upcoming'));
+}
+
+/**
+ * Where to draw the vehicle on a route-progress bar. `index` is the current
+ * node (see getTimelineProgress). `enRoute` is true when the driver has LEFT
+ * the previous stop but not yet arrived at `index` — the vehicle belongs on
+ * the line between node index-1 and index, not on the next stop.
+ */
+export function getTimelineVehiclePosition(
+  nodes: Pick<TimelineStop, 'actualArrival' | 'actualDeparture'>[],
+  tripCompleted: boolean,
+): { index: number; enRoute: boolean } {
+  if (nodes.length === 0) return { index: 0, enRoute: false };
+  if (tripCompleted) return { index: nodes.length - 1, enRoute: false };
+  const index = Math.max(0, getTimelineProgress(nodes, false).indexOf('current'));
+  const enRoute = index > 0 && !nodes[index]?.actualArrival && !!nodes[index - 1]?.actualDeparture;
+  return { index, enRoute };
+}
+
+// ─── Stop role colours (one palette everywhere) ──────────────────────────────
+
+/** Role of a stop within its leg: where it loads, where it delivers, or in between. */
+export type StopRole = 'origin' | 'stop' | 'destination';
+
+/**
+ * Owner-set colours for stop roles, used on every route display (web create
+ * trip, web trip details, driver app stepper): origin/loading = blue,
+ * destination/delivery = green, every stop in between = red.
+ */
+export const STOP_ROLE_COLORS: Record<StopRole, { main: string; soft: string; text: string }> = {
+  origin: { main: '#2563EB', soft: '#DBEAFE', text: '#1D4ED8' },
+  stop: { main: '#DC2626', soft: '#FEE2E2', text: '#B91C1C' },
+  destination: { main: '#16A34A', soft: '#DCFCE7', text: '#15803D' },
+};
+
+/** Short labels for each role, for legends and badges. */
+export const STOP_ROLE_LABELS: Record<StopRole, string> = {
+  origin: 'Origin',
+  stop: 'Stop',
+  destination: 'Destination',
+};
+
+/**
+ * Role of the stop at `indexInLeg` in a leg of `legLength` stops — the one rule
+ * every other role helper uses: first = origin (loading), last = destination
+ * (delivery), everything in between = stop. Use this for form rows too
+ * (e.g. the create-trip wizard's origin / stop #n / destination fields).
+ */
+export function stopRoleAt(indexInLeg: number, legLength: number): StopRole {
+  if (indexInLeg <= 0) return 'origin';
+  if (indexInLeg >= legLength - 1) return 'destination';
+  return 'stop';
+}
+
+/** Role of a timeline node: first stop of a leg = origin, last = destination, rest = stop. */
+export function timelineStopRole(node: Pick<TimelineStop, 'isIntermediate' | 'iconType'>): StopRole {
+  if (node.isIntermediate || node.iconType === 'Route') return 'stop';
+  return node.iconType === 'House' ? 'origin' : 'destination';
+}
+
+/** Role of a stored trip stop (DB row / API stop) within its own leg. */
+export function tripStopRole(
+  trip: { stops?: TripStopLike[] | null } | null | undefined,
+  stop: Pick<TripStopLike, 'id'>,
+): StopRole {
+  for (const leg of [0, 1] as const) {
+    const legStops = getLegStops(trip, leg);
+    const i = legStops.findIndex((s) => s.id === stop.id);
+    if (i !== -1) return stopRoleAt(i, legStops.length);
+  }
+  return 'stop';
 }
 
 export function findTimelineIndex(nodes: TimelineStop[], target: TimelineTarget): number {

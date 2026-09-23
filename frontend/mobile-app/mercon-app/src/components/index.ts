@@ -17,3 +17,4 @@ export * from './Toast';
 export * from './NewTripMenuModal';
 export * from './MonthlyCalendarSelector';
 export * from './common/AppModal';
+export * from './StopRole';

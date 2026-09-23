@@ -1,5 +1,5 @@
 import { isUuid } from '@/lib/utils';
-import { buildTripStops, BuiltTripStop } from '@mercon/shared-types';
+import { buildTripStops, BuiltTripStop, type RouteLegs, type RouteStopRef } from '@mercon/shared-types';
 
 const safeUuid = (id?: string | null): string | null => (id && isUuid(id) ? id : null);
 
@@ -102,4 +102,34 @@ export function buildStopsFromSlot(slot: MapSlotToStopsInput, isRound: boolean):
         }
       : undefined,
   });
+}
+
+/**
+ * The wizard route as legs for quotation matching: every stop, in order —
+ * outbound [origin, …stops, destination] and, for a round trip, return
+ * [return loading (default: destination), …return stops, final drop (default: origin)].
+ */
+export function routeLegsFromSlot(slot: MapSlotToStopsInput, isRound: boolean): RouteLegs {
+  // Some wizard fields hold a Location id in the name slot — treat it as the id.
+  const ref = (name?: string | null, id?: string | null): RouteStopRef => {
+    const n = (name || '').trim();
+    const resolvedId = safeUuid(id ?? null) ?? safeUuid(n);
+    return { id: resolvedId, name: resolvedId && isUuid(n) ? null : n || null };
+  };
+  const origin = ref(slot.originName || slot.origin, slot.originLocationId);
+  const destination = ref(slot.destinationName || slot.destination, slot.destinationLocationId);
+  const mids = (names?: string[], ids?: (string | null)[]) =>
+    (names || [])
+      .map((n, i) => ({ n: (n || '').trim(), id: ids?.[i] ?? null }))
+      .filter((x) => x.n || x.id)
+      .map((x) => ref(x.n, x.id));
+  const outbound = [origin, ...mids(slot.intermediateLocations, slot.intermediateLocationIds), destination];
+  if (!isRound) return [outbound];
+  const retStart = (slot.returnOrigin || '').trim()
+    ? ref(slot.returnOrigin, slot.returnOriginLocationId)
+    : destination;
+  const retEnd = (slot.returnDestination || '').trim()
+    ? ref(slot.returnDestination, slot.returnDestinationLocationId)
+    : origin;
+  return [outbound, [retStart, ...mids(slot.returnIntermediateLocations, slot.returnIntermediateLocationIds), retEnd]];
 }

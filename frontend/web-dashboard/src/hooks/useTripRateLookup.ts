@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { quotationService, RateCard } from '@/services/quotationService';
 import { normalizeVehicleClass, normalizeRateCategory, normalizeBillingType } from './useCreateTripForm';
-import { isRoundTripCategory } from '@mercon/shared-types';
+import { isRoundTripCategory, quotationMatchesRoute } from '@mercon/shared-types';
+import { routeLegsFromSlot } from '@/utils/tripStopsHelper';
 
 export function useTripRateLookup(
   contractCustomer: string,
@@ -203,7 +204,18 @@ export function useTripRateLookup(
       return customerRateCards;
     }
 
-    const isRoundTrip = isRoundTripCategory(rCat || '');
+    const isRoundTrip = isRoundTripCategory(rCat || contractRateCategory || '');
+
+    // With a full route entered, only quotations for exactly this route count:
+    // every stop, outbound and return, in order. Adding a stop (or a return
+    // stop) therefore leaves no match, which opens "Define Quotation".
+    if (originOrSlot && typeof originOrSlot === 'object' && hasOrigin && hasDestination) {
+      const legs = routeLegsFromSlot(originOrSlot, isRoundTrip);
+      return customerRateCards.filter((rc) => {
+        if (isRoundTrip !== isRoundTripCategory(String(rc.line_type || rc.rate_category || ''))) return false;
+        return quotationMatchesRoute(rc as any, legs, isRoundTrip);
+      });
+    }
 
     const matchLocation = (cardLocRaw: any, targetLocRaw: any) => {
       if (!cardLocRaw || !targetLocRaw) return false;
@@ -258,7 +270,7 @@ export function useTripRateLookup(
 
       return destMatches;
     });
-  }, [customerRateCards]);
+  }, [customerRateCards, contractRateCategory]);
 
   return {
     customerRateCards,

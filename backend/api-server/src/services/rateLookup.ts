@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { getLegEndpoints } from '@mercon/shared-types';
+import { getLegEndpoints, isRoundTripCategory, quotationMatchesRoute, tripRouteLegs } from '@mercon/shared-types';
 
 /**
  * The one rule for "what does this lane cost for this customer".
@@ -49,7 +49,7 @@ export const findQuotationForLane = async (
     rateCategory?: string | null;
     lineType?: string | null;
     billingType?: string | null;
-    stops?: Array<{ location_id?: string | null; locationId?: string | null; sequence?: number; stop_type?: string }>;
+    stops?: Array<{ location_id?: string | null; locationId?: string | null; location_name?: string | null; sequence?: number; stop_sequence?: number; leg_index?: number | null; stop_type?: string }>;
   }
 ): Promise<{
   quotation: any | null;
@@ -111,14 +111,15 @@ export const findQuotationForLane = async (
     orderBy: { updatedAt: 'desc' },
   });
 
-  let q: any | null = candidates.find((cand: any) => {
+  const laneCandidates: any[] = candidates.filter((cand: any) => {
     const leg0 = getLegEndpoints(cand, 0);
     const candOriginId = leg0.loading?.locationId || leg0.loading?.location_id;
     const candDestId = leg0.delivery?.locationId || leg0.delivery?.location_id;
     if (originLocationId && candOriginId !== originLocationId) return false;
     if (destinationLocationId && candDestId !== destinationLocationId) return false;
     return true;
-  }) || null;
+  });
+  let q: any | null = laneCandidates[0] || null;
 
   // Fallback: If exact locationId match returned null, try name token matching across active customer quotations
   if (!q && originLocationId && destinationLocationId && (tx as any).location) {
@@ -211,12 +212,18 @@ export const findQuotationForLane = async (
   let matchStatus: MatchStatus = 'NO_QUOTATION';
   let candidateQuotation: any | null = null;
 
+  // Full-route check: when the trip's stops are known, a quotation matches only
+  // if EVERY stop matches, per leg and in order (outbound and return, incl.
+  // intermediate stops). A lane match whose stops differ is reported as the
+  // candidate so the UI can offer to define a quotation for this route.
   if (q) {
-    const qIntermediates = [...getLegEndpoints(q, 0).intermediates, ...getLegEndpoints(q, 1).intermediates];
-    const tripIntermediates = stops ? [...getLegEndpoints({ stops } as any, 0).intermediates, ...getLegEndpoints({ stops } as any, 1).intermediates] : [];
-
-    if (qIntermediates.length > 0) {
-      if (tripIntermediates.length === qIntermediates.length) {
+    const tripLegs = Array.isArray(stops) && stops.length >= 2 ? tripRouteLegs(stops) : null;
+    if (tripLegs) {
+      const isRound = isRoundTripCategory(lineType || '') || tripLegs.length > 1;
+      const pool = laneCandidates.length > 0 ? laneCandidates : [q];
+      const exact = pool.find((cand: any) => quotationMatchesRoute(cand, tripLegs, isRound)) || null;
+      if (exact) {
+        q = exact;
         matchStatus = 'EXACT_MATCH';
       } else {
         matchStatus = 'MULTISTOP_MISMATCH';

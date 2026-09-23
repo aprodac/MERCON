@@ -308,11 +308,31 @@ export function useTripSubmission(
             };
           });
 
-          const quotationStops = [
-            { sequence: 1, location_id: origId || null, source_label: slot.origin.trim() || null, stop_type: 'Pickup' },
-            ...intermediateStops,
-            { sequence: intermediateStops.length + 2, location_id: destId || null, source_label: slot.destination.trim() || null, stop_type: 'Dropoff' },
+          const quotationStops: Array<Record<string, unknown>> = [
+            { sequence: 1, leg_index: 0, location_id: origId || null, source_label: slot.origin.trim() || null, stop_type: 'Pickup' },
+            ...intermediateStops.map((st: Record<string, unknown>) => ({ ...st, leg_index: 0 })),
+            { sequence: intermediateStops.length + 2, leg_index: 0, location_id: destId || null, source_label: slot.destination.trim() || null, stop_type: 'Dropoff' },
           ];
+
+          // Round trip: store the return leg too (return loading → return stops →
+          // final drop), so this quotation matches only this exact route — every
+          // stop must match, return-leg stops included.
+          if (isRoundTripCategory(contractRateCategory)) {
+            const safeUuid = (id?: string | null) => (id && isUuid(id) ? id : null);
+            const retStartName = (slot.returnOrigin || '').trim() || slot.destination.trim();
+            const retStartId = safeUuid(slot.returnOriginLocationId) || (retStartName === slot.destination.trim() ? destId || null : null);
+            const retEndName = (slot.returnDestination || '').trim() || slot.origin.trim();
+            const retEndId = safeUuid(slot.returnDestinationLocationId) || (retEndName === slot.origin.trim() ? origId || null : null);
+            const retMids = (slot.returnIntermediateLocations || [])
+              .map((locVal: string, idx: number) => ({ locVal: (locVal || '').trim(), locId: slot.returnIntermediateLocationIds?.[idx] || (isUuid(locVal) ? locVal : null) }))
+              .filter((x: { locVal: string; locId: string | null }) => x.locVal || x.locId);
+            let seq = quotationStops.length + 1;
+            quotationStops.push({ sequence: seq++, leg_index: 1, location_id: retStartId, source_label: retStartName || null, stop_type: 'Pickup' });
+            retMids.forEach((m: { locVal: string; locId: string | null }) =>
+              quotationStops.push({ sequence: seq++, leg_index: 1, location_id: m.locId || null, source_label: m.locVal || null, stop_type: 'Dropoff' }),
+            );
+            quotationStops.push({ sequence: seq++, leg_index: 1, location_id: retEndId, source_label: retEndName || null, stop_type: 'Dropoff' });
+          }
 
           const is3PLAssignment = assignmentType === 'third_party' || assignmentType === '3pl';
           const slotDriverPayout = !is3PLAssignment && slot.driverPayout !== undefined ? Number(slot.driverPayout) : (!is3PLAssignment ? (Number(slot.tripCharges) || null) : null);
