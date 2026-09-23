@@ -1130,11 +1130,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   zoomedDriverName: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800',
     color: '#FFFFFF',
-    marginTop: -30,
+    marginTop: 24,
     textAlign: 'center',
+    paddingHorizontal: 20,
   },
 
   /* Document Preview & WhatsApp Share Modal */
