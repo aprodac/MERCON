@@ -469,10 +469,31 @@ export default function TripPhotoEvidence({
     // below. This must run before per-stop assignment so a stop_id-tagged
     // doc is never also picked up by the fuzzy fallback for a neighboring
     // stop.
+    //
+    // Older driver-app builds tagged intermediate-stop photos with the route
+    // timeline node id (`outbound-stop-N` / `return-stop-N`) instead of the
+    // TripStop id. Map those back to the Nth intermediate stop of that leg,
+    // and send any stop_id that matches no stop on this trip to the legacy
+    // pool — otherwise the photo would be keyed to a stop that never renders
+    // and silently vanish from the page.
+    const sortedStops = [...stops].sort((a: any, b: any) => (a.stop_sequence ?? 0) - (b.stop_sequence ?? 0));
+    const knownStopIds = new Set(sortedStops.map((s: any) => s.id).filter(Boolean));
+    const intermediateStopsOfLeg = (leg: number) => {
+      const legStops = sortedStops.filter((s: any) => (s.leg_index ?? 0) === leg);
+      return legStops.length >= 3 ? legStops.slice(1, -1) : [];
+    };
+    const resolveDocStopId = (sid: string): string | null => {
+      if (knownStopIds.has(sid)) return sid;
+      const m = /^(outbound|return)-stop-(\d+)$/.exec(sid);
+      if (!m) return null;
+      return intermediateStopsOfLeg(m[1] === 'return' ? 1 : 0)[Number(m[2])]?.id ?? null;
+    };
+
     const docsByStopId = new Map<string, any[]>();
     const legacyPhotoDocs: any[] = [];
     photoDocs.forEach((d: any) => {
-      const sid = d.ai_extracted_json?.stop_id;
+      const rawSid = d.ai_extracted_json?.stop_id;
+      const sid = rawSid ? resolveDocStopId(String(rawSid)) : null;
       if (sid) {
         if (!docsByStopId.has(sid)) docsByStopId.set(sid, []);
         docsByStopId.get(sid)!.push(d);

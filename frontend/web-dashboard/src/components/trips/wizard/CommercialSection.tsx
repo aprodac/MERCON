@@ -180,8 +180,18 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
     });
   }, [effectiveRateCards]);
 
-  // Default to showing saved rate cards if available; only show inline form if explicitly toggled or customer has 0 cards
-  const showInlineForm = isInlineMode || (effectiveRateCards.length === 0 && !quotationSearchQuery);
+  // Check if locations are entered and whether any quotation matches the lane
+  const hasOrigin = Boolean(primarySlot.origin && String(primarySlot.origin).trim());
+  const hasDestination = Boolean(primarySlot.destination && String(primarySlot.destination).trim());
+  const hasLocationsEntered = hasOrigin || hasDestination;
+  const hasMatchingCardsForLane = availableRateCards.length > 0;
+  const isMatchedQuotation = Boolean(primarySlot.rateMatched || primarySlot.matchedRateCard);
+
+  // If locations are entered but NO quotation matches this lane and none is selected, auto-trigger Define Quotation
+  const isLaneUnmatched = hasLocationsEntered && !hasMatchingCardsForLane && !isMatchedQuotation;
+
+  // Show inline form if explicitly toggled, if lane is unmatched, or if customer has 0 cards
+  const showInlineForm = isInlineMode || isLaneUnmatched || (effectiveRateCards.length === 0 && !quotationSearchQuery);
 
   const derivedCustomerOptions = React.useMemo(() => {
     if (customerOptions && customerOptions.length > 0) return customerOptions;

@@ -15,7 +15,7 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens
 import { Badge, DelayReportModal, DriverChargePill, BilingualText } from '../../components';
 import { useAuth } from '../../lib/auth-context';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getNextExternalAppAction, getTripChargeValue, getMonthlyDriverPayout, type TripStatus, type MobileTrip } from '../../lib/trips';
+import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, parseStopWorkflowState, getNextExternalAppAction, getTripChargeValue, getMonthlyDriverPayout, type TripStatus, type MobileTrip } from '../../lib/trips';
 import { getApiErrorMessage } from '../../lib/api';
 import { useLanguage, getLocalizedStatus } from '../../lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, type TimelineStop } from '../../lib/routeParser';
@@ -140,24 +140,13 @@ const HomeScreen = () => {
       router.push('/trip/navigate');
     } else if (ws === 'ARRIVED_AT_PICKUP' || ws === 'LOADING' || ws === 'RETURN_LOADING') {
       router.push('/trip/pickup');
-    } else if (
-      ws === 'GOING_TO_STOP' || ws === 'ARRIVED_AT_STOP' || ws === 'STOP_VERIFICATION' ||
-      ws === 'GOING_TO_RETURN_STOP' || ws === 'ARRIVED_AT_RETURN_STOP' || ws === 'RETURN_STOP_VERIFICATION'
-    ) {
-      const isReturn = ws.includes('RETURN');
-      router.push({ pathname: '/trip/stop', params: { legIndex: isReturn ? '1' : '0' } });
+    } else if (parseStopWorkflowState(ws)) {
+      const stop = parseStopWorkflowState(ws)!;
+      router.push({ pathname: '/trip/stop', params: { legIndex: String(stop.leg), stopIndex: String(stop.stopIndex) } });
     } else if (ws === 'IN_TRANSIT' || ws === 'IN_TRANSIT_RETURN') {
-      const isReturn = ws === 'IN_TRANSIT_RETURN';
-      const legIdx = isReturn ? 1 : 0;
-      const legStops = (trip.stops || []).filter((s) => (s.leg_index ?? 0) === legIdx);
-      const hasUncompletedIntermediate = legStops.some(
-        (s) => s.stop_type !== 'Pickup' && s.stop_type !== 'Dropoff' && !s.actual_departure
-      );
-      if (hasUncompletedIntermediate) {
-        router.push({ pathname: '/trip/stop', params: { legIndex: isReturn ? '1' : '0' } });
-      } else {
-        router.push('/trip/navigate');
-      }
+      // Intermediate stops have their own workflow states (handled above);
+      // IN_TRANSIT is only ever set once the leg's stops are done.
+      router.push('/trip/navigate');
     } else if (ws === 'ARRIVED_AT_DELIVERY' || ws === 'DELIVERY_VERIFICATION' || ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'FINAL_DELIVERY_VERIFICATION' || ws === 'REVIEW_COMPLETE') {
       router.push('/trip/delivery');
     }
@@ -234,8 +223,11 @@ const HomeScreen = () => {
     const returnStops = getReturnIntermediateStops(t);
     const hasStops = outboundStops.length > 0;
     const hasReturnStops = returnStops.length > 0;
+    // Indexed stop states (ARRIVED_AT_STOP_1, …) share the plain stop card;
+    // the stop screen reads the index back from the workflow state.
+    const stopState = parseStopWorkflowState(ws);
 
-    switch (ws) {
+    switch (stopState ? (stopState.leg === 1 ? 'ARRIVED_AT_RETURN_STOP' : 'ARRIVED_AT_STOP') : ws) {
       case 'ASSIGNED':
       case 'GOING_TO_PICKUP':
         return {
@@ -281,24 +273,12 @@ const HomeScreen = () => {
           btnLabel: 'Verify Stop & Upload Photo',
           onPress: () => router.push('/trip/stop'),
         };
-      case 'IN_TRANSIT': {
-        const legStops = (t.stops || []).filter((s) => (s.leg_index ?? 0) === 0);
-        const uncompletedStop = legStops.find(
-          (s) => s.stop_type !== 'Pickup' && s.stop_type !== 'Dropoff' && !s.actual_departure
-        );
-        if (uncompletedStop || (hasStops && (t.driver_workflow_state || '').includes('STOP'))) {
-          return {
-            badgeLabel: 'At Intermediate Stop',
-            btnLabel: 'Verify Stop & Upload Photo',
-            onPress: () => router.push({ pathname: '/trip/stop', params: { legIndex: '0' } }),
-          };
-        }
+      case 'IN_TRANSIT':
         return {
           badgeLabel: 'In Transit',
           btnLabel: 'Go to Delivery',
           onPress: () => router.push('/trip/navigate'),
         };
-      }
       case 'ARRIVED_AT_DELIVERY':
       case 'DELIVERY_VERIFICATION':
         return {
@@ -341,24 +321,12 @@ const HomeScreen = () => {
           btnLabel: 'Verify Return Stop & Upload Photo',
           onPress: () => router.push({ pathname: '/trip/stop', params: { legIndex: '1' } }),
         };
-      case 'IN_TRANSIT_RETURN': {
-        const legStops = (t.stops || []).filter((s) => (s.leg_index ?? 0) === 1);
-        const uncompletedStop = legStops.find(
-          (s) => s.stop_type !== 'Pickup' && s.stop_type !== 'Dropoff' && !s.actual_departure
-        );
-        if (uncompletedStop || (hasReturnStops && (t.driver_workflow_state || '').includes('STOP'))) {
-          return {
-            badgeLabel: 'At Return Stop',
-            btnLabel: 'Verify Return Stop & Upload Photo',
-            onPress: () => router.push({ pathname: '/trip/stop', params: { legIndex: '1' } }),
-          };
-        }
+      case 'IN_TRANSIT_RETURN':
         return {
           badgeLabel: 'In Transit (Return)',
           btnLabel: 'Go to Return Delivery',
           onPress: () => router.push('/trip/navigate'),
         };
-      }
       case 'ARRIVED_AT_FINAL_DELIVERY':
       case 'FINAL_DELIVERY_VERIFICATION':
         return {
