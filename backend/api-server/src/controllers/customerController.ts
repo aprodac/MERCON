@@ -123,6 +123,110 @@ export const getCustomerById = async (req: Request, res: Response) => {
   }
 };
 
+export const getCustomerStatement = async (req: Request, res: Response) => {
+  try {
+    const idOrRef = req.params.id as string;
+    const { date_from, date_to } = req.query;
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idOrRef);
+    const customerWhere: any = isUuid
+      ? { id: idOrRef, deletedAt: null }
+      : { name: { equals: idOrRef, mode: 'insensitive' }, deletedAt: null };
+
+    const customer = await prisma.customer.findFirst({
+      where: customerWhere,
+      select: { id: true, name: true },
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Customer not found' },
+      });
+    }
+
+    const invoiceWhere: any = {
+      customerId: customer.id,
+    };
+
+    if (date_from || date_to) {
+      invoiceWhere.invoice_date = {};
+      if (date_from) {
+        invoiceWhere.invoice_date.gte = new Date(date_from as string);
+      }
+      if (date_to) {
+        const toDate = new Date(date_to as string);
+        toDate.setHours(23, 59, 59, 999);
+        invoiceWhere.invoice_date.lte = toDate;
+      }
+    }
+
+    const invoices = await prisma.invoice.findMany({
+      where: invoiceWhere,
+      orderBy: [
+        { invoice_date: 'desc' },
+        { createdAt: 'desc' },
+      ],
+      select: {
+        id: true,
+        ref_id: true,
+        invoice_date: true,
+        due_date: true,
+        status: true,
+        total_amount: true,
+        paid_amount: true,
+        balance_due: true,
+        currency: true,
+      },
+    });
+
+    let totalOutstanding = 0;
+    let totalInvoiced = 0;
+    let totalPaid = 0;
+
+    const formattedInvoices = invoices.map((inv) => {
+      const total = Number(inv.total_amount) || 0;
+      const paid = Number(inv.paid_amount) || 0;
+      const balance = Number(inv.balance_due) || 0;
+
+      if (inv.status !== 'Draft' && inv.status !== 'Void') {
+        totalInvoiced += total;
+        totalPaid += paid;
+        totalOutstanding += balance;
+      }
+
+      return {
+        id: inv.id,
+        ref_id: inv.ref_id,
+        invoice_date: inv.invoice_date,
+        due_date: inv.due_date,
+        status: inv.status,
+        total_amount: total,
+        paid_amount: paid,
+        balance_due: balance,
+        currency: inv.currency,
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        customer: { id: customer.id, name: customer.name },
+        invoices: formattedInvoices,
+        total_outstanding: totalOutstanding,
+        total_invoiced: totalInvoiced,
+        total_paid: totalPaid,
+      },
+    });
+  } catch (error) {
+    logger.error({ err: error, id: req.params.id }, 'Failed to fetch customer statement');
+    return res.status(500).json({
+      success: false,
+      error: { code: 'SERVER_ERROR', message: 'Failed to fetch customer statement' },
+    });
+  }
+};
+
 export const createCustomer = async (req: Request, res: Response) => {
   try {
     const {
