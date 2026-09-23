@@ -239,10 +239,19 @@ export const ExternalAppWorkflowScreen = () => {
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={[styles.card, styles.completedCard]}>
-            <CheckCircle2 size={28} color="#059669" strokeWidth={2.2} />
-            <Text style={styles.completedTitle}>Trip Completed</Text>
-            <Text style={styles.completedSubtitle}>All milestones for this trip have been confirmed.</Text>
+          <View style={{ gap: 16 }}>
+            <View style={[styles.card, styles.completedCard]}>
+              <CheckCircle2 size={28} color="#059669" strokeWidth={2.2} />
+              <Text style={styles.completedTitle}>Trip Completed</Text>
+              <Text style={styles.completedSubtitle}>All milestones for this trip have been confirmed.</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.uploadActionBtn, { backgroundColor: '#3E3C3D' }]}
+              onPress={() => router.replace('/trips')}
+              activeOpacity={0.88}
+            >
+              <Text style={styles.uploadActionText}>Return to Dashboard</Text>
+            </TouchableOpacity>
           </View>
         )}
       </ScrollView>
