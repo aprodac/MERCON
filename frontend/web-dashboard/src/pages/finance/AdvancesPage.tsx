@@ -389,23 +389,23 @@ export default function AdvancesPage() {
 
   return (
     <DashboardLayout active="finance" title="Advances">
-      <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
-        {/* Top Control Bar: Large Category Tabs + Actions */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-200/80 dark:border-slate-800">
+      <div className="p-4 space-y-3.5 max-w-[1400px] mx-auto">
+        {/* Row 1: Top Navigation Bar (Category Tabs + Actions) */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-2 border-b border-slate-200/80 dark:border-slate-800">
           {/* Primary Category Tabs Container */}
-          <div className="bg-[#F4F4F5] dark:bg-slate-800/80 p-1.5 rounded-2xl flex items-center gap-1.5 shadow-2xs border border-slate-200/60 dark:border-slate-700/60 overflow-x-auto">
+          <div className="bg-[#F4F4F5] dark:bg-slate-800/80 p-1 rounded-xl flex items-center gap-1 shadow-2xs border border-slate-200/60 dark:border-slate-700/60 overflow-x-auto">
             <button
               type="button"
               onClick={() => handleCategoryChange('all')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 select-none ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 select-none ${
                 categoryParam === 'all'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm border border-slate-200/90 dark:border-slate-700'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs border border-slate-200/90 dark:border-slate-700'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/60 dark:hover:bg-slate-700/60 border border-transparent'
               }`}
             >
-              <TrendingUp className={`w-4 h-4 ${categoryParam === 'all' ? 'text-[#FA634E]' : 'text-slate-400'}`} />
+              <TrendingUp className={`w-3.5 h-3.5 ${categoryParam === 'all' ? 'text-[#FA634E]' : 'text-slate-400'}`} />
               <span>Summary</span>
-              <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ${
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
                 categoryParam === 'all' ? 'bg-[#FA634E] text-white' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
               }`}>
                 {advances.length}
@@ -415,15 +415,15 @@ export default function AdvancesPage() {
             <button
               type="button"
               onClick={() => handleCategoryChange('Customer')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 select-none ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 select-none ${
                 categoryParam === 'Customer'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm border border-slate-200/90 dark:border-slate-700'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs border border-slate-200/90 dark:border-slate-700'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/60 dark:hover:bg-slate-700/60 border border-transparent'
               }`}
             >
-              <ArrowDownLeft className={`w-4 h-4 ${categoryParam === 'Customer' ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'}`} />
+              <ArrowDownLeft className={`w-3.5 h-3.5 ${categoryParam === 'Customer' ? 'text-sky-600 dark:text-sky-400' : 'text-slate-400'}`} />
               <span>Customer Advances</span>
-              <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ${
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
                 categoryParam === 'Customer' ? 'bg-sky-600 text-white' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
               }`}>
                 {categoryCounts.Customer}
@@ -433,15 +433,15 @@ export default function AdvancesPage() {
             <button
               type="button"
               onClick={() => handleCategoryChange('Provider')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 select-none ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 select-none ${
                 categoryParam === 'Provider'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm border border-slate-200/90 dark:border-slate-700'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs border border-slate-200/90 dark:border-slate-700'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/60 dark:hover:bg-slate-700/60 border border-transparent'
               }`}
             >
-              <ArrowUpRight className={`w-4 h-4 ${categoryParam === 'Provider' ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`} />
+              <ArrowUpRight className={`w-3.5 h-3.5 ${categoryParam === 'Provider' ? 'text-purple-600 dark:text-purple-400' : 'text-slate-400'}`} />
               <span>Supplier Advances</span>
-              <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ${
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
                 categoryParam === 'Provider' ? 'bg-purple-600 text-white' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
               }`}>
                 {categoryCounts.Provider}
@@ -451,15 +451,15 @@ export default function AdvancesPage() {
             <button
               type="button"
               onClick={() => handleCategoryChange('Employee')}
-              className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2.5 select-none ${
+              className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 select-none ${
                 categoryParam === 'Employee'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm border border-slate-200/90 dark:border-slate-700'
+                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-xs border border-slate-200/90 dark:border-slate-700'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-white/60 dark:hover:bg-slate-700/60 border border-transparent'
               }`}
             >
-              <UserCheck className={`w-4 h-4 ${categoryParam === 'Employee' ? 'text-teal-600 dark:text-teal-400' : 'text-slate-400'}`} />
+              <UserCheck className={`w-3.5 h-3.5 ${categoryParam === 'Employee' ? 'text-teal-600 dark:text-teal-400' : 'text-slate-400'}`} />
               <span>Employee Advances</span>
-              <span className={`px-2 py-0.5 rounded-full text-[11px] font-mono font-bold ${
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
                 categoryParam === 'Employee' ? 'bg-teal-600 text-white' : 'bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
               }`}>
                 {categoryCounts.Employee}
@@ -473,7 +473,7 @@ export default function AdvancesPage() {
               variant="outline"
               size="sm"
               onClick={() => setIsExportModalOpen(true)}
-              className="gap-2 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 h-9 px-3.5 text-xs font-semibold rounded-xl"
+              className="gap-1.5 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 h-8 px-3 text-xs font-semibold rounded-lg"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Export</span>
@@ -482,10 +482,10 @@ export default function AdvancesPage() {
             {/* Split Button for New Advance */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="gap-1.5 bg-[#FA634E] hover:bg-[#E54D38] text-white font-semibold h-9 px-4 text-xs rounded-xl shadow-xs">
-                  <Plus className="w-4 h-4" />
+                <Button className="gap-1.5 bg-[#FA634E] hover:bg-[#E54D38] text-white font-semibold h-8 px-3 text-xs rounded-lg shadow-xs">
+                  <Plus className="w-3.5 h-3.5" />
                   <span>New advance</span>
-                  <ChevronDown className="w-3.5 h-3.5 ml-0.5 opacity-80" />
+                  <ChevronDown className="w-3 h-3 ml-0.5 opacity-80" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
@@ -506,32 +506,9 @@ export default function AdvancesPage() {
           </div>
         </div>
 
-        {/* Workspace Context Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/80 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <span>
-                {categoryParam === 'all' && 'All Advances Overview'}
-                {categoryParam === 'Customer' && 'Customer Prepayments & Unapplied Credits'}
-                {categoryParam === 'Provider' && 'Supplier & Provider Vendor Advances'}
-                {categoryParam === 'Employee' && 'Employee Advances & Field Floats'}
-              </span>
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              {categoryParam === 'all' && 'Overall summary of all customer, supplier, and employee advance balances held across MERCON.'}
-              {categoryParam === 'Customer' && 'Prepayments received from customers to be applied against open invoices or refunded.'}
-              {categoryParam === 'Provider' && 'Advance payments made to suppliers and transport providers to be applied against vendor bills.'}
-              {categoryParam === 'Employee' && 'Petty cash advances, trip allowances, and un-cleared floats issued to company staff.'}
-            </p>
-          </div>
-
-          <div className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200/80 dark:border-slate-700 shrink-0">
-            {filteredAdvances.length} record(s) shown
-          </div>
-        </div>
-
-        {/* Summary Strip */}
+        {/* Row 2: Compact Summary Strip */}
         <SummaryStrip
+          className="p-3.5 rounded-xl border border-slate-200/70 dark:border-slate-800"
           items={[
             {
               label: 'Customer advances held',
@@ -555,53 +532,7 @@ export default function AdvancesPage() {
           isLoading={isLoading}
         />
 
-        {/* Status Sub-Tabs */}
-        <StatusTabs
-          activeTab={currentTab}
-          onTabChange={handleTabChange}
-          tabs={[
-            { id: 'all', label: 'All', count: tabCounts.all },
-            { id: 'Open', label: 'Open', count: tabCounts.Open },
-            { id: 'PartiallyApplied', label: 'Partially applied', count: tabCounts.PartiallyApplied },
-            { id: 'FullyApplied', label: 'Fully applied', count: tabCounts.FullyApplied },
-            { id: 'Void', label: 'Void', count: tabCounts.Void },
-          ]}
-        />
-
-        {/* FilterBar with Group by Party Switch */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-          <div className="flex-1">
-            <FilterBar
-              searchValue={searchTerm}
-              onSearchChange={handleSearchChange}
-              searchPlaceholder="Search ref, memo, party name..."
-              rightSlot={
-                <div className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
-                  {/* Direction filter */}
-                  <select
-                    value={directionParam}
-                    onChange={(e) => handleDirectionChange(e.target.value)}
-                    className="h-7 px-2 rounded-lg text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 focus:outline-none"
-                  >
-                    <option value="all">All Directions</option>
-                    <option value="Received">Money in</option>
-                    <option value="Paid">Money out</option>
-                  </select>
-                </div>
-              }
-            />
-          </div>
-
-          {/* Group By Switch */}
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shrink-0">
-            <Switch id="group-by-party" checked={groupByParty} onCheckedChange={handleGroupByToggle} />
-            <label htmlFor="group-by-party" className="text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
-              Group by party
-            </label>
-          </div>
-        </div>
-
-        {/* Data List (Grouped or Flat) */}
+        {/* Data List (Grouped or Flat) with Integrated Table Header Filters */}
         {isLoading ? (
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4">
             <DataTable data={[]} columns={columns} isLoading={true} />
@@ -636,13 +567,49 @@ export default function AdvancesPage() {
             ))}
           </div>
         ) : (
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-            <DataTable
-              data={filteredAdvances}
-              columns={columns}
-              onRowClick={(row) => navigate(`/finance/advances/${row.id}`)}
-            />
-          </div>
+          <DataTable
+            data={filteredAdvances}
+            columns={columns}
+            onRowClick={(row) => navigate(`/finance/advances/${row.id}`)}
+            searchValue={searchTerm}
+            onSearchChange={handleSearchChange}
+            searchPlaceholder="Search ref, memo, party..."
+            filterElement={
+              <div className="flex items-center gap-2">
+                {/* Status Filter Dropdown */}
+                <select
+                  value={currentTab}
+                  onChange={(e) => handleTabChange(e.target.value)}
+                  className="h-8 px-2.5 rounded-lg text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
+                >
+                  <option value="all">All Statuses ({tabCounts.all})</option>
+                  <option value="Open">Open ({tabCounts.Open})</option>
+                  <option value="PartiallyApplied">Partially applied ({tabCounts.PartiallyApplied})</option>
+                  <option value="FullyApplied">Fully applied ({tabCounts.FullyApplied})</option>
+                  <option value="Void">Void ({tabCounts.Void})</option>
+                </select>
+
+                {/* Direction Filter Dropdown */}
+                <select
+                  value={directionParam}
+                  onChange={(e) => handleDirectionChange(e.target.value)}
+                  className="h-8 px-2.5 rounded-lg text-xs font-semibold bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 focus:outline-none cursor-pointer"
+                >
+                  <option value="all">All Directions</option>
+                  <option value="Received">Money in</option>
+                  <option value="Paid">Money out</option>
+                </select>
+              </div>
+            }
+            actionsElement={
+              <div className="flex items-center gap-2 px-3 py-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shrink-0">
+                <Switch id="group-by-party" checked={groupByParty} onCheckedChange={handleGroupByToggle} />
+                <label htmlFor="group-by-party" className="text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                  Group
+                </label>
+              </div>
+            }
+          />
         )}
 
         {/* Export Modal */}
