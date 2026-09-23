@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getTimelineProgress, quotationMatchesRoute, getTimelineVehiclePosition, timelineStopRole } from '@mercon/shared-types';
+import { getTimelineProgress, quotationMatchesRoute, getTimelineVehiclePosition, timelineStopRole, stopRoleAt, tripStopRole } from '@mercon/shared-types';
 
 import { validateTripStops } from './tripValidationService';
 import { stampWorkflowTransition, stampStopTransition, resolveAuthoritativeActiveStop, stampIntermediateStopVisit } from './tripLifecycle';
@@ -1852,6 +1852,17 @@ describe('DEEP CODE-LEVEL TEST SUITE — INDEPENDENT OUTBOUND + RETURN ARCHITECT
     });
     it('left Buraydah (stop) → between Buraydah and Medina', () => {
       assert.deepEqual(getTimelineVehiclePosition([n(true, true), n(true, true), n(), n(), n()], false), { index: 2, enRoute: true });
+    });
+    it('stopRoleAt: first = origin, last = destination, middle = stop', () => {
+      assert.deepEqual([0, 1, 2, 3].map((i) => stopRoleAt(i, 4)), ['origin', 'stop', 'stop', 'destination']);
+      assert.deepEqual([0, 1].map((i) => stopRoleAt(i, 2)), ['origin', 'destination']);
+    });
+    it('tripStopRole: role per leg for stored stops (A→X→B | B→C→A)', () => {
+      const t = { stops: [
+        { id: 'a', stop_sequence: 1, leg_index: 0 }, { id: 'x', stop_sequence: 2, leg_index: 0 }, { id: 'b', stop_sequence: 3, leg_index: 0 },
+        { id: 'b2', stop_sequence: 4, leg_index: 1 }, { id: 'c', stop_sequence: 5, leg_index: 1 }, { id: 'a2', stop_sequence: 6, leg_index: 1 },
+      ] };
+      assert.deepEqual(['a', 'x', 'b', 'b2', 'c', 'a2'].map((id) => tripStopRole(t, { id })), ['origin', 'stop', 'destination', 'origin', 'stop', 'destination']);
     });
     it('roles: loading = origin, in between = stop, delivery = destination', () => {
       assert.equal(timelineStopRole({ iconType: 'House' }), 'origin');

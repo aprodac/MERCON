@@ -706,10 +706,42 @@ export const STOP_ROLE_COLORS: Record<StopRole, { main: string; soft: string; te
   destination: { main: '#16A34A', soft: '#DCFCE7', text: '#15803D' },
 };
 
+/** Short labels for each role, for legends and badges. */
+export const STOP_ROLE_LABELS: Record<StopRole, string> = {
+  origin: 'Origin',
+  stop: 'Stop',
+  destination: 'Destination',
+};
+
+/**
+ * Role of the stop at `indexInLeg` in a leg of `legLength` stops — the one rule
+ * every other role helper uses: first = origin (loading), last = destination
+ * (delivery), everything in between = stop. Use this for form rows too
+ * (e.g. the create-trip wizard's origin / stop #n / destination fields).
+ */
+export function stopRoleAt(indexInLeg: number, legLength: number): StopRole {
+  if (indexInLeg <= 0) return 'origin';
+  if (indexInLeg >= legLength - 1) return 'destination';
+  return 'stop';
+}
+
 /** Role of a timeline node: first stop of a leg = origin, last = destination, rest = stop. */
 export function timelineStopRole(node: Pick<TimelineStop, 'isIntermediate' | 'iconType'>): StopRole {
   if (node.isIntermediate || node.iconType === 'Route') return 'stop';
   return node.iconType === 'House' ? 'origin' : 'destination';
+}
+
+/** Role of a stored trip stop (DB row / API stop) within its own leg. */
+export function tripStopRole(
+  trip: { stops?: TripStopLike[] | null } | null | undefined,
+  stop: Pick<TripStopLike, 'id'>,
+): StopRole {
+  for (const leg of [0, 1] as const) {
+    const legStops = getLegStops(trip, leg);
+    const i = legStops.findIndex((s) => s.id === stop.id);
+    if (i !== -1) return stopRoleAt(i, legStops.length);
+  }
+  return 'stop';
 }
 
 export function findTimelineIndex(nodes: TimelineStop[], target: TimelineTarget): number {
