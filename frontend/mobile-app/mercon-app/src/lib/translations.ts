@@ -222,6 +222,9 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
 
   // Modals (Return Loading & Delay)
   title_return_modal: { en: 'Delivery Completed!', ur: 'ڈلیوری مکمل ہو گئی!' },
+  title_round_1_done: { en: 'Round 1 of 2 completed', ur: 'راؤنڈ 1 از 2 مکمل' },
+  label_next_return_loading: { en: 'Next: return loading at {place}', ur: 'اگلا: {place} پر واپسی لوڈنگ' },
+  action_start_round_2: { en: 'Start Round 2 of 2', ur: 'راؤنڈ 2 از 2 شروع کریں' },
   badge_outbound_finished: { en: 'Outbound Leg Finished · Round Trip', ur: 'روانگی مکمل · راؤنڈ ٹرپ' },
   desc_proceed_return: { en: 'Outbound delivery confirmed. Proceed to Return Cargo Loading at:', ur: 'پہلی ڈلیوری کی تصدیق ہو چکی ہے۔ اب واپسی کے سامان کی لوڈنگ شروع کریں:' },
   label_return_point: { en: 'RETURN LOADING POINT', ur: 'واپسی لوڈنگ کا مقام' },
