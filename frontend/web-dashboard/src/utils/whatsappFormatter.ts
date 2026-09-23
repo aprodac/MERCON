@@ -184,11 +184,9 @@ export function openMultipleWhatsappMessages(trips: Trip[], mode: 'combined' | '
     const phone = commonCustomer?.contact_phone || '';
     const cleanPhone = phone.trim().replace(/\+/g, '').replace(/\D/g, '');
 
-    const baseUrl = cleanPhone
-      ? `https://api.whatsapp.com/send?phone=${cleanPhone}`
-      : `https://api.whatsapp.com/send`;
-
-    const shareUrl = `${baseUrl}?text=${encodeURIComponent(text)}`;
+    const shareUrl = cleanPhone
+      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
 
     // Copy formatted text to clipboard
     if (navigator.clipboard) {
@@ -217,11 +215,9 @@ export function openMultipleWhatsappMessages(trips: Trip[], mode: 'combined' | '
       }
 
       const cleanPhone = phone.trim().replace(/\+/g, '').replace(/\D/g, '');
-      const baseUrl = cleanPhone
-        ? `https://api.whatsapp.com/send?phone=${cleanPhone}`
-        : `https://api.whatsapp.com/send`;
-
-      const shareUrl = `${baseUrl}?text=${encodeURIComponent(text)}`;
+      const shareUrl = cleanPhone
+        ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`
+        : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
       window.open(shareUrl, '_blank', 'noopener,noreferrer');
       opened++;
     });
@@ -279,11 +275,9 @@ export function openPhotoEvidenceWhatsapp(params: {
   const text = formatPhotoEvidenceWhatsappMessage(params);
   const cleanPhone = (params.customerPhone || '').trim().replace(/\+/g, '').replace(/\D/g, '');
 
-  const baseUrl = cleanPhone
-    ? `https://api.whatsapp.com/send?phone=${cleanPhone}`
-    : `https://api.whatsapp.com/send`;
-
-  const shareUrl = `${baseUrl}?text=${encodeURIComponent(text)}`;
+  const shareUrl = cleanPhone
+    ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(text)}`
+    : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
 
   if (navigator.clipboard) {
     navigator.clipboard.writeText(text).catch(() => {});

@@ -4,13 +4,13 @@ import {
   FlatList, ActivityIndicator, RefreshControl, Dimensions, Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   Building2, Calendar, CheckCircle2, ChevronRight, ChevronLeft, Wallet,
   ArrowRight, ArrowLeft, CalendarClock, TriangleAlert,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
-import { SearchInput, DriverChargePill } from '../../components';
+import { SearchInput } from '../../components';
 import { useCurrentTrip } from '../../lib/use-current-trip';
 import { useScheduledTrips } from '../../lib/use-scheduled-trips';
 import { useTripHistory } from '../../lib/use-trip-history';
@@ -214,7 +214,14 @@ const TripCard = ({ item, onPress, t, language }: { item: CardData; onPress: () 
 
 const TripsScreen = ({ navigation }: any) => {
   const router = useRouter();
-  const [selectedTab, setSelectedTab] = useState<Tab>('Scheduled');
+  const { tab } = useLocalSearchParams<{ tab?: string }>();
+  const [selectedTab, setSelectedTab] = useState<Tab>(tab === 'Completed' ? 'Completed' : 'Scheduled');
+
+  React.useEffect(() => {
+    if (tab === 'Completed' || tab === 'Scheduled') {
+      setSelectedTab(tab);
+    }
+  }, [tab]);
   const [search, setSearch] = useState('');
   const { t, language } = useLanguage();
 
@@ -280,12 +287,9 @@ const TripsScreen = ({ navigation }: any) => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#EEF1F6" />
 
-      {/* Top Header Row: "Trips" on Left, Driver Charge Pill on Right */}
+      {/* Top Header Row: "Trips" on Left */}
       <View style={styles.topHeaderBar}>
         <Text style={styles.screenTitle}>{t('nav_trips', 'Trips')}</Text>
-
-        {/* Driver Charge Pill matching Home and Profile screen exactly */}
-        <DriverChargePill amount={totalEarnings} />
       </View>
 
       {/* Search Input Bar */}

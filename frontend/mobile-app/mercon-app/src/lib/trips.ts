@@ -270,10 +270,14 @@ export function getNextExternalAppAction(trip: MobileTrip | null | undefined): E
     case 'GOING_TO_PICKUP':
       return { label: 'Arrived at Pickup', targetStatus: 'Loading', targetWorkflowState: 'ARRIVED_AT_PICKUP', operation: 'pickup_arrival', legIndex: 0 };
     case 'ARRIVED_AT_PICKUP':
+    case 'LOADING':
       return { label: 'Loading Completed', targetStatus: 'Loading', targetWorkflowState: 'LOADING_COMPLETED', operation: 'pickup', legIndex: 0 };
     case 'LOADING_COMPLETED':
       return { label: 'Departed (In Transit)', targetStatus: 'InTransit', targetWorkflowState: 'IN_TRANSIT', operation: 'pickup', legIndex: 0 };
     case 'IN_TRANSIT':
+    case 'GOING_TO_STOP':
+    case 'ARRIVED_AT_STOP':
+    case 'STOP_VERIFICATION':
       return { label: 'Arrived at Delivery', targetStatus: 'InTransit', targetWorkflowState: 'ARRIVED_AT_DELIVERY', operation: 'delivery_arrival', legIndex: 0 };
     case 'ARRIVED_AT_DELIVERY':
     case 'DELIVERY_VERIFICATION':

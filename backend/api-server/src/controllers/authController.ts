@@ -168,6 +168,16 @@ export const changePassword = async (req: Request, res: Response) => {
     const hash = await bcrypt.hash(new_password, 10);
     await prisma.user.update({ where: { id: userId }, data: { password_hash: hash } });
 
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'PASSWORD_CHANGED',
+        entityType: 'User',
+        entityId: user.id,
+        metadata: { message: `User ${user.username} changed their password via mobile app` }
+      }
+    });
+
     return res.json({ success: true, data: { message: 'Password updated' } });
   } catch (error) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to change password' } });

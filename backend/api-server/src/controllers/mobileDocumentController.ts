@@ -18,6 +18,7 @@ export const getDriverDocuments = async (req: Request, res: Response) => {
       select: {
         id: true,
         doc_type: true,
+        documentType: { select: { name: true } },
         status: true,
         file_url: true,
         mime_type: true,

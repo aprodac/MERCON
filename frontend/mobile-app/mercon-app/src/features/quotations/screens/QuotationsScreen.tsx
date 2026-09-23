@@ -4,7 +4,9 @@
  */
 import React, { useEffect, useState } from 'react';
 import { FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
-import { useNavigation, DrawerActions } from '@react-navigation/native';
+import { useNavigation } from 'expo-router';
+
+import { DrawerActions } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Tag, X } from 'lucide-react-native';
 import { Colors } from '@/theme/tokens';

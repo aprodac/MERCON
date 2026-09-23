@@ -4,7 +4,7 @@ import {
   View, Text, ScrollView, TouchableOpacity,
   StyleSheet, StatusBar, RefreshControl, ActivityIndicator, Alert, Dimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Svg, { Path, G, Circle } from 'react-native-svg';
 import {
@@ -62,7 +62,7 @@ function HeaderWaveBg({ width = SCREEN_WIDTH, height = 310 }: { width?: number; 
 
       {/* 3. Subtle Dotted Pattern Grid on the Charcoal area extending upwards */}
       <G opacity={0.18}>
-        {[-150, -120, -90, -60, -30, 0, 30, 45, 60, 75, 90, 105, 120, 135, 150].map((yVal) => (
+        {[90, 105, 120, 135, 150, 165, 180, 195, 210, 225, 240].map((yVal) => (
           <React.Fragment key={yVal}>
             <Circle cx="35" cy={yVal} r="2.2" fill="#FFFFFF" />
             <Circle cx="50" cy={yVal} r="2.2" fill="#FFFFFF" />
@@ -124,40 +124,53 @@ const HomeScreen = () => {
   const [scheduledTrips, setScheduledTrips] = useState<MobileTrip[]>([]);
   const [scheduledLoading, setScheduledLoading] = useState(true);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const timeOfDay = React.useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return { key: 'greeting_morning', fallback: 'Good Morning,' };
+    if (hour < 17) return { key: 'greeting_afternoon', fallback: 'Good Afternoon,' };
+    return { key: 'greeting_evening', fallback: 'Good Evening,' };
+  }, []);
 
-  // Restore current trip workflow screen on mount
-  const restoredRef = useRef(false);
-  useEffect(() => {
-    if (loading || !trip || restoredRef.current) return;
-    restoredRef.current = true;
-    const ws = getEffectiveWorkflowState(trip);
-    if (trip.driver_workflow === 'EXTERNAL_APP') {
-      if (ws !== 'ASSIGNED') {
-        router.push('/trip/external-app');
-      }
-      return;
-    }
 
-    const stopState = parseStopWorkflowState(ws);
-
-    if (ws === 'GOING_TO_PICKUP') {
-      router.push('/trip/navigate');
-    } else if (ws === 'ARRIVED_AT_PICKUP' || ws === 'LOADING' || ws === 'RETURN_LOADING') {
-      router.push('/trip/pickup');
-    } else if (stopState !== null) {
-      router.push({ pathname: '/trip/stop', params: { legIndex: String(stopState.leg), stopIndex: String(stopState.stopIndex) } });
-    } else if (ws === 'IN_TRANSIT' || ws === 'IN_TRANSIT_RETURN') {
-      router.push('/trip/navigate');
-    } else if (
-      ws === 'ARRIVED_AT_DELIVERY' ||
-      ws === 'DELIVERY_VERIFICATION' ||
-      ws === 'ARRIVED_AT_FINAL_DELIVERY' ||
-      ws === 'FINAL_DELIVERY_VERIFICATION' ||
-      ws === 'REVIEW_COMPLETE'
-    ) {
-      router.push('/trip/delivery');
-    }
-  }, [trip, loading]);
+//  // Restore current trip workflow screen on mount
+//  const restoredRef = useRef(false);
+//  useEffect(() => {
+//    if (loading || !trip || restoredRef.current) return;
+//    restoredRef.current = true;
+//    const ws = getEffectiveWorkflowState(trip);
+//    if (trip.driver_workflow === 'EXTERNAL_APP') {
+//      if (ws !== 'ASSIGNED') {
+//        router.push('/trip/external-app');
+//      }
+//      return;
+//    }
+//    if (ws === 'GOING_TO_PICKUP') {
+//      router.push('/trip/navigate');
+//    } else if (ws === 'ARRIVED_AT_PICKUP' || ws === 'LOADING' || ws === 'RETURN_LOADING') {
+//      router.push('/trip/pickup');
+//    } else if (
+//      ws === 'GOING_TO_STOP' || ws === 'ARRIVED_AT_STOP' || ws === 'STOP_VERIFICATION' ||
+//      ws === 'GOING_TO_RETURN_STOP' || ws === 'ARRIVED_AT_RETURN_STOP' || ws === 'RETURN_STOP_VERIFICATION'
+//    ) {
+//      const isReturn = ws.includes('RETURN');
+//      router.push({ pathname: '/trip/stop', params: { legIndex: isReturn ? '1' : '0' } });
+//    } else if (ws === 'IN_TRANSIT' || ws === 'IN_TRANSIT_RETURN') {
+//      const isReturn = ws === 'IN_TRANSIT_RETURN';
+//      const legIdx = isReturn ? 1 : 0;
+//      const legStops = (trip.stops || []).filter((s) => (s.leg_index ?? 0) === legIdx);
+//      const hasUncompletedIntermediate = legStops.some(
+//        (s) => s.stop_type !== 'Pickup' && s.stop_type !== 'Dropoff' && !s.actual_departure
+//      );
+//      if (hasUncompletedIntermediate) {
+//        router.push({ pathname: '/trip/stop', params: { legIndex: isReturn ? '1' : '0' } });
+//      } else {
+//        router.push('/trip/navigate');
+//      }
+//    } else if (ws === 'ARRIVED_AT_DELIVERY' || ws === 'DELIVERY_VERIFICATION' || ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'FINAL_DELIVERY_VERIFICATION' || ws === 'REVIEW_COMPLETE') {
+//      router.push('/trip/delivery');
+//    }
+//  }, [trip, loading]);
 
 
   const fetchScheduled = useCallback(async () => {
@@ -383,7 +396,7 @@ const HomeScreen = () => {
         <View style={styles.headerContainer}>
           <HeaderWaveBg width={SCREEN_WIDTH} height={310} />
 
-          <SafeAreaView style={styles.headerSafe}>
+          <View style={[styles.headerSafe, { paddingTop: Math.max(insets.top, 8) }]}>
             {/* Top Header Row: Language Top-Left, Driver Charge Top-Right */}
             <View style={styles.topHeaderRow}>
               {/* Select Language on Top-Left */}
@@ -399,10 +412,10 @@ const HomeScreen = () => {
 
             {/* Welcome back / Greeting below Language on the Left */}
             <View style={styles.greetingBox}>
-              <Text style={styles.greetingSub}>{t('title_welcome_back', 'Good Morning,')}</Text>
-              <Text style={styles.greetingMain}>{t('msg_drive_safe', 'Drive Safe Today!')}</Text>
+              <Text style={styles.greetingSub} adjustsFontSizeToFit numberOfLines={1}>{t(timeOfDay.key, timeOfDay.fallback)}</Text>
+              <Text style={styles.greetingMain} adjustsFontSizeToFit numberOfLines={1}>{t('msg_drive_safe', 'Drive Safe Today')}</Text>
             </View>
-          </SafeAreaView>
+          </View>
         </View>
 
         {/* ── Current Trip Card Section (Overlapping Header naturally) ── */}
@@ -440,8 +453,8 @@ const HomeScreen = () => {
               <View style={styles.cardHeaderRow}>
                 <View style={styles.cardTitleCol}>
                   <BilingualText
-                    ur={displayTrip.status === 'Scheduled' || displayTrip.status === 'Draft' ? 'اگلا شیڈول شدہ ٹرپ' : 'موجودہ ٹرپ'}
-                    en={displayTrip.status === 'Scheduled' || displayTrip.status === 'Draft' ? 'Next Scheduled Trip' : 'Current Trip'}
+                    ur={getEffectiveWorkflowState(displayTrip) === 'ASSIGNED' || displayTrip.status === 'Draft' ? 'اگلا شیڈول شدہ ٹرپ' : 'موجودہ ٹرپ'}
+                    en={getEffectiveWorkflowState(displayTrip) === 'ASSIGNED' || displayTrip.status === 'Draft' ? 'Next Scheduled Trip' : 'Ongoing Trip'}
                     primaryStyle={styles.cardTitleUrduPrimary}
                     subStyle={styles.cardTitleSubEn}
                   />
@@ -501,9 +514,6 @@ const HomeScreen = () => {
                       {getLocalizedStatus(displayTrip.driver_workflow_state || displayTrip.status, language)}
                     </Text>
                   </View>
-                  <TouchableOpacity style={styles.moreOptionsBtn}>
-                    <MoreVertical size={18} color="#3E3C3D" />
-                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -592,6 +602,14 @@ const HomeScreen = () => {
                           <View style={styles.timelineRow}>
                             {/* Left: dot + connector line */}
                             <View style={styles.timelineDotCol}>
+                              {/* Top half line (connects to previous row) */}
+                              {isFirst ? (
+                                <View style={styles.lineSegmentHidden} />
+                              ) : (
+                                <View style={[styles.lineSegment, { borderColor: lineColor, opacity: returnLeg ? 0.4 : 1 }]} />
+                              )}
+
+                              {/* The Dot */}
                               {isFirst ? (
                                 <View style={[styles.pickupNodeOuter, { borderColor: dotColor }]}>
                                   <View style={[styles.pickupNodeInner, { backgroundColor: dotColor }]} />
@@ -603,8 +621,12 @@ const HomeScreen = () => {
                                   returnLeg && { backgroundColor: dotColor },
                                 ]} />
                               )}
-                              {!isLast && (
-                                <View style={[styles.dashedLine, { borderColor: lineColor, opacity: returnLeg ? 0.4 : 1 }]} />
+
+                              {/* Bottom half line (connects to next row) */}
+                              {isLast ? (
+                                <View style={styles.lineSegmentHidden} />
+                              ) : (
+                                <View style={[styles.lineSegment, { borderColor: lineColor, opacity: returnLeg ? 0.4 : 1 }]} />
                               )}
                             </View>
 
@@ -933,12 +955,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
     padding: 30,
+    minHeight: 260,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
     elevation: 4,
     marginTop: 10,
   },
@@ -1150,13 +1173,13 @@ const styles = StyleSheet.create({
   timelineDotCol: {
     width: 28,
     alignItems: 'center',
-    paddingTop: 14,
   },
   /* Short dashed line that runs through the divider row to bridge the two legs */
   returnLegConnector: {
-    width: 1,
-    height: 36,
-    borderWidth: 1,
+    width: 2,
+    flex: 1,
+    minHeight: 36,
+    borderLeftWidth: 2,
     borderColor: '#D8D8DC',
     borderStyle: 'dashed',
   },
@@ -1176,13 +1199,25 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: '#FA634E',
   },
-  dashedLine: {
-    width: 1,
-    height: 46,
-    borderWidth: 1,
+  lineSegment: {
+    flex: 1,
+    width: 2,
+    borderLeftWidth: 2,
     borderColor: '#D8D8DC',
     borderStyle: 'dashed',
-    marginVertical: 2,
+    marginVertical: 1,
+  },
+  lineSegmentHidden: {
+    flex: 1,
+    width: 2,
+  },
+  dashedLine: {
+    width: 2,
+    flex: 1,
+    borderLeftWidth: 2,
+    borderColor: '#D8D8DC',
+    borderStyle: 'dashed',
+    marginVertical: 4,
   },
   stopNodeDot: {
     width: 10,
