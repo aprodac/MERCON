@@ -4,9 +4,8 @@
  */
 import React, { useEffect, useState } from 'react';
 import { FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
-import { useNavigation } from 'expo-router';
 
-import { DrawerActions } from '@react-navigation/native';
+import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Tag, X } from 'lucide-react-native';
 import { Colors } from '@/theme/tokens';
@@ -27,7 +26,7 @@ import { useQuotationFilters, useQuotationSearch, useQuotationSorting, useQuotat
 import type { QuotationListItem } from '../types';
 
 export default function QuotationsScreen() {
-  const navigation = useNavigation();
+  const [drawerVisible, setDrawerVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [selectedQuotation, setSelectedQuotation] = useState<QuotationListItem | null>(null);
   const [page, setPage] = useState(1);
@@ -57,15 +56,10 @@ export default function QuotationsScreen() {
 
   const isFiltered = Boolean(debouncedQuery || status !== 'all');
 
-  const handleMenuPress = () => {
-    try {
-      navigation.dispatch(DrawerActions.openDrawer());
-    } catch {
-      try {
-        (navigation as any).getParent?.()?.openDrawer?.();
-      } catch {}
-    }
-  };
+  // Same sidebar the other operator pages open (documents, expenses, …).
+  // There is no drawer navigator, so dispatching DrawerActions did nothing,
+  // and importing @react-navigation from app code breaks the SDK 57 bundler.
+  const handleMenuPress = () => setDrawerVisible(true);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }} edges={['top']}>
@@ -168,6 +162,7 @@ export default function QuotationsScreen() {
         quotation={selectedQuotation}
         onClose={() => setSelectedQuotation(null)}
       />
+      <OperatorSidebarDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </SafeAreaView>
   );
 }
