@@ -32,8 +32,8 @@
   --sidebar-hover:      rgba(250, 99, 78, 0.12);
   --sidebar-text-muted: rgba(238, 241, 246, 0.6);
 
-  /* Neutrals (Light Cool Gray #EEF1F6 Canvas) */
-  --color-bg:           #EEF1F6;
+  /* Neutrals (Light Cool Slate #F8FAFC Canvas) */
+  --color-bg:           #F8FAFC;
   --color-surface:      #FFFFFF;
   --color-border:       rgba(62, 60, 61, 0.08);
   --color-border-soft:  #E2E8F0;
@@ -103,9 +103,9 @@
   --sidebar-ring:        #FA634E;
 
   /* ─── Finance Tokens ──────────────────────────────────────────────────────── */
-  --fin-canvas:         #EEF1F6;
+  --fin-canvas:         #F8FAFC;
   --fin-surface:        #FFFFFF;
-  --fin-surface-sunken: #F7F8FA;
+  --fin-surface-sunken: #F1F5F9;
   --fin-surface-header: #FAFAFB;
   --fin-row-hover:      #FAFAFB;
   --fin-row-selected:   #FFF8F6;
