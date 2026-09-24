@@ -10,7 +10,7 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-sha
 import { API_URL } from '@mercon/mobile-shared/lib/api';
 import { useCargoPodPhotos, docTypeLabel, type DriverDocument } from '@mercon/mobile-shared/lib/documents';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
-import { GoogleMapsGeotagPreview } from '../../components';
+import { GoogleMapsGeotagPreview } from '../../components/GoogleMapsGeotagPreview';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 

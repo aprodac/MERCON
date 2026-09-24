@@ -8,7 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Calendar, ArrowRight, CircleCheck } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
-import { StatusBadge, FilterChip, Button } from '../../components';
+import { StatusBadge, FilterChip } from '@mercon/mobile-shared/components/Badge';
+import { Button } from '@mercon/mobile-shared/components/Button';
 import { useOperatorVehicleRenewals, type VehicleRenewal } from '../../lib/operator';
 
 type Bucket = 'due' | 'critical' | 'overdue' | 'ok';

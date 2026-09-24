@@ -12,7 +12,7 @@ import {
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { tripService, statusLabel, stopLabel, stopAddress, getTripChargeValue, getLegEndpoints, type MobileTrip, type TripStatus } from '@mercon/mobile-shared/lib/trips';
-import { BilingualText } from '../../components';
+import { BilingualText } from '@mercon/mobile-shared/components/BilingualText';
 import { useLanguage, formatCurrency, getLocalizedStatus } from '@mercon/mobile-shared/lib/language-context';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
 

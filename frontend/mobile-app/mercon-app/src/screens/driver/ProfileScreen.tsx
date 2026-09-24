@@ -10,7 +10,8 @@ import {
   FileText, Truck, Settings, IdCard, Globe, ShieldCheck,
   ChevronRight, ChevronLeft, ChevronDown, Camera, CheckCircle2, Award, Check, Wallet, X, Lock, ExternalLink,
 User, HeartPulse, HelpCircle, LogOut, ChevronRight as ChevronRightIcon } from 'lucide-react-native';
-import { Avatar, DriverChargePill } from '../../components';
+import { Avatar } from '@mercon/mobile-shared/components/Avatar';
+import { DriverChargePill } from '../../components/DriverChargePill';
 import { useAuth } from '../../lib/auth-context';
 import { useProfile } from '../../lib/use-profile';
 import { initialsOf } from '../../lib/profile';

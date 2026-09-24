@@ -10,7 +10,7 @@ import {
   ArrowRight, ArrowLeft, CalendarClock, TriangleAlert,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
-import { SearchInput } from '../../components';
+import { SearchInput } from '@mercon/mobile-shared/components/Input';
 import { useCurrentTrip } from '../../lib/use-current-trip';
 import { useScheduledTrips } from '../../lib/use-scheduled-trips';
 import { useTripHistory } from '../../lib/use-trip-history';

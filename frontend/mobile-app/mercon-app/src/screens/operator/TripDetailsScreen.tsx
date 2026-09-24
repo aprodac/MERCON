@@ -10,7 +10,10 @@ import {
   Share2, Film, Image as ImageIcon, Play, FileText, AlertCircle, ExternalLink, Plus, Camera,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography } from '@mercon/mobile-shared/theme/tokens';
-import { StatusBadge, Avatar, Card, Button } from '../../components';
+import { StatusBadge } from '@mercon/mobile-shared/components/Badge';
+import { Avatar } from '@mercon/mobile-shared/components/Avatar';
+import { Card } from '@mercon/mobile-shared/components/Card';
+import { Button } from '@mercon/mobile-shared/components/Button';
 import { getApiErrorMessage, API_URL } from '@mercon/mobile-shared/lib/api';
 import {
   operatorService, useOperatorTripById, type OperatorTripDetail, type OperatorDriver, type OperatorVehicle,

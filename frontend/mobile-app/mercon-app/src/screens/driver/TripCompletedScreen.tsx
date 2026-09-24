@@ -5,7 +5,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Check, Share2, Clock, Calendar, User, FileText, MapPin, Home, PackageCheck, CheckCircle2, ArrowLeft } from 'lucide-react-native';
-import { GeotagPhotoModal } from '../../components';
+import { GeotagPhotoModal } from '../../components/GeotagPhotoModal';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
 import { useCurrentTrip } from '../../lib/use-current-trip';
 import { useCargoPodPhotos } from '@mercon/mobile-shared/lib/documents';

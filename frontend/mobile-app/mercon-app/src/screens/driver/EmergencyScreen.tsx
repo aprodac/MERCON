@@ -11,7 +11,7 @@ import {
   type LucideIcon,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
-import { Button } from '../../components';
+import { Button } from '@mercon/mobile-shared/components/Button';
 import { emergencyService } from '../../lib/emergency';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { choosePhoto, type CapturedPhoto } from '../../lib/camera';

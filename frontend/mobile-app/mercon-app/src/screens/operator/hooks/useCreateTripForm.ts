@@ -14,7 +14,7 @@ import {
   estimateTravelTimeByName,
   calculateArrivalDropoffDateAndTime,
 } from '../../../lib/travelTimeService';
-import { type DayAssignmentOverride } from '../../../components';
+import { type DayAssignmentOverride } from '../../../components/MonthlyCalendarSelector';
 import { findMatchingQuotation } from '../../../lib/quotationMatching';
 import {
   applyMonthlyAssignmentStrategy,

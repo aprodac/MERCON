@@ -8,7 +8,13 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import Svg, { Path, Rect, Circle, Line, G, Polygon, Ellipse } from 'react-native-svg';
 import { Info, Camera, MapPin, Trash2, Package, ArrowRight, Clock, FileText, Check, Navigation, Send, RotateCcw } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
-import { GoogleMapsGeotagPreview, GeotagPhotoModal, TripProgressStepper, FadedBottomIllustration, DelayReportModal, DelayButton, ReturnLoadingModal } from '../../components';
+import { GoogleMapsGeotagPreview } from '../../components/GoogleMapsGeotagPreview';
+import { GeotagPhotoModal } from '../../components/GeotagPhotoModal';
+import { TripProgressStepper } from '../../components/TripProgressStepper';
+import { FadedBottomIllustration } from '../../components/FadedBottomIllustration';
+import { DelayReportModal } from '../../components/DelayReportModal';
+import { DelayButton } from '../../components/DelayButton';
+import { ReturnLoadingModal } from '../../components/ReturnLoadingModal';
 import { useCurrentTrip } from '../../lib/use-current-trip';
 import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
 

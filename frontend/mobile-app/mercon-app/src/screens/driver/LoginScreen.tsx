@@ -14,7 +14,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { User, Lock, Eye, EyeOff, ArrowRight, Headset, Globe, ChevronDown, Check } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
-import { Button, Input } from '../../components';
+import { Button } from '@mercon/mobile-shared/components/Button';
+import { Input } from '@mercon/mobile-shared/components/Input';
 import { useAuth } from '../../lib/auth-context';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';

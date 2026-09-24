@@ -12,7 +12,10 @@ import {
   Play, CheckCircle2, Wallet, MoreVertical, ArrowRight, ArrowLeft, Route, House, Camera, Settings, RotateCcw,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
-import { Badge, DelayReportModal, DriverChargePill, BilingualText } from '../../components';
+import { Badge } from '@mercon/mobile-shared/components/Badge';
+import { DelayReportModal } from '../../components/DelayReportModal';
+import { DriverChargePill } from '../../components/DriverChargePill';
+import { BilingualText } from '@mercon/mobile-shared/components/BilingualText';
 import { useAuth } from '../../lib/auth-context';
 import { useCurrentTrip } from '../../lib/use-current-trip';
 import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, parseStopWorkflowState, getNextExternalAppAction, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';

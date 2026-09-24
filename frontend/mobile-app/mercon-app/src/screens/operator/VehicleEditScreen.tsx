@@ -7,7 +7,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography } from '@mercon/mobile-shared/theme/tokens';
-import { Button, Card, Input, FilterChip } from '../../components';
+import { Button } from '@mercon/mobile-shared/components/Button';
+import { Card } from '@mercon/mobile-shared/components/Card';
+import { Input } from '@mercon/mobile-shared/components/Input';
+import { FilterChip } from '@mercon/mobile-shared/components/Badge';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import {
   operatorService, invalidateOperatorVehicles, useOperatorVehicleById,

@@ -7,7 +7,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Truck, Weight, Gauge } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
-import { StatusBadge, SearchInput, FilterChip } from '../../components';
+import { StatusBadge, FilterChip } from '@mercon/mobile-shared/components/Badge';
+import { SearchInput } from '@mercon/mobile-shared/components/Input';
 import { useOperatorVehicles, type OperatorVehicle } from '../../lib/operator';
 import { matchesSearch } from '@mercon/mobile-shared/lib/search';
 

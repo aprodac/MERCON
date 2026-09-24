@@ -14,7 +14,10 @@ import { tripService, getEffectiveWorkflowState, getNextExternalAppAction, statu
 import { targetFromWorkflowState } from '../../lib/routeParser';
 import { pickFromGallery, capturePhoto, type CapturedPhoto } from '../../lib/camera';
 import { API_URL, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
-import { TripProgressStepper, DelayButton, DelayReportModal, BilingualText } from '../../components';
+import { TripProgressStepper } from '../../components/TripProgressStepper';
+import { DelayButton } from '../../components/DelayButton';
+import { DelayReportModal } from '../../components/DelayReportModal';
+import { BilingualText } from '@mercon/mobile-shared/components/BilingualText';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 

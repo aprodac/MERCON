@@ -7,7 +7,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, TriangleAlert } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
-import { StatusBadge } from '../../components';
+import { StatusBadge } from '@mercon/mobile-shared/components/Badge';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
 import { useDocuments, docTypeLabel, docIcon, docStatus, type DriverDocument } from '@mercon/mobile-shared/lib/documents';
 

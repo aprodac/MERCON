@@ -10,7 +10,10 @@ import { OsmMapView, type OsmMapViewRef } from '../../components/common/OsmMapVi
 import { isValidCoordinate } from '../../lib/geo';
 import { ArrowLeft, MapPin, Truck, Siren, Clock, Banknote, ArrowUpRight, Navigation, Camera, Trash2, CheckCircle2 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
-import { DelayReportModal, TripProgressStepper, DelayButton, GeotagPhotoModal } from '../../components';
+import { DelayReportModal } from '../../components/DelayReportModal';
+import { TripProgressStepper } from '../../components/TripProgressStepper';
+import { DelayButton } from '../../components/DelayButton';
+import { GeotagPhotoModal } from '../../components/GeotagPhotoModal';
 import { useCurrentTrip } from '../../lib/use-current-trip';
 import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
 
