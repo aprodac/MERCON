@@ -16,11 +16,26 @@
 definitions:
   env_common: &env_common
     node: 22
-  # Each workflow sets EXPO_PUBLIC_API_URL — the API the app talks to.
-  # dev.mercon.tech = dev backend; use https://mercon.tech/api for builds that
-  # go to real users. (vars can't be shared via <<: — a workflow's vars replace it.)
 
   scripts:
+    # API the app talks to, chosen by the branch being built:
+    #   main           → https://mercon.tech/api      (production)
+    #   anything else  → https://dev.mercon.tech/api  (dev)
+    # To force one, set EXPO_PUBLIC_API_URL when starting the build in Codemagic.
+    # Written to $CM_ENV so the later steps (prebuild + Gradle/Xcode, which
+    # bundle the JS) see it.
+    - &select_api
+      name: Select API for branch
+      script: |
+        if [ -z "$EXPO_PUBLIC_API_URL" ]; then
+          if [ "$CM_BRANCH" = "main" ]; then
+            EXPO_PUBLIC_API_URL=https://mercon.tech/api
+          else
+            EXPO_PUBLIC_API_URL=https://dev.mercon.tech/api
+          fi
+        fi
+        echo "EXPO_PUBLIC_API_URL=$EXPO_PUBLIC_API_URL" >> "$CM_ENV"
+        echo "Branch '$CM_BRANCH' → API $EXPO_PUBLIC_API_URL"
     - &install
       name: Install dependencies (mobile workspace)
       script: |
@@ -65,9 +80,9 @@ workflows:
       android_signing:
         - mercon_driver_keystore
       vars:
-        EXPO_PUBLIC_API_URL: https://dev.mercon.tech/api
         APP_DIR: frontend/mobile-app/driver-app
     scripts:
+      - *select_api
       - *install
       - *android_build
     artifacts: *android_artifacts
@@ -82,9 +97,9 @@ workflows:
       android_signing:
         - mercon_operator_keystore
       vars:
-        EXPO_PUBLIC_API_URL: https://dev.mercon.tech/api
         APP_DIR: frontend/mobile-app/operator-app
     scripts:
+      - *select_api
       - *install
       - *android_build
     artifacts: *android_artifacts
@@ -103,9 +118,9 @@ workflows:
         distribution_type: app_store
         bundle_identifier: tech.mercon.driver
       vars:
-        EXPO_PUBLIC_API_URL: https://dev.mercon.tech/api
         APP_DIR: frontend/mobile-app/driver-app
     scripts:
+      - *select_api
       - *install
       - *ios_build
     artifacts:
@@ -127,9 +142,9 @@ workflows:
         distribution_type: app_store
         bundle_identifier: tech.mercon.operator
       vars:
-        EXPO_PUBLIC_API_URL: https://dev.mercon.tech/api
         APP_DIR: frontend/mobile-app/operator-app
     scripts:
+      - *select_api
       - *install
       - *ios_build
     artifacts:
