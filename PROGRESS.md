@@ -222,10 +222,10 @@ names, unreliable arrivals and no reasons, and cannot be backfilled.
 
 ## 3. 🔜 What's next (remaining work)
 
-### Release process (dev → main) — 🔄 2026-09-24
+### Release process (dev → main) — ✅ 2026-09-24
 - ✅ Built: releases are a PR from `dev` into `main` (`docs/RELEASE_PROCESS.md`). New `.github/workflows/release-check.yml` posts a release report on the PR (commits/authors/areas; migrations pending on the **production** ledger read with a read-only session; failed migrations; destructive SQL) and fails when blocked. `ci-cd.yml` now backs up the production DB right before `prisma migrate deploy` and prints restore steps on failure; the bot-actor guard was removed. `promote-dev-to-prod.yml` retired (its Sentinel tool was never merged, so it blocked every promotion; the copy on `main` skipped migrations). Tested locally: report on the real main→dev range (8 pending migrations, no destructive SQL) plus blocked scenarios (DB down, no ledger, failed migration) and the destructive-SQL detector. Not yet run on GitHub.
 - ⬜ Branch protection on `main` (PR required, CI + Release Check must pass) — needs owner OK (repo setting)
-- ⬜ First real release PR `dev` → `main`
+- ✅ First release (2026-09-24, PR #44, main `a47731f`): Release Check read production (45 migrations applied, 38 tables; warned about orphan ledger row `20260903120000_add_team_work_session` — its table was already dropped by `20260912153000`, harmless). Deploy: pre-deploy backup `/var/backups/mercon/mercon-db-predeploy-20260924130653-a47731f.dump` (8.9 MB) → 8 migrations applied → API healthy; `https://mercon.tech/api/health` 200 (`db: connected`), dashboard 200.
 
 ### Mobile app split — Driver app + Operator app — 🔄 in progress 2026-09-24
 Owner-approved: split `mercon-app` into two installs, `tech.mercon.driver` (Driver) and
