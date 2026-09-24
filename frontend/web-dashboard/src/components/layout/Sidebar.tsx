@@ -17,6 +17,7 @@ import { settingsService } from '@/services/settingsService';
 import type { ModuleKey } from '@mercon/shared-types';
 import { usePermissions } from '@/hooks/usePermissions';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
+import BrandLogo from '@/components/ui/BrandLogo';
 
 interface SidebarProps {
   active?: string;
@@ -63,6 +64,9 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
   const { can, isSuperAdmin, userRole } = usePermissions();
   const isAdmin = userRole === 'Admin';
   const initials = user?.name ? user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'ME';
+
+  // State to track expanded sub-routes inline when not collapsed
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
 
   const isItemActive = (itemPath: string, itemEnd?: boolean) => {
     const currentPath = location.pathname;
@@ -299,6 +303,32 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
     },
   ];
 
+  // Auto-expand section containing current active route
+  useEffect(() => {
+    const activeState: Record<string, boolean> = {};
+    rawNavGroups.forEach((group) => {
+      group.items.forEach((item) => {
+        if (item.subRoutes && item.subRoutes.length > 0) {
+          const hasActiveSub = item.subRoutes.some(
+            (sr) => location.pathname === sr.path || (sr.path !== '/' && location.pathname.startsWith(sr.path))
+          );
+          const isParentActive = isItemActive(item.path, item.end);
+          if (hasActiveSub || isParentActive) {
+            activeState[item.label] = true;
+          }
+        }
+      });
+    });
+    setExpandedItems((prev) => ({ ...activeState, ...prev }));
+  }, [location.pathname]);
+
+  const toggleSection = (label: string) => {
+    setExpandedItems((prev) => ({
+      ...prev,
+      [label]: !prev[label],
+    }));
+  };
+
   const isItemPermitted = (item: NavItem) => {
     if (item.permissionKey && !can(item.permissionKey)) return false;
     return true;
@@ -326,7 +356,7 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
     };
   }).filter(group => group.items.length > 0);
 
-  // Render a single NavItem with its HoverCard sub-route flyout
+  // Render a single NavItem
   const renderNavItem = (item: NavItem) => {
     const isActive = isItemActive(item.path, item.end) || (item.subRoutes?.some(sr => location.pathname === sr.path) ?? false);
     const isDisabledModule = item.moduleKey && !isSuperAdmin && enabledModules && Array.isArray(enabledModules) && !enabledModules.includes(item.moduleKey);
@@ -363,85 +393,208 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
       );
     }
 
-    const triggerElement = (
-      <NavLink
-        to={item.path}
-        onClick={onClose}
-        title={collapsed ? item.label : undefined}
-        className={`
-          flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 group relative overflow-hidden select-none
-          ${isActive
-            ? 'bg-[#FA634E] text-white font-bold shadow-md shadow-[#FA634E]/25'
-            : 'text-[#EEF1F6]/75 hover:bg-white/10 hover:text-white font-medium'
-          }
-        `}
-      >
-        <span className="w-5 h-5 flex items-center justify-center shrink-0">
-          <item.icon
-            size={17}
-            className={`transition-colors duration-150 ${
-              isActive ? 'stroke-[2.4] text-white' : 'stroke-[2] text-[#EEF1F6]/60 group-hover:text-white'
-            }`}
-          />
-        </span>
-        <div
+    const isExpanded = !!expandedItems[item.label];
+
+    // Branch 1: If sidebar is collapsed (Rail Mode), use HoverCard flyout for subroutes
+    if (collapsed) {
+      const triggerElement = (
+        <NavLink
+          to={item.path}
+          onClick={onClose}
+          title={item.label}
           className={`
-            flex items-center justify-between flex-1 min-w-0 transition-[opacity,max-width] duration-300 ease-in-out overflow-hidden whitespace-nowrap
-            ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:pointer-events-none' : 'lg:max-w-[180px] lg:opacity-100'}
+            flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 group relative overflow-hidden select-none
+            ${isActive
+              ? 'bg-[#FA634E] text-white font-bold shadow-md shadow-[#FA634E]/25'
+              : 'text-[#EEF1F6]/75 hover:bg-white/10 hover:text-white font-medium'
+            }
           `}
         >
-          <span className="text-xs truncate">{item.label}</span>
-          <div className="flex items-center gap-1 shrink-0 ml-1">
-            {item.badge !== undefined && item.badge > 0 && !isActive && (
-              <span className="w-4 h-4 rounded-full bg-[#FA634E] text-white text-[9px] font-bold flex items-center justify-center">
-                {item.badge > 9 ? '9+' : item.badge}
-              </span>
-            )}
-            {validSubRoutes.length > 0 && (
-              <ChevronRight size={13} className="text-white/40 group-hover:text-white group-hover:translate-x-0.5 transition-transform" />
-            )}
+          <span className="w-5 h-5 flex items-center justify-center shrink-0">
+            <item.icon
+              size={17}
+              className={`transition-colors duration-150 ${
+                isActive ? 'stroke-[2.4] text-white' : 'stroke-[2] text-[#EEF1F6]/60 group-hover:text-white'
+              }`}
+            />
+          </span>
+          <div className="flex items-center justify-between flex-1 min-w-0 lg:max-w-0 lg:opacity-0 lg:pointer-events-none transition-[opacity,max-width] duration-300 ease-in-out overflow-hidden whitespace-nowrap">
+            <span className="text-xs truncate">{item.label}</span>
           </div>
-        </div>
-        {collapsed && item.badge !== undefined && item.badge > 0 && !isActive && (
-          <span aria-hidden="true" className="hidden lg:block absolute top-1.5 right-2 w-2 h-2 rounded-full bg-[#FA634E]" />
-        )}
-      </NavLink>
-    );
+          {item.badge !== undefined && item.badge > 0 && !isActive && (
+            <span aria-hidden="true" className="hidden lg:block absolute top-1.5 right-2 w-2 h-2 rounded-full bg-[#FA634E]" />
+          )}
+        </NavLink>
+      );
 
-    // If there are no sub-routes, return standard nav link
-    if (validSubRoutes.length === 0) {
-      return <div key={item.label}>{triggerElement}</div>;
-    }
+      if (validSubRoutes.length === 0) {
+        return <div key={item.label}>{triggerElement}</div>;
+      }
 
-    // Wrap item in shadcn HoverCard for flyout sub-routes
-    return (
-      <HoverCard key={item.label} openDelay={80} closeDelay={150}>
-        <HoverCardTrigger asChild>
-          {triggerElement}
-        </HoverCardTrigger>
-        <HoverCardContent
-          side="right"
-          align="start"
-          sideOffset={12}
-          className="w-64 p-0 bg-white text-[#3E3C3D] border border-slate-200/90 shadow-[0_16px_40px_rgba(0,0,0,0.15),0_4px_16px_rgba(0,0,0,0.06)] backdrop-blur-xl rounded-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150"
-        >
-          {/* Flyout Card Header */}
-          <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-[#FA634E]/10 text-[#FA634E]">
-                <item.icon size={15} />
-              </span>
-              <span className="text-xs font-bold text-[#3E3C3D] tracking-wide truncate max-w-[150px]">
-                {item.label}
+      return (
+        <HoverCard key={item.label} openDelay={80} closeDelay={150}>
+          <HoverCardTrigger asChild>
+            {triggerElement}
+          </HoverCardTrigger>
+          <HoverCardContent
+            side="right"
+            align="start"
+            sideOffset={12}
+            className="w-64 p-0 bg-white text-[#3E3C3D] border border-slate-200/90 shadow-[0_16px_40px_rgba(0,0,0,0.15),0_4px_16px_rgba(0,0,0,0.06)] backdrop-blur-xl rounded-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150"
+          >
+            <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-[#FA634E]/10 text-[#FA634E]">
+                  <item.icon size={15} />
+                </span>
+                <span className="text-xs font-bold text-[#3E3C3D] tracking-wide truncate max-w-[150px]">
+                  {item.label}
+                </span>
+              </div>
+              <span className="px-2 py-0.5 rounded-full bg-slate-200/60 text-[10px] font-extrabold text-slate-600">
+                {validSubRoutes.length} pages
               </span>
             </div>
-            <span className="px-2 py-0.5 rounded-full bg-slate-200/60 text-[10px] font-extrabold text-slate-600">
-              {validSubRoutes.length} pages
-            </span>
-          </div>
+            <div className="p-1.5 space-y-0.5 max-h-[320px] overflow-y-auto sidebar-scrollbar bg-white">
+              {validSubRoutes.map((sr) => {
+                const isSubActive = location.pathname === sr.path;
+                const SubIcon = sr.icon || ChevronRight;
+                return (
+                  <NavLink
+                    key={sr.path + sr.label}
+                    to={sr.path}
+                    onClick={onClose}
+                    className={`
+                      flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-all duration-150 group/sr
+                      ${isSubActive
+                        ? 'bg-[#FA634E] text-white font-bold shadow-sm shadow-[#FA634E]/30'
+                        : sr.isAction
+                          ? 'bg-[#FA634E]/5 text-[#FA634E] hover:bg-[#FA634E] hover:text-white font-semibold border border-[#FA634E]/20'
+                          : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-medium'
+                      }
+                    `}
+                  >
+                    <SubIcon
+                      size={14}
+                      className={`shrink-0 transition-transform group-hover/sr:scale-110 ${
+                        isSubActive
+                          ? 'text-white'
+                          : sr.isAction
+                            ? 'text-[#FA634E] group-hover/sr:text-white'
+                            : 'text-slate-400 group-hover/sr:text-[#FA634E]'
+                      }`}
+                    />
+                    <span className="flex-1 truncate">{sr.label}</span>
+                    {sr.isAction && (
+                      <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase shrink-0 transition-colors ${
+                        isSubActive
+                          ? 'bg-white text-[#FA634E]'
+                          : 'bg-[#FA634E] text-white group-hover/sr:bg-white group-hover/sr:text-[#FA634E]'
+                      }`}>
+                        NEW
+                      </span>
+                    )}
+                  </NavLink>
+                );
+              })}
+            </div>
+          </HoverCardContent>
+        </HoverCard>
+      );
+    }
 
-          {/* Flyout Card Sub-Routes List */}
-          <div className="p-1.5 space-y-0.5 max-h-[320px] overflow-y-auto sidebar-scrollbar bg-white">
+    // Branch 2: Sidebar is OPEN / UNCOLLAPSED -> Inline dropdown tree
+    if (validSubRoutes.length === 0) {
+      return (
+        <div key={item.label}>
+          <NavLink
+            to={item.path}
+            onClick={onClose}
+            className={`
+              flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 group relative overflow-hidden select-none
+              ${isActive
+                ? 'bg-[#FA634E] text-white font-bold shadow-md shadow-[#FA634E]/25'
+                : 'text-[#EEF1F6]/75 hover:bg-white/10 hover:text-white font-medium'
+              }
+            `}
+          >
+            <span className="w-5 h-5 flex items-center justify-center shrink-0">
+              <item.icon
+                size={17}
+                className={`transition-colors duration-150 ${
+                  isActive ? 'stroke-[2.4] text-white' : 'stroke-[2] text-[#EEF1F6]/60 group-hover:text-white'
+                }`}
+              />
+            </span>
+            <div className="flex items-center justify-between flex-1 min-w-0">
+              <span className="text-xs truncate">{item.label}</span>
+              {item.badge !== undefined && item.badge > 0 && !isActive && (
+                <span className="w-4 h-4 rounded-full bg-[#FA634E] text-white text-[9px] font-bold flex items-center justify-center ml-1">
+                  {item.badge > 9 ? '9+' : item.badge}
+                </span>
+              )}
+            </div>
+          </NavLink>
+        </div>
+      );
+    }
+
+    // NavItem WITH SubRoutes in expanded sidebar -> Accordion Header & Inline Dropdown List
+    return (
+      <div key={item.label} className="space-y-1">
+        <div
+          onClick={() => {
+            toggleSection(item.label);
+            if (item.path && location.pathname !== item.path) {
+              navigate(item.path);
+            }
+          }}
+          className={`
+            flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 group relative overflow-hidden select-none
+            ${isActive
+              ? 'bg-[#FA634E] text-white font-bold shadow-md shadow-[#FA634E]/25'
+              : 'text-[#EEF1F6]/75 hover:bg-white/10 hover:text-white font-medium'
+            }
+          `}
+        >
+          <span className="w-5 h-5 flex items-center justify-center shrink-0">
+            <item.icon
+              size={17}
+              className={`transition-colors duration-150 ${
+                isActive ? 'stroke-[2.4] text-white' : 'stroke-[2] text-[#EEF1F6]/60 group-hover:text-white'
+              }`}
+            />
+          </span>
+          <div className="flex items-center justify-between flex-1 min-w-0">
+            <span className="text-xs truncate">{item.label}</span>
+            <div className="flex items-center gap-1.5 shrink-0 ml-1">
+              {item.badge !== undefined && item.badge > 0 && !isActive && (
+                <span className="w-4 h-4 rounded-full bg-[#FA634E] text-white text-[9px] font-bold flex items-center justify-center">
+                  {item.badge > 9 ? '9+' : item.badge}
+                </span>
+              )}
+              <span
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleSection(item.label);
+                }}
+                className="p-1 rounded-md hover:bg-white/15 text-white/60 hover:text-white transition-colors"
+                title={isExpanded ? 'Collapse section' : 'Expand section'}
+              >
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${
+                    isExpanded ? 'rotate-180 text-white' : 'rotate-0 text-white/50 group-hover:text-white'
+                  }`}
+                />
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Inline Sub-routes list */}
+        {isExpanded && (
+          <div className="ml-4 pl-2 border-l border-white/15 space-y-0.5 py-0.5 animate-in fade-in-50 duration-150">
             {validSubRoutes.map((sr) => {
               const isSubActive = location.pathname === sr.path;
               const SubIcon = sr.icon || ChevronRight;
@@ -452,12 +605,12 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
                   to={sr.path}
                   onClick={onClose}
                   className={`
-                    flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-all duration-150 group/sr
+                    flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs transition-all duration-150 group/sr relative
                     ${isSubActive
-                      ? 'bg-[#FA634E] text-white font-bold shadow-sm shadow-[#FA634E]/30'
+                      ? 'bg-[#FA634E]/25 text-white font-bold border-l-2 border-[#FA634E]'
                       : sr.isAction
-                        ? 'bg-[#FA634E]/5 text-[#FA634E] hover:bg-[#FA634E] hover:text-white font-semibold border border-[#FA634E]/20'
-                        : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-medium'
+                        ? 'text-[#FA634E] hover:bg-[#FA634E]/15 hover:text-white font-semibold'
+                        : 'text-[#EEF1F6]/70 hover:bg-white/10 hover:text-white font-medium'
                     }
                   `}
                 >
@@ -465,31 +618,31 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
                     size={14}
                     className={`shrink-0 transition-transform group-hover/sr:scale-110 ${
                       isSubActive
-                        ? 'text-white'
+                        ? 'text-[#FA634E]'
                         : sr.isAction
                           ? 'text-[#FA634E] group-hover/sr:text-white'
-                          : 'text-slate-400 group-hover/sr:text-[#FA634E]'
+                          : 'text-[#EEF1F6]/40 group-hover/sr:text-white'
                     }`}
                   />
                   <span className="flex-1 truncate">{sr.label}</span>
                   {sr.isAction && (
-                    <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase shrink-0 transition-colors ${
+                    <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase shrink-0 ${
                       isSubActive
-                        ? 'bg-white text-[#FA634E]'
-                        : 'bg-[#FA634E] text-white group-hover/sr:bg-white group-hover/sr:text-[#FA634E]'
+                        ? 'bg-[#FA634E] text-white'
+                        : 'bg-[#FA634E]/20 text-[#FA634E] group-hover/sr:bg-[#FA634E] group-hover/sr:text-white'
                     }`}>
                       NEW
                     </span>
                   )}
                   {isSubActive && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#FA634E] shrink-0" />
                   )}
                 </NavLink>
               );
             })}
           </div>
-        </HoverCardContent>
-      </HoverCard>
+        )}
+      </div>
     );
   };
 
@@ -516,42 +669,13 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
           ${collapsed ? 'lg:w-[76px]' : 'lg:w-[230px]'}
         `}
       >
-        {/* Header with Logo — Mobile-App Inspired Angled Parallelogram Transition (#EEF1F6 to #3E3C3D) */}
-        <div className={`relative flex items-center justify-start shrink-0 h-[84px] lg:h-[92px] px-2 sm:px-3 overflow-hidden bg-[#EEF1F6] ${collapsed ? 'lg:px-1.5' : ''}`}>
-          {/* Angled Parallelogram & Dot Matrix SVG Background (Mobile Driver App aesthetic) */}
-          <svg
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            viewBox="0 0 280 92"
-            preserveAspectRatio="none"
-            fill="none"
-          >
-            {/* 1. Base Light Cool Gray background */}
-            <rect width="280" height="92" fill="#EEF1F6" />
-
-            {/* 2. Dark Charcoal (#3E3C3D) Angled Parallelogram polygon joining the body below */}
-            <path d="M -10 92 H 290 V 42 L -10 82 Z" fill="#3E3C3D" />
-
-            {/* 3. Subtle Coral Red (#FA634E) Angled Accent Stripe */}
-            <path d="M -10 82 L 290 42" stroke="#FA634E" strokeWidth="2.5" strokeLinecap="round" opacity="0.85" />
-
-            {/* 4. Subtle Dotted Pattern on Charcoal area */}
-            <g opacity="0.16">
-              {[20, 45, 70, 95, 120, 145, 170, 195, 220, 245, 270].map((xVal) => (
-                <circle key={xVal} cx={xVal} cy="86" r="1.5" fill="#FFFFFF" />
-              ))}
-              {[35, 60, 85, 110, 135, 160, 185, 210, 235, 260].map((xVal) => (
-                <circle key={xVal} cx={xVal} cy="76" r="1.5" fill="#FFFFFF" />
-              ))}
-            </g>
-          </svg>
-
-          {/* Logo Content - merconclosed.png stuck to Top-Left, expands when unshrinked */}
-          <div className="relative z-10 flex items-center justify-start w-full pb-3 pl-0">
-            <img
-              src="/merconclosed.png"
-              alt="MERCON Logo"
-              className={`w-auto object-contain object-left drop-shadow-xs -ml-0.5 transition-all duration-200 ease-in-out ${
-                collapsed ? 'h-8.5 max-w-[46px]' : 'h-11 sm:h-12 max-w-[72px]'
+        {/* Header with Logo */}
+        <div className={`relative flex items-center shrink-0 h-16 sm:h-20 px-4 overflow-hidden bg-[#3E3C3D] border-b border-white/10 ${collapsed ? 'lg:px-2 lg:justify-center' : 'justify-between'}`}>
+          <div className="flex items-center gap-2.5">
+            <BrandLogo
+              variant="sidebar"
+              className={`w-auto object-contain transition-all duration-200 ${
+                collapsed ? 'h-7 max-w-[42px]' : 'h-8 sm:h-9 max-w-[140px]'
               }`}
             />
           </div>
@@ -559,7 +683,7 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
           <button
             onClick={onClose}
             aria-label="Close navigation menu"
-            className="absolute right-3 top-3.5 z-20 p-2 rounded-lg text-slate-600 hover:text-[#FA634E] hover:bg-black/5 transition-colors lg:hidden cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors lg:hidden cursor-pointer"
           >
             <X size={18} />
           </button>
@@ -642,3 +766,4 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
     </>
   );
 }
+
