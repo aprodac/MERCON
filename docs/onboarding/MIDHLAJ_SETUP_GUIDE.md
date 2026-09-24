@@ -39,7 +39,7 @@ npm install
 
 To connect your local app directly to the **dev.mercon.tech** server:
 
-1. Navigate to `frontend/mobile-app/mercon-app/`.
+1. Navigate to `frontend/mobile-app/driver-app/`.
 2. Open or create the **`.env`** file:
 
 ```env
@@ -56,10 +56,10 @@ EXPO_PUBLIC_API_URL=https://dev.mercon.tech/api
 From the project root directory (`MERCON`), start Metro by running:
 
 ```bash
-npm run mobile
+npm run mobile:driver     # or: npm run mobile:operator
 ```
 
-*(Alternatively, you can run `cd frontend/mobile-app/mercon-app && npm run start`)*
+*(Alternatively, you can run `cd frontend/mobile-app/driver-app && npm run start`)*
 
 Once started, Metro will output a QR code and local URLs in your terminal:
 ```text
@@ -108,7 +108,7 @@ Metro waiting on exp://192.168.1.XX:8081
 If your computer and phone are on different networks, run Expo in tunnel mode:
 
 ```bash
-npm run mobile:tunnel
+npm run mobile:driver:tunnel   # or mobile:operator:tunnel
 ```
 
 Scan the generated Tunnel QR code in Expo Go.
@@ -131,6 +131,6 @@ Once the app loads on your phone:
 
 - **Metro Cache Issue**: If environment variables or styles don't update, press `r` in the Metro terminal to reload, or restart with cache clear:
   ```bash
-  npm run mobile -- --clear
+  npm run mobile:driver -- --clear
   ```
 - **Test Server Health**: You can open `https://dev.mercon.tech/api/health` in your browser to confirm backend server status.
