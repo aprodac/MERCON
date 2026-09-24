@@ -75,9 +75,15 @@ iOS `buildNumber`, so a new build always installs over the previous one.
 
 ## Settings you may want to change in `codemagic.yaml`
 
-- `EXPO_PUBLIC_API_URL` — the API each build talks to. Currently
-  `https://dev.mercon.tech/api`; use `https://mercon.tech/api` for builds that
-  go to real users.
+- **API per branch** (automatic, first step of every workflow):
+
+  | Branch built | API |
+  |---|---|
+  | `main` | `https://mercon.tech/api` (production) |
+  | `dev` or any other branch | `https://dev.mercon.tech/api` |
+
+  To force a different API for one build, add the variable
+  `EXPO_PUBLIC_API_URL` in Codemagic's **Start new build** dialog.
 - Email notifications — add under a workflow:
   ```yaml
   publishing:
