@@ -8,5 +8,5 @@
       "@mercon/shared-types/*": ["../../../packages/shared-types/src/*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", "../mercon-app/nativewind-env.d.ts", "../mercon-app/expo-env.d.ts"]
+  "include": ["**/*.ts", "**/*.tsx", "../driver-app/nativewind-env.d.ts", "../driver-app/expo-env.d.ts"]
 }

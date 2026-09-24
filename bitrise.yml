@@ -33,7 +33,7 @@ workflows:
             # ── 1. Install dependencies (mobile npm workspace root) ─────────
             cd frontend/mobile-app
             npm install
-            cd mercon-app
+            cd driver-app
 
             # ── 2. Generate native android/ folder ─────────────────────────
             npx expo prebuild --platform android --no-install

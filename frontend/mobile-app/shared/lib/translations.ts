@@ -323,6 +323,7 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   // System & API Errors
   err_session_expired: { en: 'Session expired. Please log in again.', ur: 'آپ کا سیشن ختم ہو گیا ہے۔ براہ کرم دوبارہ لاگ ان کریں۔' },
   err_invalid_credentials: { en: 'Invalid credentials. Please check your username/phone and password/license.', ur: 'موبائل نمبر یا پاس ورڈ درست نہیں ہے۔ دوبارہ چیک کریں۔' },
+  err_use_driver_app: { en: 'This is a driver account. Please sign in with the Mercon Driver app.', ur: 'یہ ڈرائیور اکاؤنٹ ہے۔ براہ کرم Mercon Driver ایپ سے لاگ ان کریں۔' },
   err_network_timeout: { en: 'Request timed out. Check your connection.', ur: 'کنکشن کا وقت ختم ہو گیا ہے۔ اپنا انٹرنیٹ چیک کریں۔' },
   err_cannot_reach_server: { en: 'Cannot reach the server. Check your connection.', ur: 'سرور سے رابطہ نہیں ہو پا رہا۔ انٹرنیٹ کنکشن چیک کریں۔' },
   err_server_error: { en: 'Server error. Please try again.', ur: 'سرور پر تکنیکی خرابی پیش آگئی ہے۔ دوبارہ کوشش کریں۔' },

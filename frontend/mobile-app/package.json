@@ -3,7 +3,8 @@
   "private": true,
   "description": "MERCON mobile apps (Expo) and the code they share. Separate from the repo-root workspace so mobile keeps its own React/React Native versions.",
   "workspaces": [
-    "mercon-app",
+    "driver-app",
+    "operator-app",
     "shared"
   ]
 }

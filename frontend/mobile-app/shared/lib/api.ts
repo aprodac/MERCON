@@ -110,7 +110,11 @@ api.interceptors.response.use(
  * console log (visible in Metro) and the alert text itself carry the real
  * cause so the next occurrence is diagnosable on the spot.
  */
+/** An error whose message is already written for the user — shown as-is. */
+export class UserFacingError extends Error {}
+
 export function getApiErrorMessage(err: unknown, lang?: LanguageMode): string {
+  if (err instanceof UserFacingError) return err.message;
   if (axios.isAxiosError(err)) {
     if (err.response?.status === 401) {
       return (

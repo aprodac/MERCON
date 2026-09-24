@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./frontend/mobile-app/mercon-app
+        working-directory: ./frontend/mobile-app/driver-app
 
     steps:
       - name: Checkout code

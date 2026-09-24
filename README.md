@@ -70,13 +70,16 @@ mercon/
 ├── backend/api-server/        # @mercon/api-server    — Express + Prisma API
 ├── frontend/
 │   ├── web-dashboard/         # @mercon/web-dashboard — React + Vite dashboard
-│   └── mobile-app/mercon-app/ # @mercon/mobile-app    — Expo app (standalone install)
+│   └── mobile-app/            # Mobile npm workspace (own install)
+│       ├── driver-app/        # @mercon/driver-app    — Expo app for Drivers (tech.mercon.driver)
+│       ├── operator-app/      # @mercon/operator-app  — Expo app for Operators/Admins (tech.mercon.operator)
+│       └── shared/            # @mercon/mobile-shared — code both apps share
 ├── packages/shared-types/     # @mercon/shared-types  — DTOs shared API ↔ dashboard
 ├── deploy/                    # Nginx / VPS configs
 └── docs/                      # Business & technical documentation
 ```
 
-The API server, web dashboard, and shared-types are **npm workspaces** — one `npm install` at the root installs and links everything. The **mobile app is intentionally standalone** (Expo/Metro does not play well with hoisted node_modules); install it separately.
+The API server, web dashboard, and shared-types are **npm workspaces** — one `npm install` at the root installs and links everything. The **mobile apps are a separate npm workspace** in `frontend/mobile-app` (they need their own React/React Native versions, which differ from the web dashboard's); run `npm install` in `frontend/mobile-app`.
 
 ## 🏃‍♂️ Getting Started Locally
 
@@ -91,7 +94,8 @@ The API server, web dashboard, and shared-types are **npm workspaces** — one `
    ```bash
    npm run dev:api    # Express API  (backend/api-server)
    npm run dev:web    # Web dashboard (frontend/web-dashboard)
-   npm run mobile     # Expo dev server (installs standalone)
+   npm run mobile:driver     # Expo dev server — driver app (npm install in frontend/mobile-app first)
+   npm run mobile:operator   # Expo dev server — operator app
    ```
 
 4. **Build for production**

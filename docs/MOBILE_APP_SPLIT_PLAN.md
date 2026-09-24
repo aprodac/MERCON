@@ -20,7 +20,7 @@ Roles are unchanged — still exactly `Admin`, `Operator`, `Driver`. Only packag
 ```
 frontend/mobile-app/
   package.json       ← mobile npm workspace root (lockfile + hoisted node_modules)
-  driver-app/        ← today's mercon-app, renamed (keeps git history + EAS project)
+  driver-app/        ← was mercon-app (keeps git history + EAS project)
   operator-app/      ← new Expo project
   shared/            ← @mercon/mobile-shared: code both apps use (api, theme, UI kit, i18n)
 packages/
@@ -87,10 +87,9 @@ React/React Native for both apps and the shared code. `@mercon/mobile-shared` sh
 
 Each step leaves the repo in a working state and is its own commit.
 
-### Step 1 — Quick win: shrink images (independent, do first)
-- Convert large PNG illustrations to WebP, resized to the largest size they're shown at
-- Remove the duplicate (`loading.png` and `start_loading.png` are byte-identical in size — confirm, then dedupe)
-- Expected: ~14 MB → ~1–2 MB. Benefits the driver app regardless of the split.
+### Step 1 — Shrink images + icons ✅
+- Bundled illustrations → WebP, duplicate `start_loading.png` removed (~11 MB → ~0.6 MB)
+- 1b: per-icon `lucide-react-native` imports (Babel plugin + Metro resolver), JS 5.94 → 4.51 MB
 
 ### Step 2 — Create the mobile workspace + `@mercon/mobile-shared` ✅
 - Move shared files (list above) into the package; keep internal relative imports working
@@ -103,60 +102,82 @@ Each step leaves the repo in a working state and is its own commit.
   Unused Expo template leftovers not moved: `hooks/use-theme`, `hooks/use-color-scheme`, `constants/theme`.
 - Verify: `tsc --noEmit` clean, app still runs with both roles, **no behaviour change**
 
-### Step 3 — Turn `mercon-app` into `driver-app`
-- `git mv frontend/mobile-app/mercon-app frontend/mobile-app/driver-app`
-- Delete operator routes/screens/features/nav/sidebar + operator-only lib files
-- `index.tsx` → driver home only; `_layout.tsx` → drop operator stack screens and role branches
-- Login: phone + license only; remove the operator fallback
-- `app.config.ts`: name `Mercon Driver`, slug `mercon-driver`, scheme `mercondriver`,
-  bundle/package `tech.mercon.driver`. **Keep the existing EAS `projectId`** (keeps push
-  credentials history and build numbering). Keep the `APP_CLIENT` multi-client profile system.
-- Remove deps no longer imported (verify each with grep); also drop unused
-  `@expo/ui`, `expo-glass-effect`, `expo-symbols`, `expo-web-browser` if still unreferenced
-- `eas.json`: add an AAB production profile for Play Store; keep APK `preview` for sideload
+### Steps 3 + 4 — `driver-app` and `operator-app` ✅ (2026-09-24)
+Done together with the code reorganisation the owner asked for.
 
-### Step 4 — Create `operator-app`
-- New Expo project with the same SDK/React Native versions (`expo ~57`, RN `0.86.0`) and the
-  same babel/metro/tailwind setup
-- Move `app/operator/*` to the new app's root routes, plus operator screens/features/nav
-- Own `index.tsx` (operator home), `_layout.tsx` (operator stack + `OperatorBottomNav`)
-- Own login screen: username + password; **reject `Driver` sessions** with a clear
-  "Use the Mercon Driver app" message
-- `app.config.ts`: name `Mercon Operator`, slug `mercon-operator`, scheme `merconoperator`,
-  bundle/package `tech.mercon.operator`; only the permissions it needs (no location/camera
-  unless an operator feature needs them)
-- `eas init` → **new EAS project** (new `projectId`)
-- Only install deps it imports
+**Driver app** (`frontend/mobile-app/driver-app`, renamed from `mercon-app`)
+- Name `Mercon Driver`, bundle/package `tech.mercon.driver`, scheme `mercondriver`.
+  Slug stays `mercon-app` and the existing EAS `projectId` is kept (the slug is bound to it).
+- Driver-only login (phone + license); `role` branching removed from `index`/`_layout`.
+- Reorganised: `screens/driver/*` → `screens/`; loose `lib/` split into `hooks/` (use-*),
+  `services/` (auth, notifications, profile, emergency, socket, maps, sound), `utils/`
+  (geo, routeParser, geotagImageGenerator); `DriverLiveTracking` → `components/`.
+- Deleted Expo template leftovers: `hooks/use-theme`, `hooks/use-color-scheme(.web)`,
+  `constants/theme`, template images (expo/react logos, tabIcons, tutorial-web, splash-icon,
+  icon, android-icon-foreground). Kept: unreferenced Mercon art (`completed.png`, `home-bg.png`,
+  `logo-glow.png`), `App.tsx` (old React Navigation entry, not used by expo-router) and the
+  screens only it references (`SplashScreen`, `ReplacementDriverScreen`).
+- Removed unused deps: `@react-native-community/datetimepicker`, `@react-navigation/bottom-tabs`.
+  `expo-symbols` / `@expo/ui` / `expo-glass-effect` stay — `expo-router` itself depends on them,
+  so the 962 KB Material Symbols font cannot be dropped.
 
-### Step 5 — Backend check (expected: no code changes)
-- Both login endpoints already exist and are role-specific
-- Push notifications are driver-only (`pushNotificationService.sendDriverPushNotification`,
-  `driverDevice` table) → unaffected by the operator app
-- **Credentials:** new package/bundle IDs need new push credentials — FCM (Firebase Android
-  app for `tech.mercon.driver`) and APNs for iOS, uploaded to EAS for the driver project.
-  Without this, driver push notifications silently stop.
+**Operator app** (`frontend/mobile-app/operator-app`, new)
+- Name `Mercon Operator`, bundle/package `tech.mercon.operator`, scheme `merconoperator`,
+  slug `mercon-operator`. Needs `eas init` once for its own EAS `projectId`.
+- Login: username/phone + password (`POST /auth/login`); Driver accounts get
+  "use the Mercon Driver app" (`err_use_driver_app`). `Operator` + `Admin` allowed.
+- Routes moved from `/operator/*` to the root (`/trips`, `/drivers`, …); every route file is a
+  thin wrapper around a `features/*/screens/*` screen.
+- Everything in the `features/` layout: new `trips` (list, details, create-trip + its sections,
+  hook, quotation/rotation/travel-time services, `MonthlyCalendarSelector`), `invoices`, `more`,
+  `documents`, `expenses`, `maintenance`, `third-party`; edit screens joined their features.
+  Deleted the superseded `screens/operator/{Home,DriverList,CustomerList,VehicleList}Screen`.
+- No push, live-tracking, map or view-shot libraries. Keeps camera + location (trip media
+  uploads are geotagged by the shared `chooseMedia`).
 
-### Step 6 — Build & CI
-- `bitrise.yml`: `cd frontend/mobile-app/mercon-app` → `driver-app`; add an operator workflow
-  if needed
-- Root `package.json`: replace `mobile` / `mobile:tunnel` with `mobile:driver` and
-  `mobile:operator`
-- Metro `workspaceRoot` path stays `../../..` (same depth)
+**Shared** (`@mercon/mobile-shared`) gained: generic `lib/auth-context` (each app passes its
+`signIn` strategy, allowed roles and session hooks), `screens/LoginScreen`, `lib/camera`,
+`UserFacingError`, brand assets (`assets/images`: app icon, logos, login hero) and build tooling
+(`tooling/`: Metro config factory, Tailwind preset, lucide Babel plugin).
+Also removed the `components/index.ts` barrel (it pulled both apps' components together).
 
-### Step 7 — Docs (same change set, per CLAUDE.md Rule 0.5)
-- `CLAUDE.md` "Who uses which app" table → two rows (Driver app / Operator app)
-- `frontend/mobile-app/*/AGENTS.md`, `DEVELOPER_GUIDE.md`, root `README.md` + `package.json` description
-- `PROGRESS.md`: add the split as a tracked item, update when each step lands
+**Verified:** `tsc` clean in all three packages; Android `expo export` of each app → 3.8 MB JS
+each (was 4.5 MB combined), no file from the other app in either bundle, one React/RN copy,
+driver-only libraries absent from the operator bundle; every `router.push/replace/href` target
+exists as a route (script check).
 
-### Step 8 — Verification
-- `tsc --noEmit` in both apps and `mobile-shared`
-- `npx expo export` for each app → compare bundle + asset sizes against today's app
-- Build both on EAS (preview), install on a real Android phone:
+**Pre-existing bugs found:**
+- Driver home "View All" pushed `/(tabs)/trips` (no such route) → fixed to `/trips`.
+- Operator dashboard bell pushes `/notifications`, which was the *driver* notifications screen
+  calling `/mobile/notifications` (backend: Driver-only → 403). The operator app has no
+  notifications screen yet — **owner decision needed**.
+- Operator "View all documents" opened the driver's documents screen; in the operator app
+  `/documents` is the operator documents list, so this is fixed by the split.
+
+### Step 5 — Backend: no code changes needed
+- Both login endpoints already exist; push notifications are driver-only
+  (`pushNotificationService`, `driverDevice` table).
+- **Still to do (owner, needs store/Firebase access):** push credentials for `tech.mercon.driver`
+  — FCM (Firebase Android app) and APNs, uploaded to the driver EAS project. Without them
+  driver push notifications silently stop.
+
+### Step 6 — Build & CI ✅ (driver) / ⬜ (operator)
+- `bitrise.yml` and both GitHub mobile workflows point at `driver-app` and install from the
+  mobile workspace root. No CI workflow builds the operator app yet.
+- Root scripts: `mobile:driver`, `mobile:operator` (+ `:tunnel` variants).
+- `eas.json` `production` already builds an AAB on Android (EAS default).
+
+### Step 7 — Docs ✅
+- `CLAUDE.md` app table, `README.md`, `DEVELOPER_GUIDE.md` (root + driver-app), onboarding guide,
+  `docs/ui-kit-docs/design.md`, `operator-app/README.md`, `PROGRESS.md`.
+
+### Step 8 — Device verification ⬜
+- Build both on EAS (preview), install on a real Android phone and an iPhone:
   - Driver: login, trip flow (pickup → stop → delivery → completed), photos/geotag,
     live tracking visible on web dashboard, push notification arrives
-  - Operator: login, create trip, lists (drivers/vehicles/customers/quotations), trip details
-  - Wrong role: driver credentials in operator app are rejected (and vice versa)
-- Web dashboard and API unaffected (no code changes there)
+  - Operator: login, create trip, lists (drivers/vehicles/customers/quotations), trip details,
+    media upload
+  - Wrong role: driver credentials in the operator app are rejected
 
 ## Rollout
 - The current app (`tech.merconmobile.app`) is **not published** and not on drivers' phones,

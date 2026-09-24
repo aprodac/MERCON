@@ -331,7 +331,7 @@ Badges use `rounded-full`, `text-[9.5px]` or `text-[11px] font-bold leading-none
 
 ## Mobile App (React Native / Expo)
 
-`frontend/mobile-app/mercon-app` is the Operator + Driver mobile app. It does **not** share the web dashboard's Tailwind/shadcn stack — its canonical design source is a plain RN token file, and screens are expected to read from it (via inline `style` props or `StyleSheet.create`) rather than hardcoding hex/shadow values or leaning on NativeWind's generic utility classes (`shadow-sm`, `bg-[#hex]`), which was the exact drift found and fixed on the Drivers list page (2026-09).
+`frontend/mobile-app/driver-app` and `frontend/mobile-app/operator-app` are the Driver and Operator mobile apps (shared code in `frontend/mobile-app/shared`). It does **not** share the web dashboard's Tailwind/shadcn stack — its canonical design source is a plain RN token file, and screens are expected to read from it (via inline `style` props or `StyleSheet.create`) rather than hardcoding hex/shadow values or leaning on NativeWind's generic utility classes (`shadow-sm`, `bg-[#hex]`), which was the exact drift found and fixed on the Drivers list page (2026-09).
 
 ### Token Source (`src/theme/tokens.ts`)
 
@@ -381,7 +381,7 @@ All mobile screens should import `Colors`, `Spacing`, `Radius`, `Typography`, `S
 During the design system audit, the following inconsistencies and legacy deviations were identified for future cleanup:
 
 1.  **Mobile App vs. Web Dashboard Brand Color Divergence** (still open as of 2026-09):
-    *   `frontend/mobile-app/mercon-app/tailwind.config.js` (`mercon.DEFAULT`) still defines `primary` as `#E8450F` (an older orange), and `Shadows.primary` in `theme/tokens.ts` still uses that same `#E8450F` for its `shadowColor` (colored CTA shadow) — a leftover from before the token file was updated to `#FA634E`.
+    *   `frontend/mobile-app/shared/tooling/tailwind-preset.js` (`mercon.DEFAULT`) still defines `primary` as `#E8450F` (an older orange), and `Shadows.primary` in `theme/tokens.ts` still uses that same `#E8450F` for its `shadowColor` (colored CTA shadow) — a leftover from before the token file was updated to `#FA634E`.
     *   `theme/tokens.ts`'s `Colors.primary` itself is already correct (`#FA634E`, matching the Web Dashboard's Coral Red) and is what components should — and increasingly do — import from; the divergence is specifically in the unused Tailwind config value and the one stale shadow color, not in the actual token values screens consume.
     *   Fix: update `tailwind.config.js`'s `mercon.DEFAULT` to `#FA634E` (or remove it if nothing still resolves classes from it — check usage first) and update `Shadows.primary.shadowColor` in `theme/tokens.ts` to `#FA634E`.
 2.  **Legacy Dark Card Surfaces**:

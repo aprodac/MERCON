@@ -47,13 +47,19 @@ from `@mercon/shared-types`.
 | App | Used by | Notes |
 |---|---|---|
 | Web dashboard (`frontend/web-dashboard`) | **Admin, Operator** | Drivers never log in here |
-| Mobile app (`frontend/mobile-app/mercon-app`) | **Operator, Driver** | Drivers log in via license number (`mobileAuthController`) |
+| Driver app (`frontend/mobile-app/driver-app`, `tech.mercon.driver`) | **Driver** | Phone + license number login (`mobileAuthController`); non-driver roles are rejected |
+| Operator app (`frontend/mobile-app/operator-app`, `tech.mercon.operator`) | **Operator, Admin** | Username/phone + password login (`POST /auth/login`); Driver accounts are turned away |
 | User Management page (`/settings/users`) | **Admin, Operator** | Gated by `RequireRole` + `authorizeRoles('Admin', 'Operator')`; also lists Drivers (read-only) alongside Admin/Operator so it's a full "all platform users" view — but Driver rows cannot be created/edited/deleted here, only viewed. Web-user create/edit (`createUserBody`/`updateUserBody`) still only accepts role `Admin`/`Operator` — Driver-role Users are still not creatable through this page's form |
 
 Driver accounts/access (creation, edit, documents) are managed through the
 Drivers module (`/drivers`), not through the User Management form. The
 User Management page links out to "Add Driver" (`/drivers/new`) rather than
 creating drivers itself.
+
+Code used by both mobile apps lives in `frontend/mobile-app/shared`
+(`@mercon/mobile-shared`). `frontend/mobile-app` is its own npm workspace —
+install there, not at the repo root. Never import one app's code from the
+other app; move it to `shared/` instead.
 
 ## Database & seed rules
 
