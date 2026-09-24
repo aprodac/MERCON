@@ -1,0 +1,191 @@
+name: Release Check
+
+# Runs on every PR into main (the dev → main release PR, see
+# docs/RELEASE_PROCESS.md) and posts a release report as a PR comment:
+#   - what ships: commits, authors, areas changed
+#   - database: migrations new in this release, migrations still pending on
+#     the PRODUCTION database, failed migrations, destructive SQL
+# Nothing here changes production. The only job that touches the server
+# (prod-db) never checks out PR code and reads with a read-only session.
+# Merging the PR is what deploys (ci-cd.yml: backup → migrate → health check).
+
+on:
+  pull_request:
+    branches: [ "main" ]
+    types: [ opened, synchronize, reopened ]
+
+concurrency:
+  group: release-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  prod-db:
+    name: Read production migration ledger
+    # Self-hosted = the production server. Only same-repo PRs, never forks.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
+    permissions: {}
+    outputs:
+      reachable: ${{ steps.read.outputs.reachable }}
+      has_ledger: ${{ steps.read.outputs.has_ledger }}
+      applied: ${{ steps.read.outputs.applied }}
+      failed: ${{ steps.read.outputs.failed }}
+      tables: ${{ steps.read.outputs.tables }}
+    steps:
+      - name: Query _prisma_migrations (read-only)
+        id: read
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+        run: |
+          set -uo pipefail
+          q() {
+            docker exec -e PGOPTIONS='-c default_transaction_read_only=on' mercon-postgres \
+              psql -U "$POSTGRES_USER" -d mercon_db -At -v ON_ERROR_STOP=1 -c "$1"
+          }
+          if [ "$(docker inspect -f '{{.State.Running}}' mercon-postgres 2>/dev/null)" != "true" ] || ! q "SELECT 1" >/dev/null 2>&1; then
+            echo "reachable=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "reachable=true" >> "$GITHUB_OUTPUT"
+          echo "tables=$(q "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")" >> "$GITHUB_OUTPUT"
+          if [ "$(q "SELECT to_regclass('public._prisma_migrations') IS NOT NULL")" != "t" ]; then
+            echo "has_ledger=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_ledger=true" >> "$GITHUB_OUTPUT"
+          {
+            echo "applied<<EOF_APPLIED"
+            q "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name"
+            echo "EOF_APPLIED"
+            echo "failed<<EOF_FAILED"
+            q "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL ORDER BY migration_name"
+            echo "EOF_FAILED"
+          } >> "$GITHUB_OUTPUT"
+
+  report:
+    name: Release report
+    needs: prod-db
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build report
+        id: build
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          DB_JOB: ${{ needs.prod-db.result }}
+          REACHABLE: ${{ needs.prod-db.outputs.reachable }}
+          HAS_LEDGER: ${{ needs.prod-db.outputs.has_ledger }}
+          APPLIED: ${{ needs.prod-db.outputs.applied }}
+          FAILED: ${{ needs.prod-db.outputs.failed }}
+          TABLES: ${{ needs.prod-db.outputs.tables }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          MIG=backend/api-server/prisma/migrations
+          R=report.md
+          BLOCK=()
+          WARN=()
+
+          # ── What ships ─────────────────────────────────────────────────
+          COMMITS=$(git rev-list --count --no-merges "$BASE..$HEAD")
+          AUTHORS=$(git log --no-merges --format='%an' "$BASE..$HEAD" | sort | uniq -c | sort -rn | awk '{c=$1; $1=""; printf "%s%s (%s)", (NR>1?", ":""), substr($0,2), c}')
+          AREAS=$(git diff --name-only "$BASE...$HEAD" | awk -F/ '{print ($1=="frontend"||$1=="backend")?$1"/"$2:$1}' | sort | uniq -c | sort -rn | head -8 | awk '{printf "%s`%s` %s", (NR>1?" · ":""), $2, $1}')
+          FILES=$(git diff --name-only "$BASE...$HEAD" | wc -l | tr -d ' ')
+          STATUS=$(git diff --name-status "$BASE...$HEAD" | cut -c1 | sort | uniq -c | awk '{n[$2]=$1} END {printf "%d added · %d changed · %d deleted · %d renamed", n["A"], n["M"], n["D"], n["R"]}')
+          if [ "$HEAD_REF" != "dev" ]; then
+            WARN+=("Release PRs normally come from \`dev\`; this one is from \`$HEAD_REF\`.")
+          fi
+          if ! git merge-base --is-ancestor "$BASE" "$HEAD"; then
+            WARN+=("\`main\` has commits that are not in \`$HEAD_REF\` — merge \`main\` into \`$HEAD_REF\` first so the release is a clean fast-forward.")
+          fi
+
+          # ── Migrations ─────────────────────────────────────────────────
+          NEW=$(git diff --name-only --diff-filter=A "$BASE...$HEAD" -- "$MIG/*/migration.sql" | xargs -r -n1 dirname | xargs -r -n1 basename | sort)
+          CHANGED=$(git diff --name-only --diff-filter=M "$BASE...$HEAD" -- "$MIG/*/migration.sql" | xargs -r -n1 dirname | xargs -r -n1 basename | sort)
+          IN_REPO=$(git ls-tree -d --name-only "$HEAD" "$MIG/" | xargs -r -n1 basename | sort)
+          RISKY=""
+          for m in $NEW; do
+            hits=$(git show "$HEAD:$MIG/$m/migration.sql" | grep -niE '^\s*(DROP (TABLE|COLUMN|TYPE|INDEX|SCHEMA)|TRUNCATE|DELETE FROM|UPDATE )|ALTER TABLE .* (DROP |RENAME )|ALTER COLUMN .* TYPE |ALTER TYPE .* RENAME' || true)
+            [ -n "$hits" ] && RISKY+="**\`$m\`**"$'\n```sql\n'"$hits"$'\n```\n'
+          done
+          [ -n "$CHANGED" ] && BLOCK+=("Already-committed migration files were edited: $(echo $CHANGED | sed 's/ /, /g'). Prisma refuses changed migrations that already ran — add a new migration instead.")
+          [ -n "$RISKY" ] && WARN+=("New migrations contain destructive or data-changing SQL (below). Confirm it is intended before merging.")
+
+          DB_LINE=""; PENDING=""; FAILED_LIST=""; ORPHANS=""
+          if [ "$DB_JOB" != "success" ] || [ "$REACHABLE" != "true" ]; then
+            BLOCK+=("Could not read the production database (job: $DB_JOB). Re-run this check.")
+            DB_LINE="❓ Production database not reachable"
+          elif [ "$HAS_LEDGER" != "true" ]; then
+            BLOCK+=("Production has no \`_prisma_migrations\` table — \`prisma migrate deploy\` would refuse to run. Baseline production first.")
+            DB_LINE="❌ No migration ledger on production ($TABLES tables)"
+          else
+            PENDING=$(comm -23 <(echo "$IN_REPO") <(echo "$APPLIED" | sort))
+            ORPHANS=$(comm -13 <(echo "$IN_REPO") <(echo "$APPLIED" | sort) | sed '/^$/d')
+            FAILED_LIST=$(echo "$FAILED" | sed '/^$/d')
+            [ -n "$FAILED_LIST" ] && BLOCK+=("Production has failed migrations that must be resolved first (\`prisma migrate resolve\`).")
+            [ -n "$ORPHANS" ] && WARN+=("Production has applied migrations that are not in this branch: $(echo $ORPHANS | sed 's/ /, /g').")
+            DB_LINE="✅ Read production: $TABLES tables, $(echo "$APPLIED" | sed '/^$/d' | wc -l | tr -d ' ') migrations applied"
+          fi
+
+          # ── Report ─────────────────────────────────────────────────────
+          {
+            echo "<!-- release-check -->"
+            if [ ${#BLOCK[@]} -gt 0 ]; then echo "## 🚫 Release check: blocked"
+            elif [ ${#WARN[@]} -gt 0 ]; then echo "## ⚠️ Release check: review needed"
+            else echo "## ✅ Release check: ready to merge"; fi
+            echo
+            echo "Merging deploys to **production (mercon.tech)**: back up DB → build → \`prisma migrate deploy\` → restart → health check."
+            echo
+            for b in "${BLOCK[@]}"; do echo "- 🚫 $b"; done
+            for w in "${WARN[@]}"; do echo "- ⚠️ $w"; done
+            echo
+            echo "### What ships"
+            echo "- **$COMMITS commits** from $AUTHORS"
+            echo "- **$FILES files** ($STATUS): $AREAS"
+            echo
+            echo "### Database"
+            echo "- $DB_LINE"
+            if [ -n "$PENDING" ]; then
+              echo "- **$(echo "$PENDING" | wc -l | tr -d ' ') migrations will run on production:**"
+              echo "$PENDING" | sed 's/^/  - `/; s/$/`/'
+            elif [ "$HAS_LEDGER" = "true" ]; then
+              echo "- No pending migrations — schema unchanged."
+            fi
+            [ -n "$FAILED_LIST" ] && { echo "- **Failed on production:**"; echo "$FAILED_LIST" | sed 's/^/  - `/; s/$/`/'; }
+            [ -n "$NEW" ] && echo "- New in this release: $(echo "$NEW" | wc -l | tr -d ' ') migration(s)"
+            if [ -n "$RISKY" ]; then echo; echo "#### Destructive / data-changing SQL"; echo "$RISKY"; else echo "- No destructive SQL (DROP / TRUNCATE / DELETE / UPDATE / type change / rename) in new migrations."; fi
+            echo
+            echo "<sub>Base \`${BASE:0:7}\` → head \`${HEAD:0:7}\` · [release process]($REPO_URL/blob/$HEAD/docs/RELEASE_PROCESS.md)</sub>"
+          } > "$R"
+          cat "$R" >> "$GITHUB_STEP_SUMMARY"
+          echo "blocked=$([ ${#BLOCK[@]} -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Post / update PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ID=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq '[.[] | select(.user.login=="github-actions[bot]" and (.body | startswith("<!-- release-check -->")))][0].id // empty')
+          if [ -n "$ID" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$ID" -F body=@report.md >/dev/null
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -F body=@report.md >/dev/null
+          fi
+
+      - name: Fail if blocked
+        if: steps.build.outputs.blocked == 'true'
+        run: |
+          echo "::error::Release check found blocking problems — see the PR comment."
+          exit 1

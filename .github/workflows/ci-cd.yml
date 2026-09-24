@@ -19,14 +19,8 @@ jobs:
   deploy:
     name: Deploy to Self-Hosted Runner
     runs-on: self-hosted
-    # promote-dev-to-prod.yml (mode: promote) already builds, deploys, and
-    # health-checks this exact commit before fast-forwarding main to it, using
-    # the default GITHUB_TOKEN (x-access-token) to push — which GitHub records
-    # as actor github-actions[bot]. Without this guard that push retriggers
-    # this workflow immediately after, redeploying the same already-verified
-    # commit a second time. A direct human push/merge to main still runs
-    # normally, since its actor is the person or bot that made it.
-    if: github.actor != 'github-actions[bot]'
+    # Releases reach main through a reviewed dev → main PR (docs/RELEASE_PROCESS.md);
+    # release-check.yml reports on the PR, this workflow deploys the merge.
 
     steps:
       # Native git instead of actions/checkout: this runner keeps its work
@@ -134,6 +128,29 @@ jobs:
           echo "Building images..."
           docker compose -p mercon build
 
+          # Back up production right before the migration (after the slow
+          # build, so the dump is as close as possible to the moment the schema
+          # changes). A failed or empty dump aborts the deploy before anything
+          # is touched. Same format/location as backup-db.yml, so its 7-day
+          # pruning covers these too. A first deploy with no database yet has
+          # nothing to back up and continues.
+          if [ "$(docker inspect -f '{{.State.Running}}' mercon-postgres 2>/dev/null)" = "true" ]; then
+            BACKUP_DIR="/var/backups/mercon"
+            sudo mkdir -p "$BACKUP_DIR"
+            sudo chown "$(whoami)" "$BACKUP_DIR"
+            BACKUP_PATH="$BACKUP_DIR/mercon-db-predeploy-$(date +%Y%m%d%H%M%S)-${GITHUB_SHA:0:7}.dump"
+            echo "Backing up production database to $BACKUP_PATH ..."
+            docker exec mercon-postgres pg_dump -U "$POSTGRES_USER" -Fc -d mercon_db > "$BACKUP_PATH"
+            if [ ! -s "$BACKUP_PATH" ]; then
+              echo "::error::Pre-deploy backup is empty or missing ($BACKUP_PATH). Aborting before migrations — production untouched." >&2
+              exit 1
+            fi
+            echo "✓ Backup created: $BACKUP_PATH ($(du -h "$BACKUP_PATH" | cut -f1))"
+            echo "BACKUP_PATH=$BACKUP_PATH" >> "$GITHUB_ENV"
+          else
+            echo "::warning::mercon-postgres is not running — no existing database to back up (first deploy?)."
+          fi
+
           echo "Executing Prisma database migrations against production database..."
           docker compose -p mercon run --rm --no-deps mercon-api npx prisma migrate deploy
 
@@ -211,3 +228,20 @@ jobs:
           sudo nginx -t
           sudo systemctl reload nginx
           echo "Nginx reloaded successfully."
+
+      # Only runs when an earlier step failed. If the failure came after the
+      # backup (migration, container start, health check), print how to put
+      # the database back. Old containers keep serving if the migration failed,
+      # because containers are only replaced after `migrate deploy` succeeds.
+      - name: Restore instructions (on failure)
+        if: failure()
+        run: |
+          if [ -n "${BACKUP_PATH:-}" ]; then
+            echo "::error::Deploy failed after the pre-deploy backup was taken."
+            echo "Backup: $BACKUP_PATH"
+            echo "To restore production to the pre-deploy state (run on the server):"
+            echo "  docker exec -i mercon-postgres pg_restore --clean --if-exists --no-owner --no-privileges -U \"\$POSTGRES_USER\" -d mercon_db < $BACKUP_PATH"
+            echo "Then redeploy the previous main commit (revert the release merge on main)."
+          else
+            echo "Deploy failed before any database backup or migration — the database was not touched."
+          fi
