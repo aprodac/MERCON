@@ -1,0 +1,97 @@
+name: Mobile Build (EAS)
+
+# One-click EAS cloud builds for the two mobile apps.
+#   Actions → "Mobile Build (EAS)" → Run workflow → pick app / platform / profile
+#   or: gh workflow run eas-build.yml -f app=driver -f platform=android -f profile=preview
+#
+# Profiles (frontend/mobile-app/<app>/eas.json):
+#   preview    → installable APK (Android) / internal build (iOS) for testers
+#   production → store builds (Android AAB, iOS App Store), build number auto-incremented
+#
+# Builds run on Expo's servers; this job only queues them (--no-wait) and
+# finishes in a couple of minutes. Build links appear in the job log and at
+# https://expo.dev (account alan32).
+#
+# First-time setup, done once per app from a laptop (needs interactive prompts):
+#   - operator-app: `npx eas-cli init` → add the projectId to app.config.ts
+#   - each app + platform: one interactive `npx eas-cli build` so EAS creates and
+#     stores the Android keystore / iOS certificates. After that, CI builds work.
+# Requires the EXPO_TOKEN repository secret (an Expo access token).
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Which app'
+        type: choice
+        options: [driver, operator, both]
+        default: driver
+      platform:
+        description: 'Platform'
+        type: choice
+        options: [android, ios, all]
+        default: android
+      profile:
+        description: 'EAS build profile'
+        type: choice
+        options: [preview, production]
+        default: preview
+
+jobs:
+  plan:
+    name: Pick apps
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.pick.outputs.apps }}
+    steps:
+      - id: pick
+        run: |
+          case "${{ inputs.app }}" in
+            driver)   echo 'apps=["driver-app"]' >> "$GITHUB_OUTPUT" ;;
+            operator) echo 'apps=["operator-app"]' >> "$GITHUB_OUTPUT" ;;
+            both)     echo 'apps=["driver-app","operator-app"]' >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  build:
+    name: ${{ matrix.app }} · ${{ inputs.platform }} · ${{ inputs.profile }}
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.plan.outputs.apps) }}
+    defaults:
+      run:
+        working-directory: ./frontend/mobile-app/${{ matrix.app }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: 'npm'
+          cache-dependency-path: './frontend/mobile-app/package-lock.json'
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      # Mobile npm workspace root (both apps + shared code); lockfile lives here.
+      - name: Install dependencies
+        run: npm ci
+        working-directory: ./frontend/mobile-app
+
+      - name: Check EAS project is linked
+        run: |
+          if ! npx expo config --json --type public | grep -q '"projectId"'; then
+            echo "::error::${{ matrix.app }} has no EAS projectId. Run 'npx eas-cli init' in frontend/mobile-app/${{ matrix.app }} once and add the projectId to app.config.ts."
+            exit 1
+          fi
+
+      - name: Queue EAS build
+        run: eas build --platform ${{ inputs.platform }} --profile ${{ inputs.profile }} --non-interactive --no-wait

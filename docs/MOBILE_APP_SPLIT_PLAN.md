@@ -165,8 +165,13 @@ exists as a route (script check).
   driver push notifications silently stop.
 
 ### Step 6 — Build & CI ✅ (driver) / ⬜ (operator)
-- `bitrise.yml` and both GitHub mobile workflows point at `driver-app` and install from the
-  mobile workspace root. No CI workflow builds the operator app yet.
+- `bitrise.yml` and `build-driver-apk.yml` point at `driver-app` and install from the mobile
+  workspace root.
+- ✅ `.github/workflows/eas-build.yml` ("Mobile Build (EAS)", manual): app driver/operator/both ×
+  platform android/ios/all × profile preview/production; queues EAS cloud builds with
+  `--no-wait`. Fails early with a clear message if the app has no EAS `projectId` (operator
+  until `eas init`). Replaces the driver-only `mobile-build.yml`. EAS is the official build
+  path; `build-driver-apk.yml` stays as a no-account backup.
 - Root scripts: `mobile:driver`, `mobile:operator` (+ `:tunnel` variants).
 - `eas.json` `production` already builds an AAB on Android (EAS default).
 
