@@ -23,12 +23,12 @@ export const FadedBottomIllustration: React.FC<FadedBottomIllustrationProps> = (
 }) => {
   const source = imageSource || (
     type === 'stop'
-      ? require('../../assets/images/stop.png')
+      ? require('../../assets/images/stop.webp')
       : type === 'delivery'
-      ? require('../../assets/images/delivery.png')
+      ? require('../../assets/images/delivery.webp')
       : type === 'loading'
-      ? require('../../assets/images/loading.png')
-      : require('../../assets/images/start_loading.png')
+      ? require('../../assets/images/loading.webp')
+      : require('../../assets/images/loading.webp')
   );
 
   return (

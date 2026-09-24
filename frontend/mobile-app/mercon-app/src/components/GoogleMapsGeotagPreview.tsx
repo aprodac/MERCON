@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Platform, Image } from 'react-native';
 import { Calendar, Globe, MapPin, Building2 } from 'lucide-react-native';
 import { useLanguage } from '../lib/language-context';
 
-const merconLogo = require('../../assets/images/merconclosed.png');
+const merconLogo = require('../../assets/images/merconclosed-logo.webp');
 
 export interface GoogleMapsGeotagProps {
   latitude?: number;

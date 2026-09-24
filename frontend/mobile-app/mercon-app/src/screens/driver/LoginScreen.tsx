@@ -24,7 +24,7 @@ import { useRouter } from 'expo-router';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const logo = require('../../../assets/images/mercon-logo.png');
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const heroBg = require('../../../assets/images/login-hero.png');
+const heroBg = require('../../../assets/images/login-hero.webp');
 
 interface CountryOption {
   code: string;

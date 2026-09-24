@@ -74,7 +74,7 @@ export default function DashboardHomeScreen() {
             <DashboardMetricCard
               title="Active Trips"
               value={activeTrips.data?.length ?? 0}
-              image={require('@/assets/images/mobile-truck.png')}
+              image={require('@/assets/images/mobile-truck.webp')}
               onPress={() => router.push('/operator/trips')}
             />
             <DashboardMetricCard

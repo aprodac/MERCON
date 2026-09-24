@@ -50,7 +50,7 @@ function RootNavigator() {
     return (
       <View style={styles.splashContainer}>
         <Image
-          source={require('../../assets/images/merconclosed.png')}
+          source={require('../../assets/images/merconclosed-logo.webp')}
           style={styles.splashLogo}
           resizeMode="contain"
         />
