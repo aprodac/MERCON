@@ -68,18 +68,24 @@ other app; move it to `shared/` instead.
 - The seed runs on **every** container start — it must stay **idempotent**
   (upserts, never blind creates) and must **never overwrite passwords** of
   existing users.
-- Do not modify `schema.prisma` unless the task explicitly requires it. The
-  production container runs `prisma db push --accept-data-loss` on start, so
-  schema changes hit the live database automatically — treat them as
-  production changes.
+- Do not modify `schema.prisma` unless the task explicitly requires it. Schema
+  changes ship as Prisma migrations (`prisma/migrations/`), which the deploy
+  applies with `prisma migrate deploy` — every migration reaches the live
+  database on the next release, so treat them as production changes. Never
+  edit a migration that has already been released; add a new one.
 - Never seed fake/demo data (drivers, trips, customers, invoices). This was
   deliberately removed.
 
 ## Deployment (production = mercon.tech)
 
-- Pushing to `main` triggers `.github/workflows/ci-cd.yml` on a self-hosted
-  runner: it force-removes the containers and runs `docker-compose up -d
-  --build` from the repo root.
+- **Releases go through a PR from `dev` into `main`** — never push to `main`
+  directly. Full process: `docs/RELEASE_PROCESS.md`. On the PR,
+  `.github/workflows/release-check.yml` posts a release report (what ships,
+  migrations pending on production, destructive SQL).
+- Merging to `main` triggers `.github/workflows/ci-cd.yml` on the self-hosted
+  runner: build images → back up the production database → `prisma migrate
+  deploy` → restart containers → health check. A failed migration leaves the
+  old containers serving; the failed run prints the restore command.
 - Postgres data persists in the `pgdata` volume — deploys do NOT reset the
   database. Fixing bad data requires the seed (idempotent upserts) or manual
   SQL, not a redeploy.
