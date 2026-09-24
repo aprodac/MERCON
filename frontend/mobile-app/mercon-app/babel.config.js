@@ -8,6 +8,8 @@ module.exports = function (api) {
     // react-native-worklets requires its babel plugin to be listed LAST.
     // Without this the worklets JS runtime is not initialized and the app
     // crashes at startup with a "Worklets not initialized" error.
-    plugins: ['react-native-worklets/plugin'],
+    // Per-icon lucide imports (see babel-plugin-lucide-icons.js) - keeps the
+    // bundle from shipping every icon. Must stay before the worklets plugin.
+    plugins: ['./babel-plugin-lucide-icons', 'react-native-worklets/plugin'],
   };
 };
