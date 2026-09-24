@@ -39,6 +39,10 @@ const CLIENT_PROFILES = {
 type ClientKey = keyof typeof CLIENT_PROFILES;
 
 const clientKey = (process.env.APP_CLIENT as ClientKey) || 'mercon';
+
+// CI build number (Codemagic sets BUILD_NUMBER) → Android versionCode / iOS
+// buildNumber, so every CI build installs over the previous one. Local builds use 1.
+const buildNumber = Number(process.env.BUILD_NUMBER) || 1;
 const client = CLIENT_PROFILES[clientKey];
 
 if (!client) {
@@ -57,6 +61,7 @@ export default (): ExpoConfig => ({
   userInterfaceStyle: 'light',
   ios: {
     bundleIdentifier: client.iosBundleIdentifier,
+    buildNumber: String(buildNumber),
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
     },
@@ -75,6 +80,7 @@ export default (): ExpoConfig => ({
       'android.permission.ACCESS_FINE_LOCATION',
     ],
     package: client.androidPackage,
+    versionCode: buildNumber,
   },
   web: {
     output: 'static',
@@ -105,6 +111,8 @@ export default (): ExpoConfig => ({
       });
     }) as any,
     'expo-router',
+    // Release signing from Codemagic's keystore (no-op elsewhere)
+    '../shared/tooling/with-release-signing',
     [
       'expo-splash-screen',
       {
