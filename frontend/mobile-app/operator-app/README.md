@@ -33,5 +33,9 @@ code to `../shared` instead.
 
 ## EAS builds
 
-This app needs its own EAS project. Run `eas init` here once, then add the
-printed `projectId` under `extra.eas` in `app.config.ts`.
+This app needs its own EAS project. Run `npx eas-cli init` here once, then add
+the printed `projectId` under `extra.eas` in `app.config.ts`.
+
+After that, build from GitHub: Actions → **Mobile Build (EAS)** → app `operator`
+(`.github/workflows/eas-build.yml`). Do one interactive `npx eas-cli build` per
+platform first so EAS creates and stores the signing credentials.
