@@ -144,7 +144,7 @@ export default (): ExpoConfig => ({
     eas: {
       projectId: '2697c85a-0ac8-4a2e-9225-5cc84a5b518d',
     },
-    // Read by src/lib/api.ts as the required fallback when EXPO_PUBLIC_API_URL
+    // Read by shared/lib/api.ts (@mercon/mobile-shared) as the required fallback when EXPO_PUBLIC_API_URL
     // isn't set — per-client, so a misconfigured build can't silently talk to
     // another client's API.
     apiUrl: client.apiUrl,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
 import { CircleCheck, Clock, ShieldCheck, Truck } from 'lucide-react-native';
-import { Colors } from '@/theme/tokens';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { Section, SectionCard } from './SectionCard';
 import { PerformanceMetricCard } from './PerformanceMetricCard';
 import { safetyScoreFromRisk } from '../services/driverDetailsService';

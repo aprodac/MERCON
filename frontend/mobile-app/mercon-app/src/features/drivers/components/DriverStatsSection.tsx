@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { Truck, Users } from 'lucide-react-native';
 import { DriverStatCard } from './DriverStatCard';
 import { SkeletonDriverStatCard } from './LoadingSkeleton';
-import { ErrorState } from '@/shared/components';
+import { ErrorState } from '@mercon/mobile-shared/ui';
 import { useDriverStats } from '../hooks';
 
 /**

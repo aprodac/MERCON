@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { SortOption } from '@/shared/components';
+import type { SortOption } from '@mercon/mobile-shared/ui';
 import type { CustomerSortOption } from '../types';
 
 /**

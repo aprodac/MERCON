@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useDebouncedValue } from '@/shared/hooks';
+import { useDebouncedValue } from '@mercon/mobile-shared/hooks';
 
 /**
  * Search box state. The debounced value is what reaches the query key, so

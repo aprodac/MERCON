@@ -6,10 +6,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Camera, Image as ImageIcon, Package, FileCheck, MapPin } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
-import { API_URL } from '../../lib/api';
-import { useCargoPodPhotos, docTypeLabel, type DriverDocument } from '../../lib/documents';
-import { useLanguage } from '../../lib/language-context';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
+import { API_URL } from '@mercon/mobile-shared/lib/api';
+import { useCargoPodPhotos, docTypeLabel, type DriverDocument } from '@mercon/mobile-shared/lib/documents';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { GoogleMapsGeotagPreview } from '../../components';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');

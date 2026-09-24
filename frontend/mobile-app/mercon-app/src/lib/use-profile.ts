@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { profileService, type DriverProfile } from './profile';
-import { getApiErrorMessage } from './api';
+import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 
 /** Loads the driver's profile. Fetch-on-mount with a manual refetch. */
 export function useProfile() {

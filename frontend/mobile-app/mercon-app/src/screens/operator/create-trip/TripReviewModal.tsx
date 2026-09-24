@@ -1,11 +1,11 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Image } from 'react-native';
 import { Building2 } from 'lucide-react-native';
-import { Colors, Spacing, Typography, Radius } from '../../../theme/tokens';
-import { Button } from '../../../components/Button';
-import { AppModal } from '../../../components/common/AppModal';
+import { Colors, Spacing, Typography, Radius } from '@mercon/mobile-shared/theme/tokens';
+import { Button } from '@mercon/mobile-shared/components/Button';
+import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { OperatorCustomer, OperatorDriver, OperatorVehicle, OperatorThirdPartyProvider } from '../../../lib/operator';
-import { API_URL } from '../../../lib/api';
+import { API_URL } from '@mercon/mobile-shared/lib/api';
 import { RateCategoryType, IntermediateStop } from '../hooks/useCreateTripForm';
 
 function resolveMediaUrl(url?: string | null): string | null {

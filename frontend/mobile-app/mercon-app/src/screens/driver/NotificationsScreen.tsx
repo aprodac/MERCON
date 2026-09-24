@@ -5,12 +5,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TriangleAlert, BellOff } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { DriverBottomNav } from '../../navigation/DriverBottomNav';
 import { useNotifications } from '../../lib/use-notifications';
 import { notificationIcon, timeAgo, type MobileNotification } from '../../lib/notifications';
 
-import { useLanguage } from '../../lib/language-context';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 const NotificationCard = ({ item, onPress, language }: { item: MobileNotification; onPress: () => void; language: any }) => {
   const unread = !item.is_read;

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native';
 import { Ban, CircleCheck, EllipsisVertical, SquarePen, Trash2 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
-import { Colors } from '@/theme/tokens';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import type { CustomerListItem, CustomerPermissions } from '../types';
 
 interface MenuAction {

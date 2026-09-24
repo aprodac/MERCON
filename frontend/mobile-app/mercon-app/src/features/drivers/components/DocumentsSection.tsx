@@ -1,8 +1,8 @@
 import React, { useCallback } from 'react';
 import { FlatList, Text, View } from 'react-native';
 import { FileText } from 'lucide-react-native';
-import { Colors } from '@/theme/tokens';
-import { EmptyState, ErrorState, SkeletonBlock } from '@/shared/components';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
+import { EmptyState, ErrorState, SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { Section, SectionCard, SCREEN_PADDING } from './SectionCard';
 import { DocumentCard } from './DocumentCard';
 import type { DriverDocument } from '../types';

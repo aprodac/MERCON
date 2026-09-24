@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { safeSecureStore } from '../../../lib/secure-store';
+import { safeSecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import {
   operatorService,
   type OperatorCustomer,

@@ -7,12 +7,12 @@ import { View, StyleSheet, Image } from 'react-native';
 import { QueryClientProvider } from '@tanstack/react-query';
 
 import { AuthProvider, useAuth } from '@/lib/auth-context';
-import { queryClient } from '@/lib/query-client';
+import { queryClient } from '@mercon/mobile-shared/lib/query-client';
 import { DriverBottomNav } from '@/navigation/DriverBottomNav';
 import { OperatorBottomNav } from '@/navigation/OperatorBottomNav';
 
-import { LanguageProvider } from '@/lib/language-context';
-import { ThemeProvider } from '@/lib/theme-context';
+import { LanguageProvider } from '@mercon/mobile-shared/lib/language-context';
+import { ThemeProvider } from '@mercon/mobile-shared/lib/theme-context';
 import { DriverLiveTracking } from '@/lib/DriverLiveTracking';
 import { DriverNotificationManager } from '@/components/DriverNotificationManager';
 

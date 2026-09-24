@@ -1,6 +1,6 @@
 import React from 'react';
 import { Image, Text, View, type ImageSourcePropType } from 'react-native';
-import { Colors } from '@/theme/tokens';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { customerInitials } from '../services/customersService';
 
 interface CustomerLogoProps {

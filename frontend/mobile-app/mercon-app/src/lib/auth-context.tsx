@@ -10,9 +10,9 @@
  */
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import axios from 'axios';
-import { safeSecureStore as SecureStore } from './secure-store';
-import { api, TOKEN_KEY, SESSION_KEY, PUSH_TOKEN_KEY, setAuthToken, ensureAuthToken } from './api';
-import { queryClient } from './query-client';
+import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
+import { api, TOKEN_KEY, SESSION_KEY, PUSH_TOKEN_KEY, setAuthToken, ensureAuthToken } from '@mercon/mobile-shared/lib/api';
+import { queryClient } from '@mercon/mobile-shared/lib/query-client';
 import {
   registerForPushNotificationsAsync,
   registerPushDeviceWithBackend,

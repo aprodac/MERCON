@@ -3,7 +3,7 @@
  * + fields). Notifies all operators/admins and attaches any incident photos
  * as Documents on the driver's active trip.
  */
-import { api } from './api';
+import { api } from '@mercon/mobile-shared/lib/api';
 
 export interface EmergencyPhoto {
   uri: string;

@@ -13,11 +13,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { User, Lock, Eye, EyeOff, ArrowRight, Headset, Globe, ChevronDown, Check } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { Button, Input } from '../../components';
 import { useAuth } from '../../lib/auth-context';
-import { api, getApiErrorMessage } from '../../lib/api';
-import { useLanguage } from '../../lib/language-context';
+import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 import { useRouter } from 'expo-router';
 

@@ -6,12 +6,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { User, Calendar, Truck, ArrowRight, Building2, MapPin } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { StatusBadge, SearchInput, FilterChip } from '../../components';
 import { useOperatorTrips, type OperatorTrip } from '../../lib/operator';
-import { statusLabel, type TripStatus } from '../../lib/trips';
-import { matchesSearch } from '../../lib/search';
-import { API_URL } from '../../lib/api';
+import { statusLabel, type TripStatus } from '@mercon/mobile-shared/lib/trips';
+import { matchesSearch } from '@mercon/mobile-shared/lib/search';
+import { API_URL } from '@mercon/mobile-shared/lib/api';
 
 const FILTERS: { label: string; statuses: string[] | null }[] = [
   { label: 'All', statuses: null },

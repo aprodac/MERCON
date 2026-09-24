@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Image, Text, View, StyleSheet, type ImageSourcePropType, type ViewStyle } from 'react-native';
-import { Colors } from '../../../theme/tokens';
-import { SkeletonBlock } from '../../../shared/components';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
+import { SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { DriverStatusIndicator } from './DriverStatusIndicator';
 import type { DriverDisplayStatus } from '../types';
 

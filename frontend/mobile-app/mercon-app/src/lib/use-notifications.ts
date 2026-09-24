@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { notificationService, type MobileNotification } from './notifications';
-import { getApiErrorMessage } from './api';
+import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 
 /** Loads the driver's notifications with optimistic mark-as-read. Mirrors the
  *  other mobile hooks — fetch-on-mount with a manual refetch (no React Query). */

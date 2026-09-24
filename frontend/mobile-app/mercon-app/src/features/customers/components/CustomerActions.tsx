@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { Plus } from 'lucide-react-native';
-import { Colors } from '@/theme/tokens';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 
 interface CustomerActionsProps {
   onViewDetails: () => void;

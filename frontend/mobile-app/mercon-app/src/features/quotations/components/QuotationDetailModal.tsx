@@ -1,7 +1,7 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { ArrowRight, MapPin, X, Wallet, Truck, Building2, Tag, Calendar } from 'lucide-react-native';
-import { Colors, Radius, Shadows, Spacing } from '@/theme/tokens';
+import { Colors, Radius, Shadows, Spacing } from '@mercon/mobile-shared/theme/tokens';
 import { QuotationValidityBadge } from './QuotationValidityBadge';
 import { formatCurrency, formatValidityRange } from '../services/quotationsService';
 import type { QuotationListItem } from '../types';

@@ -6,10 +6,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Truck, Wrench, Calendar } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
-import { useAssignedVehicle } from '../../lib/vehicle';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
+import { useAssignedVehicle } from '@mercon/mobile-shared/lib/vehicle';
 
-import { useLanguage, getLocalizedStatus } from '../../lib/language-context';
+import { useLanguage, getLocalizedStatus } from '@mercon/mobile-shared/lib/language-context';
 
 const AssignedVehicleScreen = () => {
   const router = useRouter();

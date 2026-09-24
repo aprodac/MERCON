@@ -15,8 +15,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Lock, Eye, EyeOff } from 'lucide-react-native';
-import { useLanguage } from '../../lib/language-context';
-import { api, getApiErrorMessage } from '../../lib/api';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
+import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 
 export default function ChangePasswordScreen() {
   const router = useRouter();

@@ -3,8 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, ViewStyle } from 'react-nativ
 import { Wallet, ChevronRight, ChevronLeft } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useTripHistory } from '../lib/use-trip-history';
-import { getTripChargeValue, getMonthlyDriverPayout } from '../lib/trips';
-import { useLanguage } from '../lib/language-context';
+import { getTripChargeValue, getMonthlyDriverPayout } from '@mercon/mobile-shared/lib/trips';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 interface DriverChargePillProps {
   amount?: number;

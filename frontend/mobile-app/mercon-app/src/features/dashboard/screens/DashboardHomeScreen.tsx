@@ -21,7 +21,7 @@ import {
   AppHeader, DashboardMetricCard,
   OperatorCommandCenterSection, ScannerButton, SearchBar,
 } from '../components';
-import { ErrorState, SkeletonMetricCard } from '@/shared/components';
+import { ErrorState, SkeletonMetricCard } from '@mercon/mobile-shared/ui';
 
 export default function DashboardHomeScreen() {
   const router = useRouter();

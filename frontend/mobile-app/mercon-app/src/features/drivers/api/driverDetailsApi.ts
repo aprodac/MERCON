@@ -12,10 +12,10 @@
  * All of these are gated to Admin/Operator by the backend RBAC, which matches
  * where this screen lives (the operator section of the app).
  */
-import { api } from '@/lib/api';
+import { api } from '@mercon/mobile-shared/lib/api';
 import type { DocStatus, DriverStatus } from '../types';
 import type { DocType } from '@/features/dashboard/types';
-import type { StopType, TripStatus } from '@/lib/trips';
+import type { StopType, TripStatus } from '@mercon/mobile-shared/lib/trips';
 
 /** Raw driver row from GET /drivers/:id. `trips` is the last 5 by createdAt and carries no vehicle join. */
 export interface RawDriverDetail {

@@ -1,7 +1,7 @@
 import React from 'react';
 import { ActivityIndicator, TextInput, TouchableOpacity, View } from 'react-native';
 import { Search, X } from 'lucide-react-native';
-import { Colors, Radius, Shadows } from '@/theme/tokens';
+import { Colors, Radius, Shadows } from '@mercon/mobile-shared/theme/tokens';
 
 interface SearchBarProps {
   value: string;

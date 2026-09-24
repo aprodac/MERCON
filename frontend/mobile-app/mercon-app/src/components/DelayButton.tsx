@@ -1,7 +1,7 @@
 import React from 'react';
 import { TouchableOpacity, Text, View, StyleSheet, ViewStyle } from 'react-native';
 import { Clock } from 'lucide-react-native';
-import { useLanguage } from '../lib/language-context';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 export interface DelayButtonProps {
   onPress: () => void;

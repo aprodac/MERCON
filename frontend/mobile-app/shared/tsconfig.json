@@ -1,0 +1,12 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "paths": {
+      "@mercon/shared-types": ["../../../packages/shared-types/src/index.ts"],
+      "@mercon/shared-types/*": ["../../../packages/shared-types/src/*"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", "../mercon-app/nativewind-env.d.ts", "../mercon-app/expo-env.d.ts"]
+}

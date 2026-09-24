@@ -12,11 +12,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, RotateCcw, ArrowRight, Building2 } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography } from '../../theme/tokens';
+import { Colors, Spacing, Radius, Typography } from '@mercon/mobile-shared/theme/tokens';
 import { Button, Toast } from '../../components';
 import { operatorService, invalidateOperatorTrips, CreateTripStopInput } from '../../lib/operator';
 import { buildTripStops } from '@mercon/shared-types';
-import { API_URL } from '../../lib/api';
+import { API_URL } from '@mercon/mobile-shared/lib/api';
 import { useCreateTripForm } from './hooks/useCreateTripForm';
 import { CustomerQuotationSection } from './create-trip/CustomerQuotationSection';
 import { RouteSection } from './create-trip/RouteSection';

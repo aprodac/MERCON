@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, StatusBar } from 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, MapPin, CheckCircle2, Clock, Truck, ChevronRight } from 'lucide-react-native';
-import { useLanguage } from '../../lib/language-context';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { useProfile } from '../../lib/use-profile';
 import { useTripHistory } from '../../lib/use-trip-history';
 

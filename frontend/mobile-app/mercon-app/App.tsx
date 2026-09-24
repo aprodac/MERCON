@@ -2,7 +2,7 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { LanguageProvider } from './src/lib/language-context';
+import { LanguageProvider } from '@mercon/mobile-shared/lib/language-context';
 
 // Import Driver screens from the design system
 import SplashScreen from './src/screens/driver/SplashScreen';

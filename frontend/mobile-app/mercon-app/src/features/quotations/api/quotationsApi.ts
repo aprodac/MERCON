@@ -2,7 +2,7 @@
  * Quotations API layer — raw HTTP calls for commercial rate cards & lanes.
  * GET /quotations → paginated quotation list with joined customer and stops.
  */
-import { api } from '@/lib/api';
+import { api } from '@mercon/mobile-shared/lib/api';
 
 export interface RawQuotationStopLocation {
   id: string;

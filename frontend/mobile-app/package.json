@@ -1,0 +1,9 @@
+{
+  "name": "@mercon/mobile-workspace",
+  "private": true,
+  "description": "MERCON mobile apps (Expo) and the code they share. Separate from the repo-root workspace so mobile keeps its own React/React Native versions.",
+  "workspaces": [
+    "mercon-app",
+    "shared"
+  ]
+}

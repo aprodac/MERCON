@@ -2,7 +2,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import { Alert } from 'react-native';
-import { translate } from './language-context';
+import { translate } from '@mercon/mobile-shared/lib/language-context';
 
 export interface LocationTag {
   latitude: number;

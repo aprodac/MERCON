@@ -3,8 +3,8 @@ import { ActivityIndicator, FlatList, RefreshControl, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Building2 } from 'lucide-react-native';
-import { Colors } from '@/theme/tokens';
-import { EmptyState, ErrorState } from '@/shared/components';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
+import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 import {
   CustomerCard,
   CustomerListHeader,

@@ -3,7 +3,7 @@ import { View } from 'react-native';
 import { Truck, Wrench } from 'lucide-react-native';
 import { VehicleStatCard } from './VehicleStatCard';
 import { SkeletonVehicleStatCard } from './LoadingSkeleton';
-import { ErrorState } from '@/shared/components';
+import { ErrorState } from '@mercon/mobile-shared/ui';
 import { useVehicleStats } from '../hooks';
 
 /**

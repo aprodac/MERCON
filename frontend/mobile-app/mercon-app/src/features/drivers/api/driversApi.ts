@@ -5,7 +5,7 @@
  *                            active trip + vehicle pre-joined by the backend
  *   GET /reports/drivers   → all-time total_trips per driver
  */
-import { api } from '@/lib/api';
+import { api } from '@mercon/mobile-shared/lib/api';
 import type { DriverStatus } from '../types';
 
 /** Raw shape of one row from GET /drivers — driverController includes each driver's one active trip (if any) with its vehicle. */

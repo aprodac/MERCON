@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
-import { Colors } from '@/theme/tokens';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import type { DriverDisplayStatus } from '../types';
 
 const COLORS: Record<DriverDisplayStatus, string> = {

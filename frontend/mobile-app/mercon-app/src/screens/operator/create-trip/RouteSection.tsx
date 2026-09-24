@@ -10,10 +10,10 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { MapPin, Plus, Trash2, ChevronDown, Check, X, Building2 } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography } from '../../../theme/tokens';
-import { Card } from '../../../components/Card';
-import { Input } from '../../../components/Input';
-import { Button } from '../../../components/Button';
+import { Colors, Spacing, Radius, Typography } from '@mercon/mobile-shared/theme/tokens';
+import { Card } from '@mercon/mobile-shared/components/Card';
+import { Input } from '@mercon/mobile-shared/components/Input';
+import { Button } from '@mercon/mobile-shared/components/Button';
 import { OperatorLocation } from '../../../lib/operator';
 import { RecentRouteItem, IntermediateStop, RateCategoryType } from '../hooks/useCreateTripForm';
 

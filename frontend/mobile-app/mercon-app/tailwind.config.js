@@ -1,5 +1,5 @@
 /** @type {import('tailwindcss').Config} */
-// Runs in Node at build time (Metro/NativeWind), so unlike src/theme/tokens.ts
+// Runs in Node at build time (Metro/NativeWind), so unlike shared/theme/tokens.ts
 // it can't read expo-constants — but it can read process.env directly, same
 // as app.config.ts. Keep this brand color in sync with CLIENT_PROFILES there.
 const BRAND_COLORS = {
@@ -8,11 +8,11 @@ const BRAND_COLORS = {
 const brand = BRAND_COLORS[process.env.APP_CLIENT] || BRAND_COLORS.mercon;
 
 module.exports = {
-  content: ['./src/**/*.{js,jsx,ts,tsx}', './App.tsx'],
+  content: ['./src/**/*.{js,jsx,ts,tsx}', './App.tsx', '../shared/**/*.{js,jsx,ts,tsx}'],
   presets: [require('nativewind/preset')],
   theme: {
     extend: {
-      // Mirrors src/theme/tokens.ts `Colors` — keep the two in sync.
+      // Mirrors shared/theme/tokens.ts `Colors` — keep the two in sync.
       colors: {
         primary: brand,
         navbg: '#000000',

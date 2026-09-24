@@ -22,8 +22,8 @@ import {
   ChevronRight,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useLanguage } from '../../lib/language-context';
-import { useTheme } from '../../lib/theme-context';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
+import { useTheme } from '@mercon/mobile-shared/lib/theme-context';
 
 const SettingsScreen = () => {
   const router = useRouter();
@@ -187,7 +187,7 @@ const SettingsScreen = () => {
   );
 };
 
-function makeStyles(colors: ReturnType<typeof import('../../lib/theme-context').useTheme>['colors']) {
+function makeStyles(colors: ReturnType<typeof import('@mercon/mobile-shared/lib/theme-context').useTheme>['colors']) {
   return StyleSheet.create({
     container: {
       flex: 1,

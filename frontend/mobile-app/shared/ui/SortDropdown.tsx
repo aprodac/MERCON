@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Modal, Pressable, Text, TouchableOpacity, View } from 'react-native';
 import { Check, ChevronDown, ListFilter } from 'lucide-react-native';
-import { Colors } from '@/theme/tokens';
+import { Colors } from '../theme/tokens';
 
 export interface SortOption<T extends string> {
   value: T;

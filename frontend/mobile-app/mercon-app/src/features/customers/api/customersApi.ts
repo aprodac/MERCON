@@ -14,7 +14,7 @@
  * so trips/revenue/rate-cards are fetched once each and aggregated by
  * customer id rather than issuing a request per row (which would be N+1).
  */
-import { api } from '@/lib/api';
+import { api } from '@mercon/mobile-shared/lib/api';
 import type { InvoiceStatus } from '../types';
 
 export interface RawCustomer {

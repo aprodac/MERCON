@@ -14,9 +14,9 @@ import { Avatar, DriverChargePill } from '../../components';
 import { useAuth } from '../../lib/auth-context';
 import { useProfile } from '../../lib/use-profile';
 import { initialsOf } from '../../lib/profile';
-import { useDocuments, docTypeLabel, docStatus } from '../../lib/documents';
-import { API_URL } from '../../lib/api';
-import { useLanguage, formatCurrency } from '../../lib/language-context';
+import { useDocuments, docTypeLabel, docStatus } from '@mercon/mobile-shared/lib/documents';
+import { API_URL } from '@mercon/mobile-shared/lib/api';
+import { useLanguage, formatCurrency } from '@mercon/mobile-shared/lib/language-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');

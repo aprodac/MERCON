@@ -17,11 +17,11 @@ import {
   Calendar,
   ShieldCheck,
 } from 'lucide-react-native';
-import { useLanguage } from '../../lib/language-context';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { useProfile } from '../../lib/use-profile';
-import { Avatar } from '../../components/Avatar';
+import { Avatar } from '@mercon/mobile-shared/components/Avatar';
 import { initialsOf } from '../../lib/profile';
-import { API_URL } from '../../lib/api';
+import { API_URL } from '@mercon/mobile-shared/lib/api';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 

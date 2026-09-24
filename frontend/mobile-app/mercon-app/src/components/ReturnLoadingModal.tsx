@@ -8,7 +8,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { CheckCircle2, RotateCcw, ArrowRight, ArrowLeft, X } from 'lucide-react-native';
-import { useLanguage } from '../lib/language-context';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 export interface ReturnLoadingModalProps {
   visible: boolean;

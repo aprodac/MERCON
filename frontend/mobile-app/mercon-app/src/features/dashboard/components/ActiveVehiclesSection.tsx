@@ -7,7 +7,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { FlatList, useWindowDimensions, View, type ViewToken } from 'react-native';
 import { TruckIcon } from 'lucide-react-native';
-import { EmptyState, ErrorState, SkeletonVehicleCard } from '@/shared/components';
+import { EmptyState, ErrorState, SkeletonVehicleCard } from '@mercon/mobile-shared/ui';
 import { SectionHeader } from './SectionHeader';
 import { VehicleCard } from './VehicleCard';
 import { CarouselPagination } from './CarouselPagination';

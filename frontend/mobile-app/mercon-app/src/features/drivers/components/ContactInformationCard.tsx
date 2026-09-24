@@ -2,7 +2,7 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { BadgeCheck, CalendarClock, Hash, IdCard, Phone } from 'lucide-react-native';
-import { Colors } from '@/theme/tokens';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { Section, SectionCard } from './SectionCard';
 import { formatDate, formatDaysLeft } from '../services/driverDetailsService';
 import type { DriverDetail } from '../types';

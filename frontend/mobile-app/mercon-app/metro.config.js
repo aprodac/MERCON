@@ -3,6 +3,9 @@ const { withNativeWind } = require('nativewind/metro');
 const path = require('path');
 
 const projectRoot = __dirname;
+// Mobile workspace root (frontend/mobile-app): holds the hoisted node_modules
+// and the shared package (@mercon/mobile-shared, ../shared).
+const mobileRoot = path.resolve(projectRoot, '..');
 // Repo root: frontend/mobile-app/mercon-app -> ../../.. (same as the
 // `file:../../../packages/shared-types` dependency in package.json).
 const workspaceRoot = path.resolve(projectRoot, '../../..');
@@ -10,8 +13,11 @@ const workspaceRoot = path.resolve(projectRoot, '../../..');
 const config = getDefaultConfig(projectRoot);
 
 config.watchFolders = [workspaceRoot];
+// Mobile node_modules come first so shared code gets the mobile React/React
+// Native versions, never the web dashboard's copies in the repo root.
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
+  path.resolve(mobileRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 config.resolver.extraNodeModules = {

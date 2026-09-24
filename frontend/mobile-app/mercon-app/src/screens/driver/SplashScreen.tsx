@@ -6,8 +6,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Truck } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
-import { useLanguage } from '../../lib/language-context';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 const SplashScreen = () => {
   const { t } = useLanguage();

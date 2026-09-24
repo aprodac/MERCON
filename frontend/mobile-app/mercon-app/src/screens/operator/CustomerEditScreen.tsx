@@ -6,9 +6,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography } from '../../theme/tokens';
+import { Colors, Spacing, Radius, Typography } from '@mercon/mobile-shared/theme/tokens';
 import { Button, Card, Input, FilterChip } from '../../components';
-import { getApiErrorMessage } from '../../lib/api';
+import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import {
   operatorService, invalidateOperatorCustomers, useOperatorCustomerById,
 } from '../../lib/operator';

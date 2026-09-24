@@ -2,7 +2,7 @@ import React from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Menu, Plus, Search, SlidersHorizontal, X } from 'lucide-react-native';
 import { IconButton } from '@/features/dashboard/components';
-import { Colors } from '@/theme/tokens';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { CUSTOMER_STATUS_FILTERS } from '../hooks/useCustomerFilters';
 import type { CustomerStatusFilter } from '../types';
 

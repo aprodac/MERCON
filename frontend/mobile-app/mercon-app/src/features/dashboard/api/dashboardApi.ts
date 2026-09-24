@@ -12,7 +12,7 @@
  *   GET /notifications    → the signed-in user's notifications
  *   GET /auth/me          → the signed-in user's profile
  */
-import { api } from '@/lib/api';
+import { api } from '@mercon/mobile-shared/lib/api';
 import type { CurrentUser, DashboardSummary, DocumentRef, DriverRef, Notification, Trip, VehicleRef } from '../types';
 
 export interface FleetTripCount {

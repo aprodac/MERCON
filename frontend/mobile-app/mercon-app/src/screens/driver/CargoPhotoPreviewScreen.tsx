@@ -7,7 +7,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { X, Share2, Image as ImageIcon, FileText } from 'lucide-react-native';
 import { GoogleMapsGeotagPreview } from '../../components/GoogleMapsGeotagPreview';
 import { generateGeotaggedEvidenceImage } from '../../utils/geotagImageGenerator';
-import { useLanguage } from '../../lib/language-context';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 export interface CargoPhotoPreviewScreenProps {
   photoUri?: string;

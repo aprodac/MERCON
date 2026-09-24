@@ -3,7 +3,7 @@
  * Assigned vehicle comes from the driver's current active trip (drivers have
  * no standing vehicle assignment), so it's null when there's no active trip.
  */
-import { api } from './api';
+import { api } from '@mercon/mobile-shared/lib/api';
 
 export interface DriverProfile {
   id: string;

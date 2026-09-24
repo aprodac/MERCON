@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, FlatList, useWindowDimensions, Linking, Alert, Share, Modal, ScrollView, type ViewToken } from 'react-native';
 import { Share2, ArrowRight, Truck, Clock, MapPin, Check, Layers, X, Send, CheckCircle2 } from 'lucide-react-native';
-import { EmptyState, ErrorState, SkeletonVehicleCard } from '@/shared/components';
+import { EmptyState, ErrorState, SkeletonVehicleCard } from '@mercon/mobile-shared/ui';
 import { SectionHeader } from './SectionHeader';
 import { VehicleCard, resolveMediaUrl } from './VehicleCard';
 import { CarouselPagination } from './CarouselPagination';

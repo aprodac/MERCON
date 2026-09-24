@@ -10,13 +10,13 @@ import {
   ArrowLeft, Siren, Phone, Camera, MapPin, Zap, Wrench, Hospital, Shield,
   type LucideIcon,
 } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { Button } from '../../components';
 import { emergencyService } from '../../lib/emergency';
-import { getApiErrorMessage } from '../../lib/api';
+import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { choosePhoto, type CapturedPhoto } from '../../lib/camera';
 
-import { useLanguage } from '../../lib/language-context';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 const OPERATOR_EMERGENCY_PHONE = '+966112345678';
 

@@ -3,7 +3,7 @@ import { Image, Text, View, TouchableOpacity, Alert } from 'react-native';
 import { LogOut, Menu } from 'lucide-react-native';
 import { NotificationButton } from './NotificationButton';
 import { useAuth } from '@/lib/auth-context';
-import { Colors } from '@/theme/tokens';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 
 interface AppHeaderProps {
   logoSource: number;

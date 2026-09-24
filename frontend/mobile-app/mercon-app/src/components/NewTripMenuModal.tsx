@@ -2,8 +2,8 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Plus, Layers, Truck } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography } from '../theme/tokens';
-import { AppModal } from './common/AppModal';
+import { Colors, Spacing, Radius, Typography } from '@mercon/mobile-shared/theme/tokens';
+import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 
 interface NewTripMenuModalProps {
   visible: boolean;

@@ -7,7 +7,7 @@
 import { useEffect, useRef } from 'react';
 import * as Location from 'expo-location';
 import { getSocket } from './socket';
-import { tripService, type MobileTrip } from './trips';
+import { tripService, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
 
 const UPDATE_INTERVAL_MS = 15_000;
 const MIN_DISTANCE_M = 10;

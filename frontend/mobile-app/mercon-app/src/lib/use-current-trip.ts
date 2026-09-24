@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { tripService, type MobileTrip } from './trips';
-import { getApiErrorMessage } from './api';
+import { tripService, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
+import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 
 let cachedTrip: MobileTrip | null = null;
 let isFetched = false;

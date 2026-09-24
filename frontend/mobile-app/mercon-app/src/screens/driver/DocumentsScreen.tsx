@@ -6,12 +6,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, TriangleAlert } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { StatusBadge } from '../../components';
-import { API_URL } from '../../lib/api';
-import { useDocuments, docTypeLabel, docIcon, docStatus, type DriverDocument } from '../../lib/documents';
+import { API_URL } from '@mercon/mobile-shared/lib/api';
+import { useDocuments, docTypeLabel, docIcon, docStatus, type DriverDocument } from '@mercon/mobile-shared/lib/documents';
 
-import { useLanguage } from '../../lib/language-context';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 

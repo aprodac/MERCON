@@ -1,6 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
-import { SkeletonBlock } from '@/shared/components';
+import { SkeletonBlock } from '@mercon/mobile-shared/ui';
 
 export function SkeletonDocumentSummaryCard() {
   return (

@@ -1,14 +1,14 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Image } from 'react-native';
 import { Search, X, Check, Building2, Plus } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography } from '../../../theme/tokens';
-import { Card } from '../../../components/Card';
-import { Button } from '../../../components/Button';
-import { Input } from '../../../components/Input';
-import { StatusBadge } from '../../../components/Badge';
+import { Colors, Spacing, Radius, Typography } from '@mercon/mobile-shared/theme/tokens';
+import { Card } from '@mercon/mobile-shared/components/Card';
+import { Button } from '@mercon/mobile-shared/components/Button';
+import { Input } from '@mercon/mobile-shared/components/Input';
+import { StatusBadge } from '@mercon/mobile-shared/components/Badge';
 import { OperatorCustomer, OperatorQuotation } from '../../../lib/operator';
 import { RateCategoryType } from '../hooks/useCreateTripForm';
-import { API_URL } from '../../../lib/api';
+import { API_URL } from '@mercon/mobile-shared/lib/api';
 import { filterQuotationsBySearch } from '../../../lib/quotationSearch';
 
 function resolveMediaUrl(url?: string | null): string | null {

@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { Alert } from 'react-native';
 import { useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { customersApi, type RawCustomerListResponse } from '../api/customersApi';
-import { getApiErrorMessage } from '@/lib/api';
+import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import type { CustomerListItem } from '../types';
 
 type CustomersInfiniteData = InfiniteData<RawCustomerListResponse, number>;

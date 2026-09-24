@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { Truck, Navigation, TriangleAlert, FileText, Wallet } from 'lucide-react-native';
-import { Colors, Radius, Shadows, Spacing } from '@/theme/tokens';
+import { Colors, Radius, Shadows, Spacing } from '@mercon/mobile-shared/theme/tokens';
 import { DriverAvatar } from './DriverAvatar';
 import { DriverStatusBadge } from './DriverStatusBadge';
 import { DriverTrips } from './DriverTrips';

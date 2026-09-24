@@ -1,9 +1,9 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
 import { Plus, Trash2, Zap } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography } from '../../../theme/tokens';
-import { Card } from '../../../components/Card';
-import { Button } from '../../../components/Button';
+import { Colors, Spacing, Radius, Typography } from '@mercon/mobile-shared/theme/tokens';
+import { Card } from '@mercon/mobile-shared/components/Card';
+import { Button } from '@mercon/mobile-shared/components/Button';
 
 export interface AdditionalChargeItem {
   id: string;

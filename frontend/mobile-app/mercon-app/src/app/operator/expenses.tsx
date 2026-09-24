@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { View, Text, FlatList, RefreshControl, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, CreditCard, Menu } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '@/theme/tokens';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { useOperatorExpenses, type OperatorExpense } from '@/lib/operator';
-import { EmptyState, ErrorState } from '@/shared/components';
+import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
 
 export default function ExpensesScreen() {

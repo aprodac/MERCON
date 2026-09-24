@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors, Spacing, Typography } from '../../../theme/tokens';
+import { Colors, Spacing, Typography } from '@mercon/mobile-shared/theme/tokens';
 import { MonthlyCalendarSelector, DayAssignmentOverride } from '../../../components/MonthlyCalendarSelector';
 import { OperatorDriver, OperatorVehicle } from '../../../lib/operator';
 

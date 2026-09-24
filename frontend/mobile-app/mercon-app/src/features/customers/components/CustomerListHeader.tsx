@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, View } from 'react-native';
-import { SortDropdown } from '@/shared/components';
+import { SortDropdown } from '@mercon/mobile-shared/ui';
 import { CUSTOMER_SORT_OPTIONS } from '../hooks/useCustomerSorting';
 import type { CustomerSortOption } from '../types';
 

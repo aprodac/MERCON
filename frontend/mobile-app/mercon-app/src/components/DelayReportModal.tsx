@@ -3,13 +3,13 @@ import {
   Modal, View, Text, TouchableOpacity, TextInput, StyleSheet, ActivityIndicator, Alert, ScrollView,
 } from 'react-native';
 import { X, Video, Film, AlertTriangle, CheckCircle2, Trash2, MapPin } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '../theme/tokens';
-import { Button } from './Button';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
+import { Button } from '@mercon/mobile-shared/components/Button';
 import { captureVideo, pickVideoFromGallery, type CapturedMedia } from '../lib/camera';
-import { tripService } from '../lib/trips';
-import { getApiErrorMessage } from '../lib/api';
+import { tripService } from '@mercon/mobile-shared/lib/trips';
+import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { GoogleMapsGeotagPreview } from './GoogleMapsGeotagPreview';
-import { useLanguage } from '../lib/language-context';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 const REASON_PRESETS = [
   { id: 'traffic', labelKey: 'delay_heavy_traffic', defaultLabel: 'Heavy Traffic / Jam', icon: '🚦' },

@@ -8,8 +8,8 @@
  * without one is rejected.
  */
 import { io, type Socket } from 'socket.io-client';
-import { safeSecureStore as SecureStore } from './secure-store';
-import { API_URL, TOKEN_KEY } from './api';
+import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
+import { API_URL, TOKEN_KEY } from '@mercon/mobile-shared/lib/api';
 
 const SOCKET_URL = API_URL.replace(/\/api\/?$/, '');
 

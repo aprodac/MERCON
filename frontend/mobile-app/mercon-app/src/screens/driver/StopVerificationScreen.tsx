@@ -7,16 +7,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Svg, { Path, Rect, Circle, Line, G } from 'react-native-svg';
 import { ArrowLeft, ArrowRight, Camera, MapPin, Trash2, Check, Navigation, Send, Route, Info } from 'lucide-react-native';
-import { Colors } from '../../theme/tokens';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { GoogleMapsGeotagPreview, GeotagPhotoModal, TripProgressStepper, BilingualText, DelayReportModal, DelayButton, FadedBottomIllustration } from '../../components';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, stopAddress, isRoundTrip, getLegIntermediateDbStops } from '../../lib/trips';
+import { tripService, stopAddress, isRoundTrip, getLegIntermediateDbStops } from '@mercon/mobile-shared/lib/trips';
 import { parseTripRouteNodes, parseStopWorkflowState, TimelineStop } from '../../lib/routeParser';
 import { choosePhoto, type CapturedPhoto } from '../../lib/camera';
-import { getApiErrorMessage } from '../../lib/api';
-import { safeSecureStore as SecureStore } from '../../lib/secure-store';
+import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { openInGoogleMaps } from '../../lib/maps';
-import { useLanguage } from '../../lib/language-context';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 // Side Map Tile Box Component (matching Pickup and Delivery screens)
 const SideMapTileBox = () => (

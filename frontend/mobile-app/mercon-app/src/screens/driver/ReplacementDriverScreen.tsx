@@ -6,9 +6,9 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Check, Star, Truck, Package, Smartphone, Ban, type LucideIcon } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { Button, Avatar } from '../../components';
-import { useLanguage } from '../../lib/language-context';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 const WAIT_TIPS: { Icon: LucideIcon; key: string; defaultText: string }[] = [
   { Icon: Truck, key: 'tip_stay_with_vehicle', defaultText: 'Stay with the vehicle at all times' },

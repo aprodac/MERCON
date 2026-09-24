@@ -8,7 +8,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { House, Truck, User, Ellipsis, Plus, type LucideIcon } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Shadows } from '../theme/tokens';
+import { Colors, Spacing, Radius, Shadows } from '@mercon/mobile-shared/theme/tokens';
 
 export type OperatorTab = 'Home' | 'Trips' | 'Drivers' | 'More';
 

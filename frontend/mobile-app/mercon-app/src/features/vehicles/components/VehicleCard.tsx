@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { Truck, Gauge, Weight, TriangleAlert, Navigation, User, Wrench } from 'lucide-react-native';
-import { Colors, Radius, Shadows, Spacing } from '@/theme/tokens';
+import { Colors, Radius, Shadows, Spacing } from '@mercon/mobile-shared/theme/tokens';
 import { VehicleStatusBadge } from './VehicleStatusBadge';
 import { formatCapacityKg, formatOdometer } from '../services/vehiclesService';
 import type { VehicleListItem } from '../types';

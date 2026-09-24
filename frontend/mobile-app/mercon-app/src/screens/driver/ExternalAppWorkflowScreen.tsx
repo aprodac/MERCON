@@ -9,11 +9,11 @@ import {
   ArrowLeft, Upload, CheckCircle2, Camera, Image as ImageIcon, RefreshCw, Building2, ArrowRight,
 } from 'lucide-react-native';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { tripService, getEffectiveWorkflowState, getNextExternalAppAction, statusLabel, stopLabel, isRoundTrip, getLegEndpoints } from '../../lib/trips';
+import { tripService, getEffectiveWorkflowState, getNextExternalAppAction, statusLabel, stopLabel, isRoundTrip, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
 
 import { targetFromWorkflowState } from '../../lib/routeParser';
 import { pickFromGallery, capturePhoto, type CapturedPhoto } from '../../lib/camera';
-import { API_URL, getApiErrorMessage } from '../../lib/api';
+import { API_URL, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { TripProgressStepper, DelayButton, DelayReportModal, BilingualText } from '../../components';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');

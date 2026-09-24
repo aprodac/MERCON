@@ -1,8 +1,8 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { Navigation, Package } from 'lucide-react-native';
-import { Colors } from '@/theme/tokens';
-import { statusLabel } from '@/lib/trips';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
+import { statusLabel } from '@mercon/mobile-shared/lib/trips';
 import { Section, SectionCard } from './SectionCard';
 import { formatCoordinates } from '../services/driverDetailsService';
 import type { AssignmentStop, DriverAssignment } from '../types';

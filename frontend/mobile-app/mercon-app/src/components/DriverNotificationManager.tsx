@@ -3,10 +3,10 @@ import { Alert, AppState, type AppStateStatus } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { getSocket } from '@/lib/socket';
-import { tripService, type MobileTrip } from '@/lib/trips';
+import { tripService, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
 import { notificationService, isNotificationsAvailable } from '@/lib/notifications';
 import { DelayReportModal } from './DelayReportModal';
-import { queryClient } from '@/lib/query-client';
+import { queryClient } from '@mercon/mobile-shared/lib/query-client';
 
 let Notifications: typeof import('expo-notifications') | null = null;
 try {

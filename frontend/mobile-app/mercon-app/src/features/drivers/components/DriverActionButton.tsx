@@ -2,7 +2,7 @@ import React from 'react';
 import { Text, TouchableOpacity } from 'react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { Colors, Radius, Shadows } from '@/theme/tokens';
+import { Colors, Radius, Shadows } from '@mercon/mobile-shared/theme/tokens';
 
 interface DriverActionButtonProps {
   label: string;

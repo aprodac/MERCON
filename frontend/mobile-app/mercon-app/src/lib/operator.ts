@@ -5,8 +5,8 @@
  *   GET /trips            → trips (filtered here to active ones)
  */
 import { useCallback, useEffect, useState } from 'react';
-import { api, getApiErrorMessage } from './api';
-import type { TripStatus } from './trips';
+import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
 
 export interface Kpi { value: number; delta: number | null }
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text, View } from 'react-native';
-import { Colors, Radius } from '@/theme/tokens';
+import { Colors, Radius } from '@mercon/mobile-shared/theme/tokens';
 import type { AssetStatus } from '../types';
 
 const META: Record<AssetStatus, { label: string; bg: string; color: string }> = {

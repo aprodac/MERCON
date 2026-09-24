@@ -9,13 +9,13 @@ import {
   ArrowLeft, ArrowRight, Check, Phone, Truck, MapPin, X, Building2,
   Share2, Film, Image as ImageIcon, Play, FileText, AlertCircle, ExternalLink, Plus, Camera,
 } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography } from '../../theme/tokens';
+import { Colors, Spacing, Radius, Typography } from '@mercon/mobile-shared/theme/tokens';
 import { StatusBadge, Avatar, Card, Button } from '../../components';
-import { getApiErrorMessage, API_URL } from '../../lib/api';
+import { getApiErrorMessage, API_URL } from '@mercon/mobile-shared/lib/api';
 import {
   operatorService, useOperatorTripById, type OperatorTripDetail, type OperatorDriver, type OperatorVehicle,
 } from '../../lib/operator';
-import { statusLabel, type TripStatus } from '../../lib/trips';
+import { statusLabel, type TripStatus } from '@mercon/mobile-shared/lib/trips';
 import { chooseMedia } from '../../lib/camera';
 
 function resolveMediaUrl(url?: string | null): string | null {

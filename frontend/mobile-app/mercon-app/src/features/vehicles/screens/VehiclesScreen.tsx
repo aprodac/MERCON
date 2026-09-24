@@ -8,10 +8,10 @@ import { useRouter } from 'expo-router';
 import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Truck, X } from 'lucide-react-native';
-import { Colors } from '@/theme/tokens';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 
 import { SearchBar } from '@/features/dashboard/components';
-import { EmptyState, ErrorState } from '@/shared/components';
+import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 
 import {
   FilterBottomSheet,

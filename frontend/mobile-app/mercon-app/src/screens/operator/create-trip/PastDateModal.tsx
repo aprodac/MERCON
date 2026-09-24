@@ -1,9 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { AlertTriangle } from 'lucide-react-native';
-import { Colors, Spacing, Typography } from '../../../theme/tokens';
-import { Button } from '../../../components/Button';
-import { AppModal } from '../../../components/common/AppModal';
+import { Colors, Spacing, Typography } from '@mercon/mobile-shared/theme/tokens';
+import { Button } from '@mercon/mobile-shared/components/Button';
+import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 
 interface PastDateModalProps {
   visible: boolean;

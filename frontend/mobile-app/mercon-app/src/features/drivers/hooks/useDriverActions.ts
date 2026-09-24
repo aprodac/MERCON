@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 import { Alert, Linking } from 'react-native';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { driverDetailsApi, type RawDriverDetail } from '../api/driverDetailsApi';
-import { getApiErrorMessage } from '@/lib/api';
+import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { driverDetailKey } from './useDriver';
 import type { DriverStatus } from '../types';
 

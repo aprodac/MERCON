@@ -6,10 +6,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Truck, Weight, Gauge } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { StatusBadge, SearchInput, FilterChip } from '../../components';
 import { useOperatorVehicles, type OperatorVehicle } from '../../lib/operator';
-import { matchesSearch } from '../../lib/search';
+import { matchesSearch } from '@mercon/mobile-shared/lib/search';
 
 const FILTERS: { label: string; status: string | null }[] = [
   { label: 'All', status: null },

@@ -6,12 +6,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Check, Share2, Clock, Calendar, User, FileText, MapPin, Home, PackageCheck, CheckCircle2, ArrowLeft } from 'lucide-react-native';
 import { GeotagPhotoModal } from '../../components';
-import { API_URL } from '../../lib/api';
+import { API_URL } from '@mercon/mobile-shared/lib/api';
 import { useCurrentTrip } from '../../lib/use-current-trip';
-import { useCargoPodPhotos } from '../../lib/documents';
-import { tripService, isRoundTrip, type MobileTrip } from '../../lib/trips';
-import { safeSecureStore as SecureStore } from '../../lib/secure-store';
-import { useLanguage } from '../../lib/language-context';
+import { useCargoPodPhotos } from '@mercon/mobile-shared/lib/documents';
+import { tripService, isRoundTrip, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
+import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const logo = require('../../../assets/images/mercon-logo.png');

@@ -2,7 +2,7 @@ import React from 'react';
 import { FlatList, View } from 'react-native';
 import { Building2, FileSignature, ReceiptText, Truck } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
-import { SkeletonBlock } from '@/shared/components';
+import { SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { CustomerStatCard } from './CustomerStatCard';
 import type { CustomerStats } from '../types';
 

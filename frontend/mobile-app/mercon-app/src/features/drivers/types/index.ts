@@ -153,7 +153,7 @@ export interface AssignmentStop {
 export interface DriverAssignment {
   tripId: string;
   refId: string | null;
-  status: import('@/lib/trips').TripStatus;
+  status: import('@mercon/mobile-shared/lib/trips').TripStatus;
   customerName: string | null;
   plannedStart: string | null;
   plannedEnd: string | null;

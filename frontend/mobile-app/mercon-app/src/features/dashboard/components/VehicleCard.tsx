@@ -6,7 +6,7 @@ import { DriverAvatar } from './DriverAvatar';
 import { DriverStatus } from './DriverStatus';
 import { StatusBadge } from './StatusBadge';
 import type { VehicleCardStatus, TripStatus } from '../types';
-import { API_URL } from '@/lib/api';
+import { API_URL } from '@mercon/mobile-shared/lib/api';
 
 export function resolveMediaUrl(url?: string | null): string | null {
   if (!url) return null;

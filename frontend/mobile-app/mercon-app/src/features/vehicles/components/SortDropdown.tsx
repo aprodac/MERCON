@@ -1,6 +1,6 @@
 import React from 'react';
 import * as Haptics from 'expo-haptics';
-import { SortDropdown as BaseSortDropdown, type SortOption } from '@/shared/components';
+import { SortDropdown as BaseSortDropdown, type SortOption } from '@mercon/mobile-shared/ui';
 import type { VehicleSortOption } from '../types';
 
 const OPTIONS: readonly SortOption<VehicleSortOption>[] = [

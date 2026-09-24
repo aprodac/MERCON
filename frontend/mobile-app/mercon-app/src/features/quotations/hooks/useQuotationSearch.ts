@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useDebouncedValue } from '@/shared/hooks';
+import { useDebouncedValue } from '@mercon/mobile-shared/hooks';
 
 export function useQuotationSearch(delayMs = 350) {
   const [query, setQuery] = useState('');

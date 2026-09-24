@@ -1,8 +1,8 @@
 import React, { useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { Check, Truck, Package, MapPin } from 'lucide-react-native';
-import { useLanguage } from '../lib/language-context';
-import { MobileTrip } from '../lib/trips';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
+import { MobileTrip } from '@mercon/mobile-shared/lib/trips';
 import { parseTripRouteNodes, findTimelineIndex, TimelineStop, TimelineTarget } from '../lib/routeParser';
 import { STOP_ROLE_COLORS, timelineStopRole } from '@mercon/shared-types';
 

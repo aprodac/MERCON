@@ -7,8 +7,8 @@ import { TriangleAlert, Truck, FileText, Settings, Bell, type LucideIcon } from 
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
-import { api } from './api';
-import type { LanguageMode } from './language-context';
+import { api } from '@mercon/mobile-shared/lib/api';
+import type { LanguageMode } from '@mercon/mobile-shared/lib/language-context';
 
 let Notifications: typeof import('expo-notifications') | null = null;
 try {

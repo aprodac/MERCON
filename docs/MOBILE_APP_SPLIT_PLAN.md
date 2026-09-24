@@ -19,16 +19,21 @@ Roles are unchanged — still exactly `Admin`, `Operator`, `Driver`. Only packag
 
 ```
 frontend/mobile-app/
+  package.json       ← mobile npm workspace root (lockfile + hoisted node_modules)
   driver-app/        ← today's mercon-app, renamed (keeps git history + EAS project)
   operator-app/      ← new Expo project
+  shared/            ← @mercon/mobile-shared: code both apps use (api, theme, UI kit, i18n)
 packages/
   shared-types/      ← unchanged
-  mobile-shared/     ← NEW: code both apps use (api, auth core, theme, UI kit, i18n)
 ```
 
-`mobile-shared` is consumed exactly like `shared-types` is today: a `file:` dependency +
-Metro `extraNodeModules` + tsconfig `paths`. It ships **TypeScript source only, no build
-step** (Metro compiles it) — so no `prepare`/`install` scripts (CLAUDE.md rule).
+**Why `frontend/mobile-app/shared` and not `packages/mobile-shared`** (changed during step 2):
+the repo root `node_modules` has the web dashboard's React (19.2.8) while mobile uses 19.2.3.
+Shared code under `packages/` would resolve the root copy → two Reacts → crash. A mobile-only
+npm workspace (`frontend/mobile-app/package.json`, workspaces `mercon-app` + `shared`) keeps one
+React/React Native for both apps and the shared code. `@mercon/mobile-shared` ships
+**TypeScript source only, no build step** (Metro compiles it) — no `prepare`/`install` scripts
+(CLAUDE.md rule). Imports look like `@mercon/mobile-shared/lib/api`.
 
 ## What goes where (from current code analysis)
 
@@ -55,7 +60,7 @@ step** (Metro compiles it) — so no `prepare`/`install` scripts (CLAUDE.md rule
   `NewTripMenuModal`, `MonthlyCalendarSelector`
 - `lib/`: `operator`, `monthlyRotation`, `quotationMatching`, `quotationSearch`, `travelTimeService`
 
-**Shared (`packages/mobile-shared`)**
+**Shared (`frontend/mobile-app/shared`, `@mercon/mobile-shared`)**
 - `lib/`: `api`, `secure-store`, `query-client`, `trips`, `vehicle`, `documents`, `search`,
   `translations`, `language-context`, `theme-context`, auth core (token storage, session,
   logout — each app wraps it with its own login call)
@@ -64,7 +69,7 @@ step** (Metro compiles it) — so no `prepare`/`install` scripts (CLAUDE.md rule
   `BilingualText`, `StopRole`, `TripProgressStepper`, `DriverChargePill`,
   `common/AppModal`, `common/DateTimePickerModal`
 - `global.css` / Tailwind preset (each app's `tailwind.config.js` must include
-  `packages/mobile-shared/**` in `content`, or NativeWind drops the classes)
+  `../shared/**` in `content`, or NativeWind drops the classes)
 
 > The classification above comes from an import scan. Step 2 confirms it with `tsc` —
 > anything misplaced shows up as a broken import and gets moved.
@@ -87,11 +92,15 @@ Each step leaves the repo in a working state and is its own commit.
 - Remove the duplicate (`loading.png` and `start_loading.png` are byte-identical in size — confirm, then dedupe)
 - Expected: ~14 MB → ~1–2 MB. Benefits the driver app regardless of the split.
 
-### Step 2 — Create `packages/mobile-shared`
+### Step 2 — Create the mobile workspace + `@mercon/mobile-shared` ✅
 - Move shared files (list above) into the package; keep internal relative imports working
-- Wire it into `mercon-app` (`file:` dep, Metro `extraNodeModules` + `watchFolders`,
-  tsconfig `paths`, Tailwind `content`)
-- Update imports in `mercon-app` (`@/lib/api` → `@mercon/mobile-shared/api`, etc.)
+- Wire it into `mercon-app` (workspace link, Metro `nodeModulesPaths`, Tailwind `content`)
+- Update imports in `mercon-app` (`@/lib/api` → `@mercon/mobile-shared/lib/api`, etc.)
+- Done 2026-09-24: 30 files moved (lib: api, secure-store, query-client, trips, vehicle,
+  documents, search, translations, language-context, theme-context; theme/tokens; UI kit;
+  `src/shared/components` → `ui/`, `src/shared/hooks` → `hooks/`), 148 importers rewritten.
+  Kept in the app for now (depend on driver-only code): `TripProgressStepper`, `DriverChargePill`.
+  Unused Expo template leftovers not moved: `hooks/use-theme`, `hooks/use-color-scheme`, `constants/theme`.
 - Verify: `tsc --noEmit` clean, app still runs with both roles, **no behaviour change**
 
 ### Step 3 — Turn `mercon-app` into `driver-app`

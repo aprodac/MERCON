@@ -1,7 +1,7 @@
 import React from 'react';
 import { View } from 'react-native';
-import { SkeletonBlock } from '@/shared/components';
-import { Colors, Radius, Shadows } from '@/theme/tokens';
+import { SkeletonBlock } from '@mercon/mobile-shared/ui';
+import { Colors, Radius, Shadows } from '@mercon/mobile-shared/theme/tokens';
 
 /**
  * Structurally mirrors QuotationCard — same card radius, padding, border, and row

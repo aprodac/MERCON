@@ -3,7 +3,7 @@
  *   GET /vehicles          → paginated vehicle list with assigned driver, active trip, and maintenance pre-joined
  *   GET /vehicles?mode=kpi → server-side aggregated KPI stats
  */
-import { api } from '@/lib/api';
+import { api } from '@mercon/mobile-shared/lib/api';
 import type { AssetStatus, AssetType } from '../types';
 
 export interface RawVehicleAssignedDriver {

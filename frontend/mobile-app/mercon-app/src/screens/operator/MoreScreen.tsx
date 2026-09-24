@@ -18,7 +18,7 @@ import {
   Menu,
   type LucideIcon,
 } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { useAuth } from '../../lib/auth-context';
 import { OperatorSidebarDrawer } from '../../components/OperatorSidebarDrawer';
 

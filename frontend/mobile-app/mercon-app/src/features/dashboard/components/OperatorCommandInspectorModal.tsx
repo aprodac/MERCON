@@ -25,7 +25,7 @@ import {
   ExternalLink,
 } from 'lucide-react-native';
 import type { CommandActionItem, DriverRef, VehicleRef } from '../types';
-import { api } from '@/lib/api';
+import { api } from '@mercon/mobile-shared/lib/api';
 
 /* ─── Category visual config ────────────────────────────────────────────── */
 

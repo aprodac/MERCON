@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { CheckCircle2, Clock, FileX2, XCircle } from 'lucide-react-native';
-import { EmptyState, ErrorState } from '@/shared/components';
+import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 import { SectionHeader } from './SectionHeader';
 import { SegmentControl, type SegmentOption } from './SegmentControl';
 import { DocumentSummaryCard } from './DocumentSummaryCard';

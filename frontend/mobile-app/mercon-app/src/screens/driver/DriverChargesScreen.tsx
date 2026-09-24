@@ -9,13 +9,13 @@ import {
   ArrowLeft, Building2, Calendar, CheckCircle2, ChevronRight, ChevronLeft,
   Wallet, ArrowRight, CalendarClock, TriangleAlert,
 } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography, Shadows } from '../../theme/tokens';
+import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { useCurrentTrip } from '../../lib/use-current-trip';
 import { useScheduledTrips } from '../../lib/use-scheduled-trips';
 import { useTripHistory } from '../../lib/use-trip-history';
-import { statusLabel, stopLabel, getTripChargeValue, getMonthlyDriverPayout, type MobileTrip, type TripStatus } from '../../lib/trips';
-import { useLanguage, formatCurrency, LanguageMode } from '../../lib/language-context';
-import { API_URL } from '../../lib/api';
+import { statusLabel, stopLabel, getTripChargeValue, getMonthlyDriverPayout, type MobileTrip, type TripStatus } from '@mercon/mobile-shared/lib/trips';
+import { useLanguage, formatCurrency, LanguageMode } from '@mercon/mobile-shared/lib/language-context';
+import { API_URL } from '@mercon/mobile-shared/lib/api';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 

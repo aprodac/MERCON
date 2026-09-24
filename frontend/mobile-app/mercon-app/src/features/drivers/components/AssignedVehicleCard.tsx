@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { ChevronRight, Truck } from 'lucide-react-native';
-import { Colors } from '@/theme/tokens';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { CARD_SHADOW } from './SectionCard';
 import { formatCapacity } from '../services/driverDetailsService';
 import type { AssetStatus, AssignedVehicle } from '../types';

@@ -7,8 +7,8 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { House, Truck, User, type LucideIcon } from 'lucide-react-native';
-import { Spacing } from '../theme/tokens';
-import { useLanguage } from '../lib/language-context';
+import { Spacing } from '@mercon/mobile-shared/theme/tokens';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 export type DriverTab = 'Home' | 'Trips' | 'Profile';
 
