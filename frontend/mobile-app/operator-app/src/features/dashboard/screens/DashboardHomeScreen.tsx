@@ -15,8 +15,9 @@ import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 
 import {
   useActiveTrips, useCurrentUser, useDashboardRefresh,
-  useDashboardSummary, useDelayedDeliveries, useNotifications,
+  useDashboardSummary, useDelayedDeliveries,
 } from '../hooks';
+import { useNotifications } from '@/features/notifications/hooks/useNotifications';
 import {
   AppHeader, DashboardMetricCard,
   OperatorCommandCenterSection, ScannerButton, SearchBar,

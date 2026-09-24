@@ -20,7 +20,7 @@ const TAB_ROUTES = [
   '/', '/trips', '/drivers', '/vehicles', '/invoices',
   '/more', '/customers', '/vehicle-renewals',
   '/quotations', '/third-party', '/maintenance',
-  '/expenses', '/documents',
+  '/expenses', '/documents', '/notifications',
 ];
 
 function RootNavigator() {
@@ -76,6 +76,7 @@ function RootNavigator() {
         <Stack.Screen name="maintenance" options={{ animation: 'none' }} />
         <Stack.Screen name="expenses" options={{ animation: 'none' }} />
         <Stack.Screen name="documents" options={{ animation: 'none' }} />
+        <Stack.Screen name="notifications" options={{ animation: 'none' }} />
         <Stack.Screen name="driver-details" />
         <Stack.Screen name="driver-edit" />
         <Stack.Screen name="vehicle-edit" />

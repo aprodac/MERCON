@@ -148,9 +148,12 @@ exists as a route (script check).
 
 **Pre-existing bugs found:**
 - Driver home "View All" pushed `/(tabs)/trips` (no such route) → fixed to `/trips`.
-- Operator dashboard bell pushes `/notifications`, which was the *driver* notifications screen
-  calling `/mobile/notifications` (backend: Driver-only → 403). The operator app has no
-  notifications screen yet — **owner decision needed**.
+- Operator dashboard bell pushed `/notifications`, which was the *driver* notifications screen
+  calling `/mobile/notifications` (backend: Driver-only → 403). **Owner chose option A:** the
+  operator app now has `features/notifications` on the web API (`GET /notifications`,
+  `PATCH /notifications/:id/read`), sharing its cache with the dashboard's unread badge; tapping
+  opens the related trip / driver / maintenance record (same mapping as the web page). The list
+  UI is shared (`@mercon/mobile-shared/screens/NotificationsScreen`).
 - Operator "View all documents" opened the driver's documents screen; in the operator app
   `/documents` is the operator documents list, so this is fixed by the split.
 

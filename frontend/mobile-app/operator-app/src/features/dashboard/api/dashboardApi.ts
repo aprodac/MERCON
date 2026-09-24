@@ -9,11 +9,10 @@
  *   GET /vehicles         → vehicle list
  *   GET /drivers          → driver list
  *   GET /documents        → document list (for the Document Expiry section)
- *   GET /notifications    → the signed-in user's notifications
  *   GET /auth/me          → the signed-in user's profile
  */
 import { api } from '@mercon/mobile-shared/lib/api';
-import type { CurrentUser, DashboardSummary, DocumentRef, DriverRef, Notification, Trip, VehicleRef } from '../types';
+import type { CurrentUser, DashboardSummary, DocumentRef, DriverRef, Trip, VehicleRef } from '../types';
 
 export interface FleetTripCount {
   id: string;
@@ -50,11 +49,6 @@ export const dashboardApi = {
   async getDocuments(params: { entity_type?: string; per_page?: number } = {}): Promise<DocumentRef[]> {
     const { data } = await api.get('/documents', { params: { per_page: 200, ...params } });
     return (data.data ?? []) as DocumentRef[];
-  },
-
-  async getNotifications(): Promise<Notification[]> {
-    const { data } = await api.get('/notifications');
-    return (data.data ?? []) as Notification[];
   },
 
   async getCurrentUser(): Promise<CurrentUser> {

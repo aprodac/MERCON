@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
-import { notificationService, type MobileNotification } from '../services/notifications';
+import { notificationService } from '../services/notifications';
+import type { AppNotification } from '@mercon/mobile-shared/lib/notifications';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 
 /** Loads the driver's notifications with optimistic mark-as-read. Mirrors the
  *  other mobile hooks — fetch-on-mount with a manual refetch (no React Query). */
 export function useNotifications() {
-  const [items, setItems] = useState<MobileNotification[]>([]);
+  const [items, setItems] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 

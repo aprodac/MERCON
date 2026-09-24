@@ -1,6 +1,6 @@
 /**
  * Domain types for the Operator dashboard feature.
- * Mirrors the backend's Prisma models (Trip, Vehicle, Driver, Notification) —
+ * Mirrors the backend's Prisma models (Trip, Vehicle, Driver) —
  * see backend/api-server/prisma/schema.prisma for the source of truth.
  */
 
@@ -90,17 +90,6 @@ export interface Trip {
   driver: DriverRef | null;
   vehicle: VehicleRef | null;
   stops?: TripStop[];
-}
-
-export interface Notification {
-  id: string;
-  title: string;
-  message: string;
-  type: string; // "Emergency" | "Trip" | "Document" | "System"
-  is_read: boolean;
-  entity_type: string | null;
-  entity_id: string | null;
-  createdAt: string;
 }
 
 export interface CurrentUser {
