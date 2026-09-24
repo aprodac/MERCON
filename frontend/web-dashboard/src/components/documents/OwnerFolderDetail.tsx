@@ -129,6 +129,14 @@ export default function OwnerFolderDetail({ ownerType, ownerId, onOpenAddCustomD
     }
   }, [activeDoc?.id]);
 
+  const daysRemaining = useMemo(() => {
+    if (!activeDoc?.expiry_date) return null;
+    const exp = new Date(activeDoc.expiry_date);
+    const now = new Date();
+    const diffTime = exp.getTime() - now.getTime();
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  }, [activeDoc?.expiry_date]);
+
   const handleRescan = async () => {
     if (!activeDoc) return;
     setIsRescanning(true);
@@ -185,13 +193,7 @@ export default function OwnerFolderDetail({ ownerType, ownerId, onOpenAddCustomD
     ? activeDoc.files
     : activeDoc ? [{ id: 'primary', file_url: activeDoc.file_url, mime_type: activeDoc.mime_type, label: 'Primary File' }] : [];
 
-  const daysRemaining = useMemo(() => {
-    if (!activeDoc?.expiry_date) return null;
-    const exp = new Date(activeDoc.expiry_date);
-    const now = new Date();
-    const diffTime = exp.getTime() - now.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  }, [activeDoc?.expiry_date]);
+
 
   return (
     <div className="h-full flex flex-col space-y-3.5 overflow-hidden">

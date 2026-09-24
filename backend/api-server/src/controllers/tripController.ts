@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { generateRefId } from '../utils/refId';
 import { createDriverNotification, notifyOperatorsOfDelay } from './notificationController';
-import { Prisma, TripStatus, StopType, DriverStatus, AssetStatus, AssignmentEntityType } from '@prisma/client';
+import { Prisma, TripStatus, StopType, DriverStatus, AssetStatus, AssignmentEntityType, DocStatus } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { isValidTransition, completeTripAndInvoice, stampStopTransition, type DelayDetection } from '../services/tripLifecycle';
 import { findRateForLane, findPricingRuleForLane, findQuotationForLane } from '../services/rateLookup';
@@ -11,9 +11,13 @@ import { resolveVehicleLocation, resolveVehicleLocationsForTrips } from '../serv
 import { parseOptionalFloat, getValidUuid } from '../utils/uuid';
 import { buildSearchAnd } from '../utils/search';
 import { getCompanyLegalName } from './settingsController';
-import { computeTripChargesTotal, calculateBackendTripFinancials } from '../utils/tripFinancials';
+import { computeTripChargesTotal, calculateBackendTripFinancials, resolveDriverPayout, resolveInitialTripStatus, splitCoDriverPayout } from '../utils/tripFinancials';
+import { resolveMonth, toDayKey } from '../utils/tripBoard';
 import { validateTripDrivers, TripDriverInput, validateTripSchedule, validateTripStops } from '../services/tripValidationService';
 import { recordAssignmentEvent } from '../services/fleetDispatchService';
+import { buildTripRouteTimeline, isRouteLocked, buildTripStops } from '../services/tripRouteTimeline';
+import { parseFullTripStops } from '../services/legacyStopStringParser';
+import { writeTripStops } from '../services/tripStopWriter';
 import { whatsappService } from '../services/whatsappService';
 
 /** Fields the trip ledger search bar looks at. */
@@ -341,6 +345,8 @@ export const getTrips = async (req: Request, res: Response) => {
               ref_id: true,
               first_name: true,
               last_name: true,
+              status: true,
+              avatar_url: true,
               deletedAt: true,
             }
           },
@@ -372,6 +378,7 @@ export const getTrips = async (req: Request, res: Response) => {
             select: {
               id: true,
               name: true,
+              logo_url: true,
             }
           },
           quotation: {
@@ -398,6 +405,7 @@ export const getTrips = async (req: Request, res: Response) => {
             }
           },
           stops: {
+            where: { deletedAt: null },
             orderBy: { stop_sequence: 'asc' },
             select: {
               id: true,
@@ -475,9 +483,8 @@ export const getTrips = async (req: Request, res: Response) => {
       success: false,
       error: {
         code: 'SERVER_ERROR',
-        message: error?.message || 'Failed to fetch trips',
-        stack: error?.stack,
-        details: String(error)
+        message: 'Failed to fetch trips',
+        requestId: (req as any).id,
       }
     });
   }
@@ -515,7 +522,7 @@ export const getTripById = async (req: Request, res: Response) => {
             orderBy: { changedAt: 'desc' },
           },
           charges: true,
-          stops: { orderBy: { stop_sequence: 'asc' }, include: { location: true } }
+          stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' }, include: { location: true } }
         }
       });
     } catch (err: any) {
@@ -531,7 +538,7 @@ export const getTripById = async (req: Request, res: Response) => {
           quotation: { include: { customer: true, stops: { include: { location: true } } } },
           subcontract: { include: { provider: true } },
           charges: true,
-          stops: { orderBy: { stop_sequence: 'asc' }, include: { location: true } }
+          stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' }, include: { location: true } }
         }
       });
       if (trip) {
@@ -569,8 +576,24 @@ export const getTripById = async (req: Request, res: Response) => {
 
     const fin = calculateBackendTripFinancials(trip as any);
 
+    const stopIds = (trip.stops || []).map((s: any) => s.id).filter(isUuid);
+    const validUuidEntityIds = Array.from(new Set([trip.id, ...stopIds].filter(isUuid)));
+
+    const tripDocuments = await prisma.document.findMany({
+      where: {
+        OR: [
+          { entity_id: { in: validUuidEntityIds } },
+          { entity_type: 'Trip', entity_id: trip.id },
+          { entity_type: 'TripStop', entity_id: { in: stopIds } },
+        ],
+        deletedAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
     const tripData = {
       ...trip,
+      documents: tripDocuments,
       paid_amount: fin.paidAmount,
       balance_due: fin.balanceDue,
       total_amount: fin.totalCustomerBilling,
@@ -589,19 +612,18 @@ export const getTripById = async (req: Request, res: Response) => {
           }
         : null,
       rateCard: mappedRateCard,
+      route_timeline: buildTripRouteTimeline(trip as any),
     };
 
     res.json({ success: true, data: tripData });
   } catch (error: any) {
-    console.error('Failed to fetch trip by id:', error);
     logger.error({ err: error }, 'Failed to fetch trip by id');
     res.status(500).json({
       success: false,
       error: {
         code: 'SERVER_ERROR',
-        message: error?.message || 'Failed to fetch trip',
-        stack: error?.stack,
-        details: String(error)
+        message: 'Failed to fetch trip',
+        requestId: (req as any).id,
       }
     });
   }
@@ -633,6 +655,8 @@ export const createTrip = async (req: Request, res: Response) => {
       third_party_vehicle_plate,
       third_party_vehicle_type,
       third_party_cost,
+      charges,
+      awb_number,
     } = req.body;
 
     const createdBy = isUuid((req as any).user?.id) ? (req as any).user.id : null;
@@ -676,18 +700,7 @@ export const createTrip = async (req: Request, res: Response) => {
     //   without locking driver/vehicle to OnTrip until actively dispatched.
     const isDispatchingNow = false;
     let targetStatus = requestedStatus || TripStatus.Scheduled;
-
-    // Past-time trips can NEVER be Scheduled:
-    // If planned_start is past current time, initial status must be Delayed
-    if (parsedPlannedStart) {
-      const now = new Date();
-      const diffMs = now.getTime() - parsedPlannedStart.getTime();
-      if (diffMs >= 0) {
-        if (!requestedStatus || requestedStatus === TripStatus.Scheduled || requestedStatus === TripStatus.Draft || (requestedStatus as string) === 'Scheduled') {
-          targetStatus = TripStatus.Delayed;
-        }
-      }
-    }
+    targetStatus = resolveInitialTripStatus(targetStatus, requestedStatus, parsedPlannedStart);
 
     const carrierName = await getCompanyLegalName();
 
@@ -766,64 +779,21 @@ export const createTrip = async (req: Request, res: Response) => {
             }
           }
 
-          // The lane this trip runs, taken from the stops.
-          const rawStops: any[] = Array.isArray(stops) ? stops : [];
-          const resolvedStops = await Promise.all(
-            rawStops.map(async (stop: any) => {
-              const stopName = String(stop.location_name ?? '').trim();
-              let locId = stop.location_id || null;
-              if (locId) {
-                const loc = await resolveLocation(tx, { id: locId, customerId: customer_id, skipCanonicalUpdate: true }, createdBy);
-                if (loc) locId = loc.id;
-              } else if (stopName) {
-                try {
-                  const loc = await resolveLocation(
-                    tx,
-                    {
-                      customerId: customer_id,
-                      name: stopName,
-                      address: String(stop.location_address ?? '').trim() || null,
-                      lat: parseOptionalFloat(stop.lat),
-                      lng: parseOptionalFloat(stop.lng),
-                      skipCanonicalUpdate: !stop.update_canonical_location,
-                    },
-                    createdBy
-                  );
-                  if (loc) locId = loc.id;
-                } catch (e) {
-                  logger.warn({ err: e }, 'Failed to resolve location for trip stop');
-                }
-              }
+          const stopWriterResult = await writeTripStops(tx, {
+            customerId: customer_id,
+            createdBy,
+            stops: Array.isArray(stops) ? stops : [],
+            plannedStart: parsedPlannedStart,
+            plannedEnd: parsedPlannedEnd,
+            rateCategory: rate_category || null,
+          });
 
-              if (stop.update_canonical_location === true && locId) {
-                const parsedLat = parseOptionalFloat(stop.lat);
-                const parsedLng = parseOptionalFloat(stop.lng);
-                try {
-                  await tx.location.update({
-                    where: { id: locId },
-                    data: {
-                      ...(parsedLat != null ? { lat: parsedLat } : {}),
-                      ...(parsedLng != null ? { lng: parsedLng } : {}),
-                      ...(stop.location_address ? { address: String(stop.location_address).trim() } : {}),
-                      coordinate_precision: 'EXACT',
-                      updated_by: createdBy,
-                    },
-                  });
-                } catch (uErr) {
-                  logger.warn({ err: uErr }, 'Failed to update canonical location master data during trip creation');
-                }
-              }
-
-              return { ...stop, location_id: locId };
-            })
-          );
-
-          const originLocationId =
-            resolvedStops.find((s) => s.stop_type === 'Pickup')?.location_id ?? resolvedStops[0]?.location_id ?? null;
-          const destinationLocationId =
-            [...resolvedStops].reverse().find((s) => s.stop_type === 'Dropoff')?.location_id ??
-            resolvedStops[resolvedStops.length - 1]?.location_id ??
-            null;
+          const {
+            stopsToCreate,
+            originLocationId,
+            destinationLocationId,
+            normalizedRateCategory,
+          } = stopWriterResult;
 
           const targetQuotationId = req.body.quotation_id || req.body.pricing_rule_id || rate_card_id;
           let appliedQuotation = null;
@@ -842,14 +812,16 @@ export const createTrip = async (req: Request, res: Response) => {
               originLocationId,
               destinationLocationId,
               ...(vehicle_type !== undefined ? { vehicleType: vehicle_type } : {}),
-              ...(rate_category !== undefined ? { lineType: rate_category } : {}),
+              ...(normalizedRateCategory !== null ? { lineType: normalizedRateCategory } : {}),
               ...(billing_type !== undefined ? { billingType: billing_type } : {}),
+              // Every stop must match (outbound + return), not just the lane.
+              stops: stopsToCreate as any,
             });
             appliedQuotation = quotation;
           }
 
           const finalVehicleType = vehicle_type !== undefined ? vehicle_type : (appliedQuotation?.source_vehicle_label ?? appliedQuotation?.vehicle_class ?? null);
-          const finalRateCategory = rate_category !== undefined ? rate_category : (appliedQuotation?.line_type ?? null);
+          const finalRateCategory = normalizedRateCategory || (appliedQuotation?.line_type ?? null);
           const finalBillingType = billing_type !== undefined ? billing_type : (appliedQuotation?.billing_type ?? null);
 
           let defaultBilling: number | null = null;
@@ -865,13 +837,11 @@ export const createTrip = async (req: Request, res: Response) => {
             ? Number(rawTripCharges)
             : (appliedQuotation?.driver_payout ? Number(appliedQuotation.driver_payout) : 0);
 
-          let finalDriverPayout = totalPayout;
-          let finalCoDriverPayout = co_driver_payout !== undefined && co_driver_payout !== null ? Number(co_driver_payout) : 0;
-
-          if (co_driver_id && (co_driver_payout === undefined || co_driver_payout === null) && totalPayout > 0) {
-            finalDriverPayout = Math.round((totalPayout / 2) * 100) / 100;
-            finalCoDriverPayout = Math.round((totalPayout / 2) * 100) / 100;
-          }
+          const { driverPayout: finalDriverPayout, coDriverPayout: finalCoDriverPayout } = splitCoDriverPayout({
+            totalPayout,
+            hasCoDriver: Boolean(co_driver_id),
+            explicitCoDriverPayout: co_driver_payout,
+          });
 
           const updateQuotationPayout = req.body.update_quotation_driver_payout === true || req.body.update_quotation_payout === true;
           if (updateQuotationPayout && appliedQuotation) {
@@ -907,6 +877,7 @@ export const createTrip = async (req: Request, res: Response) => {
           return tx.trip.create({
             data: {
               ref_id,
+              ...(awb_number ? { awb_number: String(awb_number).trim() } : {}),
               customerId: customer_id,
               driver_workflow: customer.driver_workflow || 'NATIVE',
               ...(driver_id ? { driverId: driver_id } : {}),
@@ -950,37 +921,24 @@ export const createTrip = async (req: Request, res: Response) => {
                   }
                 }
               } : {}),
-              stops: {
-                create: resolvedStops.map((stop: any, index: number) => {
-                  const rawLat = parseOptionalFloat(stop.lat);
-                  const rawLng = parseOptionalFloat(stop.lng);
-                  const isValidCoord = rawLat != null && rawLng != null && (rawLat !== 0 || rawLng !== 0) && rawLat >= -90 && rawLat <= 90 && rawLng >= -180 && rawLng <= 180;
-                  const latVal = isValidCoord ? rawLat : null;
-                  const lngVal = isValidCoord ? rawLng : null;
-                  const precisionVal = stop.coordinate_precision || stop.location_coordinate_precision || (latVal == null || lngVal == null ? 'UNKNOWN' : 'APPROXIMATE');
-                  let stopPlannedArrival: Date | null = null;
-                  if (stop.planned_arrival && !isNaN(Date.parse(stop.planned_arrival))) {
-                    stopPlannedArrival = new Date(stop.planned_arrival);
-                  } else if (index === 0 && parsedPlannedStart) {
-                    stopPlannedArrival = parsedPlannedStart;
-                  } else if (index === resolvedStops.length - 1 && parsedPlannedEnd) {
-                    stopPlannedArrival = parsedPlannedEnd;
-                  }
-                  return {
-                    stop_sequence: index + 1,
-                    leg_index: stop.leg_index !== undefined ? Number(stop.leg_index) : 0,
-                    stop_type: stop.stop_type as StopType,
-                    location_lat: latVal,
-                    location_lng: lngVal,
-                    location_coordinate_precision: precisionVal,
-                    location_name: String(stop.location_name ?? '').trim() || null,
-                    location_address: String(stop.location_address ?? '').trim() || null,
-                    locationId: stop.location_id || null,
-                    planned_arrival: stopPlannedArrival,
-                  };
-                }),
-              }
-            },
+              ...(charges && Array.isArray(charges) && charges.length > 0 ? {
+                charges: {
+                  create: charges.map((c: any) => ({
+                    charge_type: String(c.charge_type || 'Extra Charge').trim(),
+                    rate: Number(c.rate ?? c.amount ?? 0),
+                    quantity: Number(c.quantity ?? 1),
+                    amount: Number(c.amount ?? c.rate ?? 0),
+                    ...(c.surchargeRuleId ? { surchargeRuleId: c.surchargeRuleId } : {}),
+                    ...(createdBy ? { created_by: createdBy } : {}),
+                  })),
+                },
+              } : {}),
+              ...(stopsToCreate.length > 0 ? {
+                stops: {
+                  create: stopsToCreate,
+                }
+              } : {})
+            } as any,
             include: {
               stops: { orderBy: { stop_sequence: 'asc' }, include: { location: true } },
               subcontract: { include: { provider: true } },
@@ -1013,7 +971,16 @@ export const createTrip = async (req: Request, res: Response) => {
 
     res.status(201).json({ success: true, data: trip });
   } catch (error: any) {
-    logger.error({ err: error, body: req.body }, 'Failed to create trip');
+    logger.error(
+      {
+        err: error,
+        customer_id: req.body?.customer_id,
+        driver_id: req.body?.driver_id,
+        co_driver_id: req.body?.co_driver_id,
+        vehicle_id: req.body?.vehicle_id,
+      },
+      'Failed to create trip'
+    );
     if (
       error.message === 'CUSTOMER_NOT_FOUND' ||
       error.message === 'DRIVER_NOT_FOUND' ||
@@ -1027,75 +994,6 @@ export const createTrip = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message || 'Failed to create trip' } });
   }
 };
-
-/** One trip per CSV row, matched to existing customers/drivers/vehicles by
- *  name/plate (the sheet can't know internal ids). Rows are independent —
- *  a bad row is reported and skipped rather than failing the whole import. */
-function parseFullTripStops(originStr: string, destinationStr: string) {
-  const stopsList: Array<{
-    stop_sequence: number;
-    leg_index: number;
-    stop_type: 'Pickup' | 'Dropoff';
-    location_name: string;
-    location_id?: string | null;
-    lat?: number | null;
-    lng?: number | null;
-  }> = [];
-  let seq = 1;
-
-  const originClean = originStr.trim();
-  if (originClean) {
-    stopsList.push({ stop_sequence: seq++, leg_index: 0, stop_type: 'Pickup', location_name: originClean });
-  }
-
-  let outboundStr = destinationStr.trim();
-  let returnStr = '';
-
-  if (destinationStr.includes('[RETURN:')) {
-    const parts = destinationStr.split(/\[RETURN:\s*/i);
-    outboundStr = parts[0].trim();
-    returnStr = parts[1].replace(']', '').trim();
-  }
-
-  const splitChain = (str: string) => {
-    if (!str) return [];
-    let s = str.trim().replace(/^(SHIPA|IMILE|JDL|AKS|GFS|RTL|HORIZON|ARKAN)\s+/i, '').trim();
-    let norm = s.replace(/→|->|-->/g, ' + ').replace(/\//g, ' + ').replace(/&/g, ' + ');
-    const chunks = norm.split('+').map(c => c.trim()).filter(Boolean);
-    const items: string[] = [];
-    const KNOWN_CODES = ['RUH','JED','DMM','BUR','UNZ','HAI','HAIL','KHA','ABH','TAI','TAIF','MAK','MAD','HOF','QUR','TAB','TABUK','ALB','JIZ','NAJ','WAD','TUB','SUD','DAM','AHSAR','AHSAN'];
-    for (const chunk of chunks) {
-      if (/\s+-\s+/.test(chunk) || /^[A-Z0-9]+-[A-Z0-9]+-[A-Z0-9]+/i.test(chunk)) {
-        items.push(...chunk.split('-').map(sp => sp.trim()).filter(Boolean));
-      } else {
-        const words = chunk.split(/\s+/).map(w => w.trim()).filter(Boolean);
-        if (words.length >= 2 && words.every(w => KNOWN_CODES.includes(w.toUpperCase()) || w.length <= 6)) {
-          items.push(...words);
-        } else {
-          items.push(chunk);
-        }
-      }
-    }
-    return items;
-  };
-
-  const outboundItems = splitChain(outboundStr);
-  outboundItems.forEach((item) => {
-    stopsList.push({ stop_sequence: seq++, leg_index: 0, stop_type: 'Dropoff', location_name: item });
-  });
-
-  if (returnStr) {
-    const returnItems = splitChain(returnStr);
-    if (returnItems.length > 0) {
-      stopsList.push({ stop_sequence: seq++, leg_index: 1, stop_type: 'Pickup', location_name: returnItems[0] });
-      returnItems.slice(1).forEach((item) => {
-        stopsList.push({ stop_sequence: seq++, leg_index: 1, stop_type: 'Dropoff', location_name: item });
-      });
-    }
-  }
-
-  return stopsList;
-}
 
 function parseDestinationAndStops(destinationStr: string): { destinationName: string; returnDestinationName: string | null } {
   if (destinationStr.includes('[RETURN:')) {
@@ -1226,18 +1124,7 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
         let targetStatus: TripStatus = row.status && Object.values(TripStatus).includes(row.status)
           ? row.status
           : TripStatus.Scheduled;
-
-        // Past-time trips can NEVER be Scheduled:
-        // If planned_start is past current time, initial status must be Delayed
-        if (parsedPlannedStart) {
-          const now = new Date();
-          const diffMs = now.getTime() - parsedPlannedStart.getTime();
-          if (diffMs >= 0) {
-            if (!row.status || row.status === TripStatus.Scheduled || row.status === TripStatus.Draft) {
-              targetStatus = TripStatus.Delayed;
-            }
-          }
-        }
+        targetStatus = resolveInitialTripStatus(targetStatus, row.status, parsedPlannedStart);
 
 
         const ref_id = await generateRefId('TRP', () =>
@@ -1261,93 +1148,33 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
           });
         }
 
-        const baseStops = (row.origin || row.destination) ? parseFullTripStops(row.origin || '', row.destination || '') : [];
-        let parsedStops = Array.isArray(row.stops) && row.stops.length > 0
-          ? [
-              ...(baseStops[0] ? [baseStops[0]] : []),
-              ...row.stops.map((st, idx) => ({
-                stop_sequence: st.stop_sequence ?? (idx + 2), // Shift sequence
-                leg_index: st.leg_index !== undefined ? Number(st.leg_index) : 0,
-                stop_type: (st.stop_type || 'Rest') as 'Pickup' | 'Dropoff' | 'Rest',
-                location_name: String(st.location_name ?? '').trim(),
-                location_id: st.location_id || null,
-                lat: st.lat ?? null,
-                lng: st.lng ?? null,
-              })),
-              ...(baseStops[1] ? [{ ...baseStops[1], stop_sequence: (row.stops.length + (baseStops[0] ? 2 : 1)) }] : [])
-            ]
-          : baseStops;
+        const stopWriterResult = await writeTripStops(prisma, {
+          customerId: customer.id,
+          createdBy,
+          stops: Array.isArray(row.stops) && row.stops.length > 0 ? row.stops : undefined,
+          origin: row.origin || undefined,
+          destination: row.destination || undefined,
+          plannedStart: parsedPlannedStart,
+          plannedEnd: parsedPlannedEnd,
+          rateCategory: row.rate_category || undefined,
+          quotationStops: appliedQuotation?.stops,
+        });
 
-        if (parsedStops.length === 0 && appliedQuotation?.stops && appliedQuotation.stops.length > 0) {
-          const isQuoRound = (appliedQuotation.line_type || row.rate_category || '').toLowerCase().includes('round');
-          parsedStops = appliedQuotation.stops.map((qs: any, idx: number) => ({
-            stop_sequence: idx + 1,
-            leg_index: (qs.leg_index !== undefined && qs.leg_index !== null) ? Number(qs.leg_index) : 0,
-            stop_type: (qs.stop_type || (idx === 0 ? 'Pickup' : 'Dropoff')) as 'Pickup' | 'Dropoff',
-            location_name: qs.location_name || qs.source_label || qs.location?.name || '',
-            location_id: qs.location_id || qs.locationId || null,
-            lat: qs.lat ?? qs.location?.lat ?? null,
-            lng: qs.lng ?? qs.location?.lng ?? null,
-          }));
-        }
-
-        const resolvedImportStops = await Promise.all(
-          parsedStops.map(async (st, idx, arr) => {
-            let latVal = st.lat ?? null;
-            let lngVal = st.lng ?? null;
-            let addressVal: string | null = null;
-            let locIdVal: string | null = st.location_id ?? null;
-
-            if (locIdVal) {
-              const loc = await prisma.location.findFirst({ where: { id: locIdVal, deletedAt: null } });
-              if (loc) {
-                if (latVal == null) latVal = loc.lat;
-                if (lngVal == null) lngVal = loc.lng;
-                addressVal = loc.address;
-              }
-            } else if (st.location_name) {
-              const coords = await resolveStopCoords(st.location_name, customer.id);
-              if (coords) {
-                if (latVal == null) latVal = coords.lat;
-                if (lngVal == null) lngVal = coords.lng;
-                addressVal = coords.address;
-                locIdVal = coords.locationId;
-              }
-            }
-
-            // Enforce invariant: (0, 0) is never legitimate; unknown coordinates are strictly NULL
-            if (latVal === 0 && lngVal === 0) {
-              latVal = null;
-              lngVal = null;
-            }
-            return {
-              stop_sequence: st.stop_sequence,
-              leg_index: st.leg_index ?? 0,
-              stop_type: st.stop_type as any,
-              location_name: st.location_name || null,
-              location_address: addressVal,
-              locationId: locIdVal,
-              location_lat: latVal,
-              location_lng: lngVal,
-              planned_arrival: idx === 0 ? parsedPlannedStart : (idx === arr.length - 1 ? parsedPlannedEnd : null),
-            };
-          })
-        );
+        const {
+          stopsToCreate: resolvedImportStops,
+          normalizedRateCategory,
+        } = stopWriterResult;
 
         const rawRowPayout = (row as any).driver_payout ?? (row as any).driver_charge ?? (row as any).trip_charges;
         const totalRowPayout = (rawRowPayout !== undefined && rawRowPayout !== null && !isNaN(Number(rawRowPayout)))
           ? Number(rawRowPayout)
           : (thirdPartyCostVal !== undefined ? thirdPartyCostVal : (appliedQuotation?.driver_payout != null ? Number(appliedQuotation.driver_payout) : 0));
 
-        let finalRowDriverPayout = totalRowPayout;
-        let finalRowCoDriverPayout = (row.co_driver_payout !== undefined && row.co_driver_payout !== null && !isNaN(Number(row.co_driver_payout)))
-          ? Number(row.co_driver_payout)
-          : 0;
-
-        if (row.co_driver_id && (row.co_driver_payout === undefined || row.co_driver_payout === null) && totalRowPayout > 0) {
-          finalRowDriverPayout = Math.round((totalRowPayout / 2) * 100) / 100;
-          finalRowCoDriverPayout = Math.round((totalRowPayout / 2) * 100) / 100;
-        }
+        const { driverPayout: finalRowDriverPayout, coDriverPayout: finalRowCoDriverPayout } = splitCoDriverPayout({
+          totalPayout: totalRowPayout,
+          hasCoDriver: Boolean(row.co_driver_id),
+          explicitCoDriverPayout: row.co_driver_payout,
+        });
 
         const trip = await prisma.$transaction(async (tx) => {
           return tx.trip.create({
@@ -1921,6 +1748,69 @@ export const logStopDelay = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Confirm or correct the real-world time an EXTERNAL_APP evidence screenshot
+ * actually happened at. The driver's tap already advanced the trip using
+ * "now" as a provisional timestamp so status visibility stays live; an
+ * operator later reads the true time off the screenshot itself (customer
+ * apps show their own arrive/departure times) and corrects the stop record
+ * here if it drifted.
+ *
+ * Deliberately has no frozen-trip guard, unlike updateTripStop — a timestamp
+ * correction doesn't relitigate pricing/lane the way a location edit would,
+ * and the final delivery milestone completes the trip immediately, so its
+ * evidence is exactly the case that needs review *after* completion. Mirrors
+ * logStopDelay, which edits TripStop post-completion for the same reason.
+ */
+export const confirmEvidenceTime = async (req: Request, res: Response) => {
+  try {
+    const { id: rawTripId, stopId } = req.params as { id: string; stopId: string };
+    const tripId = isUuid(rawTripId) ? rawTripId : (await resolveTripId(rawTripId));
+    if (!tripId) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+    const { document_id, actual_arrival, actual_departure } = req.body;
+
+    const stop = await prisma.tripStop.findFirst({
+      where: { id: stopId, tripId, deletedAt: null },
+    });
+    if (!stop) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Stop not found on this trip' } });
+    }
+
+    const document = await prisma.document.findFirst({
+      where: { id: document_id, entity_type: 'Trip', entity_id: tripId, deletedAt: null },
+    });
+    if (!document) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Evidence document not found on this trip' } });
+    }
+    if ((document.ai_extracted_json as any)?.source !== 'external_app_screenshot') {
+      return res.status(400).json({ success: false, error: { code: 'NOT_EXTERNAL_APP_EVIDENCE', message: 'This document is not an external-app evidence screenshot' } });
+    }
+    if (document.status !== DocStatus.PendingReview) {
+      return res.status(409).json({ success: false, error: { code: 'ALREADY_REVIEWED', message: `This evidence is already ${document.status}` } });
+    }
+
+    const [updatedStop] = await prisma.$transaction([
+      prisma.tripStop.update({
+        where: { id: stopId },
+        data: {
+          ...(actual_arrival ? { actual_arrival: new Date(actual_arrival) } : {}),
+          ...(actual_departure ? { actual_departure: new Date(actual_departure) } : {}),
+        },
+      }),
+      prisma.document.update({
+        where: { id: document.id },
+        data: { status: DocStatus.Verified, verified_by: (req as any).user?.id ?? null },
+      }),
+    ]);
+
+    res.json({ success: true, data: updatedStop });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to confirm evidence time');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to confirm evidence time' } });
+  }
+};
 
 /**
  * Correct where a stop actually is — its label, its full address, the lane
@@ -2012,6 +1902,220 @@ export const updateTripStop = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Re-constructs trip stops and schedule for a Draft or Scheduled trip.
+ * Replaces active stops in a single transaction, updates origin/destination,
+ * and returns updated trip details with route_timeline.
+ * Returns HTTP 409 if the trip status is locked (Dispatched, AtPickup, InTransit, Completed, Invoiced, Cancelled).
+ */
+export const updateTripStopsRoute = async (req: Request, res: Response) => {
+  try {
+    const rawTripId = (req.params.id as string || '').trim();
+    const tripId = isUuid(rawTripId) ? rawTripId : await resolveTripId(rawTripId);
+    if (!tripId) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+
+    const existingTrip = await prisma.trip.findFirst({
+      where: { id: tripId, deletedAt: null },
+      select: { id: true, status: true, customerId: true },
+    });
+    if (!existingTrip) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+
+    if (isRouteLocked(existingTrip.status)) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: 'ROUTE_LOCKED',
+          message: `Trip is in status ${existingTrip.status} — route stops cannot be edited.`,
+        },
+      });
+    }
+
+    const {
+      origin,
+      destination,
+      intermediates = [],
+      isRound = false,
+      returnOrigin,
+      returnDestination,
+      returnIntermediates = [],
+      stops: rawStopsInput,
+      date,
+      dropoffDate,
+      pickupTime,
+      dropoffTime,
+      planned_start,
+      planned_end,
+    } = req.body;
+
+    const createdBy = (req as any).user?.id ?? null;
+
+    let rawStops: any[] = [];
+    if (Array.isArray(rawStopsInput) && rawStopsInput.length > 0) {
+      rawStops = rawStopsInput;
+    } else if (origin || destination) {
+      rawStops = buildTripStops({
+        origin: typeof origin === 'object' ? origin : { name: String(origin || '') },
+        destination: typeof destination === 'object' ? destination : { name: String(destination || '') },
+        intermediates: Array.isArray(intermediates)
+          ? intermediates.map((i: any) => (typeof i === 'object' ? i : { name: String(i || '') }))
+          : [],
+        isRound: Boolean(isRound),
+        returnOrigin: typeof returnOrigin === 'object' ? returnOrigin : (returnOrigin ? { name: String(returnOrigin) } : undefined),
+        returnDestination: typeof returnDestination === 'object' ? returnDestination : (returnDestination ? { name: String(returnDestination) } : undefined),
+        returnIntermediates: Array.isArray(returnIntermediates)
+          ? returnIntermediates.map((i: any) => (typeof i === 'object' ? i : { name: String(i || '') }))
+          : [],
+      });
+    }
+
+    if (rawStops.length === 0) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'At least origin and destination stops are required.' } });
+    }
+
+    let parsedPlannedStart: Date | null = null;
+    if (planned_start && !isNaN(Date.parse(planned_start))) {
+      parsedPlannedStart = new Date(planned_start);
+    }
+
+    let parsedPlannedEnd: Date | null = null;
+    if (planned_end && !isNaN(Date.parse(planned_end))) {
+      parsedPlannedEnd = new Date(planned_end);
+    }
+
+    const resolvedStops = await Promise.all(
+      rawStops.map(async (stop: any) => {
+        const stopName = String(stop.location_name ?? stop.name ?? '').trim();
+        let locId = stop.location_id || stop.locationId || null;
+        let resolvedLoc: any = null;
+
+        if (locId) {
+          resolvedLoc = await resolveLocation(prisma, { id: locId, customerId: existingTrip.customerId, skipCanonicalUpdate: true }, createdBy);
+          if (resolvedLoc) locId = resolvedLoc.id;
+        } else if (stopName) {
+          try {
+            const loc = await resolveLocation(
+              prisma,
+              {
+                customerId: existingTrip.customerId,
+                name: stopName,
+                address: String(stop.location_address ?? stop.address ?? '').trim() || null,
+                lat: parseOptionalFloat(stop.lat ?? stop.location_lat),
+                lng: parseOptionalFloat(stop.lng ?? stop.location_lng),
+                skipCanonicalUpdate: !stop.update_canonical_location,
+              },
+              createdBy
+            );
+            if (loc) { locId = loc.id; resolvedLoc = loc; }
+          } catch (e) {
+            logger.warn({ err: e }, 'Failed to resolve location for trip stop edit');
+          }
+        }
+
+        // A stop sent without coordinates/address (e.g. an intermediate stop,
+        // which the edit form only holds as a name) falls back to its Location
+        // master record, so rebuilding the route never strips coordinates.
+        const hasCoords = parseOptionalFloat(stop.lat ?? stop.location_lat) != null && parseOptionalFloat(stop.lng ?? stop.location_lng) != null;
+        const fallback = !hasCoords && resolvedLoc?.lat != null && resolvedLoc?.lng != null
+          ? { lat: resolvedLoc.lat, lng: resolvedLoc.lng, coordinate_precision: stop.coordinate_precision || resolvedLoc.coordinate_precision || 'APPROXIMATE' }
+          : {};
+        const addressFallback = !(stop.location_address ?? stop.address) && resolvedLoc?.address ? { location_address: resolvedLoc.address } : {};
+
+        return { ...stop, ...fallback, ...addressFallback, location_id: locId, location_name: stopName };
+      })
+    );
+
+    const stopValidation = validateTripStops(resolvedStops);
+    if (!stopValidation.isValid) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: stopValidation.error } });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Soft-delete old stops
+      await tx.tripStop.updateMany({
+        where: { tripId: existingTrip.id, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+
+      // 2. Insert new stops
+      await tx.tripStop.createMany({
+        data: resolvedStops.map((stop: any, index: number) => {
+          const rawLat = parseOptionalFloat(stop.lat ?? stop.location_lat);
+          const rawLng = parseOptionalFloat(stop.lng ?? stop.location_lng);
+          const isValidCoord = rawLat != null && rawLng != null && (rawLat !== 0 || rawLng !== 0) && rawLat >= -90 && rawLat <= 90 && rawLng >= -180 && rawLng <= 180;
+          const latVal = isValidCoord ? rawLat : null;
+          const lngVal = isValidCoord ? rawLng : null;
+          const precisionVal = stop.coordinate_precision || stop.location_coordinate_precision || (latVal == null || lngVal == null ? 'UNKNOWN' : 'APPROXIMATE');
+          let stopPlannedArrival: Date | null = null;
+          if (stop.planned_arrival && !isNaN(Date.parse(stop.planned_arrival))) {
+            stopPlannedArrival = new Date(stop.planned_arrival);
+          } else if (index === 0 && parsedPlannedStart) {
+            stopPlannedArrival = parsedPlannedStart;
+          } else if (index === resolvedStops.length - 1 && parsedPlannedEnd) {
+            stopPlannedArrival = parsedPlannedEnd;
+          }
+          const rawStopType = String(stop.stop_type || (index === 0 ? 'Pickup' : 'Dropoff'));
+          const normalizedStopType: StopType = (rawStopType === 'Stop' ? 'Rest' : rawStopType) as StopType;
+
+          return {
+            tripId: existingTrip.id,
+            stop_sequence: index + 1,
+            leg_index: stop.leg_index !== undefined ? Number(stop.leg_index) : 0,
+            stop_type: normalizedStopType,
+            location_lat: latVal,
+            location_lng: lngVal,
+            location_coordinate_precision: precisionVal,
+            location_name: String(stop.location_name ?? '').trim() || null,
+            location_address: String(stop.location_address ?? '').trim() || null,
+            locationId: stop.location_id || null,
+            planned_arrival: stopPlannedArrival,
+          };
+        }),
+      });
+
+      // 3. Update trip planned times
+      await tx.trip.update({
+        where: { id: existingTrip.id },
+        data: {
+          ...(parsedPlannedStart ? { planned_start: parsedPlannedStart } : {}),
+          ...(parsedPlannedEnd ? { planned_end: parsedPlannedEnd } : {}),
+          updated_by: createdBy,
+        },
+      });
+    });
+
+    // Re-fetch updated trip with timeline
+    const updatedTrip = await prisma.trip.findFirst({
+      where: { id: existingTrip.id, deletedAt: null },
+      include: {
+        customer: true,
+        driver: true,
+        vehicle: true,
+        stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' }, include: { location: true } },
+        financials: true,
+      },
+    });
+
+    if (!updatedTrip) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found after update' } });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...updatedTrip,
+        route_timeline: buildTripRouteTimeline(updatedTrip as any),
+      },
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to update trip stops/route');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message || 'Failed to update trip route stops' } });
+  }
+};
+
 
 /** Trip statuses where the assigned driver/vehicle are actively held as `OnTrip`. */
 const IN_FLIGHT_STATUSES: TripStatus[] = [
@@ -2082,17 +2186,35 @@ export const bulkDeleteTrips = async (req: Request, res: Response) => {
 
     const eligibleIds = eligibleTrips.map((t) => t.id);
 
+    // Soft-delete renames ref_id TRP-XXXX -> TRP-DEL-XXXX to free the number for reuse. A
+    // trip number can be reused after its original holder is deleted, so a later trip that
+    // reused the same number can collide with an already-deleted TRP-DEL-XXXX row on this
+    // rename. Postgres poisons the whole transaction on the first failed query inside it
+    // (25P02 "current transaction is aborted"), so a collision can't be retried mid-
+    // transaction — resolve every ref_id up front, before the transaction opens, so the
+    // transaction itself never has anything to fail on.
+    const intendedRefIds = eligibleTrips.map((t) =>
+      t.ref_id && t.ref_id.startsWith('TRP-') && !t.ref_id.startsWith('TRP-DEL-')
+        ? t.ref_id.replace('TRP-', 'TRP-DEL-')
+        : t.ref_id
+    );
+    const conflicting = await prisma.trip.findMany({
+      where: { ref_id: { in: intendedRefIds.filter((r): r is string => !!r) } },
+      select: { ref_id: true },
+    });
+    const takenRefIds = new Set(conflicting.map((t) => t.ref_id));
+    const finalRefIds = new Map<string, string | null>(); // tripId -> new ref_id
+    eligibleTrips.forEach((trip, i) => {
+      const intended = intendedRefIds[i];
+      finalRefIds.set(trip.id, intended && takenRefIds.has(intended) ? `${intended}-${trip.id.slice(0, 8)}` : intended);
+    });
+
     await prisma.$transaction(async (tx) => {
-      // Soft-delete trips: rename ref_id to TRP-DEL-XXXX to release sequence slot, mark isActive = false
       for (const trip of eligibleTrips) {
-        let newRefId = trip.ref_id;
-        if (newRefId && newRefId.startsWith('TRP-') && !newRefId.startsWith('TRP-DEL-')) {
-          newRefId = newRefId.replace('TRP-', 'TRP-DEL-');
-        }
         await tx.trip.update({
           where: { id: trip.id },
           data: {
-            ref_id: newRefId,
+            ref_id: finalRefIds.get(trip.id) ?? trip.ref_id,
             isActive: false,
             deletedAt: new Date(),
             deleted_by: getValidUuid(userId),
@@ -2338,6 +2460,7 @@ export const updateTripFinancials = async (req: Request, res: Response) => {
       trip_charges,
       billing_amount,
       carrier_name,
+      awb_number,
       is_post_trip_settled = true,
     } = req.body;
 
@@ -2352,26 +2475,16 @@ export const updateTripFinancials = async (req: Request, res: Response) => {
 
       if (!trip) throw new Error('NOT_FOUND');
 
-      // Auto-fill the driver payout only when the caller didn't send one:
-      // MERCON's own driver pulls the lane's agreed payout off the rate card;
-      // a third-party job pulls the subcontractor cost already on the trip.
-      // Either way it stays a suggestion, not a lock — an explicit value in
-      // the request always wins, and the settlement form can still override
-      // it before submitting.
-      // trip.trip_charges / third_party_cost / quotation.driver_payout are all
-      // Decimal at runtime — normalised to number here so this stays a plain
-      // number through every branch below (Prisma accepts a number for a
-      // Decimal field write, so nothing is lost storing it back as one).
-      let nextTripCharges = Number(trip.driver_payout ?? (trip as any).driver_charge);
-      const inputCharges = req.body.driver_payout !== undefined ? req.body.driver_payout : (req.body.driver_charge !== undefined ? req.body.driver_charge : trip_charges);
-      if (inputCharges !== undefined) {
-        nextTripCharges = parseOptionalFloat(inputCharges) ?? 0;
-      } else if (trip.is_third_party) {
-        const subCost = (trip as any).subcontract?.cost ?? (trip as any).third_party_cost;
-        if (subCost !== null && subCost !== undefined) {
-          nextTripCharges = Number(subCost);
-        }
-      }
+      // Auto-fill the driver payout only when the caller didn't send one —
+      // see resolveDriverPayout() for the actual rule. Prisma accepts a
+      // number for a Decimal field write, so nextTripCharges stays a plain
+      // number through storage below.
+      const nextTripCharges = resolveDriverPayout({
+        currentDriverPayout: trip.driver_payout ?? (trip as any).driver_charge,
+        isThirdParty: trip.is_third_party,
+        subcontractCost: (trip as any).subcontract?.cost ?? (trip as any).third_party_cost,
+        requestedPayoutRaw: req.body.driver_payout !== undefined ? req.body.driver_payout : (req.body.driver_charge !== undefined ? req.body.driver_charge : trip_charges),
+      });
 
       if (charges !== undefined) {
         await tx.tripCharge.deleteMany({ where: { tripId: trip.id } });
@@ -2434,6 +2547,7 @@ export const updateTripFinancials = async (req: Request, res: Response) => {
           driver_payout: nextTripCharges,
           billing_amount: billing_amount !== undefined ? (parseOptionalFloat(billing_amount) ?? 0) : trip.billing_amount,
           carrier_name: carrier_name !== undefined ? carrier_name : trip.carrier_name,
+          awb_number: awb_number !== undefined ? (awb_number ? String(awb_number).trim() : null) : trip.awb_number,
           is_post_trip_settled: Boolean(is_post_trip_settled),
           updated_by: (req as any).user?.id,
         },
@@ -2470,43 +2584,6 @@ export const updateTripFinancials = async (req: Request, res: Response) => {
 
 /** A month of trips is bounded work; this only guards against a runaway query. */
 const MONTHLY_BOARD_TRIP_CAP = 5000;
-
-/** Local YYYY-MM-DD — never toISOString(), which shifts the date across UTC. */
-const toDayKey = (d: Date | string | null | undefined): string => {
-  if (!d) return '1970-01-01';
-  const dateObj = d instanceof Date ? d : new Date(d);
-  if (isNaN(dateObj.getTime())) return '1970-01-01';
-  return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`;
-};
-
-/**
- * The month the board is showing. Accepts `YYYY-MM`; anything else (including
- * a missing param) falls back to the current month rather than erroring, since
- * the page opens with no month chosen.
- */
-function resolveMonth(raw: unknown): { month: string; start: Date; end: Date } {
-  const now = new Date();
-  let year = now.getFullYear();
-  let monthIndex = now.getMonth();
-
-  if (typeof raw === 'string') {
-    const match = /^(\d{4})-(\d{2})$/.exec(raw.trim());
-    if (match) {
-      const parsedYear = Number(match[1]);
-      const parsedMonth = Number(match[2]);
-      if (parsedYear >= 2000 && parsedYear <= 2100 && parsedMonth >= 1 && parsedMonth <= 12) {
-        year = parsedYear;
-        monthIndex = parsedMonth - 1;
-      }
-    }
-  }
-
-  return {
-    month: `${year}-${String(monthIndex + 1).padStart(2, '0')}`,
-    start: new Date(year, monthIndex, 1, 0, 0, 0, 0),
-    end: new Date(year, monthIndex + 1, 0, 23, 59, 59, 999),
-  };
-}
 
 export const getMonthlyTripBoard = async (req: Request, res: Response) => {
   try {
@@ -2587,7 +2664,7 @@ export const getMonthlyTripBoard = async (req: Request, res: Response) => {
         driver_payout: true,
         quotationId: true,
         customer: { select: { id: true, name: true, contact_phone: true, logo_url: true } },
-        driver: { select: { id: true, ref_id: true, first_name: true, last_name: true, phone_primary: true } },
+        driver: { select: { id: true, ref_id: true, first_name: true, last_name: true, phone_primary: true, avatar_url: true } },
         vehicle: { select: { id: true, ref_id: true, plate_number: true, asset_type: true } },
         quotation: {
           select: {

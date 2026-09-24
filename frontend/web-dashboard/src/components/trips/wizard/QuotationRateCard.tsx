@@ -97,7 +97,7 @@ export const QuotationRateCard: React.FC<QuotationRateCardProps> = ({
   const firstStop = rc.stops && rc.stops.length > 0 ? rc.stops[0] : null;
   const lastStop = rc.stops && rc.stops.length > 1 ? rc.stops[rc.stops.length - 1] : firstStop;
 
-  const origName = extractEndpointName(firstStop, [
+  let origName = extractEndpointName(firstStop, [
     rc.route_origin,
     rc.origin_name,
     rc.originLocation?.name,
@@ -106,7 +106,7 @@ export const QuotationRateCard: React.FC<QuotationRateCardProps> = ({
     rc.from,
   ]);
 
-  const destName = extractEndpointName(lastStop, [
+  let destName = extractEndpointName(lastStop, [
     rc.route_destination,
     rc.destination_name,
     rc.destinationLocation?.name,
@@ -114,6 +114,25 @@ export const QuotationRateCard: React.FC<QuotationRateCardProps> = ({
     rc.destination,
     rc.to,
   ]);
+
+  const isValidEndpoint = (s: string) => s && s.trim() !== '' && s.trim() !== '—' && s.trim() !== '--' && s.trim() !== '---';
+
+  if (!isValidEndpoint(origName) || !isValidEndpoint(destName)) {
+    if (rc.name && typeof rc.name === 'string') {
+      const cleanName = rc.name.replace(/\s*\[.*?\]/g, '').trim();
+      const parts = cleanName.split(/\s*(?:→|->|-->|–|-)\s*/).map((s) => s.trim()).filter((s) => isValidEndpoint(s));
+      if (parts.length >= 2) {
+        if (!isValidEndpoint(origName)) origName = parts[0];
+        if (!isValidEndpoint(destName)) destName = parts[parts.length - 1];
+      } else if (parts.length === 1 && isValidEndpoint(parts[0])) {
+        if (!isValidEndpoint(origName)) origName = parts[0];
+        if (!isValidEndpoint(destName)) destName = parts[0];
+      }
+    }
+  }
+
+  const finalOrigName = isValidEndpoint(origName) ? origName.trim() : 'Origin';
+  const finalDestName = isValidEndpoint(destName) ? destName.trim() : 'Destination';
 
   const qNum = (rc as any).quotation_number != null && !isNaN(Number((rc as any).quotation_number)) ? `QT-${(rc as any).quotation_number}` : null;
   const quotationDisplayCode =
@@ -127,7 +146,7 @@ export const QuotationRateCard: React.FC<QuotationRateCardProps> = ({
     <button
       key={rc.id || idx}
       type="button"
-      onClick={() => onApplyRateCard(rc, rCat, vClass, origName, destName, rateVal, isSelected)}
+      onClick={() => onApplyRateCard(rc, rCat, vClass, finalOrigName, finalDestName, rateVal, isSelected)}
       className={cn(
         "p-2.5 rounded-xl transition-all duration-200 text-left flex flex-col justify-between space-y-1.5 cursor-pointer select-none min-h-[110px]",
         isSelected
@@ -162,12 +181,12 @@ export const QuotationRateCard: React.FC<QuotationRateCardProps> = ({
 
       {/* HERO CENTER: PROMINENT LOCATION ROUTE LANE */}
       <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-1.5 my-0.5">
-        <span className="text-xs font-black text-slate-900 dark:text-white truncate max-w-[45%]" title={origName || 'Origin'}>
-          {origName || 'Origin'}
+        <span className="text-xs font-black text-slate-900 dark:text-white truncate max-w-[45%]" title={finalOrigName}>
+          {finalOrigName}
         </span>
         <span className="text-[#FA634E] font-bold text-xs shrink-0">→</span>
-        <span className="text-xs font-black text-[#FA634E] truncate max-w-[45%]" title={destName || 'Destination'}>
-          {destName || 'Destination'}
+        <span className="text-xs font-black text-[#FA634E] truncate max-w-[45%]" title={finalDestName}>
+          {finalDestName}
         </span>
       </div>
 

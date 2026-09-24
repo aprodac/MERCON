@@ -189,26 +189,24 @@ export default function TripCardSwiper() {
                     {/* Driver & vehicle summary */}
                     <div className="grid grid-cols-2 gap-1.5">
                       <HoverCard>
-                        <HoverCardTrigger
-                          render={
-                            <div
-                              onClick={(e) => e.stopPropagation()}
-                              className="cursor-default rounded-md border border-black/[0.06] bg-white p-2 text-left transition-colors hover:border-black/[0.14]"
-                            />
-                          }
-                        >
-                          <p className="flex items-center gap-0.5 text-[8px] font-bold uppercase text-muted-foreground">
-                            <User size={9} /> Driver
-                          </p>
-                          <div className="mt-0.5 flex items-center gap-1.5">
-                            <Avatar className="size-4">
-                              <AvatarFallback className="bg-brand/10 text-[7px] font-bold text-brand">
-                                {truck.driverName ? truck.driverName.charAt(0) : 'D'}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="truncate text-[10px] font-bold text-[#111]">
-                              {truck.driverName ? truck.driverName.split(' ')[0] : 'Assigned'}
-                            </span>
+                        <HoverCardTrigger asChild>
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="cursor-default rounded-md border border-black/[0.06] bg-white p-2 text-left transition-colors hover:border-black/[0.14]"
+                          >
+                            <p className="flex items-center gap-0.5 text-[8px] font-bold uppercase text-muted-foreground">
+                              <User size={9} /> Driver
+                            </p>
+                            <div className="mt-0.5 flex items-center gap-1.5">
+                              <Avatar className="size-4">
+                                <AvatarFallback className="bg-brand/10 text-[7px] font-bold text-brand">
+                                  {truck.driverName ? truck.driverName.charAt(0) : 'D'}
+                                </AvatarFallback>
+                              </Avatar>
+                              <span className="truncate text-[10px] font-bold text-[#111]">
+                                {truck.driverName ? truck.driverName.split(' ')[0] : 'Assigned'}
+                              </span>
+                            </div>
                           </div>
                         </HoverCardTrigger>
 

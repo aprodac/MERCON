@@ -16,6 +16,8 @@
     "test:icces": "node -r ts-node/register --test src/services/icces/trackParser.test.ts src/services/icces/iccesSession.test.ts src/services/icces/fleetPoller.test.ts",
     "test:tracking": "node -r ts-node/register --test src/services/tracking/locationUpdate.test.ts",
     "test:routing": "node -r ts-node/register --test src/services/routing/routeProvider.test.ts",
+    "test:trip-financials": "node -r ts-node/register --test src/services/tripFinancials.test.ts",
+    "test:trip-board": "node -r ts-node/register --test src/services/tripBoard.test.ts",
     "test:xlsx": "node -r ts-node/register --test src/services/reports/xlsxTemplate/splice.test.ts src/services/reports/xlsxTemplate/aliases.test.ts src/services/reports/xlsxTemplate/inspect.test.ts",
     "migrate:driver-avatars": "ts-node scripts/migrateDriverAvatars.ts"
   },

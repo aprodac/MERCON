@@ -155,6 +155,16 @@ export function validateTripStops(stops: StopScheduleInput[]): { isValid: boolea
     }
   }
 
+  const leg0Stops = stops.filter((s) => (s.leg_index ?? 0) === 0);
+  if (leg0Stops.length < 2) {
+    return { isValid: false, error: `Outbound leg (leg 0) must have at least 2 stops (found ${leg0Stops.length}).` };
+  }
+
+  const leg1Stops = stops.filter((s) => (s.leg_index ?? 0) === 1);
+  if (leg1Stops.length > 0 && leg1Stops.length < 2) {
+    return { isValid: false, error: `Return leg (leg 1) must have at least 2 stops if present (found ${leg1Stops.length}).` };
+  }
+
   return { isValid: true };
 }
 

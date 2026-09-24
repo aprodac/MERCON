@@ -5,6 +5,9 @@
  * Operational N-Days Scheduling, Balance Margin (Profit), and Margin Percentage.
  */
 
+import { TripStatus } from '@prisma/client';
+import { parseOptionalFloat } from './uuid';
+
 type Money = number | string | null | undefined | { toNumber(): number };
 
 export const asNumber = (v: Money): number => {
@@ -65,6 +68,115 @@ export interface ComputedBackendFinancials {
 export function computeTripChargesTotal(charges: ChargeLike[] | null | undefined): number {
   if (!charges || charges.length === 0) return 0;
   return charges.reduce((sum, c) => sum + asNumber(c.amount), 0);
+}
+
+export interface ResolveDriverPayoutInput {
+  /** trip.driver_payout ?? trip.driver_charge — the payout already on the trip. */
+  currentDriverPayout: Money;
+  isThirdParty: boolean;
+  /** trip.subcontract?.cost ?? trip.third_party_cost */
+  subcontractCost: Money;
+  /**
+   * The raw (unparsed) value of req.body.driver_payout, falling back to
+   * driver_charge then trip_charges — `undefined` only when none of the
+   * three keys were sent, which is what distinguishes "caller didn't touch
+   * this field" from "caller explicitly sent a value" (including a value
+   * that turns out not to parse, which still overrides rather than falling
+   * through to the subcontract-cost guess below).
+   */
+  requestedPayoutRaw: unknown;
+}
+
+/**
+ * MERCON's own driver pulls the lane's agreed payout off the rate card; a
+ * third-party job pulls the subcontractor cost already on the trip. Either
+ * way it stays a suggestion, not a lock — an explicit value in the request
+ * always wins, and the settlement form can still override it before
+ * submitting.
+ */
+export function resolveDriverPayout(input: ResolveDriverPayoutInput): number {
+  const { currentDriverPayout, isThirdParty, subcontractCost, requestedPayoutRaw } = input;
+
+  if (requestedPayoutRaw !== undefined) {
+    return parseOptionalFloat(requestedPayoutRaw) ?? 0;
+  }
+  if (isThirdParty && subcontractCost !== null && subcontractCost !== undefined) {
+    return asNumber(subcontractCost);
+  }
+  return asNumber(currentDriverPayout);
+}
+
+/**
+ * Past-time trips can never be created as Scheduled/Draft: if the planned
+ * start has already passed, the initial status must be Delayed regardless of
+ * what was requested, since "Scheduled for the past" is a contradiction the
+ * rest of the app isn't built to handle.
+ *
+ * `initialStatus` is whatever the caller already resolved the status to
+ * (callers differ here — e.g. bulk-import validates the raw value against
+ * the TripStatus enum first, a single create doesn't — so that step stays
+ * with each caller). `requestedStatusRaw` is the original, unvalidated value
+ * the caller received, which is what the override condition itself checks
+ * against, matching both callers' existing behavior exactly.
+ */
+export function resolveInitialTripStatus(
+  initialStatus: TripStatus,
+  requestedStatusRaw: TripStatus | string | null | undefined,
+  plannedStart: Date | null
+): TripStatus {
+  if (plannedStart) {
+    const diffMs = Date.now() - plannedStart.getTime();
+    if (diffMs >= 0) {
+      if (
+        !requestedStatusRaw ||
+        requestedStatusRaw === TripStatus.Scheduled ||
+        requestedStatusRaw === TripStatus.Draft ||
+        (requestedStatusRaw as string) === 'Scheduled'
+      ) {
+        return TripStatus.Delayed;
+      }
+    }
+  }
+
+  return initialStatus;
+}
+
+export interface CoDriverPayoutSplitInput {
+  totalPayout: number;
+  /** Truthy when a co-driver is assigned (co_driver_id on the trip/row). */
+  hasCoDriver: boolean;
+  /**
+   * The raw (unparsed) co_driver_payout value — `undefined`/`null` is what
+   * distinguishes "caller didn't send a co-driver payout" (split evenly)
+   * from "caller explicitly set one" (use it as-is, don't touch the split).
+   */
+  explicitCoDriverPayout: unknown;
+}
+
+export interface CoDriverPayoutSplit {
+  driverPayout: number;
+  coDriverPayout: number;
+}
+
+/**
+ * When a co-driver is assigned and the caller didn't send an explicit
+ * co-driver payout, the total payout is split evenly between the two
+ * drivers rather than the primary driver keeping all of it.
+ */
+export function splitCoDriverPayout(input: CoDriverPayoutSplitInput): CoDriverPayoutSplit {
+  const { totalPayout, hasCoDriver, explicitCoDriverPayout } = input;
+
+  let driverPayout = totalPayout;
+  let coDriverPayout = explicitCoDriverPayout !== undefined && explicitCoDriverPayout !== null
+    ? asNumber(explicitCoDriverPayout as Money)
+    : 0;
+
+  if (hasCoDriver && (explicitCoDriverPayout === undefined || explicitCoDriverPayout === null) && totalPayout > 0) {
+    driverPayout = Math.round((totalPayout / 2) * 100) / 100;
+    coDriverPayout = Math.round((totalPayout / 2) * 100) / 100;
+  }
+
+  return { driverPayout, coDriverPayout };
 }
 
 /** Base billing price for the customer. */

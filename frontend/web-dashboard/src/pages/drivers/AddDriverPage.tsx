@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import CreateVehicleModal from '@/components/trips/CreateVehicleModal';
+import QuickCreateVehicleModal from '@/components/trips/QuickCreateVehicleModal';
 import { driverService, CreateDriverPayload } from '@/services/driverService';
 import { vehicleService, Vehicle } from '@/services/vehicleService';
 import { Card, CardContent } from '@/components/ui/card';
@@ -561,7 +561,7 @@ export default function AddDriverPage() {
       </div>
 
       {/* Modal for creating a new vehicle on-the-fly */}
-      <CreateVehicleModal
+      <QuickCreateVehicleModal
         isOpen={isAddVehicleOpen}
         onClose={() => setIsAddVehicleOpen(false)}
         onCreated={handleVehicleCreated}

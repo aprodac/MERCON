@@ -16,7 +16,8 @@ import {
   AlertTriangle, UserCheck, Wrench, Maximize2, Minimize2, Navigation, Award, Edit2, Gauge,
   History, ExternalLink, Package, Radio, Calendar, Droplets, Disc, Wind, Thermometer, Settings,
   RotateCcw, Sparkles, ChevronRight, ChevronLeft, Info, Layers, Zap, CircleDot, MoreHorizontal, Cpu, Building2,
-  ZoomIn, ZoomOut, RotateCw, Printer, Download, Upload, QrCode, FileCheck, ArrowLeft, Trash2, Eye, Loader2
+  ZoomIn, ZoomOut, RotateCw, Printer, Download, Upload, QrCode, FileCheck, ArrowLeft, Trash2, Eye, Loader2,
+  User, Banknote
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +26,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import DriverAvatar from '@/components/ui/DriverAvatar';
 import SlowScrollingDriverName from '@/components/ui/SlowScrollingDriverName';
 import DocumentsValidityFolder from '@/components/ui/DocumentsValidityFolder';
+import VisualRouteProgress from '@/components/trips/VisualRouteProgress';
+import { useDeploymentTimezone, formatInDeploymentTz } from '@/lib/datetime';
 
 function WhatsAppIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -176,7 +179,7 @@ function RealVehicleDocumentPreviewMiddleBox({
   const IconComp = staticDetails?.icon || FileText;
 
   return (
-    <div className="w-full h-full p-4 sm:p-5 flex flex-col justify-between bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-2xs overflow-hidden animate-in fade-in zoom-in-95 duration-200 min-h-[410px]">
+    <div className="w-full h-full p-4 sm:p-5 flex flex-col justify-between bg-white dark:bg-slate-900 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
       {/* 1. Header Bar with Back Button & Delete Action */}
       <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-slate-800 shrink-0">
         <button
@@ -223,9 +226,7 @@ function RealVehicleDocumentPreviewMiddleBox({
           {/* 2. Metadata Header Card */}
           <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 flex items-center justify-between shrink-0 shadow-2xs">
             <div className="flex items-center gap-3 min-w-0">
-              <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-950/60 border border-blue-100 dark:border-blue-900/40 flex items-center justify-center shrink-0">
-                <IconComp className="w-4.5 h-4.5 text-blue-600 dark:text-blue-400" />
-              </div>
+              <IconComp className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
               <div className="min-w-0">
                 <h3 className="text-xs font-black text-slate-900 dark:text-white truncate">
                   {docTypeName}
@@ -499,16 +500,19 @@ export default function CargoLoadingView() {
   const ytdSpendFormatted = totalYtdSpend > 0 ? `SAR ${totalYtdSpend.toLocaleString()}` : 'SAR 14,250';
   const nextServiceDue = 'In 4,800 km';
 
+  const tz = useDeploymentTimezone();
   const [selectedSlot, setSelectedSlot] = useState<SlotId | null>(null);
   const [slots, setSlots] = useState<CargoSlot[]>(INITIAL_SLOTS);
   const [tripTab, setTripTab] = useState<'recent' | 'upcoming' | 'completed'>('recent');
   const [tripPage, setTripPage] = useState<number>(1);
   const [tripSearch, setTripSearch] = useState<string>('');
+  const [selectedTripIdForPreview, setSelectedTripIdForPreview] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeMilestoneId, setActiveMilestoneId] = useState<string>('mnt-1');
   const [isExplodedView, setIsExplodedView] = useState<boolean>(false);
   const [showHotspots, setShowHotspots] = useState<boolean>(false);
+  const [showTelemetry, setShowTelemetry] = useState<boolean>(true);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [deletedDocIds, setDeletedDocIds] = useState<string[]>([]);
   const [docZoom, setDocZoom] = useState<number>(1);
@@ -758,7 +762,7 @@ export default function CargoLoadingView() {
       isRecent: true,
       hotspot: { top: '48%', left: '26%' },
       system: 'Engine & Lubrication',
-      colorTheme: { bg: 'bg-rose-50', text: 'text-rose-600', border: 'border-rose-200', activeBg: 'bg-rose-500 text-white border-rose-600', ping: 'bg-rose-500', badgeBg: 'bg-rose-100 text-rose-700 border-rose-200/80' },
+      colorTheme: { bg: 'bg-orange-50 dark:bg-orange-950/40', text: 'text-[#FA634E]', border: 'border-orange-200', activeBg: 'bg-[#FA634E] text-white border-[#FA634E]', ping: 'bg-[#FA634E]', badgeBg: 'bg-orange-100 text-[#FA634E] border-orange-200/80' },
     },
     {
       id: 2,
@@ -769,7 +773,7 @@ export default function CargoLoadingView() {
       isRecent: false,
       hotspot: { top: '74%', left: '38%' },
       system: 'Axles & Suspension',
-      colorTheme: { bg: 'bg-indigo-50', text: 'text-indigo-600', border: 'border-indigo-200', activeBg: 'bg-indigo-600 text-white border-indigo-700', ping: 'bg-indigo-500', badgeBg: 'bg-indigo-100 text-indigo-700 border-indigo-200/80' },
+      colorTheme: { bg: 'bg-purple-50 dark:bg-purple-950/40', text: 'text-purple-600', border: 'border-purple-200', activeBg: 'bg-purple-600 text-white border-purple-700', ping: 'bg-purple-500', badgeBg: 'bg-purple-100 text-purple-700 border-purple-200/80' },
     },
     {
       id: 3,
@@ -780,7 +784,7 @@ export default function CargoLoadingView() {
       isRecent: false,
       hotspot: { top: '24%', left: '42%' },
       system: 'Air Intake & Filtration',
-      colorTheme: { bg: 'bg-sky-50', text: 'text-sky-600', border: 'border-sky-200', activeBg: 'bg-sky-500 text-white border-sky-600', ping: 'bg-sky-500', badgeBg: 'bg-sky-100 text-sky-700 border-sky-200/80' },
+      colorTheme: { bg: 'bg-sky-50 dark:bg-sky-950/40', text: 'text-sky-500', border: 'border-sky-200', activeBg: 'bg-sky-500 text-white border-sky-600', ping: 'bg-sky-500', badgeBg: 'bg-sky-100 text-sky-700 border-sky-200/80' },
     },
     {
       id: 4,
@@ -791,7 +795,7 @@ export default function CargoLoadingView() {
       isRecent: false,
       hotspot: { top: '74%', left: '60%' },
       system: 'Braking & Pneumatics',
-      colorTheme: { bg: 'bg-orange-50', text: 'text-orange-600', border: 'border-orange-200', activeBg: 'bg-orange-500 text-white border-orange-600', ping: 'bg-orange-500', badgeBg: 'bg-orange-100 text-orange-700 border-orange-200/80' },
+      colorTheme: { bg: 'bg-rose-50 dark:bg-rose-950/40', text: 'text-rose-500', border: 'border-rose-200', activeBg: 'bg-rose-500 text-white border-rose-600', ping: 'bg-rose-500', badgeBg: 'bg-rose-100 text-rose-700 border-rose-200/80' },
     },
     {
       id: 5,
@@ -802,7 +806,7 @@ export default function CargoLoadingView() {
       isRecent: false,
       hotspot: { top: '74%', left: '80%' },
       system: 'Tires & Wheels',
-      colorTheme: { bg: 'bg-emerald-50', text: 'text-emerald-600', border: 'border-emerald-200', activeBg: 'bg-emerald-600 text-white border-emerald-700', ping: 'bg-emerald-500', badgeBg: 'bg-emerald-100 text-emerald-700 border-emerald-200/80' },
+      colorTheme: { bg: 'bg-emerald-50 dark:bg-emerald-950/40', text: 'text-emerald-500', border: 'border-emerald-200', activeBg: 'bg-emerald-600 text-white border-emerald-700', ping: 'bg-emerald-500', badgeBg: 'bg-emerald-100 text-emerald-700 border-emerald-200/80' },
     },
     {
       id: 6,
@@ -813,7 +817,7 @@ export default function CargoLoadingView() {
       isRecent: false,
       hotspot: { top: '48%', left: '12%' },
       system: 'Electrical & Battery',
-      colorTheme: { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200', activeBg: 'bg-amber-500 text-white border-amber-600', ping: 'bg-amber-400', badgeBg: 'bg-amber-100 text-amber-700 border-amber-200/80' },
+      colorTheme: { bg: 'bg-amber-50 dark:bg-amber-950/40', text: 'text-amber-500', border: 'border-amber-200', activeBg: 'bg-amber-500 text-white border-amber-600', ping: 'bg-amber-400', badgeBg: 'bg-amber-100 text-amber-700 border-amber-200/80' },
     },
     {
       id: 7,
@@ -824,7 +828,7 @@ export default function CargoLoadingView() {
       isRecent: false,
       hotspot: { top: '24%', left: '68%' },
       system: 'General Maintenance & HVAC',
-      colorTheme: { bg: 'bg-purple-50', text: 'text-purple-600', border: 'border-purple-200', activeBg: 'bg-purple-600 text-white border-purple-700', ping: 'bg-purple-500', badgeBg: 'bg-purple-100 text-purple-700 border-purple-200/80' },
+      colorTheme: { bg: 'bg-purple-50 dark:bg-purple-950/40', text: 'text-purple-600', border: 'border-purple-200', activeBg: 'bg-purple-600 text-white border-purple-700', ping: 'bg-purple-500', badgeBg: 'bg-purple-100 text-purple-700 border-purple-200/80' },
     },
   ];
 
@@ -837,9 +841,11 @@ export default function CargoLoadingView() {
   const handleToggleServiceHistory = () => {
     if (!isExplodedView) {
       setShowHotspots(false);
+      setShowTelemetry(false);
       setIsExplodedView(true);
     } else {
       setShowHotspots(false);
+      setShowTelemetry(false);
       setIsExplodedView(false);
     }
   };
@@ -876,6 +882,7 @@ export default function CargoLoadingView() {
     if (isExplodedView) {
       // FORWARD 2s PLAYBACK (0.0s -> 2.0s)
       setShowHotspots(false);
+      setShowTelemetry(false);
       if (videoEl.currentTime >= 1.9) {
         videoEl.currentTime = 0;
       }
@@ -883,6 +890,7 @@ export default function CargoLoadingView() {
     } else {
       // REVERSE 2s PLAYBACK (2.0s -> 0.0s back to initial assembled state)
       setShowHotspots(false);
+      setShowTelemetry(false);
       videoEl.pause();
       let lastTime = performance.now();
 
@@ -897,6 +905,7 @@ export default function CargoLoadingView() {
           videoEl.currentTime = 0;
           videoEl.pause();
           animFrameIdRef.current = null;
+          setShowTelemetry(true);
         }
       };
 
@@ -1315,26 +1324,18 @@ export default function CargoLoadingView() {
 
       </div>
 
-      {/* ── Main Content Grid: Left (Service History), Middle (Truck Visualizer + Trips), Right (Documents & Validity) ── */}
+      {/* ── Main Content Grid: Left (Trips Ledger), Middle (Truck Visualizer + Service History), Right (Driver Documents & Validity) ── */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-5 items-stretch">
 
-        {/* Left Column: Trips Ledger (Stretches to combined height of Middle column) */}
+        {/* Left Column: Trips Ledger */}
         <div className="xl:col-span-3 flex flex-col h-full min-h-0">
           <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col justify-between h-full min-h-[460px] overflow-hidden">
             <div className="flex flex-col h-full min-h-0 justify-between">
-              {/* Header: Title "Trips" + Total Trips Badge aligned top left */}
+              {/* Header: Title "Trips" */}
               <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 shrink-0 gap-2">
                 <div className="flex items-center gap-2 min-w-0">
                   <Truck className="w-5 h-5 text-[#FA634E] stroke-[2] shrink-0" />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-black text-slate-900 leading-tight truncate">Trips</h3>
-                      <span className="text-[10px] font-black font-mono text-[#FA634E] bg-orange-50 border border-orange-200/80 px-2 py-0.5 rounded-full shrink-0">
-                        Total Trips: {activeDataset.length}
-                      </span>
-                    </div>
-                    <p className="text-[11px] font-medium text-slate-400 truncate">Completed vehicle trip history</p>
-                  </div>
+                  <h3 className="text-base font-black text-slate-900 leading-tight truncate">Trips</h3>
                 </div>
               </div>
 
@@ -1373,8 +1374,16 @@ export default function CargoLoadingView() {
                   paginatedTrips.map((trip) => (
                     <div 
                       key={trip.id}
-                      onClick={() => trip.rawId && navigate(`/trips/${trip.rawId}`)}
-                      className="relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white hover:border-slate-300 hover:bg-slate-50/60 transition-all cursor-pointer flex flex-col justify-between p-3 sm:p-3.5 gap-2 group shadow-2xs"
+                      onClick={() => {
+                        setSelectedDocId(null);
+                        setSelectedTripIdForPreview((prev) => (prev === (trip.rawId || trip.id) ? null : (trip.rawId || trip.id)));
+                      }}
+                      className={cn(
+                        "relative overflow-hidden rounded-2xl border transition-all cursor-pointer flex flex-col justify-between p-3 sm:p-3.5 gap-2 group shadow-2xs",
+                        selectedTripIdForPreview === (trip.rawId || trip.id)
+                          ? "border-slate-300 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/60"
+                          : "border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50/60 dark:hover:bg-slate-800/50"
+                      )}
                     >
                       {/* TOP ROW: TRIP ID & STATUS BADGE (LEFT) | CAPACITY PILL (RIGHT) */}
                       <div className="flex items-center justify-between gap-2 z-10">
@@ -1497,11 +1506,10 @@ export default function CargoLoadingView() {
           </div>
         </div>
 
-        {/* Middle Column: CargoLoadingView (Truck Visualizer) + Trips stacked vertically */}
-        <div className="xl:col-span-6 flex flex-col gap-4 sm:gap-5">
-          {/* Center Box: Truck Visualizer OR Document Preview Container */}
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-0 shadow-2xs flex items-center justify-center relative overflow-hidden h-[410px] max-h-[410px] w-full">
-            {selectedDocId ? (
+        {/* Middle Column: Unified Truck Visualizer + Service History OR Full Trip Preview */}
+        <div className="xl:col-span-6 flex flex-col h-full min-h-0">
+          {selectedDocId ? (
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-xs flex flex-col justify-between h-full min-h-[610px] overflow-hidden">
               <RealVehicleDocumentPreviewMiddleBox
                 docId={selectedDocId}
                 vehicleId={vehicle?.id || id}
@@ -1511,345 +1519,612 @@ export default function CargoLoadingView() {
                 onClose={() => setSelectedDocId(null)}
                 onDeleteDocument={(delId) => setDeletedDocIds((prev) => [...prev, delId])}
               />
-            ) : (
-              /* ── Truck Visualizer View ── */
-              <div className="relative w-full h-full flex items-center justify-center overflow-hidden w-full h-full min-h-full">
-              {/* Clean 2-Second Exploded Animation Video Element */}
-              <video
-                ref={videoRef}
-                src="/truck-animation-2s.mp4"
-                muted
-                playsInline
-                preload="auto"
-                onEnded={handleVideoEnded}
-                onTimeUpdate={handleVideoTimeUpdate}
-                className="w-full h-full object-cover block transform-gpu transition-all duration-300 inset-0"
-              />
+            </div>
+          ) : selectedTripIdForPreview ? (() => {
+            const targetTripRaw = rawTrips.find((t: any) => t.id === selectedTripIdForPreview || t.ref_id === selectedTripIdForPreview);
+            const fallbackItem = allVehicleTrips.find((t) => t.rawId === selectedTripIdForPreview || t.id === selectedTripIdForPreview);
 
-              {/* Back to Systems Overlay Button inside Animated Screen */}
-              {activeServiceView === 'detail' && (
-                <button
-                  onClick={() => {
-                    setActiveServiceView('categories');
-                    setIsExplodedView(false);
-                  }}
-                  className="absolute top-3 left-3 z-30 px-3 py-1.5 rounded-xl border border-slate-200/90 bg-white/95 hover:bg-white text-slate-800 hover:text-[#FA634E] text-xs font-extrabold flex items-center gap-1.5 backdrop-blur-md shadow-md transition-all cursor-pointer group"
+            const previewTripDisplay = targetTripRaw ? {
+              id: targetTripRaw.id,
+              rawId: targetTripRaw.id,
+              ref_id: targetTripRaw.ref_id || (targetTripRaw.id ? `TRP-${targetTripRaw.id.slice(0, 4).toUpperCase()}` : 'TRP-0742'),
+              startedDate: targetTripRaw.planned_start || targetTripRaw.createdAt ? formatInDeploymentTz(targetTripRaw.planned_start || targetTripRaw.createdAt, tz, 'dd MMM yyyy, HH:mm') : '13 Sep 2026, 23:00',
+              origin: targetTripRaw.route_origin || targetTripRaw.origin_name || targetTripRaw.stops?.[0]?.source_label || targetTripRaw.stops?.[0]?.location_name || 'Riyadh',
+              destination: targetTripRaw.route_destination || targetTripRaw.destination_name || targetTripRaw.stops?.[targetTripRaw.stops?.length - 1]?.source_label || targetTripRaw.stops?.[targetTripRaw.stops?.length - 1]?.location_name || 'Dammam',
+              customerName: targetTripRaw.customer?.name || (vehicle as any)?.customer?.name || 'Customer Account',
+              customerLogo: targetTripRaw.customer?.logo_url || null,
+              vehiclePlate: plateNumber || vehicle?.plate_number || 'DRA-6484',
+              cargoType: targetTripRaw.cargo_type || 'General Goods',
+              rateCard: targetTripRaw.rate_card_name || 'Standard',
+              distance: targetTripRaw.planned_distance || targetTripRaw.distance_km ? `${targetTripRaw.planned_distance || targetTripRaw.distance_km} km` : '420 km',
+              driverPayout: targetTripRaw.driver_charge || targetTripRaw.driver_payout ? `SAR ${Number(targetTripRaw.driver_charge || targetTripRaw.driver_payout).toFixed(2)}` : 'SAR 50.00',
+              status: targetTripRaw.status || 'Completed',
+              stops: targetTripRaw.stops || []
+            } : {
+              id: fallbackItem?.rawId || '1',
+              rawId: fallbackItem?.rawId || '1',
+              ref_id: fallbackItem?.id || 'TRP-0742',
+              startedDate: fallbackItem?.date || '13 Sep 2026, 23:00',
+              origin: fallbackItem?.origin || 'Riyadh',
+              destination: fallbackItem?.destination || 'Dammam',
+              customerName: fallbackItem?.customerName || 'Customer Account',
+              customerLogo: fallbackItem?.customerLogo || null,
+              vehiclePlate: plateNumber || 'DRA-6484',
+              cargoType: fallbackItem?.cargoType || 'General Goods',
+              rateCard: 'Standard',
+              distance: '420 km',
+              driverPayout: 'SAR 50.00',
+              status: fallbackItem?.status || 'Completed',
+              stops: []
+            };
+
+            const previewStops = previewTripDisplay.stops.length > 0 ? previewTripDisplay.stops : [
+              { id: '1', sequence: 1, location_name: previewTripDisplay.origin, stop_type: 'Pickup' },
+              { id: '2', sequence: 2, location_name: previewTripDisplay.destination, stop_type: 'Dropoff' }
+            ];
+
+            return (
+              <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-xs p-4 sm:p-5 flex flex-col justify-between h-full min-h-[610px] overflow-hidden animate-in fade-in zoom-in-95 duration-200 space-y-3">
+                {/* 1. Header Bar with Back Button & Status Badge */}
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                  <button
+                    onClick={() => setSelectedTripIdForPreview(null)}
+                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+                  >
+                    <ArrowLeft className="w-4 h-4 text-[#FA634E]" />
+                    <span>Back to Truck</span>
+                  </button>
+
+                  <span className={cn(
+                    "px-3 py-1 rounded-full text-xs font-black border flex items-center gap-1.5 shadow-2xs uppercase tracking-wider",
+                    (previewTripDisplay.status || '').toLowerCase() === 'completed' || (previewTripDisplay.status || '').toLowerCase() === 'delivered'
+                      ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-800/40"
+                      : (previewTripDisplay.status || '').toLowerCase() === 'intransit' || (previewTripDisplay.status || '').toLowerCase() === 'in transit' || (previewTripDisplay.status || '').toLowerCase() === 'dispatched'
+                      ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border-amber-200/80 dark:border-amber-800/40"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700"
+                  )}>
+                    {previewTripDisplay.status || 'Scheduled'}
+                  </span>
+                </div>
+
+                {/* 2. Trip Ref ID & Date */}
+                <div className="flex items-center justify-between text-xs font-bold shrink-0 pt-1">
+                  <span className="text-xl sm:text-2xl font-black font-mono text-[#FA634E]">
+                    {previewTripDisplay.ref_id}
+                  </span>
+                  <span className="text-xs font-bold text-slate-400">
+                    Date: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{previewTripDisplay.startedDate}</strong>
+                  </span>
+                </div>
+
+                {/* 3. Visual Route Progress Stepper */}
+                <div className="shrink-0 my-1 overflow-hidden border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-800/40">
+                  <VisualRouteProgress
+                    stops={previewStops}
+                    tz={tz}
+                    tripStatus={previewTripDisplay.status}
+                    hideBadges={true}
+                    hidePulseAnimation={true}
+                  />
+                </div>
+
+                {/* 4. 6-Card Grid (2 rows x 3 columns) */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 flex-1 items-stretch my-1">
+                  {/* CUSTOMER */}
+                  <div className="p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shadow-2xs flex flex-col justify-between min-w-0 min-h-[72px]">
+                    <div className="flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5 text-rose-500 stroke-[2.2] shrink-0" />
+                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
+                        CUSTOMER
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 min-w-0 my-auto pt-0.5">
+                      {previewTripDisplay.customerLogo ? (
+                        <img
+                          src={previewTripDisplay.customerLogo}
+                          alt={previewTripDisplay.customerName}
+                          className="w-5 h-5 rounded-md object-contain border border-slate-200 dark:border-slate-700 bg-white p-0.5 shrink-0 shadow-2xs"
+                        />
+                      ) : (
+                        <div className="w-5 h-5 rounded-md bg-slate-900 text-white font-mono font-black text-[8.5px] flex items-center justify-center border border-slate-800 shadow-2xs shrink-0">
+                          {previewTripDisplay.customerName.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate" title={previewTripDisplay.customerName}>
+                        {previewTripDisplay.customerName}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* VEHICLE */}
+                  <div className="p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shadow-2xs flex flex-col justify-between min-w-0 min-h-[72px]">
+                    <div className="flex items-center gap-1.5">
+                      <Truck className="w-3.5 h-3.5 text-blue-500 stroke-[2.2] shrink-0" />
+                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
+                        VEHICLE
+                      </span>
+                    </div>
+                    <div className="my-auto pt-0.5 min-w-0">
+                      <span className="text-xs sm:text-sm font-black font-mono text-slate-900 dark:text-white truncate block">
+                        {previewTripDisplay.vehiclePlate}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* CARGO TYPE */}
+                  <div className="p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shadow-2xs flex flex-col justify-between min-w-0 min-h-[72px]">
+                    <div className="flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-[#FA634E] stroke-[2.2] shrink-0" />
+                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
+                        CARGO TYPE
+                      </span>
+                    </div>
+                    <div className="my-auto pt-0.5 min-w-0">
+                      <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate block">
+                        {previewTripDisplay.cargoType}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* RATE CARD */}
+                  <div className="p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shadow-2xs flex flex-col justify-between min-w-0 min-h-[72px]">
+                    <div className="flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-indigo-500 stroke-[2.2] shrink-0" />
+                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
+                        RATE CARD
+                      </span>
+                    </div>
+                    <div className="my-auto pt-0.5 min-w-0">
+                      <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate block">
+                        {previewTripDisplay.rateCard}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* DISTANCE */}
+                  <div className="p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shadow-2xs flex flex-col justify-between min-w-0 min-h-[72px]">
+                    <div className="flex items-center gap-1.5">
+                      <MapPin className="w-3.5 h-3.5 text-amber-500 stroke-[2.2] shrink-0" />
+                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
+                        DISTANCE
+                      </span>
+                    </div>
+                    <div className="my-auto pt-0.5 min-w-0">
+                      <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate block">
+                        {previewTripDisplay.distance}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* DRIVER PAYOUT */}
+                  <div className="p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shadow-2xs flex flex-col justify-between min-w-0 min-h-[72px]">
+                    <div className="flex items-center gap-1.5">
+                      <Banknote className="w-3.5 h-3.5 text-emerald-500 stroke-[2.2] shrink-0" />
+                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
+                        DRIVER PAYOUT
+                      </span>
+                    </div>
+                    <div className="my-auto pt-0.5 min-w-0">
+                      <span className="text-xs sm:text-sm font-black font-mono text-[#FA634E] truncate block">
+                        {previewTripDisplay.driverPayout}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 5. Bottom Action Button: View Full Trip Details Page */}
+                <Button
+                  onClick={() => navigate(`/trips/${previewTripDisplay.rawId || previewTripDisplay.id}`)}
+                  variant="ghost"
+                  className="w-full mt-2 h-11 bg-slate-100 dark:bg-slate-800/80 hover:bg-[#FA634E] hover:text-white text-slate-900 dark:text-white hover:dark:text-white text-xs sm:text-sm font-black rounded-2xl flex items-center justify-center gap-2 transition-colors cursor-pointer shrink-0"
                 >
-                  <ChevronLeft className="w-4 h-4 text-[#FA634E] group-hover:-translate-x-0.5 transition-transform" />
-                  <span>Back to Systems</span>
-                </button>
-              )}
+                  <FileText className="w-4 h-4" />
+                  <span>View Full Trip Details Page</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              </div>
+            );
+          })() : (
+            /* ── Default View: Combined Single Box containing Truck Visualizer (Top) + Service History (Bottom) ── */
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-xs flex flex-col justify-between h-full min-h-[610px] overflow-hidden">
+              {/* 1. Top Truck Visualizer Area */}
+              <div className="relative w-full h-[360px] sm:h-[385px] shrink-0 flex items-center justify-center overflow-hidden bg-[#EEF1F6] dark:bg-slate-950">
+                {/* TOP LEFT OVERLAY: Total Trips Counter */}
+                {activeServiceView !== 'detail' && (
+                  <div className="absolute top-5 left-5 z-30 flex items-center gap-3 animate-in fade-in duration-200">
+                    <Truck className="w-7 h-7 sm:w-8 sm:h-8 text-[#FA634E] stroke-[2] shrink-0" />
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider leading-none mb-1">
+                        TOTAL TRIPS
+                      </span>
+                      <span className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-white leading-none">
+                        {activeDataset.length}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
-              {/* Floating 3D Part Interactive Hotspots (Appears ONLY AFTER 2s animation completes when selected from sidebar) */}
-              {isExplodedView && showHotspots && (
-                <div className="absolute inset-0 pointer-events-none animate-in fade-in zoom-in-95 duration-300">
-                  {serviceItems.map((item) => {
-                    const isSelected = item.id === selectedServiceId;
-                    const IconComp = item.icon;
-                    const theme = item.colorTheme;
-                    return (
-                      <div
-                        key={`hotspot-${item.id}`}
-                        style={{ top: item.hotspot.top, left: item.hotspot.left }}
-                        className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto transition-transform duration-300 hover:scale-110 z-10"
+                {/* Clean 2-Second Exploded Animation Video Element */}
+                <video
+                  ref={videoRef}
+                  src="/truck-animation-2s.mp4"
+                  muted
+                  playsInline
+                  preload="auto"
+                  onEnded={handleVideoEnded}
+                  onTimeUpdate={handleVideoTimeUpdate}
+                  className="w-full h-full object-cover block transform-gpu transition-all duration-300 inset-0"
+                />
+
+                {/* Back to Systems Overlay Button inside Animated Screen */}
+                {activeServiceView === 'detail' && (
+                  <button
+                    onClick={() => {
+                      setActiveServiceView('categories');
+                      setShowTelemetry(false);
+                      setIsExplodedView(false);
+                    }}
+                    className="absolute top-3.5 left-3.5 z-30 px-3.5 py-1.5 rounded-xl border border-slate-200/90 bg-white/95 hover:bg-white text-slate-800 hover:text-[#FA634E] text-xs font-extrabold flex items-center gap-1.5 backdrop-blur-md shadow-md transition-all cursor-pointer group"
+                  >
+                    <ChevronLeft className="w-4 h-4 text-[#FA634E] group-hover:-translate-x-0.5 transition-transform" />
+                    <span>Back to Systems</span>
+                  </button>
+                )}
+
+                {/* Floating 3D Part Interactive Hotspots */}
+                {isExplodedView && showHotspots && (
+                  <div className="absolute inset-0 pointer-events-none animate-in fade-in zoom-in-95 duration-300">
+                    {serviceItems.map((item) => {
+                      const isSelected = item.id === selectedServiceId;
+                      const IconComp = item.icon;
+                      const theme = item.colorTheme;
+                      return (
+                        <div
+                          key={`hotspot-${item.id}`}
+                          style={{ top: item.hotspot.top, left: item.hotspot.left }}
+                          className="absolute -translate-x-1/2 -translate-y-1/2 pointer-events-auto transition-transform duration-300 hover:scale-110 z-10"
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (selectedServiceId === item.id) {
+                                setActiveServiceView('categories');
+                                setShowTelemetry(false);
+                                setIsExplodedView(false);
+                              } else {
+                                setSelectedServiceId(item.id);
+                                setRecordIndex(0);
+                                setActiveServiceView('detail');
+                                setIsExplodedView(true);
+                              }
+                            }}
+                            className="flex items-center gap-1.5 cursor-pointer group"
+                          >
+                            <div
+                              className={`relative flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full shadow-md transition-all shrink-0 ${
+                                isSelected 
+                                  ? 'bg-white border-2 border-[#FA634E] ring-4 ring-[#FA634E]/30 scale-110' 
+                                  : 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200/90'
+                              }`}
+                            >
+                              <IconComp className={cn("w-3.5 h-3.5 sm:w-4 sm:h-4 relative z-10", isSelected ? "text-[#FA634E]" : theme.text)} />
+                            </div>
+                            <span
+                              className={`text-[10px] sm:text-[10.5px] font-black px-2.5 py-0.5 rounded-lg whitespace-nowrap shadow-md transition-all border ${
+                                isSelected
+                                  ? 'bg-white text-slate-900 border-[#FA634E] shadow-sm'
+                                  : 'bg-white text-slate-800 border-slate-200/90 shadow-sm'
+                              }`}
+                            >
+                              {item.categoryLabel}
+                            </span>
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Bottom Telemetry Bar */}
+                {activeServiceView === 'categories' && showTelemetry && (
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center gap-6 sm:gap-8 w-max max-w-[calc(100%-2rem)] px-6 py-2 transition-all duration-300 animate-in fade-in slide-in-from-bottom-2">
+                    {/* 1. Latest Odometer */}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Gauge className="w-5 h-5 text-[#FA634E] stroke-[2.2] shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block leading-none mb-1">
+                          LATEST ODOMETER
+                        </span>
+                        <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white leading-none block truncate">
+                          {latestOdometerFormatted}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Divider Line 1 */}
+                    <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 shrink-0"></div>
+
+                    {/* 2. Next Service Due */}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Clock className="w-5 h-5 text-blue-600 stroke-[2.2] shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block leading-none mb-1">
+                          NEXT SERVICE DUE
+                        </span>
+                        <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white leading-none block truncate">
+                          {nextServiceDue}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Divider Line 2 */}
+                    <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 shrink-0"></div>
+
+                    {/* 3. YTD Maintenance Spend */}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Wrench className="w-5 h-5 text-purple-600 stroke-[2.2] shrink-0" />
+                      <div className="min-w-0">
+                        <span className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider block leading-none mb-1">
+                          YTD MAINTENANCE
+                        </span>
+                        <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white leading-none block truncate">
+                          {ytdSpendFormatted}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 2. Service History Area (Heading right at top, clear spacing to buttons) */}
+              <div className="w-full px-4 pt-1 sm:px-5 sm:pt-1.5 pb-2.5 sm:pb-3 bg-white dark:bg-slate-900 shrink-0 flex flex-col justify-start h-[235px] sm:h-[245px] overflow-hidden">
+                {/* Fixed-Position Dynamic Heading Bar (All the way up) */}
+                <div className="flex items-center justify-between shrink-0 h-7 mb-3 sm:mb-3.5">
+                  <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
+                    {activeServiceView === 'detail' ? (
+                      <>
+                        {(() => {
+                          const CatIcon = selectedService.icon;
+                          return <CatIcon className={cn("w-5 h-5 stroke-[2.2] shrink-0", selectedService.colorTheme.text)} />;
+                        })()}
+                        <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight truncate">
+                          {selectedService.categoryLabel}
+                        </h2>
+                        <span className={cn("text-[10px] sm:text-xs font-bold px-2.5 py-0.5 rounded-full border shadow-2xs truncate shrink-0", selectedService.colorTheme.badgeBg)}>
+                          {selectedService.system}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Wrench className="w-5 h-5 text-[#FA634E] stroke-[2] shrink-0" />
+                        <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight truncate">
+                          Service History
+                        </h2>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    {activeServiceView === 'detail' && (
+                      <button
+                        onClick={() => {
+                          setActiveServiceView('categories');
+                          setShowTelemetry(false);
+                          setIsExplodedView(false);
+                        }}
+                        className="text-[10.5px] sm:text-[11px] font-bold px-2.5 py-1 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
                       >
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (selectedServiceId === item.id) {
-                              setActiveServiceView('categories');
-                              setIsExplodedView(false);
-                            } else {
-                              setSelectedServiceId(item.id);
+                        <ChevronLeft className="w-3.5 h-3.5 text-slate-400" />
+                        <span>All Systems</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        const targetSearch = (vehicle?.plate_number && vehicle.plate_number !== '—')
+                          ? vehicle.plate_number
+                          : (plateNumber && plateNumber !== '—' ? plateNumber : (vehicle?.ref_id || ''));
+                        navigate(`/maintenance?search=${encodeURIComponent(targetSearch)}`);
+                      }}
+                      className="text-[10.5px] sm:text-[11px] font-bold px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
+                    >
+                      <span>All Maintenance</span>
+                      <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Content Area Below Heading */}
+                <div className="flex-1 min-h-0 flex flex-col justify-start overflow-hidden">
+                  {activeServiceView === 'categories' ? (
+                    /* 3x2 Stacked Grid on Left + Full-Height 'Others' Button on Right */
+                    <div className="flex items-stretch gap-2 sm:gap-2.5 h-full py-0.5">
+                      {/* Left: 3x2 Grid for the first 6 categories */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-2.5 flex-1 h-full">
+                        {serviceItems.slice(0, 6).map((item) => {
+                          const IconComp = item.icon;
+                          const theme = item.colorTheme;
+                          return (
+                            <button 
+                              key={`cat-rec-${item.id}`}
+                              onClick={() => {
+                                setSelectedDocId(null);
+                                setSelectedServiceId(item.id);
+                                setRecordIndex(0);
+                                setActiveServiceView('detail');
+                                setIsExplodedView(true);
+                              }}
+                              className="bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-800 rounded-xl sm:rounded-2xl p-2.5 sm:p-3 flex items-center justify-between hover:border-slate-300 hover:bg-slate-50/70 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-2xs group text-left"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <IconComp className={cn("w-5 h-5 sm:w-5.5 sm:h-5.5 stroke-[2] transition-transform group-hover:scale-110 shrink-0", theme.text)} />
+                                <div className="min-w-0">
+                                  <span className="text-xs sm:text-[13px] font-black leading-tight truncate block text-slate-900 dark:text-white">
+                                    {item.categoryLabel}
+                                  </span>
+                                  <span className="text-[10px] sm:text-[11px] font-semibold text-slate-400 block truncate mt-0.5">
+                                    {item.date !== '—' ? item.date : '—'}
+                                  </span>
+                                </div>
+                              </div>
+                              <ChevronRight className="w-3.5 h-3.5 text-slate-300 dark:text-slate-600 group-hover:translate-x-0.5 transition-all shrink-0 ml-1" />
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Right: 'Others' button spanning full vertical height */}
+                      {(() => {
+                        const othersItem = serviceItems.find((item) => item.id === 7) || serviceItems[6];
+                        if (!othersItem) return null;
+                        const IconComp = othersItem.icon;
+                        const theme = othersItem.colorTheme;
+                        return (
+                          <button
+                            key={`cat-rec-${othersItem.id}`}
+                            onClick={() => {
+                              setSelectedDocId(null);
+                              setSelectedServiceId(othersItem.id);
                               setRecordIndex(0);
                               setActiveServiceView('detail');
                               setIsExplodedView(true);
-                            }
-                          }}
-                          className="flex items-center gap-1.5 cursor-pointer group"
-                        >
-                          <div
-                            className={`relative flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 rounded-full shadow-md transition-all shrink-0 ${
-                              isSelected 
-                                ? `${theme.activeBg} ring-4 ring-[#FA634E]/30 scale-110` 
-                                : 'bg-white/90 backdrop-blur-xs text-slate-700 hover:bg-white border border-slate-200'
-                            }`}
+                            }}
+                            className="bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-800 rounded-xl sm:rounded-2xl p-3 sm:p-3.5 flex flex-col justify-between items-center text-center hover:border-slate-300 hover:bg-slate-50/70 dark:hover:bg-slate-800 transition-all cursor-pointer shadow-2xs group w-28 sm:w-36 h-full shrink-0"
                           >
-                            <IconComp className={`w-3.5 h-3.5 sm:w-4 sm:h-4 relative z-10 ${isSelected ? 'text-white' : theme.text}`} />
-                          </div>
-                          {/* Pointer Name Label — Always visible near the pointer */}
-                          <span
-                            className={`text-[10px] sm:text-[10.5px] font-black px-2 py-0.5 rounded-lg whitespace-nowrap shadow-md transition-all border ${
-                              isSelected
-                                ? 'bg-[#FA634E] text-white border-[#FA634E]'
-                                : 'bg-slate-900/90 text-white border-slate-700/80 backdrop-blur-md'
-                            }`}
-                          >
-                            {item.categoryLabel}
-                          </span>
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Bottom Telemetry Bar (Visible in Normal View inside Truck Box - Centered in Middle with Dividers) */}
-              {activeServiceView === 'categories' && (
-                <div className="absolute bottom-3.5 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center gap-5 sm:gap-7 w-max max-w-full px-4 transition-all duration-300 animate-in fade-in slide-in-from-bottom-2">
-                  {/* 1. Latest Odometer */}
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Gauge className="w-4.5 h-4.5 text-[#FA634E] stroke-[2.2] shrink-0" />
-                    <div className="min-w-0">
-                      <span className="text-[8.5px] font-extrabold text-slate-400 uppercase tracking-wider block leading-none mb-0.5">
-                        LATEST ODOMETER
-                      </span>
-                      <span className="text-xs sm:text-sm font-mono font-black text-slate-900 leading-none block truncate">
-                        {latestOdometerFormatted}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Divider Line 1 */}
-                  <div className="h-6 w-px bg-slate-300/80 shrink-0"></div>
-
-                  {/* 2. Next Service Due */}
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Clock className="w-4.5 h-4.5 text-blue-600 stroke-[2.2] shrink-0" />
-                    <div className="min-w-0">
-                      <span className="text-[8.5px] font-extrabold text-slate-400 uppercase tracking-wider block leading-none mb-0.5">
-                        NEXT SERVICE DUE
-                      </span>
-                      <span className="text-xs font-bold text-slate-800 leading-none block truncate">
-                        {nextServiceDue}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Divider Line 2 */}
-                  <div className="h-6 w-px bg-slate-300/80 shrink-0"></div>
-
-                  {/* 3. YTD Maintenance Spend */}
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Wrench className="w-4.5 h-4.5 text-indigo-600 stroke-[2.2] shrink-0" />
-                    <div className="min-w-0">
-                      <span className="text-[8.5px] font-extrabold text-slate-400 uppercase tracking-wider block leading-none mb-0.5">
-                        YTD MAINTENANCE
-                      </span>
-                      <span className="text-xs font-mono font-bold text-slate-900 leading-none block truncate">
-                        {ytdSpendFormatted}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-            )}
-          </div>
-
-          {/* Section: Service History Ledger (Moved to Center Bottom) */}
-          <div className="w-full bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-2xs min-h-[185px] flex flex-col justify-between">
-            {activeServiceView === 'categories' ? (
-              <div className="flex flex-col justify-between h-full space-y-3">
-                {/* Top Bar */}
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
-                  <div className="flex items-center gap-3">
-                    <h2 className="text-sm font-black text-slate-900 tracking-tight flex items-center gap-2">
-                      <Wrench className="w-4.5 h-4.5 text-[#FA634E]" />
-                      Service History
-                    </h2>
-                    <span className="text-[10px] font-extrabold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200/60">
-                      7 Vehicle Systems
-                    </span>
-                  </div>
-
-                  <button
-                    onClick={() => {
-                      const targetSearch = (vehicle?.plate_number && vehicle.plate_number !== '—')
-                        ? vehicle.plate_number
-                        : (plateNumber && plateNumber !== '—' ? plateNumber : (vehicle?.ref_id || ''));
-                      navigate(`/maintenance?search=${encodeURIComponent(targetSearch)}`);
-                    }}
-                    className="text-xs font-bold px-3 py-1 rounded-full border border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition-colors flex items-center gap-1 cursor-pointer shadow-2xs"
-                  >
-                    <span>All Maintenance</span>
-                    <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                  </button>
-                </div>
-
-                {/* Horizontal Category Grid (7 Systems laid out across the wide container) */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 items-stretch min-h-[105px]">
-                  {serviceItems.map((item) => {
-                    const isSelected = item.id === selectedServiceId;
-                    const IconComp = item.icon;
-                    const theme = item.colorTheme;
-                    return (
-                      <button 
-                        key={`cat-rec-${item.id}`}
-                        onClick={() => {
-                          setSelectedDocId(null);
-                          setSelectedServiceId(item.id);
-                          setRecordIndex(0);
-                          setActiveServiceView('detail');
-                          setIsExplodedView(true);
-                        }}
-                        className={`p-2.5 rounded-xl border flex flex-col justify-between transition-all cursor-pointer text-left group min-h-[96px] ${
-                          isSelected
-                            ? `bg-orange-50/90 border-[#FA634E] text-slate-900 shadow-2xs`
-                            : `bg-white border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/80 shadow-2xs`
-                        }`}
-                      >
-                        <div className="w-full h-11 flex items-center justify-center relative mb-2">
-                          <IconComp className={`w-7 h-7 stroke-[2.2] ${isSelected ? 'text-[#FA634E]' : theme.text}`} />
-                          {item.isRecent && (
-                            <span className="absolute top-0 right-1 w-2 h-2 rounded-full bg-[#FA634E]" title="Recent Service"></span>
-                          )}
-                        </div>
-                        <div>
-                          <span className={`text-xs font-extrabold truncate block ${isSelected ? 'text-[#FA634E]' : 'text-slate-900'}`}>
-                            {item.categoryLabel}
-                          </span>
-                          <span className="text-[9.5px] font-semibold text-slate-400 truncate block mt-0.5">
-                            {item.date}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              (() => {
-                const catRecords = getCategoryRecords(selectedService.categoryKey);
-                const totalRecs = catRecords.length;
-                const safeIdx = Math.min(recordIndex, Math.max(0, totalRecs - 1));
-                const currentRec = totalRecs > 0 ? catRecords[safeIdx] : null;
-
-                const recDate = currentRec?.service_date
-                  ? new Date(currentRec.service_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-                  : selectedService.date;
-                const recTitle = currentRec?.work_done || currentRec?.maintenance_type || selectedService.title;
-                const recWorkshop = currentRec?.workshop_name || selectedService.workshop;
-                const recOdometer = currentRec?.odometer_reading ? `${Number(currentRec.odometer_reading).toLocaleString()} km` : selectedService.odometer;
-                const recCost = currentRec?.cost ? `SAR ${Number(currentRec.cost).toLocaleString()}` : selectedService.cost;
-                const recStatus = currentRec?.status || selectedService.status;
-                const rawP = (currentRec as any)?.parts_replaced || (currentRec as any)?.replaced_parts;
-                const recParts = rawP ? (Array.isArray(rawP) ? rawP : [String(rawP)]) : selectedService.partsReplaced;
-
-                return (
-                  <div className="flex flex-col justify-between h-full space-y-2.5 animate-in fade-in zoom-in-95 duration-200">
-                    {/* Header */}
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
-                      <div className="flex items-center gap-2.5">
-                        <span className={`text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border shadow-2xs ${selectedService.colorTheme.badgeBg}`}>
-                          {selectedService.categoryLabel}
-                        </span>
-                      </div>
-
-                      <button
-                        onClick={() => {
-                          const targetSearch = (vehicle?.plate_number && vehicle.plate_number !== '—')
-                            ? vehicle.plate_number
-                            : (plateNumber && plateNumber !== '—' ? plateNumber : (vehicle?.ref_id || ''));
-                          navigate(`/maintenance?search=${encodeURIComponent(targetSearch)}`);
-                        }}
-                        className="text-xs font-bold text-slate-600 hover:text-[#FA634E] transition-colors flex items-center gap-1 cursor-pointer"
-                      >
-                        <span>Open Maintenance Ledger</span>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                      </button>
-                    </div>
-
-                    {totalRecs === 0 ? (
-                      <div className="w-full min-h-[110px] p-4 text-center border border-dashed border-slate-200/80 rounded-xl bg-slate-50/50 flex flex-col items-center justify-center">
-                        {(() => {
-                          const IconComp = selectedService.icon;
-                          return <IconComp className="w-5 h-5 text-slate-400 stroke-[1.5] mb-1" />;
-                        })()}
-                        <p className="text-xs font-bold text-slate-700">No Records Found</p>
-                        <p className="text-[10px] text-slate-400 mt-0.5">No maintenance records logged under {selectedService.categoryLabel}.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center min-h-[110px]">
-                        {/* Left Column: Work Info & Pagination (5 cols) */}
-                        <div className="md:col-span-5 bg-slate-50/90 p-3 rounded-xl border border-slate-200/90 shadow-2xs flex flex-col justify-between h-full space-y-2">
-                          <div className="flex items-start gap-2.5">
-                            {(() => {
-                              const IconComp = selectedService.icon;
-                              return <IconComp className={`w-5 h-5 stroke-[2.2] ${selectedService.colorTheme.text} shrink-0 mt-0.5`} />;
-                            })()}
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between mb-0.5">
-                                <span className="text-[9.5px] font-bold text-slate-400">{recDate}</span>
-                                <span className="text-[9px] font-bold px-2 py-0.2 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
-                                  {recStatus}
+                            <div className="flex flex-col items-center justify-center flex-1 w-full gap-1.5 pt-1">
+                              <IconComp className={cn("w-6 h-6 sm:w-7 sm:h-7 stroke-[2] transition-transform group-hover:scale-110 shrink-0", theme.text)} />
+                              <div className="min-w-0">
+                                <span className="text-xs sm:text-sm font-black leading-tight truncate block text-slate-900 dark:text-white">
+                                  {othersItem.categoryLabel}
+                                </span>
+                                <span className="text-[10px] sm:text-[11px] font-semibold text-slate-400 block truncate mt-0.5">
+                                  Cabin &amp; HVAC
                                 </span>
                               </div>
-                              <h3 className="text-xs font-black text-slate-900 leading-tight truncate">{recTitle}</h3>
-                              <p className="text-[10px] font-semibold text-slate-500 mt-0.5 flex items-center gap-1 truncate">
-                                <Wrench className="w-3 h-3 text-slate-400" />
-                                {recWorkshop}
-                              </p>
                             </div>
-                          </div>
+                            <div className="w-full pt-1.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-center gap-1 text-[10px] font-extrabold text-slate-400 transition-colors">
+                              <span>View</span>
+                              <ChevronRight className="w-3 h-3" />
+                            </div>
+                          </button>
+                        );
+                      })()}
+                    </div>
+                  ) : (
+                    (() => {
+                      const catRecords = getCategoryRecords(selectedService.categoryKey);
+                      const totalRecs = catRecords.length;
+                      const safeIdx = Math.min(recordIndex, Math.max(0, totalRecs - 1));
+                      const currentRec = totalRecs > 0 ? catRecords[safeIdx] : null;
 
-                          {totalRecs > 1 && (
-                            <div className="flex items-center justify-between px-2 py-1 bg-white rounded-lg border border-slate-200/80 text-[10px] font-bold text-slate-600">
-                              <button
-                                disabled={safeIdx === 0}
-                                onClick={() => setRecordIndex(prev => Math.max(0, prev - 1))}
-                                className="p-0.5 hover:text-[#FA634E] disabled:opacity-30 disabled:hover:text-slate-600 cursor-pointer"
-                              >
-                                <ChevronLeft className="w-3.5 h-3.5" />
-                              </button>
-                              <span>Record {safeIdx + 1} of {totalRecs}</span>
-                              <button
-                                disabled={safeIdx >= totalRecs - 1}
-                                onClick={() => setRecordIndex(prev => Math.min(totalRecs - 1, prev + 1))}
-                                className="p-0.5 hover:text-[#FA634E] disabled:opacity-30 disabled:hover:text-slate-600 cursor-pointer"
-                              >
-                                <ChevronRight className="w-3.5 h-3.5" />
-                              </button>
+                      const recDate = currentRec?.service_date
+                        ? new Date(currentRec.service_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+                        : selectedService.date;
+                      const recTitle = currentRec?.work_done || currentRec?.maintenance_type || selectedService.title;
+                      const recWorkshop = currentRec?.workshop_name || selectedService.workshop;
+                      const recOdometer = currentRec?.odometer_reading ? `${Number(currentRec.odometer_reading).toLocaleString()} km` : selectedService.odometer;
+                      const recCost = currentRec?.cost ? `SAR ${Number(currentRec.cost).toLocaleString()}` : selectedService.cost;
+                      const recStatus = currentRec?.status || selectedService.status;
+                      const rawP = (currentRec as any)?.parts_replaced || (currentRec as any)?.replaced_parts;
+                      const recParts = rawP ? (Array.isArray(rawP) ? rawP : [String(rawP)]) : selectedService.partsReplaced;
+
+                      return (
+                        <div className="h-full flex flex-col justify-center animate-in fade-in zoom-in-95 duration-200">
+                          {totalRecs === 0 ? (
+                            <div className="w-full h-full p-3 text-center border border-dashed border-slate-200/80 rounded-xl bg-slate-50/50 flex flex-col items-center justify-center">
+                              {(() => {
+                                const IconComp = selectedService.icon;
+                                return <IconComp className="w-5 h-5 text-slate-400 stroke-[1.5] mb-1" />;
+                              })()}
+                              <p className="text-xs font-bold text-slate-700">No Records Found</p>
+                              <p className="text-[10px] text-slate-400 mt-0.5">No maintenance records logged under {selectedService.categoryLabel}.</p>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-stretch h-full">
+                              {/* Left Column: Work Info & Pagination (5 cols) */}
+                              <div className="md:col-span-5 bg-slate-50/90 dark:bg-slate-800/50 p-2.5 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-full space-y-1.5">
+                                <div className="flex items-start gap-2 min-w-0">
+                                  {(() => {
+                                    const IconComp = selectedService.icon;
+                                    return <IconComp className={`w-4.5 h-4.5 stroke-[2.2] ${selectedService.colorTheme.text} shrink-0 mt-0.5`} />;
+                                  })()}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center justify-between mb-0.5">
+                                      <span className="text-[9px] font-bold text-slate-400">{recDate}</span>
+                                      <span className="text-[8.5px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                                        {recStatus}
+                                      </span>
+                                    </div>
+                                    <h3 className="text-xs font-black text-slate-900 dark:text-white leading-tight truncate">{recTitle}</h3>
+                                    <p className="text-[9.5px] font-semibold text-slate-500 mt-0.5 flex items-center gap-1 truncate">
+                                      <Wrench className="w-2.5 h-2.5 text-slate-400" />
+                                      {recWorkshop}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {totalRecs > 1 && (
+                                  <div className="flex items-center justify-between px-2 py-0.5 bg-white dark:bg-slate-800 rounded-lg border border-slate-200/80 dark:border-slate-700 text-[9.5px] font-bold text-slate-600 dark:text-slate-300 shrink-0">
+                                    <button
+                                      disabled={safeIdx === 0}
+                                      onClick={() => setRecordIndex(prev => Math.max(0, prev - 1))}
+                                      className="p-0.5 hover:text-[#FA634E] disabled:opacity-30 disabled:hover:text-slate-600 cursor-pointer"
+                                    >
+                                      <ChevronLeft className="w-3 h-3" />
+                                    </button>
+                                    <span>Record {safeIdx + 1} of {totalRecs}</span>
+                                    <button
+                                      disabled={safeIdx >= totalRecs - 1}
+                                      onClick={() => setRecordIndex(prev => Math.min(totalRecs - 1, prev + 1))}
+                                      className="p-0.5 hover:text-[#FA634E] disabled:opacity-30 disabled:hover:text-slate-600 cursor-pointer"
+                                    >
+                                      <ChevronRight className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Right Column: Key Metrics Grid (7 cols) */}
+                              <div className="md:col-span-7 grid grid-cols-3 gap-2 h-full">
+                                <div className="bg-slate-50/90 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-full">
+                                  <span className="font-extrabold text-slate-400 uppercase tracking-wider block text-[8px]">Odometer</span>
+                                  <span className="font-mono font-black text-slate-900 dark:text-white text-xs mt-0.5">{recOdometer}</span>
+                                </div>
+
+                                <div className="bg-slate-50/90 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-full">
+                                  <span className="font-extrabold text-slate-400 uppercase tracking-wider block text-[8px]">Service Cost</span>
+                                  <span className="font-mono font-black text-[#FA634E] text-xs mt-0.5">{recCost}</span>
+                                </div>
+
+                                <div className="bg-slate-50/90 dark:bg-slate-800/50 p-2 rounded-xl border border-slate-200/90 dark:border-slate-800 shadow-2xs flex flex-col justify-between h-full">
+                                  <span className="font-extrabold text-slate-400 uppercase tracking-wider block text-[8px]">Replaced Parts</span>
+                                  <span className="text-[9.5px] font-bold text-slate-800 dark:text-slate-200 line-clamp-2 mt-0.5">
+                                    {recParts.join(' • ')}
+                                  </span>
+                                </div>
+                              </div>
                             </div>
                           )}
                         </div>
-
-                        {/* Right Column: Key Metrics Grid (7 cols) */}
-                        <div className="md:col-span-7 grid grid-cols-3 gap-2.5 h-full">
-                          <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-                            <span className="font-extrabold text-slate-400 uppercase tracking-wider block text-[8.5px]">Odometer</span>
-                            <span className="font-mono font-black text-slate-900 text-xs sm:text-sm mt-1">{recOdometer}</span>
-                          </div>
-
-                          <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-                            <span className="font-extrabold text-slate-400 uppercase tracking-wider block text-[8.5px]">Service Cost</span>
-                            <span className="font-mono font-black text-[#FA634E] text-xs sm:text-sm mt-1">{recCost}</span>
-                          </div>
-
-                          <div className="bg-slate-50/90 p-2.5 rounded-xl border border-slate-200/90 shadow-2xs flex flex-col justify-between">
-                            <span className="font-extrabold text-slate-400 uppercase tracking-wider block text-[8.5px]">Replaced Parts</span>
-                            <span className="text-[10px] font-bold text-slate-800 line-clamp-2 mt-1">
-                              {recParts.join(' • ')}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })()
-            )}
-          </div>
+                      );
+                    })()
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Right Column: Documents & Validity (Stretches to combined height of Middle column) */}
-        <div className="xl:col-span-3 flex flex-col h-full min-h-0">
-          <DocumentsValidityFolder 
-            vehicleId={vehicle?.id || id} 
-            onSelectDocument={(docId) => setSelectedDocId(docId)}
+        {/* Right Column: Documents & Validity (Truck Documents - Max 5-6 visible at once, scrollable if more) */}
+        <div className="xl:col-span-3 flex flex-col h-full min-h-[460px] max-h-[480px] overflow-hidden">
+          <DocumentsValidityFolder
+            vehicleId={vehicle?.id || id}
             selectedDocumentId={selectedDocId}
             deletedDocIds={deletedDocIds}
             onDeleteDocument={(delId) => setDeletedDocIds((prev) => [...prev, delId])}
+            onSelectDocument={(docId) => {
+              setSelectedTripIdForPreview(null);
+              setSelectedDocId(docId);
+            }}
           />
         </div>
 

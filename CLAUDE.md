@@ -47,13 +47,19 @@ from `@mercon/shared-types`.
 | App | Used by | Notes |
 |---|---|---|
 | Web dashboard (`frontend/web-dashboard`) | **Admin, Operator** | Drivers never log in here |
-| Mobile app (`frontend/mobile-app/mercon-app`) | **Operator, Driver** | Drivers log in via license number (`mobileAuthController`) |
+| Driver app (`frontend/mobile-app/driver-app`, `tech.mercon.driver`) | **Driver** | Phone + license number login (`mobileAuthController`); non-driver roles are rejected |
+| Operator app (`frontend/mobile-app/operator-app`, `tech.mercon.operator`) | **Operator, Admin** | Username/phone + password login (`POST /auth/login`); Driver accounts are turned away |
 | User Management page (`/settings/users`) | **Admin, Operator** | Gated by `RequireRole` + `authorizeRoles('Admin', 'Operator')`; also lists Drivers (read-only) alongside Admin/Operator so it's a full "all platform users" view — but Driver rows cannot be created/edited/deleted here, only viewed. Web-user create/edit (`createUserBody`/`updateUserBody`) still only accepts role `Admin`/`Operator` — Driver-role Users are still not creatable through this page's form |
 
 Driver accounts/access (creation, edit, documents) are managed through the
 Drivers module (`/drivers`), not through the User Management form. The
 User Management page links out to "Add Driver" (`/drivers/new`) rather than
 creating drivers itself.
+
+Code used by both mobile apps lives in `frontend/mobile-app/shared`
+(`@mercon/mobile-shared`). `frontend/mobile-app` is its own npm workspace —
+install there, not at the repo root. Never import one app's code from the
+other app; move it to `shared/` instead.
 
 ## Database & seed rules
 
@@ -62,18 +68,24 @@ creating drivers itself.
 - The seed runs on **every** container start — it must stay **idempotent**
   (upserts, never blind creates) and must **never overwrite passwords** of
   existing users.
-- Do not modify `schema.prisma` unless the task explicitly requires it. The
-  production container runs `prisma db push --accept-data-loss` on start, so
-  schema changes hit the live database automatically — treat them as
-  production changes.
+- Do not modify `schema.prisma` unless the task explicitly requires it. Schema
+  changes ship as Prisma migrations (`prisma/migrations/`), which the deploy
+  applies with `prisma migrate deploy` — every migration reaches the live
+  database on the next release, so treat them as production changes. Never
+  edit a migration that has already been released; add a new one.
 - Never seed fake/demo data (drivers, trips, customers, invoices). This was
   deliberately removed.
 
 ## Deployment (production = mercon.tech)
 
-- Pushing to `main` triggers `.github/workflows/ci-cd.yml` on a self-hosted
-  runner: it force-removes the containers and runs `docker-compose up -d
-  --build` from the repo root.
+- **Releases go through a PR from `dev` into `main`** — never push to `main`
+  directly. Full process: `docs/RELEASE_PROCESS.md`. On the PR,
+  `.github/workflows/release-check.yml` posts a release report (what ships,
+  migrations pending on production, destructive SQL).
+- Merging to `main` triggers `.github/workflows/ci-cd.yml` on the self-hosted
+  runner: build images → back up the production database → `prisma migrate
+  deploy` → restart containers → health check. A failed migration leaves the
+  old containers serving; the failed run prints the restore command.
 - Postgres data persists in the `pgdata` volume — deploys do NOT reset the
   database. Fixing bad data requires the seed (idempotent upserts) or manual
   SQL, not a redeploy.

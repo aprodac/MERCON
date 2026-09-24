@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { Check, Navigation, Truck, MapPin, Flag, Clock } from 'lucide-react';
 import { formatInDeploymentTz } from '@/lib/datetime';
 import { cn } from '@/lib/utils';
+import { isRoundTrip as checkIsRoundTrip, parseTripRouteNodes, getTimelineProgress, getTimelineVehiclePosition, timelineStopRole, STOP_ROLE_COLORS, type StopRole } from '@mercon/shared-types';
 
 interface VisualRouteProgressProps {
   stops: any[];
@@ -9,6 +10,16 @@ interface VisualRouteProgressProps {
   tripStatus?: string;
   hideBadges?: boolean;
   hidePulseAnimation?: boolean;
+  /**
+   * Server-computed route timeline (`route_timeline` on the trip API
+   * response), built by the same function backing the driver app's route
+   * screen — see backend/api-server/src/services/tripRouteTimeline.ts.
+   * When present, this is rendered directly instead of re-deriving a
+   * timeline from `stops` here, so web and mobile can never show a
+   * different route for the same trip again.
+   */
+  timeline?: any[];
+  trip?: any;
 }
 
 interface NormalizedStop {
@@ -20,6 +31,7 @@ interface NormalizedStop {
   status: 'completed' | 'current' | 'upcoming';
   isFirst: boolean;
   isLast: boolean;
+  role?: StopRole;
 }
 
 const DEFAULT_STOPS: NormalizedStop[] = [
@@ -64,100 +76,66 @@ function isTurnaroundPair(prevStop: any, nextStop: any): boolean {
   return (isLegTransition || isDropoffToPickup) && sameLocation;
 }
 
-export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges, hidePulseAnimation }: VisualRouteProgressProps) {
+export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges, hidePulseAnimation, timeline, trip }: VisualRouteProgressProps) {
   const isTripFullyCompleted = ['completed', 'invoiced'].includes(String(tripStatus || '').trim().toLowerCase());
+  const hasServerTimeline = Array.isArray(timeline) && timeline.length >= 2;
   const isDelayed =
     ['delayed', 'late'].includes(String(tripStatus || '').trim().toLowerCase()) ||
     (stops && stops.some((st: any) => st.is_delayed || (st.delay_minutes && st.delay_minutes > 0)));
 
   const isRoundTrip = useMemo(() => {
-    if (!stops || stops.length < 2) return false;
-    return (
-      stops.some((st: any) => (st.leg_index ?? 0) === 1) ||
-      (stops.length >= 3 && getCanonicalCity(stops[0]).toLowerCase() === getCanonicalCity(stops[stops.length - 1]).toLowerCase())
-    );
-  }, [stops]);
+    return checkIsRoundTrip(trip || { stops, route_timeline: timeline });
+  }, [stops, timeline, trip]);
+
+  const routeNodes: any[] = useMemo(
+    () => (hasServerTimeline ? timeline : (trip?.route_timeline || parseTripRouteNodes(trip || { stops }))) || [],
+    [stops, timeline, hasServerTimeline, trip],
+  );
+
+  // Where the truck is: on a stop, or between two stops once the driver has
+  // left one and not yet reached the next (shared rule — see getTimelineVehiclePosition).
+  const vehicle = useMemo(() => getTimelineVehiclePosition(routeNodes, isTripFullyCompleted), [routeNodes, isTripFullyCompleted]);
 
   const normalizedStops: NormalizedStop[] = useMemo(() => {
-    if (!stops || stops.length < 2) return DEFAULT_STOPS;
+    const nodes = routeNodes;
+    if (!nodes || nodes.length === 0) return DEFAULT_STOPS;
 
-    const groupedItems: { stops: any[]; isTurnaround: boolean }[] = [];
-    let i = 0;
-    while (i < stops.length) {
-      const currentStop = stops[i];
-      const nextStop = stops[i + 1];
+    // Same rule as the driver app: a stop is done once the driver LEFT it,
+    // so the truck stays on the pickup while loading.
+    const progress = getTimelineProgress(nodes, isTripFullyCompleted);
+    return nodes.map((node: any, idx: number) => {
+      const isFirst = idx === 0;
+      const isLast = idx === nodes.length - 1;
+      const completed = progress[idx] === 'completed';
+      const isCurrent = progress[idx] === 'current';
 
-      if (
-        nextStop &&
-        i > 0 &&
-        i + 1 < stops.length &&
-        isTurnaroundPair(currentStop, nextStop)
-      ) {
-        groupedItems.push({
-          stops: [currentStop, nextStop],
-          isTurnaround: true,
-        });
-        i += 2;
-      } else {
-        groupedItems.push({
-          stops: [currentStop],
-          isTurnaround: false,
-        });
-        i += 1;
-      }
-    }
-
-    const totalMilestones = groupedItems.length;
-    let prevAllCompleted = true;
-
-    return groupedItems.map((group, mIdx) => {
-      const isFirst = mIdx === 0;
-      const isLast = mIdx === totalMilestones - 1;
-      const isTurnaround = group.isTurnaround;
-
-      const allStopsCompleted = group.stops.every((st) => !!st.actual_arrival) || isTripFullyCompleted;
-      const isCurrent = !allStopsCompleted && prevAllCompleted;
-      if (!allStopsCompleted) {
-        prevAllCompleted = false;
-      }
-
-      const primaryStop = group.stops[group.stops.length - 1] || group.stops[0];
-      const firstStopInGroup = group.stops[0];
-
-      const city = getCanonicalCity(firstStopInGroup) || (isFirst ? 'Origin' : isLast ? 'Destination' : `Stop ${mIdx}`);
-
-      const relevantTime = primaryStop.actual_arrival || firstStopInGroup.actual_arrival || primaryStop.planned_arrival || firstStopInGroup.planned_arrival;
+      const relevantTime = node.actualArrival || node.plannedArrival;
       const timeStr = relevantTime
         ? formatInDeploymentTz(relevantTime, tz, 'hh:mm a')
         : isLast && !isTripFullyCompleted
         ? 'ETA 20:30 PM'
         : '12:00 PM';
 
-      let label = isFirst
-        ? 'Pickup'
-        : isLast
-        ? (isRoundTrip ? 'Return Delivery' : 'Destination')
-        : isTurnaround
-        ? 'Turnaround'
-        : `Stop ${mIdx}`;
-
       return {
-        id: group.stops.map((s) => s.id || s.seq || s.stop_sequence).join('-') || `m-${mIdx}`,
-        seq: mIdx + 1,
-        label,
-        city,
+        id: node.stopId || node.id || `m-${idx}`,
+        seq: idx + 1,
+        label: node.typeEn || (isFirst ? 'Pickup' : isLast ? 'Destination' : `Stop ${idx}`),
+        city: node.name,
         time: timeStr,
-        status: allStopsCompleted ? 'completed' : isCurrent ? 'current' : 'upcoming',
+        status: completed ? 'completed' : isCurrent ? 'current' : 'upcoming',
         isFirst,
         isLast,
+        role: timelineStopRole(node),
       };
     });
-  }, [stops, tz, tripStatus, isTripFullyCompleted, isRoundTrip]);
+  }, [routeNodes, isTripFullyCompleted, tz]);
 
   const totalStops = normalizedStops.length;
   const completedCount = normalizedStops.filter((s) => s.status === 'completed').length;
   const rawProgress = isTripFullyCompleted
     ? 100
+    : totalStops > 1 && routeNodes.length > 1
+    ? Math.round(((vehicle.index - (vehicle.enRoute ? 0.5 : 0)) / (totalStops - 1)) * 100)
     : totalStops > 1
     ? Math.round((completedCount / (totalStops - 1)) * 100)
     : 100;
@@ -188,10 +166,8 @@ export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges,
     <div className="relative w-full rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs overflow-hidden flex flex-col justify-between p-3.5 sm:px-5 sm:py-3.5 gap-3">
       {/* ── 1. TOP HEADER: ROUTE SUMMARY ── */}
       <div className="flex flex-wrap items-center justify-between gap-3 w-full">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-orange-100/70 dark:bg-orange-950/60 flex items-center justify-center text-[#FA634E] shrink-0">
-            <Navigation className="w-4 h-4 fill-current transform rotate-45" />
-          </div>
+        <div className="flex items-center gap-2.5">
+          <Navigation className="w-5 h-5 text-[#FA634E] fill-current transform rotate-45 shrink-0" />
           <div>
             <h3 className="font-extrabold text-sm text-[#1F2937] dark:text-slate-100 tracking-tight leading-none" title={routeTitle}>
               {routeTitle}
@@ -314,6 +290,8 @@ export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges,
 
             const isDone = (stop.status === 'completed' || isTripFullyCompleted || (mIdx === 0 && (progressPercent > 0 || completedCount > 0))) && !hideCheckmarkForLast;
             const isCurrent = stop.status === 'current' && !isTripFullyCompleted && !hideCheckmarkForLast;
+            // Origin/loading = blue, destination/delivery = green, stops in between = red.
+            const roleColor = STOP_ROLE_COLORS[(stop as any).role as StopRole] ?? STOP_ROLE_COLORS.stop;
 
             return (
               <div key={`stop-col-${stop.id}-${mIdx}`} className="relative z-10 flex flex-col items-center text-center min-w-[60px] sm:min-w-[85px] max-w-[120px]">
@@ -321,24 +299,36 @@ export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges,
                   {hideCheckmarkForLast ? (
                     <div className="w-5 h-5 rounded-full bg-transparent border-2 border-emerald-500/30" />
                   ) : isDone ? (
-                    <div className="w-5 h-5 rounded-full bg-[#10B981] text-white flex items-center justify-center ring-4 ring-emerald-100 dark:ring-emerald-950/60 shadow-xs">
+                    <div
+                      className="w-5 h-5 rounded-full text-white flex items-center justify-center ring-4 shadow-xs"
+                      style={{ backgroundColor: roleColor.main, ['--tw-ring-color' as any]: roleColor.soft }}
+                    >
                       <Check className="w-3 h-3 stroke-[3]" />
                     </div>
                   ) : isCurrent ? (
-                    <div className={cn(
-                      "w-5 h-5 rounded-full bg-[#FA634E] text-white flex items-center justify-center ring-4 ring-orange-100 dark:ring-orange-950/60 shadow-xs",
-                      !hidePulseAnimation && "animate-pulse"
-                    )}>
+                    <div
+                      className={cn(
+                        "w-5 h-5 rounded-full text-white flex items-center justify-center ring-4 shadow-xs",
+                        !hidePulseAnimation && "animate-pulse"
+                      )}
+                      style={{ backgroundColor: roleColor.main, ['--tw-ring-color' as any]: roleColor.soft }}
+                    >
                       <MapPin className="w-3 h-3 fill-current" />
                     </div>
                   ) : (
-                    <div className="w-5 h-5 rounded-full bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 ring-4 ring-slate-100 dark:ring-slate-800/60 shadow-xs" />
+                    <div
+                      className="w-5 h-5 rounded-full bg-white dark:bg-slate-900 border-2 ring-4 shadow-xs"
+                      style={{ borderColor: roleColor.main, ['--tw-ring-color' as any]: roleColor.soft }}
+                    />
                   )}
                 </div>
                 <span className="font-extrabold text-xs sm:text-sm text-[#1F2937] dark:text-slate-100 tracking-tight truncate w-full text-center mt-1.5" title={stop.city}>
                   {stop.city}
                 </span>
-                <span className="mt-0.5 px-2 py-0.5 rounded bg-slate-100/90 dark:bg-slate-800/90 text-[8.5px] sm:text-[9px] font-extrabold uppercase text-slate-500 dark:text-slate-400 tracking-wider">
+                <span
+                  className="mt-0.5 px-2 py-0.5 rounded text-[8.5px] sm:text-[9px] font-extrabold uppercase tracking-wider"
+                  style={{ backgroundColor: roleColor.soft, color: roleColor.text }}
+                >
                   {stop.label}
                 </span>
                 <span className="text-[10.5px] font-mono font-bold text-slate-400 dark:text-slate-500 mt-0.5">

@@ -5,6 +5,9 @@ import { Toaster } from 'sonner';
 import 'leaflet/dist/leaflet.css';
 import '@/index.css';
 import AppRouter from '@/router';
+import { installErrorReporting } from '@/lib/errorReporting';
+
+installErrorReporting();
 
 const queryClient = new QueryClient({
   defaultOptions: {

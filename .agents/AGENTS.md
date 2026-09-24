@@ -1,5 +1,12 @@
 # MERCON — Project UI/UX & Engineering Guidelines
 
+## 0. STRICT GIT BRANCHING & REMOTE PUSHING RULES
+- **NEVER PUSH DIRECTLY TO `origin/dev` OR `origin/main` SERVER BRANCHES.**
+- **ALL commits and pushes MUST be pushed ONLY to the `Adarsh` branch (`origin/Adarsh`) unless the USER explicitly specifies otherwise.**
+- **Never push to `dev` or `main` server environments without explicit, written instruction from the USER.**
+
+---
+
 ## 1. Purpose
 This file is the single project-wide UI/UX reference for MERCON.
 

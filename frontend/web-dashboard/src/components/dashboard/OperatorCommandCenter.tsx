@@ -1026,14 +1026,18 @@ export default function OperatorCommandCenter({ trips: propTrips }: OperatorComm
                       const driverName = selectedDriverName;
                       const phone = selectedItem.trip?.driver?.phone_primary || selectedItem.driver?.phone_primary || '';
 
-                      const publicBase = (import.meta.env.VITE_PUBLIC_BASE_URL || import.meta.env.VITE_API_URL || 'https://dev.mercon.com').replace(/\/api\/?$/, '').replace(/\/+$/, '');
+                      const publicBase = (
+                        import.meta.env.VITE_PUBLIC_BASE_URL ||
+                        (typeof window !== 'undefined' ? window.location.origin : 'https://dev.mercon.tech')
+                      ).replace(/\/api\/?$/, '').replace(/\/+$/, '');
+                      const galleryUrl = `${publicBase}/trips/evidence-gallery?ref=${encodeURIComponent(tripRef)}`;
                       const rawFileUrl = selectedItem.videoUrl || '';
-                      const fullMediaUrl = rawFileUrl.startsWith('http') ? rawFileUrl : `${publicBase}${rawFileUrl.startsWith('/') ? '' : '/'}${rawFileUrl}`;
+                      const directFileUrl = rawFileUrl ? (rawFileUrl.startsWith('http') ? rawFileUrl : `${publicBase}${rawFileUrl.startsWith('/') ? '' : '/'}${rawFileUrl}`) : '';
 
                       const reason = selectedItem.delayReason || selectedItem.subtitle;
                       const msg = selectedItem.category === 'delay'
-                        ? `🚨 *MERCON DELAY REPORT*\nTrip: *${tripRef}*\nCustomer: *${custName}*\nDriver: *${driverName}*\nReason: ${reason}\nWatch Video: ${fullMediaUrl}`
-                        : `📸 *MERCON POD REPORT*\nTrip: *${tripRef}*\nCustomer: *${custName}*\nDriver: *${driverName}*\nView POD: ${fullMediaUrl}`;
+                        ? `🚨 *MERCON DELAY REPORT*\nTrip: *${tripRef}*\nCustomer: *${custName}*\nDriver: *${driverName}*\nReason: ${reason}\n\n🔗 *Secured Evidence Gallery*:\n${galleryUrl}${directFileUrl ? `\n📹 *Direct Video*:\n${directFileUrl}` : ''}`
+                        : `📸 *MERCON POD REPORT*\nTrip: *${tripRef}*\nCustomer: *${custName}*\nDriver: *${driverName}*\n\n🔗 *Secured Evidence Gallery*:\n${galleryUrl}${directFileUrl ? `\n🖼️ *Direct Image*:\n${directFileUrl}` : ''}`;
 
                       const target = phone
                         ? `https://wa.me/${phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`

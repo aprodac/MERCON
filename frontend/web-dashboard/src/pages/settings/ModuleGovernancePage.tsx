@@ -102,6 +102,11 @@ const MODULE_DESCRIPTIONS: Record<string, { label: string; path: string; desc: s
     path: '/aprodac-documents',
     desc: 'Aprodac compliance document storage & digital archives.',
   },
+  learning: {
+    label: 'Learning & Academy',
+    path: '/learning',
+    desc: 'Operational training, driver safety certifications & interactive academy.',
+  },
 };
 
 export default function ModuleGovernancePage() {
@@ -115,12 +120,14 @@ export default function ModuleGovernancePage() {
   });
 
   const [enabledModules, setEnabledModules] = useState<ModuleKey[]>([]);
+  const [hiddenModules, setHiddenModules] = useState<ModuleKey[]>([]);
   const [defaultRedirectModule, setDefaultRedirectModule] = useState<string>('quotations');
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (settings) {
       setEnabledModules(settings.enabledModules || []);
+      setHiddenModules(settings.hiddenModules || []);
       setDefaultRedirectModule((settings as any).defaultRedirectModule || 'quotations');
     }
   }, [settings]);
@@ -129,6 +136,7 @@ export default function ModuleGovernancePage() {
     mutationFn: () =>
       settingsService.update({
         enabledModules,
+        hiddenModules,
         defaultRedirectModule,
       }),
     onSuccess: () => {
@@ -143,12 +151,31 @@ export default function ModuleGovernancePage() {
     },
   });
 
-  const toggleModule = (key: ModuleKey) => {
-    setEnabledModules((prev) => (prev.includes(key) ? prev.filter((m) => m !== key) : [...prev, key]));
+  type ModuleState = 'active' | 'coming_soon' | 'hidden';
+
+  const getModuleState = (key: ModuleKey): ModuleState => {
+    if (enabledModules.includes(key)) return 'active';
+    if (hiddenModules.includes(key)) return 'hidden';
+    return 'coming_soon';
+  };
+
+  const setModuleState = (key: ModuleKey, state: ModuleState) => {
+    if (state === 'active') {
+      setEnabledModules((prev) => (prev.includes(key) ? prev : [...prev, key]));
+      setHiddenModules((prev) => prev.filter((m) => m !== key));
+    } else if (state === 'coming_soon') {
+      setEnabledModules((prev) => prev.filter((m) => m !== key));
+      setHiddenModules((prev) => prev.filter((m) => m !== key));
+    } else if (state === 'hidden') {
+      setEnabledModules((prev) => prev.filter((m) => m !== key));
+      setHiddenModules((prev) => (prev.includes(key) ? prev : [...prev, key]));
+    }
   };
 
   const selectableKeys = MODULE_KEYS.filter((k) => k !== 'recycle-bin');
   const activeCount = enabledModules.filter((k) => k !== 'recycle-bin').length;
+  const comingSoonCount = selectableKeys.filter((k) => !enabledModules.includes(k) && !hiddenModules.includes(k)).length;
+  const hiddenCount = selectableKeys.filter((k) => hiddenModules.includes(k)).length;
 
   return (
     <DashboardLayout active="/settings" title="Module Governance & Access" breadcrumb="SuperAdmin Portal">
@@ -162,13 +189,21 @@ export default function ModuleGovernancePage() {
             </div>
             <h1 className="text-xl sm:text-2xl font-black tracking-tight">Agile Delivery & Page Governance</h1>
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              Enable or disable individual platform pages and modules for regular users. Disabled modules are immediately hidden from the sidebar, top navigation, and URL routes.
+              Enable, disable, or hide individual platform pages and modules for regular users. Disabled modules show as locked "Coming Soon" rows in navigation, while Hidden modules are completely removed from the sidebar.
             </p>
           </div>
-          <div className="absolute right-6 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-4">
-            <div className="bg-slate-800/80 backdrop-blur-md rounded-2xl p-4 border border-slate-700/80 text-center min-w-[120px]">
-              <span className="text-2xl font-black text-brand block">{activeCount} / {selectableKeys.length}</span>
-              <span className="text-[10px] uppercase tracking-wider font-bold text-slate-400">Modules Active</span>
+          <div className="absolute right-6 top-1/2 -translate-y-1/2 hidden md:flex items-center gap-3">
+            <div className="bg-slate-800/80 backdrop-blur-md rounded-2xl p-3 border border-slate-700/80 text-center min-w-[90px]">
+              <span className="text-xl font-black text-emerald-400 block">{activeCount}</span>
+              <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400">Active</span>
+            </div>
+            <div className="bg-slate-800/80 backdrop-blur-md rounded-2xl p-3 border border-slate-700/80 text-center min-w-[90px]">
+              <span className="text-xl font-black text-amber-400 block">{comingSoonCount}</span>
+              <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400">Coming Soon</span>
+            </div>
+            <div className="bg-slate-800/80 backdrop-blur-md rounded-2xl p-3 border border-slate-700/80 text-center min-w-[90px]">
+              <span className="text-xl font-black text-slate-400 block">{hiddenCount}</span>
+              <span className="text-[9px] uppercase tracking-wider font-bold text-slate-400">Hidden</span>
             </div>
           </div>
         </div>
@@ -181,9 +216,9 @@ export default function ModuleGovernancePage() {
                 <ArrowRightLeft className="w-4 h-4" />
               </div>
               <div>
-                <CardTitle className="text-sm font-bold text-slate-900 dark:text-slate-100">Disabled Module Fallback Landing Page</CardTitle>
+                <CardTitle className="text-sm font-bold text-slate-900 dark:text-slate-100">Disabled / Hidden Module Fallback Landing Page</CardTitle>
                 <CardDescription className="text-xs text-slate-500">
-                  Select which active page users will automatically land on if they attempt to open a disabled route.
+                  Select which active page users will automatically land on if they attempt to open an inaccessible route.
                 </CardDescription>
               </div>
             </div>
@@ -198,10 +233,11 @@ export default function ModuleGovernancePage() {
               >
                 {selectableKeys.map((key) => {
                   const meta = MODULE_DESCRIPTIONS[key];
-                  const isActive = enabledModules.includes(key);
+                  const state = getModuleState(key);
+                  const stateLabel = state === 'active' ? 'Active' : state === 'hidden' ? 'Hidden' : 'Coming Soon';
                   return (
                     <option key={key} value={key}>
-                      {meta?.label || key} ({isActive ? 'Active' : 'Disabled'})
+                      {meta?.label || key} ({stateLabel})
                     </option>
                   );
                 })}
@@ -214,23 +250,31 @@ export default function ModuleGovernancePage() {
           </CardContent>
         </Card>
 
-        {/* Modules Toggle Grid */}
+        {/* Modules Governance Grid */}
         <Card className="border border-slate-200/90 dark:border-slate-800 shadow-sm rounded-2xl overflow-hidden bg-white dark:bg-slate-950">
           <CardHeader className="p-5 pb-3">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-sm font-bold text-slate-900 dark:text-slate-100">Platform Page Toggles</CardTitle>
-                <CardDescription className="text-xs text-slate-500">Click any card to toggle module access for operators and non-superadmins.</CardDescription>
+                <CardTitle className="text-sm font-bold text-slate-900 dark:text-slate-100">Platform Module Governance</CardTitle>
+                <CardDescription className="text-xs text-slate-500">Select Active, Coming Soon, or Hidden state for each module for non-superadmin users.</CardDescription>
               </div>
-              <Badge variant="outline" className="text-xs font-bold text-slate-600 dark:text-slate-400">
-                {activeCount} Active
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-xs font-bold text-emerald-600 border-emerald-200 dark:border-emerald-800">
+                  {activeCount} Active
+                </Badge>
+                <Badge variant="outline" className="text-xs font-bold text-amber-600 border-amber-200 dark:border-amber-800">
+                  {comingSoonCount} Coming Soon
+                </Badge>
+                <Badge variant="outline" className="text-xs font-bold text-slate-500 border-slate-200 dark:border-slate-800">
+                  {hiddenCount} Hidden
+                </Badge>
+              </div>
             </div>
           </CardHeader>
           <CardContent className="p-5 pt-2">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
               {selectableKeys.map((key) => {
-                const isEnabled = enabledModules.includes(key);
+                const state = getModuleState(key);
                 const meta = MODULE_DESCRIPTIONS[key] || {
                   label: key.replace(/-/g, ' '),
                   path: `/${key}`,
@@ -238,36 +282,29 @@ export default function ModuleGovernancePage() {
                 };
 
                 return (
-                  <button
+                  <div
                     key={key}
-                    type="button"
-                    onClick={() => toggleModule(key)}
-                    disabled={!isSuperAdmin}
                     className={cn(
-                      "flex items-start gap-3.5 p-4 rounded-2xl border text-left transition-all cursor-pointer relative group",
-                      isEnabled
-                        ? "border-brand/80 bg-orange-50/10 text-slate-900 dark:text-slate-100 dark:bg-orange-950/10 shadow-2xs"
-                        : "border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-950 hover:bg-slate-50 dark:hover:bg-slate-900/50",
-                      !isSuperAdmin && "opacity-75 cursor-not-allowed"
+                      "flex flex-col justify-between p-4 rounded-2xl border text-left transition-all relative space-y-3",
+                      state === 'active' && "border-emerald-500/40 bg-emerald-50/10 text-slate-900 dark:text-slate-100 dark:bg-emerald-950/10 shadow-2xs",
+                      state === 'coming_soon' && "border-amber-500/40 bg-amber-50/10 text-slate-900 dark:text-slate-100 dark:bg-amber-950/10 shadow-2xs",
+                      state === 'hidden' && "border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/30",
+                      !isSuperAdmin && "opacity-75"
                     )}
                   >
-                    <div className={cn(
-                      "w-5 h-5 rounded-md border flex items-center justify-center shrink-0 mt-0.5 transition-colors",
-                      isEnabled ? "bg-brand border-brand text-white" : "border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
-                    )}>
-                      {isEnabled && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                    </div>
-                    <div className="min-w-0 flex-1 space-y-1">
+                    <div className="min-w-0 space-y-1">
                       <div className="flex items-center justify-between gap-1">
                         <span className="text-xs font-bold block truncate">{meta.label}</span>
                         <Badge
-                          variant={isEnabled ? "default" : "secondary"}
+                          variant="secondary"
                           className={cn(
                             "text-[9px] px-1.5 py-0 font-extrabold uppercase shrink-0",
-                            isEnabled ? "bg-emerald-500 text-white" : "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                            state === 'active' && "bg-emerald-500 text-white dark:bg-emerald-600",
+                            state === 'coming_soon' && "bg-amber-500 text-white dark:bg-amber-600",
+                            state === 'hidden' && "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
                           )}
                         >
-                          {isEnabled ? 'ON' : 'OFF'}
+                          {state === 'active' ? 'ACTIVE' : state === 'coming_soon' ? 'COMING SOON' : 'HIDDEN'}
                         </Badge>
                       </div>
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight font-medium line-clamp-2">
@@ -275,7 +312,50 @@ export default function ModuleGovernancePage() {
                       </p>
                       <span className="text-[9px] text-slate-400 font-mono block pt-0.5">Route: {meta.path}</span>
                     </div>
-                  </button>
+
+                    {/* 3-way Segmented Control */}
+                    <div className="inline-flex items-center p-0.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 w-full mt-2">
+                      <button
+                        type="button"
+                        disabled={!isSuperAdmin}
+                        onClick={() => setModuleState(key, 'active')}
+                        className={cn(
+                          "flex-1 py-1 px-1.5 text-[10px] font-extrabold rounded-lg transition-all cursor-pointer text-center",
+                          state === 'active'
+                            ? "bg-emerald-600 text-white shadow-2xs"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                        )}
+                      >
+                        Active
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!isSuperAdmin}
+                        onClick={() => setModuleState(key, 'coming_soon')}
+                        className={cn(
+                          "flex-1 py-1 px-1.5 text-[10px] font-extrabold rounded-lg transition-all cursor-pointer text-center",
+                          state === 'coming_soon'
+                            ? "bg-amber-500 text-white shadow-2xs"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                        )}
+                      >
+                        Coming Soon
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!isSuperAdmin}
+                        onClick={() => setModuleState(key, 'hidden')}
+                        className={cn(
+                          "flex-1 py-1 px-1.5 text-[10px] font-extrabold rounded-lg transition-all cursor-pointer text-center",
+                          state === 'hidden'
+                            ? "bg-slate-700 text-white dark:bg-slate-600 shadow-2xs"
+                            : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200"
+                        )}
+                      >
+                        Hidden
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
             </div>

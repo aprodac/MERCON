@@ -8,12 +8,15 @@ const DEFAULT_SETTINGS = {
   id: SINGLETON_ID,
   appName: 'MERCON Operator Platform',
   companyLegalName: 'MERCON Operations Ltd.',
+  vatNumber: '312709215800003',
+  crNumber: '1009152862',
   logoUrl: null,
   primaryColor: '#E8450F',
   timezone: 'Asia/Riyadh',
   defaultCountryCode: 'SA',
   defaultCountryDialCode: '+966',
   enabledModules: [...MODULE_KEYS],
+  hiddenModules: [],
   defaultRedirectModule: 'quotations',
   themeColors: null,
   taxonomyConfig: null,
@@ -58,7 +61,14 @@ async function getOrCreateSettings() {
     return await prisma.settings.upsert({
       where: { id: SINGLETON_ID },
       update: {},
-      create: { id: SINGLETON_ID, enabledModules: [...MODULE_KEYS], defaultRedirectModule: 'quotations' },
+      create: { 
+        id: SINGLETON_ID, 
+        enabledModules: [...MODULE_KEYS], 
+        hiddenModules: [], 
+        defaultRedirectModule: 'quotations',
+        vatNumber: '312709215800003',
+        crNumber: '1009152862'
+      },
     });
   } catch (err: any) {
     console.warn('[Settings] Unable to query Settings from database, using defaults:', err.message || err);
@@ -74,6 +84,9 @@ export const getPublicSettings = async (_req: Request, res: Response) => {
       success: true,
       data: {
         appName: settings.appName,
+        companyLegalName: settings.companyLegalName,
+        vatNumber: settings.vatNumber,
+        crNumber: settings.crNumber,
         logoUrl: settings.logoUrl,
         primaryColor: settings.primaryColor,
         themeColors: settings.themeColors,
@@ -89,6 +102,9 @@ export const getPublicSettings = async (_req: Request, res: Response) => {
       success: true,
       data: {
         appName: DEFAULT_SETTINGS.appName,
+        companyLegalName: DEFAULT_SETTINGS.companyLegalName,
+        vatNumber: DEFAULT_SETTINGS.vatNumber,
+        crNumber: DEFAULT_SETTINGS.crNumber,
         logoUrl: DEFAULT_SETTINGS.logoUrl,
         primaryColor: DEFAULT_SETTINGS.primaryColor,
         themeColors: null,
@@ -144,6 +160,8 @@ export const updateSettings = async (req: Request, res: Response) => {
     const {
       appName,
       companyLegalName,
+      vatNumber,
+      crNumber,
       logoUrl,
       primaryColor,
       themeColors,
@@ -154,12 +172,15 @@ export const updateSettings = async (req: Request, res: Response) => {
       defaultCountryCode,
       defaultCountryDialCode,
       enabledModules,
+      hiddenModules,
       defaultRedirectModule,
     } = req.body;
 
     const data: Record<string, unknown> = {};
     if (appName !== undefined) data.appName = String(appName).trim();
     if (companyLegalName !== undefined) data.companyLegalName = String(companyLegalName).trim();
+    if (vatNumber !== undefined) data.vatNumber = vatNumber ? String(vatNumber).trim() : null;
+    if (crNumber !== undefined) data.crNumber = crNumber ? String(crNumber).trim() : null;
     if (logoUrl !== undefined) data.logoUrl = logoUrl ? String(logoUrl).trim() : null;
     if (primaryColor !== undefined) data.primaryColor = String(primaryColor).trim();
     if (themeColors !== undefined) data.themeColors = themeColors;
@@ -180,6 +201,12 @@ export const updateSettings = async (req: Request, res: Response) => {
         return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'enabledModules must be an array of strings' } });
       }
       data.enabledModules = enabledModules;
+    }
+    if (hiddenModules !== undefined) {
+      if (!Array.isArray(hiddenModules) || !hiddenModules.every((m) => typeof m === 'string')) {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'hiddenModules must be an array of strings' } });
+      }
+      data.hiddenModules = hiddenModules;
     }
     data.updated_by = userId;
 
@@ -233,37 +260,79 @@ export const getSystemHealth = async (_req: Request, res: Response) => {
 };
 
 /* ─── SuperAdmin Audit Logs Endpoint ────────────────────────────────────────── */
+/**
+ * Real audit trail, backed by the AuditLog table that auditService.logAuditEvent
+ * writes to (user management actions, Finance journal/invoice/bill state changes,
+ * etc.) — not a reconstructed feed. Supports filtering and pagination for the
+ * dedicated Audit Log page; called with no query params for the small
+ * System Health widget's recent-activity stream.
+ */
 export const getAuditLogs = async (req: Request, res: Response) => {
   try {
-    // Collect last 100 recent system activity events (user updates, trip changes, etc.)
-    const recentUsers = await prisma.user.findMany({
-      take: 20,
-      orderBy: { updatedAt: 'desc' },
-      select: { id: true, name: true, username: true, role: true, updatedAt: true, isSuperAdmin: true },
+    const { action, entityType, userId, date_from, date_to, search, page = '1', per_page = '50' } = req.query;
+
+    const pageNumber = Math.max(1, parseInt(page as string) || 1);
+    const limit = Math.max(1, parseInt(per_page as string) || 50);
+    const skip = (pageNumber - 1) * limit;
+
+    const whereClause: any = {};
+
+    if (action && action !== 'all') {
+      whereClause.action = action as string;
+    }
+
+    if (entityType && entityType !== 'all') {
+      whereClause.entityType = entityType as string;
+    }
+
+    if (userId && userId !== 'all') {
+      whereClause.userId = userId as string;
+    }
+
+    if (date_from || date_to) {
+      whereClause.createdAt = {};
+      if (date_from) whereClause.createdAt.gte = new Date(date_from as string);
+      if (date_to) whereClause.createdAt.lte = new Date(date_to as string);
+    }
+
+    if (search) {
+      const q = String(search).trim();
+      whereClause.OR = [
+        { action: { contains: q, mode: 'insensitive' } },
+        { entityType: { contains: q, mode: 'insensitive' } },
+        { entityId: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
+    const [logs, total, distinctActions, distinctEntityTypes] = await Promise.all([
+      prisma.auditLog.findMany({
+        where: whereClause,
+        include: {
+          user: { select: { id: true, name: true, username: true, role: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.auditLog.count({ where: whereClause }),
+      prisma.auditLog.findMany({ distinct: ['action'], select: { action: true }, orderBy: { action: 'asc' } }),
+      prisma.auditLog.findMany({ distinct: ['entityType'], select: { entityType: true }, orderBy: { entityType: 'asc' } }),
+    ]);
+
+    return res.json({
+      success: true,
+      data: logs,
+      pagination: {
+        page: pageNumber,
+        per_page: limit,
+        total,
+        total_pages: Math.ceil(total / limit),
+      },
+      filters: {
+        actions: distinctActions.map((a) => a.action),
+        entityTypes: distinctEntityTypes.map((e) => e.entityType),
+      },
     });
-
-    const recentTrips = await prisma.trip.findMany({
-      take: 20,
-      orderBy: { updatedAt: 'desc' },
-      select: { id: true, ref_id: true, status: true, updatedAt: true, created_by: true },
-    });
-
-    const logs = [
-      ...recentUsers.map((u) => ({
-        id: `user-${u.id}`,
-        category: 'USER_GOVERNANCE',
-        description: `User "${u.name || u.username}" (Role: ${u.role}${u.isSuperAdmin ? ' [SuperAdmin]' : ''}) updated`,
-        timestamp: u.updatedAt,
-      })),
-      ...recentTrips.map((t) => ({
-        id: `trip-${t.id}`,
-        category: 'OPERATIONAL_TRIP',
-        description: `Trip ${t.ref_id || t.id} status set to ${t.status}`,
-        timestamp: t.updatedAt,
-      })),
-    ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-    return res.json({ success: true, data: logs });
   } catch (error) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to fetch audit logs' } });
   }

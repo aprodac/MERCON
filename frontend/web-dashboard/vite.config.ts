@@ -5,7 +5,8 @@ import path from 'path'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, '');
-  const proxyTarget = env.VITE_BACKEND_URL || (env.VITE_API_URL && env.VITE_API_URL.startsWith('http') ? env.VITE_API_URL.replace(/\/api\/?$/, '') : 'https://dev.mercon.tech');
+  const proxyTarget = env.VITE_BACKEND_URL || (env.VITE_API_URL && env.VITE_API_URL.startsWith('http') ? env.VITE_API_URL.replace(/\/api\/?$/, '') : 'http://187.127.180.98');
+  const isDevTarget = proxyTarget.includes('187.127.180.98') || proxyTarget.includes('dev.mercon.tech');
 
   return {
     plugins: [
@@ -27,17 +28,20 @@ export default defineConfig(({ mode }) => {
           target: proxyTarget,
           changeOrigin: true,
           secure: false,
+          headers: isDevTarget ? { host: 'dev.mercon.tech' } : undefined,
         },
         '/uploads': {
           target: proxyTarget,
           changeOrigin: true,
           secure: false,
+          headers: isDevTarget ? { host: 'dev.mercon.tech' } : undefined,
         },
         '/socket.io': {
           target: proxyTarget,
           changeOrigin: true,
           secure: false,
           ws: true,
+          headers: isDevTarget ? { host: 'dev.mercon.tech' } : undefined,
         },
       },
     },

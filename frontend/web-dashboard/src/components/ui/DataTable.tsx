@@ -470,7 +470,19 @@ export const DataTableContent = function DataTable<T>({
                         }
                       }
                     }}
+                    onClickCapture={(e) => {
+                      if (isSelectionMode) {
+                        const target = e.target as HTMLElement;
+                        if (target.tagName.toLowerCase() === 'input' && (target as HTMLInputElement).type === 'checkbox') {
+                          return;
+                        }
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleSelectRow(rowKey);
+                      }
+                    }}
                     onClick={(e) => {
+                      if (isSelectionMode) return;
                       const target = e.target as HTMLElement;
                       if (
                         target.tagName.toLowerCase() === 'input' ||
@@ -480,11 +492,7 @@ export const DataTableContent = function DataTable<T>({
                       ) {
                         return;
                       }
-                      if (isSelectionMode) {
-                        handleSelectRow(rowKey);
-                      } else {
-                        onRowClick?.(row);
-                      }
+                      onRowClick?.(row);
                     }}
                   >
                     {enableSelection && isSelectionMode && (
@@ -570,10 +578,19 @@ export const DataTableContent = function DataTable<T>({
                     onRowClick?.(row);
                   }
                 }}
-                onClick={() => {
+                onClickCapture={(e) => {
                   if (isSelectionMode) {
+                    const target = e.target as HTMLElement;
+                    if (target.tagName.toLowerCase() === 'input' && (target as HTMLInputElement).type === 'checkbox') {
+                      return;
+                    }
+                    e.preventDefault();
+                    e.stopPropagation();
                     handleSelectRow(rowKey);
-                  } else {
+                  }
+                }}
+                onClick={() => {
+                  if (!isSelectionMode) {
                     onRowClick?.(row);
                   }
                 }}

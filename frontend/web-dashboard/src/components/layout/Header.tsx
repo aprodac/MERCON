@@ -9,7 +9,27 @@ import {
   Car, 
   Building2, 
   Wrench,
-  Lock, 
+  Lock,
+  Navigation,
+  CheckCircle2,
+  FileText,
+  Layers,
+  Receipt,
+  Sparkles,
+  MapPin,
+  FolderOpen,
+  BarChart3,
+  TrendingUp,
+  FileSpreadsheet,
+  AlertTriangle,
+  User,
+  Palette,
+  Activity,
+  Shield,
+  Settings,
+  LayoutDashboard,
+  Maximize,
+  Minimize,
 } from 'lucide-react';
 import { Link, useNavigate, useLocation, NavLink } from 'react-router-dom';
 import { authStore } from '@/store/authStore';
@@ -20,6 +40,7 @@ import type { ModuleKey } from '@mercon/shared-types';
 
 interface HeaderProps {
   title?: string;
+  icon?: React.ReactNode;
   breadcrumb?: string;
   hideBackButton?: boolean;
   onBackClick?: () => void;
@@ -36,6 +57,126 @@ interface OperationsItem {
   activeClass: string;
   hoverClass: string;
   accentColor: string;
+}
+
+interface RouteIconInfo {
+  icon: React.ComponentType<{ className?: string; size?: number }>;
+  colorClass: string;
+}
+
+function getRouteIcon(pathname: string, title?: string): RouteIconInfo | null {
+  const path = pathname.toLowerCase();
+  const t = (title || '').toLowerCase();
+
+  // 1. Trips
+  if (path.includes('/trips/monthly') || t.includes('monthly trip')) {
+    return { icon: CalendarRange, colorClass: 'text-purple-600 dark:text-purple-400' };
+  }
+  if (path.includes('/trips') || t.includes('trip')) {
+    if (path.includes('tracking') || t.includes('tracking')) {
+      return { icon: Navigation, colorClass: 'text-orange-500 dark:text-orange-400' };
+    }
+    if (path.includes('completion') || t.includes('completion')) {
+      return { icon: CheckCircle2, colorClass: 'text-emerald-500 dark:text-emerald-400' };
+    }
+    return { icon: Truck, colorClass: 'text-orange-500 dark:text-orange-400' };
+  }
+
+  // 2. Drivers
+  if (path.includes('/drivers') || t.includes('driver')) {
+    if (path.includes('document')) {
+      return { icon: FileText, colorClass: 'text-emerald-600 dark:text-emerald-400' };
+    }
+    return { icon: Users, colorClass: 'text-emerald-500 dark:text-emerald-400' };
+  }
+
+  // 3. Vehicles
+  if (path.includes('/vehicles') || t.includes('vehicle')) {
+    if (path.includes('financial')) {
+      return { icon: Receipt, colorClass: 'text-blue-600 dark:text-blue-400' };
+    }
+    if (path.includes('loading')) {
+      return { icon: Layers, colorClass: 'text-blue-500 dark:text-blue-400' };
+    }
+    if (path.includes('document')) {
+      return { icon: FileText, colorClass: 'text-blue-600 dark:text-blue-400' };
+    }
+    return { icon: Car, colorClass: 'text-blue-500 dark:text-blue-400' };
+  }
+
+  // 4. 3rd Party Fleet
+  if (path.includes('/third-party') || t.includes('3rd party') || t.includes('provider')) {
+    return { icon: Building2, colorClass: 'text-teal-600 dark:text-teal-400' };
+  }
+
+  // 5. Maintenance
+  if (path.includes('/maintenance') || t.includes('maintenance')) {
+    return { icon: Wrench, colorClass: 'text-rose-500 dark:text-rose-400' };
+  }
+
+  // 6. Customers
+  if (path.includes('/customers') || t.includes('customer')) {
+    return { icon: Building2, colorClass: 'text-indigo-600 dark:text-indigo-400' };
+  }
+
+  // 7. Quotations / Commercial
+  if (path.includes('/quotations') || t.includes('quotation') || t.includes('commercial')) {
+    if (path.includes('import')) {
+      return { icon: Sparkles, colorClass: 'text-amber-500 dark:text-amber-400' };
+    }
+    return { icon: FileText, colorClass: 'text-amber-600 dark:text-amber-400' };
+  }
+
+  // 8. Locations
+  if (path.includes('/locations') || t.includes('location')) {
+    return { icon: MapPin, colorClass: 'text-rose-600 dark:text-rose-400' };
+  }
+
+  // 9. Taxonomy
+  if (path.includes('/taxonomy') || t.includes('taxonomy')) {
+    return { icon: Layers, colorClass: 'text-cyan-600 dark:text-cyan-400' };
+  }
+
+  // 10. Documents
+  if (path.includes('/documents') || t.includes('document')) {
+    return { icon: FolderOpen, colorClass: 'text-sky-600 dark:text-sky-400' };
+  }
+
+  // 11. Expenses
+  if (path.includes('/expenses') || t.includes('expense')) {
+    return { icon: Receipt, colorClass: 'text-emerald-600 dark:text-emerald-400' };
+  }
+
+  // 12. Reports
+  if (path.includes('/reports') || path.includes('/report-builder') || t.includes('report')) {
+    if (path.includes('delay')) return { icon: AlertTriangle, colorClass: 'text-amber-600 dark:text-amber-400' };
+    if (path.includes('revenue')) return { icon: TrendingUp, colorClass: 'text-emerald-600 dark:text-emerald-400' };
+    if (path.includes('company')) return { icon: FileSpreadsheet, colorClass: 'text-indigo-600 dark:text-indigo-400' };
+    return { icon: BarChart3, colorClass: 'text-violet-600 dark:text-violet-400' };
+  }
+
+  // 13. Settings & Governance
+  if (path.includes('/settings') || t.includes('setting')) {
+    if (path.includes('profile')) return { icon: User, colorClass: 'text-slate-600 dark:text-slate-400' };
+    if (path.includes('users')) return { icon: Users, colorClass: 'text-emerald-600 dark:text-emerald-400' };
+    if (path.includes('governance') || path.includes('shield')) return { icon: Shield, colorClass: 'text-blue-600 dark:text-blue-400' };
+    if (path.includes('branding')) return { icon: Palette, colorClass: 'text-pink-600 dark:text-pink-400' };
+    if (path.includes('health')) return { icon: Activity, colorClass: 'text-emerald-500 dark:text-emerald-400' };
+    return { icon: Settings, colorClass: 'text-slate-600 dark:text-slate-400' };
+  }
+
+  // 14. Notifications
+  if (path.includes('/notifications') || t.includes('notification')) {
+    return { icon: Bell, colorClass: 'text-amber-500 dark:text-amber-400' };
+  }
+
+  // 15. Dashboard fallback
+  if (path === '/' || t.includes('dashboard')) {
+    return { icon: LayoutDashboard, colorClass: 'text-orange-500 dark:text-orange-400' };
+  }
+
+  // Default fallback for MERCON logistics system
+  return { icon: Truck, colorClass: 'text-orange-500 dark:text-orange-400' };
 }
 
 const rawOperationsItems: OperationsItem[] = [
@@ -111,7 +252,35 @@ const rawOperationsItems: OperationsItem[] = [
   },
 ];
 
-export default function Header({ title, breadcrumb, hideBackButton, onBackClick, onMenuClick }: HeaderProps) {
+const MAIN_PAGE_PATHS = new Set([
+  '/',
+  '/trips',
+  '/trips/monthly',
+  '/drivers',
+  '/vehicles',
+  '/vehicles/financials',
+  '/third-party',
+  '/maintenance',
+  '/customers',
+  '/quotations',
+  '/expenses',
+  '/documents',
+  '/company-reports',
+  '/reports',
+  '/report-builder',
+  '/locations',
+  '/taxonomy',
+  '/settings',
+  '/settings/module-governance',
+  '/settings/users',
+  '/settings/branding',
+  '/settings/health',
+  '/settings/document-types',
+  '/aprodac-documents',
+  '/notifications',
+]);
+
+export default function Header({ title, icon, breadcrumb, hideBackButton, onBackClick, onMenuClick }: HeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const user = authStore.getUser();
@@ -119,6 +288,7 @@ export default function Header({ title, breadcrumb, hideBackButton, onBackClick,
   const isSuperAdmin = user?.role === 'SuperAdmin' || (user as any)?.isSuperAdmin === true;
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -136,8 +306,25 @@ export default function Header({ title, breadcrumb, hideBackButton, onBackClick,
   const disabledOps = rawOperationsItems.filter(item => checkIsDisabled(item));
   const operationsItems = [...enabledOps, ...disabledOps];
 
-  const isDashboard = location.pathname === '/' || title === 'Dashboard' || !!hideBackButton;
-  const initials = user?.name ? user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : (isAdmin ? 'AD' : 'OP');
+  const normalizedPath = location.pathname.replace(/\/$/, '') || '/';
+  const isMainPage = MAIN_PAGE_PATHS.has(normalizedPath);
+  const shouldHideBack = hideBackButton ?? (isMainPage || title === 'Dashboard' || location.pathname === '/');
+  const resolved = getRouteIcon(location.pathname, title);
+  const ResolvedIcon = resolved?.icon;
+
+  useEffect(() => {
+    const handleFullscreenChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  };
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -165,11 +352,6 @@ export default function Header({ title, breadcrumb, hideBackButton, onBackClick,
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
-  const handleLogout = () => {
-    authStore.clearSession();
-    navigate('/login');
-  };
-
   const isItemActive = (itemPath: string) => {
     const currentPath = location.pathname;
     if (itemPath === '/vehicles') {
@@ -186,7 +368,7 @@ export default function Header({ title, breadcrumb, hideBackButton, onBackClick,
       {/* Primary Top Header Row */}
       <div className="px-3 sm:px-4 lg:px-6 h-[72px] lg:h-[88px] flex items-center justify-between gap-2 sm:gap-4">
 
-        {/* Mobile: hamburger + back button + current page title */}
+        {/* Mobile: hamburger + back button + icon + current page title */}
         <div className="flex items-center gap-2.5 min-w-0 lg:hidden">
           <button
             onClick={onMenuClick}
@@ -195,7 +377,7 @@ export default function Header({ title, breadcrumb, hideBackButton, onBackClick,
           >
             <Menu size={20} />
           </button>
-          {!isDashboard && (
+          {!shouldHideBack && (
             <button
               onClick={() => onBackClick ? onBackClick() : navigate(-1)}
               className="p-1.5 rounded-lg text-brand dark:text-orange-400 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-all shrink-0 cursor-pointer shadow-2xs"
@@ -204,19 +386,28 @@ export default function Header({ title, breadcrumb, hideBackButton, onBackClick,
               <ArrowLeft size={18} />
             </button>
           )}
-          <div className="min-w-0">
-            <p className="text-sm font-extrabold text-slate-900 dark:text-slate-100 truncate leading-tight">
-              {title || 'MERCON'}
-            </p>
-            {breadcrumb && (
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate leading-tight">{breadcrumb}</p>
-            )}
+          <div className="flex items-center gap-2.5 min-w-0">
+            {icon ? (
+              <span className="shrink-0 flex items-center text-[#FA634E] dark:text-orange-400">
+                {icon}
+              </span>
+            ) : ResolvedIcon && resolved ? (
+              <ResolvedIcon className={`w-5.5 h-5.5 shrink-0 ${resolved.colorClass}`} />
+            ) : null}
+            <div className="min-w-0">
+              <p className="text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 truncate leading-tight">
+                {title || 'MERCON'}
+              </p>
+              {breadcrumb && (
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate leading-tight">{breadcrumb}</p>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Desktop Left: Back button & Page Title */}
+        {/* Desktop Left: Back button, Page Icon & Page Title */}
         <div className="hidden lg:flex items-center gap-2.5 min-w-0">
-          {!isDashboard && (
+          {!shouldHideBack && (
             <button
               onClick={() => onBackClick ? onBackClick() : navigate(-1)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800/80 hover:text-brand dark:hover:text-brand transition-all cursor-pointer border border-slate-200 dark:border-slate-700 hover:border-brand/40 dark:hover:border-brand/40 shadow-2xs shrink-0 group"
@@ -226,12 +417,19 @@ export default function Header({ title, breadcrumb, hideBackButton, onBackClick,
               <span>Back</span>
             </button>
           )}
-          {title && (
-            <div className="flex items-center gap-1.5 min-w-0">
-              {!isDashboard && <span className="text-slate-300 dark:text-slate-600 font-light shrink-0">/</span>}
-              <h1 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm xl:text-base tracking-tight truncate" title={title}>{title}</h1>
-            </div>
-          )}
+          <div className="flex items-center gap-2.5 min-w-0">
+            {!shouldHideBack && <span className="text-slate-300 dark:text-slate-600 font-light shrink-0">/</span>}
+            {icon ? (
+              <span className="shrink-0 flex items-center text-[#FA634E] dark:text-orange-400">
+                {icon}
+              </span>
+            ) : ResolvedIcon && resolved ? (
+              <ResolvedIcon className={`w-6 h-6 shrink-0 ${resolved.colorClass}`} />
+            ) : null}
+            {title && (
+              <h1 className="font-black text-slate-900 dark:text-slate-100 text-lg xl:text-2xl tracking-tight truncate" title={title}>{title}</h1>
+            )}
+          </div>
         </div>
 
         {/* Right Side: Operations Navigation Bar & Notifications */}
@@ -278,6 +476,16 @@ export default function Header({ title, breadcrumb, hideBackButton, onBackClick,
               );
             })}
           </div>
+
+          {/* Fullscreen toggle */}
+          <button
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? 'Exit full screen' : 'Enter full screen'}
+            title={isFullscreen ? 'Exit full screen' : 'Enter full screen (F11)'}
+            className="hidden sm:inline-flex items-center justify-center w-9 h-9 rounded-xl text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/80 hover:text-brand dark:hover:text-brand transition-all shrink-0 cursor-pointer shadow-2xs"
+          >
+            {isFullscreen ? <Minimize size={17} /> : <Maximize size={17} />}
+          </button>
 
           {/* Notifications trigger (temporarily hidden) */}
           {/* 

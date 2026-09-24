@@ -19,28 +19,47 @@ api.interceptors.request.use((config) => {
 });
 
 /**
- * Extract human-readable, diagnostic error message from API errors (502 Bad Gateway, 500 Server, Prisma/DB, Network).
+ * Every response — success or error — carries an X-Request-Id header (set by
+ * the backend's requestContext middleware). Surfacing it lets a user hand a
+ * support conversation a short reference instead of a raw stack trace.
+ */
+function refSuffix(error: any): string {
+  const requestId = error?.response?.headers?.['x-request-id'];
+  return requestId ? ` (Ref: ${requestId})` : '';
+}
+
+/**
+ * Extract human-readable error message from API errors.
+ *
+ * Server-side failures (5xx) never surface the backend's raw message here —
+ * that used to include Prisma/DB internals ("Database / Schema Error: ...")
+ * whenever the backend's own error text happened to mention a column/table.
+ * A generic message + request-id reference is always safe and is enough for
+ * a user to hand to support; the real detail lives in the Admin Error
+ * Console (backend logs + error_events), not in a toast.
+ *
+ * Client errors (4xx — validation/business-rule/auth) are intentionally
+ * written to be shown to the user, so those still pass the backend's
+ * message straight through.
  */
 export function extractApiErrorMessage(error: any): string {
   if (!error) return 'An unexpected error occurred.';
 
-  // If it's an Axios error or has a response
   if (axios.isAxiosError(error)) {
     const status = error.response?.status;
     const responseData = error.response?.data;
 
-    // 1. 502 Bad Gateway / Server Down / Proxy Failure
     if (status === 502) {
-      const serverMsg = typeof responseData === 'string' ? responseData.slice(0, 150) : responseData?.message || responseData?.error?.message;
-      return `502 Bad Gateway: API server is restarting or unreachable ${serverMsg ? `(${serverMsg})` : ''}`.trim();
+      return `Server unavailable — the API is restarting or unreachable.${refSuffix(error)}`;
     }
-
-    // 2. 504 Gateway Timeout
     if (status === 504) {
-      return '504 Gateway Timeout: API server took too long to respond.';
+      return `Server took too long to respond.${refSuffix(error)}`;
+    }
+    if (typeof status === 'number' && status >= 500) {
+      return `Something went wrong on our end. Please try again.${refSuffix(error)}`;
     }
 
-    // 3. Structured JSON Error Extraction (500 / 400 / 422)
+    // Client errors (4xx) — the backend writes these to be user-facing.
     if (responseData) {
       if (typeof responseData === 'object') {
         const msg =
@@ -50,33 +69,14 @@ export function extractApiErrorMessage(error: any): string {
           responseData.details ||
           (responseData.error?.code ? `Error Code: ${responseData.error.code}` : null);
 
-        if (msg && typeof msg === 'string') {
-          // Check for Prisma / Database Column & Schema Mismatches
-          if (
-            msg.includes('Prisma') ||
-            msg.includes('P2002') ||
-            msg.includes('P2025') ||
-            msg.toLowerCase().includes('column') ||
-            msg.toLowerCase().includes('table') ||
-            msg.toLowerCase().includes('does not exist') ||
-            msg.toLowerCase().includes('migration')
-          ) {
-            return `Database / Schema Error: ${msg}`;
-          }
-          return msg;
-        }
+        if (msg && typeof msg === 'string') return msg;
       } else if (typeof responseData === 'string' && responseData.trim()) {
-        const cleanedStr = responseData.replace(/<[^>]*>/g, '').slice(0, 200).trim();
-        if (cleanedStr.toLowerCase().includes('prisma') || cleanedStr.toLowerCase().includes('column')) {
-          return `Database Error: ${cleanedStr}`;
-        }
-        return cleanedStr || `Server returned HTTP ${status}`;
+        return responseData.replace(/<[^>]*>/g, '').slice(0, 200).trim() || `Server returned HTTP ${status}`;
       }
     }
 
-    // 4. Network Connection Refused / Offline
     if (error.code === 'ERR_NETWORK') {
-      return 'Network Error: Cannot connect to API server (ERR_NETWORK). Check server status on port 3001.';
+      return 'Cannot reach the server. Please check your connection and try again.';
     }
 
     if (error.message) {

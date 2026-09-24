@@ -6,7 +6,7 @@ import {
   Navigation, CheckCircle2, XCircle, AlertTriangle,
   User as UserIcon, Truck, UploadCloud, SquarePen,
   X, Eye, Maximize2, Coins, ListOrdered, Map as MapIcon,
-  MapPin, Repeat, Calendar, Clock, Building2, ArrowRight
+  MapPin, Repeat, Calendar, Clock, Building2, ArrowRight, FileText
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -15,10 +15,12 @@ import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import UploadDocumentModal from '@/components/ui/UploadDocumentModal';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Input } from '@/components/ui/input';
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { useTripWhatsAppShare } from '@/hooks/useTripWhatsAppShare';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import TripLiveMapCard from '@/components/maps/TripLiveMapCard';
 import {
@@ -116,6 +118,23 @@ export default function TripDetailsPage() {
   const [previewImage, setPreviewImage] = useState<PhotoPreviewItem | null>(null);
   const [isLaborModalOpen, setIsLaborModalOpen] = useState(false);
 
+  // Central WhatsApp Share Hook
+  const {
+    whatsappDialogOpen,
+    setWhatsappDialogOpen,
+    whatsappSelectedTrips,
+    whatsappRecipientType,
+    setWhatsappRecipientType,
+    whatsappCustomPhone,
+    setWhatsappCustomPhone,
+    whatsappMessageText,
+    setWhatsappMessageText,
+    whatsappWithTailgate,
+    setWhatsappWithTailgate,
+    openWhatsappShare,
+    handleWhatsappSend,
+  } = useTripWhatsAppShare();
+
   // Fetch Trip
   const { data: trip, isLoading, isError, refetch } = useQuery({
     queryKey: ['trip', id],
@@ -131,7 +150,7 @@ export default function TripDetailsPage() {
   const tripEntityId = trip?.id || id;
 
   // Trip documents
-  const { data: docsRes } = useQuery({
+  const { data: docsRes, refetch: refetchDocuments } = useQuery({
     queryKey: ['documents', 'Trip', tripEntityId],
     queryFn: () => documentService.getAll({ entity_type: 'Trip', entity_id: tripEntityId, per_page: 50 }),
     enabled: !!tripEntityId && !!trip,
@@ -405,55 +424,6 @@ export default function TripDetailsPage() {
   const createdTimeStr = createdDateRaw ? formatInDeploymentTz(createdDateRaw, tz, 'hh:mm a') : '';
   const fullCreatedDateText = createdDayName ? `${createdDayName}, ${createdDateStr}` : createdDateStr;
 
-  const handleShareWhatsApp = () => {
-    if (!trip) return;
-    const pickupLoc = pickup ? resolveStopName(pickup, 'Pickup') : 'Pickup';
-    const dropoffLoc = dropoff ? resolveStopName(dropoff, 'Dropoff') : 'Dropoff';
-    const driverName = trip.is_third_party
-      ? trip.third_party_driver_name || 'Assigned Driver'
-      : trip.driver
-      ? `${trip.driver.first_name || ''} ${trip.driver.last_name || ''}`.trim() || 'Assigned Driver'
-      : 'Assigned Driver';
-    const vehicleInfo = trip.is_third_party
-      ? trip.third_party_vehicle_plate || 'Assigned Vehicle'
-      : trip.vehicle
-      ? trip.vehicle.plate_number
-      : 'Assigned Vehicle';
-    const etaText = trip.planned_end
-      ? formatInDeploymentTz(trip.planned_end, tz, 'dd MMM yyyy, hh:mm a')
-      : 'On Schedule';
-    const createdText = trip.createdAt
-      ? formatInDeploymentTz(trip.createdAt, tz, 'dd MMM yyyy, hh:mm a')
-      : 'N/A';
-    const scheduledText = `${fullScheduledDateText} | ${scheduledTimeStr}`;
-
-    const text = [
-      `*MERCON Logistics - Trip Status Update*`,
-      ``,
-      `*Trip ID:* ${trip.ref_id || trip.id}`,
-      `*Customer:* ${trip.customer?.name || 'Customer'}`,
-      `*Status:* ${(trip.status === 'Draft' || trip.status === 'Scheduled') ? 'SCHEDULED' : trip.status.toUpperCase()}`,
-      `*Scheduled:* ${scheduledText}`,
-      `*Created:* ${createdText}`,
-      ``,
-      `*Pickup:* ${pickupLoc}`,
-      `*Drop-off:* ${dropoffLoc}`,
-      `*ETA:* ${etaText}`,
-      ``,
-      `*Driver:* ${driverName}`,
-      `*Vehicle:* ${vehicleInfo}`,
-      ``,
-      `Thank you for shipping with MERCON Logistics!`,
-    ].join('\n');
-
-    const cleanPhone = trip.customer?.contact_phone?.replace(/[^0-9]/g, '');
-    const waUrl = cleanPhone
-      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`
-      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
-
-    window.open(waUrl, '_blank', 'noopener,noreferrer');
-  };
-
   // Dynamically build real activity steps from trip metadata and actual stops
   const activitySteps: { label: string; time: string | null; done: boolean }[] = [
     {
@@ -580,6 +550,14 @@ export default function TripDetailsPage() {
                     <span>Created: {fullCreatedDateText} {createdTimeStr ? `(${createdTimeStr})` : ''}</span>
                   </div>
                 )}
+
+                {/* 5. AWB / Ref Tag (Light Amber surface + bold text) */}
+                {trip.awb_number && (
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black bg-amber-50 dark:bg-amber-950/60 text-amber-950 dark:text-amber-200 border border-amber-200/90 dark:border-amber-800/90">
+                    <FileText size={12} className="text-amber-600 dark:text-amber-400 shrink-0 stroke-[2.5]" />
+                    <span>AWB: {trip.awb_number}</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -589,7 +567,7 @@ export default function TripDetailsPage() {
             {/* Share via WhatsApp */}
             <Button
               size="sm"
-              onClick={handleShareWhatsApp}
+              onClick={() => trip && openWhatsappShare([trip])}
               className="h-8.5 px-3 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold gap-1.5 shadow-xs cursor-pointer border-none"
             >
               <WhatsAppIcon className="w-3.5 h-3.5 text-white" />
@@ -668,13 +646,13 @@ export default function TripDetailsPage() {
 
         {/* ── 3. VISUAL ROUTE PROGRESS (Panorama Highway Banner) ── */}
         <div className="shrink-0">
-          <VisualRouteProgress stops={trip.stops || []} tz={tz} tripStatus={trip.status} />
+          <VisualRouteProgress stops={trip.stops || []} timeline={(trip as any).route_timeline} tz={tz} tripStatus={trip.status} />
         </div>
 
         {/* ── 4. BOTTOM ROW: TRIP PHOTO EVIDENCE (LEFT 9 COLS) + FINANCIALS (RIGHT 3 COLS) ── */}
         <div className="grid grid-cols-12 gap-3 items-stretch">
           {/* Left Column: Trip Photo Evidence Panel (~75% / 9 Cols) */}
-          <div className="col-span-12 lg:col-span-9 flex flex-col h-full">
+          <div className="col-span-12 lg:col-span-9 flex flex-col gap-3 h-full">
             <TripPhotoEvidence
               documents={documents}
               stops={trip.stops}
@@ -683,6 +661,10 @@ export default function TripDetailsPage() {
               onUpload={() => {
                 setUploadDocType(undefined);
                 setIsUploadModalOpen(true);
+              }}
+              onEvidenceUpdated={() => {
+                refetch();
+                refetchDocuments();
               }}
             />
           </div>
@@ -981,6 +963,176 @@ export default function TripDetailsPage() {
           </div>
         </div>
       )}
+
+      {/* WhatsApp Share Dialog */}
+      <Dialog open={whatsappDialogOpen} onOpenChange={(open) => !open && setWhatsappDialogOpen(false)}>
+        <DialogContent className="sm:max-w-[460px] rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-base font-extrabold flex items-center gap-2 text-emerald-600">
+              <WhatsAppIcon className="w-5 h-5 text-emerald-500" />
+              Share to WhatsApp
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Send trip manifest details directly via WhatsApp web or mobile app.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4 space-y-4">
+            {whatsappSelectedTrips.length === 1 ? (
+              <div className="space-y-3">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Select Recipient:
+                </span>
+
+                <div className="grid grid-cols-1 gap-2">
+                  {/* Driver option */}
+                  <label className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-colors ${whatsappRecipientType === 'driver' ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20' : 'border-slate-100 hover:bg-slate-50'}`}>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="radio"
+                        name="recipientType"
+                        value="driver"
+                        checked={whatsappRecipientType === 'driver'}
+                        onChange={() => setWhatsappRecipientType('driver')}
+                        disabled={!whatsappSelectedTrips[0]?.driver?.phone_primary}
+                        className="text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <div className="flex flex-col text-left">
+                        <span className="text-xs font-bold text-slate-800">
+                          Driver
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-medium">
+                          {whatsappSelectedTrips[0]?.driver
+                            ? `${whatsappSelectedTrips[0].driver.first_name} ${whatsappSelectedTrips[0].driver.last_name}`
+                            : 'Unassigned'}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-600 font-bold bg-white dark:bg-slate-900 border border-slate-200/60 px-2 py-0.5 rounded-md">
+                      {whatsappSelectedTrips[0]?.driver?.phone_primary || 'No phone number'}
+                    </span>
+                  </label>
+
+                  {/* Customer option */}
+                  <label className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-colors ${whatsappRecipientType === 'customer' ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20' : 'border-slate-100 hover:bg-slate-50'}`}>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="radio"
+                        name="recipientType"
+                        value="customer"
+                        checked={whatsappRecipientType === 'customer'}
+                        onChange={() => setWhatsappRecipientType('customer')}
+                        disabled={!whatsappSelectedTrips[0]?.customer?.contact_phone}
+                        className="text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <div className="flex flex-col text-left">
+                        <span className="text-xs font-bold text-slate-800">
+                          Customer
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-medium">
+                          {whatsappSelectedTrips[0]?.customer?.name || 'Unassigned'}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-mono text-slate-600 font-bold bg-white dark:bg-slate-900 border border-slate-200/60 px-2 py-0.5 rounded-md">
+                      {whatsappSelectedTrips[0]?.customer?.contact_phone || 'No phone number'}
+                    </span>
+                  </label>
+
+                  {/* Custom number option */}
+                  <label className={`flex flex-col gap-2.5 p-3 rounded-xl border-2 cursor-pointer transition-colors ${whatsappRecipientType === 'custom' ? 'border-emerald-500 bg-emerald-50/40 dark:bg-emerald-950/20' : 'border-slate-100 hover:bg-slate-50'}`}>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="radio"
+                        name="recipientType"
+                        value="custom"
+                        checked={whatsappRecipientType === 'custom'}
+                        onChange={() => setWhatsappRecipientType('custom')}
+                        className="text-emerald-600 focus:ring-emerald-500"
+                      />
+                      <span className="text-xs font-bold text-slate-800">
+                        Custom Phone Number
+                      </span>
+                    </div>
+
+                    {whatsappRecipientType === 'custom' && (
+                      <div className="pl-6 animate-slide-down">
+                        <Input
+                          placeholder="e.g. 966512345678"
+                          value={whatsappCustomPhone}
+                          onChange={(e) => setWhatsappCustomPhone(e.target.value)}
+                          className="h-8 text-xs border-slate-200 focus-visible:ring-emerald-500/20 focus-visible:border-emerald-500"
+                        />
+                      </div>
+                    )}
+                  </label>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Recipient Phone Number (Optional)
+                </label>
+                <Input
+                  placeholder="e.g. 966512345678 (Leave blank to select chat inside WhatsApp)"
+                  value={whatsappCustomPhone}
+                  onChange={(e) => setWhatsappCustomPhone(e.target.value)}
+                  className="h-9 text-xs border-slate-200 focus-visible:ring-emerald-500/20 focus-visible:border-emerald-500"
+                />
+                <p className="text-[10px] text-slate-400">
+                  Note: Sharing multiple trips constructs a manifest summary text.
+                </p>
+              </div>
+            )}
+
+            {/* Message text preview */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Message Preview:
+                </label>
+                {whatsappSelectedTrips.length === 1 && ['Draft', 'Scheduled'].includes(whatsappSelectedTrips[0]?.status || '') && (
+                  <label className="flex items-center gap-2 cursor-pointer bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 px-2 py-1 rounded-md transition-colors">
+                    <input
+                      type="checkbox"
+                      checked={whatsappWithTailgate}
+                      onChange={(e) => setWhatsappWithTailgate(e.target.checked)}
+                      className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 bg-white"
+                    />
+                    <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                      Include Tailgate
+                    </span>
+                  </label>
+                )}
+              </div>
+              <textarea
+                value={whatsappMessageText}
+                onChange={(e) => setWhatsappMessageText(e.target.value)}
+                className="w-full h-40 p-3 rounded-xl border border-slate-200 text-xs font-medium font-sans leading-relaxed focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 bg-slate-50/50 resize-none"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-xs h-9 rounded-lg"
+              onClick={() => setWhatsappDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="text-xs font-bold h-9 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center gap-1.5 px-4"
+              onClick={handleWhatsappSend}
+            >
+              <WhatsAppIcon className="w-4 h-4 text-white" />
+              Open WhatsApp
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DashboardLayout>
   );
 }

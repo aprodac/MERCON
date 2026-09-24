@@ -1,6 +1,9 @@
+import type { UserRole } from '@mercon/shared-types';
 import { authStore } from '@/store/authStore';
 
-export const ROLE_PERMISSIONS: Record<string, string[]> = {
+// Keyed by UserRole so a renamed or newly added role fails the build here
+// rather than silently losing its permissions at runtime.
+export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   SuperAdmin: ['*'],
   Admin: [
     'trips.view.all',
@@ -65,9 +68,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
 };
 
-export function checkPermission(userRole: string | undefined | null, permissionKey: string): boolean {
+export function checkPermission(userRole: UserRole | string | undefined | null, permissionKey: string): boolean {
   if (!userRole) return false;
-  const permissions = ROLE_PERMISSIONS[userRole] || [];
+  const permissions = ROLE_PERMISSIONS[userRole as UserRole] || [];
   if (permissions.includes('*')) return true;
   return permissions.includes(permissionKey);
 }

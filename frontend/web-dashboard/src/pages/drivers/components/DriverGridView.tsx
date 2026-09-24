@@ -15,7 +15,41 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatInDeploymentTz } from '@/lib/datetime';
+import { cn } from '@/lib/utils';
 import { DriverFilterToolbar } from './DriverFilterToolbar';
+
+/** GPS status row — mirrors the states shown on the Kanban card and driver table's GPS column. */
+function DriverGpsStatus({ driver }: { driver: Driver }) {
+  const activeTrip = driver.trips?.[0];
+  const vehicle = driver.assignedVehicle || activeTrip?.vehicle;
+  const resolvedLoc = vehicle?.resolved_location;
+
+  if (!vehicle || !activeTrip) return null;
+
+  if (!resolvedLoc || resolvedLoc.display_state === 'UNAVAILABLE') {
+    return (
+      <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+        <span className="font-medium text-slate-400 dark:text-slate-500">GPS:</span>
+        <span className="flex items-center gap-1.5 font-semibold text-slate-400 dark:text-slate-500">
+          <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
+          Not Active
+        </span>
+      </div>
+    );
+  }
+
+  const isCurrent = resolvedLoc.display_state === 'CURRENT';
+
+  return (
+    <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+      <span className="font-medium text-slate-400 dark:text-slate-500">GPS:</span>
+      <span className={cn('flex items-center gap-1.5 font-semibold', isCurrent ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
+        <span className={cn('w-1.5 h-1.5 rounded-full', isCurrent ? 'bg-emerald-500' : 'bg-amber-500')} />
+        {isCurrent ? 'Live' : 'Last seen'}{resolvedLoc.formatted_time_ago ? ` · ${resolvedLoc.formatted_time_ago}` : ''}
+      </span>
+    </div>
+  );
+}
 
 export interface DriverGridViewProps {
   drivers: Driver[];
@@ -33,6 +67,7 @@ export interface DriverGridViewProps {
   search: string;
   onSearchChange: (val: string) => void;
   filterToolbar: React.ReactNode;
+  headerActions?: React.ReactNode;
 }
 
 export function DriverGridView({
@@ -51,6 +86,7 @@ export function DriverGridView({
   search,
   onSearchChange,
   filterToolbar,
+  headerActions,
 }: DriverGridViewProps) {
   const navigate = useNavigate();
 
@@ -92,6 +128,7 @@ export function DriverGridView({
 
           <div className="flex w-full xl:w-auto items-center flex-wrap gap-2 sm:shrink-0 xl:ml-auto rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-950/30 p-1.5">
             {filterToolbar}
+            {headerActions}
           </div>
         </div>
       </div>
@@ -166,6 +203,7 @@ export function DriverGridView({
                       {(d.assignedVehicle || d.trips?.[0]?.vehicle)?.plate_number || 'Unassigned'}
                     </span>
                   </div>
+                  <DriverGpsStatus driver={d} />
                   {(() => {
                     const vehicle = d.assignedVehicle || d.trips?.[0]?.vehicle;
                     if (!vehicle?.capacity_kg) return null;

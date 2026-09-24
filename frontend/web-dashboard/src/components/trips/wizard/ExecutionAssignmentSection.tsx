@@ -7,6 +7,7 @@ import { thirdPartyService, ProviderRateCard, Previous3PLDriver } from '@/servic
 import VehicleCompatibilityBadge from '@/components/trips/shared/VehicleCompatibilityBadge';
 import { getCompatibilityRuleForClass } from '@/utils/vehicleCompatibilityRegistry';
 import { getVehicleTypeFromCapacity } from '@/hooks/useCreateTripForm';
+import { cn } from '@/lib/utils';
 
 interface ExecutionAssignmentSectionProps {
   assignmentType: 'own' | 'third_party' | '3pl';
@@ -34,6 +35,10 @@ interface ExecutionAssignmentSectionProps {
   contractBillingType?: string;
   fieldErrors?: Record<string, boolean>;
   vehicles?: any[];
+  isAssignmentLocked?: boolean;
+  status?: string;
+  awbNumber?: string;
+  setAwbNumber?: (val: string) => void;
 }
 
 export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProps> = ({
@@ -62,6 +67,10 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
   contractBillingType,
   fieldErrors = {},
   vehicles = [],
+  isAssignmentLocked = false,
+  status = '',
+  awbNumber = '',
+  setAwbNumber,
 }) => {
   const [coDriver, setCoDriver] = useState('');
   const [showCoDriver, setShowCoDriver] = useState(false);
@@ -230,14 +239,38 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 <span>Please select an assignment choice: Driver & Vehicle or Assign Later.</span>
               </div>
             )}
+            {/* AWB / REFERENCE NUMBER */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  AWB / REFERENCE NUMBER
+                </label>
+                <span className="text-[9px] font-bold text-slate-400">Optional</span>
+              </div>
+              <input
+                type="text"
+                disabled={isAssignmentLocked}
+                value={awbNumber}
+                onChange={(e) => setAwbNumber?.(e.target.value)}
+                placeholder="Vehicle no. or client waybill no."
+                className={cn(
+                  "h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100",
+                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                )}
+              />
+            </div>
+
             {/* VEHICLE CLASS */}
             {setContractVehicleType && (
               <div className="space-y-1">
                 <label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                   VEHICLE CLASS
                 </label>
-                <Select value={contractVehicleType} onValueChange={setContractVehicleType}>
-                  <SelectTrigger className="h-8 rounded-lg border-slate-200 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs">
+                <Select disabled={isAssignmentLocked} value={contractVehicleType} onValueChange={setContractVehicleType}>
+                  <SelectTrigger className={cn(
+                    "h-8 rounded-lg border-slate-200 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs",
+                    isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                  )}>
                     <SelectValue placeholder="Select Vehicle Class..." />
                   </SelectTrigger>
                   <SelectContent className="z-[9999]">
@@ -257,28 +290,34 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 <label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1">
                   <User className="w-3 h-3 text-emerald-600" /> PRIMARY DRIVER
                 </label>
-                {(!masterDriver || masterDriver === 'unassigned') ? (
-                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-900">
-                    Assign Later
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleDriverChange('unassigned')}
-                    className="text-[9px] font-bold text-slate-400 hover:text-amber-600 underline cursor-pointer"
-                    title="Mark driver as assign later"
-                  >
-                    Assign Later
-                  </button>
+                {!isAssignmentLocked && (
+                  (!masterDriver || masterDriver === 'unassigned') ? (
+                    <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-900">
+                      Assign Later
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleDriverChange('unassigned')}
+                      className="text-[9px] font-bold text-slate-400 hover:text-amber-600 underline cursor-pointer"
+                      title="Mark driver as assign later"
+                    >
+                      Assign Later
+                    </button>
+                  )
                 )}
               </div>
               <Combobox
                 options={driverOptions}
                 value={masterDriver}
                 onChange={handleDriverChange}
+                disabled={isAssignmentLocked}
                 placeholder="Select primary driver or assign later..."
                 searchPlaceholder="Search driver name, phone..."
-                triggerClassName="h-8 rounded-lg border-slate-200 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
+                triggerClassName={cn(
+                  "h-8 rounded-lg border-slate-200 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs",
+                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                )}
               />
             </div>
 
@@ -288,28 +327,34 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 <label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1">
                   <Truck className="w-3 h-3 text-indigo-600" /> PRIMARY VEHICLE
                 </label>
-                {(!masterVehicle || masterVehicle === 'unassigned') ? (
-                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-900">
-                    Assign Later
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => handleVehicleChange('unassigned')}
-                    className="text-[9px] font-bold text-slate-400 hover:text-amber-600 underline cursor-pointer"
-                    title="Mark vehicle as assign later"
-                  >
-                    Assign Later
-                  </button>
+                {!isAssignmentLocked && (
+                  (!masterVehicle || masterVehicle === 'unassigned') ? (
+                    <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-900">
+                      Assign Later
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleVehicleChange('unassigned')}
+                      className="text-[9px] font-bold text-slate-400 hover:text-amber-600 underline cursor-pointer"
+                      title="Mark vehicle as assign later"
+                    >
+                      Assign Later
+                    </button>
+                  )
                 )}
               </div>
               <Combobox
                 options={vehicleOptions}
                 value={masterVehicle}
                 onChange={handleVehicleChange}
+                disabled={isAssignmentLocked}
                 placeholder="Select primary vehicle or assign later..."
                 searchPlaceholder="Search plate, asset code..."
-                triggerClassName="h-8 rounded-lg border-slate-200 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs"
+                triggerClassName={cn(
+                  "h-8 rounded-lg border-slate-200 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs",
+                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                )}
               />
               <VehicleCompatibilityBadge
                 contractVehicleType={contractVehicleType}
@@ -321,40 +366,42 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
             </div>
 
             {/* OPTIONAL CO-DRIVER / RELIEVER */}
-            {showCoDriver ? (
-              <div className="space-y-1 p-2 rounded-lg bg-slate-50 border border-slate-200 dark:bg-slate-800 dark:border-slate-700">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                    CO-DRIVER / RELIEVER
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCoDriver('');
-                      setShowCoDriver(false);
-                    }}
-                    className="text-slate-400 hover:text-rose-600 cursor-pointer"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                  </button>
+            {!isAssignmentLocked && (
+              showCoDriver ? (
+                <div className="space-y-1 p-2 rounded-lg bg-slate-50 border border-slate-200 dark:bg-slate-800 dark:border-slate-700">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                      CO-DRIVER / RELIEVER
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCoDriver('');
+                        setShowCoDriver(false);
+                      }}
+                      className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <Combobox
+                    options={driverOptions.filter((d) => d.value !== masterDriver)}
+                    value={coDriver}
+                    onChange={setCoDriver}
+                    placeholder="Select co-driver..."
+                    searchPlaceholder="Search co-driver name..."
+                    triggerClassName="h-8 rounded-lg border-slate-200 text-xs font-semibold shadow-2xs"
+                  />
                 </div>
-                <Combobox
-                  options={driverOptions.filter((d) => d.value !== masterDriver)}
-                  value={coDriver}
-                  onChange={setCoDriver}
-                  placeholder="Select co-driver..."
-                  searchPlaceholder="Search co-driver name..."
-                  triggerClassName="h-8 rounded-lg border-slate-200 text-xs font-semibold shadow-2xs"
-                />
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowCoDriver(true)}
-                className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 flex items-center gap-1 cursor-pointer pt-0.5"
-              >
-                <Plus className="w-3 h-3" /> Add Co-Driver / Reliever
-              </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowCoDriver(true)}
+                  className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 flex items-center gap-1 cursor-pointer pt-0.5"
+                >
+                  <Plus className="w-3 h-3" /> Add Co-Driver / Reliever
+                </button>
+              )
             )}
           </div>
 
@@ -501,27 +548,32 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
               <label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
                 3PL PROVIDER *
               </label>
-              {thirdPartyProviderId === 'unassigned' ? (
-                <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-900">
-                  Assign Later
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setThirdPartyProviderId('unassigned');
-                    if (!thirdPartyDriverName) setThirdPartyDriverName('Assign Later');
-                    if (!thirdPartyVehiclePlate) setThirdPartyVehiclePlate('Assign Later');
-                  }}
-                  className="text-[9px] font-bold text-slate-400 hover:text-amber-600 underline cursor-pointer"
-                  title="Mark 3PL Provider as assign later"
-                >
-                  Assign Later
-                </button>
+              {!isAssignmentLocked && (
+                thirdPartyProviderId === 'unassigned' ? (
+                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-900">
+                    Assign Later
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setThirdPartyProviderId('unassigned');
+                      if (!thirdPartyDriverName) setThirdPartyDriverName('Assign Later');
+                      if (!thirdPartyVehiclePlate) setThirdPartyVehiclePlate('Assign Later');
+                    }}
+                    className="text-[9px] font-bold text-slate-400 hover:text-amber-600 underline cursor-pointer"
+                    title="Mark 3PL Provider as assign later"
+                  >
+                    Assign Later
+                  </button>
+                )
               )}
             </div>
-            <Select value={thirdPartyProviderId} onValueChange={setThirdPartyProviderId}>
-              <SelectTrigger className="h-8 rounded-lg border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs">
+            <Select disabled={isAssignmentLocked} value={thirdPartyProviderId} onValueChange={setThirdPartyProviderId}>
+              <SelectTrigger className={cn(
+                "h-8 rounded-lg border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs",
+                isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+              )}>
                 <SelectValue placeholder="Select 3PL Partner or Assign Later..." />
               </SelectTrigger>
               <SelectContent className="z-[9999]">
@@ -550,8 +602,11 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 <User className="w-3 h-3 text-indigo-600" /> SELECT PREVIOUS DRIVER
               </label>
 
-              <Select value={selectedDriverIndex} onValueChange={handleSelectPreviousDriver}>
-                <SelectTrigger className="h-8 rounded-lg border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs bg-white dark:bg-slate-900">
+              <Select disabled={isAssignmentLocked} value={selectedDriverIndex} onValueChange={handleSelectPreviousDriver}>
+                <SelectTrigger className={cn(
+                  "h-8 rounded-lg border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs bg-white dark:bg-slate-900",
+                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                )}>
                   <SelectValue placeholder={isLoadingPreviousDrivers ? 'Loading history...' : 'Select Previous Driver...'} />
                 </SelectTrigger>
                 <SelectContent className="z-[9999]">
@@ -580,26 +635,32 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
                   3PL DRIVER NAME
                 </label>
-                {thirdPartyDriverName === 'Assign Later' ? (
-                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-900">
-                    Assign Later
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setThirdPartyDriverName('Assign Later')}
-                    className="text-[9px] font-bold text-slate-400 hover:text-amber-600 underline cursor-pointer"
-                  >
-                    Assign Later
-                  </button>
+                {!isAssignmentLocked && (
+                  thirdPartyDriverName === 'Assign Later' ? (
+                    <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-900">
+                      Assign Later
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setThirdPartyDriverName('Assign Later')}
+                      className="text-[9px] font-bold text-slate-400 hover:text-amber-600 underline cursor-pointer"
+                    >
+                      Assign Later
+                    </button>
+                  )
                 )}
               </div>
               <input
                 type="text"
+                disabled={isAssignmentLocked}
                 value={thirdPartyDriverName}
                 onChange={(e) => setThirdPartyDriverName(e.target.value)}
                 placeholder="Driver name or Assign Later..."
-                className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                className={cn(
+                  "h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100",
+                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                )}
               />
             </div>
 
@@ -611,10 +672,14 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
               </div>
               <input
                 type="text"
+                disabled={isAssignmentLocked}
                 value={thirdPartyDriverPhone}
                 onChange={(e) => setThirdPartyDriverPhone?.(e.target.value)}
                 placeholder="Driver phone..."
-                className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                className={cn(
+                  "h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100",
+                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                )}
               />
             </div>
 
@@ -623,26 +688,32 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 <label className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">
                   3PL VEHICLE PLATE
                 </label>
-                {thirdPartyVehiclePlate === 'Assign Later' ? (
-                  <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-900">
-                    Assign Later
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setThirdPartyVehiclePlate('Assign Later')}
-                    className="text-[9px] font-bold text-slate-400 hover:text-amber-600 underline cursor-pointer"
-                  >
-                    Assign Later
-                  </button>
+                {!isAssignmentLocked && (
+                  thirdPartyVehiclePlate === 'Assign Later' ? (
+                    <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-900">
+                      Assign Later
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setThirdPartyVehiclePlate('Assign Later')}
+                      className="text-[9px] font-bold text-slate-400 hover:text-amber-600 underline cursor-pointer"
+                    >
+                      Assign Later
+                    </button>
+                  )
                 )}
               </div>
               <input
                 type="text"
+                disabled={isAssignmentLocked}
                 value={thirdPartyVehiclePlate}
                 onChange={(e) => setThirdPartyVehiclePlate(e.target.value)}
                 placeholder="Plate number or Assign Later..."
-                className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                className={cn(
+                  "h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100",
+                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                )}
               />
             </div>
 
@@ -651,7 +722,7 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 <label className="text-[10px] font-extrabold text-[#FA634E] uppercase tracking-wider truncate">
                   3PL COST (SAR) *
                 </label>
-                {matchedRate && (
+                {!isAssignmentLocked && matchedRate && (
                   <button
                     type="button"
                     onClick={() => setThirdPartyCost?.(String(matchedRate.cost))}
@@ -665,16 +736,19 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
               <div id="field-3pl-cost" className="relative">
                 <input
                   type="number"
+                  disabled={isAssignmentLocked}
                   min="0"
                   step="1"
                   value={thirdPartyCost}
                   onChange={(e) => setThirdPartyCost?.(e.target.value)}
                   placeholder="0"
-                  className={`h-8 rounded-lg border pl-2.5 pr-8 text-xs font-mono font-black w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#FA634E] ${
+                  className={cn(
+                    "h-8 rounded-lg border pl-2.5 pr-8 text-xs font-mono font-black w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:border-[#FA634E]",
                     fieldErrors?.['thirdPartyCost']
-                      ? 'border-red-500 ring-2 ring-red-500/30 bg-red-50/20 dark:bg-red-950/20'
-                      : 'border-slate-200 dark:border-slate-700'
-                  }`}
+                      ? "border-red-500 ring-2 ring-red-500/30 bg-red-50/20 dark:bg-red-950/20"
+                      : "border-slate-200 dark:border-slate-700",
+                    isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                  )}
                 />
                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">SAR</span>
               </div>

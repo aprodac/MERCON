@@ -86,6 +86,32 @@ const QuotationAiImportPage    = lazyWithRetry(() => import('@/pages/quotations/
 const ExpenseListPage         = lazyWithRetry(() => import('@/pages/expenses/ExpenseListPage'));
 const ExpenseDetailsPage      = lazyWithRetry(() => import('@/pages/expenses/ExpenseDetailsPage'));
 
+// Accounting & Finance Foundation
+const ChartOfAccountsPage     = lazyWithRetry(() => import('@/pages/finance/ChartOfAccountsPage'));
+const AccountingPeriodsPage   = lazyWithRetry(() => import('@/pages/finance/AccountingPeriodsPage'));
+const JournalEntriesPage      = lazyWithRetry(() => import('@/pages/finance/JournalEntriesPage'));
+const JournalEntryDetailPage  = lazyWithRetry(() => import('@/pages/finance/JournalEntryDetailPage'));
+const JournalEntryEditorPage  = lazyWithRetry(() => import('@/pages/finance/JournalEntryEditorPage'));
+const InvoicesPage            = lazyWithRetry(() => import('@/pages/finance/InvoicesPage'));
+const InvoiceCreatePage       = lazyWithRetry(() => import('@/pages/finance/InvoiceCreatePage'));
+const BillsPage               = lazyWithRetry(() => import('@/pages/finance/BillsPage'));
+const BillCreatePage          = lazyWithRetry(() => import('@/pages/finance/BillCreatePage'));
+const BankAccountsPage        = lazyWithRetry(() => import('@/pages/finance/BankAccountsPage'));
+const BankAccountDetailPage   = lazyWithRetry(() => import('@/pages/finance/BankAccountDetailPage'));
+const BankAccountEditorPage   = lazyWithRetry(() => import('@/pages/finance/BankAccountEditorPage'));
+const AdvancesPage            = lazyWithRetry(() => import('@/pages/finance/AdvancesPage'));
+const AdvanceDetailPage      = lazyWithRetry(() => import('@/pages/finance/AdvanceDetailPage'));
+const AdvanceEditorPage      = lazyWithRetry(() => import('@/pages/finance/AdvanceEditorPage'));
+const ReconciliationPage      = lazyWithRetry(() => import('@/pages/finance/ReconciliationPage'));
+const TrialBalancePage        = lazyWithRetry(() => import('@/pages/finance/TrialBalancePage'));
+const ProfitAndLossPage       = lazyWithRetry(() => import('@/pages/finance/ProfitAndLossPage'));
+const BalanceSheetPage        = lazyWithRetry(() => import('@/pages/finance/BalanceSheetPage'));
+const ARAgeingPage            = lazyWithRetry(() => import('@/pages/finance/ARAgeingPage'));
+const APAgeingPage            = lazyWithRetry(() => import('@/pages/finance/APAgeingPage'));
+const CashFlowPage            = lazyWithRetry(() => import('@/pages/finance/CashFlowPage'));
+const GeneralLedgerPage       = lazyWithRetry(() => import('@/pages/finance/GeneralLedgerPage'));
+const FinanceKitPage          = lazyWithRetry(() => import('@/pages/finance/FinanceKitPage'));
+
 // Documents
 const DocumentsCenterPage     = lazyWithRetry(() => import('@/pages/documents/DocumentsCenterPage'));
 const OwnerFolderPage         = lazyWithRetry(() => import('@/pages/documents/OwnerFolderPage'));
@@ -105,6 +131,9 @@ const ReportBuilderLandingPage   = lazyWithRetry(() => import('@/pages/report-bu
 const QuickReportPage            = lazyWithRetry(() => import('@/pages/report-builder/QuickReportPage'));
 const AdvancedBuilderPage        = lazyWithRetry(() => import('@/pages/report-builder/AdvancedBuilderPage'));
 
+// Learning & Academy
+const LearningPage               = lazyWithRetry(() => import('@/pages/learning/LearningPage'));
+
 // Settings & Governance
 const OperatorProfilePage     = lazyWithRetry(() => import('@/pages/settings/OperatorProfilePage'));
 const SettingsPage            = lazyWithRetry(() => import('@/pages/settings/SettingsPage'));
@@ -113,7 +142,10 @@ const DocumentTypeAdminPage   = lazyWithRetry(() => import('@/pages/settings/Doc
 const TaxonomySettingsPage    = lazyWithRetry(() => import('@/pages/settings/TaxonomySettingsPage'));
 const BrandingSettingsPage    = lazyWithRetry(() => import('@/pages/settings/BrandingSettingsPage'));
 const SystemHealthPage        = lazyWithRetry(() => import('@/pages/settings/SystemHealthPage'));
+const AuditLogPage            = lazyWithRetry(() => import('@/pages/settings/AuditLogPage'));
 const ModuleGovernancePage    = lazyWithRetry(() => import('@/pages/settings/ModuleGovernancePage'));
+const ErrorConsolePage        = lazyWithRetry(() => import('@/pages/settings/ErrorConsolePage'));
+const ErrorEventDetailPage    = lazyWithRetry(() => import('@/pages/settings/ErrorEventDetailPage'));
 const RecycleBinPage          = lazyWithRetry(() => import('@/pages/recycle-bin/RecycleBinPage'));
 
 /* ─── Protected Route wrapper ────────────────────────────────────────────── */
@@ -261,6 +293,37 @@ export default function AppRouter() {
             <Route path="/expenses"                 element={<RequireModule moduleKey="expenses"><ExpenseListPage /></RequireModule>} />
             <Route path="/expenses/:id"             element={<RequireModule moduleKey="expenses"><ExpenseDetailsPage /></RequireModule>} />
 
+            {/* Finance & General Ledger */}
+            <Route path="/finance/chart-of-accounts" element={<RequireModule moduleKey="finance"><ChartOfAccountsPage /></RequireModule>} />
+            <Route path="/finance/periods"           element={<RequireModule moduleKey="finance"><AccountingPeriodsPage /></RequireModule>} />
+            <Route path="/finance/journal-entries"   element={<RequireModule moduleKey="finance"><JournalEntriesPage /></RequireModule>} />
+            <Route path="/finance/journal-entries/new" element={<RequireModule moduleKey="finance"><JournalEntryEditorPage /></RequireModule>} />
+            <Route path="/finance/journal-entries/:id" element={<RequireModule moduleKey="finance"><WithIdKey Page={JournalEntryDetailPage} /></RequireModule>} />
+            <Route path="/finance/journal-entries/:id/edit" element={<RequireModule moduleKey="finance"><WithIdKey Page={JournalEntryEditorPage} /></RequireModule>} />
+            <Route path="/finance/invoices/new"      element={<RequireModule moduleKey="finance"><InvoiceCreatePage /></RequireModule>} />
+            <Route path="/finance/invoices"          element={<RequireModule moduleKey="finance"><InvoicesPage /></RequireModule>} />
+            <Route path="/finance/bills/new"        element={<RequireModule moduleKey="finance"><BillCreatePage /></RequireModule>} />
+            <Route path="/finance/bills"             element={<RequireModule moduleKey="finance"><BillsPage /></RequireModule>} />
+            <Route path="/finance/bank-accounts/new"      element={<RequireModule moduleKey="finance"><BankAccountEditorPage /></RequireModule>} />
+            <Route path="/finance/bank-accounts/:id/edit" element={<RequireModule moduleKey="finance"><WithIdKey Page={BankAccountEditorPage} /></RequireModule>} />
+            <Route path="/finance/bank-accounts/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={BankAccountDetailPage} /></RequireModule>} />
+            <Route path="/finance/bank-accounts"          element={<RequireModule moduleKey="finance"><BankAccountsPage /></RequireModule>} />
+            <Route path="/finance/advances"          element={<RequireModule moduleKey="finance"><AdvancesPage /></RequireModule>} />
+            <Route path="/finance/advances/new"      element={<RequireModule moduleKey="finance"><AdvanceEditorPage /></RequireModule>} />
+            <Route path="/finance/advances/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={AdvanceDetailPage} /></RequireModule>} />
+            <Route path="/finance/reconciliation"    element={<RequireModule moduleKey="finance"><ReconciliationPage /></RequireModule>} />
+            <Route path="/finance/trial-balance"     element={<RequireModule moduleKey="finance"><TrialBalancePage /></RequireModule>} />
+            <Route path="/finance/profit-and-loss"    element={<RequireModule moduleKey="finance"><ProfitAndLossPage /></RequireModule>} />
+            <Route path="/finance/balance-sheet"     element={<RequireModule moduleKey="finance"><BalanceSheetPage /></RequireModule>} />
+            <Route path="/finance/ar-ageing"          element={<RequireModule moduleKey="finance"><ARAgeingPage /></RequireModule>} />
+            <Route path="/finance/ap-ageing"          element={<RequireModule moduleKey="finance"><APAgeingPage /></RequireModule>} />
+            <Route path="/finance/cash-flow"          element={<RequireModule moduleKey="finance"><CashFlowPage /></RequireModule>} />
+            <Route path="/finance/general-ledger"     element={<RequireModule moduleKey="finance"><GeneralLedgerPage /></RequireModule>} />
+            {import.meta.env.DEV && (
+              <Route path="/finance/_kit"              element={<RequireModule moduleKey="finance"><FinanceKitPage /></RequireModule>} />
+            )}
+            <Route path="/finance"                   element={<Navigate to="/finance/chart-of-accounts" replace />} />
+
             {/* Documents */}
             <Route path="/documents"                element={<RequireModule moduleKey="documents"><DocumentsCenterPage /></RequireModule>} />
             <Route path="/documents/expiry"         element={<Navigate to="/documents" replace />} />
@@ -287,6 +350,9 @@ export default function AppRouter() {
             <Route path="/report-builder/quick"    element={<RequireModule moduleKey="report-builder"><QuickReportPage /></RequireModule>} />
             <Route path="/report-builder/advanced" element={<RequireModule moduleKey="report-builder"><AdvancedBuilderPage /></RequireModule>} />
 
+            {/* Learning & Academy */}
+            <Route path="/learning"                element={<RequireModule moduleKey="learning"><LearningPage /></RequireModule>} />
+
             {/* Settings & Governance */}
             <Route path="/settings"                 element={<SettingsPage />} />
             <Route path="/settings/profile"         element={<Navigate to="/settings" replace />} />
@@ -295,7 +361,10 @@ export default function AppRouter() {
             <Route path="/settings/taxonomy"        element={<RequireRole roles={['SuperAdmin']}><TaxonomySettingsPage /></RequireRole>} />
             <Route path="/settings/branding"        element={<RequireRole roles={['SuperAdmin']}><BrandingSettingsPage /></RequireRole>} />
             <Route path="/settings/system-health"   element={<RequireRole roles={['SuperAdmin']}><SystemHealthPage /></RequireRole>} />
+            <Route path="/settings/audit-log"       element={<RequireRole roles={['SuperAdmin']}><AuditLogPage /></RequireRole>} />
             <Route path="/settings/module-governance" element={<RequireRole roles={['SuperAdmin']}><ModuleGovernancePage /></RequireRole>} />
+            <Route path="/settings/error-console"     element={<RequireRole roles={['Admin']}><ErrorConsolePage /></RequireRole>} />
+            <Route path="/settings/error-console/:id" element={<RequireRole roles={['Admin']}><ErrorEventDetailPage /></RequireRole>} />
             <Route path="/settings/recycle-bin"     element={<RequireModule moduleKey="recycle-bin"><RecycleBinPage /></RequireModule>} />
             <Route path="/recycle-bin font-medium"  element={<Navigate to="/settings/recycle-bin" replace />} />
             <Route path="/recycle-bin"              element={<Navigate to="/settings/recycle-bin" replace />} />

@@ -1,0 +1,6 @@
+/** Route: /profile — driver profile. */
+import ProfileScreen from '@/screens/ProfileScreen';
+
+export default function ProfileRoute() {
+  return <ProfileScreen />;
+}

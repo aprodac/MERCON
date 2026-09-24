@@ -25,9 +25,14 @@ COPY backend/api-server ./backend/api-server
 RUN npm run build -w @mercon/api-server
 
 WORKDIR /app/backend/api-server
-RUN mkdir -p /app/backend/api-server/uploads
+RUN mkdir -p /app/backend/api-server/uploads && chown -R node:node /app
 
 EXPOSE 3000
+
+# node:20-alpine ships a built-in unprivileged 'node' user (uid 1000) — run as
+# that instead of root. Bind-mounted upload dirs are chmod 777 on the host by
+# CI, so this doesn't affect their write access.
+USER node
 
 # Start command: serve compiled Node app.
 # Migrations are executed in CI/CD before replacing the running container.

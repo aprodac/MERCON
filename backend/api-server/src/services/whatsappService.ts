@@ -18,7 +18,7 @@ export class WhatsAppService {
       apiToken: process.env.WHATSAPP_API_TOKEN,
       phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
       graphApiVersion: process.env.WHATSAPP_GRAPH_API_VERSION || 'v19.0',
-      publicBaseUrl: process.env.PUBLIC_BASE_URL || process.env.BASE_URL || 'https://dev.mercon.com',
+      publicBaseUrl: process.env.PUBLIC_BASE_URL || process.env.BASE_URL || 'https://dev.mercon.tech',
     };
   }
 
@@ -38,7 +38,7 @@ export class WhatsAppService {
     if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
       return filePath;
     }
-    const publicBase = (this.config.publicBaseUrl || 'https://dev.mercon.com').replace(/\/+$/, '');
+    const publicBase = (this.config.publicBaseUrl || 'https://dev.mercon.tech').replace(/\/+$/, '');
     const cleanPath = filePath.startsWith('/') ? filePath : `/uploads/${filePath}`;
     return `${publicBase}${cleanPath}`;
   }
@@ -159,7 +159,7 @@ export class WhatsAppService {
         customer: true,
         driver: true,
         vehicle: true,
-        stops: true,
+        stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' } },
         documents: true,
       },
     });
@@ -178,8 +178,6 @@ export class WhatsAppService {
       where: {
         OR: [
           { entity_type: 'Trip', entity_id: trip.id },
-          { entity_id: trip.id },
-          { entity_id: trip.ref_id || undefined },
         ],
       },
     });
@@ -187,6 +185,19 @@ export class WhatsAppService {
     const tripRef = trip.ref_id || `TRP-${trip.id.slice(0, 6).toUpperCase()}`;
     const customerName = trip.customer?.name || 'Customer';
     const driverName = trip.driver ? `${trip.driver.first_name || ''} ${trip.driver.last_name || ''}`.trim() : 'Driver Unassigned';
+    const driverPhone = trip.driver?.phone_primary || '';
+
+    // Route: first stop → last stop
+    const sortedStops = [...(trip.stops || [])].sort((a, b) => (a.stop_sequence ?? 0) - (b.stop_sequence ?? 0));
+    const originStop = sortedStops[0];
+    const destStop = sortedStops[sortedStops.length - 1];
+    const origin = (originStop as any)?.location_name || (originStop as any)?.city || 'Origin';
+    const destination = (destStop as any)?.location_name || (destStop as any)?.city || 'Destination';
+
+    // Vehicle class & billing type
+    const vehicleClass = (trip.vehicle as any)?.vehicle_class || (trip.vehicle as any)?.vehicle_type || '';
+    const billingType = (trip as any)?.line_type || (trip as any)?.billing_type || '';
+    const vehicleLine = [vehicleClass, billingType].filter(Boolean).join(' - ');
 
     let relativeFilePath = '';
     let shareText = '';
@@ -205,12 +216,24 @@ export class WhatsAppService {
       }
 
       const publicMediaUrl = this.toPublicHttpsUrl(relativeFilePath);
+      const publicBase = (this.config.publicBaseUrl || 'https://dev.mercon.tech').replace(/\/+$/, '');
+      const galleryUrl = `${publicBase}/trips/evidence-gallery?ref=${encodeURIComponent(tripRef)}`;
+
       const tripNotes = (trip as any).notes;
       const delayReason = (tripNotes && typeof tripNotes === 'string' && tripNotes.includes('[DELAY REPORT]'))
         ? tripNotes.replace(/^\[DELAY REPORT\]:\s*/i, '').trim()
         : 'Traffic congestion / Operational delay';
 
-      shareText = `🚨 *MERCON DELAY REPORT*\nTrip: *${tripRef}*\nCustomer: *${customerName}*\nDriver: *${driverName}*\nReason: ${delayReason}\nWatch Video: ${publicMediaUrl}`;
+      shareText = `🚨 *Delay Report — ${tripRef}*\n\n`;
+      shareText += `Customer # ${customerName}\n`;
+      shareText += `Route # ${origin} >>> ${destination}\n`;
+      if (vehicleLine) shareText += `Vehicle # ${vehicleLine}\n`;
+      if (trip.vehicle?.plate_number) shareText += `Truck # *${trip.vehicle.plate_number}*\n`;
+      shareText += `Driver # ${driverName}\n`;
+      if (driverPhone) shareText += `Number # +${driverPhone.replace(/^\+/, '')}\n`;
+      shareText += `Reason # ${delayReason}\n`;
+      shareText += `\n📹 *Delay Video*:\n${publicMediaUrl}\n`;
+      shareText += `\n🔗 *Full Evidence Gallery*:\n${galleryUrl}`;
 
       const cleanPhone = targetPhone.replace(/[^0-9]/g, '');
       const whatsappWebUrl = cleanPhone
@@ -238,7 +261,19 @@ export class WhatsAppService {
       }
 
       const publicMediaUrl = this.toPublicHttpsUrl(relativeFilePath);
-      shareText = `📸 *MERCON POD REPORT*\nTrip: *${tripRef}*\nCustomer: *${customerName}*\nDriver: *${driverName}*\nStatus: Verified Proof of Delivery\nView POD: ${publicMediaUrl}`;
+      const publicBase = (this.config.publicBaseUrl || 'https://dev.mercon.tech').replace(/\/+$/, '');
+      const galleryUrl = `${publicBase}/trips/evidence-gallery?ref=${encodeURIComponent(tripRef)}`;
+
+      shareText = `✅ *POD Confirmed — ${tripRef}*\n\n`;
+      shareText += `Customer # ${customerName}\n`;
+      shareText += `Route # ${origin} >>> ${destination}\n`;
+      if (vehicleLine) shareText += `Vehicle # ${vehicleLine}\n`;
+      if (trip.vehicle?.plate_number) shareText += `Truck # *${trip.vehicle.plate_number}*\n`;
+      shareText += `Driver # ${driverName}\n`;
+      if (driverPhone) shareText += `Number # +${driverPhone.replace(/^\+/, '')}\n`;
+      shareText += `Status # Verified Proof of Delivery\n`;
+      shareText += `\n🖼️ *POD Image*:\n${publicMediaUrl}\n`;
+      shareText += `\n🔗 *Full Evidence Gallery*:\n${galleryUrl}`;
 
       const cleanPhone = targetPhone.replace(/[^0-9]/g, '');
       const whatsappWebUrl = cleanPhone

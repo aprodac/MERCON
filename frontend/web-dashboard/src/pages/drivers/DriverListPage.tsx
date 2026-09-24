@@ -278,6 +278,12 @@ export default function DriverListPage() {
   const availableCount = driverStats?.available ?? drivers.filter(d => d.status === 'Available').length;
   const onTripCount = driverStats?.on_trip ?? drivers.filter(d => d.status === 'OnTrip').length;
 
+  // Drivers on this page currently reporting a fresh GPS ping (resolver's `CURRENT` state).
+  const liveGpsCount = drivers.filter(d => {
+    const vehicle = d.assignedVehicle || d.trips?.[0]?.vehicle;
+    return vehicle?.resolved_location?.display_state === 'CURRENT';
+  }).length;
+
   const expiredLicenseCount = driverStats?.expired_licenses ?? drivers.filter(d => new Date(d.license_expiry) < new Date()).length;
   const clearDriversCount = Math.max(0, totalCount - expiredLicenseCount);
 
@@ -309,10 +315,9 @@ export default function DriverListPage() {
 
   const handleWhatsappSend = () => {
     const cleanPhone = whatsappCustomPhone.trim().replace(/\+/g, '').replace(/\D/g, '');
-    const baseUrl = cleanPhone
-      ? `https://api.whatsapp.com/send?phone=${cleanPhone}`
-      : `https://api.whatsapp.com/send`;
-    const shareUrl = `${baseUrl}?text=${encodeURIComponent(whatsappMessageText)}`;
+    const shareUrl = cleanPhone
+      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(whatsappMessageText)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsappMessageText)}`;
     window.open(shareUrl, '_blank');
     setWhatsappDriver(null);
   };
@@ -708,11 +713,82 @@ export default function DriverListPage() {
   const defaultSortAccessor = useCallback((row: Driver) => row.createdAt, []);
 
   const tableTitle = useMemo(() => (
-    <span className="flex items-center gap-2">
-      <Users className="w-4 h-4 text-emerald-500" />
+    <span className="flex items-center gap-2 text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight">
+      <Users className="w-5 h-5 text-emerald-500" />
       <span>Driver Ledger</span>
     </span>
   ), []);
+
+
+  const headerActionControls = useMemo(() => (
+    <div className="flex items-center gap-2 shrink-0">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs dark:bg-slate-900 dark:border-slate-800"
+          >
+            <Download className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
+            Export / Import
+            <ChevronDown className="h-3 w-3 text-slate-400" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl">
+          <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
+            Export Data
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={() => handleQuickExport('xlsx')}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
+          >
+            <FileSpreadsheet className="mr-2 h-3.5 w-3.5 text-emerald-600" />
+            Export Excel (.xlsx)
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => handleQuickExport('pdf')}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
+          >
+            <FileText className="mr-2 h-3.5 w-3.5 text-rose-600" />
+            Export PDF (.pdf)
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onClick={() => {
+              setSelectedDriversForExport([]);
+              setIsExportOpen(true);
+            }}
+            className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-brand hover:bg-orange-50 dark:hover:bg-orange-950/40"
+          >
+            <Filter className="mr-2 h-3.5 w-3.5 text-brand" />
+            Custom Export Settings...
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator className="my-1 border-slate-100 dark:border-slate-800" />
+
+          <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
+            Import Data
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={() => setIsImportOpen(true)}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+          >
+            <UploadCloud className="mr-2 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            Import from Excel
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Button
+        size="sm"
+        className="h-8 gap-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs rounded-md px-3.5"
+        onClick={() => navigate('/drivers/new')}
+      >
+        <Plus className="h-4 w-4" />
+        Add Driver
+      </Button>
+    </div>
+  ), [handleQuickExport, navigate]);
 
   return (
     <DashboardLayout 
@@ -720,91 +796,6 @@ export default function DriverListPage() {
       title="Drivers" 
     >
       <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-5">
-        
-        {/* Page Content Header Row */}
-        <div className="flex flex-wrap items-center justify-between gap-4 shrink-0 pb-1">
-          <div className="flex items-center gap-3">
-            <User className="w-6 h-6 text-emerald-600 dark:text-emerald-400 shrink-0" />
-
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-                  Drivers
-                </h1>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs dark:bg-slate-900 dark:border-slate-800"
-                >
-                  <Download className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
-                  Export / Import
-                  <ChevronDown className="h-3 w-3 text-slate-400" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl">
-                <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
-                  Export Data
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => handleQuickExport('xlsx')}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
-                >
-                  <FileSpreadsheet className="mr-2 h-3.5 w-3.5 text-emerald-600" />
-                  Export Excel (.xlsx)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handleQuickExport('pdf')}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
-                >
-                  <FileText className="mr-2 h-3.5 w-3.5 text-rose-600" />
-                  Export PDF (.pdf)
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSelectedDriversForExport([]);
-                    setIsExportOpen(true);
-                  }}
-                  className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-brand hover:bg-orange-50 dark:hover:bg-orange-950/40"
-                >
-                  <Filter className="mr-2 h-3.5 w-3.5 text-brand" />
-                  Custom Export Settings...
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator className="my-1 border-slate-100 dark:border-slate-800" />
-
-                <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
-                  Import Data
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => setIsImportOpen(true)}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                >
-                  <UploadCloud className="mr-2 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                  Import from Excel
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <Button
-              size="sm"
-              className="h-9 gap-1.5 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs rounded-md px-4"
-              onClick={() => navigate('/drivers/new')}
-            >
-              <Plus className="h-4 w-4" />
-              Add Driver
-            </Button>
-          </div>
-        </div>
 
         {/* ── 2. Instrument-Panel KPI Cards ───────────────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 shrink-0">
@@ -818,7 +809,7 @@ export default function DriverListPage() {
                 <span className="text-[16px] font-semibold ml-1.5 opacity-85">Drivers</span>
               </span>
             }
-            variant="emerald"
+            variant="slate"
             trend="up"
             trendValue={`${Math.round((availableCount / (totalCount || 1)) * 100)}% Standby`}
             icon={DriverBadge}
@@ -841,7 +832,7 @@ export default function DriverListPage() {
                 <span className="text-[16px] font-semibold ml-1.5 opacity-85">Ready</span>
               </span>
             }
-            variant="emerald"
+            variant="blue"
             trend="up"
             trendValue={`${availableCount} Available`}
             icon={CheckBadge}
@@ -878,7 +869,7 @@ export default function DriverListPage() {
             }}
             livePulseTrack={{
               statusText: `${onTripCount} Drivers Active On-Route`,
-              subText: 'GPS Telemetry'
+              subText: `${liveGpsCount} of ${onTripCount} reporting live GPS`
             }}
           />
 
@@ -924,6 +915,7 @@ export default function DriverListPage() {
               searchValue={search}
               onSearchChange={(val) => { setSearch(val); setCurrentPage(1); }}
               filterElement={filterToolbar}
+              actionsElement={headerActionControls}
               bulkActions={bulkActions}
               currentPage={currentPage}
               totalPages={totalPages}
@@ -957,6 +949,7 @@ export default function DriverListPage() {
               setCurrentPage(1);
             }}
             filterToolbar={filterToolbar}
+            headerActions={headerActionControls}
           />
         )}
 

@@ -6,7 +6,9 @@ import { tripService, BulkImportTripRow, BulkImportResult, TripStatus } from '@/
 import { analyzePastDateRows, applyPastStatusToRows, PastDateAnalysis } from '@/utils/pastDateTripUtils';
 import { isUuid } from '@/lib/utils';
 import { localDateTimeToUtcIso, useDeploymentTimezone } from '@/lib/datetime';
-import { isRoundTripCategory, addDays } from './useCreateTripForm';
+import { isRoundTripCategory } from '@mercon/shared-types';
+import { buildStopsFromSlot } from '@/utils/tripStopsHelper';
+import { addDays } from './useCreateTripForm';
 
 export function useTripSubmission(
   contractCustomer: string,
@@ -23,6 +25,7 @@ export function useTripSubmission(
   thirdPartyDriverPhone: string,
   thirdPartyVehiclePlate: string,
   thirdPartyCost: string,
+  awbNumber: string,
   dayAssignments: Record<string, any>,
   selectedDates: string[],
   setContractStep: React.Dispatch<React.SetStateAction<1 | 2 | 3>>,
@@ -305,11 +308,31 @@ export function useTripSubmission(
             };
           });
 
-          const quotationStops = [
-            { sequence: 1, location_id: origId || null, source_label: slot.origin.trim() || null, stop_type: 'Pickup' },
-            ...intermediateStops,
-            { sequence: intermediateStops.length + 2, location_id: destId || null, source_label: slot.destination.trim() || null, stop_type: 'Dropoff' },
+          const quotationStops: Array<Record<string, unknown>> = [
+            { sequence: 1, leg_index: 0, location_id: origId || null, source_label: slot.origin.trim() || null, stop_type: 'Pickup' },
+            ...intermediateStops.map((st: Record<string, unknown>) => ({ ...st, leg_index: 0 })),
+            { sequence: intermediateStops.length + 2, leg_index: 0, location_id: destId || null, source_label: slot.destination.trim() || null, stop_type: 'Dropoff' },
           ];
+
+          // Round trip: store the return leg too (return loading → return stops →
+          // final drop), so this quotation matches only this exact route — every
+          // stop must match, return-leg stops included.
+          if (isRoundTripCategory(contractRateCategory)) {
+            const safeUuid = (id?: string | null) => (id && isUuid(id) ? id : null);
+            const retStartName = (slot.returnOrigin || '').trim() || slot.destination.trim();
+            const retStartId = safeUuid(slot.returnOriginLocationId) || (retStartName === slot.destination.trim() ? destId || null : null);
+            const retEndName = (slot.returnDestination || '').trim() || slot.origin.trim();
+            const retEndId = safeUuid(slot.returnDestinationLocationId) || (retEndName === slot.origin.trim() ? origId || null : null);
+            const retMids = (slot.returnIntermediateLocations || [])
+              .map((locVal: string, idx: number) => ({ locVal: (locVal || '').trim(), locId: slot.returnIntermediateLocationIds?.[idx] || (isUuid(locVal) ? locVal : null) }))
+              .filter((x: { locVal: string; locId: string | null }) => x.locVal || x.locId);
+            let seq = quotationStops.length + 1;
+            quotationStops.push({ sequence: seq++, leg_index: 1, location_id: retStartId, source_label: retStartName || null, stop_type: 'Pickup' });
+            retMids.forEach((m: { locVal: string; locId: string | null }) =>
+              quotationStops.push({ sequence: seq++, leg_index: 1, location_id: m.locId || null, source_label: m.locVal || null, stop_type: 'Dropoff' }),
+            );
+            quotationStops.push({ sequence: seq++, leg_index: 1, location_id: retEndId, source_label: retEndName || null, stop_type: 'Dropoff' });
+          }
 
           const is3PLAssignment = assignmentType === 'third_party' || assignmentType === '3pl';
           const slotDriverPayout = !is3PLAssignment && slot.driverPayout !== undefined ? Number(slot.driverPayout) : (!is3PLAssignment ? (Number(slot.tripCharges) || null) : null);
@@ -387,107 +410,15 @@ export function useTripSubmission(
         const totalAmount = resolvedTripBilling + outboundFeesSum + returnFeesSum;
 
         const isRound = isRoundTripCategory(contractRateCategory);
-        let destString = slot.destination.trim();
+        const destString = slot.destination.trim();
 
         const returnStart = slot.returnOrigin?.trim() || slot.destination.trim();
         const returnEnd = slot.returnDestination?.trim() || slot.origin.trim();
 
-        if (isRound) {
-          const outboundChain = outboundStops.length > 0 ? `${outboundStops.join(' → ')} → ` : '';
-          const returnChain = returnStops.length > 0 ? `${returnStops.join(' → ')} → ` : '';
-
-          destString = `${outboundChain}${slot.destination.trim()} [RETURN: ${returnStart} → ${returnChain}${returnEnd}]`;
-        } else if (outboundStops.length > 0) {
-          destString = `${outboundStops.join(' → ')} → ${slot.destination.trim()}`;
-        }
-
-        // Build structured multi-leg stops with explicit leg_index
-        const structuredStops: Array<{
-          stop_sequence: number;
-          leg_index: number;
-          stop_type: string;
-          location_name: string;
-          location_address?: string | null;
-          location_id?: string | null;
-          lat?: number | null;
-          lng?: number | null;
-          coordinate_precision?: string | null;
-          update_canonical_location?: boolean;
-        }> = [];
-        let seq = 1;
-
         const safeUuid = (id?: string | null) => (id && isUuid(id) ? id : null);
 
-        // 1. Outbound Origin (leg 0)
-        structuredStops.push({
-          stop_sequence: seq++,
-          leg_index: 0,
-          stop_type: 'Pickup',
-          location_name: slot.originName || slot.origin.trim(),
-          location_address: slot.originAddress || null,
-          location_id: safeUuid(slot.originLocationId),
-          lat: slot.originLat ?? null,
-          lng: slot.originLng ?? null,
-          coordinate_precision: slot.originPrecision || (slot.originLat != null ? 'APPROXIMATE' : 'UNKNOWN'),
-          update_canonical_location: slot.updateCanonicalOrigin === true,
-        });
-
-        // 2. Outbound Intermediate Stops (leg 0)
-        outboundStops.forEach((stopName: string, idx: number) => {
-          structuredStops.push({
-            stop_sequence: seq++,
-            leg_index: 0,
-            stop_type: 'Dropoff',
-            location_name: stopName,
-            location_id: safeUuid(slot.intermediateLocationIds?.[idx]),
-          });
-        });
-
-        // 3. Outbound Delivery (leg 0)
-        structuredStops.push({
-          stop_sequence: seq++,
-          leg_index: 0,
-          stop_type: 'Dropoff',
-          location_name: slot.destinationName || slot.destination.trim(),
-          location_address: slot.destinationAddress || null,
-          location_id: safeUuid(slot.destinationLocationId),
-          lat: slot.destinationLat ?? null,
-          lng: slot.destinationLng ?? null,
-          coordinate_precision: slot.destinationPrecision || (slot.destinationLat != null ? 'APPROXIMATE' : 'UNKNOWN'),
-          update_canonical_location: slot.updateCanonicalDestination === true,
-        });
-
-        // 4. Return Leg (leg 1) if round trip
-        if (isRound) {
-          // Return Loading (leg 1)
-          structuredStops.push({
-            stop_sequence: seq++,
-            leg_index: 1,
-            stop_type: 'Pickup',
-            location_name: returnStart,
-            location_id: safeUuid(slot.returnOriginLocationId || (returnStart === slot.destination.trim() ? slot.destinationLocationId : null)),
-          });
-
-          // Return Intermediate Stops (leg 1)
-          returnStops.forEach((stopName: string, idx: number) => {
-            structuredStops.push({
-              stop_sequence: seq++,
-              leg_index: 1,
-              stop_type: 'Dropoff',
-              location_name: stopName,
-              location_id: safeUuid(slot.returnIntermediateLocationIds?.[idx]),
-            });
-          });
-
-          // Return Final Delivery (leg 1)
-          structuredStops.push({
-            stop_sequence: seq++,
-            leg_index: 1,
-            stop_type: 'Dropoff',
-            location_name: returnEnd,
-            location_id: safeUuid(slot.returnDestinationLocationId || (returnEnd === slot.origin.trim() ? slot.originLocationId : null)),
-          });
-        }
+        // Build structured multi-leg stops with explicit leg_index using shared helper
+        const structuredStops = buildStopsFromSlot(slot, isRound);
 
         let planned_end_val: string | undefined = undefined;
         if (slot.dropoffTime) {
@@ -518,6 +449,7 @@ export function useTripSubmission(
             stops: structuredStops,
             billing_amount: totalAmount > 0 ? totalAmount : undefined,
             rate_card_id: safeUuid(slot.rateCardId) || undefined,
+            awb_number: awbNumber?.trim() || undefined,
             status: 'Scheduled',
           });
         } else {
@@ -580,6 +512,7 @@ export function useTripSubmission(
             co_driver_payout: finalCoDriverPayout,
             update_quotation_driver_payout: shouldUpdateQuotation,
             rate_card_id: safeUuid(slot.rateCardId || slot.matchedRateCard?.id) || undefined,
+            awb_number: awbNumber?.trim() || undefined,
             status: 'Scheduled',
           });
         }

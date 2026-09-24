@@ -281,7 +281,12 @@ export const lookupQuotation = async (req: Request, res: Response) => {
     const vehicle_type = (req.query.vehicle_type || req.query.vehicle_class || req.body?.vehicle_type || req.body?.vehicle_class) as string | undefined;
     const line_type = (req.query.line_type || req.query.rate_category || req.body?.line_type || req.body?.rate_category) as string | undefined;
     const billing_type = (req.query.billing_type || req.body?.billing_type) as string | undefined;
-    const stops = req.body?.stops || req.query.stops;
+    // The web sends stops as a JSON string in the query (GET), so parse it —
+    // otherwise the stops were silently ignored and never checked.
+    let stops: any = req.body?.stops ?? req.query.stops;
+    if (typeof stops === 'string') {
+      try { stops = JSON.parse(stops); } catch { stops = undefined; }
+    }
 
     const { quotation, candidateQuotation, matchStatus, source } = await findQuotationForLane(prisma, {
       customerId: customer_id || null,

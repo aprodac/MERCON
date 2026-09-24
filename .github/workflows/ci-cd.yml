@@ -19,6 +19,8 @@ jobs:
   deploy:
     name: Deploy to Self-Hosted Runner
     runs-on: self-hosted
+    # Releases reach main through a reviewed dev → main PR (docs/RELEASE_PROCESS.md);
+    # release-check.yml reports on the PR, this workflow deploys the merge.
 
     steps:
       # Native git instead of actions/checkout: this runner keeps its work
@@ -71,8 +73,11 @@ jobs:
           ICCES_USER: ${{ secrets.ICCES_USER }}
           ICCES_PASS: ${{ secrets.ICCES_PASS }}
           ICCES_ACCT: ${{ secrets.ICCES_ACCT }}
-          # Gemini Vision AI — injected from repo/environment secrets
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'AQ.Ab8RN6K3a4t83gB0yRI607axYGS8_JJIHhRuJZkYkLwxDDsNZA' }}
+          # Gemini Vision AI — injected from repo/environment secrets only.
+          # (A hardcoded fallback key used to live here; it's committed in git
+          # history and must be treated as leaked — rotate it in Google AI
+          # Studio and set the new value as the GEMINI_API_KEY repo secret.)
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-flash-latest' }}
           # Google address autocomplete. Reaches the frontend as a
           # docker-compose build arg, because Vite inlines VITE_* at build time
@@ -114,26 +119,53 @@ jobs:
           docker image prune -f 2>/dev/null || true
           df -h / || true
 
-          # Build new images first. The CURRENTLY RUNNING mercon-api container is
-          # left untouched during this step, so a slow or failed build never
-          # affects live traffic.
-          echo "Building mercon images (running containers remain untouched during build)..."
+          # Build first (running container untouched), migrate the database
+          # against the newly built image, then replace the container. This
+          # workflow previously ran `docker compose up -d --build` with no
+          # migration step at all — schema changes never reached this
+          # database on a direct push to main. Mirrors ci-cd-dev.yml, which
+          # has done this correctly since it was introduced.
+          echo "Building images..."
           docker compose -p mercon build
 
-          # Run migrations using the newly built image, in a throwaway container,
-          # BEFORE touching the running API. No `|| true` here — if this fails,
-          # the script exits non-zero at this line (GitHub Actions runs `run:`
-          # steps under bash with -e by default, same as the checkout step's
-          # explicit `set -euo pipefail`), and the live mercon-api container is
-          # never replaced.
-          echo "Executing Prisma database migrations with newly built image..."
+          # Back up production right before the migration (after the slow
+          # build, so the dump is as close as possible to the moment the schema
+          # changes). A failed or empty dump aborts the deploy before anything
+          # is touched. Same format/location as backup-db.yml, so its 7-day
+          # pruning covers these too. A first deploy with no database yet has
+          # nothing to back up and continues.
+          if [ "$(docker inspect -f '{{.State.Running}}' mercon-postgres 2>/dev/null)" = "true" ]; then
+            BACKUP_DIR="/var/backups/mercon"
+            sudo mkdir -p "$BACKUP_DIR"
+            sudo chown "$(whoami)" "$BACKUP_DIR"
+            BACKUP_PATH="$BACKUP_DIR/mercon-db-predeploy-$(date +%Y%m%d%H%M%S)-${GITHUB_SHA:0:7}.dump"
+            echo "Backing up production database to $BACKUP_PATH ..."
+            docker exec mercon-postgres pg_dump -U "$POSTGRES_USER" -Fc -d mercon_db > "$BACKUP_PATH"
+            if [ ! -s "$BACKUP_PATH" ]; then
+              echo "::error::Pre-deploy backup is empty or missing ($BACKUP_PATH). Aborting before migrations — production untouched." >&2
+              exit 1
+            fi
+            echo "✓ Backup created: $BACKUP_PATH ($(du -h "$BACKUP_PATH" | cut -f1))"
+            echo "BACKUP_PATH=$BACKUP_PATH" >> "$GITHUB_ENV"
+          else
+            echo "::warning::mercon-postgres is not running — no existing database to back up (first deploy?)."
+          fi
+
+          echo "Executing Prisma database migrations against production database..."
           docker compose -p mercon run --rm --no-deps mercon-api npx prisma migrate deploy
 
-          # Only reached if migrations succeeded. Recreates containers from the
-          # images already built above — no rebuild, so this is fast.
-          echo "Recreating and restarting mercon containers..."
+          echo "Recreating and restarting containers..."
           docker compose -p mercon up -d --no-build
 
+          # Give mercon-api a moment to finish starting before polling it.
+          sleep 8
+
+          # Health gate — ported from ci-cd-dev.yml, which already does this
+          # for the dev stack. Without this, `docker compose up -d --build`
+          # exiting 0 was being treated as "deploy succeeded" even when the
+          # container was crash-looping or misconfigured (e.g. the cpus-limit
+          # regression that broke dev and went unnoticed until someone
+          # happened to read the raw logs).
           echo "Waiting for mercon-api service container to achieve healthy status (bounded 60s timeout)..."
           HEALTH_STATUS="unknown"
           TIMEOUT=60
@@ -196,3 +228,20 @@ jobs:
           sudo nginx -t
           sudo systemctl reload nginx
           echo "Nginx reloaded successfully."
+
+      # Only runs when an earlier step failed. If the failure came after the
+      # backup (migration, container start, health check), print how to put
+      # the database back. Old containers keep serving if the migration failed,
+      # because containers are only replaced after `migrate deploy` succeeds.
+      - name: Restore instructions (on failure)
+        if: failure()
+        run: |
+          if [ -n "${BACKUP_PATH:-}" ]; then
+            echo "::error::Deploy failed after the pre-deploy backup was taken."
+            echo "Backup: $BACKUP_PATH"
+            echo "To restore production to the pre-deploy state (run on the server):"
+            echo "  docker exec -i mercon-postgres pg_restore --clean --if-exists --no-owner --no-privileges -U \"\$POSTGRES_USER\" -d mercon_db < $BACKUP_PATH"
+            echo "Then redeploy the previous main commit (revert the release merge on main)."
+          else
+            echo "Deploy failed before any database backup or migration — the database was not touched."
+          fi

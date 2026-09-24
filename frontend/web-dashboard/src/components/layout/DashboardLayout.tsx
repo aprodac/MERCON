@@ -7,6 +7,7 @@ import { useLayoutMeta } from '@/context/LayoutContext';
 interface DashboardLayoutProps {
   active: string;
   title: string;
+  icon?: React.ReactNode;
   breadcrumb?: string;
   pageTitle?: React.ReactNode;
   pageSub?: string;
@@ -21,6 +22,7 @@ interface DashboardLayoutProps {
 export default function DashboardLayout({
   active,
   title,
+  icon,
   breadcrumb,
   pageTitle,
   pageSub,
@@ -38,9 +40,9 @@ export default function DashboardLayout({
   // eslint-disable-next-line react-hooks/rules-of-hooks
   useEffect(() => {
     if (isInsideShell) {
-      setMeta({ active, title, breadcrumb, pageTitle, pageSub, actions, hideBackButton, hideHeader, onBackClick, fixedViewport });
+      setMeta({ active, title, icon, breadcrumb, pageTitle, pageSub, actions, hideBackButton, hideHeader, onBackClick, fixedViewport });
     }
-  }, [isInsideShell, active, title, breadcrumb, pageSub, hideBackButton, hideHeader, onBackClick, fixedViewport]);
+  }, [isInsideShell, active, title, icon, breadcrumb, pageSub, hideBackButton, hideHeader, onBackClick, fixedViewport]);
 
   if (isInsideShell) {
     // Shell is already rendering the sidebar/header — just return the content.
@@ -48,13 +50,14 @@ export default function DashboardLayout({
   }
 
   // ── Standalone mode (fallback): render the full shell inline ────────────
-  return <StandaloneShell {...{ active, title, breadcrumb, pageTitle, pageSub, actions, hideBackButton, onBackClick, children }} />;
+  return <StandaloneShell {...{ active, title, icon, breadcrumb, pageTitle, pageSub, actions, hideBackButton, onBackClick, children }} />;
 }
 
 /** Full standalone shell — only used when AppShell is not the parent route. */
 function StandaloneShell({
   active,
   title,
+  icon,
   breadcrumb,
   hideBackButton,
   onBackClick,
@@ -94,6 +97,7 @@ function StandaloneShell({
       <div className="flex flex-col flex-1 min-w-0 bg-[#F8FAFC]">
         <Header
           title={title}
+          icon={icon}
           breadcrumb={breadcrumb}
           hideBackButton={hideBackButton}
           onBackClick={onBackClick}

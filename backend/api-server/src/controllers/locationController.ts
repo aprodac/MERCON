@@ -60,6 +60,15 @@ export const resolveLocation = async (
   const slug = toSlug(name);
   const inputCode = input.code ? String(input.code).trim().toUpperCase() : null;
 
+  let cleanName = name;
+  let prefixCode: string | null = null;
+  const prefixMatch = name.match(/^([A-Za-z0-9_]+)\s*[\-:]\s*(.+)$/);
+  if (prefixMatch) {
+    prefixCode = prefixMatch[1].trim().toUpperCase();
+    cleanName = prefixMatch[2].trim();
+  }
+  const cleanSlug = toSlug(cleanName);
+
   if (inputCode && customerIdToUse) {
     const codeClash = await tx.location.findFirst({
       where: {
@@ -78,13 +87,18 @@ export const resolveLocation = async (
   }
 
   // 1. Search for existing location by exact Code, Slug, or exact Name (customer-scoped when customerIdToUse is provided)
+  // Strips leading "CODE - " prefix so e.g. "RUH - Riyadh" matches Location code "RUH" or name "Riyadh".
   let found = await tx.location.findFirst({
     where: {
       ...(customerIdToUse ? { customerId: customerIdToUse } : {}),
       OR: [
         { slug },
+        { slug: cleanSlug },
         { name: { equals: name, mode: 'insensitive' as const } },
+        { name: { equals: cleanName, mode: 'insensitive' as const } },
         { code: { equals: name, mode: 'insensitive' as const } },
+        { code: { equals: cleanName, mode: 'insensitive' as const } },
+        ...(prefixCode ? [{ code: { equals: prefixCode, mode: 'insensitive' as const } }] : []),
         ...(inputCode ? [{ code: { equals: inputCode, mode: 'insensitive' as const } }] : []),
       ],
       deletedAt: null,

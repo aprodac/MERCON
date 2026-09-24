@@ -23,8 +23,7 @@ export const getSummary = async (req: Request, res: Response) => {
       revenueThisMonth,
       revenueLastMonth,
       tripsByStatus,
-      docsExpiringIn30Days,
-      recentMonthlyRevenue
+      docsExpiringIn30Days
     ] = await Promise.all([
       // Total trips this month
       prisma.trip.count({ where: { deletedAt: null, createdAt: { gte: startOfMonth } } }),
@@ -58,20 +57,25 @@ export const getSummary = async (req: Request, res: Response) => {
           deletedAt: null,
           expiry_date: { lte: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) }
         }
-      }),
-      // Monthly revenue for the last 6 months (for chart)
-      prisma.$queryRaw<{ month: string; revenue: number }[]>`
+      })
+    ]);
+
+    let recentMonthlyRevenue: { month: string; revenue: number }[] = [];
+    try {
+      recentMonthlyRevenue = await prisma.$queryRaw<{ month: string; revenue: number }[]>`
         SELECT
           TO_CHAR(DATE_TRUNC('month', "createdAt"), 'Mon') AS month,
-          COALESCE(SUM("total_amount"), 0)::float8 AS revenue
-        FROM "Invoice"
+          COALESCE(SUM("billing_amount"), 0)::float8 AS revenue
+        FROM "Trip"
         WHERE "deletedAt" IS NULL
-          AND status = 'Paid'
+          AND status IN ('Completed', 'Invoiced')
           AND "createdAt" >= NOW() - INTERVAL '6 months'
         GROUP BY DATE_TRUNC('month', "createdAt")
         ORDER BY DATE_TRUNC('month', "createdAt") ASC
-      `
-    ]);
+      `;
+    } catch (err) {
+      logger.warn({ err }, 'Failed to compute monthly revenue chart query');
+    }
 
     // Invoice-derived and document-derived fields go to null rather than
     // being computed when their module is off — that module's data still
@@ -251,11 +255,11 @@ export const getRevenueReport = async (req: Request, res: Response) => {
     const rows = await prisma.$queryRaw<{ month: string; revenue: number; count: number }[]>`
       SELECT
         TO_CHAR(DATE_TRUNC('month', "createdAt"), 'Mon YYYY') AS month,
-        COALESCE(SUM("total_amount"), 0)::float8 AS revenue,
+        COALESCE(SUM("billing_amount"), 0)::float8 AS revenue,
         COUNT(*)::int AS count
-      FROM "Invoice"
+      FROM "Trip"
       WHERE "deletedAt" IS NULL
-        AND status = 'Paid'
+        AND status IN ('Completed', 'Invoiced')
         AND "createdAt" >= NOW() - (${monthCount} || ' months')::INTERVAL
       GROUP BY DATE_TRUNC('month', "createdAt")
       ORDER BY DATE_TRUNC('month', "createdAt") ASC
@@ -343,7 +347,7 @@ export const getCustomReport = async (req: Request, res: Response) => {
       customer: { select: { name: true } },
       driver: { select: { first_name: true, last_name: true, phone_primary: true } },
       vehicle: { select: { plate_number: true, capacity_kg: true, asset_type: true } },
-      stops: { orderBy: { stop_sequence: 'asc' as const } },
+      stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' as const } },
       charges: true,
     };
 

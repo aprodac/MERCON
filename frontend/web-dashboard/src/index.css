@@ -32,8 +32,8 @@
   --sidebar-hover:      rgba(250, 99, 78, 0.12);
   --sidebar-text-muted: rgba(238, 241, 246, 0.6);
 
-  /* Neutrals (Light Cool Gray #EEF1F6 Canvas) */
-  --color-bg:           #EEF1F6;
+  /* Neutrals (Light Cool Slate #F8FAFC Canvas) */
+  --color-bg:           #F8FAFC;
   --color-surface:      #FFFFFF;
   --color-border:       rgba(62, 60, 61, 0.08);
   --color-border-soft:  #E2E8F0;
@@ -101,6 +101,35 @@
   --sidebar-accent-foreground:        #FA634E;
   --sidebar-border:        rgba(238, 241, 246, 0.12);
   --sidebar-ring:        #FA634E;
+
+  /* ─── Finance Tokens ──────────────────────────────────────────────────────── */
+  --fin-canvas:         #F8FAFC;
+  --fin-surface:        #FFFFFF;
+  --fin-surface-sunken: #F1F5F9;
+  --fin-surface-header: #FAFAFB;
+  --fin-row-hover:      #FAFAFB;
+  --fin-row-selected:   #FFF8F6;
+  --fin-border:         rgba(0, 0, 0, 0.06);
+  --fin-border-strong:  rgba(0, 0, 0, 0.08);
+  --fin-text:           #111111;
+  --fin-text-2:         #6E6E80;
+  --fin-text-3:         #757583;
+  --fin-brand:          #FA634E;
+  --fin-brand-hover:    #EE553F;
+  --fin-brand-tint:     #FFF4F2;
+  --fin-charcoal:       #3E3C3D;
+  --fin-positive:       #15803D;
+  --fin-positive-bg:    #ECFDF3;
+  --fin-negative:       #C2410C;
+  --fin-negative-bg:    #FEF1EE;
+  --fin-info:           #1D4ED8;
+  --fin-info-bg:        #EEF3FF;
+  --fin-warning:        #B45309;
+  --fin-warning-bg:     #FFF6E5;
+  --fin-neutral:        #4B4B57;
+  --fin-neutral-bg:     #F1F2F5;
+  --fin-muted:          #6E6E80;
+  --fin-muted-bg:       #F4F4F6;
 }
 
 /* ─── Page Accent Color Tokens ────────────────────────────────────────────── */
@@ -162,28 +191,34 @@
 }
 
 /* ─── KPI Card Page Border Utilities ─────────────────────────────────────── */
-/* Clean solid card background with page base color border                   */
-.kpi-tint-trips       { border-color: rgba(232, 69, 15, 0.28) !important; background: #FFFFFF !important; }
-.kpi-tint-monthly     { border-color: rgba(124, 58, 237, 0.28) !important; background: #FFFFFF !important; }
-.kpi-tint-drivers     { border-color: rgba(16, 185, 129, 0.28) !important; background: #FFFFFF !important; }
-.kpi-tint-vehicles    { border-color: rgba(59, 130, 246, 0.28) !important; background: #FFFFFF !important; }
-.kpi-tint-third-party { border-color: rgba(15, 159, 154, 0.28) !important; background: #FFFFFF !important; }
-.kpi-tint-maintenance { border-color: rgba(239, 51, 64, 0.28) !important; background: #FFFFFF !important; }
-.kpi-tint-customers   { border-color: rgba(37, 99, 235, 0.28) !important; background: #FFFFFF !important; }
-.kpi-tint-invoices    { border-color: rgba(217, 119, 6, 0.28) !important; background: #FFFFFF !important; }
-.kpi-tint-expenses    { border-color: rgba(217, 119, 6, 0.28) !important; background: #FFFFFF !important; }
-.kpi-tint-documents   { border-color: rgba(99, 102, 241, 0.28) !important; background: #FFFFFF !important; }
-.kpi-tint-reports     { border-color: rgba(14, 165, 233, 0.28) !important; background: #FFFFFF !important; }
+/* Clean solid card background with dynamic variant border */
+.kpi-tint-trips,
+.kpi-tint-monthly,
+.kpi-tint-drivers,
+.kpi-tint-vehicles,
+.kpi-tint-third-party,
+.kpi-tint-maintenance,
+.kpi-tint-customers,
+.kpi-tint-invoices,
+.kpi-tint-expenses,
+.kpi-tint-documents,
+.kpi-tint-reports {
+  background: #FFFFFF !important;
+}
 
-.dark .kpi-tint-trips       { border-color: rgba(232, 69, 15, 0.40) !important; background: var(--card) !important; }
-.dark .kpi-tint-monthly     { border-color: rgba(124, 58, 237, 0.40) !important; background: var(--card) !important; }
-.dark .kpi-tint-drivers     { border-color: rgba(16, 185, 129, 0.40) !important; background: var(--card) !important; }
-.dark .kpi-tint-vehicles    { border-color: rgba(59, 130, 246, 0.40) !important; background: var(--card) !important; }
-.dark .kpi-tint-third-party { border-color: rgba(15, 159, 154, 0.40) !important; background: var(--card) !important; }
-.dark .kpi-tint-maintenance { border-color: rgba(239, 51, 64, 0.40) !important; background: var(--card) !important; }
-.dark .kpi-tint-customers   { border-color: rgba(37, 99, 235, 0.40) !important; background: var(--card) !important; }
-.dark .kpi-tint-invoices    { border-color: rgba(217, 119, 6, 0.40) !important; background: var(--card) !important; }
-.dark .kpi-tint-expenses    { border-color: rgba(217, 119, 6, 0.40) !important; background: var(--card) !important; }
+.dark .kpi-tint-trips,
+.dark .kpi-tint-monthly,
+.dark .kpi-tint-drivers,
+.dark .kpi-tint-vehicles,
+.dark .kpi-tint-third-party,
+.dark .kpi-tint-maintenance,
+.dark .kpi-tint-customers,
+.dark .kpi-tint-invoices,
+.dark .kpi-tint-expenses,
+.dark .kpi-tint-documents,
+.dark .kpi-tint-reports {
+  background: var(--card) !important;
+}
 
 /* ─── Global Reset ────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
@@ -435,6 +470,40 @@ body {
   --sidebar-accent-foreground:        oklch(0.985 0 0);
   --sidebar-border:        oklch(1 0 0 / 10%);
   --sidebar-ring:        oklch(0.556 0 0);
+
+  /* ─── Finance Dark Tokens ─────────────────────────────────────────────────── */
+  --fin-canvas:         #020617;
+  --fin-surface:        #0f172a;
+  --fin-surface-sunken: rgba(15, 23, 42, 0.5);
+  --fin-surface-header: rgba(30, 41, 59, 0.4);
+  --fin-row-hover:      rgba(30, 41, 59, 0.4);
+  --fin-row-selected:   rgba(250, 99, 78, 0.08);
+  --fin-border:         #1e293b;
+  --fin-border-strong:  #334155;
+  --fin-text:           #f1f5f9;
+  --fin-text-2:         #94a3b8;
+  --fin-text-3:         #64748b;
+  --fin-brand:          #FA634E;
+  --fin-brand-hover:    #EE553F;
+  --fin-brand-tint:     rgba(250, 99, 78, 0.10);
+  --fin-charcoal:       #2D2B2C;
+  --fin-positive:       #4ade80;
+  --fin-positive-bg:    rgba(6, 78, 59, 0.4);
+  --fin-negative:       #fb923c;
+  --fin-negative-bg:    rgba(67, 20, 7, 0.4);
+  --fin-info:           #93c5fd;
+  --fin-info-bg:        rgba(23, 37, 84, 0.4);
+  --fin-warning:        #fcd34d;
+  --fin-warning-bg:     rgba(69, 26, 3, 0.4);
+  --fin-neutral:        #cbd5e1;
+  --fin-neutral-bg:     #1e293b;
+  --fin-muted:          #94a3b8;
+  --fin-muted-bg:       rgba(30, 41, 59, 0.6);
+}
+
+.fin-num {
+  font-family: 'Geist Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 @layer base {

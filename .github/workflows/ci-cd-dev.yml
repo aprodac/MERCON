@@ -107,7 +107,7 @@ jobs:
           ICCES_PASS: ${{ secrets.DEV_ICCES_PASS || secrets.ICCES_PASS }}
           ICCES_ACCT: ${{ secrets.DEV_ICCES_ACCT || secrets.ICCES_ACCT }}
           # Gemini Vision AI — injected from repo/environment secrets
-          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY || 'AQ.Ab8RN6K3a4t83gB0yRI607axYGS8_JJIHhRuJZkYkLwxDDsNZA' }}
+          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ secrets.DEV_GEMINI_MODEL || secrets.GEMINI_MODEL || 'gemini-flash-latest' }}
         run: |
           echo "=== REBUILDING DEV STACK (mercon-dev) ==="

@@ -236,6 +236,8 @@ export default function CreateTripPage() {
                         marginMetrics={form.marginMetrics}
                         drivers={form.drivers}
                         vehicles={form.vehicles}
+                        awbNumber={form.awbNumber}
+                        setAwbNumber={form.setAwbNumber}
                         dayAssignments={form.dayAssignments}
                         setDayAssignments={form.setDayAssignments}
                         fieldErrors={form.fieldErrors}

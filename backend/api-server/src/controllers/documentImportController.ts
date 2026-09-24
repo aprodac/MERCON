@@ -1,5 +1,6 @@
 import { Response } from 'express';
-import { PrismaClient, DocType, ImportItemStatus } from '@prisma/client';
+import { DocType, ImportItemStatus } from '@prisma/client';
+import { prisma } from '../db';
 import { AuthenticatedRequest } from '../middlewares/auth';
 import { analyzeDocumentWithAI, getLocalFilePathFromUrl } from '../services/ocrService';
 import {
@@ -8,8 +9,6 @@ import {
   matchDocumentType,
   findDuplicate,
 } from '../services/documentMatchService';
-
-const prisma = new PrismaClient();
 
 /**
  * The staged-import pipeline: files land here, AI reads them, a human confirms,

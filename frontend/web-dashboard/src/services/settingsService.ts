@@ -7,6 +7,9 @@ export const settingsService = {
       const res = await api.get<ApiResponse<PublicSettings>>('/settings/public');
       return res.data?.data || {
         appName: 'MERCON Operator Platform',
+        companyLegalName: 'MERCON Logistics',
+        vatNumber: null,
+        crNumber: null,
         logoUrl: null,
         primaryColor: '#E8450F',
         themeColors: null,
@@ -15,10 +18,13 @@ export const settingsService = {
         defaultCountryDialCode: '+966',
         maintenanceMode: false,
         maintenanceBanner: null,
-      };
+      } as PublicSettings;
     } catch {
       return {
         appName: 'MERCON Operator Platform',
+        companyLegalName: 'MERCON Logistics',
+        vatNumber: null,
+        crNumber: null,
         logoUrl: null,
         primaryColor: '#E8450F',
         themeColors: null,
@@ -46,9 +52,23 @@ export const settingsService = {
     return res.data.data;
   },
 
-  async getAuditLogs(): Promise<any[]> {
-    const res = await api.get<ApiResponse<any[]>>('/settings/audit-logs');
-    return res.data.data;
+  async getAuditLogs(params?: {
+    action?: string;
+    entityType?: string;
+    userId?: string;
+    date_from?: string;
+    date_to?: string;
+    search?: string;
+    page?: number;
+    per_page?: number;
+  }): Promise<{
+    success: boolean;
+    data: any[];
+    pagination: { page: number; per_page: number; total: number; total_pages: number };
+    filters: { actions: string[]; entityTypes: string[] };
+  }> {
+    const res = await api.get('/settings/audit-logs', { params });
+    return res.data;
   },
 
   /**

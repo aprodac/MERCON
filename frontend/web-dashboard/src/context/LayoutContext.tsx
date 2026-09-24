@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useCallback, useMemo, ReactNode } 
 export interface LayoutMeta {
   active: string;
   title: string;
+  icon?: ReactNode;
   breadcrumb?: string;
   pageTitle?: ReactNode;
   pageSub?: string;
@@ -60,6 +61,7 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
       if (
         prev.active === m.active &&
         prev.title === m.title &&
+        prev.icon === m.icon &&
         prev.breadcrumb === m.breadcrumb &&
         prev.hideBackButton === m.hideBackButton &&
         prev.hideHeader === m.hideHeader &&

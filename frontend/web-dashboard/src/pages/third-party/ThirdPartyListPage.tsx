@@ -233,8 +233,9 @@ export default function ThirdPartyListPage() {
 
   const handleWhatsappSend = () => {
     const cleanPhone = whatsappCustomPhone.trim().replace(/\+/g, '').replace(/\D/g, '');
-    const baseUrl = cleanPhone ? `https://api.whatsapp.com/send?phone=${cleanPhone}` : `https://api.whatsapp.com/send`;
-    const shareUrl = `${baseUrl}?text=${encodeURIComponent(whatsappMessageText)}`;
+    const shareUrl = cleanPhone
+      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodeURIComponent(whatsappMessageText)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(whatsappMessageText)}`;
     window.open(shareUrl, '_blank');
     setWhatsappProvider(null);
   };
@@ -575,96 +576,79 @@ export default function ThirdPartyListPage() {
     </div>
   );
 
+  const thirdPartyHeaderActions = (
+    <div className="flex items-center gap-2.5">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs dark:bg-slate-900 dark:border-slate-800"
+          >
+            <Download className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
+            Export / Import
+            <ChevronDown className="h-3 w-3 text-slate-400" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl">
+          <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
+            Export Data
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={() => handleExportExcel(providers)}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
+          >
+            <FileSpreadsheet className="mr-2 h-3.5 w-3.5 text-emerald-600" />
+            Export Excel (.xlsx)
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => handleExportPDF(providers)}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
+          >
+            <FileText className="mr-2 h-3.5 w-3.5 text-rose-600" />
+            Export PDF (.pdf)
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onClick={() => {
+              setSelectedProvidersForExport([]);
+              setIsExportOpen(true);
+            }}
+            className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-brand hover:bg-orange-50 dark:hover:bg-orange-950/40"
+          >
+            <Filter className="mr-2 h-3.5 w-3.5 text-brand" />
+            Custom Export Settings...
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator className="my-1 border-slate-100 dark:border-slate-800" />
+
+          <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
+            Import Data
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={() => setIsImportOpen(true)}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+          >
+            <UploadCloud className="mr-2 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            Import from Excel
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Button
+        size="sm"
+        className="h-9 gap-1.5 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs rounded-md px-4"
+        onClick={() => setIsCreateModalOpen(true)}
+      >
+        <Plus className="h-4 w-4" />
+        Add Provider
+      </Button>
+    </div>
+  );
+
   return (
     <DashboardLayout active="/third-party" title="Third-Party Fleet">
       <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-5">
-        {/* Page Content Header Row */}
-        <div className="flex flex-wrap items-center justify-between gap-4 shrink-0 pb-1">
-          <div className="flex items-center gap-3">
-            <Building2 className="w-6 h-6 text-teal-600 dark:text-teal-400 shrink-0" />
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-                  Third-Party Fleet &amp; Rental Providers
-                </h1>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Manage external subcontractor logistics, rented trucks, and third-party driver capacity.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs dark:bg-slate-900 dark:border-slate-800"
-                >
-                  <Download className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
-                  Export / Import
-                  <ChevronDown className="h-3 w-3 text-slate-400" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl">
-                <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
-                  Export Data
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => handleExportExcel(providers)}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
-                >
-                  <FileSpreadsheet className="mr-2 h-3.5 w-3.5 text-emerald-600" />
-                  Export Excel (.xlsx)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handleExportPDF(providers)}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
-                >
-                  <FileText className="mr-2 h-3.5 w-3.5 text-rose-600" />
-                  Export PDF (.pdf)
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSelectedProvidersForExport([]);
-                    setIsExportOpen(true);
-                  }}
-                  className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-brand hover:bg-orange-50 dark:hover:bg-orange-950/40"
-                >
-                  <Filter className="mr-2 h-3.5 w-3.5 text-brand" />
-                  Custom Export Settings...
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator className="my-1 border-slate-100 dark:border-slate-800" />
-
-                <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
-                  Import Data
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => setIsImportOpen(true)}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                >
-                  <UploadCloud className="mr-2 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                  Import from Excel
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <Button
-              size="sm"
-              className="h-9 gap-1.5 text-xs font-bold bg-teal-600 hover:bg-teal-700 text-white shadow-xs rounded-md px-4"
-              onClick={() => setIsCreateModalOpen(true)}
-            >
-              <Plus className="h-4 w-4" />
-              Add Provider
-            </Button>
-          </div>
-        </div>
-
         {/* 2. Instrument-Panel KPI Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 shrink-0">
           <KpiCard
@@ -723,12 +707,12 @@ export default function ThirdPartyListPage() {
         {/* 4. Data Table Ledger & Cards View */}
         {viewMode === 'list' ? (
           <DataTable
-            title={
-              <span className="flex items-center gap-2">
-                <Building2 className="w-4 h-4 text-teal-600" />
-                <span>Third-Party Fleet Ledger</span>
-              </span>
-            }
+              title={
+                <span className="flex items-center gap-2 text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight">
+                  <Building2 className="w-5 h-5 text-teal-600" />
+                  <span>Third-Party Fleet Ledger</span>
+                </span>
+              }
             columns={columns}
             data={sortedProviders}
             onRowClick={(row: ThirdPartyProvider) => navigate(`/third-party/${row.id}`)}
@@ -746,12 +730,6 @@ export default function ThirdPartyListPage() {
               setCurrentPage(1);
             }}
             totalRecords={totalRecords}
-            emptyTitle="No Third-Party Providers Found"
-            emptyMessage="No providers match your search or status filter. Get started by adding a provider or importing an Excel workbook."
-            searchPlaceholder="Search provider name, contact, phone, tax ID..."
-            searchValue={search}
-            onSearchChange={(val) => { setSearch(val); setCurrentPage(1); }}
-            filterElement={thirdPartyFilters}
           />
         ) : (
           <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col w-full animate-fade-in">
@@ -793,6 +771,7 @@ export default function ThirdPartyListPage() {
 
                 <div className="flex w-full xl:w-auto items-center flex-wrap gap-2 sm:shrink-0 xl:ml-auto rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-950/30 p-1.5">
                   {thirdPartyFilters}
+                  {thirdPartyHeaderActions}
                 </div>
               </div>
             </div>

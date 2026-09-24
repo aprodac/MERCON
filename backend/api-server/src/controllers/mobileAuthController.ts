@@ -17,10 +17,21 @@ export const mobileLogin = async (req: Request, res: Response) => {
 
   try {
     const id = String(phone_primary).trim();
+    const phoneVariants = [id];
+    if (id.startsWith('+966')) {
+      const local = id.slice(4);
+      phoneVariants.push(`0${local}`, local);
+    } else if (id.startsWith('+91')) {
+      const local = id.slice(3);
+      phoneVariants.push(`0${local}`, local);
+    } else if (id.startsWith('0')) {
+      phoneVariants.push(`+966${id.slice(1)}`, `+91${id.slice(1)}`, id.slice(1));
+    }
+
     const driver = await prisma.driver.findFirst({
       where: {
         OR: [
-          { phone_primary: id },
+          ...phoneVariants.map((p) => ({ phone_primary: p })),
           { ref_id: id },
         ],
       },

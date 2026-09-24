@@ -489,7 +489,10 @@ export default function QuotationListPage() {
         const matchVehicle = (q.vehicle_class || '').toLowerCase().includes(term);
         const matchRef = (q.agreement_ref || '').toLowerCase().includes(term);
         const matchName = (q.name || '').toLowerCase().includes(term);
-        if (!matchRoute && !matchVehicle && !matchRef && !matchName) return false;
+        const qNum = (q as any).quotation_number != null ? String((q as any).quotation_number) : '';
+        const qCode = qNum ? `qt-${qNum}` : `qt-${q.id.substring(0, 8).toLowerCase()}`;
+        const matchQNum = qNum.includes(term) || qCode.includes(term) || (q.id || '').toLowerCase().includes(term);
+        if (!matchRoute && !matchVehicle && !matchRef && !matchName && !matchQNum) return false;
       }
 
       // Operation Type Filter
@@ -979,6 +982,7 @@ export default function QuotationListPage() {
                               />
                             </th>
                             <th className="py-2.5 px-3.5 w-10">#</th>
+                            <th className="py-2.5 px-3.5 whitespace-nowrap">Quotation ID</th>
                             <th className="py-2.5 px-3.5">Route / Stops</th>
                             <th className="py-2.5 px-3.5">Vehicle Class</th>
                             <th className="py-2.5 px-3.5">Operation Type</th>
@@ -1001,7 +1005,22 @@ export default function QuotationListPage() {
                             return (
                               <tr
                                 key={row.id}
-                                onClick={() => handleOpenDrawer(row)}
+                                onClickCapture={(e) => {
+                                  if (selectedIds.size > 0) {
+                                    const target = e.target as HTMLElement;
+                                    if (target.tagName.toLowerCase() === 'input' && (target as HTMLInputElement).type === 'checkbox') {
+                                      return;
+                                    }
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleToggleSelectRow(row.id);
+                                  }
+                                }}
+                                onClick={() => {
+                                  if (selectedIds.size === 0) {
+                                    handleOpenDrawer(row);
+                                  }
+                                }}
                                 className={cn(
                                   "hover:bg-slate-50/80 dark:hover:bg-slate-800/40 cursor-pointer transition-colors",
                                   isSelectedRow && "bg-rose-50/30 dark:bg-rose-950/20 hover:bg-rose-50/50"
@@ -1018,6 +1037,13 @@ export default function QuotationListPage() {
 
                                 <td className="py-3 px-3.5 font-mono text-slate-400 text-[11px]">
                                   {rowNumber}
+                                </td>
+
+                                <td className="py-3 px-3.5 whitespace-nowrap">
+                                  <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 inline-flex items-center gap-1">
+                                    <FileText className="w-3 h-3 text-[#FA634E]" />
+                                    {(row as any).quotation_number ? `QT-${(row as any).quotation_number}` : (row as any).agreement_ref || `QT-${row.id.substring(0, 8).toUpperCase()}`}
+                                  </span>
                                 </td>
 
                                 <td className="py-3 px-3.5">
