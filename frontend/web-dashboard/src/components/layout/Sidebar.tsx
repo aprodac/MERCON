@@ -17,7 +17,6 @@ import { settingsService } from '@/services/settingsService';
 import type { ModuleKey } from '@mercon/shared-types';
 import { usePermissions } from '@/hooks/usePermissions';
 import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
-import BrandLogo from '@/components/ui/BrandLogo';
 
 interface SidebarProps {
   active?: string;
@@ -669,13 +668,42 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
           ${collapsed ? 'lg:w-[76px]' : 'lg:w-[230px]'}
         `}
       >
-        {/* Header with Logo */}
-        <div className={`relative flex items-center shrink-0 h-16 sm:h-20 px-4 overflow-hidden bg-[#3E3C3D] border-b border-white/10 ${collapsed ? 'lg:px-2 lg:justify-center' : 'justify-between'}`}>
-          <div className="flex items-center gap-2.5">
-            <BrandLogo
-              variant="sidebar"
-              className={`w-auto object-contain transition-all duration-200 ${
-                collapsed ? 'h-7 max-w-[42px]' : 'h-8 sm:h-9 max-w-[140px]'
+        {/* Header with Logo — Mobile-App Inspired Angled Parallelogram Transition (#EEF1F6 to #3E3C3D) */}
+        <div className={`relative flex items-center justify-start shrink-0 h-[84px] lg:h-[92px] px-2 sm:px-3 overflow-hidden bg-[#EEF1F6] ${collapsed ? 'lg:px-1.5' : ''}`}>
+          {/* Angled Parallelogram & Dot Matrix SVG Background (Mobile Driver App aesthetic) */}
+          <svg
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            viewBox="0 0 280 92"
+            preserveAspectRatio="none"
+            fill="none"
+          >
+            {/* 1. Base Light Cool Gray background */}
+            <rect width="280" height="92" fill="#EEF1F6" />
+
+            {/* 2. Dark Charcoal (#3E3C3D) Angled Parallelogram polygon joining the body below */}
+            <path d="M -10 92 H 290 V 42 L -10 82 Z" fill="#3E3C3D" />
+
+            {/* 3. Subtle Coral Red (#FA634E) Angled Accent Stripe */}
+            <path d="M -10 82 L 290 42" stroke="#FA634E" strokeWidth="2.5" strokeLinecap="round" opacity="0.85" />
+
+            {/* 4. Subtle Dotted Pattern on Charcoal area */}
+            <g opacity="0.16">
+              {[20, 45, 70, 95, 120, 145, 170, 195, 220, 245, 270].map((xVal) => (
+                <circle key={xVal} cx={xVal} cy="86" r="1.5" fill="#FFFFFF" />
+              ))}
+              {[35, 60, 85, 110, 135, 160, 185, 210, 235, 260].map((xVal) => (
+                <circle key={xVal} cx={xVal} cy="76" r="1.5" fill="#FFFFFF" />
+              ))}
+            </g>
+          </svg>
+
+          {/* Logo Content - merconclosed.png stuck to Top-Left, expands when unshrinked */}
+          <div className="relative z-10 flex items-center justify-start w-full pb-3 pl-0">
+            <img
+              src="/merconclosed.png"
+              alt="MERCON Logo"
+              className={`w-auto object-contain object-left drop-shadow-xs -ml-0.5 transition-all duration-200 ease-in-out ${
+                collapsed ? 'h-8.5 max-w-[46px]' : 'h-11 sm:h-12 max-w-[72px]'
               }`}
             />
           </div>
@@ -683,7 +711,7 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
           <button
             onClick={onClose}
             aria-label="Close navigation menu"
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors lg:hidden cursor-pointer"
+            className="absolute right-3 top-3.5 z-20 p-2 rounded-lg text-slate-600 hover:text-[#FA634E] hover:bg-black/5 transition-colors lg:hidden cursor-pointer"
           >
             <X size={18} />
           </button>
