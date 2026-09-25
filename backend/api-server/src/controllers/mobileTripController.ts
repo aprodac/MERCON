@@ -10,6 +10,7 @@ import { notifyOperatorsOfDelay } from './notificationController';
 import { getDrivingRoute, RoutingUnavailableError } from '../services/routing/routeProvider';
 import { compressUploadedImage } from '../services/imageCompressor';
 import { calculateBackendTripFinancials } from '../utils/tripFinancials';
+import { splitDelayReason } from '../utils/delayReason';
 
 /**
  * Everything the driver's app needs about a trip, in one shape.
@@ -279,21 +280,41 @@ export const updateTripStatus = async (req: Request, res: Response) => {
     // recording anything on the stop, so a driver arriving through the app
     // left no arrival time at all and the trip was invisible to the delay
     // report. Wrapped in a transaction so status and clock cannot diverge.
+    // Driver-app builds up to now send a delay's reason in the workflow-state
+    // slot (`updateStatus(id, 'Delayed', reason)`), so the reason was saved as
+    // the trip's workflow state and lost as a reason. Workflow states are
+    // UPPER_SNAKE_CASE; on a Delayed update anything else is the reason.
+    const { workflowState, delayReason } = splitDelayReason(status, driver_workflow_state, reason);
+
     let delay: DelayDetection | null = null;
     const updatedTrip = await prisma.$transaction(async (tx) => {
       if (typeof completed_stop_id === 'string' && completed_stop_id) {
         await stampIntermediateStopVisit(tx, id, completed_stop_id);
       }
-      if (driver_workflow_state) {
-        await stampWorkflowTransition(tx, id, driver_workflow_state);
+      if (workflowState) {
+        await stampWorkflowTransition(tx, id, workflowState);
       }
       delay = await stampStopTransition(tx, id, status as TripStatus);
+      // The reason goes on the stop the driver is heading for — the same place
+      // system-detected delays are recorded, so every screen reads it from one field.
+      if (delayReason) {
+        const headingTo = await tx.tripStop.findFirst({
+          where: { tripId: id, deletedAt: null, actual_arrival: null },
+          orderBy: { stop_sequence: 'asc' },
+          select: { id: true },
+        });
+        if (headingTo) {
+          await tx.tripStop.update({
+            where: { id: headingTo.id },
+            data: { delay_note: delayReason, delay_logged_at: new Date() },
+          });
+        }
+      }
       return tx.trip.update({
         where: { id },
         data: {
           status,
-          driver_workflow_state: driver_workflow_state !== undefined ? driver_workflow_state : undefined,
-          notes: reason ? `[DELAY REPORT]: ${reason}` : undefined,
+          driver_workflow_state: workflowState !== undefined ? workflowState : undefined,
           actual_start: status === TripStatus.InTransit && !trip.actual_start ? new Date() : undefined,
         },
         include: tripInclude

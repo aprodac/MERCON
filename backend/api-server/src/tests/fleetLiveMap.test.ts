@@ -111,8 +111,8 @@ test('fleet live map units', async (t) => {
 test('trip media is sorted onto the stop it was taken at', async () => {
   const { groupTripMedia } = await import('../services/fleetLiveMap');
   const stops = [
-    { id: 'b', stop_sequence: 2, delay_reason: 'Traffic', delay_note: 'Jam at Medina', delay_logged_at: ago(600) },
-    { id: 'a', stop_sequence: 1, delay_reason: null, delay_note: null, delay_logged_at: null },
+    { id: 'b', stop_sequence: 2, actual_arrival: null, delay_reason: 'Traffic', delay_note: 'Jam at Medina', delay_logged_at: ago(600) },
+    { id: 'a', stop_sequence: 1, actual_arrival: ago(3000), delay_reason: null, delay_note: null, delay_logged_at: null },
   ];
   const doc = (id: string, over: Record<string, unknown> = {}) => ({
     id, doc_type: 'POD', file_url: `/uploads/${id}.jpg`, mime_type: 'image/jpeg', ai_extracted_json: {}, createdAt: ago(100), files: [], ...over,
@@ -129,4 +129,42 @@ test('trip media is sorted onto the stop it was taken at', async () => {
   assert.equal(out.stops[1].delay?.note, 'Jam at Medina');
   assert.equal(out.stops[0].delay, null);
   assert.deepEqual(out.unplaced.map((m) => m.id), ['legacy']);
+});
+
+test('photos are labelled by the step the driver took them at', async () => {
+  const { mediaStage } = await import('../services/fleetLiveMap');
+  assert.equal(mediaStage('pickup', 'Waybill'), 'loaded');
+  assert.equal(mediaStage('return_loading', 'Waybill'), 'loaded');
+  assert.equal(mediaStage('pickup_arrival', 'Waybill'), 'arrived');
+  assert.equal(mediaStage('delivery_arrival', 'POD'), 'arrived');
+  assert.equal(mediaStage('intermediate_stop', 'Waybill'), 'stop');
+  assert.equal(mediaStage('delivery', 'POD'), 'delivered');
+  assert.equal(mediaStage('delay', 'Waybill'), 'delay');
+  assert.equal(mediaStage(undefined, 'POD'), 'delivered');
+  assert.equal(mediaStage(undefined, 'Waybill'), 'loaded');
+});
+
+test('a delay video with no stop goes on the stop the truck was heading for when it was sent', async () => {
+  const { groupTripMedia } = await import('../services/fleetLiveMap');
+  const stops = [
+    { id: 'pickup', stop_sequence: 1, actual_arrival: ago(7200), delay_reason: null, delay_note: null, delay_logged_at: null },
+    { id: 'drop1', stop_sequence: 2, actual_arrival: ago(600), delay_reason: null, delay_note: null, delay_logged_at: null },
+    { id: 'drop2', stop_sequence: 3, actual_arrival: null, delay_reason: null, delay_note: null, delay_logged_at: null },
+  ];
+  const video = (id: string, sentSecondsAgo: number) => ({
+    id, doc_type: 'Waybill', file_url: `/uploads/${id}.mp4`, mime_type: 'video/mp4',
+    ai_extracted_json: { operation: 'delay' }, createdAt: ago(sentSecondsAgo), files: [],
+  });
+  const out = groupTripMedia(stops, [video('early', 3600), video('late', 60)]);
+  assert.deepEqual(out.stops.find((s) => s.stop_id === 'drop1')!.media.map((m) => m.id), ['early']);
+  assert.deepEqual(out.stops.find((s) => s.stop_id === 'drop2')!.media.map((m) => m.id), ['late']);
+  assert.equal(out.unplaced.length, 0);
+});
+
+test('a delay reason sent in the workflow-state slot is recovered as the reason', async () => {
+  const { splitDelayReason } = await import('../utils/delayReason');
+  assert.deepEqual(splitDelayReason('Delayed', 'Traffic - jam at Medina', undefined), { workflowState: undefined, delayReason: 'Traffic - jam at Medina' });
+  assert.deepEqual(splitDelayReason('Delayed', 'IN_TRANSIT_TO_DELIVERY', 'Weather'), { workflowState: 'IN_TRANSIT_TO_DELIVERY', delayReason: 'Weather' });
+  assert.deepEqual(splitDelayReason('InTransit', 'GOING_TO_PICKUP', undefined), { workflowState: 'GOING_TO_PICKUP', delayReason: null });
+  assert.deepEqual(splitDelayReason('InTransit', undefined, 'ignored'), { workflowState: undefined, delayReason: null });
 });
