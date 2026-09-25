@@ -574,21 +574,21 @@ export default function GeneralLedgerPage() {
             >
               <ToggleGroupItem
                 value="summary"
-                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs"
               >
                 <LayoutList className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
                 <span>Ledger summary</span>
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="account"
-                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs"
               >
                 <BookOpenText className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
                 <span>Account ledger</span>
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="monthly"
-                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs"
               >
                 <CalendarRange className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
                 <span>Monthly summary</span>
@@ -844,7 +844,7 @@ export default function GeneralLedgerPage() {
 
                     {/* Summary Footer Row */}
                     <tfoot>
-                      <tr className="border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 font-semibold text-foreground text-sm">
+                      <tr className="border-t border-foreground/70 border-b-[3px] border-double font-semibold text-foreground text-sm">
                         <td className="py-3.5 px-3">
                           <div className="flex items-center gap-3">
                             <span>Grand total</span>
@@ -1100,13 +1100,13 @@ export default function GeneralLedgerPage() {
                       onValueChange={(val: string[]) => val[0] && updateParams({ side: val[0], page: 1 })}
                       className="bg-muted p-[3px] rounded-lg border border-border/60"
                     >
-                      <ToggleGroupItem value="all" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
+                      <ToggleGroupItem value="all" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs">
                         All
                       </ToggleGroupItem>
-                      <ToggleGroupItem value="debit" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
+                      <ToggleGroupItem value="debit" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs">
                         Debit
                       </ToggleGroupItem>
-                      <ToggleGroupItem value="credit" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
+                      <ToggleGroupItem value="credit" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs">
                         Credit
                       </ToggleGroupItem>
                     </ToggleGroup>
@@ -1300,7 +1300,7 @@ export default function GeneralLedgerPage() {
                       </tr>
 
                       {/* Closing Balance Row */}
-                      <tr className="border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 font-semibold text-foreground text-sm">
+                      <tr className="border-t border-foreground/70 border-b-[3px] border-double font-semibold text-foreground text-sm">
                         <td colSpan={customize.showVoucherType ? 4 : 3} className="py-3.5 px-3">
                           Closing Balance
                         </td>
@@ -1411,7 +1411,7 @@ export default function GeneralLedgerPage() {
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 font-semibold text-foreground text-sm">
+                    <tr className="border-t border-foreground/70 border-b-[3px] border-double font-semibold text-foreground text-sm">
                       <td className="py-3.5 px-3">Total</td>
                       <td className="py-3.5 px-3 text-right fin-num text-foreground">
                         {fmtVal(monthlyRes?.data?.total_debit || 0)}

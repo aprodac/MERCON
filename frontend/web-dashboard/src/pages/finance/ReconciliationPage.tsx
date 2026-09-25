@@ -219,7 +219,7 @@ export default function ReconciliationPage() {
     {
       header: 'Statement Date',
       accessor: (row) => (
-        <div className="font-mono text-sm font-medium text-gray-900">
+        <div className="font-mono text-sm font-medium text-foreground">
           {new Date(row.statement_date).toLocaleDateString()}
         </div>
       ),
@@ -227,14 +227,14 @@ export default function ReconciliationPage() {
     {
       header: 'Bank Account',
       accessor: (row) => (
-        <div className="flex items-center gap-1.5 font-medium text-gray-800 text-xs">
+        <div className="flex items-center gap-1.5 font-medium text-foreground text-xs">
           {row.bankAccount?.is_cash ? (
             <span className="text-amber-700">Cash Drawer</span>
           ) : (
             <span>{row.bankAccount?.bank_name || 'Bank Account'}</span>
           )}
           {row.bankAccount?.account && (
-            <span className="font-mono text-[11px] text-gray-400">
+            <span className="font-mono text-[11px] text-muted-foreground">
               ({row.bankAccount.account.account_code})
             </span>
           )}
@@ -244,19 +244,19 @@ export default function ReconciliationPage() {
     {
       header: 'Statement Closing Balance',
       accessor: (row) => (
-        <div className="font-mono font-bold text-right text-gray-900">
+        <div className="font-mono font-bold text-right text-foreground">
           {Number(row.statement_closing_balance).toLocaleString('en-US', {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
           })}{' '}
-          <span className="text-xs text-gray-500">SAR</span>
+          <span className="text-xs text-muted-foreground">SAR</span>
         </div>
       ),
     },
     {
       header: 'Reconciled Lines',
       accessor: (row) => (
-        <Badge variant="outline" className="font-mono text-xs bg-slate-50">
+        <Badge variant="outline" className="font-mono text-xs bg-muted">
           {((row as any)._count?.lines ?? (row.lines?.length || 0))} lines
         </Badge>
       ),
@@ -264,7 +264,7 @@ export default function ReconciliationPage() {
     {
       header: 'Status',
       accessor: (row) => (
-        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">
+        <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 border-emerald-200">
           {row.status || 'Completed'}
         </Badge>
       ),
@@ -272,7 +272,7 @@ export default function ReconciliationPage() {
     {
       header: 'Reconciled At',
       accessor: (row) => (
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-muted-foreground">
           {new Date(row.createdAt).toLocaleDateString()}
         </div>
       ),
@@ -285,15 +285,15 @@ export default function ReconciliationPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Bank Reconciliation</h1>
+            <h1 className="text-2xl font-bold text-foreground tracking-tight">Bank Reconciliation</h1>
           </div>
         </div>
 
         {/* Bank Account Selection Banner */}
-        <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm space-y-4">
+        <div className="bg-card p-5 rounded-xl border border-border shadow-xs space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
             <div className="space-y-1.5 md:col-span-1">
-              <Label className="text-xs font-semibold text-gray-700">
+              <Label className="text-xs font-semibold text-foreground">
                 Select Bank / Cash Account <span className="text-rose-500">*</span>
               </Label>
               <Select
@@ -313,7 +313,7 @@ export default function ReconciliationPage() {
                         {b.is_cash ? 'Cash Drawer' : b.bank_name || 'Bank Account'}
                       </span>
                       {b.account && (
-                        <span className="text-xs text-gray-400 ml-2 font-mono">
+                        <span className="text-xs text-muted-foreground ml-2 font-mono">
                           ({b.account.account_code} - {b.account.name})
                         </span>
                       )}
@@ -326,7 +326,7 @@ export default function ReconciliationPage() {
             {selectedBankAccount && (
               <>
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-700">Statement Date</Label>
+                  <Label className="text-xs font-semibold text-foreground">Statement Date</Label>
                   <Input
                     type="date"
                     value={statementDate}
@@ -336,7 +336,7 @@ export default function ReconciliationPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-gray-700">
+                  <Label className="text-xs font-semibold text-foreground">
                     Statement Closing Balance (SAR) <span className="text-rose-500">*</span>
                   </Label>
                   <Input
@@ -361,9 +361,9 @@ export default function ReconciliationPage() {
           <>
             {/* Live Movement & Reconciliation Summary Card */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-1">
-                <span className="text-xs text-gray-500 block">Opening Position</span>
-                <div className="text-lg font-mono font-bold text-gray-900">
+              <div className="bg-card p-4 rounded-xl border border-border shadow-xs space-y-1">
+                <span className="text-xs text-muted-foreground block">Opening Position</span>
+                <div className="text-lg font-mono font-bold text-foreground">
                   {effectiveOpeningBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })} SAR
                 </div>
                 {latestPastReconciliation ? (
@@ -371,14 +371,14 @@ export default function ReconciliationPage() {
                     Carried forward from {new Date(latestPastReconciliation.statement_date).toLocaleDateString()}
                   </span>
                 ) : (
-                  <span className="text-[10px] text-gray-400 font-medium block">
+                  <span className="text-[10px] text-muted-foreground font-medium block">
                     Initial account opening balance
                   </span>
                 )}
               </div>
 
-              <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-1">
-                <span className="text-xs text-gray-500">
+              <div className="bg-card p-4 rounded-xl border border-border shadow-xs space-y-1">
+                <span className="text-xs text-muted-foreground">
                   Selected Lines Movement ({selectedLineIds.size})
                 </span>
                 <div className="text-lg font-mono font-bold text-blue-600">
@@ -387,19 +387,19 @@ export default function ReconciliationPage() {
                 </div>
               </div>
 
-              <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm space-y-1">
-                <span className="text-xs text-gray-500">Calculated Ending Balance</span>
-                <div className="text-lg font-mono font-bold text-gray-900">
+              <div className="bg-card p-4 rounded-xl border border-border shadow-xs space-y-1">
+                <span className="text-xs text-muted-foreground">Calculated Ending Balance</span>
+                <div className="text-lg font-mono font-bold text-foreground">
                   {calculatedEndingBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}{' '}
                   SAR
                 </div>
               </div>
 
               <div
-                className={`p-4 rounded-xl border shadow-sm space-y-1 ${
+                className={`p-4 rounded-xl border shadow-xs space-y-1 ${
                   statementClosingBalance !== '' && Math.abs(variance) < 0.01
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                    : 'bg-amber-50 border-amber-200 text-amber-900'
+                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 border-emerald-200 text-emerald-900'
+                    : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 border-amber-200 text-amber-900'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -419,8 +419,8 @@ export default function ReconciliationPage() {
             </div>
 
             {/* Candidate Unreconciled Journal Lines Checklist */}
-            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/50">
+            <div className="bg-card rounded-xl border border-border shadow-xs overflow-hidden">
+              <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/50">
                 <div className="flex items-center gap-2">
                   <Checkbox
                     id="select_all"
@@ -429,7 +429,7 @@ export default function ReconciliationPage() {
                     }
                     onCheckedChange={(checked) => handleSelectAll(Boolean(checked))}
                   />
-                  <Label htmlFor="select_all" className="text-sm font-bold text-gray-900 cursor-pointer">
+                  <Label htmlFor="select_all" className="text-sm font-bold text-foreground cursor-pointer">
                     Unreconciled Posted Journal Lines ({candidateLines.length})
                   </Label>
                 </div>
@@ -449,17 +449,17 @@ export default function ReconciliationPage() {
               </div>
 
               {isEntriesLoading ? (
-                <div className="p-8 text-center text-gray-500 text-sm">
+                <div className="p-8 text-center text-muted-foreground text-sm">
                   Fetching candidate journal lines...
                 </div>
               ) : candidateLines.length === 0 ? (
-                <div className="p-8 text-center text-gray-400 text-sm">
+                <div className="p-8 text-center text-muted-foreground text-sm">
                   All posted lines for this account are already reconciled.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-gray-50 border-b border-gray-200 text-gray-600 font-semibold uppercase tracking-wider">
+                    <thead className="bg-muted border-b border-border text-muted-foreground font-semibold uppercase tracking-wider">
                       <tr>
                         <th className="p-3 w-10 text-center">Select</th>
                         <th className="p-3">Date</th>
@@ -469,14 +469,14 @@ export default function ReconciliationPage() {
                         <th className="p-3 text-right">Credit</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-100">
+                    <tbody className="divide-y divide-border/60">
                       {candidateLines.map((line) => {
                         const isChecked = selectedLineIds.has(line.lineId);
                         return (
                           <tr
                             key={line.lineId}
                             onClick={() => handleToggleLine(line.lineId)}
-                            className={`hover:bg-slate-50 cursor-pointer transition-colors ${
+                            className={`hover:bg-muted cursor-pointer transition-colors ${
                               isChecked ? 'bg-blue-50/40' : ''
                             }`}
                           >
@@ -486,18 +486,18 @@ export default function ReconciliationPage() {
                                 onCheckedChange={() => handleToggleLine(line.lineId)}
                               />
                             </td>
-                            <td className="p-3 font-mono text-gray-700">
+                            <td className="p-3 font-mono text-foreground">
                               {new Date(line.entry_date).toLocaleDateString()}
                             </td>
-                            <td className="p-3 font-medium text-gray-900">
+                            <td className="p-3 font-medium text-foreground">
                               <div>{line.ref_id || '—'}</div>
                               {line.memo && (
-                                <div className="text-[11px] text-gray-400 font-normal">
+                                <div className="text-[11px] text-muted-foreground font-normal">
                                   {line.memo}
                                 </div>
                               )}
                             </td>
-                            <td className="p-3 text-gray-700">{line.description || '—'}</td>
+                            <td className="p-3 text-foreground">{line.description || '—'}</td>
                             <td className="p-3 text-right font-mono font-medium text-emerald-700">
                               {line.debit > 0
                                 ? line.debit.toLocaleString('en-US', { minimumFractionDigits: 2 })
@@ -518,10 +518,10 @@ export default function ReconciliationPage() {
             </div>
           </>
         ) : (
-          <div className="p-12 text-center bg-white rounded-xl border border-gray-200 shadow-sm text-gray-500 space-y-2">
+          <div className="p-12 text-center bg-card rounded-xl border border-border shadow-xs text-muted-foreground space-y-2">
             <Landmark className="w-10 h-10 text-gray-300 mx-auto" />
-            <div className="text-base font-semibold text-gray-900">No Bank Account Selected</div>
-            <p className="text-xs text-gray-500 max-w-sm mx-auto">
+            <div className="text-base font-semibold text-foreground">No Bank Account Selected</div>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
               Select a Bank Account or Cash Drawer above to load unreconciled journal lines and perform statement reconciliation.
             </p>
           </div>
@@ -529,11 +529,11 @@ export default function ReconciliationPage() {
 
         {/* Historical Reconciliations Ledger */}
         <div className="space-y-3">
-          <h2 className="text-lg font-bold text-gray-900 tracking-tight">
+          <h2 className="text-lg font-bold text-foreground tracking-tight">
             Past Reconciliations {selectedBankAccount ? `(${selectedBankAccount.bank_name || 'Cash'})` : ''}
           </h2>
 
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+          <div className="bg-card rounded-xl shadow-xs border border-border p-4">
             <DataTable
               data={pastReconciliations}
               columns={pastColumns}

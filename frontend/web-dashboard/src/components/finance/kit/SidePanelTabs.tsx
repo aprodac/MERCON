@@ -41,7 +41,7 @@ export function SidePanelTabs({
               className={cn(
                 'flex items-center justify-center gap-1.5 py-1 px-2.5 rounded-md text-xs font-medium transition-all cursor-pointer',
                 isActive
-                  ? 'bg-background text-foreground shadow-2xs font-semibold'
+                  ? 'bg-background text-foreground shadow-xs font-semibold'
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >

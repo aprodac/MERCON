@@ -308,7 +308,7 @@ export default function JournalEntriesPage() {
     <DashboardLayout active="finance" title="Journal Entries">
       <div className="p-6 space-y-4 max-w-7xl mx-auto">
         {/* Top Control Bar: Status Tabs on Left, Actions on Right */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl px-4 py-1.5 shadow-xs">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-card border border-border dark:border-border rounded-xl px-4 py-1.5 shadow-xs">
           <StatusTabs
             value={activeTab}
             onChange={(tab) => updateParams({ status: tab === 'all' ? null : tab, page: '1' })}
@@ -353,7 +353,7 @@ export default function JournalEntriesPage() {
               variant="outline"
               size="sm"
               onClick={() => updateParams({ status: 'Draft', page: '1' })}
-              className="h-7 text-xs bg-white text-[#FA634E] border-[#FA634E]/30 hover:bg-rose-50 hover:text-[#FA634E] font-semibold"
+              className="h-7 text-xs bg-card text-[#FA634E] border-[#FA634E]/30 hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 hover:text-[#FA634E] font-semibold"
             >
               Review drafts
             </Button>
@@ -429,26 +429,26 @@ export default function JournalEntriesPage() {
               type="date"
               value={dateFrom}
               onChange={(e) => updateParams({ date_from: e.target.value || null, page: '1' })}
-              className="h-8 text-xs px-2 rounded-lg border border-slate-200 bg-white text-slate-700"
+              className="h-8 text-xs px-2 rounded-lg border border-border bg-card text-foreground"
             />
-            <span className="text-slate-400 text-xs">–</span>
+            <span className="text-muted-foreground text-xs">–</span>
             <input
               type="date"
               value={dateTo}
               onChange={(e) => updateParams({ date_to: e.target.value || null, page: '1' })}
-              className="h-8 text-xs px-2 rounded-lg border border-slate-200 bg-white text-slate-700"
+              className="h-8 text-xs px-2 rounded-lg border border-border bg-card text-foreground"
             />
           </div>
         </FilterBar>
 
         {/* Daybook List View */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        <div className="bg-card rounded-xl border border-border shadow-xs overflow-hidden">
           {isLoading ? (
             <div className="p-8 space-y-4">
-              <div className="h-6 w-48 bg-slate-100 rounded-lg animate-pulse" />
+              <div className="h-6 w-48 bg-muted rounded-lg animate-pulse" />
               <div className="space-y-2">
                 {[1, 2, 3, 4, 5].map((n) => (
-                  <div key={n} className="h-14 bg-slate-50 rounded-xl animate-pulse" />
+                  <div key={n} className="h-14 bg-muted rounded-xl animate-pulse" />
                 ))}
               </div>
             </div>
@@ -478,28 +478,28 @@ export default function JournalEntriesPage() {
               }
             />
           ) : (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/70 dark:border-slate-800 shadow-2xs overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+            <div className="bg-card rounded-xl border border-border dark:border-border shadow-xs overflow-hidden divide-y divide-border/60 dark:divide-border/60">
               {groupedEntries.map((group: any) => (
                 <div key={group.dateKey} className="group-container">
                   {/* Swiss Modern Sticky Date Header */}
-                  <div className="sticky top-0 z-10 bg-[#F9FAFB]/95 backdrop-blur-xs dark:bg-slate-900/95 px-4 py-2 border-y border-slate-200/60 dark:border-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center justify-between">
+                  <div className="sticky top-0 z-10 bg-[#F9FAFB]/95 backdrop-blur-xs px-4 py-2 border-y border-border dark:border-border text-xs font-semibold text-foreground flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="text-slate-900 dark:text-white font-bold tracking-tight">{group.dateKey}</span>
-                      <span className="text-slate-300 dark:text-slate-700">·</span>
-                      <span className="text-slate-400 font-medium text-[11px]">
+                      <span className="text-foreground dark:text-white font-bold tracking-tight">{group.dateKey}</span>
+                      <span className="text-slate-300 dark:text-foreground">·</span>
+                      <span className="text-muted-foreground font-medium text-[11px]">
                         {group.items.length} {group.items.length === 1 ? 'entry' : 'entries'}
                       </span>
                     </div>
                     <div className="text-right flex items-center gap-1.5">
-                      <span className="text-slate-400 font-mono text-[11px]">Dr</span>
-                      <span className="font-mono text-slate-900 dark:text-white font-bold">
+                      <span className="text-muted-foreground font-mono text-[11px]">Dr</span>
+                      <span className="font-mono text-foreground dark:text-white font-bold">
                         {formatMoney(group.totalDebit, { currency: 'SAR' })}
                       </span>
                     </div>
                   </div>
 
                   {/* Entry Rows */}
-                  <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                  <div className="divide-y divide-border/60 dark:divide-border/60">
                     {group.items.map((entry: JournalEntry) => {
                       const isExpanded = expandedRowIds.has(entry.id);
                       const totalDebit = (entry.lines || []).reduce((sum: number, l: any) => sum + (Number(l.debit) || 0), 0);
@@ -511,7 +511,7 @@ export default function JournalEntriesPage() {
                         <div key={entry.id} className="transition-colors">
                           <div
                             onClick={() => toggleExpandRow(entry.id)}
-                            className="h-14 px-4 flex items-center justify-between gap-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 cursor-pointer text-xs group"
+                            className="h-14 px-4 flex items-center justify-between gap-3 hover:bg-muted/80 dark:hover:bg-slate-800/50 cursor-pointer text-xs group"
                           >
                             {/* Chevron + Ref ID + Source badge */}
                             <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -522,17 +522,17 @@ export default function JournalEntriesPage() {
                                   e.stopPropagation();
                                   toggleExpandRow(entry.id);
                                 }}
-                                className="p-1 rounded text-slate-400 hover:text-slate-600 focus:outline-none"
+                                className="p-1 rounded text-muted-foreground hover:text-muted-foreground focus:outline-none"
                               >
                                 {isExpanded ? (
-                                  <ChevronDown className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+                                  <ChevronDown className="w-4 h-4 text-foreground" />
                                 ) : (
                                   <ChevronRight className="w-4 h-4" />
                                 )}
                               </button>
 
                               {/* Monospace Ref Badge */}
-                              <span className="font-mono font-bold text-xs tracking-tight text-slate-900 dark:text-slate-100 shrink-0">
+                              <span className="font-mono font-bold text-xs tracking-tight text-foreground shrink-0">
                                 {entry.ref_id || `JE-${entry.id.slice(0, 6)}`}
                               </span>
 
@@ -546,7 +546,7 @@ export default function JournalEntriesPage() {
 
                               {/* Memo + Account flow */}
                               <div className="min-w-0 flex-1 pl-1">
-                                <div className={`truncate font-semibold text-slate-900 dark:text-slate-100 ${isVoided ? 'line-through text-slate-400' : ''}`}>
+                                <div className={`truncate font-semibold text-foreground  ${isVoided ? 'line-through text-muted-foreground' : ''}`}>
                                   {entry.memo || '—'}
                                 </div>
                                 {(drText || crText) && (
@@ -557,7 +557,7 @@ export default function JournalEntriesPage() {
                                         {drText}
                                       </span>
                                     )}
-                                    {drText && crText && <span className="text-slate-300 dark:text-slate-700 font-mono">/</span>}
+                                    {drText && crText && <span className="text-slate-300 dark:text-foreground font-mono">/</span>}
                                     {crText && (
                                       <span className="truncate text-amber-700 dark:text-amber-400 font-mono">
                                         <span className="font-bold text-amber-800 dark:text-amber-300 mr-1">Cr:</span>
@@ -575,7 +575,7 @@ export default function JournalEntriesPage() {
                                 <MoneyText
                                   value={totalDebit}
                                   currency="SAR"
-                                  className={`text-xs font-semibold ${isVoided ? 'line-through text-slate-400' : ''}`}
+                                  className={`text-xs font-semibold ${isVoided ? 'line-through text-muted-foreground' : ''}`}
                                 />
                               </div>
 
@@ -588,20 +588,20 @@ export default function JournalEntriesPage() {
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-700 transition-opacity"
+                                      className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
                                     >
                                       <MoreHorizontal className="w-4 h-4" />
                                     </Button>
                                   </DropdownMenuTrigger>
                                   <DropdownMenuContent align="end" className="w-36 text-xs">
                                     <DropdownMenuItem onClick={() => navigate(`/finance/journal-entries/${entry.id}`)}>
-                                      <Eye className="w-3.5 h-3.5 mr-2 text-slate-500" />
+                                      <Eye className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
                                       Open
                                     </DropdownMenuItem>
                                     {entry.status === 'Draft' && (
                                       <>
                                         <DropdownMenuItem onClick={() => navigate(`/finance/journal-entries/${entry.id}/edit`)}>
-                                          <PenLine className="w-3.5 h-3.5 mr-2 text-slate-500" />
+                                          <PenLine className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
                                           Edit
                                         </DropdownMenuItem>
                                         <DropdownMenuItem
@@ -634,13 +634,13 @@ export default function JournalEntriesPage() {
 
                           {/* Inline Expansion details */}
                           {isExpanded && (
-                            <div className="bg-slate-50/70 p-4 border-b border-slate-200/80 space-y-3 pl-11">
+                            <div className="bg-muted/70 p-4 border-b border-border space-y-3 pl-11">
                               <JournalLinesTable lines={entry.lines} />
 
-                              <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-1 gap-2">
+                              <div className="flex flex-wrap items-center justify-between text-xs text-muted-foreground pt-1 gap-2">
                                 <div className="flex items-center gap-3">
                                   <span>
-                                    Period: <strong className="text-slate-700">{entry.period?.name || '—'}</strong>
+                                    Period: <strong className="text-foreground">{entry.period?.name || '—'}</strong>
                                   </span>
                                   <span>·</span>
                                   <span>
@@ -675,7 +675,7 @@ export default function JournalEntriesPage() {
                                     variant="outline"
                                     size="sm"
                                     onClick={() => navigate(`/finance/journal-entries/${entry.id}`)}
-                                    className="h-7 text-xs bg-white"
+                                    className="h-7 text-xs bg-card"
                                   >
                                     Open record
                                   </Button>
@@ -685,7 +685,7 @@ export default function JournalEntriesPage() {
                                         variant="outline"
                                         size="sm"
                                         onClick={() => navigate(`/finance/journal-entries/${entry.id}/edit`)}
-                                        className="h-7 text-xs bg-white"
+                                        className="h-7 text-xs bg-card"
                                       >
                                         Edit
                                       </Button>
@@ -713,7 +713,7 @@ export default function JournalEntriesPage() {
 
           {/* Footer Pagination */}
           {pagination.total > 0 && (
-            <div className="px-4 py-3 border-t border-slate-200 bg-slate-50/50 flex items-center justify-between text-xs text-slate-500">
+            <div className="px-4 py-3 border-t border-border bg-muted/50 flex items-center justify-between text-xs text-muted-foreground">
               <div>
                 Showing {(pagination.page - 1) * pagination.per_page + 1}–
                 {Math.min(pagination.page * pagination.per_page, pagination.total)} of {pagination.total} entries
@@ -729,7 +729,7 @@ export default function JournalEntriesPage() {
                 >
                   Previous
                 </Button>
-                <span className="px-2 font-mono text-slate-700 font-semibold">
+                <span className="px-2 font-mono text-foreground font-semibold">
                   {pagination.page} / {pagination.total_pages || 1}
                 </span>
                 <Button
@@ -809,13 +809,13 @@ export default function JournalEntriesPage() {
             variant="destructive"
           >
             <div className="my-3 space-y-2">
-              <label className="text-xs font-semibold text-slate-700 block">Reason for voiding (optional):</label>
+              <label className="text-xs font-semibold text-foreground block">Reason for voiding (optional):</label>
               <textarea
                 value={voidReason}
                 onChange={(e) => setVoidReason(e.target.value)}
                 placeholder="e.g. Duplicated invoice entry / incorrect posting date"
                 rows={2}
-                className="w-full text-xs p-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-rose-500"
+                className="w-full text-xs p-2.5 rounded-lg border border-border focus:outline-none focus:ring-1 focus:ring-rose-500"
               />
             </div>
           </ConfirmModal>

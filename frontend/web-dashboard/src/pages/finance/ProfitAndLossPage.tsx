@@ -231,13 +231,13 @@ export default function ProfitAndLossPage() {
             >
               <ToggleGroupItem
                 value="statement"
-                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs"
               >
                 Statement
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="analysis"
-                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs"
               >
                 Analysis
               </ToggleGroupItem>
@@ -274,10 +274,10 @@ export default function ProfitAndLossPage() {
                 onValueChange={(val: string[]) => val[0] && updateParams({ layout: val[0] })}
                 className="bg-muted p-[3px] rounded-lg border border-border/60"
               >
-                <ToggleGroupItem value="vertical" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
+                <ToggleGroupItem value="vertical" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs">
                   Vertical
                 </ToggleGroupItem>
-                <ToggleGroupItem value="tformat" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
+                <ToggleGroupItem value="tformat" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs">
                   T-format
                 </ToggleGroupItem>
               </ToggleGroup>
@@ -571,7 +571,7 @@ export default function ProfitAndLossPage() {
 
                     {/* Net Profit / Net Loss Grand Total (B4: double rule below, font-semibold) */}
                     <div className="pt-4">
-                      <div className="px-3 py-2.5 border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 flex items-center justify-between font-semibold text-foreground text-xs">
+                      <div className="px-3 py-2.5 border-t border-foreground/70 border-b-[3px] border-double flex items-center justify-between font-semibold text-foreground text-xs">
                         <span>{verticalPnl.netProfit >= 0 ? 'Net profit' : 'Net loss'}</span>
                         <span className={`fin-num font-semibold ${verticalPnl.netProfit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'}`}>
                           {fmtMoney(verticalPnl.netProfit)}

@@ -51,18 +51,18 @@ export default function ARAgeingPage() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-[#3E3C3D]">Accounts Receivable Ageing</h1>
-            <p className="text-sm text-slate-500">Customer outstanding invoices by overdue range</p>
+            <p className="text-sm text-muted-foreground">Customer outstanding invoices by overdue range</p>
           </div>
 
           <div className="flex items-center gap-3">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               As Of Date:
             </label>
             <Input
               type="date"
               value={asOfDate}
               onChange={(e) => setAsOfDate(e.target.value)}
-              className="w-40 h-9 text-xs bg-white"
+              className="w-40 h-9 text-xs bg-card"
             />
             <Button
               variant="outline"
@@ -71,20 +71,20 @@ export default function ARAgeingPage() {
               onClick={() => refetch()}
               title="Refresh"
             >
-              <RefreshCw className="w-4 h-4 text-slate-600" />
+              <RefreshCw className="w-4 h-4 text-muted-foreground" />
             </Button>
           </div>
         </div>
 
         {/* Error State */}
         {isError && (
-          <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-rose-800 text-sm">
+          <div className="bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 border border-rose-200 rounded-xl p-4 text-rose-800 text-sm">
             Failed to load AR Ageing report. Please try again.
           </div>
         )}
 
         {/* Report Table Card */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
+        <div className="bg-card rounded-xl border border-border shadow-xs overflow-hidden">
           {isLoading ? (
             <div className="p-6 space-y-3">
               <Skeleton className="h-6 w-full" />
@@ -96,7 +96,7 @@ export default function ARAgeingPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200/80 text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                  <tr className="bg-muted/80 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     <th className="py-3 px-4">Customer Name</th>
                     <th className="py-3 px-4 text-right w-32">Current</th>
                     <th className="py-3 px-4 text-right w-32">1–30 Days</th>
@@ -106,18 +106,18 @@ export default function ARAgeingPage() {
                     <th className="py-3 px-4 text-right w-36">Total (SAR)</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-border/60">
                   {rows.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="py-8 text-center text-slate-400 text-sm">
+                      <td colSpan={7} className="py-8 text-center text-muted-foreground text-sm">
                         No outstanding customer invoices found.
                       </td>
                     </tr>
                   ) : (
                     rows.map((row) => (
-                      <tr key={row.party_name} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="py-2.5 px-4 font-medium text-slate-900">{row.party_name}</td>
-                        <td className="py-2.5 px-4 text-right font-mono text-xs text-slate-700">
+                      <tr key={row.party_name} className="hover:bg-muted/50 transition-colors">
+                        <td className="py-2.5 px-4 font-medium text-foreground">{row.party_name}</td>
+                        <td className="py-2.5 px-4 text-right font-mono text-xs text-foreground">
                           {row.current > 0 ? formatMoney(row.current) : '—'}
                         </td>
                         <td className="py-2.5 px-4 text-right font-mono text-xs text-amber-700">
@@ -132,7 +132,7 @@ export default function ARAgeingPage() {
                         <td className="py-2.5 px-4 text-right font-mono text-xs text-red-800 font-bold">
                           {row.days_90_plus > 0 ? formatMoney(row.days_90_plus) : '—'}
                         </td>
-                        <td className="py-2.5 px-4 text-right font-mono text-xs font-bold text-slate-900">
+                        <td className="py-2.5 px-4 text-right font-mono text-xs font-bold text-foreground">
                           {formatMoney(row.total)}
                         </td>
                       </tr>
@@ -141,9 +141,9 @@ export default function ARAgeingPage() {
                 </tbody>
                 {grandTotal && rows.length > 0 && (
                   <tfoot>
-                    <tr className="bg-slate-100/80 border-t-2 border-slate-300 font-bold text-slate-900 text-sm">
+                    <tr className="bg-muted/80 border-t-2 border-border font-bold text-foreground text-sm">
                       <td className="py-3 px-4">Grand Total</td>
-                      <td className="py-3 px-4 text-right font-mono text-xs text-slate-900">
+                      <td className="py-3 px-4 text-right font-mono text-xs text-foreground">
                         {formatMoney(grandTotal.current)}
                       </td>
                       <td className="py-3 px-4 text-right font-mono text-xs text-amber-700">

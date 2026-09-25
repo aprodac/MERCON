@@ -19,11 +19,11 @@ import { financeService } from '@/services/financeService';
 import type { Invoice, InvoiceStatus, Account } from '@mercon/shared-types';
 
 const STATUS_BADGES: Record<InvoiceStatus, string> = {
-  Draft: 'bg-amber-50 text-amber-700 border-amber-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
+  Draft: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 text-amber-700 border-amber-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
   Issued: 'bg-blue-50 text-blue-700 border-blue-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
-  PartiallyPaid: 'bg-orange-50 text-orange-700 border-orange-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
-  Paid: 'bg-emerald-50 text-emerald-700 border-emerald-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
-  Void: 'bg-rose-50 text-rose-700 border-rose-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
+  PartiallyPaid: 'bg-amber-500/10 text-amber-700 ring-1 ring-inset ring-amber-600/20 border-orange-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
+  Paid: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 text-emerald-700 border-emerald-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
+  Void: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 text-rose-700 border-rose-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
 };
 
 const INVOICES_EXPORT_COLUMNS: ExportColumn<Invoice>[] = [
@@ -152,31 +152,31 @@ export default function InvoicesPage() {
   const columns: Column<Invoice>[] = [
     {
       header: 'Ref ID',
-      accessor: (inv) => <span className="font-mono font-bold text-[#3E3C3D]">{inv.ref_id || `INV-${inv.id.slice(0, 6)}`}</span>,
+      accessor: (inv) => <span className="fin-num font-semibold text-[#3E3C3D]">{inv.ref_id || `INV-${inv.id.slice(0, 6)}`}</span>,
       mobilePriority: 'primary',
     },
     {
       header: 'Customer',
-      accessor: (inv) => <span className="font-medium text-slate-800">{(inv as any).customer?.name || '—'}</span>,
+      accessor: (inv) => <span className="font-medium text-foreground">{(inv as any).customer?.name || '—'}</span>,
       mobilePriority: 'primary',
     },
     {
       header: 'Invoice Date',
-      accessor: (inv) => <span className="font-mono text-slate-600">{new Date(inv.invoice_date).toLocaleDateString()}</span>,
+      accessor: (inv) => <span className="font-mono text-muted-foreground">{new Date(inv.invoice_date).toLocaleDateString()}</span>,
       mobilePriority: 'secondary',
     },
     {
       header: 'Total',
       headerClassName: 'text-right',
       className: 'text-right',
-      accessor: (inv) => <span className="font-mono text-slate-800">SAR {Number(inv.total_amount).toFixed(2)}</span>,
+      accessor: (inv) => <span className="font-mono text-foreground">SAR {Number(inv.total_amount).toFixed(2)}</span>,
       mobilePriority: 'meta',
     },
     {
       header: 'Balance Due',
       headerClassName: 'text-right',
       className: 'text-right',
-      accessor: (inv) => <span className="font-mono font-semibold text-slate-900">SAR {Number(inv.balance_due).toFixed(2)}</span>,
+      accessor: (inv) => <span className="font-mono font-semibold text-foreground">SAR {Number(inv.balance_due).toFixed(2)}</span>,
       mobilePriority: 'secondary',
     },
     {
@@ -190,11 +190,11 @@ export default function InvoicesPage() {
       className: 'text-right',
       accessor: (inv) => (
         <div className="space-x-1">
-          <Button variant="ghost" size="sm" onClick={() => setViewingInvoice(inv)} className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900">
+          <Button variant="ghost" size="sm" onClick={() => setViewingInvoice(inv)} className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground">
             <Eye className="w-3.5 h-3.5 mr-1" />
             View
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setPrintingInvoice(inv)} className="h-7 px-2 text-xs text-slate-600 hover:text-slate-900">
+          <Button variant="ghost" size="sm" onClick={() => setPrintingInvoice(inv)} className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground">
             <Printer className="w-3.5 h-3.5 mr-1" />
             Print
           </Button>
@@ -205,7 +205,7 @@ export default function InvoicesPage() {
               onClick={() => {
                 if (confirm(`Delete draft invoice ${inv.ref_id}?`)) deleteMutation.mutate(inv.id);
               }}
-              className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600"
+              className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-600"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </Button>
@@ -223,7 +223,7 @@ export default function InvoicesPage() {
           setSelectedStatus('all');
           setPage(1);
         }}
-        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${selectedStatus === 'all' ? 'bg-[#3E3C3D] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${selectedStatus === 'all' ? 'bg-card text-foreground border border-border text-white' : 'bg-muted text-muted-foreground hover:bg-muted'}`}
       >
         All Statuses
       </button>
@@ -234,7 +234,7 @@ export default function InvoicesPage() {
             setSelectedStatus(st);
             setPage(1);
           }}
-          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${selectedStatus === st ? 'bg-[#FA634E] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors whitespace-nowrap ${selectedStatus === st ? 'bg-[#FA634E] text-white' : 'bg-muted text-muted-foreground hover:bg-muted'}`}
         >
           {st}
         </button>
@@ -248,9 +248,9 @@ export default function InvoicesPage() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-[#3E3C3D]">Invoices</h1>
-            <p className="text-sm text-slate-500">Customer billing, revenue recognition & accounts receivable</p>
+            <p className="text-sm text-muted-foreground">Customer billing, revenue recognition & accounts receivable</p>
           </div>
-          <Button onClick={() => navigate('/finance/invoices/new')} className="bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-sm font-medium">
+          <Button onClick={() => navigate('/finance/invoices/new')} className="bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-xs font-medium">
             <Plus className="w-4 h-4 mr-2" />
             New Invoice
           </Button>
@@ -318,34 +318,34 @@ export default function InvoicesPage() {
             </DialogHeader>
             {viewingInvoice && (
               <div className="space-y-4 py-2 text-xs">
-                <div className="grid grid-cols-3 gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                <div className="grid grid-cols-3 gap-2 bg-muted p-3 rounded-lg border border-border">
                   <div>
-                    <span className="text-slate-400 block font-medium">Status</span>
+                    <span className="text-muted-foreground block font-medium">Status</span>
                     <Badge className={`${STATUS_BADGES[viewingInvoice.status]} mt-0.5 border`}>{viewingInvoice.status}</Badge>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">Total</span>
-                    <span className="font-mono font-bold text-slate-800">SAR {Number(viewingInvoice.total_amount).toFixed(2)}</span>
+                    <span className="text-muted-foreground block font-medium">Total</span>
+                    <span className="fin-num font-semibold text-foreground">SAR {Number(viewingInvoice.total_amount).toFixed(2)}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">Balance Due</span>
-                    <span className="font-mono font-bold text-slate-900">SAR {Number(viewingInvoice.balance_due).toFixed(2)}</span>
+                    <span className="text-muted-foreground block font-medium">Balance Due</span>
+                    <span className="fin-num font-semibold text-foreground">SAR {Number(viewingInvoice.balance_due).toFixed(2)}</span>
                   </div>
                 </div>
 
-                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                <div className="border border-border rounded-lg overflow-hidden">
                   <table className="w-full text-left">
                     <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+                      <tr className="bg-muted border-b border-border text-muted-foreground font-semibold">
                         <th className="p-2.5">Description</th>
                         <th className="p-2.5 text-right">Amount</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody className="divide-y divide-border/60">
                       {viewingInvoice.lines?.map((line) => (
                         <tr key={line.id}>
-                          <td className="p-2.5 text-slate-800">{line.description}</td>
-                          <td className="p-2.5 text-right font-mono text-slate-800">SAR {Number(line.amount).toFixed(2)}</td>
+                          <td className="p-2.5 text-foreground">{line.description}</td>
+                          <td className="p-2.5 text-right font-mono text-foreground">SAR {Number(line.amount).toFixed(2)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -354,11 +354,11 @@ export default function InvoicesPage() {
 
                 {viewingInvoice.payments && viewingInvoice.payments.length > 0 && (
                   <div>
-                    <span className="text-slate-500 font-medium block mb-1">Payments Recorded</span>
-                    <div className="border border-slate-200 rounded-lg divide-y divide-slate-100">
+                    <span className="text-muted-foreground font-medium block mb-1">Payments Recorded</span>
+                    <div className="border border-border rounded-lg divide-y divide-border/60">
                       {viewingInvoice.payments.map((p) => (
                         <div key={p.id} className="p-2 flex justify-between">
-                          <span className="text-slate-600">{new Date(p.payment_date).toLocaleDateString()} {p.payment_method ? `— ${p.payment_method}` : ''}</span>
+                          <span className="text-muted-foreground">{new Date(p.payment_date).toLocaleDateString()} {p.payment_method ? `— ${p.payment_method}` : ''}</span>
                           <span className="font-mono font-semibold text-emerald-700">SAR {Number(p.amount).toFixed(2)}</span>
                         </div>
                       ))}
@@ -376,7 +376,7 @@ export default function InvoicesPage() {
                     </Button>
                   )}
                   {(viewingInvoice.status === 'Issued' || viewingInvoice.status === 'PartiallyPaid') && (
-                    <Button size="sm" variant="outline" className="border-emerald-300 text-emerald-700 hover:bg-emerald-50" onClick={openPaymentModal}>
+                    <Button size="sm" variant="outline" className="border-emerald-300 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20" onClick={openPaymentModal}>
                       Record Payment
                     </Button>
                   )}
@@ -384,7 +384,7 @@ export default function InvoicesPage() {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="border-rose-200 text-rose-700 hover:bg-rose-50"
+                      className="border-rose-200 text-rose-700 hover:bg-rose-500/10 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20"
                       onClick={() => {
                         if (confirm('Void this invoice? This posts a reversing GL entry and unlinks its trips.')) voidMutation.mutate(viewingInvoice.id);
                       }}
@@ -408,15 +408,15 @@ export default function InvoicesPage() {
             </DialogHeader>
             <form onSubmit={handleRecordPayment} className="space-y-3 py-2">
               <div>
-                <label className="text-xs font-semibold text-slate-700 mb-1 block">Amount * (Balance Due: SAR {Number(viewingInvoice?.balance_due || 0).toFixed(2)})</label>
+                <label className="text-xs font-semibold text-foreground mb-1 block">Amount * (Balance Due: SAR {Number(viewingInvoice?.balance_due || 0).toFixed(2)})</label>
                 <Input type="number" step="0.01" min="0.01" value={paymentAmount} onChange={(e) => setPaymentAmount(parseFloat(e.target.value) || 0)} className="h-9 text-xs" />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-700 mb-1 block">Payment Date *</label>
+                <label className="text-xs font-semibold text-foreground mb-1 block">Payment Date *</label>
                 <Input type="date" value={paymentDate} onChange={(e) => setPaymentDate(e.target.value)} className="h-9 text-xs" />
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-700 mb-1 block">Received Into Account *</label>
+                <label className="text-xs font-semibold text-foreground mb-1 block">Received Into Account *</label>
                 <Select value={paymentAccountId} onValueChange={setPaymentAccountId}>
                   <SelectTrigger className="h-9 text-xs">
                     <SelectValue placeholder="Select bank/cash account" />
@@ -429,7 +429,7 @@ export default function InvoicesPage() {
                 </Select>
               </div>
               <div>
-                <label className="text-xs font-semibold text-slate-700 mb-1 block">Method</label>
+                <label className="text-xs font-semibold text-foreground mb-1 block">Method</label>
                 <Input placeholder="e.g. Bank Transfer" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="h-9 text-xs" />
               </div>
               <DialogFooter className="pt-2">

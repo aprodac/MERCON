@@ -86,7 +86,7 @@ export function StatusTabs({
             className={cn(
               'relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all outline-none cursor-pointer select-none',
               isActive
-                ? 'bg-background text-foreground shadow-2xs font-semibold'
+                ? 'bg-background text-foreground shadow-xs font-semibold'
                 : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
             )}
           >

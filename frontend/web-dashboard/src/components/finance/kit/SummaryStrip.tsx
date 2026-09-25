@@ -106,7 +106,7 @@ export function SummaryStrip({
                     {item.bar.segments.map((seg, sIdx) => (
                       <div
                         key={sIdx}
-                        className="flex items-center gap-1.5 text-[11.5px] text-[#757583] dark:text-slate-400"
+                        className="flex items-center gap-1.5 text-[11.5px] text-[#757583] dark:text-muted-foreground"
                       >
                         <span
                           className={cn(

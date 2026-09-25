@@ -129,8 +129,8 @@ export const AdvanceReadinessRail: React.FC<AdvanceReadinessRailProps> = ({
   return (
     <div className="w-full lg:w-[360px] shrink-0 space-y-4">
       {/* Readiness Checks Card */}
-      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+      <div className="p-4 rounded-xl border border-border dark:border-border bg-card space-y-3">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
           Readiness Checks
         </h3>
 
@@ -140,8 +140,8 @@ export const AdvanceReadinessRail: React.FC<AdvanceReadinessRailProps> = ({
               <div
                 className={`mt-0.5 w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${
                   check.passed
-                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400'
-                    : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400'
+                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400'
+                    : 'bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400'
                 }`}
               >
                 {check.passed ? <Check className="w-2.5 h-2.5 stroke-[3]" /> : <X className="w-2.5 h-2.5 stroke-[3]" />}
@@ -150,7 +150,7 @@ export const AdvanceReadinessRail: React.FC<AdvanceReadinessRailProps> = ({
                 <span
                   className={
                     check.passed
-                      ? 'text-slate-700 dark:text-slate-300 font-medium'
+                      ? 'text-foreground  font-medium'
                       : 'text-rose-600 dark:text-rose-400 font-semibold'
                   }
                 >
@@ -168,7 +168,7 @@ export const AdvanceReadinessRail: React.FC<AdvanceReadinessRailProps> = ({
 
         {/* API Error Box */}
         {apiError && (
-          <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 flex items-start gap-2 text-xs text-rose-700 dark:text-rose-300">
+          <div className="p-3 rounded-xl bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 flex items-start gap-2 text-xs">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600 dark:text-rose-400" />
             <div className="font-medium">{apiError}</div>
           </div>
@@ -176,15 +176,15 @@ export const AdvanceReadinessRail: React.FC<AdvanceReadinessRailProps> = ({
       </div>
 
       {/* Will Post Preview Card */}
-      <div className="p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
-        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+      <div className="p-4 rounded-xl border border-border dark:border-border bg-card space-y-3">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
           Will Post (GL Preview)
         </h3>
 
         {previewLines.length > 0 ? (
           <JournalLinesTable lines={previewLines as any} variant="preview" />
         ) : (
-          <div className="p-4 text-center text-xs text-slate-400 dark:text-slate-600 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
+          <div className="p-4 text-center text-xs text-muted-foreground dark:text-muted-foreground border border-dashed border-border dark:border-border rounded-xl">
             Complete form fields to preview entry.
           </div>
         )}

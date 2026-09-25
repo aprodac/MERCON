@@ -94,10 +94,10 @@ export default function AdvanceDetailPage() {
       <DashboardLayout active="finance" title="Advance Details">
         <div className="p-6 max-w-[1400px] mx-auto space-y-6">
           <Skeleton className="h-8 w-48 rounded-lg" />
-          <Skeleton className="h-24 w-full rounded-2xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <Skeleton className="h-96 lg:col-span-2 rounded-2xl" />
-            <Skeleton className="h-96 rounded-2xl" />
+            <Skeleton className="h-96 lg:col-span-2 rounded-xl" />
+            <Skeleton className="h-96 rounded-xl" />
           </div>
         </div>
       </DashboardLayout>
@@ -207,20 +207,20 @@ export default function AdvanceDetailPage() {
           ]}
           title={
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="fin-num font-bold text-2xl text-slate-900 dark:text-slate-100">
+              <span className="fin-num font-bold text-2xl text-foreground">
                 {advance.ref_id || advance.id.slice(0, 8)}
               </span>
               <StatusPill kind="advance" status={advance.status} />
               {advance.direction === 'Received' ? (
-                <Badge variant="outline" className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200/60 font-semibold">
+                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/40 border-emerald-200/60 font-semibold">
                   <ArrowDownLeft className="w-3 h-3 text-emerald-600 mr-1" /> Money in
                 </Badge>
               ) : (
-                <Badge variant="outline" className="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200/60 font-semibold">
+                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-950/40 border-amber-200/60 font-semibold">
                   <ArrowUpRight className="w-3 h-3 text-amber-600 mr-1" /> Money out
                 </Badge>
               )}
-              <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-transparent font-semibold">
+              <Badge variant="outline" className="bg-muted text-foreground border-transparent font-semibold">
                 {advance.party_type}
               </Badge>
             </div>
@@ -233,7 +233,7 @@ export default function AdvanceDetailPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => setIsPrintModalOpen(true)}
-                className="gap-1.5 border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200"
+                className="gap-1.5 border-border dark:border-border text-foreground"
               >
                 <Printer className="w-4 h-4" />
                 <span>Print voucher</span>
@@ -252,7 +252,7 @@ export default function AdvanceDetailPage() {
               {isUnapplied && advance.status !== 'Void' && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-500">
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
                       <MoreHorizontal className="w-4 h-4" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -272,7 +272,7 @@ export default function AdvanceDetailPage() {
             <div className="space-y-6">
               {/* Employee Advance Info Alert */}
               {advance.party_type === 'Employee' && (
-                <div className="p-4 rounded-2xl bg-teal-50/70 dark:bg-teal-950/40 border border-teal-200/80 dark:border-teal-900/60 flex items-start gap-3">
+                <div className="p-4 rounded-xl bg-teal-500/10 dark:bg-teal-950/40 border border-teal-200/80 dark:border-teal-900/60 flex items-start gap-3">
                   <Info className="w-5 h-5 text-teal-600 dark:text-teal-400 shrink-0 mt-0.5" />
                   <div className="space-y-1 text-xs text-teal-900 dark:text-teal-200">
                     <p className="font-semibold">
@@ -305,35 +305,35 @@ export default function AdvanceDetailPage() {
                 />
 
                 {/* Details Card */}
-                <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <div className="p-5 rounded-xl border border-border dark:border-border bg-card space-y-3">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
                     Advance Context
                   </h3>
                   <div className="space-y-2 text-xs">
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Party:</span>
+                      <span className="text-muted-foreground">Party:</span>
                       {advance.party_id ? (
                         <Link to={partyLink} className="font-semibold text-[#FA634E] hover:underline flex items-center gap-1">
                           {partyName} <ExternalLink className="w-3 h-3" />
                         </Link>
                       ) : (
-                        <span className="font-semibold text-slate-800 dark:text-slate-200">{partyName}</span>
+                        <span className="font-semibold text-foreground">{partyName}</span>
                       )}
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Advance Date:</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{formatDate(advance.advance_date)}</span>
+                      <span className="text-muted-foreground">Advance Date:</span>
+                      <span className="font-semibold text-foreground">{formatDate(advance.advance_date)}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Bank / Cash Account:</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                      <span className="text-muted-foreground">Bank / Cash Account:</span>
+                      <span className="font-semibold text-foreground">
                         {advance.account ? `${advance.account.name} (${advance.account.account_code})` : '—'}
                       </span>
                     </div>
                     {advance.memo && (
                       <div className="flex items-start justify-between">
-                        <span className="text-slate-500">Memo:</span>
-                        <span className="font-medium text-slate-800 dark:text-slate-200 max-w-xs text-right">{advance.memo}</span>
+                        <span className="text-muted-foreground">Memo:</span>
+                        <span className="font-medium text-foreground max-w-xs text-right">{advance.memo}</span>
                       </div>
                     )}
                   </div>
@@ -341,9 +341,9 @@ export default function AdvanceDetailPage() {
               </div>
 
               {/* Applications Card */}
-              <div className="p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4">
+              <div className="p-5 rounded-xl border border-border dark:border-border bg-card space-y-4">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  <h3 className="text-sm font-bold text-foreground">
                     Document Applications ({advance.applications?.length || 0})
                   </h3>
                   {canApply && remaining > 0 && advance.status !== 'Void' && (
@@ -354,31 +354,31 @@ export default function AdvanceDetailPage() {
                 </div>
 
                 {advance.applications && advance.applications.length > 0 ? (
-                  <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+                  <div className="border border-border dark:border-border rounded-xl overflow-hidden divide-y divide-border/60 dark:divide-border/60">
                     {advance.applications.map((app) => {
                       const docRef = app.invoice?.ref_id || app.bill?.ref_id || app.invoiceId || app.billId || 'Document';
                       const docListPath = app.invoiceId ? `/finance/invoices?search=${docRef}` : `/finance/bills?search=${docRef}`;
 
                       return (
-                        <div key={app.id} className="p-3.5 bg-white dark:bg-slate-900 flex items-center justify-between text-xs hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                        <div key={app.id} className="p-3.5 bg-card flex items-center justify-between text-xs hover:bg-muted dark:hover:bg-slate-800/50 transition-colors">
                           <div className="space-y-1">
                             <div className="flex items-center gap-2">
                               <Badge variant="outline" className="text-[10px] font-semibold">
                                 {app.invoiceId ? 'Invoice' : 'Bill'}
                               </Badge>
-                              <Link to={docListPath} className="font-mono font-bold text-[#FA634E] hover:underline flex items-center gap-1">
+                              <Link to={docListPath} className="fin-num font-semibold text-[#FA634E] hover:underline flex items-center gap-1">
                                 {docRef} <ExternalLink className="w-3 h-3" />
                               </Link>
                             </div>
-                            <span className="text-slate-500 text-[11px]">Applied on {formatDate(app.applied_date)}</span>
+                            <span className="text-muted-foreground text-[11px]">Applied on {formatDate(app.applied_date)}</span>
                           </div>
 
                           <div className="flex items-center gap-4">
-                            <MoneyText value={app.amount} className="font-bold text-slate-900 dark:text-slate-100 font-mono" />
+                            <MoneyText value={app.amount} className="font-bold text-foreground font-mono" />
                             {app.journalEntryId && (
                               <Link
                                 to={`/finance/journal-entries/${app.journalEntryId}`}
-                                className="text-[11px] font-mono text-slate-500 hover:text-[#FA634E] hover:underline"
+                                className="text-[11px] font-mono text-muted-foreground hover:text-[#FA634E] hover:underline"
                               >
                                 {app.journalEntry?.ref_id || 'Contra JE'} →
                               </Link>
@@ -419,7 +419,7 @@ export default function AdvanceDetailPage() {
                   {advance.journalEntry && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        <span className="text-xs font-bold text-foreground">
                           Initial Advance JE
                         </span>
                         <Link
@@ -434,9 +434,9 @@ export default function AdvanceDetailPage() {
                   )}
 
                   {(advance.applications || []).map((app) => (
-                    <div key={app.id} className="space-y-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                    <div key={app.id} className="space-y-2 pt-2 border-t border-border dark:border-border">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        <span className="text-xs font-bold text-foreground">
                           Application Contra JE
                         </span>
                         {app.journalEntryId && (
@@ -461,7 +461,7 @@ export default function AdvanceDetailPage() {
               {sideTab === 'other' && (
                 <div className="space-y-2">
                   {otherAdvances.length === 0 ? (
-                    <div className="text-xs text-slate-500 py-4 text-center">
+                    <div className="text-xs text-muted-foreground py-4 text-center">
                       No other advances with this party.
                     </div>
                   ) : (
@@ -469,17 +469,17 @@ export default function AdvanceDetailPage() {
                       <div
                         key={other.id}
                         onClick={() => navigate(`/finance/advances/${other.id}`)}
-                        className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer transition-colors space-y-1"
+                        className="p-3 rounded-xl border border-border dark:border-border hover:border-border dark:hover:border-border bg-card cursor-pointer transition-colors space-y-1"
                       >
                         <div className="flex items-center justify-between text-xs">
-                          <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                          <span className="fin-num font-semibold text-foreground">
                             {other.ref_id || other.id.slice(0, 8)}
                           </span>
                           <StatusPill kind="advance" status={other.status} />
                         </div>
-                        <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                        <div className="flex items-center justify-between text-[11px] text-muted-foreground font-mono">
                           <span>{formatDate(other.advance_date)}</span>
-                          <span>Rem: <MoneyText value={other.remaining_amount} className="font-semibold text-slate-900 dark:text-slate-100" /></span>
+                          <span>Rem: <MoneyText value={other.remaining_amount} className="font-semibold text-foreground" /></span>
                         </div>
                       </div>
                     ))
@@ -512,13 +512,13 @@ export default function AdvanceDetailPage() {
               <AlertDialogTitle className="text-rose-600 dark:text-rose-400 flex items-center gap-2">
                 <Ban className="w-5 h-5" /> Void Advance {advance.ref_id || advance.id.slice(0, 8)}?
               </AlertDialogTitle>
-              <AlertDialogDescription className="text-xs text-slate-600 dark:text-slate-300 space-y-2">
+              <AlertDialogDescription className="text-xs text-muted-foreground space-y-2">
                 <span>
                   This action is permanent. Voiding this advance will post a reversing journal entry to the general ledger to restore account balances.
                 </span>
                 {reversalPreviewLines.length > 0 && (
                   <div className="pt-2">
-                    <span className="font-bold text-slate-900 dark:text-slate-100 block mb-1">
+                    <span className="font-bold text-foreground block mb-1">
                       Reversing Journal Entry Preview:
                     </span>
                     <JournalLinesTable lines={reversalPreviewLines as any} variant="preview" />

@@ -303,13 +303,13 @@ export default function BalanceSheetPage() {
             >
               <ToggleGroupItem
                 value="statement"
-                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs"
               >
                 Statement
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="analysis"
-                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs"
               >
                 Analysis
               </ToggleGroupItem>
@@ -364,10 +364,10 @@ export default function BalanceSheetPage() {
                 onValueChange={(v: string[]) => v[0] && updateParam('layout', v[0])}
                 className="bg-muted p-[3px] rounded-lg border border-border/60"
               >
-                <ToggleGroupItem value="vertical" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
+                <ToggleGroupItem value="vertical" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs">
                   Vertical
                 </ToggleGroupItem>
-                <ToggleGroupItem value="horizontal" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
+                <ToggleGroupItem value="horizontal" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs">
                   Horizontal
                 </ToggleGroupItem>
               </ToggleGroup>
@@ -579,7 +579,7 @@ export default function BalanceSheetPage() {
                       )}
 
                       {/* Grand Total Assets */}
-                      <div className="flex items-center justify-between py-2.5 px-3 border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 font-semibold text-foreground text-sm mt-2">
+                      <div className="flex items-center justify-between py-2.5 px-3 border-t border-foreground/70 border-b-[3px] border-double font-semibold text-foreground text-sm mt-2">
                         <span>Total assets</span>
                         <span className="w-36 text-right fin-num">{renderAmount(processedData.totalAssets, true)}</span>
                       </div>
@@ -694,7 +694,7 @@ export default function BalanceSheetPage() {
                     </div>
 
                     {/* GRAND TOTAL LIABILITIES & EQUITY */}
-                    <div className="flex items-center justify-between py-2.5 px-3 border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 font-semibold text-foreground text-sm mt-3">
+                    <div className="flex items-center justify-between py-2.5 px-3 border-t border-foreground/70 border-b-[3px] border-double font-semibold text-foreground text-sm mt-3">
                       <span>Total liabilities & equity</span>
                       <span className="w-36 text-right fin-num">{renderAmount(processedData.totalLiabilitiesAndEquity, true)}</span>
                     </div>
@@ -738,7 +738,7 @@ export default function BalanceSheetPage() {
                         ))}
                       </div>
 
-                      <div className="pt-3 border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 flex justify-between font-semibold text-sm text-foreground">
+                      <div className="pt-3 border-t border-foreground/70 border-b-[3px] border-double flex justify-between font-semibold text-sm text-foreground">
                         <span>Total</span>
                         <span className="fin-num">{renderAmount(processedData.totalLiabilitiesAndEquity, true)}</span>
                       </div>
@@ -766,7 +766,7 @@ export default function BalanceSheetPage() {
                         ))}
                       </div>
 
-                      <div className="pt-3 border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 flex justify-between font-semibold text-sm text-foreground">
+                      <div className="pt-3 border-t border-foreground/70 border-b-[3px] border-double flex justify-between font-semibold text-sm text-foreground">
                         <span>Total</span>
                         <span className="fin-num">{renderAmount(processedData.totalAssets, true)}</span>
                       </div>

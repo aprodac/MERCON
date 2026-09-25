@@ -31,7 +31,7 @@ export function FinanceEmptyState({
       <button
         type="button"
         onClick={action.onClick}
-        className="px-3.5 py-1.5 text-xs font-semibold rounded-md bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-2xs transition-colors"
+        className="px-3.5 py-1.5 text-xs font-semibold rounded-md bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-xs transition-colors"
       >
         {action.label}
       </button>
