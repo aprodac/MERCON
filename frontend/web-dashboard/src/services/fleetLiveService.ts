@@ -16,6 +16,7 @@ export interface LiveGpsFix {
 }
 
 export interface LiveStop {
+  id: string;
   sequence: number;
   type: string;
   name: string | null;
@@ -64,6 +65,28 @@ export interface LiveUnit {
   feeds_gap_m: number | null;
 }
 
+export type LiveMediaKind = 'pod' | 'photo' | 'video';
+
+export interface LiveMediaItem {
+  id: string;
+  kind: LiveMediaKind;
+  url: string;
+  mime: string | null;
+  captured_at: string;
+}
+
+export interface LiveStopMedia {
+  stop_id: string;
+  sequence: number;
+  delay: { reason: string | null; note: string | null; logged_at: string | null } | null;
+  media: LiveMediaItem[];
+}
+
+export interface LiveTripMedia {
+  stops: LiveStopMedia[];
+  unplaced: LiveMediaItem[];
+}
+
 export interface LiveRoute {
   /** [lng, lat] pairs. */
   geometry: [number, number][];
@@ -100,5 +123,11 @@ export const fleetLiveService = {
     } catch {
       return null;
     }
+  },
+
+  /** POD photos, cargo photos and delay videos for a trip, grouped by stop. */
+  async getTripMedia(tripId: string): Promise<LiveTripMedia> {
+    const res = await api.get<ApiResponse<LiveTripMedia>>(`/vehicles/live-map/trips/${tripId}/media`);
+    return res.data.data;
   },
 };

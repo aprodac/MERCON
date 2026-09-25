@@ -12,8 +12,8 @@ function unit(over: Partial<LiveUnit> = {}): LiveUnit {
     trip: {
       id: 't', ref_id: 'TRP-10482', status: 'InTransit', phase: 'active', customer_name: 'SABIC', planned_start: null, planned_end: null,
       stops: [
-        { sequence: 1, type: 'Pickup', name: 'Riyadh yard', address: null, lat: 24.7, lng: 46.7, planned_arrival: null, actual_arrival: '2026-09-26T06:00:00Z', actual_departure: '2026-09-26T07:00:00Z' },
-        { sequence: 2, type: 'Dropoff', name: 'Jubail port', address: null, lat: 27.0, lng: 49.6, planned_arrival: '2026-09-26T10:30:00Z', actual_arrival: null, actual_departure: null },
+        { id: 's1', sequence: 1, type: 'Pickup', name: 'Riyadh yard', address: null, lat: 24.7, lng: 46.7, planned_arrival: null, actual_arrival: '2026-09-26T06:00:00Z', actual_departure: '2026-09-26T07:00:00Z' },
+        { id: 's2', sequence: 2, type: 'Dropoff', name: 'Jubail port', address: null, lat: 27.0, lng: 49.6, planned_arrival: '2026-09-26T10:30:00Z', actual_arrival: null, actual_departure: null },
       ],
       next_stop_index: 1,
     },

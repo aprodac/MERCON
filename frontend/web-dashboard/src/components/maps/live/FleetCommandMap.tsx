@@ -308,6 +308,8 @@ export default function FleetCommandMap({ className }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      // An open photo/video viewer handles its own Escape.
+      if (document.querySelector('[role="dialog"][data-state="open"]')) return;
       if (selectedKey) deselect();
       else if (expanded) setExpanded(false);
     };
