@@ -560,8 +560,8 @@ export default function GeneralLedgerPage() {
   }, [viewParam]);
 
   return (
-    <DashboardLayout active="finance" title="General Ledger">
-      <div className="p-4 space-y-3.5 max-w-[1400px] mx-auto print:p-0 print:m-0 print:max-w-none">
+    <DashboardLayout active="finance" title="General Ledger" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-[1400px] mx-auto w-full print:p-0 print:m-0 print:max-w-none">
         {/* ── Toolbar Row (DESIGN.md §4.0a / AdvancesPage style) ─────────────────── */}
         <div className="border-b border-border pb-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3 print:hidden">
           {/* Left Controls */}
@@ -878,155 +878,7 @@ export default function GeneralLedgerPage() {
 
         {/* ── VIEW 2: ACCOUNT LEDGER (Tally Ledger Vouchers) ───────────────────── */}
         {viewParam === 'account' && (
-          <div className="space-y-4 max-w-[1240px] mx-auto">
-            {/* Account Combobox & Stepper Header Strip */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3.5 rounded-xl border border-border shadow-xs">
-              {/* Account Picker Combobox */}
-              <div className="flex items-center gap-2">
-                <Popover open={isAccountPickerOpen} onOpenChange={setIsAccountPickerOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={isAccountPickerOpen}
-                      className="w-[320px] justify-between h-8 text-xs bg-background border-border font-medium text-foreground"
-                    >
-                      {currentAccount ? (
-                        <div className="flex items-center gap-2 truncate">
-                          {customize.showAccountCodes && (
-                            <span className="fin-num text-muted-foreground">{currentAccount.account_code}</span>
-                          )}
-                          <span className="truncate">{currentAccount.name}</span>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">Select an account…</span>
-                      )}
-                      <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[340px] p-0 bg-card border-border" align="start">
-                    <Command>
-                      <CommandInput placeholder="Search account code or name..." className="h-9 text-xs" />
-                      <CommandList className="max-h-72">
-                        <CommandEmpty>No matching account found.</CommandEmpty>
-                        {['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'].map((type) => {
-                          const typeAccounts = allAccounts.filter((a) => a.account_type === type);
-                          if (typeAccounts.length === 0) return null;
-                          return (
-                            <CommandGroup key={type} heading={`${type}s`}>
-                              {typeAccounts.map((acc) => (
-                                <CommandItem
-                                  key={acc.id}
-                                  value={`${acc.account_code} ${acc.name}`}
-                                  onSelect={() => {
-                                    updateParams({ account_id: acc.id, page: 1 });
-                                    setIsAccountPickerOpen(false);
-                                  }}
-                                  className="text-xs flex items-center justify-between cursor-pointer"
-                                >
-                                  <div className="flex items-center gap-2 truncate">
-                                    <span className="fin-num text-muted-foreground">{acc.account_code}</span>
-                                    <span className="truncate">{acc.name}</span>
-                                  </div>
-                                  {accountId === acc.id && <Check className="h-3.5 w-3.5 text-[#FA634E]" />}
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          );
-                        })}
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
-
-                {/* Account Stepper Buttons */}
-                <div className="flex items-center gap-1">
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => stepAccount(-1)}
-                          disabled={allAccounts.length === 0}
-                          className="h-8 w-8 border-border text-foreground"
-                        >
-                          <ChevronLeft className="w-4 h-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent className="text-xs">Previous Account (Alt + ←)</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => stepAccount(1)}
-                          disabled={allAccounts.length === 0}
-                          className="h-8 w-8 border-border text-foreground"
-                        >
-                          <ChevronRight className="w-4 h-4" />
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent className="text-xs">Next Account (Alt + →)</TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                </div>
-              </div>
-
-              {/* Slim Info Strip & Sparkline */}
-              {currentAccount && (
-                <div className="flex items-center gap-4 text-xs">
-                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground ring-1 ring-inset ring-border">
-                    {currentAccount.account_type}
-                  </span>
-
-                  {/* Bank/Cash Account Link HoverCard */}
-                  {bankAccount && (
-                    <HoverCard>
-                      <HoverCardTrigger asChild>
-                        <Link
-                          to={`/finance/bank-accounts/${bankAccount.id}`}
-                          className="flex items-center gap-1 text-[#FA634E] hover:underline font-medium"
-                        >
-                          <Building2 className="w-3.5 h-3.5" />
-                          <span>Bank details →</span>
-                        </Link>
-                      </HoverCardTrigger>
-                      <HoverCardContent className="w-64 space-y-2 p-3 text-xs bg-card border-border">
-                        <div className="font-semibold text-foreground">{bankAccount.bank_name || 'Bank Account'}</div>
-                        <div className="text-muted-foreground fin-num">IBAN: {bankAccount.iban || '—'}</div>
-                        <div className="text-muted-foreground">Acc No: {bankAccount.account_number || '—'}</div>
-                        <Link
-                          to={`/finance/bank-accounts/${bankAccount.id}`}
-                          className="inline-block pt-1 text-[#FA634E] font-semibold hover:underline"
-                        >
-                          View Bank Dashboard →
-                        </Link>
-                      </HoverCardContent>
-                    </HoverCard>
-                  )}
-
-                  {/* Sparkline for range balance trend */}
-                  {monthlyRes?.data?.items && monthlyRes.data.items.length > 1 && (
-                    <div className="hidden sm:flex items-center gap-2">
-                      <span className="text-[11px] text-muted-foreground">Balance trend:</span>
-                      <div className="w-24 h-7">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={monthlyRes.data.items}>
-                            <Area type="monotone" dataKey="closing.signed" stroke="#FA634E" fill="#FA634E" fillOpacity={0.15} strokeWidth={2} />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
+          <div className="flex flex-col flex-1 min-h-0 gap-3 w-full">
             {/* Empty state if no account picked */}
             {!accountId && (
               <div className="bg-card rounded-xl border border-border p-12 text-center space-y-3 shadow-xs">
@@ -1061,30 +913,128 @@ export default function GeneralLedgerPage() {
               </div>
             )}
 
-            {/* Account Ledger Tally Statement Paper Card */}
+            {/* Account Ledger Card */}
             {accountId && !isGlLoading && !isGlError && (
-              <div className="bg-card rounded-xl border border-border shadow-xs p-6 md:p-8 space-y-4">
-                {/* Statement Paper Header */}
-                <div className="text-center pb-4 border-b border-border space-y-1">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    {companyLegalName}
-                  </div>
-                  <h1 className="text-xl font-bold text-foreground flex items-center justify-center gap-2">
-                    <span>Ledger:</span>
-                    {customize.showAccountCodes && <span className="fin-num text-muted-foreground">{currentAccount?.account_code}</span>}
-                    <span>·</span>
-                    <span>{currentAccount?.name}</span>
-                  </h1>
-                  <div className="text-xs text-muted-foreground fin-num">
-                    {formatDate(dateFrom)} to {formatDate(dateTo)} · Amounts in SAR
-                  </div>
-                </div>
+              <div className="bg-card rounded-xl border border-border shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
+                {/* Single Toolbar Header Strip */}
+                <div className="px-3 py-2 border-b border-border bg-card flex flex-wrap items-center justify-between gap-2 shrink-0 print:hidden">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Account Picker Combobox */}
+                    <Popover open={isAccountPickerOpen} onOpenChange={setIsAccountPickerOpen}>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={isAccountPickerOpen}
+                          className="w-[280px] justify-between h-8 text-xs bg-background border-border font-medium text-foreground"
+                        >
+                          {currentAccount ? (
+                            <div className="flex items-center gap-2 truncate">
+                              {customize.showAccountCodes && (
+                                <span className="font-mono text-muted-foreground">{currentAccount.account_code}</span>
+                              )}
+                              <span className="truncate">{currentAccount.name}</span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">Select an account…</span>
+                          )}
+                          <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[320px] p-0 bg-card border-border" align="start">
+                        <Command>
+                          <CommandInput placeholder="Search account code or name..." className="h-9 text-xs" />
+                          <CommandList className="max-h-72">
+                            <CommandEmpty>No matching account found.</CommandEmpty>
+                            {['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'].map((type) => {
+                              const typeAccounts = allAccounts.filter((a) => a.account_type === type);
+                              if (typeAccounts.length === 0) return null;
+                              return (
+                                <CommandGroup key={type} heading={`${type}s`}>
+                                  {typeAccounts.map((acc) => (
+                                    <CommandItem
+                                      key={acc.id}
+                                      value={`${acc.account_code} ${acc.name}`}
+                                      onSelect={() => {
+                                        updateParams({ account_id: acc.id, page: 1 });
+                                        setIsAccountPickerOpen(false);
+                                      }}
+                                      className="text-xs flex items-center justify-between cursor-pointer"
+                                    >
+                                      <div className="flex items-center gap-2 truncate">
+                                        <span className="font-mono text-muted-foreground">{acc.account_code}</span>
+                                        <span className="truncate">{acc.name}</span>
+                                      </div>
+                                      {accountId === acc.id && <Check className="h-3.5 w-3.5 text-[#FA634E]" />}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              );
+                            })}
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
 
-                {/* Filter Row inside Card */}
-                <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/40 p-2.5 rounded-lg border border-border/60 text-xs">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* Search Filter */}
-                    <div className="relative w-48">
+                    {/* Stepper Buttons */}
+                    <div className="flex items-center gap-1">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => stepAccount(-1)}
+                              disabled={allAccounts.length === 0}
+                              className="h-8 w-8 border-border text-foreground"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent className="text-xs">Previous Account (Alt + ←)</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              onClick={() => stepAccount(1)}
+                              disabled={allAccounts.length === 0}
+                              className="h-8 w-8 border-border text-foreground"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent className="text-xs">Next Account (Alt + →)</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+
+                    {/* Account Type Badge */}
+                    {currentAccount && (
+                      <Badge variant="outline" className="border-border bg-muted text-muted-foreground font-medium text-xs">
+                        {currentAccount.account_type}
+                      </Badge>
+                    )}
+
+                    {/* Bank Link */}
+                    {bankAccount && (
+                      <Link
+                        to={`/finance/bank-accounts/${bankAccount.id}`}
+                        className="flex items-center gap-1 text-xs text-[#FA634E] hover:underline font-medium"
+                      >
+                        <Building2 className="w-3.5 h-3.5" />
+                        <span>Bank details →</span>
+                      </Link>
+                    )}
+                  </div>
+
+                  {/* Search & Filters */}
+                  <div className="flex items-center gap-2">
+                    <div className="relative w-44">
                       <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-2.5" />
                       <Input
                         placeholder="Search ref, memo..."
@@ -1094,7 +1044,6 @@ export default function GeneralLedgerPage() {
                       />
                     </div>
 
-                    {/* Side Filter ToggleGroup */}
                     <ToggleGroup
                       value={[sideFilter]}
                       onValueChange={(val: string[]) => val[0] && updateParams({ side: val[0], page: 1 })}
@@ -1111,52 +1060,48 @@ export default function GeneralLedgerPage() {
                       </ToggleGroupItem>
                     </ToggleGroup>
                   </div>
-
-                  <div className="text-[11px] text-muted-foreground">
-                    Press <kbd className="px-1 py-0.5 bg-muted rounded fin-num">↑</kbd> <kbd className="px-1 py-0.5 bg-muted rounded fin-num">↓</kbd> to select row, <kbd className="px-1 py-0.5 bg-muted rounded fin-num">Enter</kbd> to view JE preview
-                  </div>
                 </div>
 
-                {/* Paper Table */}
-                <div className="overflow-x-auto">
+                {/* Internal Scroll Table Container */}
+                <div className="table-container flex-1 overflow-auto">
                   <table className="w-full text-left text-xs border-collapse min-w-[780px]">
-                    <thead>
-                      <tr className="border-b border-border text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <thead className="sticky top-0 z-10 bg-muted/90 backdrop-blur-xs border-b border-border">
+                      <tr className="text-xs font-medium text-muted-foreground">
                         <th className="py-2.5 px-3 w-28">Date</th>
-                        <th className="py-2.5 px-3">Particulars</th>
+                        <th className="py-2.5 px-3">Account / Narration</th>
                         {customize.showVoucherType && <th className="py-2.5 px-3 w-32">Vch type</th>}
                         <th className="py-2.5 px-3 w-36">Vch no.</th>
-                        <th className="py-2.5 px-3 text-right w-32">Debit (SAR)</th>
-                        <th className="py-2.5 px-3 text-right w-32">Credit (SAR)</th>
+                        <th className="py-2.5 px-3 text-right w-32">Debit</th>
+                        <th className="py-2.5 px-3 text-right w-32">Credit</th>
                         <th className="py-2.5 px-3 text-right w-36">Balance</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/60">
-                      {/* Row 1: Opening Balance */}
+                      {/* Opening Balance */}
                       <tr className="bg-muted/40 font-medium text-foreground">
-                        <td className="py-2.5 px-3 fin-num text-muted-foreground">
+                        <td className="py-2 px-3 font-mono text-muted-foreground">
                           {dateFrom ? formatDate(dateFrom) : 'Beginning'}
                         </td>
-                        <td className="py-2.5 px-3 font-semibold text-foreground">
+                        <td className="py-2 px-3 font-semibold text-foreground">
                           Opening Balance
                         </td>
-                        {customize.showVoucherType && <td className="py-2.5 px-3 text-muted-foreground">—</td>}
-                        <td className="py-2.5 px-3 text-muted-foreground fin-num">—</td>
-                        <td className="py-2.5 px-3 text-right fin-num">
+                        {customize.showVoucherType && <td className="py-2 px-3 text-muted-foreground">—</td>}
+                        <td className="py-2 px-3 text-muted-foreground font-mono">—</td>
+                        <td className="py-2 px-3 text-right font-mono text-xs">
                           {glData?.opening_balance_side === 'Dr' ? fmtVal(glData.opening_balance) : '—'}
                         </td>
-                        <td className="py-2.5 px-3 text-right fin-num">
+                        <td className="py-2 px-3 text-right font-mono text-xs">
                           {glData?.opening_balance_side === 'Cr' ? fmtVal(glData.opening_balance) : '—'}
                         </td>
-                        <td className="py-2.5 px-3 text-right fin-num font-semibold text-foreground">
+                        <td className="py-2 px-3 text-right font-mono text-xs font-semibold text-foreground">
                           {fmtBalance(glData?.opening_balance || 0, (glData?.opening_balance_side as 'Dr'|'Cr') || 'Dr')}
                         </td>
                       </tr>
 
-                      {/* Empty state inside paper */}
+                      {/* Empty state */}
                       {lines.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-muted-foreground italic">
+                          <td colSpan={7} className="py-8 text-center text-muted-foreground">
                             No transactions found for this account in the selected period.
                           </td>
                         </tr>
@@ -1166,7 +1111,6 @@ export default function GeneralLedgerPage() {
                       {lines.map((line, idx) => {
                         const isSelected = selectedIndex === idx;
 
-                        // Contra Particulars calculation (Tally convention)
                         const isDebit = line.debit > 0;
                         const prefix = isDebit ? 'To' : 'By';
 
@@ -1195,12 +1139,12 @@ export default function GeneralLedgerPage() {
                                   : 'hover:bg-muted/50'
                               } ${line.journal_entry_status === 'Voided' ? 'opacity-60 text-muted-foreground' : ''}`}
                             >
-                              <td className="py-2.5 px-3 fin-num text-muted-foreground whitespace-nowrap">
+                              <td className="py-2 px-3 font-mono text-muted-foreground whitespace-nowrap">
                                 {formatDate(line.entry_date)}
                               </td>
-                              <td className="py-2.5 px-3">
+                              <td className="py-2 px-3">
                                 <div className="space-y-0.5">
-                                  <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                                  <div className="flex items-center gap-1.5 font-medium text-foreground">
                                     <span>{particularsStr}</span>
                                     {hasMultipleContra && (
                                       <button
@@ -1220,40 +1164,39 @@ export default function GeneralLedgerPage() {
                                     )}
                                   </div>
 
-                                  {/* Optional Narration */}
                                   {customize.showNarration && (line.memo || line.description) && (
-                                    <div className="text-[11px] text-muted-foreground font-normal italic">
+                                    <div className="text-xs text-muted-foreground font-normal">
                                       {line.memo || line.description}
                                     </div>
                                   )}
                                 </div>
                               </td>
                               {customize.showVoucherType && (
-                                <td className="py-2.5 px-3">
+                                <td className="py-2 px-3">
                                   {renderSourceBadge(line.source_type || undefined, line.source_id || undefined)}
                                 </td>
                               )}
-                              <td className="py-2.5 px-3 fin-num">
+                              <td className="py-2 px-3 font-mono">
                                 <Link
                                   to={`/finance/journal-entries/${line.journal_entry_id}`}
                                   onClick={(e) => e.stopPropagation()}
-                                  className="text-[#FA634E] font-medium hover:underline"
+                                  className="text-foreground font-medium hover:underline"
                                 >
                                   {line.ref_id || 'JE-Details'}
                                 </Link>
                               </td>
-                              <td className="py-2.5 px-3 text-right fin-num text-foreground">
+                              <td className="py-2 px-3 text-right font-mono text-xs text-foreground">
                                 {line.debit > 0 ? fmtVal(line.debit) : '—'}
                               </td>
-                              <td className="py-2.5 px-3 text-right fin-num text-foreground">
+                              <td className="py-2 px-3 text-right font-mono text-xs text-foreground">
                                 {line.credit > 0 ? fmtVal(line.credit) : '—'}
                               </td>
-                              <td className="py-2.5 px-3 text-right fin-num font-medium text-foreground">
+                              <td className="py-2 px-3 text-right font-mono text-xs font-medium text-foreground">
                                 {fmtBalance(line.signed_balance, line.balance_side)}
                               </td>
                             </tr>
 
-                            {/* Expanded Contra Lines Breakdown Table */}
+                            {/* Expanded Contra Lines Breakdown */}
                             {hasMultipleContra && isDetailExpanded && (
                               <tr className="bg-muted/30">
                                 <td colSpan={customize.showVoucherType ? 7 : 6} className="py-2 px-6">
@@ -1263,10 +1206,10 @@ export default function GeneralLedgerPage() {
                                     </div>
                                     <div className="space-y-1">
                                       {line.contra.map((cl, cIdx) => (
-                                        <div key={cIdx} className="flex items-center justify-between text-[11px] fin-num">
+                                        <div key={cIdx} className="flex items-center justify-between text-xs font-mono">
                                           <div className="flex items-center gap-2">
                                             <span className="text-muted-foreground">{cl.account_code}</span>
-                                            <span className="text-foreground">{cl.name}</span>
+                                            <span className="text-foreground font-sans">{cl.name}</span>
                                           </div>
                                           <div className="font-medium text-foreground">
                                             {fmtVal(cl.amount)}
@@ -1282,55 +1225,36 @@ export default function GeneralLedgerPage() {
                         );
                       })}
                     </tbody>
-
-                    {/* Statement Footers */}
-                    <tfoot>
-                      {/* Current Total Row */}
-                      <tr className="border-t border-border font-medium text-foreground">
-                        <td colSpan={customize.showVoucherType ? 4 : 3} className="py-3 px-3">
-                          Current Total
-                        </td>
-                        <td className="py-3 px-3 text-right fin-num text-foreground">
-                          {fmtVal(currentTotalDebit)}
-                        </td>
-                        <td className="py-3 px-3 text-right fin-num text-foreground">
-                          {fmtVal(currentTotalCredit)}
-                        </td>
-                        <td className="py-3 px-3 text-right fin-num text-muted-foreground">—</td>
-                      </tr>
-
-                      {/* Closing Balance Row */}
-                      <tr className="border-t border-foreground/70 border-b-[3px] border-double font-semibold text-foreground text-sm">
-                        <td colSpan={customize.showVoucherType ? 4 : 3} className="py-3.5 px-3">
-                          Closing Balance
-                        </td>
-                        <td className="py-3.5 px-3 text-right fin-num">
-                          {closingSide === 'Dr' ? fmtVal(closingBalance) : '—'}
-                        </td>
-                        <td className="py-3.5 px-3 text-right fin-num">
-                          {closingSide === 'Cr' ? fmtVal(closingBalance) : '—'}
-                        </td>
-                        <td className="py-3.5 px-3 text-right fin-num">
-                          {fmtBalance(closingBalance, closingSide as 'Dr'|'Cr')}
-                        </td>
-                      </tr>
-                    </tfoot>
                   </table>
                 </div>
 
-                {/* Server-side Pagination Load More */}
-                {glData?.pagination && glData.pagination.total_pages > pageParam && (
-                  <div className="pt-3 text-center">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => updateParams({ page: pageParam + 1 })}
-                      className="h-8 text-xs font-medium border-border"
-                    >
-                      Load More Transactions ({lines.length} of {glData.count})
-                    </Button>
+                {/* Pinned Card Footer */}
+                <div className="border-t border-border bg-card px-4 py-2.5 text-xs font-semibold text-foreground flex items-center justify-between shrink-0 print:hidden">
+                  <div className="flex items-center gap-3">
+                    <span>Current total</span>
+                    <span className="font-mono text-muted-foreground font-normal">
+                      Dr {fmtVal(currentTotalDebit)} &nbsp; Cr {fmtVal(currentTotalCredit)}
+                    </span>
                   </div>
-                )}
+                  <div className="flex items-center gap-3">
+                    {glData?.pagination && glData.pagination.total_pages > pageParam && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => updateParams({ page: pageParam + 1 })}
+                        className="h-7 text-xs font-medium border-border"
+                      >
+                        Load More ({lines.length} of {glData.count})
+                      </Button>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground font-normal">Closing</span>
+                      <span className="font-mono font-bold text-foreground">
+                        {fmtBalance(closingBalance, closingSide as 'Dr' | 'Cr')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

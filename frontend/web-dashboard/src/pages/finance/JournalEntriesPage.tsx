@@ -305,8 +305,8 @@ export default function JournalEntriesPage() {
   };
 
   return (
-    <DashboardLayout active="finance" title="Journal Entries">
-      <div className="p-6 space-y-4 max-w-7xl mx-auto">
+    <DashboardLayout active="finance" title="Journal Entries" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-7xl mx-auto w-full">
         {/* Top Control Bar: Status Tabs on Left, Actions on Right */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-card border border-border dark:border-border rounded-xl px-4 py-1.5 shadow-xs">
           <StatusTabs
@@ -442,7 +442,7 @@ export default function JournalEntriesPage() {
         </FilterBar>
 
         {/* Daybook List View */}
-        <div className="bg-card rounded-xl border border-border shadow-xs overflow-hidden">
+        <div className="bg-card rounded-xl border border-border shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
           {isLoading ? (
             <div className="p-8 space-y-4">
               <div className="h-6 w-48 bg-muted rounded-lg animate-pulse" />
@@ -478,7 +478,7 @@ export default function JournalEntriesPage() {
               }
             />
           ) : (
-            <div className="bg-card rounded-xl border border-border dark:border-border shadow-xs overflow-hidden divide-y divide-border/60 dark:divide-border/60">
+            <div className="table-container flex-1 overflow-auto divide-y divide-border/60">
               {groupedEntries.map((group: any) => (
                 <div key={group.dateKey} className="group-container">
                   {/* Swiss Modern Sticky Date Header */}
@@ -713,7 +713,7 @@ export default function JournalEntriesPage() {
 
           {/* Footer Pagination */}
           {pagination.total > 0 && (
-            <div className="px-4 py-3 border-t border-border bg-muted/50 flex items-center justify-between text-xs text-muted-foreground">
+            <div className="px-4 py-2.5 border-t border-border bg-card flex items-center justify-between text-xs text-muted-foreground shrink-0">
               <div>
                 Showing {(pagination.page - 1) * pagination.per_page + 1}–
                 {Math.min(pagination.page * pagination.per_page, pagination.total)} of {pagination.total} entries

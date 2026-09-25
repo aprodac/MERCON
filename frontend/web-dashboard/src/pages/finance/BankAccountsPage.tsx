@@ -351,8 +351,8 @@ export default function BankAccountsPage() {
   ];
 
   return (
-    <DashboardLayout active="finance" title="Bank Accounts">
-      <div className="p-4 space-y-3.5 max-w-[1400px] mx-auto animate-fade-in">
+    <DashboardLayout active="finance" title="Bank Accounts" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-[1400px] mx-auto w-full animate-fade-in">
         {/* ROW 1: Toolbar Header (Segmented tabs + Compact Actions) */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border dark:border-border pb-2.5">
           {/* Left: Segmented Category Tabs */}

@@ -321,8 +321,8 @@ export default function ChartOfAccountsPage() {
   ];
 
   return (
-    <DashboardLayout active="finance" title="Chart of Accounts">
-      <div className="p-6 space-y-4 max-w-7xl mx-auto">
+    <DashboardLayout active="finance" title="Chart of Accounts" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-7xl mx-auto w-full">
         {/* Control Bar: Class Tabs + Actions */}
         <div className="bg-card border border-border dark:border-border rounded-xl px-4 py-2 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <StatusTabs

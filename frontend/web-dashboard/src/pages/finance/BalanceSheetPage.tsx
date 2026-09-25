@@ -290,10 +290,10 @@ export default function BalanceSheetPage() {
   const rowHeightClass = density === 'comfortable' ? 'h-9' : 'h-8';
 
   return (
-    <DashboardLayout active="finance" title="Balance Sheet">
-      <div className="p-4 space-y-4 max-w-[1400px] mx-auto print:p-0">
+    <DashboardLayout active="finance" title="Balance Sheet" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-[1400px] mx-auto w-full print:p-0">
         {/* Single-Row Toolbar (No Card Wrapper) */}
-        <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden">
           <div className="flex items-center gap-2 flex-wrap">
             {/* View Tabs */}
             <ToggleGroup
@@ -457,10 +457,10 @@ export default function BalanceSheetPage() {
 
         {/* MAIN CONTENT GRID: 2 Column on ≥1280px */}
         {!isLoading && report && processedData && activeTab === 'statement' && (
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 flex-1 min-h-0 overflow-hidden max-md:overflow-y-auto">
             {/* Left: Statement Card */}
-            <div className="space-y-4 min-w-0">
-              <div className="bg-card rounded-xl border border-border shadow-xs w-full p-0 overflow-hidden print:shadow-none print:border-none print:p-0">
+            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="bg-card rounded-xl border border-border shadow-xs w-full p-0 flex flex-col flex-1 min-h-0 overflow-hidden print:shadow-none print:border-none print:p-0">
                 {/* On-Screen Header Bar */}
                 <StatementHeaderBar
                   title="Balance Sheet"
@@ -479,7 +479,7 @@ export default function BalanceSheetPage() {
 
                 {/* VERTICAL LAYOUT */}
                 {layout === 'vertical' && (
-                  <div className="py-2 text-xs space-y-4">
+                  <div className="table-container flex-1 overflow-auto py-2 text-xs space-y-4">
                     {/* ── ASSETS SECTION ── */}
                     {(showZeroRows || processedData.totalAssets !== 0) && (
                       <div id="section-assets" className="space-y-0.5">

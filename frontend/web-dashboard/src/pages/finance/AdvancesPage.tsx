@@ -395,8 +395,8 @@ export default function AdvancesPage() {
   const exportData = filteredAdvances;
 
   return (
-    <DashboardLayout active="finance" title="Advances">
-      <div className="p-4 space-y-3.5 max-w-[1400px] mx-auto">
+    <DashboardLayout active="finance" title="Advances" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-[1400px] mx-auto w-full">
         {/* Row 1: Top Navigation Bar (Category Tabs + Actions) */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-2 border-b border-border dark:border-border">
           {/* Primary Category Tabs Container */}

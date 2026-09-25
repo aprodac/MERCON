@@ -501,8 +501,8 @@ export default function APAgeingPage() {
   ];
 
   return (
-    <DashboardLayout active="finance" title="AP Ageing">
-      <div className="p-6 space-y-6 max-w-7xl mx-auto fin-report">
+    <DashboardLayout active="finance" title="AP Ageing" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-7xl mx-auto w-full fin-report">
         {/* ========================================================================= */}
         {/* 1. TOOLBAR ROW (§4.0a Page Shell Specification)                          */}
         {/* ========================================================================= */}

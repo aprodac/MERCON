@@ -218,10 +218,10 @@ export default function ProfitAndLossPage() {
   ];
 
   return (
-    <DashboardLayout active="finance" title="Profit & Loss">
-      <div className="p-4 space-y-4 max-w-[1400px] mx-auto print:p-0">
+    <DashboardLayout active="finance" title="Profit & Loss" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-[1400px] mx-auto w-full print:p-0">
         {/* Single-Row Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden">
           <div className="flex items-center gap-2 flex-wrap">
             {/* View Tabs */}
             <ToggleGroup
@@ -354,10 +354,10 @@ export default function ProfitAndLossPage() {
 
         {/* MAIN CONTENT GRID */}
         {!isMainLoading && !isMainError && activeTab === 'statement' && (
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 flex-1 min-h-0 overflow-hidden max-md:overflow-y-auto">
             {/* Left: Statement Card */}
-            <div className="space-y-4 min-w-0">
-              <div className="bg-card rounded-xl border border-border shadow-xs w-full p-0 overflow-hidden print:shadow-none print:border-none print:p-0">
+            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="bg-card rounded-xl border border-border shadow-xs w-full p-0 flex flex-col flex-1 min-h-0 overflow-hidden print:shadow-none print:border-none print:p-0">
                 {/* On-Screen Header Bar */}
                 <StatementHeaderBar
                   title="Profit and Loss"
@@ -368,7 +368,7 @@ export default function ProfitAndLossPage() {
 
                 {/* VERTICAL LAYOUT */}
                 {layout === 'vertical' && (
-                  <div className="py-2 text-xs space-y-4">
+                  <div className="table-container flex-1 overflow-auto py-2 text-xs space-y-4">
                     {/* Operating Income Section */}
                     {(customize.showZeroBalance || verticalPnl.operatingIncomeTotal !== 0 || verticalPnl.sections.operating_income.groups.length > 0) && (
                       <div id="section-operating_income" className="space-y-0.5">
