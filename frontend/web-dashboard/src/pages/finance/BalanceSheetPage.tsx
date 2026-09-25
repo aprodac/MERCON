@@ -379,7 +379,6 @@ export default function BalanceSheetPage() {
           {/* Left: Segmented Tabs */}
           <div className="flex items-center gap-3">
             <ToggleGroup
-              type="single"
               value={[activeTab]}
               onValueChange={(v) => v[0] && updateParam('tab', v[0])}
               className="bg-[#F4F4F5] dark:bg-slate-800/80 p-1 rounded-xl"
@@ -441,7 +440,6 @@ export default function BalanceSheetPage() {
             {/* Layout Toggle (Vertical / Horizontal) */}
             {activeTab === 'statement' && (
               <ToggleGroup
-                type="single"
                 value={[layout]}
                 onValueChange={(v) => v[0] && updateParam('layout', v[0])}
                 className="bg-[#F4F4F5] dark:bg-slate-800/80 p-1 rounded-xl"

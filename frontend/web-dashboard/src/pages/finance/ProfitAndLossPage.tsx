@@ -610,9 +610,8 @@ export default function ProfitAndLossPage() {
             {/* Layout ToggleGroup (Vertical vs T-format) */}
             {activeTab === 'statement' && (
               <ToggleGroup
-                type="single"
                 value={[layout]}
-                onValueChange={(val) => val[0] && updateParams({ layout: val })}
+                onValueChange={(val) => val[0] && updateParams({ layout: val[0] })}
                 className="bg-[#F4F4F5] dark:bg-slate-800/80 p-0.5 rounded-xl"
               >
                 <ToggleGroupItem value="vertical" aria-label="Vertical Layout" className="h-7 text-xs px-2.5 rounded-[9px]">
