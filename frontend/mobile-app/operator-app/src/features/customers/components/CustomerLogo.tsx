@@ -5,18 +5,23 @@ import { customerInitials } from '../services/customersService';
 
 interface CustomerLogoProps {
   name: string;
-  /** The backend has no customer-logo field yet — pass this once it does; falls back to initials. */
   logoUri?: ImageSourcePropType;
   size?: number;
   className?: string;
 }
 
-/**
- * Circular company mark. `contain` on the image so a wide wordmark keeps its
- * aspect ratio instead of being cropped to the circle.
- */
+const BRAND_COLORS = [
+  { bg: '#FCE7F3', text: '#9D174D' }, // Pink
+  { bg: '#FEF3C7', text: '#92400E' }, // Amber
+  { bg: '#DBEAFE', text: '#1E40AF' }, // Blue
+  { bg: '#F3E8FF', text: '#6B21A8' }, // Purple
+  { bg: '#E0E7FF', text: '#3730A3' }, // Indigo
+  { bg: '#D1FAE5', text: '#065F46' }, // Emerald
+];
+
 export function CustomerLogo({ name, logoUri, size = 48, className }: CustomerLogoProps) {
-  const radius = size / 2;
+  // Use a squarcle (rounded square) instead of a pure circle to match the screenshot
+  const radius = size * 0.3; 
 
   if (logoUri) {
     return (
@@ -29,12 +34,16 @@ export function CustomerLogo({ name, logoUri, size = 48, className }: CustomerLo
     );
   }
 
+  // Pick a dynamic color based on name length so it's stable per-customer
+  const colorIndex = name.length % BRAND_COLORS.length;
+  const theme = BRAND_COLORS[colorIndex];
+
   return (
     <View
-      style={{ width: size, height: size, borderRadius: radius, backgroundColor: `${Colors.accent}14` }}
+      style={{ width: size, height: size, borderRadius: radius, backgroundColor: theme.bg }}
       className={`items-center justify-center ${className ?? ''}`}
     >
-      <Text style={{ fontSize: size * 0.34, color: Colors.accent }} className="font-bold">
+      <Text style={{ fontSize: size * 0.38, color: theme.text, fontWeight: '700' }}>
         {customerInitials(name)}
       </Text>
     </View>
