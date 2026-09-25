@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, FlatList, RefreshControl, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Building2, Menu, Phone, User } from 'lucide-react-native';
@@ -6,11 +6,33 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-sha
 import { useOperatorThirdPartyProviders, type OperatorThirdPartyProvider } from '@/lib/operator';
 import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
+import { SearchBar } from '@/features/dashboard/components/SearchBar';
+import { SegmentControl } from '@/features/dashboard/components/SegmentControl';
 
 export default function ThirdPartyScreen() {
   const router = useRouter();
   const { providers, loading, error, refetch } = useOperatorThirdPartyProviders();
   const [drawerVisible, setDrawerVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'ACTIVE' | 'INACTIVE'>('ALL');
+
+  const filteredProviders = useMemo(() => {
+    if (!providers) return [];
+    return providers.filter((p) => {
+      const isActive = p.isActive ?? true;
+      if (statusFilter === 'ACTIVE' && !isActive) return false;
+      if (statusFilter === 'INACTIVE' && isActive) return false;
+
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const matchName = p.name?.toLowerCase().includes(q);
+        const matchPerson = p.contact_person?.toLowerCase().includes(q);
+        const matchPhone = p.phone?.toLowerCase().includes(q);
+        if (!matchName && !matchPerson && !matchPhone) return false;
+      }
+      return true;
+    });
+  }, [providers, statusFilter, searchQuery]);
 
   const renderItem = ({ item }: { item: OperatorThirdPartyProvider }) => (
     <View
@@ -100,11 +122,31 @@ export default function ThirdPartyScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Filter and Search Bar */}
+      <View style={{ paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.sm, backgroundColor: Colors.gray100 }}>
+        <SearchBar 
+          value={searchQuery} 
+          onChangeText={setSearchQuery} 
+          placeholder="Search by name, phone..." 
+        />
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-start' }}>
+          <SegmentControl
+            options={[
+              { label: 'All', value: 'ALL' },
+              { label: 'Active', value: 'ACTIVE' },
+              { label: 'Inactive', value: 'INACTIVE' },
+            ]}
+            value={statusFilter}
+            onChange={setStatusFilter}
+          />
+        </View>
+      </View>
+
       {error ? (
         <ErrorState message={error} onRetry={refetch} className="flex-1" />
       ) : (
         <FlatList
-          data={providers}
+          data={filteredProviders}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 100 }}
