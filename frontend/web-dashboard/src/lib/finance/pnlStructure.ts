@@ -121,12 +121,12 @@ export function buildStructuredVerticalPnl(
 
   const processItems = (items: ReportLineItem[], isRevenue: boolean, periodKey?: string) => {
     for (const item of items) {
-      const entityKey = item.parent_id || (item.parent_name ? `parent-${item.parent_name}` : item.account_id || item.account_code);
+      const entityKey = item.parent_id || (item.parent_name ? `parent-${item.parent_name}` : item.account_id || item.account_code || item.name);
       const entityName = item.parent_name || item.name;
       const entityCode = item.parent_code || undefined;
 
       const pnlClass: PnlClass =
-        customClassifications[entityKey] ||
+        (entityKey ? customClassifications[entityKey] : undefined) ||
         getDefaultPnlClass(item.name, item.parent_name, isRevenue);
 
       const sectionMap = sectionsData[pnlClass];
@@ -149,10 +149,10 @@ export function buildStructuredVerticalPnl(
         let accItem = group.items.find((i) => i.account_code === item.account_code);
         if (!accItem) {
           accItem = {
-            id: item.account_id || item.account_code,
-            account_id: item.account_id,
-            account_code: item.account_code,
-            code: item.account_code,
+            id: item.account_id || item.account_code || item.name,
+            account_id: item.account_id || undefined,
+            account_code: item.account_code || '',
+            code: item.account_code || '',
             name: item.name,
             amount: item.amount,
             compareAmounts: {},
@@ -164,21 +164,23 @@ export function buildStructuredVerticalPnl(
         group.total += item.amount;
       } else {
         // Compare period item
-        group.compareTotals![periodKey] = (group.compareTotals![periodKey] || 0) + item.amount;
+        if (!group.compareTotals) group.compareTotals = {};
+        group.compareTotals[periodKey] = (group.compareTotals[periodKey] || 0) + item.amount;
         let accItem = group.items.find((i) => i.account_code === item.account_code);
         if (!accItem) {
           accItem = {
-            id: item.account_id || item.account_code,
-            account_id: item.account_id,
-            account_code: item.account_code,
-            code: item.account_code,
+            id: item.account_id || item.account_code || item.name,
+            account_id: item.account_id || undefined,
+            account_code: item.account_code || '',
+            code: item.account_code || '',
             name: item.name,
             amount: 0,
             compareAmounts: {},
           };
           group.items.push(accItem);
         }
-        accItem.compareAmounts![periodKey] = (accItem.compareAmounts![periodKey] || 0) + item.amount;
+        if (!accItem.compareAmounts) accItem.compareAmounts = {};
+        accItem.compareAmounts[periodKey] = (accItem.compareAmounts[periodKey] || 0) + item.amount;
       }
     }
   };
@@ -207,13 +209,13 @@ export function buildStructuredVerticalPnl(
 
   (Object.keys(sectionsData) as PnlClass[]).forEach((cls) => {
     const groupList = Array.from(sectionsData[cls].values());
-    groupList.sort((a, b) => (a.code || a.name).localeCompare(b.code || b.name));
+    groupList.sort((a, b) => (a.code || a.name || '').localeCompare(b.code || b.name || ''));
 
     let secTotal = 0;
     const secCompareTotals: Record<string, number> = {};
 
     groupList.forEach((g) => {
-      g.items.sort((a, b) => a.code.localeCompare(b.code));
+      g.items.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
       secTotal += g.total;
       compareCols.forEach((col) => {
         secCompareTotals[col] = (secCompareTotals[col] || 0) + (g.compareTotals?.[col] || 0);

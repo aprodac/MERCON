@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueries } from '@tanstack/react-query';
 import {
@@ -61,6 +61,7 @@ import {
   resolveCompareColumns,
   type PeriodPreset,
   type CompareOption,
+  type CompareColumnMeta,
 } from '@/lib/finance/pnlPeriodHelpers';
 
 const CUSTOMIZE_STORAGE_KEY = 'mercon_pnl_customize_v1';
@@ -248,10 +249,10 @@ export default function ProfitAndLossPage() {
   const setupGroups = useMemo(() => {
     const map = new Map<string, { key: string; name: string; isRevenue: boolean; defaultClass: PnlClass }>();
     [...revenues, ...expenses].forEach((item) => {
-      const isRev = item.account_type === 'Revenue' || revenues.includes(item);
-      const key = item.parent_id || (item.parent_name ? `parent-${item.parent_name}` : item.account_id || item.account_code);
+      const isRev = (item as any).account_type === 'Revenue' || revenues.includes(item);
+      const key = item.parent_id || (item.parent_name ? `parent-${item.parent_name}` : item.account_id || item.account_code || item.name);
       const name = item.parent_name || item.name;
-      if (!map.has(key)) {
+      if (key && !map.has(key)) {
         map.set(key, {
           key,
           name,
@@ -610,8 +611,8 @@ export default function ProfitAndLossPage() {
             {activeTab === 'statement' && (
               <ToggleGroup
                 type="single"
-                value={layout}
-                onValueChange={(val) => val && updateParams({ layout: val })}
+                value={[layout]}
+                onValueChange={(val) => val[0] && updateParams({ layout: val })}
                 className="bg-[#F4F4F5] dark:bg-slate-800/80 p-0.5 rounded-xl"
               >
                 <ToggleGroupItem value="vertical" aria-label="Vertical Layout" className="h-7 text-xs px-2.5 rounded-[9px]">
@@ -627,7 +628,7 @@ export default function ProfitAndLossPage() {
             {activeTab === 'statement' && (
               <TooltipProvider>
                 <Tooltip>
-                  <TooltipTrigger asChild>
+                  <TooltipTrigger>
                     <div>
                       <Select
                         value={compareOpt}
@@ -1370,11 +1371,12 @@ export default function ProfitAndLossPage() {
 
         {/* ── EXPORT MODAL ───────────────────────────────────────────────────── */}
         <ExportModal
-          open={isExportOpen}
-          onOpenChange={setIsExportOpen}
-          data={exportRows}
+          isOpen={isExportOpen}
+          onClose={() => setIsExportOpen(false)}
+          title="Profit and Loss Statement"
+          fileNamePrefix={`Profit_and_Loss_${dateFrom}_${dateTo}`}
+          filteredData={exportRows}
           columns={exportColumns}
-          filename={`Profit_and_Loss_${dateFrom}_${dateTo}`}
         />
       </div>
     </DashboardLayout>
