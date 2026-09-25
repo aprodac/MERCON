@@ -72,3 +72,26 @@ describe('fleet live map helpers', () => {
     expect(formatDuration(95 * 60)).toBe('1 h 35 min');
   });
 });
+
+describe('map clarity helpers', () => {
+  it('keeps the higher-priority label when two collide', async () => {
+    const { pickLabels } = await import('./fleetLive');
+    const kept = pickLabels([
+      { key: 'free', x: 100, y: 100, priority: 10, width: 70 },
+      { key: 'late', x: 110, y: 104, priority: 45, width: 70 },
+      { key: 'far', x: 400, y: 300, priority: 10, width: 70 },
+    ]);
+    expect([...kept].sort()).toEqual(['far', 'late']);
+  });
+
+  it('merges stops at the same spot into one pin', async () => {
+    const { groupStops } = await import('./fleetLive');
+    const u = unit();
+    u.trip!.stops.push({ ...u.trip!.stops[1], sequence: 3, name: 'Jubail port gate' });
+    const groups = groupStops(u);
+    expect(groups).toHaveLength(2);
+    expect(groups[1].numbers).toEqual([2, 3]);
+    expect(groups[1].isNext).toBe(true);
+    expect(groups[0].done).toBe(true);
+  });
+});
