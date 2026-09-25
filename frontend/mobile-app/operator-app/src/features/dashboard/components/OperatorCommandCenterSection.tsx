@@ -255,7 +255,7 @@ export function OperatorCommandCenterSection({ onTripPress, className }: Operato
           activeOpacity={0.88}
           onPress={() => setSelectedItem(item)}
           style={{
-            width: cardWidth,
+            width: '100%',
             borderWidth: 1,
             borderColor: '#EBEBED',
             borderRadius: 16,
@@ -503,20 +503,12 @@ export function OperatorCommandCenterSection({ onTripPress, className }: Operato
           </Text>
         </View>
       ) : (
-        <View style={{ gap: 10 }}>
-          <FlatList
-            data={filteredItems}
-            horizontal
-            keyExtractor={(item) => item.id}
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={cardWidth + GAP}
-            decelerationRate="fast"
-            contentContainerStyle={{ gap: GAP, paddingRight: 16 }}
-            renderItem={renderCardItem}
-            onViewableItemsChanged={onViewableItemsChanged}
-            viewabilityConfig={viewabilityConfig}
-          />
-          <CarouselPagination count={filteredItems.length} activeIndex={activeIndex} className="mt-1" />
+        <View style={{ gap: 10, paddingBottom: 16 }}>
+          {filteredItems.map((item) => (
+            <View key={item.id}>
+              {renderCardItem({ item })}
+            </View>
+          ))}
         </View>
       )}
 
