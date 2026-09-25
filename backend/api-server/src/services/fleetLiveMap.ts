@@ -41,6 +41,7 @@ export interface LiveGpsFix {
 }
 
 export interface LiveStop {
+  id: string;
   sequence: number;
   type: string;
   name: string | null;
@@ -132,6 +133,7 @@ export interface LiveTripRow {
   customer: { name: string } | null;
   driver: LiveDriverRow | null;
   stops: Array<{
+    id: string;
     stop_sequence: number;
     stop_type: string;
     location_name: string | null;
@@ -232,6 +234,7 @@ function tripOut(t: LiveTripRow | undefined): LiveUnit['trip'] {
   const stops: LiveStop[] = [...t.stops]
     .sort((a, b) => a.stop_sequence - b.stop_sequence)
     .map((s) => ({
+      id: s.id,
       sequence: s.stop_sequence,
       type: s.stop_type,
       name: s.location_name,
@@ -395,6 +398,7 @@ export async function loadLiveUnits(db: PrismaClient): Promise<LiveUnit[]> {
         stops: {
           where: { deletedAt: null },
           select: {
+            id: true,
             stop_sequence: true,
             stop_type: true,
             location_name: true,
@@ -425,4 +429,124 @@ export async function loadLiveUnits(db: PrismaClient): Promise<LiveUnit[]> {
     trips: trips as unknown as LiveTripRow[],
     tripLocations,
   });
+}
+
+// ── Trip media (POD photos, cargo photos, delay videos) per stop ─────────────
+
+export type LiveMediaKind = 'pod' | 'photo' | 'video';
+
+export interface LiveMediaItem {
+  id: string;
+  kind: LiveMediaKind;
+  url: string;
+  mime: string | null;
+  captured_at: string;
+}
+
+export interface LiveStopMedia {
+  stop_id: string;
+  sequence: number;
+  delay: { reason: string | null; note: string | null; logged_at: string | null } | null;
+  media: LiveMediaItem[];
+}
+
+export interface LiveTripMedia {
+  stops: LiveStopMedia[];
+  /** Uploads the app did not tie to a stop (older app builds). */
+  unplaced: LiveMediaItem[];
+}
+
+export interface TripMediaStopRow {
+  id: string;
+  stop_sequence: number;
+  delay_reason: string | null;
+  delay_note: string | null;
+  delay_logged_at: Date | null;
+}
+
+export interface TripMediaDocRow {
+  id: string;
+  doc_type: string | null;
+  file_url: string;
+  mime_type: string | null;
+  ai_extracted_json: unknown;
+  createdAt: Date;
+  files: Array<{ id: string; file_url: string; mime_type: string | null }>;
+}
+
+const VIDEO_EXT = /\.(mp4|mov|webm|avi|mkv|3gp|ogv)$/i;
+
+function mediaKind(docType: string | null, url: string, mime: string | null): LiveMediaKind {
+  if ((mime ?? '').startsWith('video/') || VIDEO_EXT.test(url)) return 'video';
+  return docType === 'POD' ? 'pod' : 'photo';
+}
+
+/**
+ * Sorts a trip's driver uploads onto the stops they were taken at. The driver
+ * app records the stop in `ai_extracted_json.stop_id`; uploads without one
+ * (older builds) are kept aside rather than guessed onto a stop.
+ */
+export function groupTripMedia(stops: TripMediaStopRow[], docs: TripMediaDocRow[]): LiveTripMedia {
+  const byStop = new Map<string, LiveStopMedia>(
+    [...stops]
+      .sort((a, b) => a.stop_sequence - b.stop_sequence)
+      .map((s) => [
+        s.id,
+        {
+          stop_id: s.id,
+          sequence: s.stop_sequence,
+          delay: s.delay_reason || s.delay_note
+            ? { reason: s.delay_reason, note: s.delay_note, logged_at: iso(s.delay_logged_at) }
+            : null,
+          media: [],
+        },
+      ]),
+  );
+  const unplaced: LiveMediaItem[] = [];
+
+  for (const d of [...docs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())) {
+    const meta = (d.ai_extracted_json ?? {}) as { stop_id?: unknown; gps?: { captured_at?: unknown } };
+    const captured = typeof meta.gps?.captured_at === 'string' ? meta.gps.captured_at : iso(d.createdAt)!;
+    const items: LiveMediaItem[] = [
+      { id: d.id, kind: mediaKind(d.doc_type, d.file_url, d.mime_type), url: d.file_url, mime: d.mime_type, captured_at: captured },
+      ...d.files.map((f) => ({
+        id: f.id,
+        kind: mediaKind(d.doc_type, f.file_url, f.mime_type),
+        url: f.file_url,
+        mime: f.mime_type,
+        captured_at: captured,
+      })),
+    ];
+    const target = typeof meta.stop_id === 'string' ? byStop.get(meta.stop_id) : undefined;
+    (target ? target.media : unplaced).push(...items);
+  }
+
+  return { stops: [...byStop.values()], unplaced };
+}
+
+/** Media for one trip. Null when the trip does not exist. */
+export async function loadTripMedia(db: PrismaClient, tripId: string): Promise<LiveTripMedia | null> {
+  const trip = await db.trip.findFirst({
+    where: { id: tripId, deletedAt: null },
+    select: {
+      stops: {
+        where: { deletedAt: null },
+        select: { id: true, stop_sequence: true, delay_reason: true, delay_note: true, delay_logged_at: true },
+      },
+    },
+  });
+  if (!trip) return null;
+  const docs = await db.document.findMany({
+    where: { entity_type: 'Trip', entity_id: tripId, deletedAt: null, doc_type: { in: ['POD', 'Waybill'] } },
+    select: {
+      id: true,
+      doc_type: true,
+      file_url: true,
+      mime_type: true,
+      ai_extracted_json: true,
+      createdAt: true,
+      files: { where: { deletedAt: null }, orderBy: { displayOrder: 'asc' }, select: { id: true, file_url: true, mime_type: true } },
+    },
+  });
+  return groupTripMedia(trip.stops as TripMediaStopRow[], docs as unknown as TripMediaDocRow[]);
 }

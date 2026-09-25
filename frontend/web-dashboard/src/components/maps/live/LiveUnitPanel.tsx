@@ -1,9 +1,12 @@
 import { Check, Maximize2, Minimize2, Navigation, Phone, Route, Smartphone, Truck, TriangleAlert, X } from 'lucide-react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import { cn } from '@/lib/utils';
 import { formatDuration, formatKm, nextStop, punctuality, stopLabel, timeAgo, unitTitle, type EtaInfo } from '@/lib/fleetLive';
-import type { LiveGpsFix, LiveUnit } from '@/services/fleetLiveService';
+import { fleetLiveService, type LiveGpsFix, type LiveMediaItem, type LiveUnit } from '@/services/fleetLiveService';
+import { MediaViewer, StopMediaStrip } from './TripMedia';
 import { TONE, unitTone } from './liveMapStyle';
 
 export const GLASS =
@@ -32,6 +35,19 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
   const tone = TONE[unitTone(unit)];
   const stop = nextStop(unit);
   const p = punctuality(eta?.lateByMin ?? null);
+  const [viewer, setViewer] = useState<{ items: LiveMediaItem[]; index: number; title: string } | null>(null);
+
+  // What the driver sent from each stop — only fetched for the full panel, where it is shown.
+  const tripId = unit.trip?.id;
+  const { data: media } = useQuery({
+    queryKey: ['fleet-live-trip-media', tripId],
+    queryFn: () => fleetLiveService.getTripMedia(tripId!),
+    enabled: !compact && !!tripId,
+    refetchInterval: 60_000,
+    retry: false,
+  });
+  const mediaByStop = new Map((media?.stops ?? []).map((m) => [m.stop_id, m]));
+  const openViewer = (items: LiveMediaItem[], index: number, title: string) => setViewer({ items, index, title });
 
   const header = (
     <div className="flex items-start gap-3">
@@ -172,11 +188,22 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
                         {done && s.actual_arrival && ` · arrived ${formatTime(new Date(s.actual_arrival))}`}
                         {!done && s.planned_arrival && ` · due ${formatTime(new Date(s.planned_arrival))}`}
                       </p>
+                      <StopMediaStrip stop={mediaByStop.get(s.id)} title={stopLabel(s)} onOpen={openViewer} />
                     </div>
                   </li>
                 );
               })}
             </ol>
+            {media && media.unplaced.length > 0 && (
+              <div className="mt-3 border-t border-black/[0.06] pt-2.5 dark:border-white/10">
+                <p className="mb-1.5 text-[11px] text-muted-foreground">Other uploads from this trip</p>
+                <StopMediaStrip
+                  stop={{ stop_id: 'unplaced', sequence: 0, delay: null, media: media.unplaced }}
+                  title={unit.trip.ref_id ?? 'Trip'}
+                  onOpen={openViewer}
+                />
+              </div>
+            )}
           </div>
         ) : (
           <p className="rounded-xl border border-dashed border-black/10 p-3 text-center text-xs text-muted-foreground dark:border-white/10">
@@ -190,6 +217,15 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
       </div>
 
       <div className="border-t border-black/[0.06] p-3 dark:border-white/10">{actions}</div>
+      {viewer && (
+        <MediaViewer
+          items={viewer.items}
+          index={viewer.index}
+          title={viewer.title}
+          onClose={() => setViewer(null)}
+          onIndex={(index) => setViewer((v) => (v ? { ...v, index } : v))}
+        />
+      )}
     </div>
   );
 }
