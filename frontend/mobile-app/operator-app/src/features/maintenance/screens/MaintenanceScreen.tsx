@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, FlatList, RefreshControl, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Wrench, Menu, Truck } from 'lucide-react-native';
@@ -6,11 +6,37 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-sha
 import { useOperatorMaintenanceRecords, type OperatorMaintenanceRecord } from '@/lib/operator';
 import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
+import { SearchBar } from '@/features/dashboard/components/SearchBar';
+import { SegmentControl } from '@/features/dashboard/components/SegmentControl';
 
 export default function MaintenanceScreen() {
   const router = useRouter();
   const { records, loading, error, refetch } = useOperatorMaintenanceRecords();
   const [drawerVisible, setDrawerVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'PENDING' | 'COMPLETED'>('ALL');
+
+  const filteredRecords = useMemo(() => {
+    if (!records) return [];
+    return records.filter((r) => {
+      const isCompleted = r.status?.toLowerCase() === 'completed';
+      
+      if (statusFilter === 'COMPLETED' && !isCompleted) return false;
+      if (statusFilter === 'PENDING' && isCompleted) return false;
+
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const plate = (r.vehicle?.plate_number || (r as any).vehicle_plate || '').toLowerCase();
+        const type = (r.maintenance_type || '').toLowerCase();
+        const desc = (r.description || '').toLowerCase();
+        
+        if (!plate.includes(q) && !type.includes(q) && !desc.includes(q)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [records, statusFilter, searchQuery]);
 
   const renderItem = ({ item }: { item: OperatorMaintenanceRecord }) => (
     <View
@@ -103,11 +129,31 @@ export default function MaintenanceScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Filter and Search Bar */}
+      <View style={{ paddingHorizontal: Spacing.lg, paddingTop: Spacing.md, gap: Spacing.sm, backgroundColor: Colors.gray100 }}>
+        <SearchBar 
+          value={searchQuery} 
+          onChangeText={setSearchQuery} 
+          placeholder="Search by vehicle plate, type..." 
+        />
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-start' }}>
+          <SegmentControl
+            options={[
+              { label: 'All', value: 'ALL' },
+              { label: 'Pending', value: 'PENDING' },
+              { label: 'Completed', value: 'COMPLETED' },
+            ]}
+            value={statusFilter}
+            onChange={setStatusFilter}
+          />
+        </View>
+      </View>
+
       {error ? (
         <ErrorState message={error} onRetry={refetch} className="flex-1" />
       ) : (
         <FlatList
-          data={records}
+          data={filteredRecords}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 100 }}
