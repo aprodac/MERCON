@@ -223,7 +223,7 @@ export default function AuditLogPage() {
                 </div>
                 <div>
                   <span className="text-slate-500 font-medium block mb-1">Metadata</span>
-                  <pre className="bg-slate-900 text-slate-100 p-3 rounded-lg overflow-x-auto text-[11px] leading-relaxed">
+                  <pre className="bg-charcoal text-slate-100 p-3 rounded-lg overflow-x-auto text-[11px] leading-relaxed">
                     {JSON.stringify(viewingLog.metadata || {}, null, 2)}
                   </pre>
                 </div>

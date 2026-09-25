@@ -813,7 +813,7 @@ const TripKanbanBoard = forwardRef<TripKanbanBoardRef, TripKanbanBoardProps>(fun
 
       {/* Floating Bottom Bar for Bulk Actions */}
       {selectedTripIds.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-slate-900 dark:bg-slate-800 text-white px-5 py-3 rounded-full shadow-2xl shadow-slate-900/20 border border-slate-700/50 animate-in slide-in-from-bottom-5">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4 bg-charcoal dark:bg-slate-800 text-white px-5 py-3 rounded-full shadow-2xl shadow-slate-900/20 border border-slate-700/50 animate-in slide-in-from-bottom-5">
           <div className="flex items-center gap-2">
             <span className="flex items-center justify-center w-6 h-6 rounded-full bg-brand text-xs font-bold">
               {selectedTripIds.length}

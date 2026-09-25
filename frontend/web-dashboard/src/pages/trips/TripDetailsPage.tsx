@@ -821,7 +821,7 @@ export default function TripDetailsPage() {
 
       {/* ── Additional Charges Modal ── */}
       {isLaborModalOpen && trip && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal-strong/50 backdrop-blur-xs p-4 animate-fade-in">
           <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
             <div className="px-5 py-3.5 border-b border-[#E5E7EB] flex items-center justify-between bg-slate-50/60">
               <div className="flex items-center gap-2">
@@ -880,7 +880,7 @@ export default function TripDetailsPage() {
       {/* ── Lightbox Image Preview Modal with GPS Geotag Evidence ── */}
       {previewImage && (
         <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in"
+          className="fixed inset-0 z-50 bg-charcoal-strong/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in"
           onClick={() => setPreviewImage(null)}
         >
           <div
@@ -917,13 +917,13 @@ export default function TripDetailsPage() {
             {/* Scrollable Container with Photo/Video + Geotag Evidence */}
             <div className="overflow-y-auto p-4 space-y-3.5">
               {/* Media Viewport (Video or Image) */}
-              <div className="flex items-center justify-center bg-black/95 rounded-xl overflow-hidden min-h-[260px] max-h-[50vh] p-2">
+              <div className="flex items-center justify-center bg-charcoal-strong/95 rounded-xl overflow-hidden min-h-[260px] max-h-[50vh] p-2">
                 {previewImage.isVideo || /\.(mp4|mov|webm|avi|mkv|3gp)(\?.*)?$/i.test(previewImage.url) ? (
                   <video
                     controls
                     autoPlay
                     playsInline
-                    className="max-h-[48vh] w-auto max-w-full rounded-lg shadow-2xl bg-black"
+                    className="max-h-[48vh] w-auto max-w-full rounded-lg shadow-2xl bg-charcoal-strong"
                   >
                     <source src={previewImage.url} type="video/mp4" />
                     <source src={previewImage.url} type="video/quicktime" />

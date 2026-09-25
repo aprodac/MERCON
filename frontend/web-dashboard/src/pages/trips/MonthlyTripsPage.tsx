@@ -601,7 +601,7 @@ export default function MonthlyTripsPage() {
 
       {/* Floating Selection & Bulk Action Bar */}
       {selectedTripIds.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-2xl w-[92vw] sm:w-auto bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-800 flex items-center justify-between gap-4 animate-in slide-in-from-bottom-5 duration-200">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-2xl w-[92vw] sm:w-auto bg-charcoal text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-800 flex items-center justify-between gap-4 animate-in slide-in-from-bottom-5 duration-200">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 text-xs font-extrabold bg-purple-600 text-white px-2.5 py-1 rounded-lg shadow-2xs">
               <span>{selectedTripIds.length}</span>
@@ -625,7 +625,7 @@ export default function MonthlyTripsPage() {
               <SelectTrigger className="h-8 rounded-lg bg-slate-800 border-slate-700 text-white text-xs font-medium w-36 focus:ring-0">
                 <SelectValue placeholder="Update Status" />
               </SelectTrigger>
-              <SelectContent align="end" className="w-44 bg-slate-900 border-slate-800 text-white">
+              <SelectContent align="end" className="w-44 bg-charcoal border-slate-800 text-white">
                 <SelectGroup>
                   <SelectLabel className="text-[10px] uppercase font-bold text-slate-400">Bulk Change Status</SelectLabel>
                   {STATUS_OPTIONS.map((st) => (

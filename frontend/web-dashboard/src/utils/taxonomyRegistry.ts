@@ -36,7 +36,7 @@ export const COLOR_PALETTES: ColorTheme[] = [
   { id: 'emerald', name: 'Emerald Monthly', bg: 'bg-emerald-100', text: 'text-emerald-950', border: 'border-emerald-300', hex: '#10B981', darkBg: 'dark:bg-emerald-950/60', darkText: 'dark:text-emerald-200' },
   { id: 'teal', name: 'Teal Extra Duty', bg: 'bg-teal-50', text: 'text-teal-800', border: 'border-teal-200', hex: '#14B8A6', darkBg: 'dark:bg-teal-950/40', darkText: 'dark:text-teal-300' },
   { id: 'purple', name: 'Purple Container', bg: 'bg-purple-50', text: 'text-purple-800', border: 'border-purple-200', hex: '#A855F7', darkBg: 'dark:bg-purple-950/40', darkText: 'dark:text-purple-300' },
-  { id: 'slate', name: 'Heavy Duty Slate', bg: 'bg-slate-900', text: 'text-white', border: 'border-slate-800', hex: '#0F172A', darkBg: 'dark:bg-slate-900', darkText: 'dark:text-slate-100' },
+  { id: 'slate', name: 'Heavy Duty Slate', bg: 'bg-charcoal', text: 'text-white', border: 'border-slate-800', hex: '#0F172A', darkBg: 'dark:bg-slate-900', darkText: 'dark:text-slate-100' },
   { id: 'rose', name: 'Rose Express', bg: 'bg-rose-50', text: 'text-rose-800', border: 'border-rose-200', hex: '#F43F5E', darkBg: 'dark:bg-rose-950/40', darkText: 'dark:text-rose-300' },
 ];
 

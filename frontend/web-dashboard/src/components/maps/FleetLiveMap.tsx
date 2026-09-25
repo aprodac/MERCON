@@ -250,7 +250,7 @@ export default function FleetLiveMap() {
                     variant={isPlaying ? "default" : "secondary"}
                     onClick={togglePlay}
                     className={`h-8 text-xs font-bold gap-1.5 ${
-                      isPlaying ? 'bg-[#1C1C2E] hover:bg-black text-white' : 'bg-green-600 hover:bg-green-700 text-white'
+                      isPlaying ? 'bg-[#1C1C2E] hover:bg-charcoal-strong text-white' : 'bg-green-600 hover:bg-green-700 text-white'
                     }`}
                   >
                     {isPlaying ? <Pause size={12} /> : <Play size={12} />}

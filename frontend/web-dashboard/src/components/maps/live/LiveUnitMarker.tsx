@@ -110,7 +110,7 @@ function FeedBadge({ feed, offline }: { feed: LiveUnit['feed']; offline: boolean
   if (offline || feed === 'none') return null;
   const cls = 'size-2.5';
   return (
-    <span className="absolute -right-1.5 -bottom-1 flex items-center gap-px rounded-full bg-slate-900 px-1 py-0.5 text-white ring-2 ring-white dark:bg-slate-800">
+    <span className="absolute -right-1.5 -bottom-1 flex items-center gap-px rounded-full bg-charcoal px-1 py-0.5 text-white ring-2 ring-white dark:bg-slate-800">
       {(feed === 'vehicle' || feed === 'both') && <Truck className={cls} strokeWidth={2.5} />}
       {(feed === 'driver' || feed === 'both') && <UserRound className={cls} strokeWidth={2.5} />}
     </span>

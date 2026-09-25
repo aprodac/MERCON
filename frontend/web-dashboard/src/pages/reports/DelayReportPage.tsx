@@ -167,7 +167,7 @@ function SegBtn({ active, onClick, children, tone = 'ink' }: {
       type="button"
       onClick={onClick}
       className={`px-3 h-8 text-xs font-semibold whitespace-nowrap transition-colors ${
-        active ? on : 'bg-white text-subtle hover:bg-black/[0.03]'
+        active ? on : 'bg-white text-subtle hover:bg-charcoal-strong/[0.03]'
       }`}
     >
       {children}
@@ -248,7 +248,7 @@ function PeriodPicker({ periodId, startDate, endDate, onPreset, onCustom }: {
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="h-8 inline-flex items-center gap-2 rounded-lg border border-black/[0.08] bg-white px-2.5 text-xs transition-colors hover:bg-black/[0.02] focus:outline-none focus:border-brand"
+          className="h-8 inline-flex items-center gap-2 rounded-lg border border-black/[0.08] bg-white px-2.5 text-xs transition-colors hover:bg-charcoal-strong/[0.02] focus:outline-none focus:border-brand"
         >
           <CalendarDays size={14} className="text-subtle shrink-0" />
           <span className="font-semibold text-ink whitespace-nowrap">{label}</span>
@@ -264,7 +264,7 @@ function PeriodPicker({ periodId, startDate, endDate, onPreset, onCustom }: {
             type="button"
             onClick={() => { onPreset(p.id); setOpen(false); }}
             className={`w-full flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs transition-colors ${
-              periodId === p.id ? 'bg-brand-light text-brand font-semibold' : 'text-ink hover:bg-black/[0.03]'
+              periodId === p.id ? 'bg-brand-light text-brand font-semibold' : 'text-ink hover:bg-charcoal-strong/[0.03]'
             }`}
           >
             <span>{p.label}</span>
@@ -491,7 +491,7 @@ export default function DelayReportPage() {
                   <button
                     type="button"
                     disabled={!log.data?.data?.length}
-                    className="h-8 px-3 rounded-lg border border-black/[0.08] text-xs font-semibold text-ink hover:bg-black/[0.03] inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
+                    className="h-8 px-3 rounded-lg border border-black/[0.08] text-xs font-semibold text-ink hover:bg-charcoal-strong/[0.03] inline-flex items-center gap-1.5 disabled:opacity-40 cursor-pointer"
                   >
                     <Download size={13} />
                     <span>Export</span>
@@ -649,7 +649,7 @@ export default function DelayReportPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="bg-black/[0.02] border-b border-black/[0.06]">
+                      <tr className="bg-charcoal-strong/[0.02] border-b border-black/[0.06]">
                         <th className="text-left font-bold text-faint uppercase tracking-wide text-[10px] px-3 py-2.5 sticky left-0 bg-[#FAFAFA]">
                           {DIMENSIONS.find((d) => d.id === grid.data!.dimension)?.label}
                         </th>
@@ -660,7 +660,7 @@ export default function DelayReportPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      <tr className="border-b-2 border-black/[0.08] bg-black/[0.015]">
+                      <tr className="border-b-2 border-black/[0.08] bg-charcoal-strong/[0.015]">
                         <td className="px-3 py-2.5 font-bold text-ink sticky left-0 bg-[#FAFAFA]">All</td>
                         <td className="px-3 py-2.5" />
                         {grid.data.all_rows.cells.map((c) => (

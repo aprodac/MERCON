@@ -114,7 +114,7 @@ export default function DriverPreviewModal({ driver, isOpen, onClose, onEdit, on
                   status={driver.status}
                   showStatusDot
                 />
-                <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                <div className="absolute inset-0 rounded-full bg-charcoal-strong/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
                   <ZoomIn className="w-5 h-5" />
                 </div>
               </div>

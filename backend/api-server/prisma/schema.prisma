@@ -173,6 +173,7 @@ model User {
   notifications        Notification[]
   tripStopDelayLogs    TripStop[]            @relation("TripStopDelayLogger")
   tripAssignmentEvents TripAssignmentEvent[]
+  tripUpdateShares     TripUpdateShare[]     @relation("TripUpdateShareUser")
   quotationHistories   QuotationHistory[]
   auditLogs            AuditLog[]
 }
@@ -434,6 +435,7 @@ model Trip {
   // billing_amount plus the sum of these.
   charges   TripCharge[]
   locations TripLocation[]
+  updateShares TripUpdateShare[]
 
   @@index([vehicleId, driverId])
   @@index([is_third_party])
@@ -630,6 +632,33 @@ model TripStop {
   @@index([tripId])
   @@index([tripId, leg_index])
   @@index([tripId, stop_sequence])
+}
+
+/// A driver update (the photos or video from one stop and step) that an
+/// operator forwarded on WhatsApp. Shared by every operator, so an update is
+/// not forwarded twice. `token` opens a public page showing only the items in
+/// `media_ids` — the link that goes into the WhatsApp message.
+model TripUpdateShare {
+  id              String    @id @default(uuid()) @db.Uuid
+  tripId          String    @db.Uuid
+  trip            Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  /// "<stop id | trip>:<stage>" — which batch of driver uploads this was.
+  update_key      String
+  /// Document and DocumentFile ids that were shared.
+  media_ids       String[]  @db.Uuid
+  token           String    @unique
+  /// "link" (message with a photo-page link) or "whatsapp_api" (images sent through the Business API).
+  channel         String
+  /// "customer_contact" | "customer_group" | "internal" | "other"
+  recipient       String
+  recipient_phone String?
+  shared_by       String?   @db.Uuid
+  sharedBy        User?     @relation("TripUpdateShareUser", fields: [shared_by], references: [id], onDelete: SetNull)
+  expiresAt       DateTime  @db.Timestamptz
+  createdAt       DateTime  @default(now()) @db.Timestamptz
+
+  @@index([tripId, update_key])
+  @@map("trip_update_shares")
 }
 
 model TripLocation {

@@ -41,6 +41,7 @@ const EditTripPage            = lazyWithRetry(() => import('@/pages/trips/EditTr
 const TripTrackingPage        = lazyWithRetry(() => import('@/pages/trips/TripTrackingPage'));
 const TripCompletionPage      = lazyWithRetry(() => import('@/pages/trips/TripCompletionPage'));
 const TripEvidencePublicGalleryPage = lazyWithRetry(() => import('@/pages/public/TripEvidencePublicGalleryPage'));
+const SharedUpdatePage = lazyWithRetry(() => import('@/pages/public/SharedUpdatePage'));
 const ThirdPartyListPage      = lazyWithRetry(() => import('@/pages/third-party/ThirdPartyListPage'));
 const ThirdPartyDetailsPage   = lazyWithRetry(() => import('@/pages/third-party/ThirdPartyDetailsPage'));
 
@@ -199,6 +200,15 @@ export default function AppRouter() {
             element={
               <Suspense fallback={<FullPageSpinner />}>
                 <TripEvidencePublicGalleryPage />
+              </Suspense>
+            }
+          />
+          {/* Public page behind a forwarded driver update (WhatsApp link). */}
+          <Route
+            path="/s/:token"
+            element={
+              <Suspense fallback={<FullPageSpinner />}>
+                <SharedUpdatePage />
               </Suspense>
             }
           />

@@ -180,10 +180,10 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
   const lng = currentPhoto.geotag?.longitude;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col justify-between animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 bg-charcoal-strong/90 backdrop-blur-md flex flex-col justify-between animate-in fade-in duration-200">
       
       {/* ── HEADER BAR ── */}
-      <div className="h-14 px-4 sm:px-6 border-b border-white/10 flex items-center justify-between text-white bg-black/40 shrink-0">
+      <div className="h-14 px-4 sm:px-6 border-b border-white/10 flex items-center justify-between text-white bg-charcoal-strong/40 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-8 h-8 rounded-lg bg-[#FA634E] text-white font-black text-xs flex items-center justify-center shadow-sm">
             {currentIndex + 1}/{photos.length}
@@ -258,7 +258,7 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
                 type="datetime-local"
                 value={arrivalInput}
                 onChange={(e) => setArrivalInput(e.target.value)}
-                className="bg-black/30 border border-amber-500/30 rounded-md px-2 py-1.5 text-xs text-white [color-scheme:dark]"
+                className="bg-charcoal-strong/30 border border-amber-500/30 rounded-md px-2 py-1.5 text-xs text-white [color-scheme:dark]"
               />
             </label>
             <label className="flex flex-col gap-1 text-[11px] text-amber-200/80">
@@ -267,7 +267,7 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
                 type="datetime-local"
                 value={departureInput}
                 onChange={(e) => setDepartureInput(e.target.value)}
-                className="bg-black/30 border border-amber-500/30 rounded-md px-2 py-1.5 text-xs text-white [color-scheme:dark]"
+                className="bg-charcoal-strong/30 border border-amber-500/30 rounded-md px-2 py-1.5 text-xs text-white [color-scheme:dark]"
               />
             </label>
             <Button
@@ -330,7 +330,7 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
         {hasMultiple && (
           <button
             onClick={handlePrev}
-            className="absolute left-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-black/60 hover:bg-[#FA634E] text-white flex items-center justify-center transition-colors border border-white/10 shadow-xl cursor-pointer"
+            className="absolute left-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-charcoal-strong/60 hover:bg-[#FA634E] text-white flex items-center justify-center transition-colors border border-white/10 shadow-xl cursor-pointer"
           >
             <ChevronLeft size={24} />
           </button>
@@ -343,7 +343,7 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
               src={currentPhoto.url}
               controls
               autoPlay
-              className="max-h-[70vh] max-w-full rounded-xl object-contain bg-black"
+              className="max-h-[70vh] max-w-full rounded-xl object-contain bg-charcoal-strong"
             />
           ) : (
             <img
@@ -358,7 +358,7 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
         {hasMultiple && (
           <button
             onClick={handleNext}
-            className="absolute right-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-black/60 hover:bg-[#FA634E] text-white flex items-center justify-center transition-colors border border-white/10 shadow-xl cursor-pointer"
+            className="absolute right-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-charcoal-strong/60 hover:bg-[#FA634E] text-white flex items-center justify-center transition-colors border border-white/10 shadow-xl cursor-pointer"
           >
             <ChevronRight size={24} />
           </button>
@@ -366,7 +366,7 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
       </div>
 
       {/* ── FOOTER METADATA PANEL ── */}
-      <div className="px-6 py-3 border-t border-white/10 bg-black/60 text-white flex flex-wrap items-center justify-between gap-4 shrink-0">
+      <div className="px-6 py-3 border-t border-white/10 bg-charcoal-strong/60 text-white flex flex-wrap items-center justify-between gap-4 shrink-0">
         
         {/* Geotag & Time Info */}
         <div className="flex flex-wrap items-center gap-4 text-xs">
@@ -415,7 +415,7 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
                 }`}
               >
                 {p.isVideo ? (
-                  <div className="w-full h-full bg-slate-900 flex items-center justify-center text-white">
+                  <div className="w-full h-full bg-charcoal flex items-center justify-center text-white">
                     <Play size={12} className="fill-white" />
                   </div>
                 ) : (
