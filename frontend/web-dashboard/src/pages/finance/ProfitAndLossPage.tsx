@@ -151,7 +151,7 @@ export default function ProfitAndLossPage() {
 
   // Compare columns meta calculation
   const compareColsMeta = useMemo<CompareColumnMeta[]>(() => {
-    return resolveCompareColumns(compareOpt as CompareOption, dateFrom, dateTo);
+    return resolveCompareColumns(dateFrom, dateTo, compareOpt as CompareOption);
   }, [compareOpt, dateFrom, dateTo]);
 
   // Primary Query

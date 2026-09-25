@@ -53,19 +53,18 @@ import {
 
 import {
   financeService,
-  type Account,
   type GeneralLedgerData,
   type GeneralLedgerLineItem,
   type GeneralLedgerSummaryData,
   type GeneralLedgerSummaryItem,
   type GeneralLedgerMonthlyData,
   type GeneralLedgerMonthlyItem,
-  type JournalEntry,
 } from '@/services/financeService';
+import type { Account, JournalEntry } from '@mercon/shared-types';
 import { formatMoney, formatDate } from '@/lib/finance/format';
 import { resolvePeriodPreset, type PeriodPreset } from '@/lib/finance/pnlPeriodHelpers';
 import { SOURCE_CONFIG, renderSourceBadge } from '@/lib/finance/sourceConfig';
-import { JournalLinesTable } from '@/components/finance/kit/JournalLinesTable';
+import { JournalLinesTable, StatusPill } from '@/components/finance/kit';
 
 const CUSTOMIZE_STORAGE_KEY = 'mercon_gl_customize_v1';
 
@@ -486,7 +485,7 @@ export default function GeneralLedgerPage() {
             : `${l.debit > 0 ? 'To' : 'By'} Contra Account`;
 
         rows.push({
-          entry_date: formatDate(l.entry_date),
+          entry_date: l.entry_date ? formatDate(l.entry_date) : '',
           ref_id: l.ref_id || '—',
           particulars: contraStr,
           source_type: l.source_type || 'Manual',
@@ -955,7 +954,7 @@ export default function GeneralLedgerPage() {
                 <div className="flex items-center gap-1">
                   <TooltipProvider>
                     <Tooltip>
-                      <TooltipTrigger asChild>
+                      <TooltipTrigger>
                         <Button
                           variant="outline"
                           size="icon"
@@ -972,7 +971,7 @@ export default function GeneralLedgerPage() {
 
                   <TooltipProvider>
                     <Tooltip>
-                      <TooltipTrigger asChild>
+                      <TooltipTrigger>
                         <Button
                           variant="outline"
                           size="icon"
@@ -1242,7 +1241,7 @@ export default function GeneralLedgerPage() {
                               </td>
                               {customize.showVoucherType && (
                                 <td className="py-2.5 px-3">
-                                  {renderSourceBadge(line.source_type, line.source_id)}
+                                  {renderSourceBadge(line.source_type || undefined, line.source_id || undefined)}
                                 </td>
                               )}
                               <td className="py-2.5 px-3 font-mono text-[11.5px]">
@@ -1567,7 +1566,7 @@ export default function GeneralLedgerPage() {
                   </div>
                   <div>
                     <span className="text-slate-400 block font-medium">Source</span>
-                    <span>{renderSourceBadge(previewJe.source_type, previewJe.source_id)}</span>
+                    <span>{renderSourceBadge(previewJe.source_type, previewJe.source_id || undefined)}</span>
                   </div>
                   <div>
                     <span className="text-slate-400 block font-medium">Period</span>
