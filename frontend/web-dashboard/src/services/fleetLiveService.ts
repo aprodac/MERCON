@@ -89,4 +89,16 @@ export const fleetLiveService = {
       return null;
     }
   },
+
+  /** Road route through several points in order; null when routing is unavailable. */
+  async getRouteThrough(points: { lat: number; lng: number }[]): Promise<LiveRoute | null> {
+    try {
+      const res = await api.get<ApiResponse<LiveRoute>>('/vehicles/live-map/route', {
+        params: { points: points.map((p) => `${p.lat},${p.lng}`).join(';') },
+      });
+      return res.data.data;
+    } catch {
+      return null;
+    }
+  },
 };

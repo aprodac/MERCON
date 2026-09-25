@@ -72,12 +72,23 @@ function isFiniteCoord(p: GeoPoint): boolean {
  * and report each honestly.
  */
 export async function getDrivingRoute(from: GeoPoint, to: GeoPoint): Promise<RouteResult> {
-  if (!isFiniteCoord(from) || !isFiniteCoord(to)) {
+  return getDrivingRouteThrough([from, to]);
+}
+
+/** Most points one request may carry — keeps the provider URL a sane length. */
+export const MAX_ROUTE_POINTS = 25;
+
+/**
+ * A driving route through every point in order. Used to draw a trip's
+ * remaining stops on real roads instead of straight lines.
+ */
+export async function getDrivingRouteThrough(points: GeoPoint[]): Promise<RouteResult> {
+  if (points.length < 2 || points.length > MAX_ROUTE_POINTS || !points.every(isFiniteCoord)) {
     throw new RoutingUnavailableError('Invalid coordinates');
   }
 
   // OSRM takes lng,lat — the reverse of how the rest of MERCON writes a point.
-  const coords = `${from.lng},${from.lat};${to.lng},${to.lat}`;
+  const coords = points.map((p) => `${p.lng},${p.lat}`).join(';');
   const url = `${OSRM_BASE_URL}/route/v1/driving/${coords}?overview=full&geometries=geojson`;
 
   const controller = new AbortController();
