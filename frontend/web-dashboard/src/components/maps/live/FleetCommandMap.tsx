@@ -213,7 +213,12 @@ export default function FleetCommandMap({ className }: Props) {
     return () => ro.disconnect();
   }, []);
   useEffect(() => {
-    const t = setTimeout(() => mapRef.current?.resize(), 320);
+    // After the size changes, re-centre on the selected unit with the new layout's padding.
+    const t = setTimeout(() => {
+      mapRef.current?.resize();
+      const pos = selectedPosRef.current;
+      if (pos) mapRef.current?.easeTo({ center: [pos.lng, pos.lat], padding: panelPaddingRef.current(), duration: 600 });
+    }, 320);
     return () => clearTimeout(t);
   }, [expanded]);
 
@@ -222,6 +227,11 @@ export default function FleetCommandMap({ className }: Props) {
     () => (compact ? { top: 40, bottom: 190, left: 40, right: 40 } : { top: 60, bottom: 60, left: 60, right: 340 }),
     [compact],
   );
+  // Read by the resize timer, which fires after the layout has already switched.
+  const panelPaddingRef = useRef(panelPadding);
+  panelPaddingRef.current = panelPadding;
+  const selectedPosRef = useRef(selected?.position ?? null);
+  selectedPosRef.current = selected?.position ?? null;
 
   const fitAll = useCallback(
     (animate = true) => {
@@ -548,7 +558,7 @@ export default function FleetCommandMap({ className }: Props) {
         {/* Right: details panel (full layout) */}
         {selected && !compact && (
           <div className="absolute top-16 right-3 bottom-3 flex items-start">
-            <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact={false} onClose={deselect} onShare={share} onShowRoute={showRoute} />
+            <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact={false} onClose={deselect} onShare={share} onShowRoute={showRoute} expanded={expanded} onToggleExpand={() => setExpanded((v) => !v)} />
           </div>
         )}
 
@@ -588,7 +598,7 @@ export default function FleetCommandMap({ className }: Props) {
         {/* Compact: one bottom card */}
         {selected && compact && (
           <div className="absolute right-3 bottom-3 left-3">
-            <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact onClose={deselect} onShare={share} onShowRoute={showRoute} />
+            <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact onClose={deselect} onShare={share} onShowRoute={showRoute} expanded={expanded} onToggleExpand={() => setExpanded((v) => !v)} />
           </div>
         )}
 
