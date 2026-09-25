@@ -15,7 +15,7 @@ import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 
 import {
   useActiveTrips, useCurrentUser, useDashboardRefresh,
-  useDashboardSummary, useDelayedDeliveries,
+  useDashboardSummary, useDelayedDeliveries, useOperatorCommandQueue,
 } from '../hooks';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
 import {
@@ -36,6 +36,7 @@ export default function DashboardHomeScreen() {
   const summary = useDashboardSummary();
   const activeTrips = useActiveTrips();
   const delayedDeliveries = useDelayedDeliveries();
+  const { counts } = useOperatorCommandQueue();
 
   const firstName = (currentUser.data?.name ?? 'Operator').split(' ')[0];
   const unreadCount = notifications.data?.filter((n) => !n.is_read).length ?? 0;
@@ -64,25 +65,39 @@ export default function DashboardHomeScreen() {
 
         {/* 3. Dashboard Metrics */}
         {summary.isLoading || activeTrips.isLoading || delayedDeliveries.isLoading ? (
-          <View className="flex-row gap-3">
-            <SkeletonMetricCard />
-            <SkeletonMetricCard />
+          <View className="flex-col gap-3">
+            <View className="flex-row gap-3">
+              <SkeletonMetricCard />
+              <SkeletonMetricCard />
+            </View>
+            <View className="flex-row gap-3">
+              <SkeletonMetricCard />
+            </View>
           </View>
         ) : summary.isError ? (
           <ErrorState message="Couldn't load dashboard metrics." onRetry={() => summary.refetch()} />
         ) : (
-          <View className="flex-row gap-3">
-            <DashboardMetricCard
-              title="Active Trips"
-              value={activeTrips.data?.length ?? 0}
-              image={require('@/assets/images/mobile-truck.webp')}
-              onPress={() => router.push('/trips')}
-            />
-            <DashboardMetricCard
-              title="Delayed Deliveries"
-              value={delayedDeliveries.data?.length ?? 0}
-              onPress={() => router.push('/trips')}
-            />
+          <View className="flex-col gap-3">
+            <View className="flex-row gap-3">
+              <DashboardMetricCard
+                title="Active Trips"
+                value={activeTrips.data?.length ?? 0}
+                image={require('@/assets/images/mobile-truck.webp')}
+                onPress={() => router.push('/trips')}
+              />
+              <DashboardMetricCard
+                title="Delayed Deliveries"
+                value={delayedDeliveries.data?.length ?? 0}
+                onPress={() => router.push('/trips')}
+              />
+            </View>
+            <View className="flex-row gap-3">
+              <DashboardMetricCard
+                title="POD Pending"
+                value={counts.pod ?? 0}
+                onPress={() => router.push('/trips')}
+              />
+            </View>
           </View>
         )}
 
