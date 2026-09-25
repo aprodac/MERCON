@@ -1,708 +1,315 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import {
-  Download,
-  Printer,
-  SlidersHorizontal,
-  Settings2,
-  ChevronRight,
-  ChevronDown,
-  RotateCcw,
-} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import { CalendarRange, Columns2, Download, Printer, SlidersHorizontal, TrendingUp, Truck, Building2, Coins, ReceiptText } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { Switch } from '@/components/ui/switch';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Label } from '@/components/ui/label';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ExportModal, { type ExportColumn } from '@/components/ui/ExportModal';
+import { PeriodControl } from '@/components/finance/kit/PeriodControl';
+import { SegmentedControl } from '@/components/finance/kit/SegmentedControl';
+import { ReportViewState } from '@/components/finance/kit/ReportViewState';
+import type { NegativeFormat } from '@/components/finance/kit/StatementTable';
+import { TwoColumnStatement } from '@/components/finance/kit/TwoColumnStatement';
+import { StatementCustomize } from '@/components/finance/kit/StatementCustomize';
+import { AccountLedgerSheet, type LedgerAccount } from '@/components/finance/ledger/AccountLedgerSheet';
+import { ProfitFlow } from '@/components/finance/pnl/ProfitFlow';
+import { MonthlyPnlTable } from '@/components/finance/pnl/MonthlyPnlTable';
+import { financeService, type ReportLineItem } from '@/services/financeService';
+import { settingsService } from '@/services/settingsService';
+import { buildStructuredVerticalPnl, clearPnlStoredOverrides, type PnlAccountItem, type PnlClass } from '@/lib/finance/pnlStructure';
+import { resolveCompareColumns, resolvePeriodPreset, type CompareOption, type PeriodPreset } from '@/lib/finance/pnlPeriodHelpers';
+import { PNL_SECTION_META, pnlTwoColumnParts } from '@/lib/finance/pnlView';
+import { shareOf } from '@/lib/finance/statementModel';
+import { formatDate, formatMoney } from '@/lib/finance/format';
 
-import { StatementHeaderBar, InsightRail, StatementRow } from '@/components/finance/kit';
-import { financeService } from '@/services/financeService';
-import { formatMoney, formatDate } from '@/lib/finance/format';
-import {
-  buildStructuredVerticalPnl,
-  buildStructuredTFormatPnl,
-  getDefaultPnlClass,
-  clearPnlStoredOverrides,
-  PNL_CLASS_LABELS,
-  type PnlClass,
-  type StructuredVerticalPnl,
-} from '@/lib/finance/pnlStructure';
-import {
-  resolvePeriodPreset,
-  resolveCompareColumns,
-  type PeriodPreset,
-  type CompareOption,
-  type CompareColumnMeta,
-} from '@/lib/finance/pnlPeriodHelpers';
+type View = 'two_column' | 'monthly';
+type PnlCompare = Extract<CompareOption, 'none' | 'previous_period' | 'same_period_last_year'>;
 
-const CUSTOMIZE_STORAGE_KEY = 'mercon_pnl_customize_v1';
-const SETUP_STORAGE_KEY = 'mercon_pnl_classification_v1';
+const OVERRIDES_KEY = 'mercon_pnl_classification_v1';
+const SECTION_ICON = { operating_income: TrendingUp, cost_of_sales: Truck, operating_expense: Building2, other_income: Coins, non_operating_expense: ReceiptText };
 
-interface CustomizeSettings {
-  showAccountCodes: boolean;
-  showZeroBalance: boolean;
-  showPctOfRevenue: boolean;
-  expandAllByDefault: boolean;
-  negativeFormat: 'minus' | 'parentheses';
-  density: 'compact' | 'comfortable';
-}
-
-const DEFAULT_CUSTOMIZE: CustomizeSettings = {
-  showAccountCodes: true,
-  showZeroBalance: false,
-  showPctOfRevenue: false,
-  expandAllByDefault: true,
-  negativeFormat: 'minus',
-  density: 'compact',
-};
-
-function loadCustomizeSettings(): CustomizeSettings {
+function loadOverrides(): Record<string, PnlClass> {
   try {
-    const raw = localStorage.getItem(CUSTOMIZE_STORAGE_KEY);
-    if (raw) return { ...DEFAULT_CUSTOMIZE, ...JSON.parse(raw) };
+    const raw = localStorage.getItem(OVERRIDES_KEY);
+    return raw ? JSON.parse(raw) : {};
   } catch {
-    // fallback
-  }
-  return DEFAULT_CUSTOMIZE;
-}
-
-function saveCustomizeSettings(settings: CustomizeSettings) {
-  try {
-    localStorage.setItem(CUSTOMIZE_STORAGE_KEY, JSON.stringify(settings));
-  } catch {
-    // ignore
+    return {};
   }
 }
 
-function loadClassifications(): Record<string, PnlClass> {
-  try {
-    const raw = localStorage.getItem(SETUP_STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    // fallback
-  }
-  return {};
+interface ExportRow {
+  section: string;
+  group: string;
+  code: string;
+  name: string;
+  amount: number;
+  share: number | null;
+  compare: number | null;
 }
 
 export default function ProfitAndLossPage() {
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  const set = (updates: Record<string, string | null>) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        Object.entries(updates).forEach(([k, val]) => (val === null || val === '' ? next.delete(k) : next.set(k, val)));
+        return next;
+      },
+      { replace: true },
+    );
 
-  // URL state
-  const activeTab = (searchParams.get('tab') as 'statement' | 'analysis') || 'statement';
-  const periodPreset = (searchParams.get('preset') as PeriodPreset) || 'this_quarter';
-  const layout = (searchParams.get('layout') as 'vertical' | 'tformat') || 'vertical';
-  const compareOpt = (searchParams.get('compare') as CompareOption) || 'none';
+  const rawView = params.get('view');
+  const view: View = rawView === 'monthly' ? 'monthly' : 'two_column';
+  const preset = (params.get('preset') as PeriodPreset) || 'this_quarter';
+  const presetDates = resolvePeriodPreset(preset === 'custom' ? 'this_quarter' : preset);
+  const dateFrom = params.get('date_from') || presetDates.from;
+  const dateTo = params.get('date_to') || presetDates.to;
+  const rawCompare = params.get('compare');
+  const compareMode: PnlCompare = rawCompare === 'previous_period' || rawCompare === 'same_period_last_year' ? rawCompare : 'none';
+  const showCodes = params.get('codes') === 'true';
+  const keepZero = params.get('zero') === 'true';
+  const negativeFormat: NegativeFormat = params.get('neg') === 'parens' ? 'parens' : 'minus';
 
-  // Resolved range state
-  const defaultDates = useMemo(() => resolvePeriodPreset(periodPreset), [periodPreset]);
-  const dateFrom = searchParams.get('date_from') || defaultDates.from;
-  const dateTo = searchParams.get('date_to') || defaultDates.to;
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const [account, setAccount] = useState<LedgerAccount | null>(null);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [overrides, setOverrides] = useState<Record<string, PnlClass>>(loadOverrides);
 
-  // Local settings & sheets
-  const [customize, setCustomize] = useState<CustomizeSettings>(loadCustomizeSettings);
-  const [classifications, setClassifications] = useState<Record<string, PnlClass>>(loadClassifications);
-  const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
-  const [isSetupOpen, setIsSetupOpen] = useState(false);
-  const [isExportOpen, setIsExportOpen] = useState(false);
+  // Comparison period (two-column view) and one column per month (month-by-month view)
+  const compareCol = view === 'two_column' && compareMode !== 'none' ? resolveCompareColumns(dateFrom, dateTo, compareMode)[0] ?? null : null;
+  const months = useMemo(() => (view === 'monthly' ? resolveCompareColumns(dateFrom, dateTo, 'monthly') : []), [view, dateFrom, dateTo]);
 
-  // Group expansion state
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    saveCustomizeSettings(customize);
-  }, [customize]);
-
-  const updateParams = (updates: Record<string, string | null>) => {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      Object.entries(updates).forEach(([k, v]) => {
-        if (v === null || v === '') next.delete(k);
-        else next.set(k, v);
-      });
-      return next;
-    });
-  };
-
-  const handlePeriodPresetChange = (preset: PeriodPreset) => {
-    const dates = resolvePeriodPreset(preset);
-    updateParams({
-      preset,
-      date_from: dates.from,
-      date_to: dates.to,
-    });
-  };
-
-  // Compare columns meta calculation
-  const compareColsMeta = useMemo<CompareColumnMeta[]>(() => {
-    return resolveCompareColumns(dateFrom, dateTo, compareOpt as CompareOption);
-  }, [compareOpt, dateFrom, dateTo]);
-
-  // Primary Query
-  const {
-    data: mainRes,
-    isLoading: isMainLoading,
-    isError: isMainError,
-    refetch: refetchMain,
-  } = useQuery({
+  const main = useQuery({
     queryKey: ['finance-reports', 'pnl', dateFrom, dateTo],
     queryFn: () => financeService.getProfitAndLoss({ date_from: dateFrom, date_to: dateTo }),
   });
+  const extraCols = compareCol ? [compareCol] : months;
+  const extra = useQueries({
+    queries: extraCols.map((c) => ({
+      queryKey: ['finance-reports', 'pnl', c.from, c.to],
+      queryFn: () => financeService.getProfitAndLoss({ date_from: c.from, date_to: c.to }),
+    })),
+  });
+  const { data: company } = useQuery({ queryKey: ['settings', 'public'], queryFn: () => settingsService.getPublic() });
 
-  const pnlReport = mainRes?.data;
-  const revenues = pnlReport?.revenues || [];
-  const expenses = pnlReport?.expenses || [];
+  const extraReady = extra.every((q) => q.data?.data);
+  const v = useMemo(() => {
+    const data = main.data?.data;
+    if (!data) return null;
+    const cols: Record<string, { revenues: ReportLineItem[]; expenses: ReportLineItem[] }> = {};
+    if (extraReady) extraCols.forEach((c, i) => (cols[c.key] = { revenues: extra[i].data!.data.revenues, expenses: extra[i].data!.data.expenses }));
+    return buildStructuredVerticalPnl(data.revenues, data.expenses, overrides, Object.keys(cols).length ? cols : undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [main.data, extraReady, extra.map((q) => q.dataUpdatedAt).join(), overrides, compareCol?.key, months.length]);
 
-  // Vertical PnL Data Structure
-  const verticalPnl: StructuredVerticalPnl = useMemo(() => {
-    return buildStructuredVerticalPnl(revenues, expenses, classifications);
-  }, [revenues, expenses, classifications]);
+  const comparing = Boolean(compareCol && extraReady);
+  const compareKey = comparing ? compareCol!.key : null;
+  const compareLabel = compareCol ? `${formatDate(compareCol.from)} – ${formatDate(compareCol.to)}` : undefined;
 
-  // T-Format Data Structure
-  const tFormatPnl = useMemo(() => {
-    return buildStructuredTFormatPnl(verticalPnl);
-  }, [verticalPnl]);
+  const parts = useMemo(() => (v && view === 'two_column' ? pnlTwoColumnParts(v, { compareKey, keepZero }) : []), [v, view, compareKey, keepZero]);
 
-  const isEmptyState = revenues.length === 0 && expenses.length === 0;
+  // Account id → where it sits, for the ledger panel's colour and context
+  const placement = useMemo(() => {
+    const map = new Map<string, { section: PnlClass; group: string }>();
+    if (v) (Object.keys(v.sections) as PnlClass[]).forEach((k) => v.sections[k].groups.forEach((g) => g.items.forEach((i) => map.set(i.id, { section: k, group: g.name }))));
+    return map;
+  }, [v]);
 
-  const fmtMoney = (val: number) => {
-    const formatted = formatMoney(Math.abs(val));
-    if (val < 0) {
-      return customize.negativeFormat === 'parentheses' ? `(${formatted})` : `−${formatted}`;
-    }
-    return formatted;
-  };
-
-  const toggleGroupCollapse = (key: string) => {
-    setCollapsedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
-
-  const isGroupExpanded = (key: string) => {
-    if (collapsedGroups[key] !== undefined) return !collapsedGroups[key];
-    return customize.expandAllByDefault;
-  };
-
-  const handleResetSetup = () => {
-    clearPnlStoredOverrides();
-    setClassifications({});
-    toast.success('P&L classification overrides reset to defaults');
-  };
-
-  const allLines = useMemo(() => [...revenues, ...expenses], [revenues, expenses]);
-
-  const exportData = useMemo(() => {
-    return allLines.map((l) => {
-      const cls = classifications[l.account_id || l.account_code || l.name] || getDefaultPnlClass(l.name, l.parent_name, revenues.includes(l));
-      return {
-        account_code: l.account_code || '—',
-        name: l.name,
-        classification: PNL_CLASS_LABELS[cls] || cls,
-        amount: l.amount,
-      };
+  const openAccount = (item: PnlAccountItem) => {
+    const where = placement.get(item.id);
+    if (!item.account_id || !where) return;
+    const meta = PNL_SECTION_META[where.section];
+    setAccount({
+      id: item.account_id,
+      code: item.code,
+      name: item.name,
+      tone: meta.tone,
+      icon: SECTION_ICON[where.section],
+      context: where.group === item.name ? meta.label : `${meta.label} · ${where.group}`,
     });
-  }, [allLines, classifications, revenues]);
+  };
 
-  const exportColumns: ExportColumn<(typeof exportData)[0]>[] = [
-    { id: 'account_code', label: 'Code', accessor: (r) => r.account_code },
-    { id: 'name', label: 'Account Name', accessor: (r) => r.name },
-    { id: 'classification', label: 'P&L Class', accessor: (r) => r.classification },
+  const toggleGroup = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+
+  // Clicking a flow step opens every group in that section, or closes them if all are open
+  const toggleSection = (key: PnlClass) => {
+    if (!v) return;
+    const keys = v.sections[key].groups.filter((g) => g.items.length > 1).map((g) => `${key}/${g.key}`);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      const allOpen = keys.length > 0 && keys.every((k) => next.has(k));
+      keys.forEach((k) => (allOpen ? next.delete(k) : next.add(k)));
+      return next;
+    });
+    setHighlight(key);
+    document.getElementById(`stmt-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    window.setTimeout(() => setHighlight((h) => (h === key ? null : h)), 1400);
+  };
+
+  const exportRows: ExportRow[] = useMemo(() => {
+    if (!v) return [];
+    return (['operating_income', 'cost_of_sales', 'operating_expense', 'other_income', 'non_operating_expense'] as PnlClass[]).flatMap((k) =>
+      v.sections[k].groups.flatMap((g) =>
+        g.items.map((i) => ({
+          section: PNL_SECTION_META[k].label,
+          group: g.name,
+          code: i.code ?? '',
+          name: i.name,
+          amount: i.amount,
+          share: shareOf(i.amount, v.operatingIncomeTotal),
+          compare: compareKey ? i.compareAmounts?.[compareKey] ?? 0 : null,
+        })),
+      ),
+    );
+  }, [v, compareKey]);
+  const exportColumns: ExportColumn<ExportRow>[] = [
+    { id: 'section', label: 'Section', accessor: (r) => r.section },
+    { id: 'group', label: 'Group', accessor: (r) => r.group },
+    { id: 'code', label: 'Account code', accessor: (r) => r.code },
+    { id: 'name', label: 'Account', accessor: (r) => r.name },
     { id: 'amount', label: 'Amount (SAR)', accessor: (r) => r.amount },
+    { id: 'share', label: '% of revenue', accessor: (r) => (r.share === null ? '' : r.share.toFixed(1)) },
+    ...(compareKey ? [{ id: 'compare', label: `${compareLabel} (SAR)`, accessor: (r: ExportRow) => r.compare ?? 0 }] : []),
   ];
 
   return (
     <DashboardLayout active="finance" title="Profit & Loss" fixedViewport>
-      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-[1400px] mx-auto w-full print:p-0">
-        {/* Single-Row Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden">
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* View Tabs */}
-            <ToggleGroup
-              value={[activeTab]}
-              onValueChange={(v: string[]) => v[0] && updateParams({ tab: v[0] })}
-              className="bg-muted p-[3px] rounded-lg border border-border/60"
-            >
-              <ToggleGroupItem
-                value="statement"
-                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs"
-              >
-                Statement
-              </ToggleGroupItem>
-              <ToggleGroupItem
-                value="analysis"
-                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs"
-              >
-                Analysis
-              </ToggleGroupItem>
-            </ToggleGroup>
-
-            <div className="h-4 w-px bg-border hidden sm:block" />
-
-            {/* Period Preset Select */}
-            <Select value={periodPreset} onValueChange={(val) => handlePeriodPresetChange(val as PeriodPreset)}>
-              <SelectTrigger className="h-8 text-xs w-[130px] bg-background border-border font-medium text-foreground">
-                <SelectValue placeholder="Period" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="this_month">This Month</SelectItem>
-                <SelectItem value="last_month">Last Month</SelectItem>
-                <SelectItem value="this_quarter">This Quarter</SelectItem>
-                <SelectItem value="last_quarter">Last Quarter</SelectItem>
-                <SelectItem value="this_year">This Year</SelectItem>
-                <SelectItem value="last_year">Last Year</SelectItem>
-                <SelectItem value="ytd">Year to Date</SelectItem>
-                <SelectItem value="custom">Custom Range</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Date Range Chip */}
-            <div className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-muted text-muted-foreground ring-border">
-              {formatDate(dateFrom)} – {formatDate(dateTo)}
-            </div>
-
-            {/* Layout Toggle */}
-            {activeTab === 'statement' && (
-              <ToggleGroup
-                value={[layout]}
-                onValueChange={(val: string[]) => val[0] && updateParams({ layout: val[0] })}
-                className="bg-muted p-[3px] rounded-lg border border-border/60"
-              >
-                <ToggleGroupItem value="vertical" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs">
-                  Vertical
-                </ToggleGroupItem>
-                <ToggleGroupItem value="tformat" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs">
-                  T-format
-                </ToggleGroupItem>
-              </ToggleGroup>
-            )}
-          </div>
-
-          {/* Right Actions - NO FILLED BUTTONS PER R6 (Export is outline) */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs font-medium border-border gap-1.5"
-              onClick={() => setIsCustomizeOpen(true)}
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
-              <span>Customize</span>
+      <div className="mx-auto flex h-full w-full max-w-[1400px] min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4 max-md:h-auto max-md:overflow-y-auto print:h-auto print:overflow-visible print:p-0">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 print:hidden">
+          <Tabs value={view} onValueChange={(val) => set({ view: val === 'monthly' ? 'monthly' : null })}>
+            <TabsList className="h-8">
+              <TabsTrigger value="two_column" className="gap-1.5 text-xs"><Columns2 className="size-3.5" /> Statement</TabsTrigger>
+              <TabsTrigger value="monthly" className="gap-1.5 text-xs"><CalendarRange className="size-3.5" /> Month by month</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <PeriodControl preset={preset} from={dateFrom} to={dateTo} onChange={(p) => set({ preset: p.preset, date_from: p.from, date_to: p.to })} />
+          {view === 'two_column' && (
+            <SegmentedControl
+              aria-label="Compare with"
+              value={compareMode}
+              onChange={(m) => set({ compare: m === 'none' ? null : m })}
+              options={[
+                { value: 'none', label: 'No comparison' },
+                { value: 'previous_period', label: 'Previous period' },
+                { value: 'same_period_last_year', label: 'Same period last year' },
+              ]}
+            />
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="outline" size="icon" className="size-8" aria-label="Customize" title="Customize" onClick={() => setCustomizeOpen(true)}>
+              <SlidersHorizontal className="size-3.5" />
             </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs font-medium border-border gap-1.5"
-              onClick={() => setIsSetupOpen(true)}
-            >
-              <Settings2 className="w-3.5 h-3.5 text-muted-foreground" />
-              <span>Setup</span>
+            <Button variant="outline" size="icon" className="size-8" aria-label="Print" title="Print" onClick={() => window.print()}>
+              <Printer className="size-3.5" />
             </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs font-medium border-border gap-1.5"
-              onClick={() => window.print()}
-            >
-              <Printer className="w-3.5 h-3.5 text-muted-foreground" />
-              <span>Print</span>
-            </Button>
-
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs font-medium border-border gap-1.5"
-              onClick={() => setIsExportOpen(true)}
-              disabled={isMainLoading || isEmptyState}
-            >
-              <Download className="w-3.5 h-3.5 text-muted-foreground" />
-              <span>Export</span>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" disabled={!v} onClick={() => setExportOpen(true)}>
+              <Download className="size-3.5" /> Export
             </Button>
           </div>
         </div>
 
-        {/* Error State */}
-        {isMainError && (
-          <div className="bg-rose-500/10 border border-rose-600/20 rounded-xl p-4 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-center justify-between">
-            <span>Failed to load Profit & Loss statement. Please try again.</span>
-            <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchMain()}>
-              Retry
-            </Button>
-          </div>
-        )}
+        <div className="hidden text-center print:block">
+          <p className="text-xs text-muted-foreground">{company?.companyLegalName || company?.appName}</p>
+          <h1 className="text-xl font-semibold">Profit and loss</h1>
+          <p className="text-xs text-muted-foreground">
+            {formatDate(dateFrom)} – {formatDate(dateTo)} · amounts in SAR{compareLabel ? ` · compared with ${compareLabel}` : ''}
+          </p>
+        </div>
 
-        {/* Loading Skeleton */}
-        {isMainLoading && (
-          <div className="bg-card rounded-xl border border-border p-8 space-y-6 shadow-xs">
-            <Skeleton className="h-8 w-64 mx-auto" />
-            <Skeleton className="h-4 w-40 mx-auto" />
-            <div className="space-y-4 pt-6">
-              <Skeleton className="h-6 w-full" />
-              <Skeleton className="h-6 w-full" />
-              <Skeleton className="h-6 w-full" />
-            </div>
-          </div>
-        )}
-
-        {/* MAIN CONTENT GRID */}
-        {!isMainLoading && !isMainError && activeTab === 'statement' && (
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 flex-1 min-h-0 overflow-hidden max-md:overflow-y-auto">
-            {/* Left: Statement Card */}
-            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-              <div className="bg-card rounded-xl border border-border shadow-xs w-full p-0 flex flex-col flex-1 min-h-0 overflow-hidden print:shadow-none print:border-none print:p-0">
-                {/* On-Screen Header Bar */}
-                <StatementHeaderBar
-                  title="Profit and Loss"
-                  subtitle="MERCON LOGISTICS CO."
-                  periodLabel={`From ${formatDate(dateFrom)} To ${formatDate(dateTo)}`}
-                  sourceLabel="Live ledger"
-                />
-
-                {/* VERTICAL LAYOUT */}
-                {layout === 'vertical' && (
-                  <div className="table-container flex-1 overflow-auto py-2 text-xs space-y-4">
-                    {/* Operating Income Section */}
-                    {(customize.showZeroBalance || verticalPnl.operatingIncomeTotal !== 0 || verticalPnl.sections.operating_income.groups.length > 0) && (
-                      <div id="section-operating_income" className="space-y-0.5">
-                        <StatementRow
-                          level={0}
-                          variant="section"
-                          dotColor="bg-emerald-500"
-                          label="Operating income"
-                          amounts={verticalPnl.operatingIncomeTotal}
-                        />
-
-                        {verticalPnl.sections.operating_income.groups.map((group) => {
-                          if (!customize.showZeroBalance && group.total === 0) return null;
-                          const expanded = isGroupExpanded(`operating_income_${group.name}`);
-                          const isSingle = group.isSingleAccount || group.items.length === 1;
-
-                          return (
-                            <div key={group.name} className="space-y-0.5">
-                              {!isSingle && (
-                                <StatementRow
-                                  level={1}
-                                  variant="subgroup"
-                                  label={group.name}
-                                  prefix={
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleGroupCollapse(`operating_income_${group.name}`)}
-                                      className="p-0.5 hover:bg-muted rounded text-muted-foreground shrink-0"
-                                    >
-                                      {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                                    </button>
-                                  }
-                                  amounts={{ value: group.total, className: 'text-muted-foreground font-medium' }}
-                                />
-                              )}
-                              {(isSingle || expanded) && (
-                                <div className="space-y-0.5">
-                                  {group.items.map((item) => {
-                                    if (!customize.showZeroBalance && item.amount === 0) return null;
-                                    return (
-                                      <StatementRow
-                                        key={item.id || item.code || item.name}
-                                        level={isSingle ? 1 : 2}
-                                        variant="account"
-                                        code={customize.showAccountCodes && item.code ? item.code : undefined}
-                                        label={item.name}
-                                        amounts={item.amount}
-                                        onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
-                                      />
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Cost of Sales Section */}
-                    {(customize.showZeroBalance || verticalPnl.costOfSalesTotal !== 0 || verticalPnl.sections.cost_of_sales.groups.length > 0) && (
-                      <div id="section-cost_of_sales" className="space-y-0.5">
-                        <StatementRow
-                          level={0}
-                          variant="section"
-                          dotColor="bg-amber-500"
-                          label="Cost of sales"
-                          amounts={verticalPnl.costOfSalesTotal}
-                        />
-
-                        {verticalPnl.sections.cost_of_sales.groups.map((group) => {
-                          if (!customize.showZeroBalance && group.total === 0) return null;
-                          const expanded = isGroupExpanded(`cost_of_sales_${group.name}`);
-                          const isSingle = group.isSingleAccount || group.items.length === 1;
-
-                          return (
-                            <div key={group.name} className="space-y-0.5">
-                              {!isSingle && (
-                                <StatementRow
-                                  level={1}
-                                  variant="subgroup"
-                                  label={group.name}
-                                  prefix={
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleGroupCollapse(`cost_of_sales_${group.name}`)}
-                                      className="p-0.5 hover:bg-muted rounded text-muted-foreground shrink-0"
-                                    >
-                                      {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                                    </button>
-                                  }
-                                  amounts={{ value: group.total, className: 'text-muted-foreground font-medium' }}
-                                />
-                              )}
-                              {(isSingle || expanded) && (
-                                <div className="space-y-0.5">
-                                  {group.items.map((item) => {
-                                    if (!customize.showZeroBalance && item.amount === 0) return null;
-                                    return (
-                                      <StatementRow
-                                        key={item.id || item.code || item.name}
-                                        level={isSingle ? 1 : 2}
-                                        variant="account"
-                                        code={customize.showAccountCodes && item.code ? item.code : undefined}
-                                        label={item.name}
-                                        amounts={item.amount}
-                                        onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
-                                      />
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Gross Profit Subtotal */}
-                    <StatementRow
-                      level={1}
-                      variant="subtotal"
-                      label="Gross profit"
-                      amounts={{
-                        value: verticalPnl.grossProfit,
-                        className: verticalPnl.grossProfit < 0 ? 'text-rose-600 dark:text-rose-400 font-medium' : 'font-medium text-foreground',
-                      }}
-                    />
-
-                    {/* Operating Expenses Section */}
-                    {(customize.showZeroBalance || verticalPnl.operatingExpenseTotal !== 0 || verticalPnl.sections.operating_expense.groups.length > 0) && (
-                      <div id="section-operating_expense" className="space-y-0.5">
-                        <StatementRow
-                          level={0}
-                          variant="section"
-                          dotColor="bg-rose-500"
-                          label="Operating expenses"
-                          amounts={verticalPnl.operatingExpenseTotal}
-                        />
-
-                        {verticalPnl.sections.operating_expense.groups.map((group) => {
-                          if (!customize.showZeroBalance && group.total === 0) return null;
-                          const expanded = isGroupExpanded(`operating_expense_${group.name}`);
-                          const isSingle = group.isSingleAccount || group.items.length === 1;
-
-                          return (
-                            <div key={group.name} className="space-y-0.5">
-                              {!isSingle && (
-                                <StatementRow
-                                  level={1}
-                                  variant="subgroup"
-                                  label={group.name}
-                                  prefix={
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleGroupCollapse(`operating_expense_${group.name}`)}
-                                      className="p-0.5 hover:bg-muted rounded text-muted-foreground shrink-0"
-                                    >
-                                      {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                                    </button>
-                                  }
-                                  amounts={{ value: group.total, className: 'text-muted-foreground font-medium' }}
-                                />
-                              )}
-                              {(isSingle || expanded) && (
-                                <div className="space-y-0.5">
-                                  {group.items.map((item) => {
-                                    if (!customize.showZeroBalance && item.amount === 0) return null;
-                                    return (
-                                      <StatementRow
-                                        key={item.id || item.code || item.name}
-                                        level={isSingle ? 1 : 2}
-                                        variant="account"
-                                        code={customize.showAccountCodes && item.code ? item.code : undefined}
-                                        label={item.name}
-                                        amounts={item.amount}
-                                        onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
-                                      />
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    {/* Operating Profit Subtotal */}
-                    <StatementRow
-                      level={1}
-                      variant="subtotal"
-                      label="Operating profit"
-                      amounts={{
-                        value: verticalPnl.operatingProfit,
-                        className: verticalPnl.operatingProfit < 0 ? 'text-rose-600 dark:text-rose-400 font-medium' : 'font-medium text-foreground',
-                      }}
-                    />
-
-                    {/* Net Profit / Net Loss Grand Total */}
-                    <StatementRow
-                      level={0}
-                      variant="grandtotal"
-                      label={verticalPnl.netProfit >= 0 ? 'Net profit' : 'Net loss'}
-                      amounts={{
-                        value: verticalPnl.netProfit,
-                        className: verticalPnl.netProfit < 0 ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'font-semibold text-foreground',
-                      }}
-                    />
-                  </div>
-                )}
+        <ReportViewState
+          isLoading={main.isLoading}
+          isError={main.isError}
+          onRetry={() => main.refetch()}
+          isEmpty={Boolean(main.data?.data && main.data.data.revenues.length === 0 && main.data.data.expenses.length === 0)}
+          emptyTitle={`Nothing posted between ${formatDate(dateFrom)} and ${formatDate(dateTo)}`}
+          emptyDescription="Pick another period, or post invoices, bills and expenses to see them here."
+        >
+          {v && (
+            <>
+              <div className="shrink-0 print:hidden">
+                <ProfitFlow v={v} compareKey={compareKey} compareLabel={compareLabel} onSection={toggleSection} />
               </div>
-            </div>
 
-            {/* Right: Sticky Insight Rail */}
-            <div className="xl:sticky xl:top-4 self-start space-y-4">
-              <InsightRail
-                mode="pnl"
-                data={{
-                  operatingIncomeTotal: verticalPnl.operatingIncomeTotal,
-                  costOfSalesTotal: verticalPnl.costOfSalesTotal,
-                  operatingExpenseTotal: verticalPnl.operatingExpenseTotal,
-                  nonOperatingExpenseTotal: verticalPnl.nonOperatingExpenseTotal,
-                  otherIncomeTotal: verticalPnl.otherIncomeTotal,
-                  netProfit: verticalPnl.netProfit,
-                }}
-                onJumpTo={(id) => {
-                  const el = document.getElementById(id);
-                  if (el) {
-                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  }
-                }}
-              />
-            </div>
-          </div>
-        )}
+              {view === 'two_column' && (
+                <TwoColumnStatement
+                  parts={parts.map((p) => ({
+                    key: p.key,
+                    title: p.title,
+                    hint: p.hint,
+                    left: { title: 'Costs', items: p.left, footer: p.total },
+                    right: { title: 'Income', items: p.right, footer: p.total },
+                  }))}
+                  comparing={comparing}
+                  compareLabel={compareLabel}
+                  expanded={expanded}
+                  onToggle={toggleGroup}
+                  onLine={(line) => openAccount(line.ref as PnlAccountItem)}
+                  showCodes={showCodes}
+                  negativeFormat={negativeFormat}
+                  highlight={highlight}
+                  sectionIcons={SECTION_ICON}
+                />
+              )}
+
+              {view === 'monthly' &&
+                (extraReady ? (
+                  <MonthlyPnlTable
+                    v={v}
+                    months={months}
+                    expanded={expanded}
+                    onToggle={toggleGroup}
+                    onAccount={(item) => openAccount(item)}
+                    showCodes={showCodes}
+                    negativeFormat={negativeFormat}
+                  />
+                ) : (
+                  <p className="shrink-0 text-xs text-muted-foreground">Loading {months.length} months…</p>
+                ))}
+            </>
+          )}
+        </ReportViewState>
       </div>
 
-      {/* Customize Sheet */}
-      <Sheet open={isCustomizeOpen} onOpenChange={setIsCustomizeOpen}>
-        <SheetContent className="w-80 sm:w-96 p-6 space-y-6">
-          <SheetHeader>
-            <SheetTitle className="text-base font-semibold">Customize P&L Statement</SheetTitle>
-            <SheetDescription className="text-xs">Adjust view options and density</SheetDescription>
-          </SheetHeader>
+      <AccountLedgerSheet account={account} from={dateFrom} to={dateTo} onClose={() => setAccount(null)} />
 
-          <div className="space-y-5 text-xs">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="pnl-codes" className="cursor-pointer font-medium">Show Account Codes</Label>
-              <Switch
-                id="pnl-codes"
-                checked={customize.showAccountCodes}
-                onCheckedChange={(val) => setCustomize((prev) => ({ ...prev, showAccountCodes: val }))}
-              />
-            </div>
+      <StatementCustomize
+        open={customizeOpen}
+        onOpenChange={setCustomizeOpen}
+        showCodes={showCodes}
+        onShowCodes={(val) => set({ codes: val ? 'true' : null })}
+        keepZero={keepZero}
+        onKeepZero={(val) => set({ zero: val ? 'true' : null })}
+        negativeFormat={negativeFormat}
+        onNegativeFormat={(val) => set({ neg: val === 'parens' ? 'parens' : null })}
+        overrideCount={Object.keys(overrides).length}
+        onResetOverrides={() => {
+          clearPnlStoredOverrides();
+          setOverrides({});
+          toast.success('Groupings reset');
+        }}
+      />
 
-            <div className="flex items-center justify-between">
-              <Label htmlFor="pnl-zero" className="cursor-pointer font-medium">Show Zero-Balance Rows</Label>
-              <Switch
-                id="pnl-zero"
-                checked={customize.showZeroBalance}
-                onCheckedChange={(val) => setCustomize((prev) => ({ ...prev, showZeroBalance: val }))}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="font-semibold text-foreground">Density</Label>
-              <RadioGroup
-                value={customize.density}
-                onValueChange={(val: 'compact' | 'comfortable') => setCustomize((prev) => ({ ...prev, density: val }))}
-                className="grid grid-cols-2 gap-2"
-              >
-                <div>
-                  <RadioGroupItem value="compact" id="pnl-d-compact" className="peer sr-only" />
-                  <Label
-                    htmlFor="pnl-d-compact"
-                    className="flex flex-col items-center justify-between rounded-md border-2 border-border p-2 hover:bg-muted peer-data-[state=checked]:border-ring cursor-pointer text-center"
-                  >
-                    <span className="font-medium text-xs">Compact</span>
-                    <span className="text-[10px] text-muted-foreground">32px / 34px</span>
-                  </Label>
-                </div>
-                <div>
-                  <RadioGroupItem value="comfortable" id="pnl-d-comf" className="peer sr-only" />
-                  <Label
-                    htmlFor="pnl-d-comf"
-                    className="flex flex-col items-center justify-between rounded-md border-2 border-border p-2 hover:bg-muted peer-data-[state=checked]:border-ring cursor-pointer text-center"
-                  >
-                    <span className="font-medium text-xs">Comfortable</span>
-                    <span className="text-[10px] text-muted-foreground">38px / 40px</span>
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* Setup Sheet with Reset to Defaults */}
-      <Sheet open={isSetupOpen} onOpenChange={setIsSetupOpen}>
-        <SheetContent className="w-80 sm:w-96 p-6 space-y-6">
-          <SheetHeader>
-            <SheetTitle className="text-base font-semibold">Statement Setup</SheetTitle>
-            <SheetDescription className="text-xs">Manage P&L account classifications and reset overrides</SheetDescription>
-          </SheetHeader>
-
-          <div className="space-y-4 text-xs">
-            <p className="text-muted-foreground">
-              Custom overrides saved in your browser: <span className="font-medium text-foreground">{Object.keys(classifications).length} entries</span>.
-            </p>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleResetSetup}
-              className="w-full text-xs font-medium text-rose-600 border-border hover:bg-muted gap-1.5"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset to defaults</span>
-            </Button>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* Export Modal */}
       <ExportModal
-        isOpen={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-        data={exportData}
+        isOpen={exportOpen}
+        onClose={() => setExportOpen(false)}
+        title="Export profit and loss"
+        subtitle={`${formatDate(dateFrom)} – ${formatDate(dateTo)} · revenue ${formatMoney(v?.operatingIncomeTotal ?? 0)} · ${(v?.netProfit ?? 0) < 0 ? 'net loss' : 'net profit'} ${formatMoney(Math.abs(v?.netProfit ?? 0))}`}
+        data={exportRows}
         columns={exportColumns}
         filename={`Profit_Loss_${dateFrom}_${dateTo}`}
-        title="Export Profit & Loss Statement"
       />
     </DashboardLayout>
   );
 }
-

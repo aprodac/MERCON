@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
   getDefaultPnlClass,
   buildStructuredVerticalPnl,
-  buildStructuredTFormatPnl,
 } from './pnlStructure';
 import type { ReportLineItem } from '@/services/financeService';
 
@@ -29,7 +28,7 @@ describe('pnlStructure', () => {
     });
   });
 
-  describe('buildStructuredVerticalPnl & buildStructuredTFormatPnl', () => {
+  describe('buildStructuredVerticalPnl', () => {
     it('builds Q3 demo figures matching exact test specifications', () => {
       // Demo numbers from prompt verification criteria:
       // Operating Income: 125,005.00 (Freight Revenue 125,005.00)
@@ -60,21 +59,9 @@ describe('pnlStructure', () => {
       expect(vertical.operatingExpenseTotal).toBe(133045);
       expect(vertical.operatingProfit).toBe(-320315);
       expect(vertical.netProfit).toBe(-320315);
-
-      const tFormat = buildStructuredTFormatPnl(vertical);
-
-      // Trading Part: Left = Cost of Sales 312,275.00; Right = Operating Income 125,005.00 + Gross Loss c/o 187,270.00 = 312,275.00
-      expect(tFormat.trading.drTotal).toBe(312275);
-      expect(tFormat.trading.crTotal).toBe(312275);
-      expect(tFormat.trading.isLoss).toBe(true);
-
-      // P&L Part: Left = Gross Loss b/f 187,270.00 + Operating Expenses 133,045.00 = 320,315.00; Right = By Net Loss 320,315.00
-      expect(tFormat.pnl.drTotal).toBe(320315);
-      expect(tFormat.pnl.crTotal).toBe(320315);
-      expect(tFormat.pnl.isLoss).toBe(true);
     });
 
-    it('asserts T-format Dr and Cr sides always balance for net profit cases', () => {
+    it('computes profit subtotals for a profitable period with other income and costs', () => {
       const revenues: ReportLineItem[] = [
         { account_id: '1', account_code: '4000', name: 'Sales Revenue', amount: 500000 },
         { account_id: '4', account_code: '4200', name: 'Interest Income', amount: 5000 },
@@ -90,12 +77,6 @@ describe('pnlStructure', () => {
       expect(vertical.grossProfit).toBe(300000);
       expect(vertical.operatingProfit).toBe(150000);
       expect(vertical.netProfit).toBe(145000);
-
-      const tFormat = buildStructuredTFormatPnl(vertical);
-
-      expect(tFormat.trading.drTotal).toBe(500000);
-      expect(tFormat.trading.crTotal).toBe(500000);
-      expect(tFormat.pnl.drTotal).toBe(tFormat.pnl.crTotal);
     });
 
     it('correctly flags single-account groups and handles no-parent lines without synthetic duplication', () => {

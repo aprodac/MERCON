@@ -6,21 +6,33 @@ import { logger } from '../utils/logger';
 import { issueInvoice, recordInvoicePayment, voidInvoice } from '../utils/invoiceEngine';
 import { AccountingError } from '../utils/accountingEngine';
 import { logAuditEvent } from '../services/auditService';
+import { baseInvoiceWhere, invoiceOrderBy, invoiceWhere, statusWhere } from '../utils/invoiceQuery';
+import { invoiceTotals, lineAmounts, type LineAmounts } from '../utils/invoiceMath';
 
-const INVOICE_REF_PREFIX = 'INV';
-const INVOICE_REF_PAD = 4;
-
-export const nextInvoiceRefId = () =>
-  generateRefId(
-    INVOICE_REF_PREFIX,
+/** Next invoice number from the Settings numbering (prefix, padding, optional year). */
+export const nextInvoiceRefId = async () => {
+  const settings = await prisma.settings.findUnique({
+    where: { id: 'singleton' },
+    select: { invoicePrefix: true, invoiceNumberPadding: true, invoiceNumberYearly: true },
+  });
+  return generateRefId(
+    (settings?.invoicePrefix || 'INV').trim(),
     () => prisma.invoice.findMany({ select: { ref_id: true } }),
-    { padLength: INVOICE_REF_PAD },
+    { padLength: settings?.invoiceNumberPadding ?? 4, year: settings?.invoiceNumberYearly ?? false },
   );
+};
+
+/** A stored invoice line: description and trip plus the computed amounts. */
+type StoredLine = LineAmounts & { tripId: string | null; description: string };
+
+/** Per-trip overrides sent with `tripIds` (e.g. 0% VAT on an international trip, a discount). */
+type TripOptions = Record<string, { tax_rate?: number; discount_pct?: number }>;
 
 /**
- * Helper to generate invoice lines from selected trip IDs
+ * Invoice lines for the selected trips: the rate is always the trip's billing amount (never taken
+ * from the browser); VAT is the invoice's default unless the trip has an override.
  */
-export async function populateLinesFromTrips(tripIds: string[]) {
+export async function populateLinesFromTrips(tripIds: string[], defaultTaxRate = 0, options: TripOptions = {}): Promise<StoredLine[]> {
   if (!tripIds || tripIds.length === 0) return [];
 
   const trips = await prisma.trip.findMany({
@@ -30,29 +42,56 @@ export async function populateLinesFromTrips(tripIds: string[]) {
     },
   });
 
-  const lines: { tripId: string; description: string; quantity: number; rate: number; amount: number }[] = [];
+  const lines: StoredLine[] = [];
 
   for (const trip of trips) {
-    const rate = Number(trip.billing_amount) || 0;
+    const o = options[trip.id] ?? {};
     lines.push({
       tripId: trip.id,
       description: `Freight Service: Trip ${trip.ref_id || trip.id.slice(0, 8)} (${trip.vehicle_type || 'Standard'})`,
-      quantity: 1,
-      rate,
-      amount: rate,
+      ...lineAmounts({ quantity: 1, rate: Number(trip.billing_amount) || 0, discount_pct: o.discount_pct, tax_rate: o.tax_rate ?? defaultTaxRate }),
     });
   }
 
   return lines;
 }
 
+/** Manual lines as sent, recomputed on the server (VAT defaults to the invoice's rate). */
+function manualLines(lines: z.infer<typeof invoiceLineSchema>[] | undefined, defaultTaxRate: number): StoredLine[] {
+  return (lines ?? []).map((l) => ({
+    tripId: l.tripId || null,
+    description: l.description,
+    ...lineAmounts({ quantity: l.quantity, rate: l.rate, discount_pct: l.discount_pct, tax_rate: l.tax_rate ?? defaultTaxRate }),
+  }));
+}
+
+const lineCreate = (l: StoredLine) => ({
+  tripId: l.tripId,
+  description: l.description,
+  quantity: l.quantity,
+  rate: l.rate,
+  discount_pct: l.discount_pct,
+  amount: l.amount,
+  tax_rate: l.tax_rate,
+  tax_amount: l.tax_amount,
+});
+
+const pct = z.number().min(0).max(100);
+
 const invoiceLineSchema = z.object({
   tripId: z.string().uuid().nullable().optional(),
   description: z.string().min(1, 'Line description is required'),
   quantity: z.number().positive().default(1),
   rate: z.number().min(0, 'Rate cannot be negative'),
-  amount: z.number().min(0, 'Amount cannot be negative'),
+  /** Ignored: recomputed from quantity, rate and discount. Accepted for older clients. */
+  amount: z.number().min(0, 'Amount cannot be negative').optional(),
+  discount_pct: pct.optional(),
+  /** Defaults to the invoice's VAT rate. */
+  tax_rate: pct.optional(),
 });
+
+const tripOptionsSchema = z.record(z.string().uuid(), z.object({ tax_rate: pct.optional(), discount_pct: pct.optional() })).optional();
+const textField = z.string().max(4000).nullable().optional();
 
 const createInvoiceSchema = z.object({
   customerId: z.string().uuid('Invalid customer ID'),
@@ -61,7 +100,10 @@ const createInvoiceSchema = z.object({
   tax_rate: z.number().min(0).max(100).default(0),
   currency: z.string().default('SAR'),
   tripIds: z.array(z.string().uuid()).optional(),
+  tripOptions: tripOptionsSchema,
   lines: z.array(invoiceLineSchema).optional(),
+  notes: textField,
+  terms: textField,
 });
 
 const updateInvoiceSchema = z.object({
@@ -69,7 +111,12 @@ const updateInvoiceSchema = z.object({
   due_date: z.string().nullable().optional(),
   tax_rate: z.number().min(0).max(100).optional(),
   currency: z.string().optional(),
+  /** Trips to bill; their lines are rebuilt from the trips, as on create. Sent with `lines` (manual lines only). */
+  tripIds: z.array(z.string().uuid()).optional(),
+  tripOptions: tripOptionsSchema,
   lines: z.array(invoiceLineSchema).optional(),
+  notes: textField,
+  terms: textField,
 });
 
 const paymentSchema = z.object({
@@ -85,45 +132,22 @@ const paymentSchema = z.object({
  */
 export const getInvoices = async (req: Request, res: Response) => {
   try {
-    const { customer_id, status, date_from, date_to, search, page = '1', per_page = '50' } = req.query;
+    const { page = '1', per_page = '50', sort } = req.query;
 
     const pageNumber = Math.max(1, parseInt(page as string) || 1);
-    const limit = Math.max(1, parseInt(per_page as string) || 50);
+    const limit = Math.min(200, Math.max(1, parseInt(per_page as string) || 50));
     const skip = (pageNumber - 1) * limit;
 
-    const whereClause: any = {};
-
-    if (customer_id && customer_id !== 'all') {
-      whereClause.customerId = customer_id as string;
-    }
-
-    if (status && status !== 'all') {
-      whereClause.status = status as string;
-    }
-
-    if (date_from || date_to) {
-      whereClause.invoice_date = {};
-      if (date_from) whereClause.invoice_date.gte = new Date(date_from as string);
-      if (date_to) whereClause.invoice_date.lte = new Date(date_to as string);
-    }
-
-    if (search) {
-      const q = String(search).trim();
-      whereClause.OR = [
-        { ref_id: { contains: q, mode: 'insensitive' } },
-        { customer: { name: { contains: q, mode: 'insensitive' } } },
-        { lines: { some: { description: { contains: q, mode: 'insensitive' } } } },
-      ];
-    }
+    const whereClause = invoiceWhere(req.query);
 
     const [invoices, total] = await Promise.all([
       prisma.invoice.findMany({
         where: whereClause,
         include: {
-          customer: { select: { id: true, name: true } },
+          customer: { select: { id: true, name: true, contact_phone: true, whatsapp_number: true, payment_terms: true } },
           _count: { select: { lines: true, payments: true, trips: true } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: invoiceOrderBy(sort, req.query.status),
         skip,
         take: limit,
       }),
@@ -142,6 +166,167 @@ export const getInvoices = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     logger.error({ err: error }, 'Failed to fetch invoices');
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};
+
+/**
+ * Counts and totals for the invoice list's summary row and status tabs. Honours the same customer,
+ * date and search filters as the list, so the tab counts match what the tabs will show.
+ */
+export const getInvoiceSummary = async (req: Request, res: Response) => {
+  try {
+    const base = baseInvoiceWhere(req.query);
+    const now = new Date();
+    const count = (status: string) => prisma.invoice.count({ where: { ...base, ...statusWhere(status, now) } });
+    const balance = (status: string) =>
+      prisma.invoice.aggregate({ where: { ...base, ...statusWhere(status, now) }, _sum: { balance_due: true } });
+
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const paymentWhere: Record<string, any> = { payment_date: { gte: monthStart }, invoice: { status: { not: 'Void' } } };
+    if (base.customerId) paymentWhere.invoice.customerId = base.customerId;
+
+    const [all, draft, unpaid, overdue, paid, voided, unpaidSum, overdueSum, paidThisMonth] = await Promise.all([
+      count('all'),
+      count('Draft'),
+      count('unpaid'),
+      count('overdue'),
+      count('Paid'),
+      count('Void'),
+      balance('unpaid'),
+      balance('overdue'),
+      prisma.invoicePayment.aggregate({ where: paymentWhere, _sum: { amount: true }, _count: { _all: true } }),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        counts: { all, Draft: draft, unpaid, overdue, Paid: paid, Void: voided },
+        unpaid_balance: Number(unpaidSum._sum.balance_due ?? 0),
+        overdue_balance: Number(overdueSum._sum.balance_due ?? 0),
+        paid_this_month: Number(paidThisMonth._sum.amount ?? 0),
+        payments_this_month: paidThisMonth._count._all,
+      },
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to build invoice summary');
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};
+
+/**
+ * Completed trips that are not on any invoice yet (issued or draft), grouped by customer —
+ * the "ready to bill" queue.
+ */
+export const getUnbilledTrips = async (_req: Request, res: Response) => {
+  try {
+    const trips = await prisma.trip.findMany({
+      where: {
+        status: 'Completed',
+        invoiceId: null,
+        deletedAt: null,
+        invoiceLines: { none: { invoice: { status: { not: 'Void' } } } },
+      },
+      select: { id: true, ref_id: true, billing_amount: true, customerId: true, customer: { select: { id: true, name: true, payment_terms: true } } },
+      orderBy: { actual_end: 'asc' },
+    });
+
+    const byCustomer = new Map<string, { customer_id: string; customer_name: string; payment_terms: string | null; trip_ids: string[]; amount: number; missing_amount: number }>();
+    for (const t of trips) {
+      const row = byCustomer.get(t.customerId) ?? {
+        customer_id: t.customerId,
+        customer_name: t.customer?.name ?? 'Unknown customer',
+        payment_terms: t.customer?.payment_terms ?? null,
+        trip_ids: [],
+        amount: 0,
+        missing_amount: 0,
+      };
+      const amount = Number(t.billing_amount ?? 0);
+      if (amount > 0) {
+        row.trip_ids.push(t.id);
+        row.amount += amount;
+      } else {
+        // Can't be invoiced until someone sets a billing amount
+        row.missing_amount += 1;
+      }
+      byCustomer.set(t.customerId, row);
+    }
+
+    const customers = [...byCustomer.values()].sort((a, b) => b.amount - a.amount);
+    return res.json({
+      success: true,
+      data: {
+        customers,
+        trip_count: customers.reduce((n, c) => n + c.trip_ids.length, 0),
+        amount: customers.reduce((n, c) => n + c.amount, 0),
+        missing_amount_count: customers.reduce((n, c) => n + c.missing_amount, 0),
+      },
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to list unbilled trips');
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};
+
+/**
+ * Activity for one invoice, from the audit log (created, issued, payments, sent, voided).
+ */
+export const getInvoiceActivity = async (req: Request, res: Response) => {
+  try {
+    const logs = await prisma.auditLog.findMany({
+      where: { entityType: 'Invoice', entityId: req.params.id as string },
+      include: { user: { select: { id: true, name: true, username: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return res.json({
+      success: true,
+      data: logs.map((l) => {
+        // Only the business fields go back to the browser, never IP / user agent
+        const m = (l.metadata ?? {}) as Record<string, any>;
+        return {
+          id: l.id,
+          action: l.action,
+          at: l.createdAt,
+          by: l.user ? l.user.name || l.user.username : null,
+          details: { channel: m.channel, amount: m.amount ?? m.total_amount, ref_id: m.ref_id },
+        };
+      }),
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to load invoice activity');
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};
+
+const activitySchema = z.object({
+  action: z.enum(['SENT']),
+  channel: z.enum(['whatsapp', 'email', 'copy', 'download', 'print']),
+});
+
+/**
+ * Record that an invoice was sent or shared from the app (WhatsApp, email, copied text, PDF).
+ */
+export const logInvoiceActivity = async (req: Request, res: Response) => {
+  try {
+    const parsed = activitySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message } });
+    }
+    const invoice = await prisma.invoice.findUnique({ where: { id: req.params.id as string }, select: { id: true, ref_id: true } });
+    if (!invoice) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Invoice not found' } });
+    }
+    await logAuditEvent({
+      req,
+      action: `INVOICE_${parsed.data.action}`,
+      entityType: 'Invoice',
+      entityId: invoice.id,
+      metadata: { ref_id: invoice.ref_id, channel: parsed.data.channel },
+    });
+    return res.status(201).json({ success: true });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to record invoice activity');
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
 };
@@ -199,7 +384,7 @@ export const createDraftInvoice = async (req: Request, res: Response) => {
       });
     }
 
-    const { customerId, invoice_date, due_date, tax_rate, currency, tripIds, lines } = parseResult.data;
+    const { customerId, invoice_date, due_date, tax_rate, currency, tripIds, tripOptions, lines, notes, terms } = parseResult.data;
 
     // Verify customer exists
     const customer = await prisma.customer.findUnique({ where: { id: customerId } });
@@ -210,12 +395,8 @@ export const createDraftInvoice = async (req: Request, res: Response) => {
       });
     }
 
-    // Build line items (from provided lines or auto-populated from tripIds)
-    let finalLines = lines || [];
-    if (tripIds && tripIds.length > 0) {
-      const tripLines = await populateLinesFromTrips(tripIds);
-      finalLines = [...finalLines, ...tripLines];
-    }
+    // Build line items (manual lines plus lines generated from the trips)
+    const finalLines: StoredLine[] = [...manualLines(lines, tax_rate), ...(await populateLinesFromTrips(tripIds ?? [], tax_rate, tripOptions))];
 
     if (finalLines.length === 0) {
       return res.status(400).json({
@@ -224,14 +405,8 @@ export const createDraftInvoice = async (req: Request, res: Response) => {
       });
     }
 
-    // Calculate subtotal and tax
-    let subtotal = 0;
-    for (const line of finalLines) {
-      subtotal += line.amount;
-    }
-    const taxAmount = Number((subtotal * (tax_rate / 100)).toFixed(2));
-    const totalAmount = Number((subtotal + taxAmount).toFixed(2));
-
+    const totals = invoiceTotals(finalLines);
+    const totalAmount = totals.total;
     const ref_id = await nextInvoiceRefId();
 
     const invoice = await prisma.invoice.create({
@@ -241,29 +416,31 @@ export const createDraftInvoice = async (req: Request, res: Response) => {
         invoice_date: new Date(invoice_date),
         due_date: due_date ? new Date(due_date) : null,
         status: 'Draft',
-        subtotal,
+        subtotal: totals.subtotal,
         tax_rate,
-        tax_amount: taxAmount,
+        tax_amount: totals.tax_amount,
         total_amount: totalAmount,
         paid_amount: 0,
         balance_due: totalAmount,
         currency: currency || 'SAR',
+        notes: notes ?? null,
+        terms: terms ?? null,
         created_by: userId,
         updated_by: userId,
-        lines: {
-          create: finalLines.map((l) => ({
-            tripId: l.tripId || null,
-            description: l.description,
-            quantity: l.quantity || 1,
-            rate: l.rate,
-            amount: l.amount,
-          })),
-        },
+        lines: { create: finalLines.map(lineCreate) },
       },
       include: {
         customer: true,
         lines: true,
       },
+    });
+
+    await logAuditEvent({
+      req,
+      action: 'INVOICE_DRAFT_CREATED',
+      entityType: 'Invoice',
+      entityId: invoice.id,
+      metadata: { ref_id: invoice.ref_id, customerId, total_amount: totalAmount },
     });
 
     return res.status(201).json({ success: true, data: invoice });
@@ -307,21 +484,32 @@ export const updateDraftInvoice = async (req: Request, res: Response) => {
 
     const data = parseResult.data;
 
+    const taxRate = data.tax_rate !== undefined ? data.tax_rate : Number(existing.tax_rate);
+    // Lines are rebuilt when sent: manual lines as given, trip lines from the trips (same as create).
+    // A VAT change on its own re-rates the existing lines.
+    const newLines: StoredLine[] | undefined =
+      data.lines || data.tripIds
+        ? [...manualLines(data.lines, taxRate), ...(await populateLinesFromTrips(data.tripIds ?? [], taxRate, data.tripOptions))]
+        : data.tax_rate !== undefined
+          ? existing.lines.map((l) => ({
+              tripId: l.tripId,
+              description: l.description,
+              ...lineAmounts({ quantity: l.quantity, rate: Number(l.rate), discount_pct: Number(l.discount_pct), tax_rate: taxRate }),
+            }))
+          : undefined;
+    if (newLines && newLines.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'NO_LINES', message: 'Invoice must contain at least 1 line item or selected trip' },
+      });
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
-      if (data.lines) {
+      if (newLines) {
         await tx.invoiceLine.deleteMany({ where: { invoiceId: id } });
       }
 
-      // Recompute subtotal
-      const currentLines = data.lines || existing.lines;
-      let subtotal = 0;
-      for (const line of currentLines) {
-        subtotal += Number((line as any).amount);
-      }
-
-      const taxRate = data.tax_rate !== undefined ? data.tax_rate : Number(existing.tax_rate);
-      const taxAmount = Number((subtotal * (taxRate / 100)).toFixed(2));
-      const totalAmount = Number((subtotal + taxAmount).toFixed(2));
+      const totals = invoiceTotals(newLines ?? existing.lines);
 
       return await tx.invoice.update({
         where: { id },
@@ -329,29 +517,29 @@ export const updateDraftInvoice = async (req: Request, res: Response) => {
           invoice_date: data.invoice_date ? new Date(data.invoice_date) : undefined,
           due_date: data.due_date !== undefined ? (data.due_date ? new Date(data.due_date) : null) : undefined,
           tax_rate: data.tax_rate !== undefined ? data.tax_rate : undefined,
-          subtotal,
-          tax_amount: taxAmount,
-          total_amount: totalAmount,
-          balance_due: totalAmount,
+          subtotal: totals.subtotal,
+          tax_amount: totals.tax_amount,
+          total_amount: totals.total,
+          balance_due: totals.total,
           currency: data.currency || undefined,
+          notes: data.notes !== undefined ? data.notes : undefined,
+          terms: data.terms !== undefined ? data.terms : undefined,
           updated_by: userId,
-          lines: data.lines
-            ? {
-                create: data.lines.map((l) => ({
-                  tripId: l.tripId || null,
-                  description: l.description,
-                  quantity: l.quantity || 1,
-                  rate: l.rate,
-                  amount: l.amount,
-                })),
-              }
-            : undefined,
+          lines: newLines ? { create: newLines.map(lineCreate) } : undefined,
         },
         include: {
           customer: true,
           lines: true,
         },
       });
+    });
+
+    await logAuditEvent({
+      req,
+      action: 'INVOICE_DRAFT_UPDATED',
+      entityType: 'Invoice',
+      entityId: id,
+      metadata: { ref_id: updated.ref_id, total_amount: updated.total_amount },
     });
 
     return res.json({ success: true, data: updated });

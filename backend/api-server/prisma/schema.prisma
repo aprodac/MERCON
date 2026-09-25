@@ -1368,6 +1368,10 @@ model Invoice {
   balance_due  Decimal @default(0.0) @db.Decimal(12, 2)
   currency     String  @default("SAR")
 
+  // Shown on the printed invoice
+  notes        String?
+  terms        String?
+
   lines    InvoiceLine[]
   payments InvoicePayment[]
   advanceApplications AdvanceApplication[]
@@ -1398,7 +1402,12 @@ model InvoiceLine {
   description String
   quantity    Float    @default(1)
   rate        Decimal  @db.Decimal(12, 2)
+  // Line discount in percent; `amount` is net of it: quantity × rate × (1 − discount_pct / 100)
+  discount_pct Decimal @default(0) @db.Decimal(5, 2)
   amount      Decimal  @db.Decimal(12, 2)
+  // VAT on this line (e.g. 15, or 0 for zero-rated international freight)
+  tax_rate    Decimal  @default(0) @db.Decimal(5, 2)
+  tax_amount  Decimal  @default(0) @db.Decimal(12, 2)
 
   createdAt   DateTime @default(now()) @db.Timestamptz
 
@@ -1741,6 +1750,16 @@ model Settings {
   defaultProviderAdvanceAccountId String? @db.Uuid
   defaultEmployeeAdvanceAccountId String? @db.Uuid
   defaultRetainedEarningsAccountId String? @db.Uuid
+  // Liability account that invoice VAT is credited to (output VAT payable)
+  defaultVatOutputAccountId String? @db.Uuid
+
+  // Invoice numbering: "INV-0001", or "INV-2026-0001" with the yearly option
+  invoicePrefix        String  @default("INV")
+  invoiceNumberPadding Int     @default(4)
+  invoiceNumberYearly  Boolean @default(false)
+  // Pre-filled on new invoices; each invoice keeps its own copy
+  invoiceDefaultNotes  String?
+  invoiceDefaultTerms  String?
 
   // Module keys this deployment shows/allows.
   enabledModules        String[] @default([])

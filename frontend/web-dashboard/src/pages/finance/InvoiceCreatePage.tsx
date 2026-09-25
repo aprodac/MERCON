@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo, useEffect } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   FileText,
@@ -39,15 +39,32 @@ import { StatPill } from '@/components/ui/stat-pill';
 import { financeService, CreateInvoiceDTO, InvoiceLineDTO } from '@/services/financeService';
 import { customerService } from '@/services/customerService';
 import { tripService } from '@/services/tripService';
+import { asOfPresetDate } from '@/components/finance/kit/AsOfControl';
+import { addDays, toDateOnly } from '@/lib/finance/ageing';
+import { termsToDays } from '@/lib/finance/invoices';
+import type { Invoice } from '@mercon/shared-types';
+
+/** Days per payment-terms option; "custom" means a date picked by hand. */
+const TERM_DAYS: Record<string, number> = { due_on_receipt: 0, net15: 15, net30: 30, net60: 60 };
+
+/** The option matching a customer's terms text ("Net 30", "Due on receipt"), if there is one. */
+function termsOption(terms: string | null | undefined): string | null {
+  const days = termsToDays(terms);
+  const hit = Object.entries(TERM_DAYS).find(([, d]) => d === days);
+  return hit ? hit[0] : null;
+}
 
 export default function InvoiceCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  // Present on /finance/invoices/:id/edit — the page then edits that draft
+  const { id: editId } = useParams<{ id: string }>();
+  const editing = Boolean(editId);
 
-  // Header state
+  // Header state (dates as local calendar days; due date follows the default Net 30 terms)
   const [customerId, setCustomerId] = useState('');
-  const [invoiceDate, setInvoiceDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [dueDate, setDueDate] = useState<string>('');
+  const [invoiceDate, setInvoiceDate] = useState<string>(() => asOfPresetDate('today'));
+  const [dueDate, setDueDate] = useState<string>(() => addDays(asOfPresetDate('today'), 30));
   const [taxRate, setTaxRate] = useState<number>(15); // Default 15% VAT
   const [paymentTerms, setPaymentTerms] = useState<string>('net30');
 
@@ -124,6 +141,33 @@ export default function InvoiceCreatePage() {
     return candidate || '—';
   };
 
+  // The draft being edited
+  const { data: editRes, isLoading: isLoadingEdit } = useQuery({
+    queryKey: ['invoices', 'detail', editId],
+    queryFn: () => financeService.getInvoiceById(editId as string),
+    enabled: editing,
+  });
+  const editInvoice: Invoice | undefined = editRes?.data;
+  const draftTripIds = useMemo(() => (editInvoice?.lines ?? []).filter((l) => l.tripId).map((l) => l.tripId as string), [editInvoice]);
+
+  useEffect(() => {
+    if (!editInvoice || editInvoice.status !== 'Draft') return;
+    setCustomerId(editInvoice.customerId);
+    setInvoiceDate(toDateOnly(editInvoice.invoice_date));
+    setDueDate(editInvoice.due_date ? toDateOnly(editInvoice.due_date) : '');
+    setPaymentTerms('custom');
+    setTaxRate(Number(editInvoice.tax_rate) || 0);
+    setSelectedTripIds(draftTripIds);
+    setManualLines(
+      (editInvoice.lines ?? [])
+        .filter((l) => !l.tripId)
+        .map((l) => ({ description: l.description, quantity: Number(l.quantity) || 1, rate: Number(l.rate), amount: Number(l.amount) })),
+    );
+  }, [editInvoice, draftTripIds]);
+
+  // Trips not on any other invoice yet (issued or draft) — the server's "ready to bill" list
+  const { data: unbilledRes } = useQuery({ queryKey: ['invoices', 'unbilled'], queryFn: () => financeService.getUnbilledTrips() });
+
   // Fetch customers
   const { data: customersRes, isLoading: isLoadingCustomers } = useQuery({
     queryKey: ['customers', 'all'],
@@ -140,9 +184,23 @@ export default function InvoiceCreatePage() {
   const customers = customersRes?.data || [];
   const selectedCustomer = useMemo(() => customers.find((c: any) => c.id === customerId), [customers, customerId]);
 
+  // A new invoice takes the customer's own payment terms when they match an option
+  useEffect(() => {
+    if (editing || !selectedCustomer) return;
+    const option = termsOption((selectedCustomer as any).payment_terms);
+    if (option) setPaymentTerms(option);
+  }, [selectedCustomer, editing]);
+
+  // The due date follows the invoice date and terms, unless it was picked by hand
+  useEffect(() => {
+    if (paymentTerms in TERM_DAYS && invoiceDate) setDueDate(addDays(invoiceDate, TERM_DAYS[paymentTerms]));
+  }, [invoiceDate, paymentTerms]);
+
+  // Billable: not invoiced and not on another draft; trips already on this draft stay selectable
   const unbilledTrips = useMemo(() => {
-    return (unbilledTripsRes?.data || []).filter((t: any) => !t.invoiceId);
-  }, [unbilledTripsRes]);
+    const allowed = new Set([...(unbilledRes?.data?.customers ?? []).flatMap((c) => c.trip_ids), ...draftTripIds]);
+    return (unbilledTripsRes?.data || []).filter((t: any) => !t.invoiceId && (!unbilledRes || allowed.has(t.id)));
+  }, [unbilledTripsRes, unbilledRes, draftTripIds]);
 
   // Extract unique filter options
   const availableVehicles = useMemo(() => {
@@ -216,33 +274,28 @@ export default function InvoiceCreatePage() {
 
   // Mutation
   const createMutation = useMutation({
-    mutationFn: financeService.createDraftInvoice,
-    onSuccess: () => {
-      toast.success('Draft invoice created successfully');
+    mutationFn: (payload: CreateInvoiceDTO) => {
+      if (!editing) return financeService.createDraftInvoice(payload);
+      // The customer of a draft can't change; lines are rebuilt from the trips plus the manual lines
+      const { customerId: _customer, ...changes } = payload;
+      return financeService.updateDraftInvoice(editId as string, changes);
+    },
+    onSuccess: (res: any) => {
+      toast.success(editing ? 'Draft saved' : `Draft ${res?.data?.ref_id ?? 'invoice'} created`);
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      navigate('/finance/invoices');
+      queryClient.invalidateQueries({ queryKey: ['trips'] });
+      navigate(`/finance/invoices?invoice=${res?.data?.id ?? editId}`);
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.error?.message || 'Failed to create invoice');
+      toast.error(err?.response?.data?.error?.message || (editing ? 'Could not save the draft' : 'Failed to create invoice'));
     },
   });
 
   // Payment terms change handler
+  // Date arithmetic on date-only strings, so the due date never shifts a day across time zones
   const handleTermsChange = (term: string) => {
     setPaymentTerms(term);
-    const baseDate = new Date(invoiceDate || new Date());
-    if (term === 'due_on_receipt') {
-      setDueDate(baseDate.toISOString().split('T')[0]);
-    } else if (term === 'net15') {
-      baseDate.setDate(baseDate.getDate() + 15);
-      setDueDate(baseDate.toISOString().split('T')[0]);
-    } else if (term === 'net30') {
-      baseDate.setDate(baseDate.getDate() + 30);
-      setDueDate(baseDate.toISOString().split('T')[0]);
-    } else if (term === 'net60') {
-      baseDate.setDate(baseDate.getDate() + 60);
-      setDueDate(baseDate.toISOString().split('T')[0]);
-    }
+    if (term in TERM_DAYS) setDueDate(addDays(invoiceDate || asOfPresetDate('today'), TERM_DAYS[term]));
   };
 
   // Trip selection helpers
@@ -324,7 +377,13 @@ export default function InvoiceCreatePage() {
   };
 
   return (
-    <DashboardLayout active="finance" title="New Draft Invoice">
+    <DashboardLayout active="finance" title={editing ? `Edit draft ${editInvoice?.ref_id ?? ''}` : 'New Draft Invoice'}>
+      {editing && !isLoadingEdit && editInvoice && editInvoice.status !== 'Draft' ? (
+        <div className="mx-auto max-w-md space-y-3 p-10 text-center text-sm">
+          <p>{editInvoice.ref_id} has been issued, so it can no longer be edited. Void it and create a new invoice if it needs to change.</p>
+          <Link to={`/finance/invoices?invoice=${editInvoice.id}`} className="font-medium underline">Back to the invoice</Link>
+        </div>
+      ) : (
       <div className="bg-[#F8FAFC] px-4 sm:px-6 py-4 space-y-4 max-w-[1400px] mx-auto pb-16 min-h-full">
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           
@@ -356,6 +415,7 @@ export default function InvoiceCreatePage() {
                   </Label>
                   <Select
                     value={customerId}
+                    disabled={editing}
                     onValueChange={(v) => {
                       setCustomerId(v);
                       setSelectedTripIds([]);
@@ -417,7 +477,7 @@ export default function InvoiceCreatePage() {
                   <Input
                     type="date"
                     value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
+                    onChange={(e) => { setDueDate(e.target.value); setPaymentTerms('custom'); }}
                     className="h-9 text-xs"
                   />
                 </div>
@@ -834,13 +894,13 @@ export default function InvoiceCreatePage() {
                     disabled={createMutation.isPending}
                     className="w-full bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-xs font-bold h-9 text-xs"
                   >
-                    {createMutation.isPending ? 'Saving...' : 'Save Draft Invoice'}
+                    {createMutation.isPending ? 'Saving...' : editing ? 'Save changes' : 'Save Draft Invoice'}
                   </Button>
 
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => navigate('/finance/invoices')}
+                    onClick={() => navigate(editing ? `/finance/invoices?invoice=${editId}` : '/finance/invoices')}
                     className="w-full h-8 text-xs font-medium"
                   >
                     Cancel
@@ -852,7 +912,7 @@ export default function InvoiceCreatePage() {
 
         </form>
       </div>
+      )}
     </DashboardLayout>
   );
 }
-
