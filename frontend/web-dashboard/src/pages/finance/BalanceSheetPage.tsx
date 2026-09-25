@@ -210,7 +210,8 @@ export default function BalanceSheetPage() {
 
     classifiedAssets.forEach((a) => {
       if (a.category === 'Current assets' && a.subCategory) {
-        assetSubGroups[a.subCategory as AssetSubCategory].push(a);
+        const target = (assetSubGroups as Record<string, ExtendedLineItem[]>)[a.subCategory];
+        if (target) target.push(a);
       } else if (a.category === 'Fixed assets') {
         fixedAssets.push(a);
       } else if (a.category === 'Investments') {
@@ -227,7 +228,8 @@ export default function BalanceSheetPage() {
 
     classifiedLiabilities.forEach((l) => {
       if (l.category === 'Current liabilities' && l.subCategory) {
-        liabilitySubGroups[l.subCategory as LiabilitySubCategory].push(l);
+        const target = (liabilitySubGroups as Record<string, ExtendedLineItem[]>)[l.subCategory];
+        if (target) target.push(l);
       } else if (l.category === 'Long-term liabilities') {
         longTermLiabilities.push(l);
       }
@@ -380,7 +382,7 @@ export default function BalanceSheetPage() {
           <div className="flex items-center gap-3">
             <ToggleGroup
               value={[activeTab]}
-              onValueChange={(v) => v[0] && updateParam('tab', v[0])}
+              onValueChange={(v: string[]) => v[0] && updateParam('tab', v[0])}
               className="bg-[#F4F4F5] dark:bg-slate-800/80 p-1 rounded-xl"
             >
               <ToggleGroupItem
@@ -441,14 +443,14 @@ export default function BalanceSheetPage() {
             {activeTab === 'statement' && (
               <ToggleGroup
                 value={[layout]}
-                onValueChange={(v) => v[0] && updateParam('layout', v[0])}
+                onValueChange={(v: string[]) => v[0] && updateParam('layout', v[0])}
                 className="bg-[#F4F4F5] dark:bg-slate-800/80 p-1 rounded-xl"
               >
                 <ToggleGroupItem value="vertical" className="text-xs font-semibold px-2.5 py-1 rounded-[9px] data-[state=on]:bg-white dark:data-[state=on]:bg-slate-900 text-slate-700 dark:text-slate-300">
-                  Vertical (Zoho)
+                  Vertical
                 </ToggleGroupItem>
                 <ToggleGroupItem value="horizontal" className="text-xs font-semibold px-2.5 py-1 rounded-[9px] data-[state=on]:bg-white dark:data-[state=on]:bg-slate-900 text-slate-700 dark:text-slate-300">
-                  Horizontal (Tally)
+                  Horizontal
                 </ToggleGroupItem>
               </ToggleGroup>
             )}
