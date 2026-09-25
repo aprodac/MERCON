@@ -563,55 +563,44 @@ export default function GeneralLedgerPage() {
     <DashboardLayout active="finance" title="General Ledger">
       <div className="p-4 space-y-3.5 max-w-[1400px] mx-auto print:p-0 print:m-0 print:max-w-none">
         {/* ── Toolbar Row (DESIGN.md §4.0a / AdvancesPage style) ─────────────────── */}
-        <div className="border-b border-slate-200/80 pb-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3 print:hidden">
+        <div className="border-b border-border pb-2.5 flex flex-col md:flex-row md:items-center justify-between gap-3 print:hidden">
           {/* Left Controls */}
           <div className="flex flex-wrap items-center gap-2.5">
             {/* View Selector Tabs */}
-            <div className="bg-[#F4F4F5] dark:bg-slate-800/80 p-1 rounded-xl flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => updateParams({ view: 'summary' })}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[9px] text-xs font-semibold transition-all ${
-                  viewParam === 'summary'
-                    ? 'bg-white dark:bg-slate-900 text-[#111111] dark:text-slate-100 shadow-xs'
-                    : 'text-[#6E6E80] dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
+            <ToggleGroup
+              value={[viewParam]}
+              onValueChange={(val: string[]) => val[0] && updateParams({ view: val[0] })}
+              className="bg-muted p-[3px] rounded-lg border border-border/60"
+            >
+              <ToggleGroupItem
+                value="summary"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
               >
-                <LayoutList className="w-3.5 h-3.5 text-[#FA634E]" />
+                <LayoutList className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
                 <span>Ledger summary</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => updateParams({ view: 'account' })}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[9px] text-xs font-semibold transition-all ${
-                  viewParam === 'account'
-                    ? 'bg-white dark:bg-slate-900 text-[#111111] dark:text-slate-100 shadow-xs'
-                    : 'text-[#6E6E80] dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="account"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
               >
-                <BookOpenText className="w-3.5 h-3.5 text-[#FA634E]" />
+                <BookOpenText className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
                 <span>Account ledger</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => updateParams({ view: 'monthly' })}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[9px] text-xs font-semibold transition-all ${
-                  viewParam === 'monthly'
-                    ? 'bg-white dark:bg-slate-900 text-[#111111] dark:text-slate-100 shadow-xs'
-                    : 'text-[#6E6E80] dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
-                }`}
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="monthly"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
               >
-                <CalendarRange className="w-3.5 h-3.5 text-[#FA634E]" />
+                <CalendarRange className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
                 <span>Monthly summary</span>
-              </button>
-            </div>
+              </ToggleGroupItem>
+            </ToggleGroup>
 
             {/* Period Preset Select */}
             <Select value={periodPreset} onValueChange={(val) => handlePeriodPresetChange(val as PeriodPreset)}>
-              <SelectTrigger className="h-8 text-xs w-[140px] rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800">
+              <SelectTrigger className="h-8 text-xs w-[140px] rounded-md bg-background border-border font-medium text-foreground">
                 <SelectValue placeholder="Period" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="text-xs font-medium">
                 <SelectItem value="this_month">This Month</SelectItem>
                 <SelectItem value="last_month">Last Month</SelectItem>
                 <SelectItem value="this_quarter">This Quarter</SelectItem>
@@ -627,27 +616,27 @@ export default function GeneralLedgerPage() {
             {periodPreset === 'custom' && (
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 text-xs rounded-xl bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 gap-1.5">
-                    <CalendarIcon className="w-3.5 h-3.5 text-slate-500" />
+                  <Button variant="outline" size="sm" className="h-8 text-xs rounded-md bg-background border-border gap-1.5 font-medium">
+                    <CalendarIcon className="w-3.5 h-3.5 text-muted-foreground" />
                     <span>Select Dates</span>
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-auto p-3" align="start">
+                <PopoverContent className="w-auto p-3 bg-card border-border" align="start">
                   <div className="space-y-3">
-                    <div className="text-xs font-bold text-slate-700 dark:text-slate-300">Custom Date Range</div>
+                    <div className="text-xs font-semibold text-foreground">Custom Date Range</div>
                     <div className="flex items-center gap-2">
                       <input
                         type="date"
                         value={dateFrom}
                         onChange={(e) => handleCustomRangeChange(e.target.value, dateTo)}
-                        className="h-8 text-xs p-1.5 border rounded-lg bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                        className="h-8 text-xs p-1.5 border rounded-md bg-background border-border text-foreground"
                       />
-                      <span className="text-xs text-slate-400">to</span>
+                      <span className="text-xs text-muted-foreground">to</span>
                       <input
                         type="date"
                         value={dateTo}
                         onChange={(e) => handleCustomRangeChange(dateFrom, e.target.value)}
-                        className="h-8 text-xs p-1.5 border rounded-lg bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                        className="h-8 text-xs p-1.5 border rounded-md bg-background border-border text-foreground"
                       />
                     </div>
                   </div>
@@ -656,7 +645,7 @@ export default function GeneralLedgerPage() {
             )}
 
             {/* Resolved Date Range Chip */}
-            <div className="bg-[#EEF1F6] dark:bg-slate-800 px-2.5 py-1 rounded-[10px] text-[11.5px] font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <div className="bg-muted px-2.5 py-1 rounded-md text-xs font-medium text-muted-foreground flex items-center gap-1.5 fin-num">
               <span>{formatDate(dateFrom)} – {formatDate(dateTo)}</span>
             </div>
           </div>
@@ -666,30 +655,30 @@ export default function GeneralLedgerPage() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs rounded-lg border-slate-200 dark:border-slate-800 gap-1.5"
+              className="h-8 text-xs rounded-md border-border font-medium gap-1.5"
               onClick={() => setIsCustomizeOpen(true)}
             >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+              <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
               <span>Customize</span>
             </Button>
 
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs rounded-lg border-slate-200 dark:border-slate-800 gap-1.5"
+              className="h-8 text-xs rounded-md border-border font-medium gap-1.5"
               onClick={() => window.print()}
             >
-              <Printer className="w-3.5 h-3.5 text-slate-500" />
+              <Printer className="w-3.5 h-3.5 text-muted-foreground" />
               <span>Print</span>
             </Button>
 
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs rounded-lg border-slate-200 dark:border-slate-800 gap-1.5"
+              className="h-8 text-xs rounded-md border-border font-medium gap-1.5"
               onClick={() => setIsExportOpen(true)}
             >
-              <Download className="w-3.5 h-3.5 text-slate-500" />
+              <Download className="w-3.5 h-3.5 text-muted-foreground" />
               <span>Export</span>
             </Button>
           </div>
@@ -699,11 +688,11 @@ export default function GeneralLedgerPage() {
         {viewParam === 'summary' && (
           <div className="space-y-4 max-w-[1240px] mx-auto">
             {/* Header / Activity Toggle Card */}
-            <div className="flex items-center justify-between p-3.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
-              <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+            <div className="flex items-center justify-between p-3.5 bg-card rounded-xl border border-border shadow-xs">
+              <div className="flex items-center gap-2 text-xs font-medium text-foreground">
                 <span>Summary of all accounts</span>
-                <span className="text-slate-400">·</span>
-                <span className="text-slate-500 dark:text-slate-400">{summaryRes?.data?.items.length || 0} active accounts</span>
+                <span className="text-muted-foreground">·</span>
+                <span className="text-muted-foreground">{summaryRes?.data?.items.length || 0} active accounts</span>
               </div>
 
               <div className="flex items-center gap-2">
@@ -712,7 +701,7 @@ export default function GeneralLedgerPage() {
                   checked={customize.showZeroBalance}
                   onCheckedChange={(checked) => setCustomize((prev) => ({ ...prev, showZeroBalance: checked }))}
                 />
-                <label htmlFor="show-zero-accs" className="text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer select-none">
+                <label htmlFor="show-zero-accs" className="text-xs font-medium text-foreground cursor-pointer select-none">
                   Show accounts with no activity
                 </label>
               </div>
@@ -720,9 +709,9 @@ export default function GeneralLedgerPage() {
 
             {/* Error State */}
             {isSummaryError && (
-              <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 rounded-2xl p-6 text-center space-y-3">
-                <div className="text-rose-700 dark:text-rose-300 font-bold text-sm">Failed to load General Ledger Summary</div>
-                <Button size="sm" variant="outline" onClick={() => refetchSummary()} className="h-8 text-xs gap-1.5">
+              <div className="bg-rose-500/10 border border-rose-600/20 rounded-xl p-4 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-center justify-between">
+                <span>Failed to load General Ledger Summary</span>
+                <Button size="sm" variant="outline" onClick={() => refetchSummary()} className="h-7 text-xs gap-1.5">
                   <RefreshCw className="w-3.5 h-3.5" />
                   <span>Retry</span>
                 </Button>
@@ -731,7 +720,7 @@ export default function GeneralLedgerPage() {
 
             {/* Skeleton Loading */}
             {isSummaryLoading && (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 border border-slate-200/80 dark:border-slate-800 space-y-4">
+              <div className="bg-card rounded-xl p-8 border border-border space-y-4 shadow-xs">
                 <Skeleton className="h-6 w-64" />
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
@@ -741,16 +730,16 @@ export default function GeneralLedgerPage() {
 
             {/* General Ledger Summary Paper Table */}
             {!isSummaryLoading && !isSummaryError && (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-6 md:p-8 fin-gl-paper">
+              <div className="bg-card rounded-xl border border-border shadow-xs p-6 md:p-8">
                 {/* Paper Header */}
-                <div className="text-center pb-6 border-b border-slate-200/80 dark:border-slate-800 space-y-1">
-                  <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <div className="text-center pb-6 border-b border-border space-y-1">
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     {companyLegalName}
                   </div>
-                  <h1 className="text-2xl font-bold text-[#111111] dark:text-slate-100">
+                  <h1 className="text-2xl font-bold tracking-tight text-foreground">
                     General Ledger Summary
                   </h1>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                  <div className="text-xs text-muted-foreground fin-num">
                     {formatDate(dateFrom)} to {formatDate(dateTo)} · Amounts in SAR
                   </div>
                 </div>
@@ -759,20 +748,20 @@ export default function GeneralLedgerPage() {
                 <div className="overflow-x-auto pt-4">
                   <table className="w-full text-left text-xs border-collapse min-w-[720px]">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+                      <tr className="border-b border-border text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                         <th className="py-2.5 px-3">Account</th>
-                        <th className="py-2.5 px-3 text-right w-36">Opening Balance</th>
+                        <th className="py-2.5 px-3 text-right w-36">Opening balance</th>
                         <th className="py-2.5 px-3 text-right w-36">Debit (SAR)</th>
                         <th className="py-2.5 px-3 text-right w-36">Credit (SAR)</th>
-                        <th className="py-2.5 px-3 text-right w-40">Closing Balance</th>
+                        <th className="py-2.5 px-3 text-right w-40">Closing balance</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                    <tbody className="divide-y divide-border/60">
                       {summaryGrouped.map((typeGroup) => (
                         <React.Fragment key={typeGroup.type}>
                           {/* Type Section Header */}
-                          <tr className="bg-slate-50/80 dark:bg-slate-800/40">
-                            <td colSpan={5} className="py-2.5 px-3 font-bold text-slate-900 dark:text-slate-100 text-xs uppercase tracking-wider">
+                          <tr className="bg-muted/40">
+                            <td colSpan={5} className="py-2.5 px-3 font-semibold text-foreground text-xs">
                               {typeGroup.type}s
                             </td>
                           </tr>
@@ -786,28 +775,28 @@ export default function GeneralLedgerPage() {
                                 {/* Parent Group Sub-Header */}
                                 <tr
                                   onClick={() => toggleSummaryGroup(`${typeGroup.type}-${parentKey}`)}
-                                  className="hover:bg-slate-50 dark:hover:bg-slate-800/30 cursor-pointer select-none font-semibold text-slate-800 dark:text-slate-200"
+                                  className="hover:bg-muted/50 cursor-pointer select-none font-medium text-foreground"
                                 >
                                   <td className="py-2 px-3 flex items-center gap-1.5">
                                     {isCollapsed ? (
-                                      <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                                     ) : (
-                                      <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                      <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
                                     )}
                                     {pg.parentCode && customize.showAccountCodes && (
-                                      <span className="font-mono text-slate-500 mr-1.5">{pg.parentCode}</span>
+                                      <span className="fin-num text-muted-foreground mr-1.5">{pg.parentCode}</span>
                                     )}
                                     <span>{pg.parentName}</span>
-                                    <span className="text-[11px] font-normal text-slate-400 ml-2">({pg.items.length})</span>
+                                    <span className="text-[11px] font-normal text-muted-foreground ml-2">({pg.items.length})</span>
                                   </td>
-                                  <td className="py-2 px-3 text-right font-mono text-slate-400">—</td>
-                                  <td className="py-2 px-3 text-right font-mono text-slate-700 dark:text-slate-300">
+                                  <td className="py-2 px-3 text-right fin-num text-muted-foreground">—</td>
+                                  <td className="py-2 px-3 text-right fin-num text-foreground">
                                     {fmtVal(pg.subtotalDebit)}
                                   </td>
-                                  <td className="py-2 px-3 text-right font-mono text-slate-700 dark:text-slate-300">
+                                  <td className="py-2 px-3 text-right fin-num text-foreground">
                                     {fmtVal(pg.subtotalCredit)}
                                   </td>
-                                  <td className="py-2 px-3 text-right font-mono text-slate-400">—</td>
+                                  <td className="py-2 px-3 text-right fin-num text-muted-foreground">—</td>
                                 </tr>
 
                                 {/* Child Account Rows */}
@@ -818,30 +807,30 @@ export default function GeneralLedgerPage() {
                                       onClick={() => {
                                         updateParams({ account_id: accItem.account_id, view: 'account', page: 1 });
                                       }}
-                                      className="hover:bg-orange-50/40 dark:hover:bg-slate-800/50 cursor-pointer transition-colors group"
+                                      className="hover:bg-muted/50 cursor-pointer transition-colors group"
                                     >
                                       <td className="py-2 px-3 pl-8">
                                         <div className="flex items-center gap-2">
                                           {customize.showAccountCodes && (
-                                            <span className="font-mono text-slate-500 dark:text-slate-400 font-medium w-16 shrink-0">
+                                            <span className="w-12 text-muted-foreground fin-num text-xs">
                                               {accItem.code}
                                             </span>
                                           )}
-                                          <span className="font-medium text-slate-900 dark:text-slate-100 group-hover:text-[#FA634E] transition-colors">
+                                          <span className="font-normal text-foreground group-hover:text-[#FA634E] transition-colors">
                                             {accItem.name}
                                           </span>
                                         </div>
                                       </td>
-                                      <td className="py-2 px-3 text-right font-mono text-slate-600 dark:text-slate-400">
+                                      <td className="py-2 px-3 text-right fin-num text-muted-foreground">
                                         {fmtBalance(accItem.opening.signed, accItem.opening.side)}
                                       </td>
-                                      <td className="py-2 px-3 text-right font-mono text-slate-900 dark:text-slate-100">
+                                      <td className="py-2 px-3 text-right fin-num text-foreground">
                                         {accItem.period_debit > 0 ? fmtVal(accItem.period_debit) : '—'}
                                       </td>
-                                      <td className="py-2 px-3 text-right font-mono text-slate-900 dark:text-slate-100">
+                                      <td className="py-2 px-3 text-right fin-num text-foreground">
                                         {accItem.period_credit > 0 ? fmtVal(accItem.period_credit) : '—'}
                                       </td>
-                                      <td className="py-2 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                                      <td className="py-2 px-3 text-right fin-num font-medium text-foreground">
                                         {fmtBalance(accItem.closing.signed, accItem.closing.side)}
                                       </td>
                                     </tr>
@@ -855,29 +844,29 @@ export default function GeneralLedgerPage() {
 
                     {/* Summary Footer Row */}
                     <tfoot>
-                      <tr className="border-t-2 border-slate-900 dark:border-slate-100 font-bold text-slate-900 dark:text-slate-100 text-sm bg-slate-50/60 dark:bg-slate-800/60">
+                      <tr className="border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 font-semibold text-foreground text-sm">
                         <td className="py-3.5 px-3">
                           <div className="flex items-center gap-3">
-                            <span>Grand Total</span>
+                            <span>Grand total</span>
                             {summaryRes?.data?.is_balanced ? (
-                              <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-none font-bold text-[10.5px]">
+                              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20">
                                 ✓ balanced
-                              </Badge>
+                              </span>
                             ) : (
-                              <Badge className="bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 border-none font-bold text-[10.5px]">
+                              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20">
                                 Out by {fmtVal(Math.abs((summaryRes?.data?.total_debit || 0) - (summaryRes?.data?.total_credit || 0)))}
-                              </Badge>
+                              </span>
                             )}
                           </div>
                         </td>
-                        <td className="py-3.5 px-3 text-right font-mono text-slate-400">—</td>
-                        <td className="py-3.5 px-3 text-right font-mono text-[#FA634E] text-base">
+                        <td className="py-3.5 px-3 text-right fin-num text-muted-foreground">—</td>
+                        <td className="py-3.5 px-3 text-right fin-num text-foreground">
                           {fmtVal(summaryRes?.data?.total_debit || 0)}
                         </td>
-                        <td className="py-3.5 px-3 text-right font-mono text-[#FA634E] text-base">
+                        <td className="py-3.5 px-3 text-right fin-num text-foreground">
                           {fmtVal(summaryRes?.data?.total_credit || 0)}
                         </td>
-                        <td className="py-3.5 px-3 text-right font-mono text-slate-400">—</td>
+                        <td className="py-3.5 px-3 text-right fin-num text-muted-foreground">—</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -891,7 +880,7 @@ export default function GeneralLedgerPage() {
         {viewParam === 'account' && (
           <div className="space-y-4 max-w-[1240px] mx-auto">
             {/* Account Combobox & Stepper Header Strip */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-card p-3.5 rounded-xl border border-border shadow-xs">
               {/* Account Picker Combobox */}
               <div className="flex items-center gap-2">
                 <Popover open={isAccountPickerOpen} onOpenChange={setIsAccountPickerOpen}>
@@ -900,22 +889,22 @@ export default function GeneralLedgerPage() {
                       variant="outline"
                       role="combobox"
                       aria-expanded={isAccountPickerOpen}
-                      className="w-[320px] justify-between h-9 text-xs bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 font-semibold"
+                      className="w-[320px] justify-between h-8 text-xs bg-background border-border font-medium text-foreground"
                     >
                       {currentAccount ? (
                         <div className="flex items-center gap-2 truncate">
                           {customize.showAccountCodes && (
-                            <span className="font-mono text-slate-500 font-semibold">{currentAccount.account_code}</span>
+                            <span className="fin-num text-muted-foreground">{currentAccount.account_code}</span>
                           )}
                           <span className="truncate">{currentAccount.name}</span>
                         </div>
                       ) : (
-                        <span className="text-slate-400">Select an account…</span>
+                        <span className="text-muted-foreground">Select an account…</span>
                       )}
                       <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[340px] p-0" align="start">
+                  <PopoverContent className="w-[340px] p-0 bg-card border-border" align="start">
                     <Command>
                       <CommandInput placeholder="Search account code or name..." className="h-9 text-xs" />
                       <CommandList className="max-h-72">
@@ -936,7 +925,7 @@ export default function GeneralLedgerPage() {
                                   className="text-xs flex items-center justify-between cursor-pointer"
                                 >
                                   <div className="flex items-center gap-2 truncate">
-                                    <span className="font-mono text-slate-500 font-semibold">{acc.account_code}</span>
+                                    <span className="fin-num text-muted-foreground">{acc.account_code}</span>
                                     <span className="truncate">{acc.name}</span>
                                   </div>
                                   {accountId === acc.id && <Check className="h-3.5 w-3.5 text-[#FA634E]" />}
@@ -950,7 +939,7 @@ export default function GeneralLedgerPage() {
                   </PopoverContent>
                 </Popover>
 
-                {/* Tally Account Stepper Buttons */}
+                {/* Account Stepper Buttons */}
                 <div className="flex items-center gap-1">
                   <TooltipProvider>
                     <Tooltip>
@@ -960,7 +949,7 @@ export default function GeneralLedgerPage() {
                           size="icon"
                           onClick={() => stepAccount(-1)}
                           disabled={allAccounts.length === 0}
-                          className="h-9 w-9 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                          className="h-8 w-8 border-border text-foreground"
                         >
                           <ChevronLeft className="w-4 h-4" />
                         </Button>
@@ -977,7 +966,7 @@ export default function GeneralLedgerPage() {
                           size="icon"
                           onClick={() => stepAccount(1)}
                           disabled={allAccounts.length === 0}
-                          className="h-9 w-9 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                          className="h-8 w-8 border-border text-foreground"
                         >
                           <ChevronRight className="w-4 h-4" />
                         </Button>
@@ -991,9 +980,9 @@ export default function GeneralLedgerPage() {
               {/* Slim Info Strip & Sparkline */}
               {currentAccount && (
                 <div className="flex items-center gap-4 text-xs">
-                  <Badge variant="outline" className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold border-slate-200">
+                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground ring-1 ring-inset ring-border">
                     {currentAccount.account_type}
-                  </Badge>
+                  </span>
 
                   {/* Bank/Cash Account Link HoverCard */}
                   {bankAccount && (
@@ -1001,19 +990,19 @@ export default function GeneralLedgerPage() {
                       <HoverCardTrigger asChild>
                         <Link
                           to={`/finance/bank-accounts/${bankAccount.id}`}
-                          className="flex items-center gap-1 text-[#FA634E] hover:underline font-semibold"
+                          className="flex items-center gap-1 text-[#FA634E] hover:underline font-medium"
                         >
                           <Building2 className="w-3.5 h-3.5" />
                           <span>Bank details →</span>
                         </Link>
                       </HoverCardTrigger>
-                      <HoverCardContent className="w-64 space-y-2 p-3 text-xs">
-                        <div className="font-bold text-slate-900 dark:text-slate-100">{bankAccount.bank_name || 'Bank Account'}</div>
-                        <div className="text-slate-500 font-mono">IBAN: {bankAccount.iban || '—'}</div>
-                        <div className="text-slate-500">Acc No: {bankAccount.account_number || '—'}</div>
+                      <HoverCardContent className="w-64 space-y-2 p-3 text-xs bg-card border-border">
+                        <div className="font-semibold text-foreground">{bankAccount.bank_name || 'Bank Account'}</div>
+                        <div className="text-muted-foreground fin-num">IBAN: {bankAccount.iban || '—'}</div>
+                        <div className="text-muted-foreground">Acc No: {bankAccount.account_number || '—'}</div>
                         <Link
                           to={`/finance/bank-accounts/${bankAccount.id}`}
-                          className="inline-block pt-1 text-[#FA634E] font-bold hover:underline"
+                          className="inline-block pt-1 text-[#FA634E] font-semibold hover:underline"
                         >
                           View Bank Dashboard →
                         </Link>
@@ -1024,7 +1013,7 @@ export default function GeneralLedgerPage() {
                   {/* Sparkline for range balance trend */}
                   {monthlyRes?.data?.items && monthlyRes.data.items.length > 1 && (
                     <div className="hidden sm:flex items-center gap-2">
-                      <span className="text-[11px] text-slate-400">Balance trend:</span>
+                      <span className="text-[11px] text-muted-foreground">Balance trend:</span>
                       <div className="w-24 h-7">
                         <ResponsiveContainer width="100%" height="100%">
                           <AreaChart data={monthlyRes.data.items}>
@@ -1040,12 +1029,12 @@ export default function GeneralLedgerPage() {
 
             {/* Empty state if no account picked */}
             {!accountId && (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-12 text-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
+              <div className="bg-card rounded-xl border border-border p-12 text-center space-y-3 shadow-xs">
+                <div className="w-12 h-12 rounded-full bg-muted text-muted-foreground flex items-center justify-center mx-auto">
                   <ArrowLeftRight className="w-6 h-6 text-[#FA634E]" />
                 </div>
-                <div className="text-sm font-bold text-slate-900 dark:text-slate-100">Choose an account to see its ledger</div>
-                <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                <div className="text-sm font-semibold text-foreground">Choose an account to see its ledger</div>
+                <p className="text-xs text-muted-foreground max-w-md mx-auto">
                   Select an account from the combobox above to view detailed ledger vouchers, contra lines, running balances, and voucher previews.
                 </p>
               </div>
@@ -1053,9 +1042,9 @@ export default function GeneralLedgerPage() {
 
             {/* Error State */}
             {accountId && isGlError && (
-              <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 rounded-2xl p-6 text-center space-y-3">
-                <div className="text-rose-700 dark:text-rose-300 font-bold text-sm">Failed to load General Ledger Vouchers</div>
-                <Button size="sm" variant="outline" onClick={() => refetchGl()} className="h-8 text-xs gap-1.5">
+              <div className="bg-rose-500/10 border border-rose-600/20 rounded-xl p-4 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-center justify-between">
+                <span>Failed to load General Ledger Vouchers</span>
+                <Button size="sm" variant="outline" onClick={() => refetchGl()} className="h-7 text-xs gap-1.5">
                   <RefreshCw className="w-3.5 h-3.5" />
                   <span>Retry</span>
                 </Button>
@@ -1064,7 +1053,7 @@ export default function GeneralLedgerPage() {
 
             {/* Loading State */}
             {accountId && isGlLoading && (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 border border-slate-200/80 dark:border-slate-800 space-y-4">
+              <div className="bg-card rounded-xl p-8 border border-border space-y-4 shadow-xs">
                 <Skeleton className="h-6 w-64" />
                 <Skeleton className="h-10 w-full" />
                 <Skeleton className="h-10 w-full" />
@@ -1074,34 +1063,34 @@ export default function GeneralLedgerPage() {
 
             {/* Account Ledger Tally Statement Paper Card */}
             {accountId && !isGlLoading && !isGlError && (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-6 md:p-8 fin-gl-paper space-y-4">
+              <div className="bg-card rounded-xl border border-border shadow-xs p-6 md:p-8 space-y-4">
                 {/* Statement Paper Header */}
-                <div className="text-center pb-4 border-b border-slate-200/80 dark:border-slate-800 space-y-1">
-                  <div className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <div className="text-center pb-4 border-b border-border space-y-1">
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                     {companyLegalName}
                   </div>
-                  <h1 className="text-xl font-bold text-[#111111] dark:text-slate-100 flex items-center justify-center gap-2">
+                  <h1 className="text-xl font-bold text-foreground flex items-center justify-center gap-2">
                     <span>Ledger:</span>
-                    {customize.showAccountCodes && <span className="font-mono text-slate-600">{currentAccount?.account_code}</span>}
+                    {customize.showAccountCodes && <span className="fin-num text-muted-foreground">{currentAccount?.account_code}</span>}
                     <span>·</span>
                     <span>{currentAccount?.name}</span>
                   </h1>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                  <div className="text-xs text-muted-foreground fin-num">
                     {formatDate(dateFrom)} to {formatDate(dateTo)} · Amounts in SAR
                   </div>
                 </div>
 
                 {/* Filter Row inside Card */}
-                <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/40 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-muted/40 p-2.5 rounded-lg border border-border/60 text-xs">
                   <div className="flex flex-wrap items-center gap-2">
                     {/* Search Filter */}
                     <div className="relative w-48">
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                      <Search className="w-3.5 h-3.5 text-muted-foreground absolute left-2.5 top-2.5" />
                       <Input
                         placeholder="Search ref, memo..."
                         value={searchFilter}
                         onChange={(e) => updateParams({ search: e.target.value, page: 1 })}
-                        className="h-8 pl-8 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+                        className="h-8 pl-8 text-xs bg-background border-border"
                       />
                     </div>
 
@@ -1109,22 +1098,22 @@ export default function GeneralLedgerPage() {
                     <ToggleGroup
                       value={[sideFilter]}
                       onValueChange={(val: string[]) => val[0] && updateParams({ side: val[0], page: 1 })}
-                      className="bg-white dark:bg-slate-900 p-0.5 border border-slate-200 dark:border-slate-700 rounded-lg"
+                      className="bg-muted p-[3px] rounded-lg border border-border/60"
                     >
-                      <ToggleGroupItem value="all" className="h-7 text-[11px] px-2.5">
+                      <ToggleGroupItem value="all" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
                         All
                       </ToggleGroupItem>
-                      <ToggleGroupItem value="debit" className="h-7 text-[11px] px-2.5">
+                      <ToggleGroupItem value="debit" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
                         Debit
                       </ToggleGroupItem>
-                      <ToggleGroupItem value="credit" className="h-7 text-[11px] px-2.5">
+                      <ToggleGroupItem value="credit" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
                         Credit
                       </ToggleGroupItem>
                     </ToggleGroup>
                   </div>
 
-                  <div className="text-[11px] text-slate-500">
-                    Press <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded font-mono">↑</kbd> <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded font-mono">↓</kbd> to select row, <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded font-mono">Enter</kbd> to view JE preview
+                  <div className="text-[11px] text-muted-foreground">
+                    Press <kbd className="px-1 py-0.5 bg-muted rounded fin-num">↑</kbd> <kbd className="px-1 py-0.5 bg-muted rounded fin-num">↓</kbd> to select row, <kbd className="px-1 py-0.5 bg-muted rounded fin-num">Enter</kbd> to view JE preview
                   </div>
                 </div>
 
@@ -1132,34 +1121,34 @@ export default function GeneralLedgerPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs border-collapse min-w-[780px]">
                     <thead>
-                      <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+                      <tr className="border-b border-border text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                         <th className="py-2.5 px-3 w-28">Date</th>
                         <th className="py-2.5 px-3">Particulars</th>
-                        {customize.showVoucherType && <th className="py-2.5 px-3 w-32">Vch Type</th>}
-                        <th className="py-2.5 px-3 w-36">Vch No.</th>
+                        {customize.showVoucherType && <th className="py-2.5 px-3 w-32">Vch type</th>}
+                        <th className="py-2.5 px-3 w-36">Vch no.</th>
                         <th className="py-2.5 px-3 text-right w-32">Debit (SAR)</th>
                         <th className="py-2.5 px-3 text-right w-32">Credit (SAR)</th>
                         <th className="py-2.5 px-3 text-right w-36">Balance</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                    <tbody className="divide-y divide-border/60">
                       {/* Row 1: Opening Balance */}
-                      <tr className="bg-slate-50/70 dark:bg-slate-800/40 font-medium text-slate-700 dark:text-slate-300">
-                        <td className="py-2.5 px-3 font-mono text-[11.5px] text-slate-500">
+                      <tr className="bg-muted/40 font-medium text-foreground">
+                        <td className="py-2.5 px-3 fin-num text-muted-foreground">
                           {dateFrom ? formatDate(dateFrom) : 'Beginning'}
                         </td>
-                        <td className="py-2.5 px-3 italic font-semibold text-slate-800 dark:text-slate-200">
+                        <td className="py-2.5 px-3 font-semibold text-foreground">
                           Opening Balance
                         </td>
-                        {customize.showVoucherType && <td className="py-2.5 px-3 text-slate-400">—</td>}
-                        <td className="py-2.5 px-3 text-slate-400 font-mono">—</td>
-                        <td className="py-2.5 px-3 text-right font-mono">
+                        {customize.showVoucherType && <td className="py-2.5 px-3 text-muted-foreground">—</td>}
+                        <td className="py-2.5 px-3 text-muted-foreground fin-num">—</td>
+                        <td className="py-2.5 px-3 text-right fin-num">
                           {glData?.opening_balance_side === 'Dr' ? fmtVal(glData.opening_balance) : '—'}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono">
+                        <td className="py-2.5 px-3 text-right fin-num">
                           {glData?.opening_balance_side === 'Cr' ? fmtVal(glData.opening_balance) : '—'}
                         </td>
-                        <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                        <td className="py-2.5 px-3 text-right fin-num font-semibold text-foreground">
                           {fmtBalance(glData?.opening_balance || 0, (glData?.opening_balance_side as 'Dr'|'Cr') || 'Dr')}
                         </td>
                       </tr>
@@ -1167,7 +1156,7 @@ export default function GeneralLedgerPage() {
                       {/* Empty state inside paper */}
                       {lines.length === 0 && (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-slate-400 italic">
+                          <td colSpan={7} className="py-8 text-center text-muted-foreground italic">
                             No transactions found for this account in the selected period.
                           </td>
                         </tr>
@@ -1202,16 +1191,16 @@ export default function GeneralLedgerPage() {
                               }}
                               className={`transition-colors cursor-pointer group ${
                                 isSelected
-                                  ? 'bg-[#FFF4F2] dark:bg-slate-800'
-                                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
-                              } ${line.journal_entry_status === 'Voided' ? 'opacity-60 text-slate-400' : ''}`}
+                                  ? 'bg-muted/80'
+                                  : 'hover:bg-muted/50'
+                              } ${line.journal_entry_status === 'Voided' ? 'opacity-60 text-muted-foreground' : ''}`}
                             >
-                              <td className="py-2.5 px-3 font-mono text-[11.5px] text-slate-700 dark:text-slate-300 whitespace-nowrap">
+                              <td className="py-2.5 px-3 fin-num text-muted-foreground whitespace-nowrap">
                                 {formatDate(line.entry_date)}
                               </td>
                               <td className="py-2.5 px-3">
                                 <div className="space-y-0.5">
-                                  <div className="flex items-center gap-1.5 font-semibold text-slate-900 dark:text-slate-100">
+                                  <div className="flex items-center gap-1.5 font-semibold text-foreground">
                                     <span>{particularsStr}</span>
                                     {hasMultipleContra && (
                                       <button
@@ -1220,12 +1209,12 @@ export default function GeneralLedgerPage() {
                                           e.stopPropagation();
                                           toggleDetailExpansion(line.line_id);
                                         }}
-                                        className="p-0.5 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors"
+                                        className="p-0.5 hover:bg-muted rounded transition-colors"
                                       >
                                         {isDetailExpanded ? (
-                                          <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                                          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
                                         ) : (
-                                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
                                         )}
                                       </button>
                                     )}
@@ -1233,7 +1222,7 @@ export default function GeneralLedgerPage() {
 
                                   {/* Optional Narration */}
                                   {customize.showNarration && (line.memo || line.description) && (
-                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 font-normal italic">
+                                    <div className="text-[11px] text-muted-foreground font-normal italic">
                                       {line.memo || line.description}
                                     </div>
                                   )}
@@ -1244,42 +1233,42 @@ export default function GeneralLedgerPage() {
                                   {renderSourceBadge(line.source_type || undefined, line.source_id || undefined)}
                                 </td>
                               )}
-                              <td className="py-2.5 px-3 font-mono text-[11.5px]">
+                              <td className="py-2.5 px-3 fin-num">
                                 <Link
                                   to={`/finance/journal-entries/${line.journal_entry_id}`}
                                   onClick={(e) => e.stopPropagation()}
-                                  className="text-[#FA634E] font-semibold hover:underline"
+                                  className="text-[#FA634E] font-medium hover:underline"
                                 >
                                   {line.ref_id || 'JE-Details'}
                                 </Link>
                               </td>
-                              <td className="py-2.5 px-3 text-right font-mono text-slate-900 dark:text-slate-100">
+                              <td className="py-2.5 px-3 text-right fin-num text-foreground">
                                 {line.debit > 0 ? fmtVal(line.debit) : '—'}
                               </td>
-                              <td className="py-2.5 px-3 text-right font-mono text-slate-900 dark:text-slate-100">
+                              <td className="py-2.5 px-3 text-right fin-num text-foreground">
                                 {line.credit > 0 ? fmtVal(line.credit) : '—'}
                               </td>
-                              <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-900 dark:text-slate-100">
+                              <td className="py-2.5 px-3 text-right fin-num font-medium text-foreground">
                                 {fmtBalance(line.signed_balance, line.balance_side)}
                               </td>
                             </tr>
 
                             {/* Expanded Contra Lines Breakdown Table */}
                             {hasMultipleContra && isDetailExpanded && (
-                              <tr className="bg-slate-50/90 dark:bg-slate-800/80">
+                              <tr className="bg-muted/30">
                                 <td colSpan={customize.showVoucherType ? 7 : 6} className="py-2 px-6">
                                   <div className="pl-6 border-l-2 border-[#FA634E] space-y-1 py-1">
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                                      Contra Breakdown Details:
+                                    <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                      Contra breakdown details:
                                     </div>
                                     <div className="space-y-1">
                                       {line.contra.map((cl, cIdx) => (
-                                        <div key={cIdx} className="flex items-center justify-between text-[11px] font-mono">
+                                        <div key={cIdx} className="flex items-center justify-between text-[11px] fin-num">
                                           <div className="flex items-center gap-2">
-                                            <span className="text-slate-400">{cl.account_code}</span>
-                                            <span className="text-slate-800 dark:text-slate-200">{cl.name}</span>
+                                            <span className="text-muted-foreground">{cl.account_code}</span>
+                                            <span className="text-foreground">{cl.name}</span>
                                           </div>
-                                          <div className="font-semibold text-slate-900 dark:text-slate-100">
+                                          <div className="font-medium text-foreground">
                                             {fmtVal(cl.amount)}
                                           </div>
                                         </div>
@@ -1297,31 +1286,31 @@ export default function GeneralLedgerPage() {
                     {/* Statement Footers */}
                     <tfoot>
                       {/* Current Total Row */}
-                      <tr className="border-t border-slate-300 dark:border-slate-700 font-bold text-slate-900 dark:text-slate-100">
+                      <tr className="border-t border-border font-medium text-foreground">
                         <td colSpan={customize.showVoucherType ? 4 : 3} className="py-3 px-3">
                           Current Total
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-900 dark:text-slate-100">
+                        <td className="py-3 px-3 text-right fin-num text-foreground">
                           {fmtVal(currentTotalDebit)}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-900 dark:text-slate-100">
+                        <td className="py-3 px-3 text-right fin-num text-foreground">
                           {fmtVal(currentTotalCredit)}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-400">—</td>
+                        <td className="py-3 px-3 text-right fin-num text-muted-foreground">—</td>
                       </tr>
 
                       {/* Closing Balance Row */}
-                      <tr className="border-b-4 border-double border-slate-900 dark:border-slate-100 font-bold text-slate-900 dark:text-slate-100 text-sm bg-slate-50/60 dark:bg-slate-800/60">
+                      <tr className="border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 font-semibold text-foreground text-sm">
                         <td colSpan={customize.showVoucherType ? 4 : 3} className="py-3.5 px-3">
                           Closing Balance
                         </td>
-                        <td className="py-3.5 px-3 text-right font-mono">
+                        <td className="py-3.5 px-3 text-right fin-num">
                           {closingSide === 'Dr' ? fmtVal(closingBalance) : '—'}
                         </td>
-                        <td className="py-3.5 px-3 text-right font-mono">
+                        <td className="py-3.5 px-3 text-right fin-num">
                           {closingSide === 'Cr' ? fmtVal(closingBalance) : '—'}
                         </td>
-                        <td className="py-3.5 px-3 text-right font-mono text-[#FA634E] text-base">
+                        <td className="py-3.5 px-3 text-right fin-num">
                           {fmtBalance(closingBalance, closingSide as 'Dr'|'Cr')}
                         </td>
                       </tr>
@@ -1336,7 +1325,7 @@ export default function GeneralLedgerPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => updateParams({ page: pageParam + 1 })}
-                      className="h-8 text-xs font-semibold rounded-xl"
+                      className="h-8 text-xs font-medium border-border"
                     >
                       Load More Transactions ({lines.length} of {glData.count})
                     </Button>
@@ -1351,16 +1340,16 @@ export default function GeneralLedgerPage() {
         {viewParam === 'monthly' && (
           <div className="space-y-6 max-w-[1240px] mx-auto">
             {/* Header info */}
-            <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex items-center justify-between">
-              <div className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                Monthly Breakdown: <strong className="text-slate-900 dark:text-slate-100">{currentAccount?.name || 'Selected Account'}</strong>
+            <div className="p-4 bg-card rounded-xl border border-border shadow-xs flex items-center justify-between">
+              <div className="text-xs font-medium text-foreground">
+                Monthly Breakdown: <strong className="font-semibold">{currentAccount?.name || 'Selected Account'}</strong>
               </div>
             </div>
 
             {/* Monthly Bar + Line Chart */}
             {monthlyRes?.data?.items && (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 space-y-3">
-                <div className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider">
+              <div className="bg-card rounded-xl border border-border p-6 space-y-3 shadow-xs">
+                <div className="text-xs font-semibold text-foreground uppercase tracking-wide">
                   Monthly Activity & Closing Balance
                 </div>
                 <div className="h-64 w-full pt-4">
@@ -1379,18 +1368,18 @@ export default function GeneralLedgerPage() {
             )}
 
             {/* Monthly Summary Table */}
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs p-6 md:p-8 fin-gl-paper">
+            <div className="bg-card rounded-xl border border-border shadow-xs p-6 md:p-8">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+                    <tr className="border-b border-border text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                       <th className="py-2.5 px-3">Month</th>
                       <th className="py-2.5 px-3 text-right w-36">Debit (SAR)</th>
                       <th className="py-2.5 px-3 text-right w-36">Credit (SAR)</th>
                       <th className="py-2.5 px-3 text-right w-44">Closing Balance</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                  <tbody className="divide-y divide-border/60">
                     {(monthlyRes?.data?.items || []).map((m) => (
                       <tr
                         key={m.month}
@@ -1404,33 +1393,33 @@ export default function GeneralLedgerPage() {
                             date_to: `${m.month}-${String(lastDay).padStart(2, '0')}`,
                           });
                         }}
-                        className="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer font-medium"
+                        className="hover:bg-muted/50 cursor-pointer font-medium"
                       >
-                        <td className="py-3 px-3 font-semibold text-slate-900 dark:text-slate-100">
+                        <td className="py-3 px-3 font-semibold text-foreground">
                           {m.month}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-900 dark:text-slate-100">
+                        <td className="py-3 px-3 text-right fin-num text-foreground">
                           {m.debit > 0 ? fmtVal(m.debit) : '—'}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono text-slate-900 dark:text-slate-100">
+                        <td className="py-3 px-3 text-right fin-num text-foreground">
                           {m.credit > 0 ? fmtVal(m.credit) : '—'}
                         </td>
-                        <td className="py-3 px-3 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                        <td className="py-3 px-3 text-right fin-num font-semibold text-foreground">
                           {fmtBalance(m.closing.signed, m.closing.side)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                   <tfoot>
-                    <tr className="border-t-2 border-slate-900 dark:border-slate-100 font-bold text-slate-900 dark:text-slate-100 text-sm">
+                    <tr className="border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 font-semibold text-foreground text-sm">
                       <td className="py-3.5 px-3">Total</td>
-                      <td className="py-3.5 px-3 text-right font-mono text-[#FA634E]">
+                      <td className="py-3.5 px-3 text-right fin-num text-foreground">
                         {fmtVal(monthlyRes?.data?.total_debit || 0)}
                       </td>
-                      <td className="py-3.5 px-3 text-right font-mono text-[#FA634E]">
+                      <td className="py-3.5 px-3 text-right fin-num text-foreground">
                         {fmtVal(monthlyRes?.data?.total_credit || 0)}
                       </td>
-                      <td className="py-3.5 px-3 text-right font-mono text-slate-400">—</td>
+                      <td className="py-3.5 px-3 text-right fin-num text-muted-foreground">—</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -1443,8 +1432,8 @@ export default function GeneralLedgerPage() {
         <Sheet open={isCustomizeOpen} onOpenChange={setIsCustomizeOpen}>
           <SheetContent className="w-[380px] sm:w-[420px] space-y-6">
             <SheetHeader>
-              <SheetTitle className="text-base font-bold">Customize General Ledger</SheetTitle>
-              <SheetDescription className="text-xs">
+              <SheetTitle className="text-base font-semibold">Customize General Ledger</SheetTitle>
+              <SheetDescription className="text-xs text-muted-foreground">
                 Adjust viewing parameters, formats, and voucher groupings.
               </SheetDescription>
             </SheetHeader>
@@ -1452,8 +1441,8 @@ export default function GeneralLedgerPage() {
             <div className="space-y-5 text-xs pt-2">
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-semibold text-slate-900 dark:text-slate-100">Show Narration</div>
-                  <div className="text-[11px] text-slate-500">Display entry memo & description under particulars</div>
+                  <div className="font-medium text-foreground">Show Narration</div>
+                  <div className="text-[11px] text-muted-foreground">Display entry memo & description under particulars</div>
                 </div>
                 <Switch
                   checked={customize.showNarration}
@@ -1463,8 +1452,8 @@ export default function GeneralLedgerPage() {
 
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-semibold text-slate-900 dark:text-slate-100">Show Voucher Type</div>
-                  <div className="text-[11px] text-slate-500">Display source badge column</div>
+                  <div className="font-medium text-foreground">Show Voucher Type</div>
+                  <div className="text-[11px] text-muted-foreground">Display source badge column</div>
                 </div>
                 <Switch
                   checked={customize.showVoucherType}
@@ -1474,8 +1463,8 @@ export default function GeneralLedgerPage() {
 
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-semibold text-slate-900 dark:text-slate-100">Hide Voided Pairs</div>
-                  <div className="text-[11px] text-slate-500">Hide voided entries and their reversing pairs</div>
+                  <div className="font-medium text-foreground">Hide Voided Pairs</div>
+                  <div className="text-[11px] text-muted-foreground">Hide voided entries and their reversing pairs</div>
                 </div>
                 <Switch
                   checked={customize.hideVoidedPairs}
@@ -1485,8 +1474,8 @@ export default function GeneralLedgerPage() {
 
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="font-semibold text-slate-900 dark:text-slate-100">Show Account Codes</div>
-                  <div className="text-[11px] text-slate-500">Include account code next to account name</div>
+                  <div className="font-medium text-foreground">Show Account Codes</div>
+                  <div className="text-[11px] text-muted-foreground">Include account code next to account name</div>
                 </div>
                 <Switch
                   checked={customize.showAccountCodes}
@@ -1494,36 +1483,36 @@ export default function GeneralLedgerPage() {
                 />
               </div>
 
-              <div className="space-y-2 pt-2 border-t">
-                <div className="font-semibold text-slate-900 dark:text-slate-100">Negative Format</div>
+              <div className="space-y-2 pt-2 border-t border-border">
+                <div className="font-medium text-foreground">Negative Format</div>
                 <Select
                   value={customize.negativeFormat}
                   onValueChange={(val: 'minus' | 'parentheses') =>
                     setCustomize((prev) => ({ ...prev, negativeFormat: val }))
                   }
                 >
-                  <SelectTrigger className="h-8 text-xs">
+                  <SelectTrigger className="h-8 text-xs bg-background border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="text-xs font-medium">
                     <SelectItem value="minus">-1,234.00 (Standard minus)</SelectItem>
                     <SelectItem value="parentheses">(1,234.00) (Accounting parentheses)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              <div className="space-y-2 pt-2 border-t">
-                <div className="font-semibold text-slate-900 dark:text-slate-100">Balance Style</div>
+              <div className="space-y-2 pt-2 border-t border-border">
+                <div className="font-medium text-foreground">Balance Style</div>
                 <Select
                   value={customize.balanceStyle}
                   onValueChange={(val: 'dr_cr' | 'signed') =>
                     setCustomize((prev) => ({ ...prev, balanceStyle: val }))
                   }
                 >
-                  <SelectTrigger className="h-8 text-xs">
+                  <SelectTrigger className="h-8 text-xs bg-background border-border text-foreground">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="text-xs font-medium">
                     <SelectItem value="dr_cr">1,234.00 Dr / Cr (Suffix)</SelectItem>
                     <SelectItem value="signed">Signed net (+ / -)</SelectItem>
                   </SelectContent>
@@ -1537,15 +1526,15 @@ export default function GeneralLedgerPage() {
         <Sheet open={Boolean(previewJeId)} onOpenChange={(open) => !open && setPreviewJeId(null)}>
           <SheetContent className="w-[420px] sm:w-[540px] space-y-6 overflow-y-auto">
             <SheetHeader>
-              <SheetTitle className="text-base font-bold flex items-center justify-between">
+              <SheetTitle className="text-base font-semibold flex items-center justify-between">
                 <span>Voucher Preview</span>
                 {previewJe?.ref_id && (
-                  <Badge variant="outline" className="font-mono text-xs">
+                  <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground ring-1 ring-inset ring-border fin-num">
                     {previewJe.ref_id}
-                  </Badge>
+                  </span>
                 )}
               </SheetTitle>
-              <SheetDescription className="text-xs">
+              <SheetDescription className="text-xs text-muted-foreground">
                 Journal Entry details and line postings.
               </SheetDescription>
             </SheetHeader>
@@ -1553,30 +1542,30 @@ export default function GeneralLedgerPage() {
             {previewJe ? (
               <div className="space-y-5 text-xs">
                 {/* Meta Card */}
-                <div className="p-3.5 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-3">
+                <div className="p-3.5 bg-muted/30 rounded-xl border border-border grid grid-cols-2 gap-3">
                   <div>
-                    <span className="text-slate-400 block font-medium">Entry Date</span>
-                    <span className="font-bold text-slate-900 dark:text-slate-100 font-mono">
+                    <span className="text-muted-foreground block font-medium">Entry Date</span>
+                    <span className="font-semibold text-foreground fin-num">
                       {formatDate(previewJe.entry_date)}
                     </span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">Status</span>
+                    <span className="text-muted-foreground block font-medium">Status</span>
                     <StatusPill kind="journal" status={previewJe.status} />
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">Source</span>
+                    <span className="text-muted-foreground block font-medium">Source</span>
                     <span>{renderSourceBadge(previewJe.source_type, previewJe.source_id || undefined)}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block font-medium">Period</span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                    <span className="text-muted-foreground block font-medium">Period</span>
+                    <span className="font-medium text-foreground">
                       {previewJe.period?.name || '—'}
                     </span>
                   </div>
                   <div className="col-span-2">
-                    <span className="text-slate-400 block font-medium">Memo / Reference</span>
-                    <span className="text-slate-900 dark:text-slate-100 font-medium">
+                    <span className="text-muted-foreground block font-medium">Memo / Reference</span>
+                    <span className="text-foreground font-medium">
                       {previewJe.memo || '—'}
                     </span>
                   </div>
@@ -1584,7 +1573,7 @@ export default function GeneralLedgerPage() {
 
                 {/* Journal Lines Table Component */}
                 <div>
-                  <div className="font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wider mb-2">
+                  <div className="font-semibold text-foreground uppercase tracking-wide mb-2">
                     Journal Lines
                   </div>
                   <JournalLinesTable lines={previewJe.lines || []} />
@@ -1598,7 +1587,8 @@ export default function GeneralLedgerPage() {
                       setPreviewJeId(null);
                       navigate(`/finance/journal-entries/${id}`);
                     }}
-                    className="w-full bg-[#FA634E] hover:bg-[#E54D38] text-white font-semibold h-9 text-xs gap-1.5"
+                    variant="outline"
+                    className="w-full font-medium h-8 text-xs gap-1.5 border-border text-foreground"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
                     <span>Open full journal entry details</span>

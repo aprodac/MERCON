@@ -2,16 +2,12 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  FileText,
-  BarChart3,
   Download,
   Printer,
   SlidersHorizontal,
   Settings2,
   ChevronRight,
   ChevronDown,
-  Calendar as CalendarIcon,
-  RefreshCw,
   RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -20,18 +16,16 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
 import ExportModal, { type ExportColumn } from '@/components/ui/ExportModal';
 
 import { StatementHeaderBar, InsightRail } from '@/components/finance/kit';
-import { financeService, type ReportLineItem } from '@/services/financeService';
-import { formatMoney, formatDate, formatPct } from '@/lib/finance/format';
+import { financeService } from '@/services/financeService';
+import { formatMoney, formatDate } from '@/lib/finance/format';
 import {
   buildStructuredVerticalPnl,
   buildStructuredTFormatPnl,
@@ -39,8 +33,6 @@ import {
   clearPnlStoredOverrides,
   PNL_CLASS_LABELS,
   type PnlClass,
-  type PnlGroupRow,
-  type PnlSection,
   type StructuredVerticalPnl,
 } from '@/lib/finance/pnlStructure';
 import {
@@ -225,39 +217,37 @@ export default function ProfitAndLossPage() {
     { id: 'amount', label: 'Amount (SAR)', accessor: (r) => r.amount },
   ];
 
-  const rowHeightClass = customize.density === 'comfortable' ? 'h-9' : 'h-8';
-
   return (
     <DashboardLayout active="finance" title="Profit & Loss">
       <div className="p-4 space-y-4 max-w-[1400px] mx-auto print:p-0">
-        {/* Single-Row Toolbar (No Card Wrapper) */}
+        {/* Single-Row Toolbar */}
         <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-          <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             {/* View Tabs */}
             <ToggleGroup
               value={[activeTab]}
               onValueChange={(v: string[]) => v[0] && updateParams({ tab: v[0] })}
-              className="bg-[#F4F4F5] dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60"
+              className="bg-muted p-[3px] rounded-lg border border-border/60"
             >
               <ToggleGroupItem
                 value="statement"
-                className="h-7 text-xs font-semibold px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-slate-900"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
               >
                 Statement
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="analysis"
-                className="h-7 text-xs font-semibold px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-slate-900"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
               >
                 Analysis
               </ToggleGroupItem>
             </ToggleGroup>
 
-            <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
+            <div className="h-4 w-px bg-border hidden sm:block" />
 
             {/* Period Preset Select */}
             <Select value={periodPreset} onValueChange={(val) => handlePeriodPresetChange(val as PeriodPreset)}>
-              <SelectTrigger className="h-8 text-xs w-[130px] bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-medium">
+              <SelectTrigger className="h-8 text-xs w-[130px] bg-background border-border font-medium text-foreground">
                 <SelectValue placeholder="Period" />
               </SelectTrigger>
               <SelectContent>
@@ -273,7 +263,7 @@ export default function ProfitAndLossPage() {
             </Select>
 
             {/* Date Range Chip */}
-            <div className="bg-slate-100 dark:bg-slate-800 px-2.5 py-1 rounded-md text-[11.5px] font-semibold text-slate-700 dark:text-slate-300">
+            <div className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-muted text-muted-foreground ring-border">
               {formatDate(dateFrom)} – {formatDate(dateTo)}
             </div>
 
@@ -282,57 +272,58 @@ export default function ProfitAndLossPage() {
               <ToggleGroup
                 value={[layout]}
                 onValueChange={(val: string[]) => val[0] && updateParams({ layout: val[0] })}
-                className="bg-[#F4F4F5] dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60"
+                className="bg-muted p-[3px] rounded-lg border border-border/60"
               >
-                <ToggleGroupItem value="vertical" className="h-7 text-xs font-semibold px-2.5 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-slate-900">
+                <ToggleGroupItem value="vertical" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
                   Vertical
                 </ToggleGroupItem>
-                <ToggleGroupItem value="tformat" className="h-7 text-xs font-semibold px-2.5 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-slate-900">
+                <ToggleGroupItem value="tformat" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
                   T-format
                 </ToggleGroupItem>
               </ToggleGroup>
             )}
           </div>
 
-          {/* Right Actions */}
+          {/* Right Actions - NO FILLED BUTTONS PER R6 (Export is outline) */}
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs font-semibold border-slate-200 dark:border-slate-700 gap-1.5"
+              className="h-8 text-xs font-medium border-border gap-1.5"
               onClick={() => setIsCustomizeOpen(true)}
             >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+              <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
               <span>Customize</span>
             </Button>
 
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs font-semibold border-slate-200 dark:border-slate-700 gap-1.5"
+              className="h-8 text-xs font-medium border-border gap-1.5"
               onClick={() => setIsSetupOpen(true)}
             >
-              <Settings2 className="w-3.5 h-3.5 text-slate-500" />
+              <Settings2 className="w-3.5 h-3.5 text-muted-foreground" />
               <span>Setup</span>
             </Button>
 
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs font-semibold border-slate-200 dark:border-slate-700 gap-1.5"
+              className="h-8 text-xs font-medium border-border gap-1.5"
               onClick={() => window.print()}
             >
-              <Printer className="w-3.5 h-3.5 text-slate-500" />
+              <Printer className="w-3.5 h-3.5 text-muted-foreground" />
               <span>Print</span>
             </Button>
 
             <Button
+              variant="outline"
               size="sm"
-              className="h-8 text-xs font-semibold bg-[#FA634E] hover:bg-[#e05440] text-white shadow-xs gap-1.5 cursor-pointer"
+              className="h-8 text-xs font-medium border-border gap-1.5"
               onClick={() => setIsExportOpen(true)}
               disabled={isMainLoading || isEmptyState}
             >
-              <Download className="w-3.5 h-3.5" />
+              <Download className="w-3.5 h-3.5 text-muted-foreground" />
               <span>Export</span>
             </Button>
           </div>
@@ -340,7 +331,7 @@ export default function ProfitAndLossPage() {
 
         {/* Error State */}
         {isMainError && (
-          <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 rounded-xl p-4 text-rose-800 text-xs font-medium flex items-center justify-between">
+          <div className="bg-rose-500/10 border border-rose-600/20 rounded-xl p-4 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-center justify-between">
             <span>Failed to load Profit & Loss statement. Please try again.</span>
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetchMain()}>
               Retry
@@ -350,7 +341,7 @@ export default function ProfitAndLossPage() {
 
         {/* Loading Skeleton */}
         {isMainLoading && (
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 p-8 space-y-6">
+          <div className="bg-card rounded-xl border border-border p-8 space-y-6 shadow-xs">
             <Skeleton className="h-8 w-64 mx-auto" />
             <Skeleton className="h-4 w-40 mx-auto" />
             <div className="space-y-4 pt-6">
@@ -361,12 +352,12 @@ export default function ProfitAndLossPage() {
           </div>
         )}
 
-        {/* MAIN CONTENT GRID: 2 Column on ≥1280px */}
+        {/* MAIN CONTENT GRID */}
         {!isMainLoading && !isMainError && activeTab === 'statement' && (
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4">
             {/* Left: Statement Card */}
             <div className="space-y-4 min-w-0">
-              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-800 p-5 shadow-xs w-full print:shadow-none print:border-none print:p-0 space-y-4">
+              <div className="bg-card rounded-xl border border-border p-4 shadow-xs w-full print:shadow-none print:border-none print:p-0 space-y-4">
                 {/* On-Screen Compact Header Bar */}
                 <StatementHeaderBar
                   title="Profit and Loss"
@@ -375,30 +366,20 @@ export default function ProfitAndLossPage() {
                   sourceLabel="Live ledger"
                 />
 
-                {/* Print Only Formal Centred Header */}
-                <div className="hidden print:block text-center space-y-1 pb-4 border-b border-slate-200">
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-500">MERCON Logistics</p>
-                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">Profit and Loss</h1>
-                  <p className="text-xs font-medium text-slate-600">
-                    From {formatDate(dateFrom)} To {formatDate(dateTo)}
-                  </p>
-                  <p className="text-[11px] font-mono text-slate-500">Amounts in SAR</p>
-                </div>
-
                 {/* VERTICAL LAYOUT */}
                 {layout === 'vertical' && (
-                  <div className="space-y-5 text-xs">
+                  <div className="space-y-4 text-xs divide-y divide-border/60">
                     {/* Operating Income Section */}
-                    <div id="section-operating_income" className="space-y-2">
-                      <div className="h-[38px] px-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-bold rounded-lg flex items-center justify-between">
-                        <span className="flex items-center gap-2 text-xs uppercase tracking-wider">
+                    <div id="section-operating_income" className="space-y-1 pt-2 first:pt-0">
+                      <div className="px-3 py-2 bg-muted/40 text-foreground font-semibold rounded-md flex items-center justify-between">
+                        <span className="flex items-center gap-2 text-xs font-semibold">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          <span>Operating Income</span>
+                          <span>Operating income</span>
                         </span>
-                        <span className="fin-num text-xs font-bold">{fmtMoney(verticalPnl.operatingIncomeTotal)}</span>
+                        <span className="fin-num text-xs font-medium">{fmtMoney(verticalPnl.operatingIncomeTotal)}</span>
                       </div>
 
-                      <div className="pl-3 space-y-1">
+                      <div className="pl-2 space-y-0.5">
                         {verticalPnl.sections.operating_income.groups.map((group) => {
                           const expanded = isGroupExpanded(`operating_income_${group.name}`);
                           const isSingle = group.isSingleAccount || group.items.length === 1;
@@ -408,13 +389,13 @@ export default function ProfitAndLossPage() {
                               {!isSingle && (
                                 <div
                                   onClick={() => toggleGroupCollapse(`operating_income_${group.name}`)}
-                                  className="flex items-center justify-between py-1 px-1 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded cursor-pointer font-semibold text-slate-700 dark:text-slate-300"
+                                  className="flex items-center justify-between py-1.5 px-2 hover:bg-muted/50 rounded-md cursor-pointer font-medium text-foreground"
                                 >
                                   <span className="flex items-center gap-1">
-                                    {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                    {expanded ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
                                     <span>{group.name}</span>
                                   </span>
-                                  <span className="fin-num">{fmtMoney(group.total)}</span>
+                                  <span className="fin-num text-muted-foreground">{fmtMoney(group.total)}</span>
                                 </div>
                               )}
                               {(isSingle || expanded) && (
@@ -423,19 +404,21 @@ export default function ProfitAndLossPage() {
                                     <div
                                       key={item.id || item.code || item.name}
                                       onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
-                                      className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 rounded-md cursor-pointer transition-colors text-[13px]`}
+                                      className="group flex items-center justify-between h-9 px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-xs"
                                     >
-                                      <div className="flex items-center gap-2">
-                                        {customize.showAccountCodes && item.code && (
-                                          <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                                      <div className="flex items-center gap-3">
+                                        {customize.showAccountCodes && item.code ? (
+                                          <span className="fin-num text-muted-foreground w-12 shrink-0">
                                             {item.code}
                                           </span>
+                                        ) : (
+                                          <span className="w-12 shrink-0" />
                                         )}
-                                        <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-[#FA634E]">
+                                        <span className="font-medium text-foreground group-hover:underline">
                                           {item.name}
                                         </span>
                                       </div>
-                                      <div className="w-36 text-right fin-num">{fmtMoney(item.amount)}</div>
+                                      <div className="w-36 text-right fin-num text-foreground">{fmtMoney(item.amount)}</div>
                                     </div>
                                   ))}
                                 </div>
@@ -447,16 +430,16 @@ export default function ProfitAndLossPage() {
                     </div>
 
                     {/* Cost of Sales Section */}
-                    <div id="section-cost_of_sales" className="space-y-2">
-                      <div className="h-[38px] px-3 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 font-bold rounded-lg flex items-center justify-between">
-                        <span className="flex items-center gap-2 text-xs uppercase tracking-wider">
+                    <div id="section-cost_of_sales" className="space-y-1 pt-3">
+                      <div className="px-3 py-2 bg-muted/40 text-foreground font-semibold rounded-md flex items-center justify-between">
+                        <span className="flex items-center gap-2 text-xs font-semibold">
                           <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                          <span>Cost of Sales</span>
+                          <span>Cost of sales</span>
                         </span>
-                        <span className="fin-num text-xs font-bold">{fmtMoney(verticalPnl.costOfSalesTotal)}</span>
+                        <span className="fin-num text-xs font-medium">{fmtMoney(verticalPnl.costOfSalesTotal)}</span>
                       </div>
 
-                      <div className="pl-3 space-y-1">
+                      <div className="pl-2 space-y-0.5">
                         {verticalPnl.sections.cost_of_sales.groups.map((group) => {
                           const expanded = isGroupExpanded(`cost_of_sales_${group.name}`);
                           const isSingle = group.isSingleAccount || group.items.length === 1;
@@ -466,13 +449,13 @@ export default function ProfitAndLossPage() {
                               {!isSingle && (
                                 <div
                                   onClick={() => toggleGroupCollapse(`cost_of_sales_${group.name}`)}
-                                  className="flex items-center justify-between py-1 px-1 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded cursor-pointer font-semibold text-slate-700 dark:text-slate-300"
+                                  className="flex items-center justify-between py-1.5 px-2 hover:bg-muted/50 rounded-md cursor-pointer font-medium text-foreground"
                                 >
                                   <span className="flex items-center gap-1">
-                                    {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                    {expanded ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
                                     <span>{group.name}</span>
                                   </span>
-                                  <span className="fin-num">{fmtMoney(group.total)}</span>
+                                  <span className="fin-num text-muted-foreground">{fmtMoney(group.total)}</span>
                                 </div>
                               )}
                               {(isSingle || expanded) && (
@@ -481,19 +464,21 @@ export default function ProfitAndLossPage() {
                                     <div
                                       key={item.id || item.code || item.name}
                                       onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
-                                      className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-amber-50/40 dark:hover:bg-amber-950/20 rounded-md cursor-pointer transition-colors text-[13px]`}
+                                      className="group flex items-center justify-between h-9 px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-xs"
                                     >
-                                      <div className="flex items-center gap-2">
-                                        {customize.showAccountCodes && item.code && (
-                                          <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                                      <div className="flex items-center gap-3">
+                                        {customize.showAccountCodes && item.code ? (
+                                          <span className="fin-num text-muted-foreground w-12 shrink-0">
                                             {item.code}
                                           </span>
+                                        ) : (
+                                          <span className="w-12 shrink-0" />
                                         )}
-                                        <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-[#FA634E]">
+                                        <span className="font-medium text-foreground group-hover:underline">
                                           {item.name}
                                         </span>
                                       </div>
-                                      <div className="w-36 text-right fin-num">{fmtMoney(item.amount)}</div>
+                                      <div className="w-36 text-right fin-num text-foreground">{fmtMoney(item.amount)}</div>
                                     </div>
                                   ))}
                                 </div>
@@ -504,25 +489,27 @@ export default function ProfitAndLossPage() {
                       </div>
                     </div>
 
-                    {/* Gross Profit Subtotal */}
-                    <div className="h-[34px] bg-slate-100/80 dark:bg-slate-800/80 px-3 rounded-md flex items-center justify-between font-bold text-slate-900 dark:text-slate-100">
-                      <span>Gross Profit</span>
-                      <span className={`fin-num ${verticalPnl.grossProfit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
-                        {fmtMoney(verticalPnl.grossProfit)}
-                      </span>
+                    {/* Gross Profit Subtotal (B4) */}
+                    <div className="pt-3">
+                      <div className="px-3 py-2 border-t border-border flex items-center justify-between font-medium text-foreground text-xs">
+                        <span>Gross profit</span>
+                        <span className={`fin-num ${verticalPnl.grossProfit < 0 ? 'text-rose-600 dark:text-rose-400 font-medium' : 'text-foreground'}`}>
+                          {fmtMoney(verticalPnl.grossProfit)}
+                        </span>
+                      </div>
                     </div>
 
-                    {/* Operating Expense Section */}
-                    <div id="section-operating_expense" className="space-y-2">
-                      <div className="h-[38px] px-3 bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 font-bold rounded-lg flex items-center justify-between">
-                        <span className="flex items-center gap-2 text-xs uppercase tracking-wider">
+                    {/* Operating Expenses Section */}
+                    <div id="section-operating_expense" className="space-y-1 pt-3">
+                      <div className="px-3 py-2 bg-muted/40 text-foreground font-semibold rounded-md flex items-center justify-between">
+                        <span className="flex items-center gap-2 text-xs font-semibold">
                           <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                          <span>Operating Expenses</span>
+                          <span>Operating expenses</span>
                         </span>
-                        <span className="fin-num text-xs font-bold">{fmtMoney(verticalPnl.operatingExpenseTotal)}</span>
+                        <span className="fin-num text-xs font-medium">{fmtMoney(verticalPnl.operatingExpenseTotal)}</span>
                       </div>
 
-                      <div className="pl-3 space-y-1">
+                      <div className="pl-2 space-y-0.5">
                         {verticalPnl.sections.operating_expense.groups.map((group) => {
                           const expanded = isGroupExpanded(`operating_expense_${group.name}`);
                           const isSingle = group.isSingleAccount || group.items.length === 1;
@@ -532,13 +519,13 @@ export default function ProfitAndLossPage() {
                               {!isSingle && (
                                 <div
                                   onClick={() => toggleGroupCollapse(`operating_expense_${group.name}`)}
-                                  className="flex items-center justify-between py-1 px-1 hover:bg-slate-50 dark:hover:bg-slate-800/50 rounded cursor-pointer font-semibold text-slate-700 dark:text-slate-300"
+                                  className="flex items-center justify-between py-1.5 px-2 hover:bg-muted/50 rounded-md cursor-pointer font-medium text-foreground"
                                 >
                                   <span className="flex items-center gap-1">
-                                    {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                    {expanded ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
                                     <span>{group.name}</span>
                                   </span>
-                                  <span className="fin-num">{fmtMoney(group.total)}</span>
+                                  <span className="fin-num text-muted-foreground">{fmtMoney(group.total)}</span>
                                 </div>
                               )}
                               {(isSingle || expanded) && (
@@ -547,19 +534,21 @@ export default function ProfitAndLossPage() {
                                     <div
                                       key={item.id || item.code || item.name}
                                       onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
-                                      className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-rose-50/40 dark:hover:bg-rose-950/20 rounded-md cursor-pointer transition-colors text-[13px]`}
+                                      className="group flex items-center justify-between h-9 px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-xs"
                                     >
-                                      <div className="flex items-center gap-2">
-                                        {customize.showAccountCodes && item.code && (
-                                          <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                                      <div className="flex items-center gap-3">
+                                        {customize.showAccountCodes && item.code ? (
+                                          <span className="fin-num text-muted-foreground w-12 shrink-0">
                                             {item.code}
                                           </span>
+                                        ) : (
+                                          <span className="w-12 shrink-0" />
                                         )}
-                                        <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-[#FA634E]">
+                                        <span className="font-medium text-foreground group-hover:underline">
                                           {item.name}
                                         </span>
                                       </div>
-                                      <div className="w-36 text-right fin-num">{fmtMoney(item.amount)}</div>
+                                      <div className="w-36 text-right fin-num text-foreground">{fmtMoney(item.amount)}</div>
                                     </div>
                                   ))}
                                 </div>
@@ -570,22 +559,24 @@ export default function ProfitAndLossPage() {
                       </div>
                     </div>
 
-                    {/* Operating Profit Subtotal */}
-                    <div className="h-[34px] bg-slate-100/80 dark:bg-slate-800/80 px-3 rounded-md flex items-center justify-between font-bold text-slate-900 dark:text-slate-100">
-                      <span>Operating Profit</span>
-                      <span className={`fin-num ${verticalPnl.operatingProfit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
-                        {fmtMoney(verticalPnl.operatingProfit)}
-                      </span>
+                    {/* Operating Profit Subtotal (B4) */}
+                    <div className="pt-3">
+                      <div className="px-3 py-2 border-t border-border flex items-center justify-between font-medium text-foreground text-xs">
+                        <span>Operating profit</span>
+                        <span className={`fin-num ${verticalPnl.operatingProfit < 0 ? 'text-rose-600 dark:text-rose-400 font-medium' : 'text-foreground'}`}>
+                          {fmtMoney(verticalPnl.operatingProfit)}
+                        </span>
+                      </div>
                     </div>
 
-                    {/* Net Profit / Net Loss Grand Total */}
-                    <div className="bg-[#3E3C3D] text-white rounded-lg h-[40px] px-4 flex items-center justify-between font-extrabold text-sm shadow-xs mt-3">
-                      <span className="uppercase tracking-wider">
-                        {verticalPnl.netProfit >= 0 ? 'NET PROFIT' : 'NET LOSS'}
-                      </span>
-                      <span className={`fin-num text-sm font-extrabold ${verticalPnl.netProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>
-                        {fmtMoney(verticalPnl.netProfit)}
-                      </span>
+                    {/* Net Profit / Net Loss Grand Total (B4: double rule below, font-semibold) */}
+                    <div className="pt-4">
+                      <div className="px-3 py-2.5 border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 flex items-center justify-between font-semibold text-foreground text-xs">
+                        <span>{verticalPnl.netProfit >= 0 ? 'Net profit' : 'Net loss'}</span>
+                        <span className={`fin-num font-semibold ${verticalPnl.netProfit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'}`}>
+                          {fmtMoney(verticalPnl.netProfit)}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -608,8 +599,6 @@ export default function ProfitAndLossPage() {
                   const el = document.getElementById(id);
                   if (el) {
                     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                    el.classList.add('ring-2', 'ring-[#FA634E]', 'transition-all');
-                    setTimeout(() => el.classList.remove('ring-2', 'ring-[#FA634E]'), 1500);
                   }
                 }}
               />
@@ -622,7 +611,7 @@ export default function ProfitAndLossPage() {
       <Sheet open={isCustomizeOpen} onOpenChange={setIsCustomizeOpen}>
         <SheetContent className="w-80 sm:w-96 p-6 space-y-6">
           <SheetHeader>
-            <SheetTitle className="text-base font-bold">Customize P&L Statement</SheetTitle>
+            <SheetTitle className="text-base font-semibold">Customize P&L Statement</SheetTitle>
             <SheetDescription className="text-xs">Adjust view options and density</SheetDescription>
           </SheetHeader>
 
@@ -646,7 +635,7 @@ export default function ProfitAndLossPage() {
             </div>
 
             <div className="space-y-2">
-              <Label className="font-semibold text-slate-700 dark:text-slate-300">Density</Label>
+              <Label className="font-semibold text-foreground">Density</Label>
               <RadioGroup
                 value={customize.density}
                 onValueChange={(val: 'compact' | 'comfortable') => setCustomize((prev) => ({ ...prev, density: val }))}
@@ -656,20 +645,20 @@ export default function ProfitAndLossPage() {
                   <RadioGroupItem value="compact" id="pnl-d-compact" className="peer sr-only" />
                   <Label
                     htmlFor="pnl-d-compact"
-                    className="flex flex-col items-center justify-between rounded-md border-2 border-slate-200 p-2 hover:bg-slate-50 peer-data-[state=checked]:border-[#FA634E] cursor-pointer text-center"
+                    className="flex flex-col items-center justify-between rounded-md border-2 border-border p-2 hover:bg-muted peer-data-[state=checked]:border-ring cursor-pointer text-center"
                   >
-                    <span className="font-bold text-xs">Compact</span>
-                    <span className="text-[10px] text-slate-500">32px / 34px</span>
+                    <span className="font-medium text-xs">Compact</span>
+                    <span className="text-[10px] text-muted-foreground">32px / 34px</span>
                   </Label>
                 </div>
                 <div>
                   <RadioGroupItem value="comfortable" id="pnl-d-comf" className="peer sr-only" />
                   <Label
                     htmlFor="pnl-d-comf"
-                    className="flex flex-col items-center justify-between rounded-md border-2 border-slate-200 p-2 hover:bg-slate-50 peer-data-[state=checked]:border-[#FA634E] cursor-pointer text-center"
+                    className="flex flex-col items-center justify-between rounded-md border-2 border-border p-2 hover:bg-muted peer-data-[state=checked]:border-ring cursor-pointer text-center"
                   >
-                    <span className="font-bold text-xs">Comfortable</span>
-                    <span className="text-[10px] text-slate-500">38px / 40px</span>
+                    <span className="font-medium text-xs">Comfortable</span>
+                    <span className="text-[10px] text-muted-foreground">38px / 40px</span>
                   </Label>
                 </div>
               </RadioGroup>
@@ -682,20 +671,20 @@ export default function ProfitAndLossPage() {
       <Sheet open={isSetupOpen} onOpenChange={setIsSetupOpen}>
         <SheetContent className="w-80 sm:w-96 p-6 space-y-6">
           <SheetHeader>
-            <SheetTitle className="text-base font-bold">Statement Setup</SheetTitle>
+            <SheetTitle className="text-base font-semibold">Statement Setup</SheetTitle>
             <SheetDescription className="text-xs">Manage P&L account classifications and reset overrides</SheetDescription>
           </SheetHeader>
 
           <div className="space-y-4 text-xs">
-            <p className="text-slate-600 dark:text-slate-400">
-              Custom overrides saved in your browser: <span className="font-bold">{Object.keys(classifications).length} entries</span>.
+            <p className="text-muted-foreground">
+              Custom overrides saved in your browser: <span className="font-medium text-foreground">{Object.keys(classifications).length} entries</span>.
             </p>
 
             <Button
               variant="outline"
               size="sm"
               onClick={handleResetSetup}
-              className="w-full text-xs font-semibold text-rose-600 border-rose-200 hover:bg-rose-50 gap-1.5"
+              className="w-full text-xs font-medium text-rose-600 border-border hover:bg-muted gap-1.5"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Reset to defaults</span>
@@ -716,3 +705,4 @@ export default function ProfitAndLossPage() {
     </DashboardLayout>
   );
 }
+

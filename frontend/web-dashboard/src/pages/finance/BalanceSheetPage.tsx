@@ -227,7 +227,7 @@ export default function BalanceSheetPage() {
       return <span className="text-rose-600 dark:text-rose-400 fin-num font-medium">{displayStr}</span>;
     }
     return (
-      <span className={`fin-num ${isTotal ? 'font-bold text-slate-900 dark:text-slate-100' : 'font-medium text-slate-800 dark:text-slate-200'}`}>
+      <span className={`fin-num ${isTotal ? 'font-semibold text-foreground' : 'font-medium text-foreground'}`}>
         {formatted}
       </span>
     );
@@ -294,28 +294,28 @@ export default function BalanceSheetPage() {
       <div className="p-4 space-y-4 max-w-[1400px] mx-auto print:p-0">
         {/* Single-Row Toolbar (No Card Wrapper) */}
         <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
-          <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
             {/* View Tabs */}
             <ToggleGroup
               value={[activeTab]}
               onValueChange={(v: string[]) => v[0] && updateParam('tab', v[0])}
-              className="bg-[#F4F4F5] dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60"
+              className="bg-muted p-[3px] rounded-lg border border-border/60"
             >
               <ToggleGroupItem
                 value="statement"
-                className="h-7 text-xs font-semibold px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-slate-900 data-[state=on]:text-[#3E3C3D] dark:data-[state=on]:text-slate-100 data-[state=on]:shadow-2xs"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
               >
                 Statement
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="analysis"
-                className="h-7 text-xs font-semibold px-3 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-slate-900 data-[state=on]:text-[#3E3C3D] dark:data-[state=on]:text-slate-100 data-[state=on]:shadow-2xs"
+                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs"
               >
                 Analysis
               </ToggleGroupItem>
             </ToggleGroup>
 
-            <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 hidden sm:block" />
+            <div className="h-4 w-px bg-border hidden sm:block" />
 
             {/* As Of Date Popover */}
             <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
@@ -323,24 +323,24 @@ export default function BalanceSheetPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-8 text-xs font-semibold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 gap-1.5"
+                  className="h-8 text-xs font-medium bg-background border-border gap-1.5"
                 >
-                  <CalendarIcon className="w-3.5 h-3.5 text-[#FA634E]" />
+                  <CalendarIcon className="w-3.5 h-3.5 text-muted-foreground" />
                   <span>As of {formatDate(asOf)}</span>
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-3 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 space-y-3" align="start">
-                <div className="grid grid-cols-2 gap-1.5 border-b border-slate-100 dark:border-slate-800 pb-2.5">
-                  <Button variant="ghost" size="sm" className="h-7 text-[11px] justify-start px-2 font-medium" onClick={() => handlePreset('today')}>
+              <PopoverContent className="w-auto p-3 bg-card border-border space-y-3" align="start">
+                <div className="grid grid-cols-2 gap-1.5 border-b border-border pb-2.5">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs justify-start px-2 font-medium" onClick={() => handlePreset('today')}>
                     Today
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-7 text-[11px] justify-start px-2 font-medium" onClick={() => handlePreset('last_month')}>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs justify-start px-2 font-medium" onClick={() => handlePreset('last_month')}>
                     End of last month
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-7 text-[11px] justify-start px-2 font-medium" onClick={() => handlePreset('last_quarter')}>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs justify-start px-2 font-medium" onClick={() => handlePreset('last_quarter')}>
                     End of last quarter
                   </Button>
-                  <Button variant="ghost" size="sm" className="h-7 text-[11px] justify-start px-2 font-medium" onClick={() => handlePreset('last_year')}>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs justify-start px-2 font-medium" onClick={() => handlePreset('last_year')}>
                     End of last year
                   </Button>
                 </div>
@@ -362,12 +362,12 @@ export default function BalanceSheetPage() {
               <ToggleGroup
                 value={[layout]}
                 onValueChange={(v: string[]) => v[0] && updateParam('layout', v[0])}
-                className="bg-[#F4F4F5] dark:bg-slate-800/80 p-0.5 rounded-lg border border-slate-200/60 dark:border-slate-700/60"
+                className="bg-muted p-[3px] rounded-lg border border-border/60"
               >
-                <ToggleGroupItem value="vertical" className="h-7 text-xs font-semibold px-2.5 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-slate-900">
+                <ToggleGroupItem value="vertical" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
                   Vertical
                 </ToggleGroupItem>
-                <ToggleGroupItem value="horizontal" className="h-7 text-xs font-semibold px-2.5 rounded-md data-[state=on]:bg-white dark:data-[state=on]:bg-slate-900">
+                <ToggleGroupItem value="horizontal" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-2xs">
                   Horizontal
                 </ToggleGroupItem>
               </ToggleGroup>
@@ -376,7 +376,7 @@ export default function BalanceSheetPage() {
             {/* Compare Select */}
             {activeTab === 'statement' && (
               <Select value={compareMode} onValueChange={(v) => updateParam('compare', v)}>
-                <SelectTrigger className="h-8 text-xs w-44 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 font-medium">
+                <SelectTrigger className="h-8 text-xs w-44 bg-background border-border font-medium text-foreground">
                   <SelectValue placeholder="Compare: None" />
                 </SelectTrigger>
                 <SelectContent className="text-xs font-medium">
@@ -388,22 +388,22 @@ export default function BalanceSheetPage() {
             )}
           </div>
 
-          {/* Right Actions */}
+          {/* Right Actions - NO FILLED BUTTONS (Export is outline) */}
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs font-semibold text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 gap-1.5"
+              className="h-8 text-xs font-medium border-border gap-1.5"
               onClick={() => setIsCustomizeOpen(true)}
             >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+              <SlidersHorizontal className="w-3.5 h-3.5 text-muted-foreground" />
               <span>Customize</span>
             </Button>
 
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs font-semibold text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 gap-1.5"
+              className="h-8 text-xs font-medium border-border gap-1.5"
               onClick={() => setIsSetupOpen(true)}
             >
               <span>Setup</span>
@@ -412,20 +412,21 @@ export default function BalanceSheetPage() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs font-semibold text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 gap-1.5"
+              className="h-8 text-xs font-medium border-border gap-1.5"
               onClick={() => window.print()}
             >
-              <Printer className="w-3.5 h-3.5 text-slate-500" />
+              <Printer className="w-3.5 h-3.5 text-muted-foreground" />
               <span>Print</span>
             </Button>
 
             <Button
+              variant="outline"
               size="sm"
-              className="h-8 text-xs font-semibold bg-[#FA634E] hover:bg-[#e05440] text-white shadow-xs gap-1.5 cursor-pointer"
+              className="h-8 text-xs font-medium border-border gap-1.5"
               onClick={() => setIsExportOpen(true)}
               disabled={isLoading || !processedData}
             >
-              <Download className="w-3.5 h-3.5" />
+              <Download className="w-3.5 h-3.5 text-muted-foreground" />
               <span>Export</span>
             </Button>
           </div>
@@ -433,7 +434,7 @@ export default function BalanceSheetPage() {
 
         {/* Error State */}
         {isError && (
-          <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl p-4 text-rose-800 dark:text-rose-200 text-xs font-medium flex items-center justify-between">
+          <div className="bg-rose-500/10 border border-rose-600/20 rounded-xl p-4 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-center justify-between">
             <span>Failed to load Balance Sheet statement. Please try again.</span>
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => refetch()}>
               Retry
@@ -443,7 +444,7 @@ export default function BalanceSheetPage() {
 
         {/* Loading Skeleton */}
         {isLoading && (
-          <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 p-8 space-y-6">
+          <div className="bg-card rounded-xl border border-border p-8 space-y-6 shadow-xs">
             <Skeleton className="h-8 w-64 mx-auto" />
             <Skeleton className="h-4 w-40 mx-auto" />
             <div className="space-y-4 pt-6">
@@ -459,8 +460,8 @@ export default function BalanceSheetPage() {
           <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4">
             {/* Left: Statement Card */}
             <div className="space-y-4 min-w-0">
-              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/90 dark:border-slate-800 p-5 shadow-xs w-full print:shadow-none print:border-none print:p-0 space-y-4">
-                {/* On-Screen Compact Header Bar */}
+              <div className="bg-card rounded-xl border border-border p-5 shadow-xs w-full print:shadow-none print:border-none print:p-0 space-y-4">
+                {/* On-Screen Header Bar */}
                 <StatementHeaderBar
                   title="Balance Sheet"
                   subtitle="MERCON LOGISTICS CO."
@@ -469,11 +470,11 @@ export default function BalanceSheetPage() {
                 />
 
                 {/* Print Only Formal Centred Header */}
-                <div className="hidden print:block text-center space-y-1 pb-4 border-b border-slate-200">
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-500">MERCON Logistics</p>
-                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">Balance Sheet</h1>
-                  <p className="text-xs font-medium text-slate-600">As of {formatDate(asOf)}</p>
-                  <p className="text-[11px] font-mono text-slate-500">Amounts in SAR</p>
+                <div className="hidden print:block text-center space-y-1 pb-4 border-b border-border">
+                  <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">MERCON Logistics</p>
+                  <h1 className="text-2xl font-bold tracking-tight text-foreground">Balance Sheet</h1>
+                  <p className="text-xs font-medium text-muted-foreground">As of {formatDate(asOf)}</p>
+                  <p className="text-[11px] text-muted-foreground fin-num">Amounts in SAR</p>
                 </div>
 
                 {/* VERTICAL LAYOUT */}
@@ -481,19 +482,19 @@ export default function BalanceSheetPage() {
                   <div className="space-y-5 text-xs">
                     {/* ── ASSETS SECTION ── */}
                     <div id="section-assets" className="space-y-2">
-                      <div className="h-[38px] px-3 bg-sky-50 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 font-bold rounded-lg flex items-center justify-between">
-                        <span className="flex items-center gap-2 text-xs uppercase tracking-wider">
+                      <div className="h-9 px-3 bg-muted/40 text-foreground font-semibold rounded-lg flex items-center justify-between border-b border-border/60">
+                        <span className="flex items-center gap-2 text-xs">
                           <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
                           <span>Assets</span>
                         </span>
-                        <span className="fin-num text-xs font-bold">{renderAmount(processedData.totalAssets, true)}</span>
+                        <span className="fin-num text-xs font-semibold">{renderAmount(processedData.totalAssets, true)}</span>
                       </div>
 
                       {/* Current Assets Sub-Groups */}
                       <div className="pl-3 space-y-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-400 flex items-center gap-1.5 pt-1">
-                          <span className="w-1.2 h-1.2 rounded-full bg-sky-500" />
-                          <span>Current Assets</span>
+                        <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pt-1">
+                          <span className="w-1 h-1 rounded-full bg-sky-500" />
+                          <span>Current assets</span>
                         </div>
 
                         <div className="pl-2 space-y-1">
@@ -501,14 +502,12 @@ export default function BalanceSheetPage() {
                             const items = processedData.assetSubGroups[subCat];
                             if (items.length === 0 && !showZeroRows) return null;
                             const subTotal = items.reduce((sum, i) => sum + i.amount, 0);
-
-                            // Fix A1: Single-account collapse
                             const isSingle = items.length === 1;
 
                             return (
                               <div key={subCat} className="space-y-0.5">
                                 {!isSingle && (
-                                  <div className="flex items-center justify-between py-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
+                                  <div className="flex items-center justify-between py-1 text-[11px] font-medium text-muted-foreground border-b border-border/40">
                                     <span>{subCat}</span>
                                     <span className="fin-num">{renderAmount(subTotal)}</span>
                                   </div>
@@ -517,15 +516,15 @@ export default function BalanceSheetPage() {
                                   <div
                                     key={item.account_id || item.account_code || item.name}
                                     onClick={() => handleAccountClick(item)}
-                                    className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-sky-50/50 dark:hover:bg-sky-950/20 rounded-md cursor-pointer transition-colors text-[13px]`}
+                                    className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-[13px]`}
                                   >
                                     <div className="flex items-center gap-2">
                                       {showCodes && item.account_code && (
-                                        <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                                        <span className="w-12 text-muted-foreground fin-num text-xs">
                                           {item.account_code}
                                         </span>
                                       )}
-                                      <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-[#FA634E]">
+                                      <span className="font-normal text-foreground group-hover:text-[#FA634E] transition-colors">
                                         {item.name}
                                       </span>
                                     </div>
@@ -538,8 +537,8 @@ export default function BalanceSheetPage() {
                         </div>
 
                         {/* Total Current Assets Row */}
-                        <div className="flex items-center justify-between py-2 px-3 bg-sky-50/60 dark:bg-sky-950/20 rounded-md font-semibold text-slate-900 dark:text-slate-100 border-t border-sky-100 dark:border-sky-900">
-                          <span>Total Current Assets</span>
+                        <div className="flex items-center justify-between py-2 px-3 border-t border-border font-medium text-foreground">
+                          <span>Total current assets</span>
                           <span className="w-36 text-right fin-num">{renderAmount(processedData.currentAssetsTotal, true)}</span>
                         </div>
                       </div>
@@ -547,24 +546,24 @@ export default function BalanceSheetPage() {
                       {/* Fixed Assets Sub-Group */}
                       {processedData.fixedAssets.length > 0 && (
                         <div className="pl-3 space-y-1 pt-1">
-                          <div className="text-[11px] font-semibold uppercase tracking-wider text-sky-700 dark:text-sky-400 flex items-center gap-1.5">
-                            <span className="w-1.2 h-1.2 rounded-full bg-sky-500" />
-                            <span>Fixed Assets</span>
+                          <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                            <span className="w-1 h-1 rounded-full bg-sky-500" />
+                            <span>Fixed assets</span>
                           </div>
                           <div className="pl-2 space-y-0.5">
                             {processedData.fixedAssets.map((item) => (
                               <div
                                 key={item.account_id || item.account_code || item.name}
                                 onClick={() => handleAccountClick(item)}
-                                className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-sky-50/50 dark:hover:bg-sky-950/20 rounded-md cursor-pointer transition-colors text-[13px]`}
+                                className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-[13px]`}
                               >
                                 <div className="flex items-center gap-2">
                                   {showCodes && item.account_code && (
-                                    <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                                    <span className="w-12 text-muted-foreground fin-num text-xs">
                                       {item.account_code}
                                     </span>
                                   )}
-                                  <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-[#FA634E]">
+                                  <span className="font-normal text-foreground group-hover:text-[#FA634E] transition-colors">
                                     {item.name}
                                   </span>
                                 </div>
@@ -572,35 +571,35 @@ export default function BalanceSheetPage() {
                               </div>
                             ))}
                           </div>
-                          <div className="flex items-center justify-between py-2 px-3 bg-sky-50/60 dark:bg-sky-950/20 rounded-md font-semibold text-slate-900 dark:text-slate-100">
-                            <span>Total Fixed Assets</span>
+                          <div className="flex items-center justify-between py-2 px-3 border-t border-border font-medium text-foreground">
+                            <span>Total fixed assets</span>
                             <span className="w-36 text-right fin-num">{renderAmount(processedData.fixedAssetsTotal, true)}</span>
                           </div>
                         </div>
                       )}
 
                       {/* Grand Total Assets */}
-                      <div className="bg-[#3E3C3D] text-white rounded-lg h-[40px] px-4 flex items-center justify-between font-extrabold text-sm shadow-xs mt-2">
-                        <span className="uppercase tracking-wider">TOTAL ASSETS</span>
-                        <span className="w-36 text-right fin-num text-white">{renderAmount(processedData.totalAssets, true)}</span>
+                      <div className="flex items-center justify-between py-2.5 px-3 border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 font-semibold text-foreground text-sm mt-2">
+                        <span>Total assets</span>
+                        <span className="w-36 text-right fin-num">{renderAmount(processedData.totalAssets, true)}</span>
                       </div>
                     </div>
 
                     {/* ── LIABILITIES SECTION ── */}
                     <div id="section-liabilities" className="space-y-2 pt-2">
-                      <div className="h-[38px] px-3 bg-orange-50 dark:bg-orange-950/40 text-orange-800 dark:text-orange-300 font-bold rounded-lg flex items-center justify-between">
-                        <span className="flex items-center gap-2 text-xs uppercase tracking-wider">
+                      <div className="h-9 px-3 bg-muted/40 text-foreground font-semibold rounded-lg flex items-center justify-between border-b border-border/60">
+                        <span className="flex items-center gap-2 text-xs">
                           <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
                           <span>Liabilities</span>
                         </span>
-                        <span className="fin-num text-xs font-bold">{renderAmount(processedData.totalLiabilities, true)}</span>
+                        <span className="fin-num text-xs font-semibold">{renderAmount(processedData.totalLiabilities, true)}</span>
                       </div>
 
                       {/* Current Liabilities Sub-Groups */}
                       <div className="pl-3 space-y-2">
-                        <div className="text-[11px] font-semibold uppercase tracking-wider text-orange-700 dark:text-orange-400 flex items-center gap-1.5 pt-1">
-                          <span className="w-1.2 h-1.2 rounded-full bg-orange-500" />
-                          <span>Current Liabilities</span>
+                        <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pt-1">
+                          <span className="w-1 h-1 rounded-full bg-orange-500" />
+                          <span>Current liabilities</span>
                         </div>
 
                         <div className="pl-2 space-y-1">
@@ -608,14 +607,12 @@ export default function BalanceSheetPage() {
                             const items = processedData.liabilitySubGroups[subCat];
                             if (items.length === 0 && !showZeroRows) return null;
                             const subTotal = items.reduce((sum, i) => sum + i.amount, 0);
-
-                            // Fix A1: Single-account collapse
                             const isSingle = items.length === 1;
 
                             return (
                               <div key={subCat} className="space-y-0.5">
                                 {!isSingle && (
-                                  <div className="flex items-center justify-between py-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
+                                  <div className="flex items-center justify-between py-1 text-[11px] font-medium text-muted-foreground border-b border-border/40">
                                     <span>{subCat}</span>
                                     <span className="fin-num">{renderAmount(subTotal)}</span>
                                   </div>
@@ -624,15 +621,15 @@ export default function BalanceSheetPage() {
                                   <div
                                     key={item.account_id || item.account_code || item.name}
                                     onClick={() => handleAccountClick(item)}
-                                    className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-orange-50/50 dark:hover:bg-orange-950/20 rounded-md cursor-pointer transition-colors text-[13px]`}
+                                    className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-[13px]`}
                                   >
                                     <div className="flex items-center gap-2">
                                       {showCodes && item.account_code && (
-                                        <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                                        <span className="w-12 text-muted-foreground fin-num text-xs">
                                           {item.account_code}
                                         </span>
                                       )}
-                                      <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-[#FA634E]">
+                                      <span className="font-normal text-foreground group-hover:text-[#FA634E] transition-colors">
                                         {item.name}
                                       </span>
                                     </div>
@@ -645,27 +642,27 @@ export default function BalanceSheetPage() {
                         </div>
 
                         {/* Total Current Liabilities Row */}
-                        <div className="flex items-center justify-between py-2 px-3 bg-orange-50/60 dark:bg-orange-950/20 rounded-md font-semibold text-slate-900 dark:text-slate-100 border-t border-orange-100 dark:border-orange-900">
-                          <span>Total Current Liabilities</span>
+                        <div className="flex items-center justify-between py-2 px-3 border-t border-border font-medium text-foreground">
+                          <span>Total current liabilities</span>
                           <span className="w-36 text-right fin-num">{renderAmount(processedData.currentLiabilitiesTotal, true)}</span>
                         </div>
                       </div>
 
                       {/* Total Liabilities Subtotal */}
-                      <div className="flex items-center justify-between py-2 px-3 bg-orange-100/60 dark:bg-orange-900/30 rounded-md font-bold text-slate-900 dark:text-slate-100">
-                        <span>Total Liabilities</span>
+                      <div className="flex items-center justify-between py-2 px-3 border-t border-border font-medium text-foreground">
+                        <span>Total liabilities</span>
                         <span className="w-36 text-right fin-num">{renderAmount(processedData.totalLiabilities, true)}</span>
                       </div>
                     </div>
 
                     {/* ── EQUITY SECTION ── */}
                     <div id="section-equity" className="space-y-2 pt-2">
-                      <div className="h-[38px] px-3 bg-violet-50 dark:bg-violet-950/40 text-violet-800 dark:text-violet-300 font-bold rounded-lg flex items-center justify-between">
-                        <span className="flex items-center gap-2 text-xs uppercase tracking-wider">
+                      <div className="h-9 px-3 bg-muted/40 text-foreground font-semibold rounded-lg flex items-center justify-between border-b border-border/60">
+                        <span className="flex items-center gap-2 text-xs">
                           <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
                           <span>Equity</span>
                         </span>
-                        <span className="fin-num text-xs font-bold">{renderAmount(processedData.totalEquity, true)}</span>
+                        <span className="fin-num text-xs font-semibold">{renderAmount(processedData.totalEquity, true)}</span>
                       </div>
 
                       <div className="pl-3 space-y-0.5">
@@ -673,15 +670,15 @@ export default function BalanceSheetPage() {
                           <div
                             key={item.account_id || item.account_code || item.name}
                             onClick={() => handleAccountClick(item)}
-                            className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-violet-50/50 dark:hover:bg-violet-950/20 rounded-md cursor-pointer transition-colors text-[13px]`}
+                            className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-[13px]`}
                           >
                             <div className="flex items-center gap-2">
                               {showCodes && item.account_code && (
-                                <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
+                                <span className="w-12 text-muted-foreground fin-num text-xs">
                                   {item.account_code}
                                 </span>
                               )}
-                              <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-[#FA634E]">
+                              <span className="font-normal text-foreground group-hover:text-[#FA634E] transition-colors">
                                 {item.name}
                               </span>
                             </div>
@@ -690,16 +687,16 @@ export default function BalanceSheetPage() {
                         ))}
                       </div>
 
-                      <div className="flex items-center justify-between py-2 px-3 bg-violet-50/60 dark:bg-violet-950/20 rounded-md font-semibold text-slate-900 dark:text-slate-100">
-                        <span>Total Equity</span>
+                      <div className="flex items-center justify-between py-2 px-3 border-t border-border font-medium text-foreground">
+                        <span>Total equity</span>
                         <span className="w-36 text-right fin-num">{renderAmount(processedData.totalEquity, true)}</span>
                       </div>
                     </div>
 
                     {/* GRAND TOTAL LIABILITIES & EQUITY */}
-                    <div className="bg-[#3E3C3D] text-white rounded-lg h-[40px] px-4 flex items-center justify-between font-extrabold text-sm shadow-xs mt-3">
-                      <span className="uppercase tracking-wider">TOTAL LIABILITIES & EQUITY</span>
-                      <span className="w-36 text-right fin-num text-white">{renderAmount(processedData.totalLiabilitiesAndEquity, true)}</span>
+                    <div className="flex items-center justify-between py-2.5 px-3 border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 font-semibold text-foreground text-sm mt-3">
+                      <span>Total liabilities & equity</span>
+                      <span className="w-36 text-right fin-num">{renderAmount(processedData.totalLiabilitiesAndEquity, true)}</span>
                     </div>
                   </div>
                 )}
@@ -708,23 +705,23 @@ export default function BalanceSheetPage() {
                 {layout === 'horizontal' && (
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
                     {/* Left: Liabilities & Equity */}
-                    <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-3 bg-orange-50/20 dark:bg-slate-900/40">
-                      <div className="flex items-center justify-between border-b border-orange-200 dark:border-slate-800 pb-2">
-                        <span className="font-bold text-orange-900 dark:text-orange-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
+                    <div className="border border-border rounded-xl p-3.5 space-y-3 bg-card">
+                      <div className="flex items-center justify-between border-b border-border pb-2">
+                        <span className="font-semibold text-foreground text-xs flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
                           <span>Liabilities & Equity</span>
                         </span>
-                        <Badge variant="outline" className="text-[10px] font-mono bg-rose-50 text-rose-700 border-rose-200">
+                        <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground ring-1 ring-inset ring-border">
                           Dr
-                        </Badge>
+                        </span>
                       </div>
 
                       {/* Liabilities Section */}
                       <div className="space-y-1">
-                        <div className="text-[11px] font-bold text-orange-700 dark:text-orange-400 uppercase">Liabilities</div>
+                        <div className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">Liabilities</div>
                         {processedData.classifiedLiabilities.map((item) => (
-                          <div key={item.name} className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
-                            <span className="text-slate-700 dark:text-slate-300 font-medium">{item.name}</span>
+                          <div key={item.name} className="flex justify-between py-1 border-b border-border/60">
+                            <span className="text-foreground font-normal">{item.name}</span>
                             <span className="fin-num">{renderAmount(item.amount)}</span>
                           </div>
                         ))}
@@ -732,45 +729,45 @@ export default function BalanceSheetPage() {
 
                       {/* Equity Section */}
                       <div className="space-y-1 pt-2">
-                        <div className="text-[11px] font-bold text-violet-700 dark:text-violet-400 uppercase">Equity</div>
+                        <div className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">Equity</div>
                         {processedData.classifiedEquity.map((item) => (
-                          <div key={item.name} className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
-                            <span className="text-slate-700 dark:text-slate-300 font-medium">{item.name}</span>
+                          <div key={item.name} className="flex justify-between py-1 border-b border-border/60">
+                            <span className="text-foreground font-normal">{item.name}</span>
                             <span className="fin-num">{renderAmount(item.amount)}</span>
                           </div>
                         ))}
                       </div>
 
-                      <div className="pt-3 border-t-2 border-slate-900 dark:border-slate-200 flex justify-between font-extrabold text-sm text-slate-900 dark:text-slate-100">
-                        <span>TOTAL</span>
+                      <div className="pt-3 border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 flex justify-between font-semibold text-sm text-foreground">
+                        <span>Total</span>
                         <span className="fin-num">{renderAmount(processedData.totalLiabilitiesAndEquity, true)}</span>
                       </div>
                     </div>
 
                     {/* Right: Assets */}
-                    <div className="border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-3 bg-sky-50/20 dark:bg-slate-900/40">
-                      <div className="flex items-center justify-between border-b border-sky-200 dark:border-slate-800 pb-2">
-                        <span className="font-bold text-sky-900 dark:text-sky-300 uppercase tracking-wider text-xs flex items-center gap-1.5">
+                    <div className="border border-border rounded-xl p-3.5 space-y-3 bg-card">
+                      <div className="flex items-center justify-between border-b border-border pb-2">
+                        <span className="font-semibold text-foreground text-xs flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
                           <span>Assets</span>
                         </span>
-                        <Badge variant="outline" className="text-[10px] font-mono bg-emerald-50 text-emerald-700 border-emerald-200">
+                        <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground ring-1 ring-inset ring-border">
                           Cr
-                        </Badge>
+                        </span>
                       </div>
 
                       <div className="space-y-1">
-                        <div className="text-[11px] font-bold text-sky-700 dark:text-sky-400 uppercase">Assets</div>
+                        <div className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">Assets</div>
                         {processedData.classifiedAssets.map((item) => (
-                          <div key={item.name} className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800/60">
-                            <span className="text-slate-700 dark:text-slate-300 font-medium">{item.name}</span>
+                          <div key={item.name} className="flex justify-between py-1 border-b border-border/60">
+                            <span className="text-foreground font-normal">{item.name}</span>
                             <span className="fin-num">{renderAmount(item.amount)}</span>
                           </div>
                         ))}
                       </div>
 
-                      <div className="pt-3 border-t-2 border-slate-900 dark:border-slate-200 flex justify-between font-extrabold text-sm text-slate-900 dark:text-slate-100">
-                        <span>TOTAL</span>
+                      <div className="pt-3 border-t border-foreground/70 border-b-[3px] border-double border-foreground/70 flex justify-between font-semibold text-sm text-foreground">
+                        <span>Total</span>
                         <span className="fin-num">{renderAmount(processedData.totalAssets, true)}</span>
                       </div>
                     </div>
@@ -809,13 +806,13 @@ export default function BalanceSheetPage() {
       <Sheet open={isCustomizeOpen} onOpenChange={setIsCustomizeOpen}>
         <SheetContent className="w-80 sm:w-96 p-6 space-y-6">
           <SheetHeader>
-            <SheetTitle className="text-base font-bold">Customize Balance Sheet</SheetTitle>
-            <SheetDescription className="text-xs">Adjust view options and density</SheetDescription>
+            <SheetTitle className="text-base font-semibold">Customize Balance Sheet</SheetTitle>
+            <SheetDescription className="text-xs text-muted-foreground">Adjust view options and density</SheetDescription>
           </SheetHeader>
 
           <div className="space-y-5 text-xs">
             <div className="flex items-center justify-between">
-              <Label htmlFor="show-codes" className="cursor-pointer font-medium">Show Account Codes</Label>
+              <Label htmlFor="show-codes" className="cursor-pointer font-medium text-foreground">Show account codes</Label>
               <Switch
                 id="show-codes"
                 checked={showCodes}
@@ -824,7 +821,7 @@ export default function BalanceSheetPage() {
             </div>
 
             <div className="flex items-center justify-between">
-              <Label htmlFor="zero-rows" className="cursor-pointer font-medium">Show Zero-Balance Rows</Label>
+              <Label htmlFor="zero-rows" className="cursor-pointer font-medium text-foreground">Show zero-balance rows</Label>
               <Switch
                 id="zero-rows"
                 checked={showZeroRows}
@@ -833,7 +830,7 @@ export default function BalanceSheetPage() {
             </div>
 
             <div className="space-y-2">
-              <Label className="font-semibold text-slate-700 dark:text-slate-300">Density</Label>
+              <Label className="font-semibold text-foreground">Density</Label>
               <RadioGroup
                 value={density}
                 onValueChange={(val) => updateParam('density', val)}
@@ -843,20 +840,20 @@ export default function BalanceSheetPage() {
                   <RadioGroupItem value="compact" id="d-compact" className="peer sr-only" />
                   <Label
                     htmlFor="d-compact"
-                    className="flex flex-col items-center justify-between rounded-md border-2 border-slate-200 p-2 hover:bg-slate-50 peer-data-[state=checked]:border-[#FA634E] cursor-pointer text-center"
+                    className="flex flex-col items-center justify-between rounded-md border-2 border-border p-2 hover:bg-muted peer-data-[state=checked]:border-[#FA634E] cursor-pointer text-center"
                   >
-                    <span className="font-bold text-xs">Compact</span>
-                    <span className="text-[10px] text-slate-500">32px / 34px</span>
+                    <span className="font-semibold text-xs text-foreground">Compact</span>
+                    <span className="text-[10px] text-muted-foreground">32px / 34px</span>
                   </Label>
                 </div>
                 <div>
                   <RadioGroupItem value="comfortable" id="d-comf" className="peer sr-only" />
                   <Label
                     htmlFor="d-comf"
-                    className="flex flex-col items-center justify-between rounded-md border-2 border-slate-200 p-2 hover:bg-slate-50 peer-data-[state=checked]:border-[#FA634E] cursor-pointer text-center"
+                    className="flex flex-col items-center justify-between rounded-md border-2 border-border p-2 hover:bg-muted peer-data-[state=checked]:border-[#FA634E] cursor-pointer text-center"
                   >
-                    <span className="font-bold text-xs">Comfortable</span>
-                    <span className="text-[10px] text-slate-500">38px / 40px</span>
+                    <span className="font-semibold text-xs text-foreground">Comfortable</span>
+                    <span className="text-[10px] text-muted-foreground">38px / 40px</span>
                   </Label>
                 </div>
               </RadioGroup>
@@ -869,20 +866,20 @@ export default function BalanceSheetPage() {
       <Sheet open={isSetupOpen} onOpenChange={setIsSetupOpen}>
         <SheetContent className="w-80 sm:w-96 p-6 space-y-6">
           <SheetHeader>
-            <SheetTitle className="text-base font-bold">Statement Setup</SheetTitle>
-            <SheetDescription className="text-xs">Configure classification defaults and reset custom overrides</SheetDescription>
+            <SheetTitle className="text-base font-semibold">Statement Setup</SheetTitle>
+            <SheetDescription className="text-xs text-muted-foreground">Configure classification defaults and reset custom overrides</SheetDescription>
           </SheetHeader>
 
           <div className="space-y-4 text-xs">
-            <p className="text-slate-600 dark:text-slate-400">
-              Custom overrides saved in your browser: <span className="font-bold">{Object.keys(overrides).length} entries</span>.
+            <p className="text-muted-foreground">
+              Custom overrides saved in your browser: <span className="font-semibold text-foreground">{Object.keys(overrides).length} entries</span>.
             </p>
 
             <Button
               variant="outline"
               size="sm"
               onClick={handleResetDefaults}
-              className="w-full text-xs font-semibold text-rose-600 border-rose-200 hover:bg-rose-50 gap-1.5"
+              className="w-full text-xs font-semibold text-rose-600 border-rose-600/30 hover:bg-rose-500/10 gap-1.5"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span>Reset to defaults</span>
