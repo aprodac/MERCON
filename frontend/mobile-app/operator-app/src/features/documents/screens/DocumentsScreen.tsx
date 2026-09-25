@@ -159,6 +159,7 @@ export default function DocumentsScreen() {
         <ErrorState message={error} onRetry={refetch} className="flex-1" />
       ) : activeFolder ? (
         <FlatList
+          key="documents-list"
           data={folders.find(f => f.name === activeFolder)?.docs || []}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
@@ -167,6 +168,7 @@ export default function DocumentsScreen() {
         />
       ) : (
         <FlatList
+          key="folders-grid"
           data={folders}
           keyExtractor={(item) => item.name}
           renderItem={renderFolderItem}
