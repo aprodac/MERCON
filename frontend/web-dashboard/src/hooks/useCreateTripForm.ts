@@ -394,6 +394,13 @@ export function useCreateTripForm() {
               const slotStops = buildStopsFromSlot(slot, slotIsRound);
               const slotLegs = routeLegsFromSlot(slot, slotIsRound);
 
+              // Even on a forced re-lookup, a quotation the user picked that still
+              // covers exactly this route stays selected.
+              const cardCustomer = (slot.matchedRateCard as any)?.customer_id;
+              if (slot.matchedRateCard && slot.rateMatched && (!cardCustomer || cardCustomer === custId) && quotationMatchesRoute(slot.matchedRateCard as any, slotLegs, slotIsRound)) {
+                return slot;
+              }
+
               try {
                 let card: RateCard | null = null;
                 if (slot.originLocationId && slot.destinationLocationId) {
@@ -790,9 +797,16 @@ export function useCreateTripForm() {
     const prev = prevRouteKeyRef.current;
     prevRouteKeyRef.current = routeKey;
     if (prev === null || prev === routeKey || !contractCustomer) return;
+    const isRound = isRoundTripCategory(contractRateCategory || '');
+    // Selecting a quotation card rewrites the route to the card's own route —
+    // that match is still valid, so keep it instead of opening "Define Quotation".
+    const stillMatches = (s: typeof contractSlots[number]) =>
+      Boolean(s.rateMatched && s.matchedRateCard && quotationMatchesRoute(s.matchedRateCard as any, routeLegsFromSlot(s, isRound), isRound));
+    const current = contractSlotsRef.current;
+    if (current.length > 0 && current.every(stillMatches)) return;
     setContractSlots((slots) =>
       slots.map((s) =>
-        s.rateMatched || s.matchedRateCard
+        (s.rateMatched || s.matchedRateCard) && !stillMatches(s)
           ? {
               ...s,
               rateMatched: false,

@@ -10,6 +10,7 @@ import { DefineQuotationInlineForm } from './DefineQuotationInlineForm';
 import CustomerCardCarousel from './CustomerCardCarousel';
 import QuotationCardCarousel from './QuotationCardCarousel';
 import { getCardId } from './QuotationRateCard';
+import { quotationRouteLegs } from '@mercon/shared-types';
 
 const CITY_ALIASES: Record<string, string[]> = {
   riyadh: ['ruh', 'ryd', 'riyad', 'الرياض', 'رياض'],
@@ -608,10 +609,16 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
                     rateCategory: targetCategory,
                     vehicleType: targetVehicleClass,
                     pricingBasis: rc.pricing_basis || (normalizeBillingType(rc.operation_type || rc.billing_type) === 'Monthly' ? 'Per Month' : 'Per Trip'),
-                    origin: origName || primarySlot.origin,
-                    destination: destName || primarySlot.destination,
-                    originLocationId: rc.originLocation?.id || firstStop?.location?.id || firstStop?.location_id || primarySlot.originLocationId,
-                    destinationLocationId: rc.destinationLocation?.id || lastStop?.location?.id || lastStop?.location_id || primarySlot.destinationLocationId,
+                    origin: originLabel,
+                    originName: originLabel,
+                    originLocationId: originId,
+                    destination: destinationLabel,
+                    destinationName: destinationLabel,
+                    destinationLocationId: destinationId,
+                    // A different place: the old pin / address no longer applies.
+                    ...(originChanged ? { originLat: null, originLng: null, originAddress: undefined, originPrecision: undefined } : {}),
+                    ...(destinationChanged ? { destinationLat: null, destinationLng: null, destinationAddress: undefined, destinationPrecision: undefined } : {}),
+                    ...routePatch,
                   });
                 });
               }}

@@ -290,11 +290,11 @@ export default function ExportModal<T = any>({
     return result;
   };
 
-  const filteredPreviewCount = applyModalFilters(filteredData).length;
-  const allPreviewCount = applyModalFilters(allData && allData.length > 0 ? allData : filteredData).length;
+  const filteredPreviewCount = applyModalFilters(effectiveFilteredData).length;
+  const allPreviewCount = applyModalFilters(allData && allData.length > 0 ? allData : effectiveFilteredData).length;
   const selectedPreviewCount = selectedData.length; // selection is already explicit
 
-  const actualTotalCount = totalCount !== undefined ? totalCount : (allData?.length || filteredData.length);
+  const actualTotalCount = totalCount !== undefined ? totalCount : (allData?.length || effectiveFilteredData.length);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>

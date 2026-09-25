@@ -176,8 +176,8 @@ export default function ProfitAndLossPage() {
 
   // T-Format Data Structure
   const tFormatPnl = useMemo(() => {
-    return buildStructuredTFormatPnl(revenues, expenses, classifications);
-  }, [revenues, expenses, classifications]);
+    return buildStructuredTFormatPnl(verticalPnl);
+  }, [verticalPnl]);
 
   const isEmptyState = revenues.length === 0 && expenses.length === 0;
 

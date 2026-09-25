@@ -358,10 +358,22 @@ export default function LocationCombobox({
             <span className="truncate font-semibold text-slate-900 dark:text-slate-100">{displayLabel || placeholder}</span>
           </span>
           {selected && (
-            <div className="flex items-center gap-1 shrink-0 ml-1.5" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
+            <span className="flex items-center gap-1 shrink-0 ml-1.5" onClick={(e) => e.stopPropagation()}>
+              {/* A span, not a <button>: it sits inside the trigger <button>, and nested buttons are invalid HTML. */}
+              <span
+                role="button"
+                tabIndex={0}
                 onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setEditingLocation(selected);
+                  setIsSaveModalOpen(true);
+                  if (onEditPrecision) {
+                    onEditPrecision(selected);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter' && e.key !== ' ') return;
                   e.preventDefault();
                   e.stopPropagation();
                   setEditingLocation(selected);
@@ -379,8 +391,8 @@ export default function LocationCombobox({
                 title="Click to edit location details, map pin & address"
               >
                 {(precision || selected?.coordinate_precision || (selected?.lat != null ? 'APPROXIMATE' : 'UNKNOWN')) === 'EXACT' ? 'Exact (Edit)' : 'Area (Edit)'}
-              </button>
-            </div>
+              </span>
+            </span>
           )}
           <ChevronDown className="ml-1.5 h-3.5 w-3.5 shrink-0 opacity-50" />
         </Button>
