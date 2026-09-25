@@ -1229,7 +1229,7 @@ export default function TripPhotoEvidence({
                                       whole inside a phone-style frame so they read as screenshots. */}
                                   <div
                                     className={`relative w-full aspect-[4/3] overflow-hidden shrink-0 ${
-                                      isShot ? 'bg-gradient-to-b from-sky-100 to-sky-200/70 flex items-center justify-center py-2' : 'bg-slate-900'
+                                      isShot ? 'bg-gradient-to-b from-sky-100 to-sky-200/70 flex items-center justify-center py-2' : 'bg-charcoal'
                                     }`}
                                   >
                                     {photo.timeReview && (
@@ -1269,7 +1269,7 @@ export default function TripPhotoEvidence({
                                     )}
 
                                     {/* Top-Left Category Tag */}
-                                    <Badge className="absolute top-1.5 left-1.5 bg-black/65 backdrop-blur-xs text-white border-white/20 text-[8.5px] font-extrabold px-1.5 py-0.5 shadow-2xs max-w-[85%] truncate">
+                                    <Badge className="absolute top-1.5 left-1.5 bg-charcoal-strong/65 backdrop-blur-xs text-white border-white/20 text-[8.5px] font-extrabold px-1.5 py-0.5 shadow-2xs max-w-[85%] truncate">
                                       {photo.title}
                                     </Badge>
 
@@ -1285,7 +1285,7 @@ export default function TripPhotoEvidence({
                                     )}
 
                                     {/* Hover Overlay */}
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center text-white font-extrabold text-xs gap-1.5 backdrop-blur-[1px]">
+                                    <div className="absolute inset-0 bg-charcoal-strong/40 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center justify-center text-white font-extrabold text-xs gap-1.5 backdrop-blur-[1px]">
                                       <Eye size={15} />
                                       <span>Inspect</span>
                                     </div>
@@ -1384,7 +1384,7 @@ export default function TripPhotoEvidence({
                           {hasPhotos ? (
                             <div
                               onClick={() => handleOpenLightbox(loc.photos, 0)}
-                              className="relative w-full aspect-16/10 rounded-lg overflow-hidden bg-slate-900 border border-slate-300 shadow-xs cursor-pointer group/stack flex items-center justify-center"
+                              className="relative w-full aspect-16/10 rounded-lg overflow-hidden bg-charcoal border border-slate-300 shadow-xs cursor-pointer group/stack flex items-center justify-center"
                             >
                               {/* Primary Main Photo Thumbnail */}
                               {mainPhoto.isVideo ? (
@@ -1406,7 +1406,7 @@ export default function TripPhotoEvidence({
                               <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent flex flex-col justify-between p-2 text-white">
                                 <div className="flex items-center justify-between gap-1">
                                   <div className="flex flex-col items-start gap-1 min-w-0">
-                                    <Badge className="bg-black/60 backdrop-blur-xs text-white border-white/20 text-[9px] font-bold px-1.5 py-0.5 max-w-full truncate">
+                                    <Badge className="bg-charcoal-strong/60 backdrop-blur-xs text-white border-white/20 text-[9px] font-bold px-1.5 py-0.5 max-w-full truncate">
                                       {mainPhoto.title}
                                     </Badge>
                                     {/* How many camera photos vs app screenshots this stop holds */}
@@ -1491,7 +1491,7 @@ export default function TripPhotoEvidence({
                           className={`h-14 rounded-lg overflow-hidden cursor-pointer shrink-0 ${
                             photo.source === 'app_screenshot'
                               ? 'w-9 border-[2px] border-slate-800 bg-white'
-                              : 'w-14 bg-slate-900 border border-slate-300'
+                              : 'w-14 bg-charcoal border border-slate-300'
                           }`}
                         >
                           <img

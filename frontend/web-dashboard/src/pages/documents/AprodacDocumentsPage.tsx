@@ -804,9 +804,9 @@ export default function AprodacDocumentsPage() {
 
       {/* Upload / Edit Modal */}
       {isUploadOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-strong/60 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 w-full max-w-xl rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
+            <div className="px-6 py-4 bg-charcoal text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-lg bg-brand text-white">
                   <Upload size={18} />
@@ -1011,9 +1011,9 @@ export default function AprodacDocumentsPage() {
 
       {/* Preview Lightbox Modal */}
       {previewDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-strong/75 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-900 w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
+            <div className="px-6 py-4 bg-charcoal text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${
                   previewDoc.fileType === 'pdf' ? 'bg-rose-500/20 text-rose-400' : 'bg-blue-500/20 text-blue-400'
@@ -1114,7 +1114,7 @@ export default function AprodacDocumentsPage() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-strong/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl p-6 shadow-xl border border-slate-200 dark:border-slate-800 text-center space-y-4">
             <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center mx-auto">
               <Trash2 size={24} />

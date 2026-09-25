@@ -118,7 +118,7 @@ export default function DriverImageUploader({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="absolute inset-0 rounded-full bg-black/45 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-md"
+            className="absolute inset-0 rounded-full bg-charcoal-strong/45 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-md"
             title="Upload or Change photo"
           >
             <Camera className="w-5 h-5" />

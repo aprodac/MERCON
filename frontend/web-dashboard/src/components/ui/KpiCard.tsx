@@ -220,7 +220,7 @@ function SegmentBar({ segments }: { segments: BarSegment[] }) {
             )
           })
         ) : (
-          <div className="h-full w-full rounded-full bg-black/[0.05] dark:bg-white/[0.08]" />
+          <div className="h-full w-full rounded-full bg-charcoal-strong/[0.05] dark:bg-white/[0.08]" />
         )}
       </div>
       {labeled.length > 0 && (

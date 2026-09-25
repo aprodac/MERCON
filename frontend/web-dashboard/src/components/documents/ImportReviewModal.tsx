@@ -612,7 +612,7 @@ export default function ImportReviewModal({
                     {/* Extracted Detail View */}
                     {isExpanded && (
                       <div className="pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-900 h-36 flex items-center justify-center overflow-hidden">
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-charcoal h-36 flex items-center justify-center overflow-hidden">
                           {(item.mime_type || '').startsWith('image/')
                             ? <img src={resolveFileUrl(item.file_url)} alt="" className="max-h-full max-w-full object-contain" />
                             : <FileText className="w-10 h-10 text-slate-500" />}

@@ -79,9 +79,9 @@ const SIDEBAR_THEMES = {
     headerBg: '#FFFFFF',
     wedge: '#EEF1F6',
     ring: 'focus-visible:ring-ring',
-    rowIdle: 'text-foreground/70 hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-muted',
+    rowIdle: 'text-foreground/70 hover:bg-charcoal-strong/[0.04] hover:text-foreground dark:hover:bg-muted',
     rowActive: 'bg-white text-foreground shadow-xs dark:bg-muted',
-    hoverBg: 'hover:bg-black/[0.04] dark:hover:bg-muted',
+    hoverBg: 'hover:bg-charcoal-strong/[0.04] dark:hover:bg-muted',
     label: 'text-muted-foreground',
     icon: 'text-muted-foreground group-hover/row:text-foreground',
     railIcon: 'text-muted-foreground',
@@ -438,7 +438,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       <div
         onClick={onClose}
         aria-hidden="true"
-        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-[3px] transition-opacity duration-200 lg:hidden ${
+        className={`fixed inset-0 z-40 bg-charcoal-strong/60 backdrop-blur-[3px] transition-opacity duration-200 lg:hidden ${
           open ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       />
@@ -470,7 +470,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           <button
             onClick={onClose}
             aria-label="Close navigation menu"
-            className="absolute right-2 top-2 z-20 p-1.5 rounded-md text-[#3E3C3D]/70 hover:bg-black/5 lg:hidden"
+            className="absolute right-2 top-2 z-20 p-1.5 rounded-md text-[#3E3C3D]/70 hover:bg-charcoal-strong/5 lg:hidden"
           >
             <X size={18} />
           </button>

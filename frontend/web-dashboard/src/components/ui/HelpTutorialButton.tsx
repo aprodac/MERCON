@@ -49,7 +49,7 @@ export default function HelpTutorialButton({ route = '/trips', title = 'Page Hel
           ) : displayVideo ? (
             <div className="flex flex-col">
               {/* Media Player */}
-              <div className="bg-black aspect-video w-full flex items-center justify-center relative">
+              <div className="bg-charcoal-strong aspect-video w-full flex items-center justify-center relative">
                 {displayVideo.videoUrl.endsWith('.mp4') || displayVideo.videoUrl.endsWith('.webm') || displayVideo.videoUrl.startsWith('/uploads/') ? (
                   <video
                     src={displayVideo.videoUrl}

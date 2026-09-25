@@ -1312,7 +1312,7 @@ export default function DocumentsCenterPage() {
               <div className="grid grid-cols-1 lg:grid-cols-12 flex-1 min-h-0 overflow-hidden bg-slate-100/40 dark:bg-slate-950/40">
                 
                 {/* Left Column (58%): Interactive File & Image Viewer with Rotation */}
-                <div className="lg:col-span-7 flex flex-col bg-slate-950/5 dark:bg-slate-950/50 p-4 border-r border-slate-200/80 dark:border-slate-800/80 justify-between min-h-0">
+                <div className="lg:col-span-7 flex flex-col bg-charcoal-strong/5 dark:bg-slate-950/50 p-4 border-r border-slate-200/80 dark:border-slate-800/80 justify-between min-h-0">
                   
                   {/* Media Viewer Toolbar */}
                   <div className="flex items-center justify-between pb-2 text-xs text-slate-500 font-medium shrink-0">
@@ -1344,7 +1344,7 @@ export default function DocumentsCenterPage() {
                   </div>
 
                   {/* Main File Viewer Container */}
-                  <div className="w-full flex-1 rounded-xl bg-slate-900/10 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 overflow-hidden flex items-center justify-center relative p-3 shadow-inner min-h-0">
+                  <div className="w-full flex-1 rounded-xl bg-charcoal/10 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 overflow-hidden flex items-center justify-center relative p-3 shadow-inner min-h-0">
                     {previewDoc.mime_type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(resolvedUrl) ? (
                       <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
                         <img

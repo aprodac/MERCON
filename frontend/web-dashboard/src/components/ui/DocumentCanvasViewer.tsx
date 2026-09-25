@@ -261,8 +261,8 @@ export default function DocumentCanvasViewer({
       {/* Fullscreen Preview Lightbox Modal */}
       {isFullscreenOpen && (
         <Dialog open={isFullscreenOpen} onOpenChange={setIsFullscreenOpen}>
-          <DialogContent className="max-w-[95vw] w-[95vw] h-[92vh] max-h-[92vh] p-0 rounded-2xl overflow-hidden bg-slate-950 border-slate-800 flex flex-col">
-            <div className="flex items-center justify-between px-4 py-3 bg-slate-900 border-b border-slate-800 text-white shrink-0">
+          <DialogContent className="max-w-[95vw] w-[95vw] h-[92vh] max-h-[92vh] p-0 rounded-2xl overflow-hidden bg-charcoal-strong border-slate-800 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 bg-charcoal border-b border-slate-800 text-white shrink-0">
               <span className="text-sm font-extrabold flex items-center gap-2">
                 <FileText className="w-4 h-4 text-[#FA634E]" />
                 <span>{title || 'Document Preview (Fullscreen)'}</span>
@@ -286,7 +286,7 @@ export default function DocumentCanvasViewer({
                 </Button>
               </div>
             </div>
-            <div className="flex-1 min-h-0 overflow-auto p-6 flex items-center justify-center bg-slate-950">
+            <div className="flex-1 min-h-0 overflow-auto p-6 flex items-center justify-center bg-charcoal-strong">
               {isImg ? (
                 <img
                   src={resolvedUrl}

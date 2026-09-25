@@ -271,7 +271,7 @@ export default function BrandingSettingsPage() {
               <CardContent className="pt-5 space-y-5">
                 
                 {/* Header Preview */}
-                <div className="p-3 bg-slate-900 text-white rounded-xl flex items-center justify-between shadow-xs">
+                <div className="p-3 bg-charcoal text-white rounded-xl flex items-center justify-between shadow-xs">
                   <span className="text-xs font-extrabold flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: primaryColor }} />
                     {appName || 'MERCON Logistics'}

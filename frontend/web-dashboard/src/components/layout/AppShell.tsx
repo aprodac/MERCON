@@ -118,7 +118,7 @@ function ShellInner() {
 
         {/* Collapsed Header Expand Banner */}
         {!meta.hideHeader && isHeaderCollapsed && (
-          <div className="bg-slate-900 text-white px-4 py-1 flex items-center justify-between text-xs shrink-0 animate-fade-in">
+          <div className="bg-charcoal text-white px-4 py-1 flex items-center justify-between text-xs shrink-0 animate-fade-in">
             <span className="font-bold text-slate-300 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400" /> Header navigation is collapsed to maximize vertical workspace height.
             </span>

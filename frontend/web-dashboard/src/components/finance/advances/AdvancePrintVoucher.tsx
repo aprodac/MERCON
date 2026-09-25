@@ -25,7 +25,7 @@ export const AdvancePrintVoucher: React.FC<AdvancePrintVoucherProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-charcoal-strong/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
       {/* Container with print styles */}
       <div className="bg-card w-full max-w-3xl rounded-xl shadow-2xl border border-border dark:border-border p-8 space-y-6 print:p-0 print:border-none print:shadow-none print:w-full print:max-w-none print:bg-card print:text-black">
         {/* Screen Top Bar */}

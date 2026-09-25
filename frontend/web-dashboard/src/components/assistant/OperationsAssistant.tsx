@@ -320,7 +320,7 @@ export default function OperationsAssistant() {
               type="button"
               onClick={(e) => { e.stopPropagation(); setDockState(true); }}
               title="Hide floating assistant (Dock to Important Reminders)"
-              className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-slate-800 hover:bg-slate-900 text-white text-[10px] font-black flex items-center justify-center shadow-md z-40 transition-all opacity-80 group-hover:opacity-100 cursor-pointer"
+              className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-slate-800 hover:bg-charcoal-strong text-white text-[10px] font-black flex items-center justify-center shadow-md z-40 transition-all opacity-80 group-hover:opacity-100 cursor-pointer"
             >
               ↙
             </button>
@@ -413,7 +413,7 @@ export default function OperationsAssistant() {
                       <button
                         type="button"
                         onClick={dismiss}
-                        className="btn-hover w-full h-8.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-xs cursor-pointer"
+                        className="btn-hover w-full h-8.5 rounded-xl bg-charcoal hover:bg-slate-800 text-white text-xs font-bold shadow-xs cursor-pointer"
                       >
                         Great, thanks!
                       </button>

@@ -307,7 +307,7 @@ export default function DriverDocumentsValidityFolder({
 
       {/* ── QUICK ADD DOCUMENT MODAL / OVERLAY ── */}
       {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal/60 backdrop-blur-xs">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 max-w-md w-full shadow-xl relative animate-in fade-in zoom-in-95 duration-150">
             <button
               onClick={() => setIsAddModalOpen(false)}

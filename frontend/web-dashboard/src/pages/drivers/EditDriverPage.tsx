@@ -440,7 +440,7 @@ export default function EditDriverPage() {
                       type="button"
                       size="sm"
                       onClick={() => setIsAddVehicleOpen(true)}
-                      className="h-6 text-[10px] font-bold bg-slate-800 hover:bg-slate-900 text-white rounded-md px-2 gap-1"
+                      className="h-6 text-[10px] font-bold bg-slate-800 hover:bg-charcoal-strong text-white rounded-md px-2 gap-1"
                     >
                       <Plus className="w-3 h-3" /> New Vehicle
                     </Button>

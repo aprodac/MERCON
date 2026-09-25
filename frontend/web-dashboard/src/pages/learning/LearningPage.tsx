@@ -372,18 +372,18 @@ export default function LearningPage() {
               >
                 {/* Thumbnail / Header Banner */}
                 <div
-                  className="h-36 bg-slate-900 relative p-4 flex flex-col justify-between cursor-pointer"
+                  className="h-36 bg-charcoal relative p-4 flex flex-col justify-between cursor-pointer"
                   onClick={() => {
                     setActiveVideo(resource);
                     setActiveStepIdx(0);
                   }}
                 >
                   <div className="flex items-center justify-between z-10">
-                    <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-black/40 text-white backdrop-blur-xs">
+                    <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-charcoal-strong/40 text-white backdrop-blur-xs">
                       {resource.categoryLabel || resource.category}
                     </span>
                     <div className="flex items-center gap-1.5">
-                      <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-black/40 text-white backdrop-blur-xs flex items-center gap-1">
+                      <span className="px-2 py-0.5 rounded text-[11px] font-medium bg-charcoal-strong/40 text-white backdrop-blur-xs flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         {formatDuration(resource.durationSeconds)}
                       </span>
@@ -463,7 +463,7 @@ export default function LearningPage() {
             {activeVideo && (
               <div className="flex flex-col">
                 {/* Media Container */}
-                <div className="bg-black aspect-video w-full flex items-center justify-center relative">
+                <div className="bg-charcoal-strong aspect-video w-full flex items-center justify-center relative">
                   {activeVideo.videoUrl.endsWith('.mp4') || activeVideo.videoUrl.endsWith('.webm') || activeVideo.videoUrl.startsWith('/uploads/') ? (
                     <video
                       src={activeVideo.videoUrl}

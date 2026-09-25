@@ -103,7 +103,7 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
       <div className={cn('pointer-events-auto rounded-2xl p-3', GLASS)}>
         {header}
         {stop && (
-          <div className="mt-2.5 flex items-center gap-2 rounded-xl bg-black/[0.03] px-2.5 py-2 text-xs dark:bg-white/5">
+          <div className="mt-2.5 flex items-center gap-2 rounded-xl bg-charcoal-strong/[0.03] px-2.5 py-2 text-xs dark:bg-white/5">
             <Navigation className="size-3.5 shrink-0 text-blue-600 dark:text-blue-400" />
             <span className="min-w-0 flex-1 truncate font-medium text-foreground">{stopLabel(stop)}</span>
             {eta?.arrival && <span className="shrink-0 font-semibold tabular-nums text-foreground">{formatTime(eta.arrival)}</span>}
@@ -122,7 +122,7 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 pb-3">
         {/* Driver */}
         {unit.driver && (
-          <div className="flex items-center gap-3 rounded-xl bg-black/[0.03] p-2.5 dark:bg-white/5">
+          <div className="flex items-center gap-3 rounded-xl bg-charcoal-strong/[0.03] p-2.5 dark:bg-white/5">
             <Initials name={unit.driver.name} src={unit.driver.avatar_url} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-foreground">{unit.driver.name}</p>
@@ -279,7 +279,7 @@ export function NextStopCard({ unit, eta }: { unit: LiveUnit; eta: EtaInfo | nul
   if (!stop || !unit.trip) return null;
   const after = unit.trip.stops[(unit.trip.next_stop_index ?? 0) + 1];
   return (
-    <div className="pointer-events-auto w-[270px] overflow-hidden rounded-2xl bg-slate-900/92 text-white shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl dark:bg-[#0f3d34]/92">
+    <div className="pointer-events-auto w-[270px] overflow-hidden rounded-2xl bg-charcoal/92 text-white shadow-[0_8px_30px_rgba(0,0,0,0.25)] backdrop-blur-xl dark:bg-[#0f3d34]/92">
       <div className="flex items-center gap-3 px-4 pt-3.5">
         <Navigation className="size-7 shrink-0 fill-white/10 text-sky-300" />
         <div>
@@ -291,7 +291,7 @@ export function NextStopCard({ unit, eta }: { unit: LiveUnit; eta: EtaInfo | nul
       </div>
       <p className="truncate px-4 pt-2 pb-3 text-[15px] font-semibold">{stopLabel(stop)}</p>
       {after && (
-        <div className="flex items-center gap-2 border-t border-white/10 bg-black/15 px-4 py-2 text-xs text-white/75">
+        <div className="flex items-center gap-2 border-t border-white/10 bg-charcoal-strong/15 px-4 py-2 text-xs text-white/75">
           <span className="text-white/50">Then</span>
           <span className="truncate">{stopLabel(after)}</span>
         </div>

@@ -115,7 +115,7 @@ export function MapLegend() {
           type="button"
           title="How to read the map"
           aria-label="How to read the map"
-          className="flex size-9 items-center justify-center text-foreground/70 transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10 [&_svg]:size-4"
+          className="flex size-9 items-center justify-center text-foreground/70 transition-colors hover:bg-charcoal-strong/5 hover:text-foreground dark:hover:bg-white/10 [&_svg]:size-4"
         >
           <Info />
         </button>
@@ -181,5 +181,5 @@ function Puck({ children }: { children: React.ReactNode }) {
 }
 
 function Badge({ children }: { children: React.ReactNode }) {
-  return <span className="flex items-center gap-px rounded-full bg-slate-900 px-1 py-0.5 text-white">{children}</span>;
+  return <span className="flex items-center gap-px rounded-full bg-charcoal px-1 py-0.5 text-white">{children}</span>;
 }

@@ -307,7 +307,7 @@ function RealDocumentPreviewMiddleBox({
           </div>
 
           {/* REAL SCANNED DOCUMENT IMAGE / PDF PREVIEW BOX */}
-          <div className="flex-1 min-h-[260px] bg-slate-950 rounded-xl border border-slate-800 p-2 flex items-center justify-center relative overflow-hidden group">
+          <div className="flex-1 min-h-[260px] bg-charcoal-strong rounded-xl border border-slate-800 p-2 flex items-center justify-center relative overflow-hidden group">
             {isImage ? (
               <div className="relative w-full h-full flex items-center justify-center">
                 <img
@@ -319,7 +319,7 @@ function RealDocumentPreviewMiddleBox({
                   href={resolvedUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="absolute top-2 right-2 px-2.5 py-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-900 text-white text-[11px] font-bold flex items-center gap-1.5 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute top-2 right-2 px-2.5 py-1.5 rounded-lg bg-charcoal/90 hover:bg-charcoal-strong text-white text-[11px] font-bold flex items-center gap-1.5 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <Eye className="w-3.5 h-3.5" />
                   <span>Full Screen Scan</span>
@@ -1293,7 +1293,7 @@ export default function DriverDetailsPage() {
                           className="w-5 h-5 rounded-md object-contain border border-slate-200 dark:border-slate-700 bg-white p-0.5 shrink-0 shadow-2xs"
                         />
                       ) : (
-                        <div className="w-5 h-5 rounded-md bg-slate-900 text-white font-mono font-black text-[8.5px] flex items-center justify-center border border-slate-800 shadow-2xs shrink-0">
+                        <div className="w-5 h-5 rounded-md bg-charcoal text-white font-mono font-black text-[8.5px] flex items-center justify-center border border-slate-800 shadow-2xs shrink-0">
                           {previewTripDisplay.customerName.slice(0, 2).toUpperCase()}
                         </div>
                       )}
@@ -1438,7 +1438,7 @@ export default function DriverDetailsPage() {
                         className="w-5 h-5 rounded-md object-contain border border-slate-200 dark:border-slate-700 bg-white p-0.5 shrink-0 shadow-2xs"
                       />
                     ) : (
-                      <div className="w-5 h-5 rounded-md bg-slate-900 text-white font-mono font-black text-[8.5px] flex items-center justify-center border border-slate-800 shadow-2xs shrink-0">
+                      <div className="w-5 h-5 rounded-md bg-charcoal text-white font-mono font-black text-[8.5px] flex items-center justify-center border border-slate-800 shadow-2xs shrink-0">
                         {currentTripDisplay.customerName.slice(0, 2).toUpperCase()}
                       </div>
                     )}
@@ -1675,7 +1675,7 @@ export default function DriverDetailsPage() {
                             className="w-6 h-6 rounded-md object-contain border border-slate-200/90 dark:border-slate-800 bg-white p-0.5 shadow-2xs shrink-0"
                           />
                         ) : (
-                          <div className="w-6 h-6 rounded-md bg-slate-900 text-white font-mono font-black text-[9px] flex items-center justify-center border border-slate-800 shadow-2xs shrink-0">
+                          <div className="w-6 h-6 rounded-md bg-charcoal text-white font-mono font-black text-[9px] flex items-center justify-center border border-slate-800 shadow-2xs shrink-0">
                             {t.customerName.slice(0, 2).toUpperCase()}
                           </div>
                         )}

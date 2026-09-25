@@ -151,7 +151,7 @@ export function TelemetryDarkCard({
     <div 
       onClick={onClick}
       className={cn(
-        "relative rounded-2xl bg-slate-950 text-white p-4 shadow-md border border-slate-800 flex flex-col justify-between overflow-hidden",
+        "relative rounded-2xl bg-charcoal-strong text-white p-4 shadow-md border border-slate-800 flex flex-col justify-between overflow-hidden",
         onClick && "cursor-pointer"
       )}
     >

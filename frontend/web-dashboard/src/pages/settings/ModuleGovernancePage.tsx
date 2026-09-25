@@ -181,7 +181,7 @@ export default function ModuleGovernancePage() {
     <DashboardLayout active="/settings" title="Module Governance & Access" breadcrumb="SuperAdmin Portal">
       <div className="max-w-5xl mx-auto space-y-6 pb-12">
         {/* Header Hero Banner */}
-        <div className="relative overflow-hidden rounded-3xl bg-slate-900 text-white p-6 sm:p-8 shadow-xl border border-slate-800">
+        <div className="relative overflow-hidden rounded-3xl bg-charcoal text-white p-6 sm:p-8 shadow-xl border border-slate-800">
           <div className="relative z-10 space-y-3 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand/20 border border-brand/40 text-brand text-xs font-bold">
               <Shield className="w-3.5 h-3.5" />

@@ -447,6 +447,9 @@ body {
   --color-brand:          var(--color-brand);
   --color-brand-hover:    var(--color-brand-hover);
   --color-brand-light:    var(--color-brand-light);
+  /* Brand charcoal — used instead of black for dark fills (selected pills, dark cards, media backdrops). */
+  --color-charcoal:        #3E3C3D;
+  --color-charcoal-strong: #2D2B2C;
   --color-canvas:         var(--color-bg);
   --color-ink:            var(--color-dark);
   --color-ink-soft:       var(--color-text-secondary);

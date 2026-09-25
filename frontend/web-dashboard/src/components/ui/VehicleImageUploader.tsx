@@ -80,7 +80,7 @@ export default function VehicleImageUploader({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-md text-xs font-semibold gap-1"
+          className="absolute inset-0 bg-charcoal-strong/50 flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-md text-xs font-semibold gap-1"
           title="Upload or Change vehicle photo"
         >
           <Camera className="w-5 h-5" />

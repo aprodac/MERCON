@@ -184,7 +184,7 @@ export const TripBatchGeneratorTab: React.FC<TripBatchGeneratorTabProps> = ({
                     <button
                       type="button"
                       onClick={() => duplicateGridRow(row)}
-                      className="p-1 rounded-md text-[#9898A4] hover:text-[#111111] hover:bg-black/[0.05]"
+                      className="p-1 rounded-md text-[#9898A4] hover:text-[#111111] hover:bg-charcoal-strong/[0.05]"
                       title="Duplicate Row"
                     >
                       <Copy className="h-3.5 w-3.5" />
