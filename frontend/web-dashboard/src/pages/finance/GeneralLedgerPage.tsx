@@ -771,7 +771,7 @@ export default function GeneralLedgerPage() {
                 </div>
 
                 {/* Accounts Table by Type */}
-                <div className="overflow-x-auto pt-4">
+                <div className="table-container overflow-x-auto pt-4">
                   <table className="w-full text-left text-xs border-collapse min-w-[720px]">
                     <thead>
                       <tr className="border-b border-border text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -1308,7 +1308,7 @@ export default function GeneralLedgerPage() {
 
             {/* Monthly Summary Table */}
             <div className="bg-card rounded-xl border border-border shadow-xs p-6 md:p-8">
-              <div className="overflow-x-auto">
+              <div className="table-container overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="border-b border-border text-[11px] font-medium uppercase tracking-wide text-muted-foreground">

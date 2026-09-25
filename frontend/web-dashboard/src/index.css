@@ -820,3 +820,45 @@ body {
   transition: transform 0.8s linear !important;
 }
 
+/* ─── Custom Scrollbar for Table Container ───────────────────────────────── */
+
+/* Chrome, Edge, Safari (Webkit) */
+.table-container::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+/* Scrollbar Track (Light Mode) */
+.table-container::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+}
+
+/* Scrollbar Track (Dark Mode) */
+.dark .table-container::-webkit-scrollbar-track {
+  background: #1e293b;
+}
+
+/* Scrollbar Thumb / Handle (Light & Dark) */
+.table-container::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 9999px;
+  transition: background 0.2s ease;
+}
+
+/* Scrollbar Thumb Hover State */
+.table-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+}
+
+/* Firefox Support */
+.table-container {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.3) #f1f5f9;
+}
+
+.dark .table-container {
+  scrollbar-color: rgba(148, 163, 184, 0.3) #1e293b;
+}
+
+
