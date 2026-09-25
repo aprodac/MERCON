@@ -1062,9 +1062,9 @@ export default function GeneralLedgerPage() {
                         <th className="py-2.5 px-3">Account / Narration</th>
                         {customize.showVoucherType && <th className="py-2.5 px-3 w-32">Vch type</th>}
                         <th className="py-2.5 px-3 w-36">Vch no.</th>
-                        <th className="py-2.5 px-3 text-right w-32">Debit</th>
-                        <th className="py-2.5 px-3 text-right w-32">Credit</th>
-                        <th className="py-2.5 px-3 text-right w-36">Balance</th>
+                        <th className="w-[140px] py-2.5 px-3 text-right text-xs font-semibold text-foreground">Debit</th>
+                        <th className="w-[140px] py-2.5 px-3 text-right text-xs font-semibold text-foreground">Credit</th>
+                        <th className="w-[150px] py-2.5 px-3 text-right text-xs font-semibold text-foreground">Balance</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/60">
@@ -1101,13 +1101,13 @@ export default function GeneralLedgerPage() {
                             </td>
                             {customize.showVoucherType && <td className="py-2 px-3 text-muted-foreground">—</td>}
                             <td className="py-2 px-3 text-muted-foreground font-mono">—</td>
-                            <td className="py-2 px-3 text-right font-mono text-xs">
+                            <td className="py-2 px-3 text-right font-mono text-xs text-emerald-600 dark:text-emerald-400">
                               {glData?.opening_balance_side === 'Dr' ? fmtVal(glData.opening_balance) : '—'}
                             </td>
-                            <td className="py-2 px-3 text-right font-mono text-xs">
+                            <td className="py-2 px-3 text-right font-mono text-xs text-amber-600 dark:text-amber-400">
                               {glData?.opening_balance_side === 'Cr' ? fmtVal(glData.opening_balance) : '—'}
                             </td>
-                            <td className="py-2 px-3 text-right font-mono text-xs font-semibold text-foreground">
+                            <td className="py-2 px-3 text-right font-mono text-xs font-bold text-foreground">
                               {fmtBalance(glData?.opening_balance || 0, (glData?.opening_balance_side as 'Dr'|'Cr') || 'Dr')}
                             </td>
                           </tr>
@@ -1199,13 +1199,13 @@ export default function GeneralLedgerPage() {
                                   {line.ref_id || 'JE-Details'}
                                 </Link>
                               </td>
-                              <td className="py-2 px-3 text-right font-mono text-xs text-foreground">
+                              <td className="py-2 px-3 text-right font-mono text-xs text-emerald-600 dark:text-emerald-400">
                                 {line.debit > 0 ? fmtVal(line.debit) : '—'}
                               </td>
-                              <td className="py-2 px-3 text-right font-mono text-xs text-foreground">
+                              <td className="py-2 px-3 text-right font-mono text-xs text-amber-600 dark:text-amber-400">
                                 {line.credit > 0 ? fmtVal(line.credit) : '—'}
                               </td>
-                              <td className="py-2 px-3 text-right font-mono text-xs font-medium text-foreground">
+                              <td className="py-2 px-3 text-right font-mono text-xs font-bold text-foreground">
                                 {fmtBalance(line.signed_balance, line.balance_side)}
                               </td>
                             </tr>
