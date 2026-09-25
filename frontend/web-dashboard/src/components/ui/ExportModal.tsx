@@ -42,11 +42,13 @@ export interface ExportModalProps<T = any> {
   onClose: () => void;
   title: string;
   description?: string;
-  fileNamePrefix: string;
+  fileNamePrefix?: string;
+  filename?: string;
   sheetName?: string;
   subtitle?: string;
   // Data sources
-  filteredData: T[];
+  filteredData?: T[];
+  data?: T[];
   allData?: T[];
   selectedData?: T[];
   totalCount?: number;
@@ -70,9 +72,11 @@ export default function ExportModal<T = any>({
   title,
   description = 'Choose your export preferences, filters, and columns.',
   fileNamePrefix,
+  filename,
   sheetName,
   subtitle,
   filteredData,
+  data,
   allData,
   selectedData = [],
   totalCount,
@@ -84,6 +88,8 @@ export default function ExportModal<T = any>({
   dateRangeLabel = 'Date Range',
   initialFormat = 'xlsx',
 }: ExportModalProps<T>) {
+  const effectivePrefix = filename || fileNamePrefix || 'Export';
+  const effectiveFilteredData = data || filteredData || [];
   const allowedFormats = (formats || []).filter((f) => f !== 'csv');
   const [scope, setScope] = useState<'filtered' | 'all' | 'selected'>('filtered');
   const [format, setFormat] = useState<'xlsx' | 'csv' | 'pdf'>(initialFormat);
@@ -164,9 +170,9 @@ export default function ExportModal<T = any>({
       if (scope === 'selected') {
         rows = selectedData;
       } else if (scope === 'all') {
-        rows = allData && allData.length > 0 ? allData : filteredData;
+        rows = allData && allData.length > 0 ? allData : effectiveFilteredData;
       } else {
-        rows = filteredData;
+        rows = effectiveFilteredData;
       }
 
       // 2. Apply additional modal filters (if not exporting explicitly selected rows)

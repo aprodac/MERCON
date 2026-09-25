@@ -1172,18 +1172,39 @@ export const getGeneralLedgerMonthly = async (req: Request, res: Response) => {
     }
 
     // Build list of YYYY-MM months spanning date_from..date_to
-    const startDate = fromDate || new Date(new Date().getFullYear(), 0, 1);
-    const endDate = toDate || new Date();
+    let startY = fromDate ? fromDate.getUTCFullYear() : new Date().getFullYear();
+    let startM = fromDate ? fromDate.getUTCMonth() : 0;
+    let endY = toDate ? toDate.getUTCFullYear() : new Date().getFullYear();
+    let endM = toDate ? toDate.getUTCMonth() : 11;
+
+    if (date_from) {
+      const parts = String(date_from).split('T')[0].split('-').map(Number);
+      if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        startY = parts[0];
+        startM = parts[1] - 1;
+      }
+    }
+
+    if (date_to) {
+      const parts = String(date_to).split('T')[0].split('-').map(Number);
+      if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        endY = parts[0];
+        endM = parts[1] - 1;
+      }
+    }
 
     const months: string[] = [];
-    const cur = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-    const endMonth = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
+    let curY = startY;
+    let curM = startM;
 
-    while (cur <= endMonth) {
-      const year = cur.getFullYear();
-      const month = String(cur.getMonth() + 1).padStart(2, '0');
-      months.push(`${year}-${month}`);
-      cur.setMonth(cur.getMonth() + 1);
+    while (curY < endY || (curY === endY && curM <= endM)) {
+      const monthStr = String(curM + 1).padStart(2, '0');
+      months.push(`${curY}-${monthStr}`);
+      curM++;
+      if (curM > 11) {
+        curM = 0;
+        curY++;
+      }
     }
 
     // Opening balance net prior to fromDate

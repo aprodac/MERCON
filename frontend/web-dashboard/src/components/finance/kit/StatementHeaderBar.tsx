@@ -5,19 +5,27 @@ export interface StatementHeaderBarProps {
   title: string;
   periodLabel: string;
   isSnapshot?: boolean;
+  sourceLabel?: string;
   basis?: string;
   currency?: string;
   companyName?: string;
+  subtitle?: string;
 }
 
 export function StatementHeaderBar({
   title,
   periodLabel,
   isSnapshot = false,
+  sourceLabel,
   basis = 'Accrual',
   currency = 'SAR',
-  companyName = 'MERCON Logistics',
+  companyName,
+  subtitle,
 }: StatementHeaderBarProps) {
+  const displayCompany = subtitle || companyName || 'MERCON Logistics';
+  const displaySource = sourceLabel || (isSnapshot ? 'Period snapshot' : 'Live ledger');
+  const isSnap = isSnapshot || displaySource.toLowerCase().includes('snapshot');
+
   return (
     <>
       {/* ── ON SCREEN HEADER: Slim Bar (≤ 56px) ────────────────────────────── */}
@@ -30,7 +38,7 @@ export function StatementHeaderBar({
               {title}
             </h2>
             <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
-              {companyName}
+              {displayCompany}
             </p>
           </div>
         </div>
@@ -49,13 +57,13 @@ export function StatementHeaderBar({
           <Badge
             variant="outline"
             className={`text-[11px] font-medium px-2 py-0.5 flex items-center gap-1 ${
-              isSnapshot
+              isSnap
                 ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/40 dark:text-purple-300 dark:border-purple-800'
                 : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
             }`}
           >
-            <span className={`w-1.5 h-1.5 rounded-full ${isSnapshot ? 'bg-purple-500' : 'bg-emerald-500'}`} />
-            <span>{isSnapshot ? 'Period snapshot' : 'Live ledger'}</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${isSnap ? 'bg-purple-500' : 'bg-emerald-500'}`} />
+            <span>{displaySource}</span>
           </Badge>
         </div>
       </div>

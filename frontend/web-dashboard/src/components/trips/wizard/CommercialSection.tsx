@@ -562,6 +562,33 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
                   const firstStop = rc.stops && rc.stops.length > 0 ? rc.stops[0] : null;
                   const lastStop = rc.stops && rc.stops.length > 1 ? rc.stops[rc.stops.length - 1] : firstStop;
 
+                  // Take the quotation's whole route (every stop, both legs) so the slot's
+                  // route matches the card exactly. Leaving stale names / stops behind made
+                  // the route-change watcher drop the selection → "Define Quotation".
+                  const [qOut, qRet] = quotationRouteLegs(rc);
+                  const hasCardRoute = Boolean(qOut && qOut.length >= 2);
+                  const originId = rc.originLocation?.id || firstStop?.location?.id || firstStop?.location_id || primarySlot.originLocationId;
+                  const destinationId = rc.destinationLocation?.id || lastStop?.location?.id || lastStop?.location_id || primarySlot.destinationLocationId;
+                  const originLabel = origName || primarySlot.origin;
+                  const destinationLabel = destName || primarySlot.destination;
+                  const outMids = hasCardRoute ? qOut.slice(1, -1) : [];
+                  const retMids = qRet && qRet.length >= 2 ? qRet.slice(1, -1) : [];
+                  const routePatch = hasCardRoute
+                    ? {
+                        intermediateLocations: outMids.map((s) => s.name || ''),
+                        intermediateLocationIds: outMids.map((s) => s.id || null),
+                        intermediateStopFees: outMids.map(() => ''),
+                        returnOrigin: qRet && qRet.length >= 2 ? qRet[0].name || '' : '',
+                        returnOriginLocationId: qRet && qRet.length >= 2 ? qRet[0].id || null : null,
+                        returnDestination: qRet && qRet.length >= 2 ? qRet[qRet.length - 1].name || '' : '',
+                        returnDestinationLocationId: qRet && qRet.length >= 2 ? qRet[qRet.length - 1].id || null : null,
+                        returnIntermediateLocations: retMids.map((s) => s.name || ''),
+                        returnIntermediateLocationIds: retMids.map((s) => s.id || null),
+                      }
+                    : {};
+                  const originChanged = originId !== primarySlot.originLocationId;
+                  const destinationChanged = destinationId !== primarySlot.destinationLocationId;
+
                   if (targetCategory && setContractRateCategory) {
                     setContractRateCategory(targetCategory);
                   }

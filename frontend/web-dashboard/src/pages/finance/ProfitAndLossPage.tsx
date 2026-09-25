@@ -100,14 +100,6 @@ function loadClassifications(): Record<string, PnlClass> {
   return {};
 }
 
-function saveClassifications(data: Record<string, PnlClass>) {
-  try {
-    localStorage.setItem(SETUP_STORAGE_KEY, JSON.stringify(data));
-  } catch {
-    // ignore
-  }
-}
-
 export default function ProfitAndLossPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -157,17 +149,9 @@ export default function ProfitAndLossPage() {
     });
   };
 
-  const handleCustomRangeChange = (from: string, to: string) => {
-    updateParams({
-      preset: 'custom',
-      date_from: from,
-      date_to: to,
-    });
-  };
-
   // Compare columns meta calculation
   const compareColsMeta = useMemo<CompareColumnMeta[]>(() => {
-    return resolveCompareColumns(compareOpt, dateFrom, dateTo);
+    return resolveCompareColumns(compareOpt as CompareOption, dateFrom, dateTo);
   }, [compareOpt, dateFrom, dateTo]);
 
   // Primary Query
@@ -181,19 +165,21 @@ export default function ProfitAndLossPage() {
     queryFn: () => financeService.getProfitAndLoss({ date_from: dateFrom, date_to: dateTo }),
   });
 
-  const mainLines: ReportLineItem[] = mainRes?.data || [];
+  const pnlReport = mainRes?.data;
+  const revenues = pnlReport?.revenues || [];
+  const expenses = pnlReport?.expenses || [];
 
   // Vertical PnL Data Structure
   const verticalPnl: StructuredVerticalPnl = useMemo(() => {
-    return buildStructuredVerticalPnl(mainLines, classifications, customize.showZeroBalance);
-  }, [mainLines, classifications, customize.showZeroBalance]);
+    return buildStructuredVerticalPnl(revenues, expenses, classifications);
+  }, [revenues, expenses, classifications]);
 
   // T-Format Data Structure
   const tFormatPnl = useMemo(() => {
-    return buildStructuredTFormatPnl(mainLines, classifications);
-  }, [mainLines, classifications]);
+    return buildStructuredTFormatPnl(revenues, expenses, classifications);
+  }, [revenues, expenses, classifications]);
 
-  const isEmptyState = mainLines.length === 0;
+  const isEmptyState = revenues.length === 0 && expenses.length === 0;
 
   const fmtMoney = (val: number) => {
     const formatted = formatMoney(Math.abs(val));
@@ -218,19 +204,24 @@ export default function ProfitAndLossPage() {
     toast.success('P&L classification overrides reset to defaults');
   };
 
+  const allLines = useMemo(() => [...revenues, ...expenses], [revenues, expenses]);
+
   const exportData = useMemo(() => {
-    return mainLines.map((l) => ({
-      account_code: l.account_code || '—',
-      name: l.name,
-      classification: l.pnl_class || getDefaultPnlClass(l),
-      amount: l.amount,
-    }));
-  }, [mainLines]);
+    return allLines.map((l) => {
+      const cls = classifications[l.account_id || l.account_code || l.name] || getDefaultPnlClass(l.name, l.parent_name, revenues.includes(l));
+      return {
+        account_code: l.account_code || '—',
+        name: l.name,
+        classification: PNL_CLASS_LABELS[cls] || cls,
+        amount: l.amount,
+      };
+    });
+  }, [allLines, classifications, revenues]);
 
   const exportColumns: ExportColumn<(typeof exportData)[0]>[] = [
     { id: 'account_code', label: 'Code', accessor: (r) => r.account_code },
     { id: 'name', label: 'Account Name', accessor: (r) => r.name },
-    { id: 'classification', label: 'P&L Class', accessor: (r) => PNL_CLASS_LABELS[r.classification] || r.classification },
+    { id: 'classification', label: 'P&L Class', accessor: (r) => r.classification },
     { id: 'amount', label: 'Amount (SAR)', accessor: (r) => r.amount },
   ];
 
@@ -410,7 +401,6 @@ export default function ProfitAndLossPage() {
                       <div className="pl-3 space-y-1">
                         {verticalPnl.sections.operating_income.groups.map((group) => {
                           const expanded = isGroupExpanded(`operating_income_${group.name}`);
-                          // Fix A1: Single-account collapse
                           const isSingle = group.isSingleAccount || group.items.length === 1;
 
                           return (
@@ -431,14 +421,14 @@ export default function ProfitAndLossPage() {
                                 <div className={`${isSingle ? '' : 'pl-4'} space-y-0.5`}>
                                   {group.items.map((item) => (
                                     <div
-                                      key={item.account_id || item.account_code || item.name}
-                                      onClick={() => navigate(`/finance/general-ledger?account_id=${item.account_id}&date_from=${dateFrom}&date_to=${dateTo}`)}
+                                      key={item.id || item.code || item.name}
+                                      onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
                                       className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 rounded-md cursor-pointer transition-colors text-[13px]`}
                                     >
                                       <div className="flex items-center gap-2">
-                                        {customize.showAccountCodes && item.account_code && (
+                                        {customize.showAccountCodes && item.code && (
                                           <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-                                            {item.account_code}
+                                            {item.code}
                                           </span>
                                         )}
                                         <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-[#FA634E]">
@@ -489,14 +479,14 @@ export default function ProfitAndLossPage() {
                                 <div className={`${isSingle ? '' : 'pl-4'} space-y-0.5`}>
                                   {group.items.map((item) => (
                                     <div
-                                      key={item.account_id || item.account_code || item.name}
-                                      onClick={() => navigate(`/finance/general-ledger?account_id=${item.account_id}&date_from=${dateFrom}&date_to=${dateTo}`)}
+                                      key={item.id || item.code || item.name}
+                                      onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
                                       className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-amber-50/40 dark:hover:bg-amber-950/20 rounded-md cursor-pointer transition-colors text-[13px]`}
                                     >
                                       <div className="flex items-center gap-2">
-                                        {customize.showAccountCodes && item.account_code && (
+                                        {customize.showAccountCodes && item.code && (
                                           <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-                                            {item.account_code}
+                                            {item.code}
                                           </span>
                                         )}
                                         <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-[#FA634E]">
@@ -555,14 +545,14 @@ export default function ProfitAndLossPage() {
                                 <div className={`${isSingle ? '' : 'pl-4'} space-y-0.5`}>
                                   {group.items.map((item) => (
                                     <div
-                                      key={item.account_id || item.account_code || item.name}
-                                      onClick={() => navigate(`/finance/general-ledger?account_id=${item.account_id}&date_from=${dateFrom}&date_to=${dateTo}`)}
+                                      key={item.id || item.code || item.name}
+                                      onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
                                       className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-rose-50/40 dark:hover:bg-rose-950/20 rounded-md cursor-pointer transition-colors text-[13px]`}
                                     >
                                       <div className="flex items-center gap-2">
-                                        {customize.showAccountCodes && item.account_code && (
+                                        {customize.showAccountCodes && item.code && (
                                           <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded">
-                                            {item.account_code}
+                                            {item.code}
                                           </span>
                                         )}
                                         <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-[#FA634E]">
