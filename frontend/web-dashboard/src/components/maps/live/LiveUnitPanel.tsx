@@ -1,5 +1,4 @@
-import { useNavigate } from 'react-router-dom';
-import { Check, ExternalLink, Navigation, Phone, Route, Smartphone, Truck, TriangleAlert, X } from 'lucide-react';
+import { Check, Maximize2, Minimize2, Navigation, Phone, Route, Smartphone, Truck, TriangleAlert, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import { cn } from '@/lib/utils';
@@ -18,6 +17,8 @@ interface Props {
   onClose: () => void;
   onShare: () => void;
   onShowRoute: () => void;
+  expanded: boolean;
+  onToggleExpand: () => void;
 }
 
 const MOTION_LABEL: Record<LiveUnit['motion'], string> = {
@@ -27,8 +28,7 @@ const MOTION_LABEL: Record<LiveUnit['motion'], string> = {
   no_signal: 'No signal',
 };
 
-export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare, onShowRoute }: Props) {
-  const navigate = useNavigate();
+export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare, onShowRoute, expanded, onToggleExpand }: Props) {
   const tone = TONE[unitTone(unit)];
   const stop = nextStop(unit);
   const p = punctuality(eta?.lateByMin ?? null);
@@ -55,11 +55,11 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
   );
 
   const actions = (
-    <div className="grid grid-cols-[1fr_auto_auto] gap-2">
+    <div className="flex gap-2">
       <Button
         onClick={onShare}
         disabled={!unit.trip}
-        className="h-9 rounded-xl bg-[#25D366] font-semibold text-white hover:bg-[#1ebe5b]"
+        className="h-9 flex-1 rounded-xl bg-[#25D366] font-semibold text-white hover:bg-[#1ebe5b]"
         title={unit.trip ? 'Share the ETA on WhatsApp' : 'No trip to share an ETA for'}
       >
         <WhatsAppIcon className="size-4" /> Share ETA
@@ -73,13 +73,11 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
         variant="outline"
         size="icon"
         className="size-9 rounded-xl"
-        title={unit.trip ? 'Open trip' : unit.vehicle ? 'Open vehicle' : 'Open driver'}
-        aria-label="Open details page"
-        onClick={() =>
-          navigate(unit.trip ? `/trips/${unit.trip.id}` : unit.vehicle ? `/vehicles/${unit.vehicle.id}` : `/drivers/${unit.driver!.id}`)
-        }
+        title={expanded ? 'Exit full screen' : 'Full screen'}
+        aria-label={expanded ? 'Exit full screen' : 'Full screen'}
+        onClick={onToggleExpand}
       >
-        <ExternalLink className="size-4" />
+        {expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
       </Button>
     </div>
   );
