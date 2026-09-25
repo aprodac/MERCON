@@ -368,6 +368,19 @@ export default function GeneralLedgerPage() {
     }
   };
 
+  // Auto-select first/default account when in Account ledger or Monthly summary view if none is selected
+  useEffect(() => {
+    if ((viewParam === 'account' || viewParam === 'monthly') && !accountId && allAccounts.length > 0) {
+      const defaultAcc =
+        allAccounts.find((a) => a.account_code === '1010' || a.account_code === '1020') ||
+        allAccounts.find((a) => a.account_type === 'Asset') ||
+        allAccounts[0];
+      if (defaultAcc) {
+        updateParams({ account_id: defaultAcc.id });
+      }
+    }
+  }, [viewParam, accountId, allAccounts, updateParams]);
+
   // Keyboard navigation listener (Alt+Left/Right to step account, Up/Down to pick line, Enter to view JE)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -569,7 +582,19 @@ export default function GeneralLedgerPage() {
             {/* View Selector Tabs */}
             <ToggleGroup
               value={[viewParam]}
-              onValueChange={(val: string[]) => val[0] && updateParams({ view: val[0] })}
+              onValueChange={(val: string[]) => {
+                const nextView = val[0];
+                if (!nextView) return;
+                if ((nextView === 'account' || nextView === 'monthly') && !accountId && allAccounts.length > 0) {
+                  const defaultAcc =
+                    allAccounts.find((a) => a.account_code === '1010' || a.account_code === '1020') ||
+                    allAccounts.find((a) => a.account_type === 'Asset') ||
+                    allAccounts[0];
+                  updateParams({ view: nextView, account_id: defaultAcc?.id });
+                } else {
+                  updateParams({ view: nextView });
+                }
+              }}
               className="bg-muted p-[3px] rounded-lg border border-border/60"
             >
               <ToggleGroupItem
@@ -879,43 +904,8 @@ export default function GeneralLedgerPage() {
         {/* ── VIEW 2: ACCOUNT LEDGER (Tally Ledger Vouchers) ───────────────────── */}
         {viewParam === 'account' && (
           <div className="flex flex-col flex-1 min-h-0 gap-3 w-full">
-            {/* Empty state if no account picked */}
-            {!accountId && (
-              <div className="bg-card rounded-xl border border-border p-12 text-center space-y-3 shadow-xs">
-                <div className="w-12 h-12 rounded-full bg-muted text-muted-foreground flex items-center justify-center mx-auto">
-                  <ArrowLeftRight className="w-6 h-6 text-[#FA634E]" />
-                </div>
-                <div className="text-sm font-semibold text-foreground">Choose an account to see its ledger</div>
-                <p className="text-xs text-muted-foreground max-w-md mx-auto">
-                  Select an account from the combobox above to view detailed ledger vouchers, contra lines, running balances, and voucher previews.
-                </p>
-              </div>
-            )}
-
-            {/* Error State */}
-            {accountId && isGlError && (
-              <div className="bg-rose-500/10 border border-rose-600/20 rounded-xl p-4 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-center justify-between">
-                <span>Failed to load General Ledger Vouchers</span>
-                <Button size="sm" variant="outline" onClick={() => refetchGl()} className="h-7 text-xs gap-1.5">
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Retry</span>
-                </Button>
-              </div>
-            )}
-
-            {/* Loading State */}
-            {accountId && isGlLoading && (
-              <div className="bg-card rounded-xl p-8 border border-border space-y-4 shadow-xs">
-                <Skeleton className="h-6 w-64" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-              </div>
-            )}
-
             {/* Account Ledger Card */}
-            {accountId && !isGlLoading && !isGlError && (
-              <div className="bg-card rounded-xl border border-border shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
+            <div className="bg-card rounded-xl border border-border shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
                 {/* Single Toolbar Header Strip */}
                 <div className="px-3 py-2 border-b border-border bg-card flex flex-wrap items-center justify-between gap-2 shrink-0 print:hidden">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1077,26 +1067,49 @@ export default function GeneralLedgerPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-border/60">
-                      {/* Opening Balance */}
-                      <tr className="bg-muted/40 font-medium text-foreground">
-                        <td className="py-2 px-3 font-mono text-muted-foreground">
-                          {dateFrom ? formatDate(dateFrom) : 'Beginning'}
-                        </td>
-                        <td className="py-2 px-3 font-semibold text-foreground">
-                          Opening Balance
-                        </td>
-                        {customize.showVoucherType && <td className="py-2 px-3 text-muted-foreground">—</td>}
-                        <td className="py-2 px-3 text-muted-foreground font-mono">—</td>
-                        <td className="py-2 px-3 text-right font-mono text-xs">
-                          {glData?.opening_balance_side === 'Dr' ? fmtVal(glData.opening_balance) : '—'}
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono text-xs">
-                          {glData?.opening_balance_side === 'Cr' ? fmtVal(glData.opening_balance) : '—'}
-                        </td>
-                        <td className="py-2 px-3 text-right font-mono text-xs font-semibold text-foreground">
-                          {fmtBalance(glData?.opening_balance || 0, (glData?.opening_balance_side as 'Dr'|'Cr') || 'Dr')}
-                        </td>
-                      </tr>
+                      {(isGlLoading || !accountId) ? (
+                        [1, 2, 3, 4, 5].map((i) => (
+                          <tr key={i} className="animate-pulse">
+                            <td className="py-2.5 px-3"><Skeleton className="h-4 w-20" /></td>
+                            <td className="py-2.5 px-3"><Skeleton className="h-4 w-48" /></td>
+                            {customize.showVoucherType && <td className="py-2.5 px-3"><Skeleton className="h-4 w-20" /></td>}
+                            <td className="py-2.5 px-3"><Skeleton className="h-4 w-24" /></td>
+                            <td className="py-2.5 px-3 text-right"><Skeleton className="h-4 w-16 ml-auto" /></td>
+                            <td className="py-2.5 px-3 text-right"><Skeleton className="h-4 w-16 ml-auto" /></td>
+                            <td className="py-2.5 px-3 text-right"><Skeleton className="h-4 w-20 ml-auto" /></td>
+                          </tr>
+                        ))
+                      ) : isGlError ? (
+                        <tr>
+                          <td colSpan={customize.showVoucherType ? 7 : 6} className="py-8 text-center">
+                            <div className="text-rose-600 font-medium text-xs flex items-center justify-center gap-2">
+                              <span>Failed to load General Ledger Vouchers</span>
+                              <Button size="sm" variant="outline" onClick={() => refetchGl()} className="h-7 text-xs">Retry</Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : (
+                        <>
+                          {/* Opening Balance */}
+                          <tr className="bg-muted/40 font-medium text-foreground">
+                            <td className="py-2 px-3 font-mono text-muted-foreground">
+                              {dateFrom ? formatDate(dateFrom) : 'Beginning'}
+                            </td>
+                            <td className="py-2 px-3 font-semibold text-foreground">
+                              Opening Balance
+                            </td>
+                            {customize.showVoucherType && <td className="py-2 px-3 text-muted-foreground">—</td>}
+                            <td className="py-2 px-3 text-muted-foreground font-mono">—</td>
+                            <td className="py-2 px-3 text-right font-mono text-xs">
+                              {glData?.opening_balance_side === 'Dr' ? fmtVal(glData.opening_balance) : '—'}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono text-xs">
+                              {glData?.opening_balance_side === 'Cr' ? fmtVal(glData.opening_balance) : '—'}
+                            </td>
+                            <td className="py-2 px-3 text-right font-mono text-xs font-semibold text-foreground">
+                              {fmtBalance(glData?.opening_balance || 0, (glData?.opening_balance_side as 'Dr'|'Cr') || 'Dr')}
+                            </td>
+                          </tr>
 
                       {/* Empty state */}
                       {lines.length === 0 && (
@@ -1224,6 +1237,8 @@ export default function GeneralLedgerPage() {
                           </React.Fragment>
                         );
                       })}
+                      </>
+                    )}
                     </tbody>
                   </table>
                 </div>
@@ -1256,9 +1271,8 @@ export default function GeneralLedgerPage() {
                   </div>
                 </div>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
 
         {/* ── VIEW 3: MONTHLY SUMMARY (Tally Style) ────────────────────────────── */}
         {viewParam === 'monthly' && (
