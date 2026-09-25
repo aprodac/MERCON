@@ -49,7 +49,6 @@ export const MENU_SECTIONS: MenuSection[] = [
       { Icon: Truck, label: 'Vehicles', desc: 'Fleet trucks & trailers', route: '/vehicles' },
       { Icon: Building2, label: '3rd Party Fleet', desc: 'Subcontractors & providers', route: '/third-party' },
       { Icon: Wrench, label: 'Maintenance', desc: 'Service & repair records', route: '/maintenance' },
-      { Icon: CalendarClock, label: 'Vehicle Renewals', desc: 'Expiring vehicle docs', route: '/vehicle-renewals' },
     ],
   },
   {
