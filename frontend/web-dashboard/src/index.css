@@ -307,8 +307,15 @@ body {
 /* ─── Sidebar Orange Scrollbar ────────────────────────────────────────────── */
 .sidebar-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
 .sidebar-scrollbar::-webkit-scrollbar-track { background: transparent; }
-.sidebar-scrollbar::-webkit-scrollbar-thumb { background: #E8450F; border-radius: 99px; }
-.sidebar-scrollbar::-webkit-scrollbar-thumb:hover { background: #C7380A; }
+.sidebar-scrollbar::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 99px; }
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
+.sidebar-scrollbar { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.15) transparent; }
+.sidebar-scrollbar-light::-webkit-scrollbar { width: 5px; height: 5px; }
+.sidebar-scrollbar-light::-webkit-scrollbar-track { background: transparent; }
+.sidebar-scrollbar-light::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.12); border-radius: 99px; }
+.sidebar-scrollbar-light::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.22); }
+.sidebar-scrollbar-light { scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.12) transparent; }
+.dark .sidebar-scrollbar-light::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); }
 
 /* ─── Utility animations ──────────────────────────────────────────────────── */
 @keyframes fadeIn {
