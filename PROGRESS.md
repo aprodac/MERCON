@@ -254,7 +254,8 @@ Spec: `docs/finance-redesign/DESIGN.md` · Prompts: `docs/finance-redesign/PROMP
 | 10 | Journal entries | ⬜ |
 | 11 | Chart of Accounts + Periods | ⬜ |
 | 12 | Banking (accounts, reconciliation, advances) | ⬜ |
-| 13 | Statements (P&L, BS, TB, Cash Flow) | ⬜ |
+| 13 | Statements (P&L, BS, TB, Cash Flow) | 🔄 (13a P&L done) |
+| 13a | **Profit & Loss statement redesign** (Zoho vertical + Tally T-format) + 2 P&L calculation bug fixes | ✅ (2026-09-25) |
 | 14 | Ageing + General Ledger | ⬜ |
 | 15 | QA, a11y, docs | ⬜ |
 
