@@ -605,3 +605,30 @@ The visual rules below make `/finance` pages feel like a modern, clean financial
 - **R8 Type scale**:
   - `11px uppercase tracking-wide text-muted-foreground font-medium` for column labels only; 13–14px body; 15px card titles (`font-semibold`); no other uppercase text. Spacing on a 4px grid; list/statement rows `h-9`; card padding `p-4` (`p-5` max).
 
+---
+
+## 2.7 E-Wheels Table System & Viewport-Fit Layout (Prompt 17)
+
+- **Viewport-fit Pages (`fixedViewport={true}`)**:
+  - Main app shell container stays `overflow-hidden` on desktop. Page root is `flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4`.
+  - Only the table container inside `<ScrollTableCard>` scrolls (`.table-container overflow-auto flex-1`).
+  - Mobile fallback (`<768px`): pages switch to normal scrolling (`max-md:overflow-y-auto max-md:h-auto`).
+
+- **ScrollTableCard Component**:
+  - `Card`: `flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card shadow-xs`.
+  - Card toolbar: `px-3 py-2 border-b border-border flex flex-wrap items-center justify-between gap-2 shrink-0`.
+  - Pinned Card footer: `border-t border-border bg-background px-4 py-2.5 text-xs flex items-center justify-between shrink-0`.
+
+- **Bordered Chips Recipe**:
+  - `border-{hue}-200 bg-{hue}-50 text-{hue}-700 dark:border-{hue}-800 dark:bg-{hue}-950/30 dark:text-{hue}-400 rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap`.
+  - Neutral chips: `border-border bg-muted text-muted-foreground`.
+  - Non-wrapping (`whitespace-nowrap`), `max-w-[180px]` with truncation + tooltip for long names.
+
+- **Table Typography Rules**:
+  - `thead` headers: sticky top-0 z-10 bg-background shadow-xs border-b; sentence case `text-xs font-semibold text-foreground`.
+  - Body cells: `px-3 py-1.5 text-xs align-middle`.
+  - Amounts: Monospaced tabular figures (`font-mono tabular-nums` / `.fin-num-mono font-semibold text-xs text-foreground`). Statement pages (P&L, Balance Sheet) retain sans tabular figures (`.fin-num`).
+  - Date cells: `text-muted-foreground text-xs font-medium whitespace-nowrap`.
+  - Text cells: `text-xs text-foreground`, truncate with `max-w` + title attribute.
+
+

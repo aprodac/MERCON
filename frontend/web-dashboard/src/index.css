@@ -243,6 +243,15 @@ body {
 ::-webkit-scrollbar-thumb { background: #D8D8DC; border-radius: 99px; }
 ::-webkit-scrollbar-thumb:hover { background: #AEAEB8; }
 
+/* ─── E-Wheels Table Container Scrollbar ─────────────────────────────────── */
+.table-container::-webkit-scrollbar { width: 8px; height: 8px; }
+.table-container::-webkit-scrollbar-track { background: oklch(0.95 0 0); border-radius: 9999px; }
+.dark .table-container::-webkit-scrollbar-track { background: oklch(0.269 0 0); }
+.table-container::-webkit-scrollbar-thumb { background: oklch(0.708 0 0 / 30%); border-radius: 9999px; }
+.table-container::-webkit-scrollbar-thumb:hover { background: oklch(0.708 0 0 / 50%); }
+.table-container { scrollbar-width: thin; scrollbar-color: oklch(0.708 0 0 / 30%) oklch(0.95 0 0); }
+.dark .table-container { scrollbar-color: oklch(0.708 0 0 / 30%) oklch(0.269 0 0); }
+
 /* ─── Sidebar Orange Scrollbar ────────────────────────────────────────────── */
 .sidebar-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
 .sidebar-scrollbar::-webkit-scrollbar-track { background: transparent; }
@@ -503,6 +512,11 @@ body {
 
 .fin-num {
   font-family: 'Geist Variable', 'Inter Variable', system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.fin-num-mono {
+  font-family: var(--font-mono, 'JetBrains Mono Variable', monospace);
   font-variant-numeric: tabular-nums;
 }
 

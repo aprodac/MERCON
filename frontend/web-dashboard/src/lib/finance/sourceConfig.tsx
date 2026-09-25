@@ -48,10 +48,10 @@ export function renderSourceBadge(sourceType?: string, sourceId?: string | null)
   const link = config.link?.(sourceId);
 
   const badgeContent = (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/90 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700/80 transition-all shrink-0 shadow-2xs">
-      <span className={`w-2 h-2 rounded-full shrink-0 ${config.dotClass}`} />
-      <Icon className="w-3 h-3 text-slate-500 dark:text-slate-400" />
-      {config.label}
+    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs font-medium bg-muted text-foreground border border-border hover:bg-muted/80 transition-colors shrink-0 whitespace-nowrap max-w-[180px] truncate select-none">
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${config.dotClass}`} />
+      <Icon className="w-3 h-3 text-muted-foreground shrink-0" />
+      <span className="truncate">{config.label}</span>
     </span>
   );
 
