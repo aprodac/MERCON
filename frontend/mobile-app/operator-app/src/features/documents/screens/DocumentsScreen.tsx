@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, FlatList, RefreshControl, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, SectionList, RefreshControl, TouchableOpacity, SafeAreaView, StatusBar } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, FolderOpen, Menu } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
@@ -11,6 +11,22 @@ export default function DocumentsScreen() {
   const router = useRouter();
   const { documents, loading, error, refetch } = useOperatorDocuments();
   const [drawerVisible, setDrawerVisible] = useState(false);
+
+  const groupedDocuments = useMemo(() => {
+    if (!documents) return [];
+    const groups: Record<string, OperatorDocument[]> = {};
+    
+    documents.forEach(doc => {
+      const type = doc.entity_type || 'General';
+      if (!groups[type]) groups[type] = [];
+      groups[type].push(doc);
+    });
+    
+    return Object.keys(groups).map(key => ({
+      title: key,
+      data: groups[key]
+    })).sort((a, b) => a.title.localeCompare(b.title));
+  }, [documents]);
 
   const renderItem = ({ item }: { item: OperatorDocument }) => (
     <View
@@ -95,11 +111,19 @@ export default function DocumentsScreen() {
       {error ? (
         <ErrorState message={error} onRetry={refetch} className="flex-1" />
       ) : (
-        <FlatList
-          data={documents}
+        <SectionList
+          sections={groupedDocuments}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={{ padding: Spacing.lg, paddingBottom: 100 }}
+          renderSectionHeader={({ section: { title } }) => (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, marginTop: 16 }}>
+              <FolderOpen size={18} color={Colors.primary} strokeWidth={2.5} />
+              <Text style={{ fontSize: Typography.base, fontWeight: '800', color: Colors.gray800 }}>
+                {title} Documents
+              </Text>
+            </View>
+          )}
+          contentContainerStyle={{ paddingHorizontal: Spacing.lg, paddingBottom: 100 }}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={refetch} tintColor={Colors.primary} />}
           ListEmptyComponent={
             !loading ? (
