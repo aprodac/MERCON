@@ -46,17 +46,24 @@ test('P&L Calculation & Date Boundaries Test Suite', async (t) => {
       },
     });
 
-    // Create period for August 2026
+    // Create or retrieve period for August 2026
     const startDate = new Date(Date.UTC(2026, 7, 1, 0, 0, 0));
     const endDate = new Date(Date.UTC(2026, 7, 31, 23, 59, 59));
-    period = await prisma.accountingPeriod.create({
-      data: {
-        name: `Test PnL Period ${timestamp}`,
-        start_date: startDate,
-        end_date: endDate,
-        status: 'Open',
-      },
+    const existingPeriod = await prisma.accountingPeriod.findFirst({
+      where: { start_date: startDate, end_date: endDate },
     });
+    if (existingPeriod) {
+      period = existingPeriod;
+    } else {
+      period = await prisma.accountingPeriod.create({
+        data: {
+          name: `Test PnL Period ${timestamp}`,
+          start_date: startDate,
+          end_date: endDate,
+          status: 'Open',
+        },
+      });
+    }
   });
 
   await t.test('1. Includes entries on the last day of the date range and checks parent fields', async () => {

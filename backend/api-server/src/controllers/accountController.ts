@@ -60,7 +60,7 @@ export const getAccounts = async (req: Request, res: Response) => {
     const balances = await prisma.journalLine.groupBy({
       by: ['accountId'],
       where: {
-        journalEntry: { status: 'Posted', deletedAt: null },
+        journalEntry: { status: 'Posted' },
       },
       _sum: {
         debit: true,

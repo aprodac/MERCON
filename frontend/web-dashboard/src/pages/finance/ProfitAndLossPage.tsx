@@ -249,9 +249,9 @@ export default function ProfitAndLossPage() {
   const setupGroups = useMemo(() => {
     const map = new Map<string, { key: string; name: string; isRevenue: boolean; defaultClass: PnlClass }>();
     [...revenues, ...expenses].forEach((item) => {
-      const isRev = (item as any).account_type === 'Revenue' || revenues.includes(item);
-      const key = item.parent_id || (item.parent_name ? `parent-${item.parent_name}` : item.account_id || item.account_code || item.name);
-      const name = item.parent_name || item.name;
+      const isRev = revenues.includes(item);
+      const key = String(item.parent_id || (item.parent_name ? `parent-${item.parent_name}` : item.account_id || item.account_code || item.name || 'unassigned'));
+      const name = item.parent_name || item.name || 'Unassigned';
       if (key && !map.has(key)) {
         map.set(key, {
           key,
@@ -611,7 +611,7 @@ export default function ProfitAndLossPage() {
             {activeTab === 'statement' && (
               <ToggleGroup
                 value={[layout]}
-                onValueChange={(val) => val[0] && updateParams({ layout: val[0] })}
+                onValueChange={(val: string[]) => val[0] && updateParams({ layout: val[0] })}
                 className="bg-[#F4F4F5] dark:bg-slate-800/80 p-0.5 rounded-xl"
               >
                 <ToggleGroupItem value="vertical" aria-label="Vertical Layout" className="h-7 text-xs px-2.5 rounded-[9px]">

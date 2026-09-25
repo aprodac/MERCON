@@ -13,7 +13,7 @@ export const PNL_CLASS_LABELS: Record<PnlClass, string> = {
 };
 
 export function getDefaultPnlClass(
-  accountName: string,
+  accountName?: string | null,
   parentName?: string | null,
   isRevenue: boolean = false,
 ): PnlClass {
@@ -121,13 +121,12 @@ export function buildStructuredVerticalPnl(
 
   const processItems = (items: ReportLineItem[], isRevenue: boolean, periodKey?: string) => {
     for (const item of items) {
-      const entityKey = item.parent_id || (item.parent_name ? `parent-${item.parent_name}` : item.account_id || item.account_code || item.name);
-      const entityName = item.parent_name || item.name;
+      const entityKey = String(item.parent_id || (item.parent_name ? `parent-${item.parent_name}` : item.account_id || item.account_code || item.name || 'unassigned'));
+      const entityName = item.parent_name || item.name || 'Unassigned';
       const entityCode = item.parent_code || undefined;
 
-      const pnlClass: PnlClass =
-        (entityKey ? customClassifications[entityKey] : undefined) ||
-        getDefaultPnlClass(item.name, item.parent_name, isRevenue);
+      const customCls = customClassifications[entityKey];
+      const pnlClass: PnlClass = customCls || getDefaultPnlClass(item.name, item.parent_name, isRevenue);
 
       const sectionMap = sectionsData[pnlClass];
       let group = sectionMap.get(entityKey);
@@ -144,40 +143,42 @@ export function buildStructuredVerticalPnl(
         sectionMap.set(entityKey, group);
       }
 
+      const grp = group;
+
       if (!periodKey) {
         // Primary period item
-        let accItem = group.items.find((i) => i.account_code === item.account_code);
+        let accItem = grp.items.find((i) => i.account_code === item.account_code);
         if (!accItem) {
           accItem = {
-            id: item.account_id || item.account_code || item.name,
+            id: item.account_id || item.account_code || item.name || 'item',
             account_id: item.account_id || undefined,
             account_code: item.account_code || '',
             code: item.account_code || '',
-            name: item.name,
+            name: item.name || '',
             amount: item.amount,
             compareAmounts: {},
           };
-          group.items.push(accItem);
+          grp.items.push(accItem);
         } else {
           accItem.amount += item.amount;
         }
-        group.total += item.amount;
+        grp.total += item.amount;
       } else {
         // Compare period item
-        if (!group.compareTotals) group.compareTotals = {};
-        group.compareTotals[periodKey] = (group.compareTotals[periodKey] || 0) + item.amount;
-        let accItem = group.items.find((i) => i.account_code === item.account_code);
+        if (!grp.compareTotals) grp.compareTotals = {};
+        grp.compareTotals[periodKey] = (grp.compareTotals[periodKey] || 0) + item.amount;
+        let accItem = grp.items.find((i) => i.account_code === item.account_code);
         if (!accItem) {
           accItem = {
-            id: item.account_id || item.account_code || item.name,
+            id: item.account_id || item.account_code || item.name || 'item',
             account_id: item.account_id || undefined,
             account_code: item.account_code || '',
             code: item.account_code || '',
-            name: item.name,
+            name: item.name || '',
             amount: 0,
             compareAmounts: {},
           };
-          group.items.push(accItem);
+          grp.items.push(accItem);
         }
         if (!accItem.compareAmounts) accItem.compareAmounts = {};
         accItem.compareAmounts[periodKey] = (accItem.compareAmounts[periodKey] || 0) + item.amount;
@@ -209,13 +210,13 @@ export function buildStructuredVerticalPnl(
 
   (Object.keys(sectionsData) as PnlClass[]).forEach((cls) => {
     const groupList = Array.from(sectionsData[cls].values());
-    groupList.sort((a, b) => (a.code || a.name || '').localeCompare(b.code || b.name || ''));
+    groupList.sort((a, b) => String(a.code || a.name || '').localeCompare(String(b.code || b.name || '')));
 
     let secTotal = 0;
     const secCompareTotals: Record<string, number> = {};
 
     groupList.forEach((g) => {
-      g.items.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+      g.items.sort((a, b) => String(a.code || a.name || '').localeCompare(String(b.code || b.name || '')));
       secTotal += g.total;
       compareCols.forEach((col) => {
         secCompareTotals[col] = (secCompareTotals[col] || 0) + (g.compareTotals?.[col] || 0);
