@@ -65,40 +65,38 @@ export default function DashboardHomeScreen() {
 
         {/* 3. Dashboard Metrics */}
         {summary.isLoading || activeTrips.isLoading || delayedDeliveries.isLoading ? (
-          <View className="flex-col gap-3">
-            <View className="flex-row gap-3">
-              <SkeletonMetricCard />
-              <SkeletonMetricCard />
-            </View>
-            <View className="flex-row gap-3">
-              <SkeletonMetricCard />
-            </View>
-          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingRight: 16 }} style={{ marginHorizontal: -16, paddingHorizontal: 16 }}>
+            <View style={{ width: 160 }}><SkeletonMetricCard /></View>
+            <View style={{ width: 140 }}><SkeletonMetricCard /></View>
+            <View style={{ width: 140 }}><SkeletonMetricCard /></View>
+          </ScrollView>
         ) : summary.isError ? (
           <ErrorState message="Couldn't load dashboard metrics." onRetry={() => summary.refetch()} />
         ) : (
-          <View className="flex-col gap-3">
-            <View className="flex-row gap-3">
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingRight: 16 }} style={{ marginHorizontal: -16, paddingHorizontal: 16 }}>
+            <View style={{ width: 160 }}>
               <DashboardMetricCard
                 title="Active Trips"
                 value={activeTrips.data?.length ?? 0}
                 image={require('@/assets/images/mobile-truck.webp')}
                 onPress={() => router.push('/trips')}
               />
+            </View>
+            <View style={{ width: 140 }}>
               <DashboardMetricCard
                 title="Delayed Deliveries"
                 value={delayedDeliveries.data?.length ?? 0}
                 onPress={() => router.push('/trips')}
               />
             </View>
-            <View className="flex-row gap-3">
+            <View style={{ width: 140 }}>
               <DashboardMetricCard
                 title="POD Pending"
                 value={counts.pod ?? 0}
                 onPress={() => router.push('/trips')}
               />
             </View>
-          </View>
+          </ScrollView>
         )}
 
         {/* 4. UNIFIED OPERATOR COMMAND CENTER */}
