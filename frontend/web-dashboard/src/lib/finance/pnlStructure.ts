@@ -24,7 +24,7 @@ export function getDefaultPnlClass(
     }
     return 'operating_income';
   } else {
-    if (/cost of (sales|services|goods|revenue)|direct/i.test(combined)) {
+    if (/cost of (sales|services|goods|revenue)|direct|driver salar|fuel|toll|vehicle maint|haulage|subcontract/i.test(combined)) {
       return 'cost_of_sales';
     }
     if (/interest|finance cost|loss on|non.?operating/i.test(combined)) {
@@ -33,6 +33,7 @@ export function getDefaultPnlClass(
     return 'operating_expense';
   }
 }
+
 
 export function clearPnlStoredOverrides(): void {
   try {

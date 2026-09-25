@@ -309,7 +309,7 @@ export default function ChartOfAccountsPage() {
               size="sm"
               onClick={() => updateMutation.mutate({ id: acc.id, data: { isActive: true } })}
               title="Reactivate Account"
-              className="h-7 px-2 text-xs font-semibold text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 cursor-pointer"
+              className="h-7 px-2 text-xs font-semibold text-chip-positive-fg hover:bg-chip-positive-bg cursor-pointer"
             >
               Reactivate
             </Button>
@@ -321,8 +321,8 @@ export default function ChartOfAccountsPage() {
   ];
 
   return (
-    <DashboardLayout active="finance" title="Chart of Accounts">
-      <div className="p-6 space-y-4 max-w-7xl mx-auto">
+    <DashboardLayout active="finance" title="Chart of Accounts" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-7xl mx-auto w-full">
         {/* Control Bar: Class Tabs + Actions */}
         <div className="bg-card border border-border dark:border-border rounded-xl px-4 py-2 shadow-xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <StatusTabs

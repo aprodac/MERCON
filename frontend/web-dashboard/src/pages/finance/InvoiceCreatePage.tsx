@@ -33,6 +33,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Chip } from '@/components/ui/chip';
+import { StatPill } from '@/components/ui/stat-pill';
 
 import { financeService, CreateInvoiceDTO, InvoiceLineDTO } from '@/services/financeService';
 import { customerService } from '@/services/customerService';
@@ -339,9 +341,9 @@ export default function InvoiceCreatePage() {
 
                 {selectedCustomer && (
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 font-medium">
-                      <Globe className="w-3 h-3 mr-1 text-emerald-600 inline" /> Currency: SAR
-                    </Badge>
+                    <Chip tone="positive" size="sm" icon={Globe}>
+                      Currency: SAR
+                    </Chip>
                   </div>
                 )}
               </CardHeader>
@@ -451,12 +453,15 @@ export default function InvoiceCreatePage() {
                   </CardTitle>
                   {customerId && unbilledTrips.length > 0 && (
                     <div className="flex items-center gap-1.5">
-                      <Badge variant="outline" className="text-[10px] bg-muted text-foreground border-none font-medium">
+                      <Chip tone="neutral" size="sm">
                         {unbilledTrips.length} Available
-                      </Badge>
-                      <Badge className="text-[10px] bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 text-[#FA634E] border border-rose-200 dark:bg-rose-950/40 font-bold">
-                        {selectedTripIds.length} Selected (SAR {tripsSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })})
-                      </Badge>
+                      </Chip>
+                      <StatPill
+                        count={selectedTripIds.length}
+                        label="Selected"
+                        value={`SAR ${tripsSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                        tone="warning"
+                      />
                     </div>
                   )}
                 </div>
@@ -467,7 +472,7 @@ export default function InvoiceCreatePage() {
                     variant="ghost"
                     size="sm"
                     onClick={selectAllTrips}
-                    className="h-7 text-xs font-bold text-[#FA634E] hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 dark:hover:bg-rose-950/30 px-2"
+                    className="h-7 text-xs font-bold text-[#FA634E] hover:bg-muted px-2"
                   >
                     {selectedTripIds.length === filteredTrips.length && filteredTrips.length > 0
                       ? 'Deselect All'
@@ -602,14 +607,14 @@ export default function InvoiceCreatePage() {
                                       </Badge>
                                     )}
                                     {lineTypeVal && (
-                                      <Badge variant="outline" className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 px-1.5 py-0">
+                                      <Chip tone="violet" size="sm">
                                         {lineTypeVal}
-                                      </Badge>
+                                      </Chip>
                                     )}
                                     {opTypeVal && (
-                                      <Badge variant="outline" className="text-[10px] font-semibold text-emerald-700 bg-emerald-500/10 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 px-1.5 py-0">
+                                      <Chip tone="positive" size="sm">
                                         {opTypeVal}
-                                      </Badge>
+                                      </Chip>
                                     )}
                                     {driverName && (
                                       <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
@@ -657,7 +662,7 @@ export default function InvoiceCreatePage() {
                   variant="ghost"
                   size="sm"
                   onClick={handleAddManualLine}
-                  className="h-7 text-xs font-semibold text-[#FA634E] hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 dark:hover:bg-rose-950/30 px-2"
+                  className="h-7 text-xs font-semibold text-[#FA634E] hover:bg-muted px-2"
                 >
                   <Plus className="w-3.5 h-3.5 mr-1" /> Add Charge Line
                 </Button>

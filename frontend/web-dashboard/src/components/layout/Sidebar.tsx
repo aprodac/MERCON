@@ -1,649 +1,436 @@
-import { useState, useEffect } from 'react';
-import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useMemo, useState } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Home, Truck, Users, Car, Building2,
-  CreditCard, ReceiptText, Calculator, Files, FileBarChart,
-  Settings, LogOut, Wrench, X, MapPin, TrendingUp, Trash2,
-  CalendarRange, Wallet, SlidersHorizontal, ChevronsLeft, ChevronsRight,
-  FolderArchive, Lock, ShieldCheck, GraduationCap, AlertTriangle,
-  FolderTree, BookOpen, BookOpenText, Scale, BarChart3, Clock, Coins,
-  ChevronDown, ChevronRight, PlusCircle, Sparkles, Layers, FileText
+  ChevronRight, ChevronsLeft, ChevronsRight, Keyboard, Lock, LogOut, Moon, Pin, PinOff, Plus, Search,
+  Settings, Sun, X,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 import { authStore } from '@/store/authStore';
-import { notificationService } from '@/services/notificationService';
-import { settingsService } from '@/services/settingsService';
-import type { ModuleKey } from '@mercon/shared-types';
 import { usePermissions } from '@/hooks/usePermissions';
-import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
+import { useNavAccess } from '@/hooks/useNavAccess';
+import {
+  FINANCE_GROUPS, NAV_ACTIONS, NAV_ACTION_SECTIONS, NAV_PAGES, NAV_SECTIONS, SECTION_TONES, SETTINGS_PAGES,
+  findActiveEntry, isSettingsArea, type FinanceGroupId, type NavAccessState, type NavPage,
+} from '@/config/navigation';
+import {
+  navStore, openCommandPalette, openShortcutsGuide, usePinnedIds, useSidebarTheme, type SidebarTheme,
+} from '@/lib/navigation/navStore';
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
+  DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 
 interface SidebarProps {
   active?: string;
   /** Mobile drawer open state — ignored at lg and above, where the sidebar is always visible */
   open?: boolean;
   onClose?: () => void;
-  /**
-   * Desktop-only rail mode — collapses to an icon strip at lg and above. Mobile drawer is
-   * unaffected. Toggled from the handle on the sidebar's own right edge.
-   */
+  /** Desktop-only rail mode — collapses to an icon strip at lg and above. */
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 }
 
-interface SubRoute {
-  label: string;
-  path: string;
-  icon?: any;
-  permissionKey?: string;
-  moduleKey?: ModuleKey;
-  isAction?: boolean;
+const OPEN_GROUPS_KEY = 'mercon_nav_open_finance_groups';
+
+function readOpenGroups(): Partial<Record<FinanceGroupId, boolean>> {
+  try {
+    return JSON.parse(localStorage.getItem(OPEN_GROUPS_KEY) || '{}');
+  } catch {
+    return {};
+  }
 }
 
-interface NavItem {
-  icon: any;
-  label: string;
-  path: string;
-  moduleKey?: ModuleKey;
-  permissionKey?: string;
-  end?: boolean;
-  badge?: number;
-  subRoutes?: SubRoute[];
-}
+// Visual tokens per sidebar theme. Charcoal is the brand default; Light follows the app's shadcn tokens
+// (so it also darkens correctly in dark mode). Section tone colours pick the matching on-dark / on-light shade.
+const SIDEBAR_THEMES = {
+  charcoal: {
+    aside: 'bg-[#3E3C3D] text-[#EEF1F6] border-white/[0.06]',
+    headerBg: '#EEF1F6',
+    wedge: '#3E3C3D',
+    ring: 'focus-visible:ring-white/30',
+    rowIdle: 'text-white/65 hover:bg-white/[0.06] hover:text-white',
+    rowActive: 'bg-white/[0.10] text-white',
+    hoverBg: 'hover:bg-white/[0.06]',
+    label: 'text-white/40',
+    icon: 'text-white/45 group-hover/row:text-white/80',
+    railIcon: 'text-white/55',
+    lockedText: 'text-white/30',
+    lockedIcon: 'text-white/25',
+    pinBtn: 'text-white/40 hover:text-white hover:bg-white/10',
+    divider: 'border-white/[0.06]',
+    guide: 'border-white/10',
+    chevron: 'text-white/35',
+    groupIdle: 'text-white/65 hover:text-white',
+    groupActive: 'text-white',
+    search: 'bg-white/[0.06] text-white/55 hover:bg-white/[0.10] hover:text-white/80',
+    kbd: 'text-white/40 border-white/15',
+    newBtn: 'bg-white/[0.08] text-white/85 hover:bg-white/[0.14] hover:text-white',
+    flyout: 'border-white/10 bg-[#2D2B2C] text-white',
+    name: 'text-white',
+    role: 'text-white/45',
+    handleBorder: 'border-[#3E3C3D]',
+    scrollbar: 'sidebar-scrollbar',
+  },
+  light: {
+    aside: 'bg-[#EEF1F6] text-foreground border-black/[0.06] dark:bg-card dark:border-border',
+    headerBg: '#FFFFFF',
+    wedge: '#EEF1F6',
+    ring: 'focus-visible:ring-ring',
+    rowIdle: 'text-foreground/70 hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-muted',
+    rowActive: 'bg-white text-foreground shadow-xs dark:bg-muted',
+    hoverBg: 'hover:bg-black/[0.04] dark:hover:bg-muted',
+    label: 'text-muted-foreground',
+    icon: 'text-muted-foreground group-hover/row:text-foreground',
+    railIcon: 'text-muted-foreground',
+    lockedText: 'text-muted-foreground/50',
+    lockedIcon: 'text-muted-foreground/40',
+    pinBtn: 'text-muted-foreground hover:text-foreground hover:bg-white dark:hover:bg-background',
+    divider: 'border-black/[0.06] dark:border-border',
+    guide: 'border-black/[0.08] dark:border-border',
+    chevron: 'text-muted-foreground',
+    groupIdle: 'text-foreground/70 hover:text-foreground',
+    groupActive: 'text-foreground',
+    search: 'bg-white text-muted-foreground hover:text-foreground border border-black/[0.06] dark:bg-background dark:border-border',
+    kbd: 'text-muted-foreground border-border bg-[#EEF1F6] dark:bg-muted',
+    newBtn: 'bg-white text-foreground border border-black/[0.06] hover:bg-white/70 dark:bg-background dark:border-border',
+    flyout: 'border-border bg-popover text-popover-foreground',
+    name: 'text-foreground',
+    role: 'text-muted-foreground',
+    handleBorder: 'border-[#EEF1F6] dark:border-background',
+    scrollbar: 'sidebar-scrollbar-light',
+  },
+} as const;
 
-interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
+const rowShape =
+  'group/row relative flex items-center gap-2.5 h-8 px-2.5 rounded-md text-[13px] font-medium outline-none transition-colors focus-visible:ring-2';
 
-export default function Sidebar({ active, open = false, onClose, collapsed = false, onToggleCollapse }: SidebarProps) {
+export default function Sidebar({ open = false, onClose, collapsed = false, onToggleCollapse }: SidebarProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const user = authStore.getUser();
-  const { can, isSuperAdmin, userRole } = usePermissions();
-  const isAdmin = userRole === 'Admin';
-  const initials = user?.name ? user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : 'ME';
-
-  // State to track expanded sub-routes inline when not collapsed
-  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
-
-  const isItemActive = (itemPath: string, itemEnd?: boolean) => {
-    const currentPath = location.pathname;
-    if (itemPath === '/vehicles') {
-      return currentPath.startsWith('/vehicles') && !currentPath.includes('/financials');
-    }
-    if (itemPath === '/vehicles/financials') {
-      return currentPath.includes('/financials');
-    }
-    if (itemPath === '/trips') {
-      return currentPath === '/trips' || (currentPath.startsWith('/trips/') && !currentPath.startsWith('/trips/monthly'));
-    }
-    if (itemEnd || itemPath === '/') {
-      return currentPath === itemPath;
-    }
-    return currentPath === itemPath || currentPath.startsWith(itemPath + '/');
+  const { userRole, isSuperAdmin } = usePermissions();
+  const access = useNavAccess();
+  const pinnedIds = usePinnedIds();
+  const sidebarTheme = useSidebarTheme();
+  const S = SIDEBAR_THEMES[sidebarTheme];
+  const rowBase = cn(rowShape, S.ring);
+  const rowIdle = S.rowIdle;
+  const rowActive = S.rowActive;
+  /** Section-tinted icon class for the current theme (null section tone → neutral). */
+  const toneIcon = (section: NavPage['section'], withHover = true) => {
+    const tone = SECTION_TONES[section];
+    if (!tone) return S.icon;
+    if (sidebarTheme === 'light') return tone.iconOnLight;
+    return withHover ? cn(tone.iconOnDark, tone.iconOnDarkHover) : tone.iconOnDark;
   };
+
+  const displayName = user?.name || (userRole === 'Admin' ? 'Admin User' : 'User');
+  const initials = displayName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase();
+  const roleLabel = isSuperAdmin ? 'Super admin' : userRole || '';
+
+  // Resolve access once per render for every page / action
+  const pages = useMemo(
+    () => NAV_PAGES.filter((p) => !p.hiddenInSidebar).map((p) => ({ page: p, state: access(p) })).filter((x) => x.state !== 'hidden'),
+    [access],
+  );
+  const actions = useMemo(() => NAV_ACTIONS.filter((a) => access(a) === 'visible'), [access]);
+
+  const activePage = findActiveEntry(NAV_PAGES, location.pathname);
+  const inSettings = !activePage && isSettingsArea(location.pathname);
+  const activeGroup = activePage?.section === 'finance' ? activePage.group : undefined;
+
+  const [openGroups, setOpenGroups] = useState<Partial<Record<FinanceGroupId, boolean>>>(readOpenGroups);
+
+  // The group holding the current page always opens
+  useEffect(() => {
+    if (activeGroup && !openGroups[activeGroup]) {
+      setOpenGroups((prev) => ({ ...prev, [activeGroup]: true }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeGroup]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(OPEN_GROUPS_KEY, JSON.stringify(openGroups));
+    } catch {
+      // ignore
+    }
+  }, [openGroups]);
 
   const handleLogout = () => {
     authStore.clearSession();
     navigate('/login');
   };
 
-  const { data: notificationsRes } = useQuery({
-    queryKey: ['notifications'],
-    queryFn: notificationService.getAll,
-    refetchInterval: 60000,
-  });
+  const settingsVisible = SETTINGS_PAGES.some((p) => access(p) === 'visible');
 
-  const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: settingsService.get,
-    staleTime: 60000,
-  });
+  // ── Rows ────────────────────────────────────────────────────────────
+  const renderPageRow = (page: NavPage, state: NavAccessState, opts: { nested?: boolean } = {}) => {
+    const Icon = page.icon;
+    const isActive = activePage?.id === page.id;
 
-  const unreadCount = notificationsRes?.data?.filter((n: any) => !n.is_read).length || 0;
-  const enabledModules = settings?.enabledModules;
-  const hiddenModules = settings?.hiddenModules;
-
-  // Master Structure of Nav Groups & Sub-routes
-  const rawNavGroups: NavGroup[] = [
-    {
-      label: 'MAIN',
-      items: [
-        {
-          icon: Home,
-          label: 'Dashboard',
-          path: '/',
-          moduleKey: 'dashboard',
-          badge: unreadCount > 0 ? unreadCount : undefined,
-          subRoutes: [
-            { label: 'Overview', path: '/', icon: Home },
-            { label: 'Notifications Center', path: '/notifications', icon: Clock },
-          ],
-        },
-      ],
-    },
-    {
-      label: 'OPERATIONS',
-      items: [
-        {
-          icon: Truck,
-          label: 'Trips & Dispatch',
-          path: '/trips',
-          moduleKey: 'trips',
-          subRoutes: [
-            { label: 'All Operations Trips', path: '/trips', icon: Truck },
-            { label: 'Create New Trip', path: '/trips/new', icon: PlusCircle, isAction: true },
-            { label: 'Monthly Agreement Trips', path: '/trips/monthly', icon: CalendarRange },
-            { label: '3rd Party Fleet Services', path: '/third-party', icon: Building2, moduleKey: 'third-party' },
-          ],
-        },
-        {
-          icon: Car,
-          label: 'Fleet & Drivers',
-          path: '/vehicles',
-          moduleKey: 'vehicles',
-          subRoutes: [
-            { label: 'Vehicle Registry', path: '/vehicles', icon: Car },
-            { label: 'Add New Vehicle', path: '/vehicles/new', icon: PlusCircle, isAction: true },
-            { label: 'Fleet Maintenance', path: '/maintenance', icon: Wrench, moduleKey: 'maintenance' },
-            { label: 'Schedule Maintenance', path: '/maintenance/new', icon: PlusCircle, isAction: true, moduleKey: 'maintenance' },
-            { label: 'Driver Roster', path: '/drivers', icon: Users, moduleKey: 'drivers' },
-            { label: 'Add New Driver', path: '/drivers/new', icon: PlusCircle, isAction: true, moduleKey: 'drivers' },
-            { label: 'Vehicle P&L Financials', path: '/vehicles/financials', icon: TrendingUp, permissionKey: 'fleet.financials' },
-          ],
-        },
-        {
-          icon: Building2,
-          label: 'Customers & Quotes',
-          path: '/customers',
-          moduleKey: 'customers',
-          subRoutes: [
-            { label: 'Customer Directory', path: '/customers', icon: Building2 },
-            { label: 'Add New Customer', path: '/customers/new', icon: PlusCircle, isAction: true },
-            { label: 'Commercial Quotations', path: '/quotations', icon: Calculator, moduleKey: 'quotations', permissionKey: 'quotations.view' },
-            { label: 'New Commercial Quote', path: '/quotations/new', icon: PlusCircle, isAction: true, moduleKey: 'quotations' },
-            { label: 'AI Agreement Import', path: '/quotations/import', icon: Sparkles, moduleKey: 'quotations' },
-          ],
-        },
-      ],
-    },
-    {
-      label: 'FINANCE',
-      items: [
-        {
-          icon: Calculator,
-          label: 'Sales & Revenue',
-          path: '/finance/invoices',
-          moduleKey: 'finance',
-          subRoutes: [
-            { label: 'Commercial Quotations', path: '/quotations', icon: Calculator, moduleKey: 'quotations', permissionKey: 'quotations.view' },
-            { label: 'Invoices Ledger', path: '/finance/invoices', icon: ReceiptText, moduleKey: 'finance' },
-            { label: 'Create New Invoice', path: '/finance/invoices/new', icon: PlusCircle, isAction: true, moduleKey: 'finance' },
-            { label: 'AR Accounts Receivable', path: '/finance/ar-ageing', icon: Clock, moduleKey: 'finance' },
-          ],
-        },
-        {
-          icon: CreditCard,
-          label: 'Purchases & Bills',
-          path: '/finance/bills',
-          moduleKey: 'finance',
-          subRoutes: [
-            { label: 'Vendor Bills Ledger', path: '/finance/bills', icon: CreditCard, moduleKey: 'finance' },
-            { label: 'Create Vendor Bill', path: '/finance/bills/new', icon: PlusCircle, isAction: true, moduleKey: 'finance' },
-            { label: 'Operating Expenses', path: '/expenses', icon: Wallet, moduleKey: 'expenses', permissionKey: 'reports.view' },
-            { label: 'AP Accounts Payable', path: '/finance/ap-ageing', icon: Clock, moduleKey: 'finance' },
-          ],
-        },
-        {
-          icon: Building2,
-          label: 'Banking & Cash',
-          path: '/finance/bank-accounts',
-          moduleKey: 'finance',
-          subRoutes: [
-            { label: 'Bank Accounts', path: '/finance/bank-accounts', icon: Building2, moduleKey: 'finance' },
-            { label: 'Add Bank Account', path: '/finance/bank-accounts/new', icon: PlusCircle, isAction: true, moduleKey: 'finance' },
-            { label: 'Bank Reconciliation', path: '/finance/reconciliation', icon: Scale, moduleKey: 'finance' },
-            { label: 'Driver & Staff Advances', path: '/finance/advances', icon: Wallet, moduleKey: 'finance' },
-            { label: 'Issue New Advance', path: '/finance/advances/new', icon: PlusCircle, isAction: true, moduleKey: 'finance' },
-          ],
-        },
-        {
-          icon: BookOpen,
-          label: 'General Accounting',
-          path: '/finance/general-ledger',
-          moduleKey: 'finance',
-          subRoutes: [
-            { label: 'General Ledger', path: '/finance/general-ledger', icon: BookOpenText, moduleKey: 'finance' },
-            { label: 'Journal Entries', path: '/finance/journal-entries', icon: BookOpen, moduleKey: 'finance' },
-            { label: 'Create Journal Entry', path: '/finance/journal-entries/new', icon: PlusCircle, isAction: true, moduleKey: 'finance' },
-            { label: 'Chart of Accounts', path: '/finance/chart-of-accounts', icon: FolderTree, moduleKey: 'finance' },
-            { label: 'Accounting Periods', path: '/finance/periods', icon: CalendarRange, moduleKey: 'finance' },
-          ],
-        },
-        {
-          icon: BarChart3,
-          label: 'Financial Statements',
-          path: '/finance/profit-and-loss',
-          moduleKey: 'finance',
-          subRoutes: [
-            { label: 'Profit & Loss Statement', path: '/finance/profit-and-loss', icon: BarChart3, moduleKey: 'finance' },
-            { label: 'Balance Sheet', path: '/finance/balance-sheet', icon: FileBarChart, moduleKey: 'finance' },
-            { label: 'Trial Balance', path: '/finance/trial-balance', icon: Scale, moduleKey: 'finance' },
-            { label: 'Cash Flow Statement', path: '/finance/cash-flow', icon: Coins, moduleKey: 'finance' },
-            { label: 'Vehicle P&L Financials', path: '/vehicles/financials', icon: TrendingUp, moduleKey: 'vehicles', permissionKey: 'fleet.financials' },
-          ],
-        },
-      ],
-    },
-    {
-      label: 'COMPLIANCE & REPORTS',
-      items: [
-        {
-          icon: FileBarChart,
-          label: 'Reports & Analytics',
-          path: '/company-reports',
-          moduleKey: 'company-reports',
-          permissionKey: 'reports.view',
-          subRoutes: [
-            { label: 'Company Reports', path: '/company-reports', icon: FileBarChart, moduleKey: 'company-reports', permissionKey: 'reports.view' },
-            { label: 'Report Builder Landing', path: '/report-builder', icon: SlidersHorizontal, moduleKey: 'report-builder', permissionKey: 'reports.view' },
-            { label: 'Quick Report Generator', path: '/report-builder/quick', icon: Sparkles, moduleKey: 'report-builder', permissionKey: 'reports.view' },
-            { label: 'Advanced Report Builder', path: '/report-builder/advanced', icon: Layers, moduleKey: 'report-builder', permissionKey: 'reports.view' },
-          ],
-        },
-        {
-          icon: Files,
-          label: 'Documents & Academy',
-          path: '/documents',
-          moduleKey: 'documents',
-          subRoutes: [
-            { label: 'Documents Vault', path: '/documents', icon: Files, moduleKey: 'documents' },
-            { label: 'Learning & Academy', path: '/learning', icon: GraduationCap, moduleKey: 'learning' },
-          ],
-        },
-      ],
-    },
-    {
-      label: 'MASTER DATA',
-      items: [
-        {
-          icon: MapPin,
-          label: 'Locations & Taxonomy',
-          path: '/locations',
-          moduleKey: 'locations',
-          permissionKey: 'settings.view',
-          subRoutes: [
-            { label: 'Locations Master', path: '/locations', icon: MapPin, moduleKey: 'locations', permissionKey: 'settings.view' },
-            { label: 'Add New Location', path: '/locations/create', icon: PlusCircle, isAction: true, moduleKey: 'locations', permissionKey: 'settings.view' },
-            { label: 'Taxonomy & Universal Colors', path: '/taxonomy', icon: SlidersHorizontal, moduleKey: 'taxonomy', permissionKey: 'settings.view' },
-          ],
-        },
-      ],
-    },
-    {
-      label: 'ACCOUNT & SYSTEM',
-      items: [
-        {
-          icon: Settings,
-          label: 'Settings & Admin',
-          path: '/settings',
-          subRoutes: [
-            { label: 'System Settings', path: '/settings', icon: Settings },
-            { label: 'Recycle Bin', path: '/settings/recycle-bin', icon: Trash2, moduleKey: 'recycle-bin' },
-            ...(isSuperAdmin ? [{ label: 'Module Governance', path: '/settings/module-governance', icon: SlidersHorizontal, permissionKey: 'settings.deployment' }] : []),
-            ...(isSuperAdmin ? [{ label: 'Audit Trail Log', path: '/settings/audit-log', icon: ShieldCheck }] : []),
-            ...(can('users.view') ? [{ label: 'User Management', path: '/settings/users', icon: Users, permissionKey: 'users.view' }] : []),
-            ...(userRole === 'Admin' || isSuperAdmin ? [{ label: 'Error Console', path: '/settings/error-console', icon: AlertTriangle }] : []),
-            { label: 'Aprodac Vault', path: '/aprodac-documents', icon: FolderArchive, moduleKey: 'aprodac-documents' },
-          ],
-        },
-      ],
-    },
-  ];
-
-  // Auto-expand section containing current active route
-  useEffect(() => {
-    const activeState: Record<string, boolean> = {};
-    rawNavGroups.forEach((group) => {
-      group.items.forEach((item) => {
-        if (item.subRoutes && item.subRoutes.length > 0) {
-          const hasActiveSub = item.subRoutes.some(
-            (sr) => location.pathname === sr.path || (sr.path !== '/' && location.pathname.startsWith(sr.path))
-          );
-          const isParentActive = isItemActive(item.path, item.end);
-          if (hasActiveSub || isParentActive) {
-            activeState[item.label] = true;
-          }
-        }
-      });
-    });
-    setExpandedItems((prev) => ({ ...activeState, ...prev }));
-  }, [location.pathname]);
-
-  const toggleSection = (label: string) => {
-    setExpandedItems((prev) => ({
-      ...prev,
-      [label]: !prev[label],
-    }));
-  };
-
-  const isItemPermitted = (item: NavItem) => {
-    if (item.permissionKey && !can(item.permissionKey)) return false;
-    return true;
-  };
-
-  const checkIsDisabled = (item: NavItem) => {
-    return item.moduleKey && !isSuperAdmin && enabledModules && Array.isArray(enabledModules) && !enabledModules.includes(item.moduleKey);
-  };
-
-  const hiddenSet = new Set(hiddenModules || []);
-
-  // Filter groups according to permissions and module governance
-  const processedNavGroups = rawNavGroups.map(group => {
-    const validItems = group.items.filter(item => {
-      if (!isItemPermitted(item)) return false;
-      if (checkIsDisabled(item)) {
-        if (item.moduleKey && hiddenSet.has(item.moduleKey)) return false;
-      }
-      return true;
-    });
-
-    return {
-      label: group.label,
-      items: validItems,
-    };
-  }).filter(group => group.items.length > 0);
-
-  // Render a single NavItem
-  const renderNavItem = (item: NavItem) => {
-    const isActive = isItemActive(item.path, item.end) || (item.subRoutes?.some(sr => location.pathname === sr.path) ?? false);
-    const isDisabledModule = item.moduleKey && !isSuperAdmin && enabledModules && Array.isArray(enabledModules) && !enabledModules.includes(item.moduleKey);
-
-    const validSubRoutes = (item.subRoutes || []).filter(sr => {
-      if (sr.permissionKey && !can(sr.permissionKey)) return false;
-      if (sr.moduleKey && !isSuperAdmin && enabledModules && Array.isArray(enabledModules) && !enabledModules.includes(sr.moduleKey)) return false;
-      return true;
-    });
-
-    if (isDisabledModule) {
+    if (state === 'locked') {
       return (
         <div
-          key={item.label}
-          title={collapsed ? `${item.label} — Locked` : `${item.label} (Locked)`}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-xl opacity-45 cursor-not-allowed select-none transition-colors duration-200 relative overflow-hidden text-[#EEF1F6]/50 bg-white/5 font-medium"
+          key={page.id}
+          title={`${page.label} — module disabled`}
+          aria-disabled="true"
+          className={cn(rowBase, 'cursor-not-allowed', S.lockedText)}
         >
-          <span className="w-5 h-5 flex items-center justify-center shrink-0">
-            <item.icon size={17} className="stroke-[1.8] text-[#EEF1F6]/40" />
-          </span>
-          <div
-            className={`
-              flex items-center justify-between flex-1 min-w-0 transition-[opacity,max-width] duration-300 ease-in-out overflow-hidden whitespace-nowrap
-              ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:pointer-events-none' : 'lg:max-w-[180px] lg:opacity-100'}
-            `}
-          >
-            <span className="text-xs truncate">{item.label}</span>
-            <Lock size={13} className="text-amber-400/90 shrink-0 ml-1.5" />
-          </div>
-          {collapsed && (
-            <Lock size={12} className="hidden lg:block absolute top-1.5 right-1.5 text-amber-400/90" />
-          )}
+          <Icon size={16} strokeWidth={1.75} className={cn('shrink-0', S.lockedIcon)} />
+          <span className="flex-1 truncate">{page.label}</span>
+          <Lock size={12} className={cn('shrink-0', S.lockedText)} />
         </div>
       );
     }
 
-    const isExpanded = !!expandedItems[item.label];
-
-    // Branch 1: If sidebar is collapsed (Rail Mode), use HoverCard flyout for subroutes
-    if (collapsed) {
-      const triggerElement = (
-        <NavLink
-          to={item.path}
-          onClick={onClose}
-          title={item.label}
-          className={`
-            flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 group relative overflow-hidden select-none
-            ${isActive
-              ? 'bg-[#FA634E] text-white font-bold shadow-md shadow-[#FA634E]/25'
-              : 'text-[#EEF1F6]/75 hover:bg-white/10 hover:text-white font-medium'
-            }
-          `}
-        >
-          <span className="w-5 h-5 flex items-center justify-center shrink-0">
-            <item.icon
-              size={17}
-              className={`transition-colors duration-150 ${
-                isActive ? 'stroke-[2.4] text-white' : 'stroke-[2] text-[#EEF1F6]/60 group-hover:text-white'
-              }`}
-            />
-          </span>
-          <div className="flex items-center justify-between flex-1 min-w-0 lg:max-w-0 lg:opacity-0 lg:pointer-events-none transition-[opacity,max-width] duration-300 ease-in-out overflow-hidden whitespace-nowrap">
-            <span className="text-xs truncate">{item.label}</span>
-          </div>
-          {item.badge !== undefined && item.badge > 0 && !isActive && (
-            <span aria-hidden="true" className="hidden lg:block absolute top-1.5 right-2 w-2 h-2 rounded-full bg-[#FA634E]" />
+    const pinned = pinnedIds.includes(page.id);
+    return (
+      <NavLink
+        key={page.id}
+        to={page.path}
+        onClick={onClose}
+        aria-current={isActive ? 'page' : undefined}
+        className={cn(rowBase, isActive ? rowActive : rowIdle, opts.nested && 'h-7')}
+      >
+        <Icon
+          size={16}
+          strokeWidth={1.75}
+          className={cn(
+            'shrink-0 transition-colors',
+            isActive ? 'text-[#FA634E]' : toneIcon(page.section),
           )}
-        </NavLink>
-      );
+        />
+        <span className="flex-1 truncate">{page.label}</span>
+        {(pinned || navStore.canPinMore()) && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              navStore.togglePin(page.id);
+            }}
+            aria-label={pinned ? `Unpin ${page.label} from the top bar` : `Pin ${page.label} to the top bar`}
+            title={pinned ? 'Unpin from top bar' : 'Pin to top bar'}
+            className={cn(
+              'hidden lg:flex items-center justify-center w-5 h-5 rounded shrink-0', S.pinBtn,
+              'opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 transition-opacity',
+            )}
+          >
+            {pinned ? <PinOff size={12} /> : <Pin size={12} />}
+          </button>
+        )}
+      </NavLink>
+    );
+  };
 
-      if (validSubRoutes.length === 0) {
-        return <div key={item.label}>{triggerElement}</div>;
+  /** Collapsed rail: one icon; hover shows the label or the group's pages. */
+  const renderRailItem = (
+    key: string,
+    Icon: LucideIcon,
+    label: string,
+    isActive: boolean,
+    items: { page: NavPage; state: NavAccessState }[],
+    to?: string,
+    toneClass: string = S.railIcon,
+  ) => {
+    const trigger = to ? (
+      <NavLink
+        to={to}
+        aria-label={label}
+        aria-current={isActive ? 'page' : undefined}
+        className={cn(rowBase, 'justify-center px-0 w-10 mx-auto', isActive ? rowActive : rowIdle)}
+      >
+        <Icon size={17} strokeWidth={1.75} className={isActive ? 'text-[#FA634E]' : toneClass} />
+      </NavLink>
+    ) : (
+      <button
+        type="button"
+        aria-label={label}
+        className={cn(rowBase, 'justify-center px-0 w-10 mx-auto', isActive ? rowActive : rowIdle)}
+      >
+        <Icon size={17} strokeWidth={1.75} className={isActive ? 'text-[#FA634E]' : toneClass} />
+      </button>
+    );
+
+    return (
+      <HoverCard key={key} openDelay={60} closeDelay={120}>
+        <HoverCardTrigger asChild>{trigger}</HoverCardTrigger>
+        <HoverCardContent
+          side="right"
+          align="start"
+          sideOffset={10}
+          className={cn('w-52 p-1.5 rounded-lg shadow-xl', S.flyout)}
+        >
+          {items.length === 0 ? (
+            <p className="px-2 py-1 text-[13px] font-medium">{label}</p>
+          ) : (
+            <>
+              <p className={cn('px-2 pt-1 pb-1.5 text-[11px] font-medium', S.label)}>{label}</p>
+              <div className="space-y-0.5">{items.map(({ page, state }) => renderPageRow(page, state, { nested: true }))}</div>
+            </>
+          )}
+        </HoverCardContent>
+      </HoverCard>
+    );
+  };
+
+  // ── Quick actions (search + new) ───────────────────────────────────
+  const newMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          aria-label="Create new"
+          title="Create new"
+          className={cn(
+            'flex items-center justify-center gap-1.5 h-8 rounded-md text-[13px] font-medium outline-none focus-visible:ring-2 transition-colors',
+            S.newBtn,
+            S.ring,
+            collapsed ? 'lg:w-10 lg:mx-auto px-2.5' : 'px-2.5',
+          )}
+        >
+          <Plus size={15} strokeWidth={2} />
+          <span className={cn(collapsed && 'lg:hidden')}>New</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side={collapsed ? 'right' : 'bottom'} align="start" className="w-56">
+        {NAV_ACTION_SECTIONS.map((section) => {
+          const items = actions.filter((a) => a.section === section.id);
+          if (items.length === 0) return null;
+          return (
+            <div key={section.id}>
+              <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">{section.label}</DropdownMenuLabel>
+              {items.map((a) => (
+                <DropdownMenuItem
+                  key={a.id}
+                  onSelect={() => {
+                    onClose?.();
+                    navigate(a.path);
+                  }}
+                  className="gap-2 text-[13px]"
+                >
+                  <a.icon size={15} strokeWidth={1.75} className="text-muted-foreground" />
+                  {a.label}
+                  {a.shortcut && <DropdownMenuShortcut>{a.shortcut}</DropdownMenuShortcut>}
+                </DropdownMenuItem>
+              ))}
+            </div>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const searchButton = (
+    <button
+      type="button"
+      onClick={openCommandPalette}
+      aria-label="Search or jump to (Ctrl+K)"
+      title="Search or jump to (Ctrl+K)"
+      className={cn(
+        'flex items-center gap-2 h-8 rounded-md text-[13px] outline-none focus-visible:ring-2 transition-colors',
+        S.search,
+        S.ring,
+        collapsed ? 'lg:w-10 lg:mx-auto lg:justify-center px-2.5 flex-1 lg:flex-none' : 'flex-1 px-2.5',
+      )}
+    >
+      <Search size={15} strokeWidth={1.75} className="shrink-0" />
+      <span className={cn('flex-1 text-left truncate', collapsed && 'lg:hidden')}>Search…</span>
+      <kbd className={cn('text-[10px] font-medium border rounded px-1', S.kbd, collapsed && 'lg:hidden')}>
+        Ctrl K
+      </kbd>
+    </button>
+  );
+
+  // ── Sections ───────────────────────────────────────────────────────
+  const renderSections = (rail: boolean) =>
+    NAV_SECTIONS.map((section) => {
+      const sectionPages = pages.filter((x) => x.page.section === section.id);
+      if (sectionPages.length === 0) return null;
+
+      if (rail) {
+        // Rail: plain sections list their pages; Finance shows one icon per sub-group.
+        if (section.id === 'finance') {
+          return (
+            <div key={section.id} className={cn('space-y-1 pt-3 mt-3 border-t', S.divider)}>
+              {FINANCE_GROUPS.map((g) => {
+                const items = sectionPages.filter((x) => x.page.group === g.id);
+                if (items.length === 0) return null;
+                return renderRailItem(`g-${g.id}`, g.icon, g.label, activeGroup === g.id, items, undefined, toneIcon('finance', false));
+              })}
+            </div>
+          );
+        }
+        return (
+          <div key={section.id} className={cn('space-y-1', section.label && cn('pt-3 mt-3 border-t', S.divider))}>
+            {sectionPages.map(({ page, state }) =>
+              state === 'locked'
+                ? <div key={page.id}>{renderPageRow(page, state)}</div>
+                : renderRailItem(page.id, page.icon, page.label, activePage?.id === page.id, [], page.path, toneIcon(page.section, false)),
+            )}
+          </div>
+        );
       }
 
       return (
-        <HoverCard key={item.label} openDelay={80} closeDelay={150}>
-          <HoverCardTrigger asChild>
-            {triggerElement}
-          </HoverCardTrigger>
-          <HoverCardContent
-            side="right"
-            align="start"
-            sideOffset={12}
-            className="w-64 p-0 bg-white text-[#3E3C3D] border border-slate-200/90 shadow-[0_16px_40px_rgba(0,0,0,0.15),0_4px_16px_rgba(0,0,0,0.06)] backdrop-blur-xl rounded-2xl overflow-hidden animate-in fade-in-0 zoom-in-95 duration-150"
-          >
-            <div className="px-3.5 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="p-1.5 rounded-lg bg-[#FA634E]/10 text-[#FA634E]">
-                  <item.icon size={15} />
-                </span>
-                <span className="text-xs font-bold text-[#3E3C3D] tracking-wide truncate max-w-[150px]">
-                  {item.label}
-                </span>
-              </div>
-              <span className="px-2 py-0.5 rounded-full bg-slate-200/60 text-[10px] font-extrabold text-slate-600">
-                {validSubRoutes.length} pages
-              </span>
-            </div>
-            <div className="p-1.5 space-y-0.5 max-h-[320px] overflow-y-auto sidebar-scrollbar bg-white">
-              {validSubRoutes.map((sr) => {
-                const isSubActive = location.pathname === sr.path;
-                const SubIcon = sr.icon || ChevronRight;
+        <div key={section.id} className={cn(section.label && 'mt-4')}>
+          {section.label && (
+            <p className={cn('px-2.5 mb-1 flex items-center gap-1.5 text-[11px] font-medium', S.label)}>
+              {SECTION_TONES[section.id] && (
+                <span aria-hidden="true" className={cn('w-1.5 h-1.5 rounded-full', SECTION_TONES[section.id]!.dot)} />
+              )}
+              {section.label}
+            </p>
+          )}
+
+          {section.id !== 'finance' ? (
+            <div className="space-y-0.5">{sectionPages.map(({ page, state }) => renderPageRow(page, state))}</div>
+          ) : (
+            <div className="space-y-0.5">
+              {FINANCE_GROUPS.map((g) => {
+                const items = sectionPages.filter((x) => x.page.group === g.id);
+                if (items.length === 0) return null;
+                const isOpen = !!openGroups[g.id];
+                const containsActive = activeGroup === g.id;
                 return (
-                  <NavLink
-                    key={sr.path + sr.label}
-                    to={sr.path}
-                    onClick={onClose}
-                    className={`
-                      flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs transition-all duration-150 group/sr
-                      ${isSubActive
-                        ? 'bg-[#FA634E] text-white font-bold shadow-sm shadow-[#FA634E]/30'
-                        : sr.isAction
-                          ? 'bg-[#FA634E]/5 text-[#FA634E] hover:bg-[#FA634E] hover:text-white font-semibold border border-[#FA634E]/20'
-                          : 'text-slate-700 hover:bg-slate-100 hover:text-slate-900 font-medium'
-                      }
-                    `}
-                  >
-                    <SubIcon
-                      size={14}
-                      className={`shrink-0 transition-transform group-hover/sr:scale-110 ${
-                        isSubActive
-                          ? 'text-white'
-                          : sr.isAction
-                            ? 'text-[#FA634E] group-hover/sr:text-white'
-                            : 'text-slate-400 group-hover/sr:text-[#FA634E]'
-                      }`}
-                    />
-                    <span className="flex-1 truncate">{sr.label}</span>
-                    {sr.isAction && (
-                      <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase shrink-0 transition-colors ${
-                        isSubActive
-                          ? 'bg-white text-[#FA634E]'
-                          : 'bg-[#FA634E] text-white group-hover/sr:bg-white group-hover/sr:text-[#FA634E]'
-                      }`}>
-                        NEW
-                      </span>
+                  <div key={g.id}>
+                    <button
+                      type="button"
+                      onClick={() => setOpenGroups((prev) => ({ ...prev, [g.id]: !prev[g.id] }))}
+                      aria-expanded={isOpen}
+                      className={cn(
+                        'w-full flex items-center gap-2.5 h-8 px-2.5 rounded-md text-[13px] font-medium outline-none transition-colors',
+                        'focus-visible:ring-2',
+                        S.ring,
+                        S.hoverBg,
+                        containsActive && !isOpen ? S.groupActive : S.groupIdle,
+                      )}
+                    >
+                      <g.icon
+                        size={16}
+                        strokeWidth={1.75}
+                        className={cn('shrink-0', containsActive && !isOpen ? 'text-[#FA634E]' : toneIcon('finance', false))}
+                      />
+                      <span className="flex-1 text-left">{g.label}</span>
+                      <ChevronRight size={14} className={cn('shrink-0 transition-transform duration-150', S.chevron, isOpen && 'rotate-90')} />
+                    </button>
+                    {isOpen && (
+                      <div className={cn('ml-[17px] pl-2 border-l space-y-0.5 py-0.5', S.guide)}>
+                        {items.map(({ page, state }) => renderPageRow(page, state, { nested: true }))}
+                      </div>
                     )}
-                  </NavLink>
+                  </div>
                 );
               })}
             </div>
-          </HoverCardContent>
-        </HoverCard>
-      );
-    }
-
-    // Branch 2: Sidebar is OPEN / UNCOLLAPSED -> Inline dropdown tree
-    if (validSubRoutes.length === 0) {
-      return (
-        <div key={item.label}>
-          <NavLink
-            to={item.path}
-            onClick={onClose}
-            className={`
-              flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 group relative overflow-hidden select-none
-              ${isActive
-                ? 'bg-[#FA634E] text-white font-bold shadow-md shadow-[#FA634E]/25'
-                : 'text-[#EEF1F6]/75 hover:bg-white/10 hover:text-white font-medium'
-              }
-            `}
-          >
-            <span className="w-5 h-5 flex items-center justify-center shrink-0">
-              <item.icon
-                size={17}
-                className={`transition-colors duration-150 ${
-                  isActive ? 'stroke-[2.4] text-white' : 'stroke-[2] text-[#EEF1F6]/60 group-hover:text-white'
-                }`}
-              />
-            </span>
-            <div className="flex items-center justify-between flex-1 min-w-0">
-              <span className="text-xs truncate">{item.label}</span>
-              {item.badge !== undefined && item.badge > 0 && !isActive && (
-                <span className="w-4 h-4 rounded-full bg-[#FA634E] text-white text-[9px] font-bold flex items-center justify-center ml-1">
-                  {item.badge > 9 ? '9+' : item.badge}
-                </span>
-              )}
-            </div>
-          </NavLink>
+          )}
         </div>
       );
-    }
-
-    // NavItem WITH SubRoutes in expanded sidebar -> Accordion Header & Inline Dropdown List
-    return (
-      <div key={item.label} className="space-y-1">
-        <div
-          onClick={() => {
-            toggleSection(item.label);
-            if (item.path && location.pathname !== item.path) {
-              navigate(item.path);
-            }
-          }}
-          className={`
-            flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-all duration-200 group relative overflow-hidden select-none
-            ${isActive
-              ? 'bg-[#FA634E] text-white font-bold shadow-md shadow-[#FA634E]/25'
-              : 'text-[#EEF1F6]/75 hover:bg-white/10 hover:text-white font-medium'
-            }
-          `}
-        >
-          <span className="w-5 h-5 flex items-center justify-center shrink-0">
-            <item.icon
-              size={17}
-              className={`transition-colors duration-150 ${
-                isActive ? 'stroke-[2.4] text-white' : 'stroke-[2] text-[#EEF1F6]/60 group-hover:text-white'
-              }`}
-            />
-          </span>
-          <div className="flex items-center justify-between flex-1 min-w-0">
-            <span className="text-xs truncate">{item.label}</span>
-            <div className="flex items-center gap-1.5 shrink-0 ml-1">
-              {item.badge !== undefined && item.badge > 0 && !isActive && (
-                <span className="w-4 h-4 rounded-full bg-[#FA634E] text-white text-[9px] font-bold flex items-center justify-center">
-                  {item.badge > 9 ? '9+' : item.badge}
-                </span>
-              )}
-              <span
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleSection(item.label);
-                }}
-                className="p-1 rounded-md hover:bg-white/15 text-white/60 hover:text-white transition-colors"
-                title={isExpanded ? 'Collapse section' : 'Expand section'}
-              >
-                <ChevronDown
-                  size={14}
-                  className={`transition-transform duration-200 ${
-                    isExpanded ? 'rotate-180 text-white' : 'rotate-0 text-white/50 group-hover:text-white'
-                  }`}
-                />
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Inline Sub-routes list */}
-        {isExpanded && (
-          <div className="ml-4 pl-2 border-l border-white/15 space-y-0.5 py-0.5 animate-in fade-in-50 duration-150">
-            {validSubRoutes.map((sr) => {
-              const isSubActive = location.pathname === sr.path;
-              const SubIcon = sr.icon || ChevronRight;
-
-              return (
-                <NavLink
-                  key={sr.path + sr.label}
-                  to={sr.path}
-                  onClick={onClose}
-                  className={`
-                    flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs transition-all duration-150 group/sr relative
-                    ${isSubActive
-                      ? 'bg-[#FA634E]/25 text-white font-bold border-l-2 border-[#FA634E]'
-                      : sr.isAction
-                        ? 'text-[#FA634E] hover:bg-[#FA634E]/15 hover:text-white font-semibold'
-                        : 'text-[#EEF1F6]/70 hover:bg-white/10 hover:text-white font-medium'
-                    }
-                  `}
-                >
-                  <SubIcon
-                    size={14}
-                    className={`shrink-0 transition-transform group-hover/sr:scale-110 ${
-                      isSubActive
-                        ? 'text-[#FA634E]'
-                        : sr.isAction
-                          ? 'text-[#FA634E] group-hover/sr:text-white'
-                          : 'text-[#EEF1F6]/40 group-hover/sr:text-white'
-                    }`}
-                  />
-                  <span className="flex-1 truncate">{sr.label}</span>
-                  {sr.isAction && (
-                    <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase shrink-0 ${
-                      isSubActive
-                        ? 'bg-[#FA634E] text-white'
-                        : 'bg-[#FA634E]/20 text-[#FA634E] group-hover/sr:bg-[#FA634E] group-hover/sr:text-white'
-                    }`}>
-                      NEW
-                    </span>
-                  )}
-                  {isSubActive && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#FA634E] shrink-0" />
-                  )}
-                </NavLink>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  };
+    });
 
   return (
     <>
@@ -659,79 +446,50 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
       <aside
         role="navigation"
         aria-label="Main navigation"
-        className={`
-          flex flex-col w-[260px] sm:w-[280px] shrink-0 h-[100dvh] lg:h-full
-          bg-[#3E3C3D] text-[#EEF1F6] border-r border-white/10 shadow-[6px_0_24px_rgba(0,0,0,0.18)]
-          fixed inset-y-0 left-0 z-50 lg:relative lg:z-30
-          transform transition-[transform,width,background-color] duration-300 ease-in-out lg:transform-none
-          ${open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-          ${collapsed ? 'lg:w-[76px]' : 'lg:w-[230px]'}
-        `}
+        className={cn(
+          'flex flex-col w-[272px] shrink-0 h-[100dvh] lg:h-full border-r',
+          S.aside,
+          'fixed inset-y-0 left-0 z-50 lg:relative lg:z-30',
+          'transform transition-[transform,width] duration-200 ease-in-out lg:transform-none',
+          open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+          collapsed ? 'lg:w-16' : 'lg:w-60',
+        )}
       >
-        {/* Header with Logo — Mobile-App Inspired Angled Parallelogram Transition (#EEF1F6 to #3E3C3D) */}
-        <div className={`relative flex items-center justify-start shrink-0 h-[84px] lg:h-[92px] px-2 sm:px-3 overflow-hidden bg-[#EEF1F6] ${collapsed ? 'lg:px-1.5' : ''}`}>
-          {/* Angled Parallelogram & Dot Matrix SVG Background (Mobile Driver App aesthetic) */}
-          <svg
-            className="absolute inset-0 w-full h-full pointer-events-none"
-            viewBox="0 0 280 92"
-            preserveAspectRatio="none"
-            fill="none"
-          >
-            {/* 1. Base Light Cool Gray background */}
-            <rect width="280" height="92" fill="#EEF1F6" />
-
-            {/* 2. Dark Charcoal (#3E3C3D) Angled Parallelogram polygon joining the body below */}
-            <path d="M -10 92 H 290 V 42 L -10 82 Z" fill="#3E3C3D" />
-
-            {/* 3. Subtle Coral Red (#FA634E) Angled Accent Stripe */}
-            <path d="M -10 82 L 290 42" stroke="#FA634E" strokeWidth="2.5" strokeLinecap="round" opacity="0.85" />
-
-            {/* 4. Subtle Dotted Pattern on Charcoal area */}
-            <g opacity="0.16">
-              {[20, 45, 70, 95, 120, 145, 170, 195, 220, 245, 270].map((xVal) => (
-                <circle key={xVal} cx={xVal} cy="86" r="1.5" fill="#FFFFFF" />
-              ))}
-              {[35, 60, 85, 110, 135, 160, 185, 210, 235, 260].map((xVal) => (
-                <circle key={xVal} cx={xVal} cy="76" r="1.5" fill="#FFFFFF" />
-              ))}
-            </g>
+        {/* Brand header — keeps the MERCON angled mark, at a compact height */}
+        <div className="relative flex items-center shrink-0 h-16 px-3 overflow-hidden" style={{ backgroundColor: S.headerBg }}>
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 280 64" preserveAspectRatio="none" fill="none" aria-hidden="true">
+            <rect width="280" height="64" style={{ fill: S.headerBg }} />
+            <path d="M -10 64 H 290 V 34 L -10 58 Z" style={{ fill: S.wedge }} />
+            <path d="M -10 58 L 290 34" stroke="#FA634E" strokeWidth="2" strokeLinecap="round" opacity="0.85" />
           </svg>
-
-          {/* Logo Content - merconclosed.png stuck to Top-Left, expands when unshrinked */}
-          <div className="relative z-10 flex items-center justify-start w-full pb-3 pl-0">
-            <img
-              src="/merconclosed.png"
-              alt="MERCON Logo"
-              className={`w-auto object-contain object-left drop-shadow-xs -ml-0.5 transition-all duration-200 ease-in-out ${
-                collapsed ? 'h-8.5 max-w-[46px]' : 'h-11 sm:h-12 max-w-[72px]'
-              }`}
-            />
-          </div>
-
+          <img
+            src="/merconclosed.png"
+            alt="MERCON"
+            className={cn('relative z-10 w-auto object-contain object-left -mt-3', collapsed ? 'lg:h-7 h-9 max-w-[64px]' : 'h-9 max-w-[64px]')}
+          />
           <button
             onClick={onClose}
             aria-label="Close navigation menu"
-            className="absolute right-3 top-3.5 z-20 p-2 rounded-lg text-slate-600 hover:text-[#FA634E] hover:bg-black/5 transition-colors lg:hidden cursor-pointer"
+            className="absolute right-2 top-2 z-20 p-1.5 rounded-md text-[#3E3C3D]/70 hover:bg-black/5 lg:hidden"
           >
             <X size={18} />
           </button>
         </div>
 
-        {/* Desktop Rail Toggle Button (Collapse / Expand) */}
+        {/* Rail toggle — round handle on the sidebar's right edge (Ctrl+B also works) */}
         <button
           type="button"
           onClick={onToggleCollapse}
           aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           aria-expanded={!collapsed}
-          title={`${collapsed ? 'Expand' : 'Collapse'} sidebar (⌘B)`}
-          className="
-            group hidden lg:flex absolute -right-3.5 top-1/2 -translate-y-1/2 z-30
-            w-7 h-7 items-center justify-center rounded-full
-            bg-[#FA634E] text-white border-2 border-[#3E3C3D] shadow-lg shadow-[#FA634E]/40
-            hover:bg-white hover:text-[#FA634E] hover:scale-110
-            focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FA634E]
-            transition-all duration-150 cursor-pointer
-          "
+          title={`${collapsed ? 'Expand' : 'Collapse'} sidebar (Ctrl+B)`}
+          className={cn(
+            'group hidden lg:flex absolute -right-3.5 top-1/2 -translate-y-1/2 z-30 w-7 h-7 items-center justify-center rounded-full',
+            'bg-[#FA634E] text-white border-2 shadow-lg shadow-[#FA634E]/40',
+            'hover:bg-white hover:text-[#FA634E] hover:scale-110 transition-all duration-150 cursor-pointer',
+            'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#FA634E]',
+            S.handleBorder,
+          )}
         >
           {collapsed ? (
             <ChevronsRight size={15} className="stroke-[2.8] transition-transform duration-150 group-hover:translate-x-px" />
@@ -740,58 +498,117 @@ export default function Sidebar({ active, open = false, onClose, collapsed = fal
           )}
         </button>
 
-        {/* Nav groups */}
-        <div className="flex-1 py-3 space-y-4 overflow-y-auto overflow-x-hidden px-3 sidebar-scrollbar">
-          {processedNavGroups.map((group) => (
-            <div key={group.label} className="space-y-1">
-              {group.label !== 'MAIN' && (
-                <p
-                  className={`
-                    text-[10px] font-bold text-[#EEF1F6]/50 uppercase tracking-widest px-3 flex items-center gap-1.5 transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap
-                    ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:h-0 lg:mb-0' : 'lg:max-w-full lg:opacity-100 lg:h-4 lg:mb-1'}
-                  `}
-                >
-                  <span className="w-1 h-1 rounded-full bg-[#FA634E] shrink-0" />
-                  <span>{group.label}</span>
-                </p>
-              )}
-              <div className="space-y-1">
-                {group.items.map((item) => renderNavItem(item))}
-              </div>
-            </div>
-          ))}
+        {/* Search + New */}
+        <div className={cn('shrink-0 px-3 pt-3 pb-2 flex gap-1.5', collapsed && 'lg:flex-col lg:px-2')}>
+          {searchButton}
+          {newMenu}
         </div>
 
-        {/* User profile footer */}
-        <div className="px-3 py-3 border-t border-white/10 flex items-center gap-2.5 bg-[#2D2B2C] shrink-0 overflow-hidden">
-          <div
-            title={collapsed ? user?.name || (isAdmin ? 'Admin User' : 'Mohammed Al-Harbi') : undefined}
-            className="w-9 h-9 rounded-xl bg-[#FA634E] text-white flex items-center justify-center text-xs font-black shrink-0 border-2 border-white/20 shadow-md shadow-[#FA634E]/20 select-none"
-          >
-            {initials}
+        {/* Navigation */}
+        <nav className={cn('flex-1 min-h-0 overflow-y-auto overflow-x-hidden pb-3', S.scrollbar, collapsed ? 'px-3 lg:px-2' : 'px-3')}>
+          {collapsed ? (
+            <>
+              {/* The mobile drawer is always the full list; the icon rail is desktop-only */}
+              <div className="lg:hidden">{renderSections(false)}</div>
+              <div className="hidden lg:block">{renderSections(true)}</div>
+            </>
+          ) : (
+            renderSections(false)
+          )}
+        </nav>
+
+        {/* Settings + user */}
+        <div className={cn('shrink-0 border-t px-3 py-2 space-y-1', S.divider)}>
+          {settingsVisible && (
+            collapsed ? (
+              <div className="hidden lg:block">
+                {renderRailItem('settings', Settings, 'Settings', inSettings, [], '/settings')}
+              </div>
+            ) : null
+          )}
+          {settingsVisible && (
+            <NavLink
+              to="/settings"
+              onClick={onClose}
+              aria-current={inSettings ? 'page' : undefined}
+              className={cn(rowBase, inSettings ? rowActive : rowIdle, collapsed && 'lg:hidden')}
+            >
+              <Settings size={16} strokeWidth={1.75} className={inSettings ? 'text-[#FA634E]' : S.icon} />
+              <span className="flex-1">Settings</span>
+            </NavLink>
+          )}
+
+          <div className={cn('flex items-center gap-1', collapsed && 'lg:flex-col')}>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Account menu"
+                  className={cn(
+                    'flex items-center gap-2.5 min-w-0 flex-1 h-10 px-1.5 rounded-md text-left outline-none focus-visible:ring-2 transition-colors',
+                    S.hoverBg,
+                    S.ring,
+                    collapsed && 'lg:flex-none lg:w-10 lg:justify-center lg:px-0',
+                  )}
+                >
+                  <span className="w-7 h-7 rounded-md bg-[#FA634E] text-white flex items-center justify-center text-[11px] font-semibold shrink-0">
+                    {initials}
+                  </span>
+                  <span className={cn('min-w-0 flex-1', collapsed && 'lg:hidden')}>
+                    <span className={cn('block text-[13px] font-medium truncate', S.name)}>{displayName}</span>
+                    <span className={cn('block text-[11px] truncate', S.role)}>{roleLabel}</span>
+                  </span>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side={collapsed ? 'right' : 'top'} align="start" className="w-56">
+                <DropdownMenuLabel className="font-normal">
+                  <span className="block text-sm font-medium truncate">{displayName}</span>
+                  <span className="block text-xs text-muted-foreground truncate">{user?.email || roleLabel}</span>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {settingsVisible && (
+                  <DropdownMenuItem onSelect={() => navigate('/settings')} className="gap-2">
+                    <Settings size={15} className="text-muted-foreground" /> Settings
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuLabel className="text-xs font-medium text-muted-foreground">Sidebar theme</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={sidebarTheme} onValueChange={(v) => navStore.setSidebarTheme(v as SidebarTheme)}>
+                  <DropdownMenuRadioItem value="charcoal" className="gap-2" onSelect={(e) => e.preventDefault()}>
+                    <span aria-hidden="true" className="w-3.5 h-3.5 rounded-full bg-[#3E3C3D] ring-1 ring-border" /> Charcoal
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="light" className="gap-2" onSelect={(e) => e.preventDefault()}>
+                    <span aria-hidden="true" className="w-3.5 h-3.5 rounded-full bg-white ring-1 ring-border" /> Light
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={openShortcutsGuide} className="gap-2">
+                  <Keyboard size={15} className="text-muted-foreground" /> Keyboard shortcuts
+                  <DropdownMenuShortcut>?</DropdownMenuShortcut>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={handleLogout} className="gap-2">
+                  <LogOut size={15} className="text-muted-foreground" /> Log out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <button
+              type="button"
+              onClick={() => navStore.setSidebarTheme(sidebarTheme === 'light' ? 'charcoal' : 'light')}
+              aria-label={sidebarTheme === 'light' ? 'Switch sidebar to charcoal' : 'Switch sidebar to light'}
+              title={sidebarTheme === 'light' ? 'Charcoal sidebar' : 'Light sidebar'}
+              className={cn(
+                'flex items-center justify-center w-8 h-8 rounded-md shrink-0 outline-none focus-visible:ring-2 transition-colors',
+                S.hoverBg,
+                S.ring,
+                S.icon,
+              )}
+            >
+              {sidebarTheme === 'light' ? <Moon size={16} strokeWidth={1.75} /> : <Sun size={16} strokeWidth={1.75} />}
+            </button>
           </div>
-          <div
-            className={`
-              flex-1 min-w-0 transition-[opacity,max-width] duration-300 ease-in-out overflow-hidden whitespace-nowrap
-              ${collapsed ? 'lg:max-w-0 lg:opacity-0 lg:pointer-events-none' : 'lg:max-w-[160px] lg:opacity-100'}
-            `}
-          >
-            <p className="text-xs font-black text-white truncate">{user?.name || (isAdmin ? 'Admin User' : 'Mohammed Al-Harbi')}</p>
-            <p className="text-[10px] font-medium text-[#EEF1F6]/60 truncate">{user?.email || (isAdmin ? 'admin@mercon.sa' : 'operator@mercon.sa')}</p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className={`
-              text-[#EEF1F6]/60 hover:text-[#FA634E] p-2 rounded-xl hover:bg-[#FA634E]/15 transition-all duration-300 shrink-0 cursor-pointer
-              ${collapsed ? 'lg:hidden' : ''}
-            `}
-            title="Logout"
-          >
-            <LogOut size={16} />
-          </button>
         </div>
       </aside>
     </>
   );
 }
-

@@ -232,8 +232,8 @@ export default function BillsPage() {
   );
 
   return (
-    <DashboardLayout active="finance" title="Bills">
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <DashboardLayout active="finance" title="Bills" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-7xl mx-auto w-full">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-[#3E3C3D]">Bills</h1>

@@ -30,7 +30,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import ExportModal, { type ExportColumn } from '@/components/ui/ExportModal';
 
-import { StatementHeaderBar, InsightRail } from '@/components/finance/kit';
+import { StatementHeaderBar, InsightRail, StatementRow } from '@/components/finance/kit';
 import { financeService, type ReportLineItem, type BalanceSheetData } from '@/services/financeService';
 import { formatMoney, formatDate } from '@/lib/finance/format';
 import {
@@ -290,10 +290,10 @@ export default function BalanceSheetPage() {
   const rowHeightClass = density === 'comfortable' ? 'h-9' : 'h-8';
 
   return (
-    <DashboardLayout active="finance" title="Balance Sheet">
-      <div className="p-4 space-y-4 max-w-[1400px] mx-auto print:p-0">
+    <DashboardLayout active="finance" title="Balance Sheet" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-[1400px] mx-auto w-full print:p-0">
         {/* Single-Row Toolbar (No Card Wrapper) */}
-        <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden">
           <div className="flex items-center gap-2 flex-wrap">
             {/* View Tabs */}
             <ToggleGroup
@@ -457,10 +457,10 @@ export default function BalanceSheetPage() {
 
         {/* MAIN CONTENT GRID: 2 Column on ≥1280px */}
         {!isLoading && report && processedData && activeTab === 'statement' && (
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 flex-1 min-h-0 overflow-hidden max-md:overflow-y-auto">
             {/* Left: Statement Card */}
-            <div className="space-y-4 min-w-0">
-              <div className="bg-card rounded-xl border border-border p-5 shadow-xs w-full print:shadow-none print:border-none print:p-0 space-y-4">
+            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="bg-card rounded-xl border border-border shadow-xs w-full p-0 flex flex-col flex-1 min-h-0 overflow-hidden print:shadow-none print:border-none print:p-0">
                 {/* On-Screen Header Bar */}
                 <StatementHeaderBar
                   title="Balance Sheet"
@@ -470,7 +470,7 @@ export default function BalanceSheetPage() {
                 />
 
                 {/* Print Only Formal Centred Header */}
-                <div className="hidden print:block text-center space-y-1 pb-4 border-b border-border">
+                <div className="hidden print:block text-center space-y-1 p-4 border-b border-border">
                   <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">MERCON Logistics</p>
                   <h1 className="text-2xl font-bold tracking-tight text-foreground">Balance Sheet</h1>
                   <p className="text-xs font-medium text-muted-foreground">As of {formatDate(asOf)}</p>
@@ -479,225 +479,218 @@ export default function BalanceSheetPage() {
 
                 {/* VERTICAL LAYOUT */}
                 {layout === 'vertical' && (
-                  <div className="space-y-5 text-xs">
+                  <div className="table-container flex-1 overflow-auto py-2 text-xs space-y-4">
                     {/* ── ASSETS SECTION ── */}
-                    <div id="section-assets" className="space-y-2">
-                      <div className="h-9 px-3 bg-muted/40 text-foreground font-semibold rounded-lg flex items-center justify-between border-b border-border/60">
-                        <span className="flex items-center gap-2 text-xs">
-                          <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-                          <span>Assets</span>
-                        </span>
-                        <span className="fin-num text-xs font-semibold">{renderAmount(processedData.totalAssets, true)}</span>
-                      </div>
+                    {(showZeroRows || processedData.totalAssets !== 0) && (
+                      <div id="section-assets" className="space-y-0.5">
+                        <StatementRow
+                          level={0}
+                          variant="section"
+                          dotColor="bg-sky-500"
+                          label="Assets"
+                          amounts={processedData.totalAssets}
+                        />
 
-                      {/* Current Assets Sub-Groups */}
-                      <div className="pl-3 space-y-2">
-                        <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pt-1">
-                          <span className="w-1 h-1 rounded-full bg-sky-500" />
-                          <span>Current assets</span>
-                        </div>
+                        {/* Current Assets */}
+                        {(showZeroRows || processedData.currentAssetsTotal !== 0) && (
+                          <div className="space-y-0.5">
+                            <StatementRow
+                              level={1}
+                              variant="subgroup"
+                              label="Current assets"
+                              amounts={{ value: processedData.currentAssetsTotal, className: 'text-muted-foreground font-medium' }}
+                            />
 
-                        <div className="pl-2 space-y-1">
-                          {(Object.keys(processedData.assetSubGroups) as AssetSubCategory[]).map((subCat) => {
-                            const items = processedData.assetSubGroups[subCat];
-                            if (items.length === 0 && !showZeroRows) return null;
-                            const subTotal = items.reduce((sum, i) => sum + i.amount, 0);
-                            const isSingle = items.length === 1;
+                            {(Object.keys(processedData.assetSubGroups) as AssetSubCategory[]).map((subCat) => {
+                              const items = processedData.assetSubGroups[subCat];
+                              if (items.length === 0 && !showZeroRows) return null;
+                              const subTotal = items.reduce((sum, i) => sum + i.amount, 0);
+                              const isSingle = items.length === 1;
 
-                            return (
-                              <div key={subCat} className="space-y-0.5">
-                                {!isSingle && (
-                                  <div className="flex items-center justify-between py-1 text-[11px] font-medium text-muted-foreground border-b border-border/40">
-                                    <span>{subCat}</span>
-                                    <span className="fin-num">{renderAmount(subTotal)}</span>
-                                  </div>
-                                )}
-                                {items.map((item) => (
-                                  <div
-                                    key={item.account_id || item.account_code || item.name}
-                                    onClick={() => handleAccountClick(item)}
-                                    className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-[13px]`}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      {showCodes && item.account_code && (
-                                        <span className="w-12 text-muted-foreground fin-num text-xs">
-                                          {item.account_code}
-                                        </span>
-                                      )}
-                                      <span className="font-normal text-foreground group-hover:text-[#FA634E] transition-colors">
-                                        {item.name}
-                                      </span>
-                                    </div>
-                                    <div className="w-36 text-right">{renderAmount(item.amount)}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Total Current Assets Row */}
-                        <div className="flex items-center justify-between py-2 px-3 border-t border-border font-medium text-foreground">
-                          <span>Total current assets</span>
-                          <span className="w-36 text-right fin-num">{renderAmount(processedData.currentAssetsTotal, true)}</span>
-                        </div>
-                      </div>
-
-                      {/* Fixed Assets Sub-Group */}
-                      {processedData.fixedAssets.length > 0 && (
-                        <div className="pl-3 space-y-1 pt-1">
-                          <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-                            <span className="w-1 h-1 rounded-full bg-sky-500" />
-                            <span>Fixed assets</span>
-                          </div>
-                          <div className="pl-2 space-y-0.5">
-                            {processedData.fixedAssets.map((item) => (
-                              <div
-                                key={item.account_id || item.account_code || item.name}
-                                onClick={() => handleAccountClick(item)}
-                                className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-[13px]`}
-                              >
-                                <div className="flex items-center gap-2">
-                                  {showCodes && item.account_code && (
-                                    <span className="w-12 text-muted-foreground fin-num text-xs">
-                                      {item.account_code}
-                                    </span>
+                              return (
+                                <div key={subCat} className="space-y-0.5">
+                                  {!isSingle && (
+                                    <StatementRow
+                                      level={1}
+                                      variant="subgroup"
+                                      label={subCat}
+                                      amounts={{ value: subTotal, className: 'text-muted-foreground font-medium' }}
+                                    />
                                   )}
-                                  <span className="font-normal text-foreground group-hover:text-[#FA634E] transition-colors">
-                                    {item.name}
-                                  </span>
+                                  {items.map((item) => (
+                                    <StatementRow
+                                      key={item.account_id || item.account_code || item.name}
+                                      level={isSingle ? 1 : 2}
+                                      variant="account"
+                                      code={showCodes && item.account_code ? item.account_code : undefined}
+                                      label={item.name}
+                                      amounts={item.amount}
+                                      onClick={() => handleAccountClick(item)}
+                                    />
+                                  ))}
                                 </div>
-                                <div className="w-36 text-right">{renderAmount(item.amount)}</div>
-                              </div>
-                            ))}
-                          </div>
-                          <div className="flex items-center justify-between py-2 px-3 border-t border-border font-medium text-foreground">
-                            <span>Total fixed assets</span>
-                            <span className="w-36 text-right fin-num">{renderAmount(processedData.fixedAssetsTotal, true)}</span>
-                          </div>
-                        </div>
-                      )}
+                              );
+                            })}
 
-                      {/* Grand Total Assets */}
-                      <div className="flex items-center justify-between py-2.5 px-3 border-t border-foreground/70 border-b-[3px] border-double font-semibold text-foreground text-sm mt-2">
-                        <span>Total assets</span>
-                        <span className="w-36 text-right fin-num">{renderAmount(processedData.totalAssets, true)}</span>
+                            <StatementRow
+                              level={1}
+                              variant="subtotal"
+                              label="Total current assets"
+                              amounts={processedData.currentAssetsTotal}
+                            />
+                          </div>
+                        )}
+
+                        {/* Fixed Assets Sub-Group */}
+                        {processedData.fixedAssets.length > 0 && (
+                          <div className="space-y-0.5">
+                            <StatementRow
+                              level={1}
+                              variant="subgroup"
+                              label="Fixed assets"
+                              amounts={{ value: processedData.fixedAssetsTotal, className: 'text-muted-foreground font-medium' }}
+                            />
+                            {processedData.fixedAssets.map((item) => (
+                              <StatementRow
+                                key={item.account_id || item.account_code || item.name}
+                                level={2}
+                                variant="account"
+                                code={showCodes && item.account_code ? item.account_code : undefined}
+                                label={item.name}
+                                amounts={item.amount}
+                                onClick={() => handleAccountClick(item)}
+                              />
+                            ))}
+                            <StatementRow
+                              level={1}
+                              variant="subtotal"
+                              label="Total fixed assets"
+                              amounts={processedData.fixedAssetsTotal}
+                            />
+                          </div>
+                        )}
+
+                        {/* Grand Total Assets */}
+                        <StatementRow
+                          level={0}
+                          variant="grandtotal"
+                          label="Total assets"
+                          amounts={processedData.totalAssets}
+                        />
                       </div>
-                    </div>
+                    )}
 
                     {/* ── LIABILITIES SECTION ── */}
-                    <div id="section-liabilities" className="space-y-2 pt-2">
-                      <div className="h-9 px-3 bg-muted/40 text-foreground font-semibold rounded-lg flex items-center justify-between border-b border-border/60">
-                        <span className="flex items-center gap-2 text-xs">
-                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-                          <span>Liabilities</span>
-                        </span>
-                        <span className="fin-num text-xs font-semibold">{renderAmount(processedData.totalLiabilities, true)}</span>
+                    {(showZeroRows || processedData.totalLiabilities !== 0) && (
+                      <div id="section-liabilities" className="space-y-0.5">
+                        <StatementRow
+                          level={0}
+                          variant="section"
+                          dotColor="bg-amber-500"
+                          label="Liabilities"
+                          amounts={processedData.totalLiabilities}
+                        />
+
+                        {/* Current Liabilities */}
+                        {(showZeroRows || processedData.currentLiabilitiesTotal !== 0) && (
+                          <div className="space-y-0.5">
+                            <StatementRow
+                              level={1}
+                              variant="subgroup"
+                              label="Current liabilities"
+                              amounts={{ value: processedData.currentLiabilitiesTotal, className: 'text-muted-foreground font-medium' }}
+                            />
+
+                            {(Object.keys(processedData.liabilitySubGroups) as LiabilitySubCategory[]).map((subCat) => {
+                              const items = processedData.liabilitySubGroups[subCat];
+                              if (items.length === 0 && !showZeroRows) return null;
+                              const subTotal = items.reduce((sum, i) => sum + i.amount, 0);
+                              const isSingle = items.length === 1;
+
+                              return (
+                                <div key={subCat} className="space-y-0.5">
+                                  {!isSingle && (
+                                    <StatementRow
+                                      level={1}
+                                      variant="subgroup"
+                                      label={subCat}
+                                      amounts={{ value: subTotal, className: 'text-muted-foreground font-medium' }}
+                                    />
+                                  )}
+                                  {items.map((item) => (
+                                    <StatementRow
+                                      key={item.account_id || item.account_code || item.name}
+                                      level={isSingle ? 1 : 2}
+                                      variant="account"
+                                      code={showCodes && item.account_code ? item.account_code : undefined}
+                                      label={item.name}
+                                      amounts={item.amount}
+                                      onClick={() => handleAccountClick(item)}
+                                    />
+                                  ))}
+                                </div>
+                              );
+                            })}
+
+                            <StatementRow
+                              level={1}
+                              variant="subtotal"
+                              label="Total current liabilities"
+                              amounts={processedData.currentLiabilitiesTotal}
+                            />
+                          </div>
+                        )}
+
+                        <StatementRow
+                          level={1}
+                          variant="subtotal"
+                          label="Total liabilities"
+                          amounts={processedData.totalLiabilities}
+                        />
                       </div>
-
-                      {/* Current Liabilities Sub-Groups */}
-                      <div className="pl-3 space-y-2">
-                        <div className="text-xs font-medium text-muted-foreground flex items-center gap-1.5 pt-1">
-                          <span className="w-1 h-1 rounded-full bg-orange-500" />
-                          <span>Current liabilities</span>
-                        </div>
-
-                        <div className="pl-2 space-y-1">
-                          {(Object.keys(processedData.liabilitySubGroups) as LiabilitySubCategory[]).map((subCat) => {
-                            const items = processedData.liabilitySubGroups[subCat];
-                            if (items.length === 0 && !showZeroRows) return null;
-                            const subTotal = items.reduce((sum, i) => sum + i.amount, 0);
-                            const isSingle = items.length === 1;
-
-                            return (
-                              <div key={subCat} className="space-y-0.5">
-                                {!isSingle && (
-                                  <div className="flex items-center justify-between py-1 text-[11px] font-medium text-muted-foreground border-b border-border/40">
-                                    <span>{subCat}</span>
-                                    <span className="fin-num">{renderAmount(subTotal)}</span>
-                                  </div>
-                                )}
-                                {items.map((item) => (
-                                  <div
-                                    key={item.account_id || item.account_code || item.name}
-                                    onClick={() => handleAccountClick(item)}
-                                    className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-[13px]`}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      {showCodes && item.account_code && (
-                                        <span className="w-12 text-muted-foreground fin-num text-xs">
-                                          {item.account_code}
-                                        </span>
-                                      )}
-                                      <span className="font-normal text-foreground group-hover:text-[#FA634E] transition-colors">
-                                        {item.name}
-                                      </span>
-                                    </div>
-                                    <div className="w-36 text-right">{renderAmount(item.amount)}</div>
-                                  </div>
-                                ))}
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Total Current Liabilities Row */}
-                        <div className="flex items-center justify-between py-2 px-3 border-t border-border font-medium text-foreground">
-                          <span>Total current liabilities</span>
-                          <span className="w-36 text-right fin-num">{renderAmount(processedData.currentLiabilitiesTotal, true)}</span>
-                        </div>
-                      </div>
-
-                      {/* Total Liabilities Subtotal */}
-                      <div className="flex items-center justify-between py-2 px-3 border-t border-border font-medium text-foreground">
-                        <span>Total liabilities</span>
-                        <span className="w-36 text-right fin-num">{renderAmount(processedData.totalLiabilities, true)}</span>
-                      </div>
-                    </div>
+                    )}
 
                     {/* ── EQUITY SECTION ── */}
-                    <div id="section-equity" className="space-y-2 pt-2">
-                      <div className="h-9 px-3 bg-muted/40 text-foreground font-semibold rounded-lg flex items-center justify-between border-b border-border/60">
-                        <span className="flex items-center gap-2 text-xs">
-                          <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
-                          <span>Equity</span>
-                        </span>
-                        <span className="fin-num text-xs font-semibold">{renderAmount(processedData.totalEquity, true)}</span>
-                      </div>
+                    {(showZeroRows || processedData.totalEquity !== 0) && (
+                      <div id="section-equity" className="space-y-0.5">
+                        <StatementRow
+                          level={0}
+                          variant="section"
+                          dotColor="bg-violet-500"
+                          label="Equity"
+                          amounts={processedData.totalEquity}
+                        />
 
-                      <div className="pl-3 space-y-0.5">
-                        {processedData.classifiedEquity.map((item) => (
-                          <div
-                            key={item.account_id || item.account_code || item.name}
-                            onClick={() => handleAccountClick(item)}
-                            className={`group flex items-center justify-between ${rowHeightClass} px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-[13px]`}
-                          >
-                            <div className="flex items-center gap-2">
-                              {showCodes && item.account_code && (
-                                <span className="w-12 text-muted-foreground fin-num text-xs">
-                                  {item.account_code}
-                                </span>
-                              )}
-                              <span className="font-normal text-foreground group-hover:text-[#FA634E] transition-colors">
-                                {item.name}
-                              </span>
-                            </div>
-                            <div className="w-36 text-right">{renderAmount(item.amount)}</div>
-                          </div>
-                        ))}
-                      </div>
+                        <div className="space-y-0.5">
+                          {processedData.classifiedEquity.map((item) => (
+                            <StatementRow
+                              key={item.account_id || item.account_code || item.name}
+                              level={1}
+                              variant="account"
+                              code={showCodes && item.account_code ? item.account_code : undefined}
+                              label={item.name}
+                              amounts={item.amount}
+                              onClick={() => handleAccountClick(item)}
+                            />
+                          ))}
+                        </div>
 
-                      <div className="flex items-center justify-between py-2 px-3 border-t border-border font-medium text-foreground">
-                        <span>Total equity</span>
-                        <span className="w-36 text-right fin-num">{renderAmount(processedData.totalEquity, true)}</span>
+                        <StatementRow
+                          level={1}
+                          variant="subtotal"
+                          label="Total equity"
+                          amounts={processedData.totalEquity}
+                        />
                       </div>
-                    </div>
+                    )}
 
                     {/* GRAND TOTAL LIABILITIES & EQUITY */}
-                    <div className="flex items-center justify-between py-2.5 px-3 border-t border-foreground/70 border-b-[3px] border-double font-semibold text-foreground text-sm mt-3">
-                      <span>Total liabilities & equity</span>
-                      <span className="w-36 text-right fin-num">{renderAmount(processedData.totalLiabilitiesAndEquity, true)}</span>
-                    </div>
+                    <StatementRow
+                      level={0}
+                      variant="grandtotal"
+                      label="Total liabilities & equity"
+                      amounts={processedData.totalLiabilitiesAndEquity}
+                    />
                   </div>
                 )}
 
@@ -708,7 +701,7 @@ export default function BalanceSheetPage() {
                     <div className="border border-border rounded-xl p-3.5 space-y-3 bg-card">
                       <div className="flex items-center justify-between border-b border-border pb-2">
                         <span className="font-semibold text-foreground text-xs flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-chip-orange-dot" />
                           <span>Liabilities & Equity</span>
                         </span>
                         <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground ring-1 ring-inset ring-border">
@@ -748,7 +741,7 @@ export default function BalanceSheetPage() {
                     <div className="border border-border rounded-xl p-3.5 space-y-3 bg-card">
                       <div className="flex items-center justify-between border-b border-border pb-2">
                         <span className="font-semibold text-foreground text-xs flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-chip-info-dot" />
                           <span>Assets</span>
                         </span>
                         <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground ring-1 ring-inset ring-border">

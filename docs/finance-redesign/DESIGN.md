@@ -172,6 +172,55 @@ Rules:
 
 ---
 
+## 2.7 Chip system
+
+The finance module uses a token-driven, component-based **Chip system** (`Chip` component in `@/components/ui/chip`, `StatPill` in `@/components/ui/stat-pill`, and semantic registries in `@/lib/finance/chips.tsx`). Hardcoded Tailwind palette color classes in pages are strictly forbidden.
+
+### Tones & CSS Variables
+Each tone defines three CSS variables in `:root` and `.dark` (`--chip-{tone}-bg`, `--chip-{tone}-fg`, `--chip-{tone}-border`, and `--chip-{tone}-dot`), registered in `@theme inline`:
+- `neutral`: shadcn tokens (`--muted`, `--muted-foreground`, `--border`)
+- `positive`: emerald (`var(--color-emerald-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `negative`: rose (`var(--color-rose-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `warning`: amber (`var(--color-amber-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `info`: sky (`var(--color-sky-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `violet`: purple (`var(--color-purple-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `teal`: teal (`var(--color-teal-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `orange`: orange (`var(--color-orange-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `brand`: MERCON Coral (`#FA634E`) using `color-mix` for background and border.
+
+Text contrast ratios meet or exceed 4.5:1 across all tones in both light and dark modes.
+
+### Variants & Sizes
+- **`variant="soft"`** (default): Bordered soft chip (`bg-chip-{tone}-bg text-chip-{tone}-fg border-chip-{tone}-border`).
+- **`variant="solid"`**: Filled chip with tone foreground color + white text (used for count badges / >90 day ageing).
+- **`variant="outline"`**: Border + tone text with transparent background.
+- **`size="sm"`**: `h-5 px-2 text-[11px]`
+- **`size="md"`** (default): `h-6 px-2.5 text-xs`
+
+### Semantic Registries & Helpers
+Pages MUST use semantic wrappers instead of direct tone styling:
+- `FIN_STATUS` → `<StatusChip kind status />`
+- `SOURCE_TYPES` → `<SourceChip type link? />`
+- `PARTY_TYPES` → `<PartyChip type name />`
+- `DIRECTIONS` → `<DirectionChip direction />`
+- `AGEING_BUCKETS` → `<BucketChip bucket />`
+- `ENTRY_SIDE` → `<AccountChip side="debit"|"credit" name code? truncate />`
+- `RECON_STATE` → `<ReconChip lastDate />`
+- Summary Pill → `<StatPill count? label value? tone? />`
+
+### How to Add a New Tone or Registry Entry
+1. **New Tone**:
+   - Add variables `--chip-{tone}-bg`, `--chip-{tone}-fg`, `--chip-{tone}-border`, `--chip-{tone}-dot` in `:root` and `.dark` in `src/index.css`.
+   - Register inline colors in `@theme inline` in `src/index.css`.
+   - Add `{tone}` to `ChipTone` type in `components/ui/chip.tsx` and CVA variant maps.
+2. **New Registry Entry**:
+   - Add the key to the appropriate registry in `src/lib/finance/chips.tsx` with `{ label, tone, icon? }`.
+
+### Automated Guardrail Test
+The Vitest test `src/lib/finance/__tests__/no-hardcoded-chip-colors.test.ts` scans all `.tsx` files in `pages/finance` and `components/finance` to enforce zero hardcoded Tailwind color palette classes (`bg-emerald-50`, `text-amber-700`, etc.).
+
+---
+
 ## 4. Page patterns
 
 ### 4.0 Same building blocks, different pages
@@ -604,4 +653,31 @@ The visual rules below make `/finance` pages feel like a modern, clean financial
 
 - **R8 Type scale**:
   - `11px uppercase tracking-wide text-muted-foreground font-medium` for column labels only; 13–14px body; 15px card titles (`font-semibold`); no other uppercase text. Spacing on a 4px grid; list/statement rows `h-9`; card padding `p-4` (`p-5` max).
+
+---
+
+## 2.7 E-Wheels Table System & Viewport-Fit Layout (Prompt 17)
+
+- **Viewport-fit Pages (`fixedViewport={true}`)**:
+  - Main app shell container stays `overflow-hidden` on desktop. Page root is `flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4`.
+  - Only the table container inside `<ScrollTableCard>` scrolls (`.table-container overflow-auto flex-1`).
+  - Mobile fallback (`<768px`): pages switch to normal scrolling (`max-md:overflow-y-auto max-md:h-auto`).
+
+- **ScrollTableCard Component**:
+  - `Card`: `flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card shadow-xs`.
+  - Card toolbar: `px-3 py-2 border-b border-border flex flex-wrap items-center justify-between gap-2 shrink-0`.
+  - Pinned Card footer: `border-t border-border bg-background px-4 py-2.5 text-xs flex items-center justify-between shrink-0`.
+
+- **Bordered Chips Recipe**:
+  - `border-{hue}-200 bg-{hue}-50 text-{hue}-700 dark:border-{hue}-800 dark:bg-{hue}-950/30 dark:text-{hue}-400 rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap`.
+  - Neutral chips: `border-border bg-muted text-muted-foreground`.
+  - Non-wrapping (`whitespace-nowrap`), `max-w-[180px]` with truncation + tooltip for long names.
+
+- **Table Typography Rules**:
+  - `thead` headers: sticky top-0 z-10 bg-background shadow-xs border-b; sentence case `text-xs font-semibold text-foreground`.
+  - Body cells: `px-3 py-1.5 text-xs align-middle`.
+  - Amounts: Monospaced tabular figures (`font-mono tabular-nums` / `.fin-num-mono font-semibold text-xs text-foreground`). Statement pages (P&L, Balance Sheet) retain sans tabular figures (`.fin-num`).
+  - Date cells: `text-muted-foreground text-xs font-medium whitespace-nowrap`.
+  - Text cells: `text-xs text-foreground`, truncate with `max-w` + title attribute.
+
 

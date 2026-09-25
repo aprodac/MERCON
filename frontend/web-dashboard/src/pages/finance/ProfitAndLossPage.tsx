@@ -23,7 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Label } from '@/components/ui/label';
 import ExportModal, { type ExportColumn } from '@/components/ui/ExportModal';
 
-import { StatementHeaderBar, InsightRail } from '@/components/finance/kit';
+import { StatementHeaderBar, InsightRail, StatementRow } from '@/components/finance/kit';
 import { financeService } from '@/services/financeService';
 import { formatMoney, formatDate } from '@/lib/finance/format';
 import {
@@ -218,10 +218,10 @@ export default function ProfitAndLossPage() {
   ];
 
   return (
-    <DashboardLayout active="finance" title="Profit & Loss">
-      <div className="p-4 space-y-4 max-w-[1400px] mx-auto print:p-0">
+    <DashboardLayout active="finance" title="Profit & Loss" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-[1400px] mx-auto w-full print:p-0">
         {/* Single-Row Toolbar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 shrink-0 print:hidden">
           <div className="flex items-center gap-2 flex-wrap">
             {/* View Tabs */}
             <ToggleGroup
@@ -354,11 +354,11 @@ export default function ProfitAndLossPage() {
 
         {/* MAIN CONTENT GRID */}
         {!isMainLoading && !isMainError && activeTab === 'statement' && (
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4">
+          <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_320px] gap-4 flex-1 min-h-0 overflow-hidden max-md:overflow-y-auto">
             {/* Left: Statement Card */}
-            <div className="space-y-4 min-w-0">
-              <div className="bg-card rounded-xl border border-border p-4 shadow-xs w-full print:shadow-none print:border-none print:p-0 space-y-4">
-                {/* On-Screen Compact Header Bar */}
+            <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+              <div className="bg-card rounded-xl border border-border shadow-xs w-full p-0 flex flex-col flex-1 min-h-0 overflow-hidden print:shadow-none print:border-none print:p-0">
+                {/* On-Screen Header Bar */}
                 <StatementHeaderBar
                   title="Profit and Loss"
                   subtitle="MERCON LOGISTICS CO."
@@ -368,216 +368,216 @@ export default function ProfitAndLossPage() {
 
                 {/* VERTICAL LAYOUT */}
                 {layout === 'vertical' && (
-                  <div className="space-y-4 text-xs divide-y divide-border/60">
+                  <div className="table-container flex-1 overflow-auto py-2 text-xs space-y-4">
                     {/* Operating Income Section */}
-                    <div id="section-operating_income" className="space-y-1 pt-2 first:pt-0">
-                      <div className="px-3 py-2 bg-muted/40 text-foreground font-semibold rounded-md flex items-center justify-between">
-                        <span className="flex items-center gap-2 text-xs font-semibold">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                          <span>Operating income</span>
-                        </span>
-                        <span className="fin-num text-xs font-medium">{fmtMoney(verticalPnl.operatingIncomeTotal)}</span>
-                      </div>
+                    {(customize.showZeroBalance || verticalPnl.operatingIncomeTotal !== 0 || verticalPnl.sections.operating_income.groups.length > 0) && (
+                      <div id="section-operating_income" className="space-y-0.5">
+                        <StatementRow
+                          level={0}
+                          variant="section"
+                          dotColor="bg-emerald-500"
+                          label="Operating income"
+                          amounts={verticalPnl.operatingIncomeTotal}
+                        />
 
-                      <div className="pl-2 space-y-0.5">
                         {verticalPnl.sections.operating_income.groups.map((group) => {
+                          if (!customize.showZeroBalance && group.total === 0) return null;
                           const expanded = isGroupExpanded(`operating_income_${group.name}`);
                           const isSingle = group.isSingleAccount || group.items.length === 1;
 
                           return (
                             <div key={group.name} className="space-y-0.5">
                               {!isSingle && (
-                                <div
-                                  onClick={() => toggleGroupCollapse(`operating_income_${group.name}`)}
-                                  className="flex items-center justify-between py-1.5 px-2 hover:bg-muted/50 rounded-md cursor-pointer font-medium text-foreground"
-                                >
-                                  <span className="flex items-center gap-1">
-                                    {expanded ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
-                                    <span>{group.name}</span>
-                                  </span>
-                                  <span className="fin-num text-muted-foreground">{fmtMoney(group.total)}</span>
-                                </div>
+                                <StatementRow
+                                  level={1}
+                                  variant="subgroup"
+                                  label={group.name}
+                                  prefix={
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleGroupCollapse(`operating_income_${group.name}`)}
+                                      className="p-0.5 hover:bg-muted rounded text-muted-foreground shrink-0"
+                                    >
+                                      {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                    </button>
+                                  }
+                                  amounts={{ value: group.total, className: 'text-muted-foreground font-medium' }}
+                                />
                               )}
                               {(isSingle || expanded) && (
-                                <div className={`${isSingle ? '' : 'pl-4'} space-y-0.5`}>
-                                  {group.items.map((item) => (
-                                    <div
-                                      key={item.id || item.code || item.name}
-                                      onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
-                                      className="group flex items-center justify-between h-9 px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-xs"
-                                    >
-                                      <div className="flex items-center gap-3">
-                                        {customize.showAccountCodes && item.code ? (
-                                          <span className="fin-num text-muted-foreground w-12 shrink-0">
-                                            {item.code}
-                                          </span>
-                                        ) : (
-                                          <span className="w-12 shrink-0" />
-                                        )}
-                                        <span className="font-medium text-foreground group-hover:underline">
-                                          {item.name}
-                                        </span>
-                                      </div>
-                                      <div className="w-36 text-right fin-num text-foreground">{fmtMoney(item.amount)}</div>
-                                    </div>
-                                  ))}
+                                <div className="space-y-0.5">
+                                  {group.items.map((item) => {
+                                    if (!customize.showZeroBalance && item.amount === 0) return null;
+                                    return (
+                                      <StatementRow
+                                        key={item.id || item.code || item.name}
+                                        level={isSingle ? 1 : 2}
+                                        variant="account"
+                                        code={customize.showAccountCodes && item.code ? item.code : undefined}
+                                        label={item.name}
+                                        amounts={item.amount}
+                                        onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
+                                      />
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>
                           );
                         })}
                       </div>
-                    </div>
+                    )}
 
                     {/* Cost of Sales Section */}
-                    <div id="section-cost_of_sales" className="space-y-1 pt-3">
-                      <div className="px-3 py-2 bg-muted/40 text-foreground font-semibold rounded-md flex items-center justify-between">
-                        <span className="flex items-center gap-2 text-xs font-semibold">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                          <span>Cost of sales</span>
-                        </span>
-                        <span className="fin-num text-xs font-medium">{fmtMoney(verticalPnl.costOfSalesTotal)}</span>
-                      </div>
+                    {(customize.showZeroBalance || verticalPnl.costOfSalesTotal !== 0 || verticalPnl.sections.cost_of_sales.groups.length > 0) && (
+                      <div id="section-cost_of_sales" className="space-y-0.5">
+                        <StatementRow
+                          level={0}
+                          variant="section"
+                          dotColor="bg-amber-500"
+                          label="Cost of sales"
+                          amounts={verticalPnl.costOfSalesTotal}
+                        />
 
-                      <div className="pl-2 space-y-0.5">
                         {verticalPnl.sections.cost_of_sales.groups.map((group) => {
+                          if (!customize.showZeroBalance && group.total === 0) return null;
                           const expanded = isGroupExpanded(`cost_of_sales_${group.name}`);
                           const isSingle = group.isSingleAccount || group.items.length === 1;
 
                           return (
                             <div key={group.name} className="space-y-0.5">
                               {!isSingle && (
-                                <div
-                                  onClick={() => toggleGroupCollapse(`cost_of_sales_${group.name}`)}
-                                  className="flex items-center justify-between py-1.5 px-2 hover:bg-muted/50 rounded-md cursor-pointer font-medium text-foreground"
-                                >
-                                  <span className="flex items-center gap-1">
-                                    {expanded ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
-                                    <span>{group.name}</span>
-                                  </span>
-                                  <span className="fin-num text-muted-foreground">{fmtMoney(group.total)}</span>
-                                </div>
+                                <StatementRow
+                                  level={1}
+                                  variant="subgroup"
+                                  label={group.name}
+                                  prefix={
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleGroupCollapse(`cost_of_sales_${group.name}`)}
+                                      className="p-0.5 hover:bg-muted rounded text-muted-foreground shrink-0"
+                                    >
+                                      {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                    </button>
+                                  }
+                                  amounts={{ value: group.total, className: 'text-muted-foreground font-medium' }}
+                                />
                               )}
                               {(isSingle || expanded) && (
-                                <div className={`${isSingle ? '' : 'pl-4'} space-y-0.5`}>
-                                  {group.items.map((item) => (
-                                    <div
-                                      key={item.id || item.code || item.name}
-                                      onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
-                                      className="group flex items-center justify-between h-9 px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-xs"
-                                    >
-                                      <div className="flex items-center gap-3">
-                                        {customize.showAccountCodes && item.code ? (
-                                          <span className="fin-num text-muted-foreground w-12 shrink-0">
-                                            {item.code}
-                                          </span>
-                                        ) : (
-                                          <span className="w-12 shrink-0" />
-                                        )}
-                                        <span className="font-medium text-foreground group-hover:underline">
-                                          {item.name}
-                                        </span>
-                                      </div>
-                                      <div className="w-36 text-right fin-num text-foreground">{fmtMoney(item.amount)}</div>
-                                    </div>
-                                  ))}
+                                <div className="space-y-0.5">
+                                  {group.items.map((item) => {
+                                    if (!customize.showZeroBalance && item.amount === 0) return null;
+                                    return (
+                                      <StatementRow
+                                        key={item.id || item.code || item.name}
+                                        level={isSingle ? 1 : 2}
+                                        variant="account"
+                                        code={customize.showAccountCodes && item.code ? item.code : undefined}
+                                        label={item.name}
+                                        amounts={item.amount}
+                                        onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
+                                      />
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>
                           );
                         })}
                       </div>
-                    </div>
+                    )}
 
-                    {/* Gross Profit Subtotal (B4) */}
-                    <div className="pt-3">
-                      <div className="px-3 py-2 border-t border-border flex items-center justify-between font-medium text-foreground text-xs">
-                        <span>Gross profit</span>
-                        <span className={`fin-num ${verticalPnl.grossProfit < 0 ? 'text-rose-600 dark:text-rose-400 font-medium' : 'text-foreground'}`}>
-                          {fmtMoney(verticalPnl.grossProfit)}
-                        </span>
-                      </div>
-                    </div>
+                    {/* Gross Profit Subtotal */}
+                    <StatementRow
+                      level={1}
+                      variant="subtotal"
+                      label="Gross profit"
+                      amounts={{
+                        value: verticalPnl.grossProfit,
+                        className: verticalPnl.grossProfit < 0 ? 'text-rose-600 dark:text-rose-400 font-medium' : 'font-medium text-foreground',
+                      }}
+                    />
 
                     {/* Operating Expenses Section */}
-                    <div id="section-operating_expense" className="space-y-1 pt-3">
-                      <div className="px-3 py-2 bg-muted/40 text-foreground font-semibold rounded-md flex items-center justify-between">
-                        <span className="flex items-center gap-2 text-xs font-semibold">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                          <span>Operating expenses</span>
-                        </span>
-                        <span className="fin-num text-xs font-medium">{fmtMoney(verticalPnl.operatingExpenseTotal)}</span>
-                      </div>
+                    {(customize.showZeroBalance || verticalPnl.operatingExpenseTotal !== 0 || verticalPnl.sections.operating_expense.groups.length > 0) && (
+                      <div id="section-operating_expense" className="space-y-0.5">
+                        <StatementRow
+                          level={0}
+                          variant="section"
+                          dotColor="bg-rose-500"
+                          label="Operating expenses"
+                          amounts={verticalPnl.operatingExpenseTotal}
+                        />
 
-                      <div className="pl-2 space-y-0.5">
                         {verticalPnl.sections.operating_expense.groups.map((group) => {
+                          if (!customize.showZeroBalance && group.total === 0) return null;
                           const expanded = isGroupExpanded(`operating_expense_${group.name}`);
                           const isSingle = group.isSingleAccount || group.items.length === 1;
 
                           return (
                             <div key={group.name} className="space-y-0.5">
                               {!isSingle && (
-                                <div
-                                  onClick={() => toggleGroupCollapse(`operating_expense_${group.name}`)}
-                                  className="flex items-center justify-between py-1.5 px-2 hover:bg-muted/50 rounded-md cursor-pointer font-medium text-foreground"
-                                >
-                                  <span className="flex items-center gap-1">
-                                    {expanded ? <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" /> : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
-                                    <span>{group.name}</span>
-                                  </span>
-                                  <span className="fin-num text-muted-foreground">{fmtMoney(group.total)}</span>
-                                </div>
+                                <StatementRow
+                                  level={1}
+                                  variant="subgroup"
+                                  label={group.name}
+                                  prefix={
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleGroupCollapse(`operating_expense_${group.name}`)}
+                                      className="p-0.5 hover:bg-muted rounded text-muted-foreground shrink-0"
+                                    >
+                                      {expanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                                    </button>
+                                  }
+                                  amounts={{ value: group.total, className: 'text-muted-foreground font-medium' }}
+                                />
                               )}
                               {(isSingle || expanded) && (
-                                <div className={`${isSingle ? '' : 'pl-4'} space-y-0.5`}>
-                                  {group.items.map((item) => (
-                                    <div
-                                      key={item.id || item.code || item.name}
-                                      onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
-                                      className="group flex items-center justify-between h-9 px-2 hover:bg-muted/50 rounded-md cursor-pointer transition-colors text-xs"
-                                    >
-                                      <div className="flex items-center gap-3">
-                                        {customize.showAccountCodes && item.code ? (
-                                          <span className="fin-num text-muted-foreground w-12 shrink-0">
-                                            {item.code}
-                                          </span>
-                                        ) : (
-                                          <span className="w-12 shrink-0" />
-                                        )}
-                                        <span className="font-medium text-foreground group-hover:underline">
-                                          {item.name}
-                                        </span>
-                                      </div>
-                                      <div className="w-36 text-right fin-num text-foreground">{fmtMoney(item.amount)}</div>
-                                    </div>
-                                  ))}
+                                <div className="space-y-0.5">
+                                  {group.items.map((item) => {
+                                    if (!customize.showZeroBalance && item.amount === 0) return null;
+                                    return (
+                                      <StatementRow
+                                        key={item.id || item.code || item.name}
+                                        level={isSingle ? 1 : 2}
+                                        variant="account"
+                                        code={customize.showAccountCodes && item.code ? item.code : undefined}
+                                        label={item.name}
+                                        amounts={item.amount}
+                                        onClick={() => navigate(`/finance/general-ledger?account_id=${item.id}&date_from=${dateFrom}&date_to=${dateTo}`)}
+                                      />
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>
                           );
                         })}
                       </div>
-                    </div>
+                    )}
 
-                    {/* Operating Profit Subtotal (B4) */}
-                    <div className="pt-3">
-                      <div className="px-3 py-2 border-t border-border flex items-center justify-between font-medium text-foreground text-xs">
-                        <span>Operating profit</span>
-                        <span className={`fin-num ${verticalPnl.operatingProfit < 0 ? 'text-rose-600 dark:text-rose-400 font-medium' : 'text-foreground'}`}>
-                          {fmtMoney(verticalPnl.operatingProfit)}
-                        </span>
-                      </div>
-                    </div>
+                    {/* Operating Profit Subtotal */}
+                    <StatementRow
+                      level={1}
+                      variant="subtotal"
+                      label="Operating profit"
+                      amounts={{
+                        value: verticalPnl.operatingProfit,
+                        className: verticalPnl.operatingProfit < 0 ? 'text-rose-600 dark:text-rose-400 font-medium' : 'font-medium text-foreground',
+                      }}
+                    />
 
-                    {/* Net Profit / Net Loss Grand Total (B4: double rule below, font-semibold) */}
-                    <div className="pt-4">
-                      <div className="px-3 py-2.5 border-t border-foreground/70 border-b-[3px] border-double flex items-center justify-between font-semibold text-foreground text-xs">
-                        <span>{verticalPnl.netProfit >= 0 ? 'Net profit' : 'Net loss'}</span>
-                        <span className={`fin-num font-semibold ${verticalPnl.netProfit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-foreground'}`}>
-                          {fmtMoney(verticalPnl.netProfit)}
-                        </span>
-                      </div>
-                    </div>
+                    {/* Net Profit / Net Loss Grand Total */}
+                    <StatementRow
+                      level={0}
+                      variant="grandtotal"
+                      label={verticalPnl.netProfit >= 0 ? 'Net profit' : 'Net loss'}
+                      amounts={{
+                        value: verticalPnl.netProfit,
+                        className: verticalPnl.netProfit < 0 ? 'text-rose-600 dark:text-rose-400 font-semibold' : 'font-semibold text-foreground',
+                      }}
+                    />
                   </div>
                 )}
               </div>

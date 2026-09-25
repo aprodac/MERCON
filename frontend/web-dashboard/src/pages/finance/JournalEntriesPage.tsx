@@ -51,23 +51,25 @@ import {
   JournalLinesTable,
 } from '@/components/finance/kit';
 import { formatDate, formatMoney, SOURCE_CONFIG, renderSourceBadge } from '@/lib/finance';
+import { AccountChip, SourceChip } from '@/lib/finance/chips';
+import { Chip } from '@/components/ui/chip';
 
-// Account flow summary helper returning color-coded Dr (emerald) and Cr (amber) account strings
+// Account flow summary helper returning structured Dr and Cr account data
 function getAccountFlowDetails(lines?: JournalEntry['lines']) {
-  if (!lines || lines.length === 0) return { drText: '', crText: '' };
+  if (!lines || lines.length === 0) return null;
 
   const drLines = lines.filter((l) => Number(l.debit) > 0);
   const crLines = lines.filter((l) => Number(l.credit) > 0);
 
-  const drText = drLines.length > 0
-    ? `${drLines[0].account?.name || drLines[0].account?.account_code || 'Account'}${drLines.length > 1 ? ` +${drLines.length - 1}` : ''}`
-    : '';
+  const drAccount = drLines[0]?.account;
+  const crAccount = crLines[0]?.account;
 
-  const crText = crLines.length > 0
-    ? `${crLines[0].account?.name || crLines[0].account?.account_code || 'Account'}${crLines.length > 1 ? ` +${crLines.length - 1}` : ''}`
-    : '';
-
-  return { drText, crText };
+  return {
+    drAccount: drAccount ? { name: drAccount.name || 'Account', code: drAccount.account_code } : null,
+    drExtra: drLines.length > 1 ? drLines.length - 1 : 0,
+    crAccount: crAccount ? { name: crAccount.name || 'Account', code: crAccount.account_code } : null,
+    crExtra: crLines.length > 1 ? crLines.length - 1 : 0,
+  };
 }
 
 const EXPORT_COLUMNS: ExportColumn<JournalEntry>[] = [
@@ -305,8 +307,8 @@ export default function JournalEntriesPage() {
   };
 
   return (
-    <DashboardLayout active="finance" title="Journal Entries">
-      <div className="p-6 space-y-4 max-w-7xl mx-auto">
+    <DashboardLayout active="finance" title="Journal Entries" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-7xl mx-auto w-full">
         {/* Top Control Bar: Status Tabs on Left, Actions on Right */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-card border border-border dark:border-border rounded-xl px-4 py-1.5 shadow-xs">
           <StatusTabs
@@ -442,7 +444,7 @@ export default function JournalEntriesPage() {
         </FilterBar>
 
         {/* Daybook List View */}
-        <div className="bg-card rounded-xl border border-border shadow-xs overflow-hidden">
+        <div className="bg-card rounded-xl border border-border shadow-sm flex flex-col flex-1 min-h-0 overflow-hidden">
           {isLoading ? (
             <div className="p-8 space-y-4">
               <div className="h-6 w-48 bg-muted rounded-lg animate-pulse" />
@@ -478,7 +480,7 @@ export default function JournalEntriesPage() {
               }
             />
           ) : (
-            <div className="bg-card rounded-xl border border-border dark:border-border shadow-xs overflow-hidden divide-y divide-border/60 dark:divide-border/60">
+            <div className="table-container flex-1 overflow-auto divide-y divide-border/60">
               {groupedEntries.map((group: any) => (
                 <div key={group.dateKey} className="group-container">
                   {/* Swiss Modern Sticky Date Header */}
@@ -503,7 +505,7 @@ export default function JournalEntriesPage() {
                     {group.items.map((entry: JournalEntry) => {
                       const isExpanded = expandedRowIds.has(entry.id);
                       const totalDebit = (entry.lines || []).reduce((sum: number, l: any) => sum + (Number(l.debit) || 0), 0);
-                      const { drText, crText } = getAccountFlowDetails(entry.lines);
+                      const flow = getAccountFlowDetails(entry.lines);
                       const isVoided = entry.status === 'Voided';
                       const isReversal = Boolean(entry.reversalOfId || entry.reversalOf);
 
@@ -538,32 +540,34 @@ export default function JournalEntriesPage() {
 
                               {renderSourceBadge(entry.source_type, entry.source_id)}
 
-                              {isReversal && (
-                                <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800">
-                                  Reversal
-                                </span>
-                              )}
+                              {isReversal && <Chip tone="violet">Reversal</Chip>}
 
                               {/* Memo + Account flow */}
                               <div className="min-w-0 flex-1 pl-1">
                                 <div className={`truncate font-semibold text-foreground  ${isVoided ? 'line-through text-muted-foreground' : ''}`}>
                                   {entry.memo || '—'}
                                 </div>
-                                {(drText || crText) && (
-                                  <div className="truncate text-[11px] font-medium flex items-center gap-2 mt-0.5">
-                                    {drText && (
-                                      <span className="truncate text-emerald-700 dark:text-emerald-400 font-mono">
-                                        <span className="font-bold text-emerald-800 dark:text-emerald-300 mr-1">Dr:</span>
-                                        {drText}
-                                      </span>
+                                {flow && (flow.drAccount || flow.crAccount) && (
+                                  <div className="flex items-center gap-1.5 mt-0.5 overflow-x-auto no-scrollbar">
+                                    {flow.drAccount && (
+                                      <AccountChip
+                                        side="debit"
+                                        name={flow.drAccount.name}
+                                        code={flow.drAccount.code}
+                                        truncate={140}
+                                      />
                                     )}
-                                    {drText && crText && <span className="text-slate-300 dark:text-foreground font-mono">/</span>}
-                                    {crText && (
-                                      <span className="truncate text-amber-700 dark:text-amber-400 font-mono">
-                                        <span className="font-bold text-amber-800 dark:text-amber-300 mr-1">Cr:</span>
-                                        {crText}
-                                      </span>
+                                    {flow.drExtra > 0 && <Chip tone="neutral">+{flow.drExtra}</Chip>}
+                                    <span className="text-muted-foreground text-xs font-mono">→</span>
+                                    {flow.crAccount && (
+                                      <AccountChip
+                                        side="credit"
+                                        name={flow.crAccount.name}
+                                        code={flow.crAccount.code}
+                                        truncate={140}
+                                      />
                                     )}
+                                    {flow.crExtra > 0 && <Chip tone="neutral">+{flow.crExtra}</Chip>}
                                   </div>
                                 )}
                               </div>
@@ -713,7 +717,7 @@ export default function JournalEntriesPage() {
 
           {/* Footer Pagination */}
           {pagination.total > 0 && (
-            <div className="px-4 py-3 border-t border-border bg-muted/50 flex items-center justify-between text-xs text-muted-foreground">
+            <div className="px-4 py-2.5 border-t border-border bg-card flex items-center justify-between text-xs text-muted-foreground shrink-0">
               <div>
                 Showing {(pagination.page - 1) * pagination.per_page + 1}–
                 {Math.min(pagination.page * pagination.per_page, pagination.total)} of {pagination.total} entries

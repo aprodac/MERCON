@@ -18,13 +18,7 @@ import { InvoicePrintModal } from '@/components/finance/InvoicePrintModal';
 import { financeService } from '@/services/financeService';
 import type { Invoice, InvoiceStatus, Account } from '@mercon/shared-types';
 
-const STATUS_BADGES: Record<InvoiceStatus, string> = {
-  Draft: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 text-amber-700 border-amber-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
-  Issued: 'bg-blue-50 text-blue-700 border-blue-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
-  PartiallyPaid: 'bg-amber-500/10 text-amber-700 ring-1 ring-inset ring-amber-600/20 border-orange-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
-  Paid: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 text-emerald-700 border-emerald-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
-  Void: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 text-rose-700 border-rose-200/80 rounded-full px-2.5 py-0.5 text-[11px] font-bold',
-};
+import { StatusChip } from '@/lib/finance/chips';
 
 const INVOICES_EXPORT_COLUMNS: ExportColumn<Invoice>[] = [
   { id: 'ref_id', label: 'Invoice Reference', accessor: (inv) => inv.ref_id || inv.id },
@@ -181,7 +175,7 @@ export default function InvoicesPage() {
     },
     {
       header: 'Status',
-      accessor: (inv) => <Badge className={`${STATUS_BADGES[inv.status]} border`}>{inv.status}</Badge>,
+      accessor: (inv) => <StatusChip kind="invoice" status={inv.status} doc={{ due_date: inv.due_date, balance_due: inv.balance_due }} />,
       mobilePriority: 'secondary',
     },
     {
@@ -243,8 +237,8 @@ export default function InvoicesPage() {
   );
 
   return (
-    <DashboardLayout active="finance" title="Invoices">
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <DashboardLayout active="finance" title="Invoices" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-7xl mx-auto w-full">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-[#3E3C3D]">Invoices</h1>
@@ -321,7 +315,7 @@ export default function InvoicesPage() {
                 <div className="grid grid-cols-3 gap-2 bg-muted p-3 rounded-lg border border-border">
                   <div>
                     <span className="text-muted-foreground block font-medium">Status</span>
-                    <Badge className={`${STATUS_BADGES[viewingInvoice.status]} mt-0.5 border`}>{viewingInvoice.status}</Badge>
+                    <StatusChip kind="invoice" status={viewingInvoice.status} doc={{ due_date: viewingInvoice.due_date, balance_due: viewingInvoice.balance_due }} className="mt-0.5" />
                   </div>
                   <div>
                     <span className="text-muted-foreground block font-medium">Total</span>

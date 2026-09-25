@@ -6,6 +6,9 @@ import { LayoutProvider, useLayoutMeta } from '@/context/LayoutContext';
 import OperationsAssistant from '../assistant/OperationsAssistant';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import { KeyboardShortcutsModal } from '@/components/ui/KeyboardShortcutsModal';
+import CommandPalette from './CommandPalette';
+import { NAV_PAGES, SETTINGS_PAGES, findActiveEntry } from '@/config/navigation';
+import { navStore } from '@/lib/navigation/navStore';
 
 /** Inner shell — reads metadata from context set by each page's DashboardLayout */
 function ShellInner() {
@@ -61,9 +64,11 @@ function ShellInner() {
     };
   }, []);
 
-  // Close mobile drawer and reset scroll position on navigation
+  // Close mobile drawer and reset scroll position on navigation; remember the page for ⌘K "Recent"
   useEffect(() => {
     setSidebarOpen(false);
+    const visited = findActiveEntry([...NAV_PAGES, ...SETTINGS_PAGES], location.pathname);
+    if (visited) navStore.pushRecent(visited.id);
     if (contentRef.current) {
       contentRef.current.scrollTop = 0;
     }
@@ -165,6 +170,8 @@ function ShellInner() {
       <OperationsAssistant />
       {/* ERP Keyboard Shortcuts Help Overlay */}
       <KeyboardShortcutsModal />
+      {/* ⌘K / Ctrl+K navigation palette */}
+      <CommandPalette />
     </div>
   );
 }

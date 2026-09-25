@@ -7,6 +7,7 @@ import {
   DialogDescription,
 } from './dialog';
 import { KbdBadge } from './KbdBadge';
+import { SHORTCUTS_EVENT } from '@/lib/navigation/navStore';
 import { Keyboard, Command, Sparkles, Navigation, Edit3, Table } from 'lucide-react';
 
 export const KeyboardShortcutsModal: React.FC = () => {
@@ -29,8 +30,13 @@ export const KeyboardShortcutsModal: React.FC = () => {
       }
     };
 
+    const openGuide = () => setIsOpen(true);
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener(SHORTCUTS_EVENT, openGuide);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener(SHORTCUTS_EVENT, openGuide);
+    };
   }, []);
 
   const shortcutGroups = [
@@ -59,6 +65,8 @@ export const KeyboardShortcutsModal: React.FC = () => {
       icon: Navigation,
       items: [
         { label: 'Command Palette / Search', shortcut: 'Ctrl + K' },
+        { label: 'Collapse / Expand Sidebar', shortcut: 'Ctrl + B' },
+        { label: 'New Trip', shortcut: 'Alt + T' },
         { label: 'Toggle Keyboard Guide', shortcut: '?' },
         { label: 'Focus Search Bar', shortcut: '/' },
       ],

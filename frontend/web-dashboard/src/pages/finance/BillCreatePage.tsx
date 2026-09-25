@@ -284,7 +284,7 @@ export default function BillCreatePage() {
                     variant="ghost"
                     size="sm"
                     onClick={selectAllExpenses}
-                    className="h-7 text-xs font-semibold text-[#FA634E] hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 dark:hover:bg-rose-950/30 px-2"
+                    className="h-7 text-xs font-semibold text-[#FA634E] hover:bg-muted px-2"
                   >
                     {selectedExpenseIds.length === filteredExpenses.length && filteredExpenses.length > 0
                       ? 'Deselect All'
@@ -393,7 +393,7 @@ export default function BillCreatePage() {
                   variant="ghost"
                   size="sm"
                   onClick={handleAddManualLine}
-                  className="h-7 text-xs font-semibold text-[#FA634E] hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 dark:hover:bg-rose-950/30 px-2"
+                  className="h-7 text-xs font-semibold text-[#FA634E] hover:bg-muted px-2"
                 >
                   <Plus className="w-3.5 h-3.5 mr-1" /> Add Manual Line
                 </Button>

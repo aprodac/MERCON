@@ -17,7 +17,8 @@ describe('pnlStructure', () => {
     it('correctly classifies expense accounts by name regex', () => {
       expect(getDefaultPnlClass('Cost of Services', null, false)).toBe('cost_of_sales');
       expect(getDefaultPnlClass('Direct Expenses', null, false)).toBe('cost_of_sales');
-      expect(getDefaultPnlClass('Fuel Expense', null, false)).toBe('operating_expense');
+      expect(getDefaultPnlClass('Fuel Expense', null, false)).toBe('cost_of_sales');
+      expect(getDefaultPnlClass('Office Rent', null, false)).toBe('operating_expense');
       expect(getDefaultPnlClass('Bank Finance Cost', null, false)).toBe('non_operating_expense');
       expect(getDefaultPnlClass('Loss on Disposal', null, false)).toBe('non_operating_expense');
     });
@@ -31,16 +32,24 @@ describe('pnlStructure', () => {
   describe('buildStructuredVerticalPnl & buildStructuredTFormatPnl', () => {
     it('builds Q3 demo figures matching exact test specifications', () => {
       // Demo numbers from prompt verification criteria:
-      // Operating Income: 125,005.00
-      // Cost of Sales: 312,275.00
-      // Operating Expenses: 133,045.00
+      // Operating Income: 125,005.00 (Freight Revenue 125,005.00)
+      // Cost of Sales: 312,275.00 (Driver Salaries 174,500 · Fuel 91,425 · Tolls & Permits 24,750 · Vehicle Maintenance 12,000 · Subcontractor Haulage 9,600)
+      // Operating Expenses: 133,045.00 (Insurance 71,645 · Office Rent 45,000 · General & Admin 16,400)
       const revenues: ReportLineItem[] = [
-        { account_id: '1', account_code: '4000', name: 'Freight Revenue', amount: 125005 },
+        { account_id: '1', account_code: '4010', name: 'Freight Revenue', amount: 125005 },
       ];
 
       const expenses: ReportLineItem[] = [
-        { account_id: '2', account_code: '5000', name: 'Cost of Services', amount: 312275 }, // classifies as cost_of_sales
-        { account_id: '3', account_code: '6000', name: 'Operating Expenses', amount: 133045 }, // classifies as operating_expense
+        // Cost of Services lines with parent_name "Cost of Services"
+        { account_id: '2', account_code: '5020', name: 'Driver Salaries', parent_name: 'Cost of Services', amount: 174500 },
+        { account_id: '3', account_code: '5030', name: 'Fuel', parent_name: 'Cost of Services', amount: 91425 },
+        { account_id: '4', account_code: '5040', name: 'Tolls & Permits', parent_name: 'Cost of Services', amount: 24750 },
+        { account_id: '5', account_code: '5050', name: 'Vehicle Maintenance', parent_name: 'Cost of Services', amount: 12000 },
+        { account_id: '6', account_code: '5060', name: 'Subcontractor Haulage', parent_name: 'Cost of Services', amount: 9600 },
+        // Operating expenses lines
+        { account_id: '7', account_code: '6010', name: 'Insurance', parent_name: 'Operating Expenses', amount: 71645 },
+        { account_id: '8', account_code: '6020', name: 'Office Rent', parent_name: 'Operating Expenses', amount: 45000 },
+        { account_id: '9', account_code: '6030', name: 'General & Admin', parent_name: 'Operating Expenses', amount: 16400 },
       ];
 
       const vertical = buildStructuredVerticalPnl(revenues, expenses);

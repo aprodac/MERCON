@@ -15,6 +15,7 @@ import { financeService, JournalLineDTO } from '@/services/financeService';
 import type { JournalEntry, Account, AccountingPeriod } from '@mercon/shared-types';
 import { FinancePageHeader, MoneyText, JournalLinesTable } from '@/components/finance/kit';
 import { formatMoney } from '@/lib/finance';
+import { Chip } from '@/components/ui/chip';
 
 export default function JournalEntryEditorPage() {
   const { id } = useParams<{ id?: string }>();
@@ -469,14 +470,15 @@ export default function JournalEntryEditorPage() {
                       <td className="py-2 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">
                           {canShowBalanceBtn && (
-                            <button
-                              type="button"
-                              onClick={() => handleBalanceRemaining(idx)}
-                              title="Fill remaining balance"
-                              className="px-2 py-1 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 hover:bg-emerald-500/10 border border-emerald-200 whitespace-nowrap"
-                            >
-                              Balance remaining ({formatMoney(diff, { currency: 'SAR' })})
-                            </button>
+                            <Chip tone="positive" size="sm" asChild>
+                              <button
+                                type="button"
+                                onClick={() => handleBalanceRemaining(idx)}
+                                title="Fill remaining balance"
+                              >
+                                Balance remaining ({formatMoney(diff, { currency: 'SAR' })})
+                              </button>
+                            </Chip>
                           )}
                           <Button
                             type="button"
@@ -515,15 +517,13 @@ export default function JournalEntryEditorPage() {
 
               <div>
                 {isBalanced ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 border border-emerald-200">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <Chip tone="positive" icon={CheckCircle2}>
                     Balanced ✓
-                  </span>
+                  </Chip>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 text-amber-800 border border-amber-300">
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                  <Chip tone="warning" icon={AlertCircle}>
                     Out by {formatMoney(diff, { currency: 'SAR' })}
-                  </span>
+                  </Chip>
                 )}
               </div>
             </div>

@@ -135,8 +135,8 @@ export default function TrialBalancePage() {
   }, [selectedPeriod, periods]);
 
   return (
-    <DashboardLayout active="finance" title="Trial Balance">
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <DashboardLayout active="finance" title="Trial Balance" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-7xl mx-auto w-full">
         {/* Sticky Header Bar */}
         <div className="bg-card rounded-xl border border-border p-4 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 z-10 backdrop-blur-md bg-card/95">
           <div className="flex items-center gap-3">

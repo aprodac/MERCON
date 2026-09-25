@@ -2,6 +2,7 @@ import React from 'react';
 import { MoneyText } from './MoneyText';
 import { formatMoney } from '@/lib/finance';
 import { cn } from '@/lib/utils';
+import { Chip } from '@/components/ui/chip';
 
 export interface JournalLineItem {
   id?: string;
@@ -56,16 +57,9 @@ export function JournalLinesTable({
           <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {title || 'Will Post to General Ledger'}
           </span>
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset fin-num',
-              isBalanced
-                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-600/20'
-                : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-600/20'
-            )}
-          >
+          <Chip tone={isBalanced ? 'positive' : 'warning'} size="sm">
             {isBalanced ? '✓ Balanced' : `Out by ${formatMoney(imbalance)}`}
-          </span>
+          </Chip>
         </div>
 
         <div className="divide-y divide-border/60 text-xs">
@@ -190,16 +184,9 @@ export function JournalLinesTable({
             <tr className="bg-muted/40 border-t border-border font-semibold text-xs">
               <td colSpan={2} className="py-2.5 px-4 text-foreground flex items-center justify-between">
                 <span>Totals ({currency})</span>
-                <span
-                  className={cn(
-                    'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset fin-num ml-2',
-                    isBalanced
-                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-600/20'
-                      : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-600/20'
-                  )}
-                >
+                <Chip tone={isBalanced ? 'positive' : 'warning'} size="sm" className="ml-2">
                   {isBalanced ? '✓ Balanced' : `Out by ${formatMoney(imbalance)}`}
-                </span>
+                </Chip>
               </td>
               <td className="py-2.5 px-4 text-right">
                 <MoneyText value={totalDebit} size="md" />

@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { StatusChip } from '@/lib/finance/chips';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -263,11 +264,7 @@ export default function ReconciliationPage() {
     },
     {
       header: 'Status',
-      accessor: (row) => (
-        <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 border-emerald-200">
-          {row.status || 'Completed'}
-        </Badge>
-      ),
+      accessor: (row) => <StatusChip kind="reconciliation" status={row.status || 'Completed'} />,
     },
     {
       header: 'Reconciled At',

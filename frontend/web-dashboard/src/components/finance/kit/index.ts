@@ -13,3 +13,6 @@ export * from './ActivityTimeline';
 export * from './BalanceHeroCard';
 export * from './StatementHeaderBar';
 export * from './InsightRail';
+export * from './StatementRow';
+export * from './ScrollTableCard';
+

@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 
 import { AdvanceReadinessRail } from '@/components/finance/advances/AdvanceReadinessRail';
 import { formatDate, formatMoney } from '@/lib/finance/format';
+import { DirectionChip } from '@/lib/finance/chips';
 import { financeService } from '@/services/financeService';
 import { customerService } from '@/services/customerService';
 import { thirdPartyService } from '@/services/thirdPartyService';
@@ -244,17 +245,15 @@ export default function AdvanceEditorPage() {
                   onClick={() => setPartyType('Customer')}
                   className={`p-4 rounded-xl border-2 cursor-pointer transition-all space-y-2 relative ${
                     partyType === 'Customer'
-                      ? 'border-[#FA634E] bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-600/20/40 dark:bg-sky-950/20 shadow-xs'
+                      ? 'border-[#FA634E] bg-chip-info-bg/40 shadow-xs'
                       : 'border-border dark:border-border hover:border-border dark:hover:border-border bg-card '
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="w-8 h-8 rounded-lg bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-600/20 dark:bg-sky-900 text-sky-600 flex items-center justify-center font-bold">
+                    <div className="w-8 h-8 rounded-lg bg-chip-info-bg text-chip-info-fg border border-chip-info-border flex items-center justify-center font-bold">
                       <Building2 className="w-4 h-4" />
                     </div>
-                    <Badge variant="outline" className="bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-600/20 dark:bg-sky-950 border-sky-200 text-[10px] font-semibold">
-                      ↓ Money in
-                    </Badge>
+                    <DirectionChip direction="In" />
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-foreground">Customer Advance</h3>
@@ -269,17 +268,15 @@ export default function AdvanceEditorPage() {
                   onClick={() => setPartyType('Provider')}
                   className={`p-4 rounded-xl border-2 cursor-pointer transition-all space-y-2 relative ${
                     partyType === 'Provider'
-                      ? 'border-[#FA634E] bg-purple-50/40 dark:bg-purple-950/20 shadow-xs'
+                      ? 'border-[#FA634E] bg-chip-violet-bg/40 shadow-xs'
                       : 'border-border dark:border-border hover:border-border dark:hover:border-border bg-card '
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 flex items-center justify-center font-bold">
+                    <div className="w-8 h-8 rounded-lg bg-chip-violet-bg text-chip-violet-fg border border-chip-violet-border flex items-center justify-center font-bold">
                       <Building2 className="w-4 h-4" />
                     </div>
-                    <Badge variant="outline" className="bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border-purple-200 text-[10px] font-semibold">
-                      ↑ Money out
-                    </Badge>
+                    <DirectionChip direction="Out" />
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-foreground">Provider Advance</h3>
@@ -294,17 +291,15 @@ export default function AdvanceEditorPage() {
                   onClick={() => setPartyType('Employee')}
                   className={`p-4 rounded-xl border-2 cursor-pointer transition-all space-y-2 relative ${
                     partyType === 'Employee'
-                      ? 'border-[#FA634E] bg-teal-500/10 dark:bg-teal-950/20 shadow-xs'
+                      ? 'border-[#FA634E] bg-chip-teal-bg/40 shadow-xs'
                       : 'border-border dark:border-border hover:border-border dark:hover:border-border bg-card '
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="w-8 h-8 rounded-lg bg-teal-100 dark:bg-teal-900 text-teal-600 dark:text-teal-300 flex items-center justify-center font-bold">
+                    <div className="w-8 h-8 rounded-lg bg-chip-teal-bg text-chip-teal-fg border border-chip-teal-border flex items-center justify-center font-bold">
                       <User className="w-4 h-4" />
                     </div>
-                    <Badge variant="outline" className="bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300 border-teal-200 text-[10px] font-semibold">
-                      ↑ Money out
-                    </Badge>
+                    <DirectionChip direction="Out" />
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-foreground">Employee Advance</h3>
@@ -366,7 +361,7 @@ export default function AdvanceEditorPage() {
                                   }}
                                   className="flex items-center gap-2"
                                 >
-                                  <div className="w-6 h-6 rounded-full bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-600/20 font-bold text-[10px] flex items-center justify-center">
+                                  <div className="w-6 h-6 rounded-full bg-chip-info-bg text-chip-info-fg border border-chip-info-border font-bold text-[10px] flex items-center justify-center">
                                     {c.name.slice(0, 2).toUpperCase()}
                                   </div>
                                   <span>{c.name}</span>
@@ -384,7 +379,7 @@ export default function AdvanceEditorPage() {
                                   }}
                                   className="flex items-center gap-2"
                                 >
-                                  <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 font-bold text-[10px] flex items-center justify-center">
+                                  <div className="w-6 h-6 rounded-full bg-chip-violet-bg text-chip-violet-fg border border-chip-violet-border font-bold text-[10px] flex items-center justify-center">
                                     {p.name.slice(0, 2).toUpperCase()}
                                   </div>
                                   <span>{p.name}</span>
@@ -404,7 +399,7 @@ export default function AdvanceEditorPage() {
                                     }}
                                     className="flex items-center gap-2"
                                   >
-                                    <div className="w-6 h-6 rounded-full bg-teal-100 text-teal-700 font-bold text-[10px] flex items-center justify-center">
+                                    <div className="w-6 h-6 rounded-full bg-chip-teal-bg text-chip-teal-fg border border-chip-teal-border font-bold text-[10px] flex items-center justify-center">
                                       {fullName.slice(0, 2).toUpperCase()}
                                     </div>
                                     <span>{fullName}</span>
