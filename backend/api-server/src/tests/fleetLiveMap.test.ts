@@ -17,8 +17,8 @@ const trip = (id: string, over: Partial<LiveTripRow> = {}): LiveTripRow => ({
   id, ref_id: `TRP-${id}`, status: 'InTransit', vehicleId: null, planned_start: null, planned_end: null,
   updatedAt: ago(60), customer: { name: 'SABIC' }, driver: null,
   stops: [
-    { stop_sequence: 2, stop_type: 'Dropoff', location_name: 'Jubail', location_address: null, location_lat: 27, location_lng: 49.6, planned_arrival: null, actual_arrival: null, actual_departure: null },
-    { stop_sequence: 1, stop_type: 'Pickup', location_name: 'Riyadh', location_address: null, location_lat: 24.7, location_lng: 46.7, planned_arrival: null, actual_arrival: ago(3600), actual_departure: ago(3000) },
+    { id: 's2', stop_sequence: 2, stop_type: 'Dropoff', location_name: 'Jubail', location_address: null, location_lat: 27, location_lng: 49.6, planned_arrival: null, actual_arrival: null, actual_departure: null },
+    { id: 's1', stop_sequence: 1, stop_type: 'Pickup', location_name: 'Riyadh', location_address: null, location_lat: 24.7, location_lng: 46.7, planned_arrival: null, actual_arrival: ago(3600), actual_departure: ago(3000) },
   ],
   ...over,
 });
@@ -106,4 +106,27 @@ test('fleet live map units', async (t) => {
     const [u] = buildLiveUnits({ vehicles: [vehicle('v1', { last_lat: 0, last_lng: 0 })], trips: [], tripLocations: [] }, NOW);
     assert.equal(u.position, null);
   });
+});
+
+test('trip media is sorted onto the stop it was taken at', async () => {
+  const { groupTripMedia } = await import('../services/fleetLiveMap');
+  const stops = [
+    { id: 'b', stop_sequence: 2, delay_reason: 'Traffic', delay_note: 'Jam at Medina', delay_logged_at: ago(600) },
+    { id: 'a', stop_sequence: 1, delay_reason: null, delay_note: null, delay_logged_at: null },
+  ];
+  const doc = (id: string, over: Record<string, unknown> = {}) => ({
+    id, doc_type: 'POD', file_url: `/uploads/${id}.jpg`, mime_type: 'image/jpeg', ai_extracted_json: {}, createdAt: ago(100), files: [], ...over,
+  });
+  const out = groupTripMedia(stops, [
+    doc('pod1', { ai_extracted_json: { stop_id: 'b' }, files: [{ id: 'pod1-2', file_url: '/uploads/pod1-2.jpg', mime_type: 'image/jpeg' }] }),
+    doc('vid', { doc_type: 'Waybill', file_url: '/uploads/delay.mp4', mime_type: 'video/mp4', ai_extracted_json: { stop_id: 'b' } }),
+    doc('cargo', { doc_type: 'Waybill', ai_extracted_json: { stop_id: 'a' } }),
+    doc('legacy'),
+  ]);
+  assert.deepEqual(out.stops.map((s) => s.stop_id), ['a', 'b']);
+  assert.deepEqual(out.stops[0].media.map((m) => m.kind), ['photo']);
+  assert.deepEqual(out.stops[1].media.map((m) => `${m.id}:${m.kind}`), ['pod1:pod', 'pod1-2:pod', 'vid:video']);
+  assert.equal(out.stops[1].delay?.note, 'Jam at Medina');
+  assert.equal(out.stops[0].delay, null);
+  assert.deepEqual(out.unplaced.map((m) => m.id), ['legacy']);
 });

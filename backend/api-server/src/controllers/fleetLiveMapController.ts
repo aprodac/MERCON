@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
-import { loadLiveUnits } from '../services/fleetLiveMap';
+import { loadLiveUnits, loadTripMedia } from '../services/fleetLiveMap';
 import { getDrivingRouteThrough, MAX_ROUTE_POINTS, RoutingUnavailableError, type GeoPoint } from '../services/routing/routeProvider';
 
 /** GET /vehicles/live-map — every truck and on-trip driver with both GPS feeds. */
@@ -46,6 +46,18 @@ export const getFleetLiveRoute = async (req: Request, res: Response) => {
     if (error instanceof RoutingUnavailableError) {
       return res.status(503).json({ success: false, error: { message: 'Routing is temporarily unavailable' } });
     }
+    res.status(500).json({ success: false, error: { message: 'Internal server error' } });
+  }
+};
+
+/** GET /vehicles/live-map/trips/:id/media — POD photos, cargo photos and delay videos, per stop. */
+export const getFleetLiveTripMedia = async (req: Request, res: Response) => {
+  try {
+    const media = await loadTripMedia(prisma, req.params.id as string);
+    if (!media) return res.status(404).json({ success: false, error: { message: 'Trip not found' } });
+    res.json({ success: true, data: media });
+  } catch (error) {
+    logger.error({ err: error }, 'fleet live trip media failed');
     res.status(500).json({ success: false, error: { message: 'Internal server error' } });
   }
 };
