@@ -65,13 +65,6 @@ export function CustomerCard({
                 {customer.phone || 'No phone'}
               </Text>
             </View>
-            
-            <View className="flex-row items-center mt-1">
-              <MapPin size={13} color="#9CA3AF" />
-              <Text numberOfLines={1} className="text-[13px] text-[#6B7280] ml-1.5">
-                Saudi Arabia
-              </Text>
-            </View>
           </View>
         </View>
 
