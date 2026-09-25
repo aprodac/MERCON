@@ -26,9 +26,9 @@ export function StatementHeaderBar({
 
   return (
     <>
-      {/* ── ON SCREEN HEADER ────────────────────────────── */}
-      <div className="px-5 py-3.5 bg-muted/40 border-b border-border/60 flex items-center justify-between gap-3 print:hidden">
-        {/* Left: Statement Title + Company Name */}
+      {/* ── ON SCREEN HEADER: Plain Row Inside Card ────────────────────────────── */}
+      <div className="px-4 py-3 border-b border-border flex items-center justify-between gap-3 print:hidden">
+        {/* Left: Statement Title (15px semibold) + Company (12px muted) */}
         <div>
           <h2 className="text-[15px] font-semibold text-foreground leading-snug">
             {title}
@@ -38,7 +38,7 @@ export function StatementHeaderBar({
           </p>
         </div>
 
-        {/* Right: Neutral Micro Chips */}
+        {/* Right: Neutral Micro Badges */}
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-muted text-muted-foreground ring-border">
             {periodLabel}
@@ -55,7 +55,7 @@ export function StatementHeaderBar({
         </div>
       </div>
 
-      {/* ── ON PRINT HEADER: Formal Centred 4-Line Header ─────────────────── */}
+      {/* ── ON PRINT HEADER: Formal Centred Header ─────────────────── */}
       <div className="hidden print:block text-center pb-4 border-b border-border mb-4 space-y-1">
         <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           {displayCompany}
@@ -73,4 +73,3 @@ export function StatementHeaderBar({
     </>
   );
 }
-

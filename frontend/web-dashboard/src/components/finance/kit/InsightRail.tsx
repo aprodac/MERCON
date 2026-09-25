@@ -19,7 +19,14 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
   if (!data) return null;
 
   if (mode === 'balance_sheet') {
-    const { totalAssets = 0, totalLiabilities = 0, totalEquity = 0, currentAssetsTotal = 0, currentLiabilitiesTotal = 0 } = data;
+    const {
+      totalAssets = 0,
+      totalLiabilities = 0,
+      totalEquity = 0,
+      currentAssetsTotal = 0,
+      currentLiabilitiesTotal = 0,
+    } = data;
+
     const isBalanced = Math.abs(totalAssets - (totalLiabilities + totalEquity)) < 0.01;
     const outAmount = Math.abs(totalAssets - (totalLiabilities + totalEquity));
     const workingCapital = currentAssetsTotal - currentLiabilitiesTotal;
@@ -27,74 +34,15 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
 
     return (
       <div className="space-y-3 print:hidden">
-        {/* At a Glance Card */}
+        {/* Merged "At a Glance & Jump to Section" Card */}
         <div className="bg-card border border-border rounded-xl p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
               At a Glance
             </span>
-            {isBalanced ? (
-              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-600/20">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                <span>Balanced</span>
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-rose-600/20">
-                <AlertCircle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                <span>Out by {formatMoney(outAmount)}</span>
-              </span>
-            )}
           </div>
 
-          <div className="space-y-2 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-                <span>Total Assets</span>
-              </span>
-              <span className="fin-num font-medium text-foreground">{formatMoney(totalAssets)}</span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-                <span>Liabilities</span>
-              </span>
-              <span className="fin-num font-medium text-foreground">{formatMoney(totalLiabilities)}</span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
-                <span>Equity</span>
-              </span>
-              <span className="fin-num font-medium text-foreground">{formatMoney(totalEquity)}</span>
-            </div>
-          </div>
-
-          {/* Visual Share Bar */}
-          {totalAssets > 0 && (
-            <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden flex">
-              <div
-                className="bg-amber-500 h-full"
-                style={{ width: `${Math.min(100, (totalLiabilities / totalAssets) * 100)}%` }}
-                title={`Liabilities: ${formatPct((totalLiabilities / totalAssets) * 100)}`}
-              />
-              <div
-                className="bg-violet-500 h-full"
-                style={{ width: `${Math.min(100, (totalEquity / totalAssets) * 100)}%` }}
-                title={`Equity: ${formatPct((totalEquity / totalAssets) * 100)}`}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Jump To Section Card */}
-        <div className="bg-card border border-border rounded-xl p-4 shadow-xs space-y-2">
-          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide block">
-            Jump to Section
-          </span>
-          <div className="space-y-1 text-xs">
+          <div className="space-y-1.5 text-xs">
             <button
               type="button"
               onClick={() => onJumpTo?.('section-assets')}
@@ -104,8 +52,9 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
                 <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
                 <span>Assets</span>
               </span>
-              <span className="fin-num font-normal text-muted-foreground">{formatMoney(totalAssets)}</span>
+              <span className="fin-num text-foreground font-medium">{formatMoney(totalAssets)}</span>
             </button>
+
             <button
               type="button"
               onClick={() => onJumpTo?.('section-liabilities')}
@@ -115,8 +64,9 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                 <span>Liabilities</span>
               </span>
-              <span className="fin-num font-normal text-muted-foreground">{formatMoney(totalLiabilities)}</span>
+              <span className="fin-num text-foreground font-medium">{formatMoney(totalLiabilities)}</span>
             </button>
+
             <button
               type="button"
               onClick={() => onJumpTo?.('section-equity')}
@@ -126,12 +76,28 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
                 <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
                 <span>Equity</span>
               </span>
-              <span className="fin-num font-normal text-muted-foreground">{formatMoney(totalEquity)}</span>
+              <span className="fin-num text-foreground font-medium">{formatMoney(totalEquity)}</span>
             </button>
+          </div>
+
+          {/* Bottom Result Status Line */}
+          <div className="pt-2 border-t border-border/60 flex items-center justify-between">
+            <span className="text-xs font-medium text-muted-foreground">Balance Status</span>
+            {isBalanced ? (
+              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-600/20">
+                <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                <span>✓ Balanced</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-rose-600/20">
+                <AlertCircle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                <span>Out by {formatMoney(outAmount)}</span>
+              </span>
+            )}
           </div>
         </div>
 
-        {/* Mini Ratios Card */}
+        {/* Key Metrics Card (Balance Sheet only) */}
         <div className="bg-card border border-border rounded-xl p-4 shadow-xs space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
@@ -164,86 +130,42 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
   }
 
   if (mode === 'pnl') {
-    const { operatingIncomeTotal = 0, costOfSalesTotal = 0, operatingExpenseTotal = 0, nonOperatingExpenseTotal = 0, otherIncomeTotal = 0, netProfit = 0 } = data;
-    const totalExpense = costOfSalesTotal + operatingExpenseTotal + nonOperatingExpenseTotal;
+    const {
+      operatingIncomeTotal = 0,
+      costOfSalesTotal = 0,
+      operatingExpenseTotal = 0,
+      otherIncomeTotal = 0,
+      netProfit = 0,
+    } = data;
     const totalRev = operatingIncomeTotal + otherIncomeTotal;
     const netMargin = totalRev > 0 ? (netProfit / totalRev) * 100 : 0;
     const isLoss = netProfit < 0;
 
     return (
       <div className="space-y-3 print:hidden">
-        {/* At a Glance Card */}
+        {/* Merged "At a Glance & Jump to Section" Card */}
         <div className="bg-card border border-border rounded-xl p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
               At a Glance
             </span>
-            <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
-              isLoss
-                ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-rose-600/20'
-                : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-600/20'
-            }`}>
-              {isLoss ? <TrendingDown className="w-3 h-3 text-rose-600 dark:text-rose-400" /> : <TrendingUp className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />}
+            <span
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
+                isLoss
+                  ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-rose-600/20'
+                  : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-600/20'
+              }`}
+            >
+              {isLoss ? (
+                <TrendingDown className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+              ) : (
+                <TrendingUp className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+              )}
               <span>Margin: {formatPct(netMargin)}</span>
             </span>
           </div>
 
-          <div className="space-y-2 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                <span>Total Income</span>
-              </span>
-              <span className="fin-num font-medium text-foreground">{formatMoney(totalRev)}</span>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                <span>Total Expenses</span>
-              </span>
-              <span className="fin-num font-medium text-foreground">{formatMoney(totalExpense)}</span>
-            </div>
-
-            <div className="pt-2 border-t border-border/60 flex items-center justify-between">
-              <span className="font-semibold text-foreground">Net {isLoss ? 'Loss' : 'Profit'}</span>
-              <span className={`fin-num font-semibold ${isLoss ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                {formatMoney(netProfit)}
-              </span>
-            </div>
-          </div>
-
-          {/* Expense Mix Stacked Bar */}
-          {totalExpense > 0 && (
-            <div className="space-y-1.5">
-              <span className="text-[10px] text-muted-foreground font-medium block">Expense Breakdown</span>
-              <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden flex">
-                <div
-                  className="bg-amber-500 h-full"
-                  style={{ width: `${Math.min(100, (costOfSalesTotal / totalExpense) * 100)}%` }}
-                  title={`Cost of Sales: ${formatPct((costOfSalesTotal / totalExpense) * 100)}`}
-                />
-                <div
-                  className="bg-rose-500 h-full"
-                  style={{ width: `${Math.min(100, (operatingExpenseTotal / totalExpense) * 100)}%` }}
-                  title={`Operating Exp: ${formatPct((operatingExpenseTotal / totalExpense) * 100)}`}
-                />
-                <div
-                  className="bg-slate-400 dark:bg-slate-500 h-full"
-                  style={{ width: `${Math.min(100, (nonOperatingExpenseTotal / totalExpense) * 100)}%` }}
-                  title={`Non-Operating Exp: ${formatPct((nonOperatingExpenseTotal / totalExpense) * 100)}`}
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Jump To Section Card */}
-        <div className="bg-card border border-border rounded-xl p-4 shadow-xs space-y-2">
-          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide block">
-            Jump to Section
-          </span>
-          <div className="space-y-1 text-xs">
+          <div className="space-y-1.5 text-xs">
             <button
               type="button"
               onClick={() => onJumpTo?.('section-operating_income')}
@@ -253,8 +175,9 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 <span>Operating Income</span>
               </span>
-              <span className="fin-num font-normal text-muted-foreground">{formatMoney(operatingIncomeTotal)}</span>
+              <span className="fin-num font-medium text-foreground">{formatMoney(operatingIncomeTotal)}</span>
             </button>
+
             <button
               type="button"
               onClick={() => onJumpTo?.('section-cost_of_sales')}
@@ -264,8 +187,9 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                 <span>Cost of Sales</span>
               </span>
-              <span className="fin-num font-normal text-muted-foreground">{formatMoney(costOfSalesTotal)}</span>
+              <span className="fin-num font-medium text-foreground">{formatMoney(costOfSalesTotal)}</span>
             </button>
+
             <button
               type="button"
               onClick={() => onJumpTo?.('section-operating_expense')}
@@ -275,8 +199,20 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
                 <span>Operating Expenses</span>
               </span>
-              <span className="fin-num font-normal text-muted-foreground">{formatMoney(operatingExpenseTotal)}</span>
+              <span className="fin-num font-medium text-foreground">{formatMoney(operatingExpenseTotal)}</span>
             </button>
+          </div>
+
+          {/* Bottom Net Result Line */}
+          <div className="pt-2 border-t border-border/60 flex items-center justify-between">
+            <span className="font-semibold text-foreground">Net {isLoss ? 'Loss' : 'Profit'}</span>
+            <span
+              className={`fin-num font-semibold ${
+                isLoss ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'
+              }`}
+            >
+              {formatMoney(netProfit)}
+            </span>
           </div>
         </div>
       </div>
@@ -305,7 +241,9 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
             <div className="space-y-2 text-xs">
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Code & Name</span>
-                <span className="font-medium text-foreground">{account.account_code} · {account.name}</span>
+                <span className="font-medium text-foreground">
+                  {account.account_code} · {account.name}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Opening Balance</span>
@@ -334,4 +272,3 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
 
   return null;
 }
-
