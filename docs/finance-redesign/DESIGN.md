@@ -172,6 +172,55 @@ Rules:
 
 ---
 
+## 2.7 Chip system
+
+The finance module uses a token-driven, component-based **Chip system** (`Chip` component in `@/components/ui/chip`, `StatPill` in `@/components/ui/stat-pill`, and semantic registries in `@/lib/finance/chips.tsx`). Hardcoded Tailwind palette color classes in pages are strictly forbidden.
+
+### Tones & CSS Variables
+Each tone defines three CSS variables in `:root` and `.dark` (`--chip-{tone}-bg`, `--chip-{tone}-fg`, `--chip-{tone}-border`, and `--chip-{tone}-dot`), registered in `@theme inline`:
+- `neutral`: shadcn tokens (`--muted`, `--muted-foreground`, `--border`)
+- `positive`: emerald (`var(--color-emerald-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `negative`: rose (`var(--color-rose-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `warning`: amber (`var(--color-amber-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `info`: sky (`var(--color-sky-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `violet`: purple (`var(--color-purple-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `teal`: teal (`var(--color-teal-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `orange`: orange (`var(--color-orange-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `brand`: MERCON Coral (`#FA634E`) using `color-mix` for background and border.
+
+Text contrast ratios meet or exceed 4.5:1 across all tones in both light and dark modes.
+
+### Variants & Sizes
+- **`variant="soft"`** (default): Bordered soft chip (`bg-chip-{tone}-bg text-chip-{tone}-fg border-chip-{tone}-border`).
+- **`variant="solid"`**: Filled chip with tone foreground color + white text (used for count badges / >90 day ageing).
+- **`variant="outline"`**: Border + tone text with transparent background.
+- **`size="sm"`**: `h-5 px-2 text-[11px]`
+- **`size="md"`** (default): `h-6 px-2.5 text-xs`
+
+### Semantic Registries & Helpers
+Pages MUST use semantic wrappers instead of direct tone styling:
+- `FIN_STATUS` → `<StatusChip kind status />`
+- `SOURCE_TYPES` → `<SourceChip type link? />`
+- `PARTY_TYPES` → `<PartyChip type name />`
+- `DIRECTIONS` → `<DirectionChip direction />`
+- `AGEING_BUCKETS` → `<BucketChip bucket />`
+- `ENTRY_SIDE` → `<AccountChip side="debit"|"credit" name code? truncate />`
+- `RECON_STATE` → `<ReconChip lastDate />`
+- Summary Pill → `<StatPill count? label value? tone? />`
+
+### How to Add a New Tone or Registry Entry
+1. **New Tone**:
+   - Add variables `--chip-{tone}-bg`, `--chip-{tone}-fg`, `--chip-{tone}-border`, `--chip-{tone}-dot` in `:root` and `.dark` in `src/index.css`.
+   - Register inline colors in `@theme inline` in `src/index.css`.
+   - Add `{tone}` to `ChipTone` type in `components/ui/chip.tsx` and CVA variant maps.
+2. **New Registry Entry**:
+   - Add the key to the appropriate registry in `src/lib/finance/chips.tsx` with `{ label, tone, icon? }`.
+
+### Automated Guardrail Test
+The Vitest test `src/lib/finance/__tests__/no-hardcoded-chip-colors.test.ts` scans all `.tsx` files in `pages/finance` and `components/finance` to enforce zero hardcoded Tailwind color palette classes (`bg-emerald-50`, `text-amber-700`, etc.).
+
+---
+
 ## 4. Page patterns
 
 ### 4.0 Same building blocks, different pages

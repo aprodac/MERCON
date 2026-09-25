@@ -63,6 +63,7 @@ import {
   TransferSheet,
 } from '@/components/finance/banking/TransferSheet';
 import { formatDate, formatMoney } from '@/lib/finance';
+import { ReconChip } from '@/lib/finance/chips';
 import { financeService } from '@/services/financeService';
 import type { BankAccount } from '@mercon/shared-types';
 
@@ -261,21 +262,7 @@ export default function BankAccountsPage() {
     },
     {
       header: 'Reconciliation',
-      accessor: (row) => {
-        if (row.last_reconciled_at) {
-          return (
-            <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 border-emerald-200 text-[11px] font-semibold gap-1">
-              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-              <span>Reconciled to {formatDate(row.last_reconciled_at)}</span>
-            </Badge>
-          );
-        }
-        return (
-          <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-[11px] font-semibold">
-            Never reconciled
-          </Badge>
-        );
-      },
+      accessor: (row) => <ReconChip lastDate={row.last_reconciled_at} />,
     },
     {
       header: 'Status',
@@ -367,7 +354,7 @@ export default function BankAccountsPage() {
             >
               <Landmark className="w-3.5 h-3.5 text-[#FA634E]" />
               <span>All accounts</span>
-              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${categoryFilter === 'all' ? 'bg-muted dark:bg-slate-700 text-foreground ' : 'bg-slate-200/70  text-muted-foreground dark:text-muted-foreground'}`}>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${categoryFilter === 'all' ? 'bg-muted text-foreground' : 'bg-muted/60 text-muted-foreground'}`}>
                 {counts.all}
               </span>
             </button>
@@ -380,9 +367,9 @@ export default function BankAccountsPage() {
                   : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground dark:hover:text-slate-200'
               }`}
             >
-              <Building2 className="w-3.5 h-3.5 text-sky-500" />
+              <Building2 className="w-3.5 h-3.5 text-chip-info-fg" />
               <span>Bank</span>
-              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${categoryFilter === 'bank' ? 'bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-600/20 text-sky-800' : 'bg-slate-200/70  text-muted-foreground dark:text-muted-foreground'}`}>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${categoryFilter === 'bank' ? 'bg-chip-info-bg text-chip-info-fg border border-chip-info-border' : 'bg-muted/60 text-muted-foreground'}`}>
                 {counts.bank}
               </span>
             </button>
@@ -395,9 +382,9 @@ export default function BankAccountsPage() {
                   : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground dark:hover:text-slate-200'
               }`}
             >
-              <Wallet className="w-3.5 h-3.5 text-emerald-500" />
+              <Wallet className="w-3.5 h-3.5 text-chip-positive-fg" />
               <span>Cash</span>
-              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${categoryFilter === 'cash' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 text-emerald-800' : 'bg-slate-200/70  text-muted-foreground dark:text-muted-foreground'}`}>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${categoryFilter === 'cash' ? 'bg-chip-positive-bg text-chip-positive-fg border border-chip-positive-border' : 'bg-muted/60 text-muted-foreground'}`}>
                 {counts.cash}
               </span>
             </button>
@@ -624,16 +611,7 @@ export default function BankAccountsPage() {
                   {/* Reconciliation Status & Unreconciled link */}
                   <div className="flex items-center justify-between pt-2 border-t border-border dark:border-border text-xs">
                     <div>
-                      {acc.last_reconciled_at ? (
-                        <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 border-emerald-200/80 text-[10.5px] font-semibold gap-1">
-                          <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                          <span>Reconciled to {formatDate(acc.last_reconciled_at)}</span>
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="bg-muted text-muted-foreground border-border text-[10.5px] font-semibold">
-                          Never reconciled
-                        </Badge>
-                      )}
+                      <ReconChip lastDate={acc.last_reconciled_at} />
                     </div>
 
                     <Link

@@ -309,7 +309,7 @@ export default function ChartOfAccountsPage() {
               size="sm"
               onClick={() => updateMutation.mutate({ id: acc.id, data: { isActive: true } })}
               title="Reactivate Account"
-              className="h-7 px-2 text-xs font-semibold text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 cursor-pointer"
+              className="h-7 px-2 text-xs font-semibold text-chip-positive-fg hover:bg-chip-positive-bg cursor-pointer"
             >
               Reactivate
             </Button>

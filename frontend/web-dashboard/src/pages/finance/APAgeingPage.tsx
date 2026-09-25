@@ -33,6 +33,8 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Chip } from '@/components/ui/chip';
+import { BucketChip } from '@/lib/finance/chips';
 import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -699,13 +701,13 @@ export default function APAgeingPage() {
               <div className="text-xs font-bold text-foreground flex items-center gap-2">
                 Cash Coverage Forecast
                 {availableCash >= payablesDue30d ? (
-                  <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 text-emerald-800 dark:bg-emerald-950 border-none text-[10px] font-bold">
+                  <Chip tone="positive" size="sm">
                     Covered ✓
-                  </Badge>
+                  </Chip>
                 ) : (
-                  <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 text-amber-800 dark:bg-amber-950 border-none text-[10px] font-bold">
+                  <Chip tone="warning" size="sm">
                     Short by {formatMoney(payablesDue30d - availableCash)} SAR
-                  </Badge>
+                  </Chip>
                 )}
               </div>
               <p className="text-xs text-muted-foreground mt-0.5">
@@ -755,7 +757,7 @@ export default function APAgeingPage() {
                     variant="ghost"
                     size="sm"
                     onClick={item.action}
-                    className="h-7 text-xs font-bold text-[#FA634E] hover:text-[#e5533f] hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 dark:hover:bg-rose-950/30 justify-start px-2 -ml-2"
+                    className="h-7 text-xs font-bold text-[#FA634E] hover:bg-muted justify-start px-2 -ml-2"
                   >
                     {item.actionText} →
                   </Button>
@@ -1025,13 +1027,13 @@ export default function APAgeingPage() {
                                                 <td className="py-2 text-muted-foreground">{formatDate(b.due_date)}</td>
                                                 <td className="py-2">
                                                   {b.days_overdue > 0 ? (
-                                                    <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 text-amber-800 border-none text-[10px]">
+                                                    <Chip tone="warning" size="sm">
                                                       {b.days_overdue} days
-                                                    </Badge>
+                                                    </Chip>
                                                   ) : (
-                                                    <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 text-emerald-800 border-none text-[10px]">
+                                                    <Chip tone="positive" size="sm">
                                                       Current
-                                                    </Badge>
+                                                    </Chip>
                                                   )}
                                                 </td>
                                                 <td className="py-2 text-right font-bold text-foreground">
@@ -1115,7 +1117,7 @@ export default function APAgeingPage() {
                   </div>
 
                   {selectedBillIds.size > 0 && (
-                    <div className="flex items-center gap-3 bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 dark:bg-rose-950/40 p-1.5 px-3 rounded-xl border border-rose-200/60">
+                    <div className="flex items-center gap-3 bg-chip-negative-bg text-chip-negative-fg p-1.5 px-3 rounded-xl border border-chip-negative-border">
                       <span className="text-xs font-bold text-foreground">
                         {selectedBillIds.size} selected ·{' '}
                         {formatMoney(

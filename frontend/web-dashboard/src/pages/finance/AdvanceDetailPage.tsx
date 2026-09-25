@@ -19,6 +19,7 @@ import {
 import type { ActivityItem } from '@/components/finance/kit';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { DirectionChip, PartyChip } from '@/lib/finance/chips';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertDialog,
@@ -211,18 +212,8 @@ export default function AdvanceDetailPage() {
                 {advance.ref_id || advance.id.slice(0, 8)}
               </span>
               <StatusPill kind="advance" status={advance.status} />
-              {advance.direction === 'Received' ? (
-                <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/40 border-emerald-200/60 font-semibold">
-                  <ArrowDownLeft className="w-3 h-3 text-emerald-600 mr-1" /> Money in
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-950/40 border-amber-200/60 font-semibold">
-                  <ArrowUpRight className="w-3 h-3 text-amber-600 mr-1" /> Money out
-                </Badge>
-              )}
-              <Badge variant="outline" className="bg-muted text-foreground border-transparent font-semibold">
-                {advance.party_type}
-              </Badge>
+              <DirectionChip direction={advance.direction === 'Received' ? 'In' : 'Out'} />
+              <PartyChip type={advance.party_type} name={partyName} />
             </div>
           }
           subLine={`${partyName} · ${formatDate(advance.advance_date)} · via ${advance.account?.name || 'Bank Account'}`}

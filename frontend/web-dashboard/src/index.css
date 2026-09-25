@@ -130,6 +130,52 @@
   --fin-neutral-bg:     #F1F2F5;
   --fin-muted:          #6E6E80;
   --fin-muted-bg:       #F4F4F6;
+
+  /* ─── Chip System Tokens (Prompt 18) ──────────────────────────────────────── */
+  --chip-neutral-bg: var(--muted);
+  --chip-neutral-fg: var(--muted-foreground);
+  --chip-neutral-border: var(--border);
+  --chip-neutral-dot: #94A3B8;
+
+  --chip-positive-bg: var(--color-emerald-50, #ECFDF5);
+  --chip-positive-fg: var(--color-emerald-700, #047857);
+  --chip-positive-border: var(--color-emerald-200, #A7F3D0);
+  --chip-positive-dot: var(--color-emerald-500, #10B981);
+
+  --chip-negative-bg: var(--color-rose-50, #FFF1F2);
+  --chip-negative-fg: var(--color-rose-700, #BE123C);
+  --chip-negative-border: var(--color-rose-200, #FECDD3);
+  --chip-negative-dot: var(--color-rose-500, #F43F5E);
+
+  --chip-warning-bg: var(--color-amber-50, #FFFBEB);
+  --chip-warning-fg: var(--color-amber-700, #B45309);
+  --chip-warning-border: var(--color-amber-200, #FDE68A);
+  --chip-warning-dot: var(--color-amber-500, #F59E0B);
+
+  --chip-info-bg: var(--color-sky-50, #F0F9FF);
+  --chip-info-fg: var(--color-sky-700, #0369A1);
+  --chip-info-border: var(--color-sky-200, #BAE6FD);
+  --chip-info-dot: var(--color-sky-500, #0EA5E9);
+
+  --chip-violet-bg: var(--color-purple-50, #FAF5FF);
+  --chip-violet-fg: var(--color-purple-700, #7E22CE);
+  --chip-violet-border: var(--color-purple-200, #E9D5FF);
+  --chip-violet-dot: var(--color-purple-500, #A855F7);
+
+  --chip-teal-bg: var(--color-teal-50, #F0FDFA);
+  --chip-teal-fg: var(--color-teal-700, #0F766E);
+  --chip-teal-border: var(--color-teal-200, #99F6E4);
+  --chip-teal-dot: var(--color-teal-500, #14B8A6);
+
+  --chip-orange-bg: var(--color-orange-50, #FFF7ED);
+  --chip-orange-fg: var(--color-orange-700, #C2410C);
+  --chip-orange-border: var(--color-orange-200, #FED7AA);
+  --chip-orange-dot: var(--color-orange-500, #F97316);
+
+  --chip-brand-bg: color-mix(in oklab, #FA634E 10%, #FFFFFF);
+  --chip-brand-fg: #D6422D;
+  --chip-brand-border: color-mix(in oklab, #FA634E 30%, #FFFFFF);
+  --chip-brand-dot: #FA634E;
 }
 
 /* ─── Page Accent Color Tokens ────────────────────────────────────────────── */
@@ -508,6 +554,99 @@ body {
   --fin-neutral-bg:     #1e293b;
   --fin-muted:          #94a3b8;
   --fin-muted-bg:       rgba(30, 41, 59, 0.6);
+
+  /* ─── Chip System Dark Tokens ────────────────────────────────────────────── */
+  --chip-neutral-bg: var(--muted);
+  --chip-neutral-fg: var(--muted-foreground);
+  --chip-neutral-border: var(--border);
+  --chip-neutral-dot: #64748B;
+
+  --chip-positive-bg: color-mix(in oklab, var(--color-emerald-950, #022c22) 30%, transparent);
+  --chip-positive-fg: var(--color-emerald-400, #34d399);
+  --chip-positive-border: var(--color-emerald-800, #065f46);
+  --chip-positive-dot: var(--color-emerald-500, #10B981);
+
+  --chip-negative-bg: color-mix(in oklab, var(--color-rose-950, #4c0519) 30%, transparent);
+  --chip-negative-fg: var(--color-rose-400, #fb7185);
+  --chip-negative-border: var(--color-rose-800, #9f1239);
+  --chip-negative-dot: var(--color-rose-500, #F43F5E);
+
+  --chip-warning-bg: color-mix(in oklab, var(--color-amber-950, #451a03) 30%, transparent);
+  --chip-warning-fg: var(--color-amber-400, #fbbf24);
+  --chip-warning-border: var(--color-amber-800, #92400e);
+  --chip-warning-dot: var(--color-amber-500, #F59E0B);
+
+  --chip-info-bg: color-mix(in oklab, var(--color-sky-950, #082f49) 30%, transparent);
+  --chip-info-fg: var(--color-sky-400, #38bdf8);
+  --chip-info-border: var(--color-sky-800, #075985);
+  --chip-info-dot: var(--color-sky-500, #0EA5E9);
+
+  --chip-violet-bg: color-mix(in oklab, var(--color-purple-950, #3b0764) 30%, transparent);
+  --chip-violet-fg: var(--color-purple-400, #c084fc);
+  --chip-violet-border: var(--color-purple-800, #6b21a8);
+  --chip-violet-dot: var(--color-purple-500, #A855F7);
+
+  --chip-teal-bg: color-mix(in oklab, var(--color-teal-950, #042f2e) 30%, transparent);
+  --chip-teal-fg: var(--color-teal-400, #2dd4bf);
+  --chip-teal-border: var(--color-teal-800, #115e59);
+  --chip-teal-dot: var(--color-teal-500, #14B8A6);
+
+  --chip-orange-bg: color-mix(in oklab, var(--color-orange-950, #431407) 30%, transparent);
+  --chip-orange-fg: var(--color-orange-400, #fb923c);
+  --chip-orange-border: var(--color-orange-800, #9a3412);
+  --chip-orange-dot: var(--color-orange-500, #F97316);
+
+  --chip-brand-bg: color-mix(in oklab, #FA634E 20%, transparent);
+  --chip-brand-fg: #FF8573;
+  --chip-brand-border: color-mix(in oklab, #FA634E 50%, transparent);
+  --chip-brand-dot: #FA634E;
+}
+
+@theme inline {
+  --color-chip-neutral-bg: var(--chip-neutral-bg);
+  --color-chip-neutral-fg: var(--chip-neutral-fg);
+  --color-chip-neutral-border: var(--chip-neutral-border);
+  --color-chip-neutral-dot: var(--chip-neutral-dot);
+
+  --color-chip-positive-bg: var(--chip-positive-bg);
+  --color-chip-positive-fg: var(--chip-positive-fg);
+  --color-chip-positive-border: var(--chip-positive-border);
+  --color-chip-positive-dot: var(--chip-positive-dot);
+
+  --color-chip-negative-bg: var(--chip-negative-bg);
+  --color-chip-negative-fg: var(--chip-negative-fg);
+  --color-chip-negative-border: var(--chip-negative-border);
+  --color-chip-negative-dot: var(--chip-negative-dot);
+
+  --color-chip-warning-bg: var(--chip-warning-bg);
+  --color-chip-warning-fg: var(--chip-warning-fg);
+  --color-chip-warning-border: var(--chip-warning-border);
+  --color-chip-warning-dot: var(--chip-warning-dot);
+
+  --color-chip-info-bg: var(--chip-info-bg);
+  --color-chip-info-fg: var(--chip-info-fg);
+  --color-chip-info-border: var(--chip-info-border);
+  --color-chip-info-dot: var(--chip-info-dot);
+
+  --color-chip-violet-bg: var(--chip-violet-bg);
+  --color-chip-violet-fg: var(--chip-violet-fg);
+  --color-chip-violet-border: var(--chip-violet-border);
+  --color-chip-violet-dot: var(--chip-violet-dot);
+
+  --color-chip-teal-bg: var(--chip-teal-bg);
+  --color-chip-teal-fg: var(--chip-teal-fg);
+  --color-chip-teal-border: var(--chip-teal-border);
+  --color-chip-teal-dot: var(--chip-teal-dot);
+
+  --color-chip-orange-bg: var(--chip-orange-bg);
+  --color-chip-orange-fg: var(--chip-orange-fg);
+  --color-chip-orange-border: var(--chip-orange-border);
+  --color-chip-orange-dot: var(--chip-orange-dot);
+
+  --color-chip-brand-bg: var(--chip-brand-bg);
+  --color-chip-brand-fg: var(--chip-brand-fg);
+  --color-chip-brand-border: var(--chip-brand-border);
+  --color-chip-brand-dot: var(--chip-brand-dot);
 }
 
 .fin-num {

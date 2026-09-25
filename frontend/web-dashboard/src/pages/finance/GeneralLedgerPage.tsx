@@ -24,6 +24,7 @@ import {
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Chip } from '@/components/ui/chip';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -874,13 +875,13 @@ export default function GeneralLedgerPage() {
                           <div className="flex items-center gap-3">
                             <span>Grand total</span>
                             {summaryRes?.data?.is_balanced ? (
-                              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20">
+                              <Chip tone="positive" size="sm">
                                 ✓ balanced
-                              </span>
+                              </Chip>
                             ) : (
-                              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20">
+                              <Chip tone="negative" size="sm">
                                 Out by {fmtVal(Math.abs((summaryRes?.data?.total_debit || 0) - (summaryRes?.data?.total_credit || 0)))}
-                              </span>
+                              </Chip>
                             )}
                           </div>
                         </td>

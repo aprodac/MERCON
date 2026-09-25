@@ -12,6 +12,17 @@ import {
   FilterChip,
   FinanceEmptyState,
 } from '@/components/finance/kit';
+import { Chip } from '@/components/ui/chip';
+import { StatPill } from '@/components/ui/stat-pill';
+import {
+  StatusChip,
+  SourceChip,
+  PartyChip,
+  DirectionChip,
+  BucketChip,
+  AccountChip,
+  ReconChip,
+} from '@/lib/finance/chips';
 
 export default function FinanceKitPage() {
   const [activeTab, setActiveTab] = useState('all');
@@ -77,20 +88,65 @@ export default function FinanceKitPage() {
         {/* StatusPill Showcase */}
         <section className="bg-card border border-border rounded-xl p-5 shadow-xs space-y-4">
           <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-            3. StatusPill (All Kinds & Statuses)
+            3. Token-Driven Chip System & Semantic Registries
           </h2>
-          <div className="flex flex-wrap items-center gap-3">
-            <StatusPill kind="invoice" status="Draft" />
-            <StatusPill kind="invoice" status="Issued" />
-            <StatusPill kind="invoice" status="PartiallyPaid" />
-            <StatusPill kind="invoice" status="Paid" />
-            <StatusPill kind="invoice" status="Void" />
-            <StatusPill kind="invoice" status="Overdue" />
-            <StatusPill kind="bill" status="Approved" />
-            <StatusPill kind="journal" status="Posted" />
-            <StatusPill kind="period" status="Open" />
-            <StatusPill kind="advance" status="PartiallyApplied" />
-            <StatusPill kind="reconciliation" status="Completed" />
+
+          {/* All Tones & Variants */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-semibold text-foreground">A. Token Tones (Soft / Bordered)</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <Chip tone="neutral" dot>Neutral</Chip>
+              <Chip tone="positive" dot>Positive (emerald)</Chip>
+              <Chip tone="negative" dot>Negative (rose)</Chip>
+              <Chip tone="warning" dot>Warning (amber)</Chip>
+              <Chip tone="info" dot>Info (sky)</Chip>
+              <Chip tone="violet" dot>Violet</Chip>
+              <Chip tone="teal" dot>Teal</Chip>
+              <Chip tone="orange" dot>Orange</Chip>
+              <Chip tone="brand" dot>Brand (coral)</Chip>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-xs font-semibold text-foreground">B. Chip Variants & Sizes</h3>
+            <div className="flex flex-wrap items-center gap-3">
+              <Chip tone="positive" variant="soft" size="sm">Soft sm</Chip>
+              <Chip tone="positive" variant="soft" size="md">Soft md</Chip>
+              <Chip tone="negative" variant="solid" size="sm">Solid 12</Chip>
+              <Chip tone="negative" variant="solid" size="md">Solid 90+</Chip>
+              <Chip tone="warning" variant="outline" size="sm">Outline sm</Chip>
+              <Chip tone="warning" variant="outline" size="md">Outline md</Chip>
+              <Chip tone="brand" truncate={120}>Very long label that truncates automatically with tooltip</Chip>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-xs font-semibold text-foreground">C. StatPill (Summary Pill)</h3>
+            <div className="flex flex-wrap items-center gap-3">
+              <StatPill count={12} label="invoices due" value="4,250.00 SAR" tone="warning" />
+              <StatPill label="Total Outstanding" value="1,265,000.50 SAR" tone="positive" />
+              <StatPill count={3} label="overdue accounts" value="12,400.00 SAR" tone="negative" />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-xs font-semibold text-foreground">D. Semantic Registries & Helper Components</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusChip kind="journal" status="Posted" />
+              <StatusChip kind="invoice" status="Draft" />
+              <SourceChip type="Invoice" />
+              <SourceChip type="Manual" />
+              <PartyChip type="Customer" name="Aramco Logistics" />
+              <PartyChip type="Provider" name="Almajdouie Transport" />
+              <DirectionChip direction="In" />
+              <DirectionChip direction="Out" />
+              <BucketChip bucket="current" />
+              <BucketChip bucket="90+" />
+              <AccountChip side="debit" code="10100" name="Al Rajhi Operating Account" />
+              <AccountChip side="credit" code="40100" name="Commercial Transport Revenue" />
+              <ReconChip lastDate="2026-09-01" />
+              <ReconChip lastDate={null} />
+            </div>
           </div>
         </section>
 

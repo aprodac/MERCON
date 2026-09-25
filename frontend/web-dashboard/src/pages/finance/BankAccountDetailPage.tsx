@@ -34,6 +34,7 @@ import {
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Chip } from '@/components/ui/chip';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -369,9 +370,9 @@ export default function BankAccountDetailPage() {
                     {account.is_cash ? 'Cash Drawer' : account.bank_name || 'Bank Account'}
                   </h1>
                   {!account.isActive && (
-                    <Badge variant="outline" className="bg-slate-800 text-muted-foreground border-border text-[10px] font-bold">
+                    <Chip tone="neutral" size="sm">
                       Inactive
-                    </Badge>
+                    </Chip>
                   )}
                   <Badge variant="outline" className="bg-card/10 text-white border-white/20 text-[10px] font-mono">
                     {account.currency || 'SAR'}

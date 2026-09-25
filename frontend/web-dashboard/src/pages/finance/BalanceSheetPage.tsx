@@ -701,7 +701,7 @@ export default function BalanceSheetPage() {
                     <div className="border border-border rounded-xl p-3.5 space-y-3 bg-card">
                       <div className="flex items-center justify-between border-b border-border pb-2">
                         <span className="font-semibold text-foreground text-xs flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-chip-orange-dot" />
                           <span>Liabilities & Equity</span>
                         </span>
                         <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground ring-1 ring-inset ring-border">
@@ -741,7 +741,7 @@ export default function BalanceSheetPage() {
                     <div className="border border-border rounded-xl p-3.5 space-y-3 bg-card">
                       <div className="flex items-center justify-between border-b border-border pb-2">
                         <span className="font-semibold text-foreground text-xs flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                          <span className="w-1.5 h-1.5 rounded-full bg-chip-info-dot" />
                           <span>Assets</span>
                         </span>
                         <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground ring-1 ring-inset ring-border">

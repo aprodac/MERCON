@@ -18,6 +18,8 @@ import ExportModal, { ExportColumn } from '@/components/ui/ExportModal';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Chip } from '@/components/ui/chip';
+import { PartyChip, DirectionChip, StatusChip } from '@/lib/finance/chips';
 import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -233,10 +235,10 @@ export default function AdvancesPage() {
     const diffDays = Math.floor((now.getTime() - advDate.getTime()) / (1000 * 60 * 60 * 24));
 
     if (diffDays > 60) {
-      return <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300 border-none text-[10px] py-0 px-1.5 font-bold">&gt;60 days</Badge>;
+      return <Chip tone="orange" size="sm">&gt;60 days</Chip>;
     }
     if (diffDays > 30) {
-      return <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 text-amber-800 dark:bg-amber-950/60 border-none text-[10px] py-0 px-1.5 font-bold">&gt;30 days</Badge>;
+      return <Chip tone="warning" size="sm">&gt;30 days</Chip>;
     }
     return null;
   };
@@ -255,40 +257,12 @@ export default function AdvancesPage() {
       header: 'Party',
       accessor: (row) => {
         const partyName = row.party?.name || (row.party_id ? `Party ID: ${row.party_id.slice(0, 8)}` : 'General / Not Linked');
-        const initials = partyName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'P';
-        const tint = PARTY_TINTS[row.party_type] || PARTY_TINTS.Customer;
-
-        return (
-          <div className="flex items-center gap-2.5">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${tint.avatarBg}`}>
-              {initials}
-            </div>
-            <div>
-              <div className="font-semibold text-foreground leading-tight">
-                {partyName}
-              </div>
-              <Badge variant="outline" className={`${tint.bg} ${tint.text} border-transparent text-[10px] py-0 px-1.5 mt-0.5`}>
-                {row.party_type}
-              </Badge>
-            </div>
-          </div>
-        );
+        return <PartyChip type={row.party_type} name={partyName} />;
       },
     },
     {
       header: 'Direction',
-      accessor: (row) =>
-        row.direction === 'Received' ? (
-          <Badge variant="outline" className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/40 border-emerald-200/60 dark:border-emerald-800/60 gap-1 font-semibold">
-            <ArrowDownLeft className="w-3 h-3 text-emerald-600 dark:text-emerald-400 stroke-[2.5]" />
-            Money in
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-950/40 border-amber-200/60 dark:border-amber-800/60 gap-1 font-semibold">
-            <ArrowUpRight className="w-3 h-3 text-amber-600 dark:text-amber-400 stroke-[2.5]" />
-            Money out
-          </Badge>
-        ),
+      accessor: (row) => <DirectionChip direction={row.direction === 'Received' ? 'In' : 'Out'} />,
     },
     {
       header: 'Date',
@@ -497,15 +471,15 @@ export default function AdvancesPage() {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuItem onClick={() => navigate('/finance/advances/new?type=customer')}>
-                  <span className="w-2 h-2 rounded-full bg-sky-500 mr-2" />
+                  <span className="w-2 h-2 rounded-full bg-chip-info-dot mr-2" />
                   <span>Customer advance (Money in)</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/finance/advances/new?type=provider')}>
-                  <span className="w-2 h-2 rounded-full bg-purple-500 mr-2" />
+                  <span className="w-2 h-2 rounded-full bg-chip-violet-dot mr-2" />
                   <span>Supplier advance (Money out)</span>
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => navigate('/finance/advances/new?type=employee')}>
-                  <span className="w-2 h-2 rounded-full bg-teal-500 mr-2" />
+                  <span className="w-2 h-2 rounded-full bg-chip-teal-dot mr-2" />
                   <span>Employee advance (Money out)</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
