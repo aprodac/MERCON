@@ -64,7 +64,7 @@ export function InvoicePrintModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent hideCloseButton className="max-w-4xl p-0 bg-slate-950/60 backdrop-blur-md border border-border shadow-2xl overflow-hidden max-h-[92vh] flex flex-col rounded-xl">
+      <DialogContent hideCloseButton className="max-w-4xl p-0 bg-charcoal-strong/60 backdrop-blur-md border border-border shadow-2xl overflow-hidden max-h-[92vh] flex flex-col rounded-xl">
         {/* Modal Top Actions Header (Screen only) */}
         <div className="px-4 py-3 bg-[#2D2B2C] text-white flex items-center justify-between border-b border-border shrink-0 print:hidden">
           <div className="flex items-center gap-2">

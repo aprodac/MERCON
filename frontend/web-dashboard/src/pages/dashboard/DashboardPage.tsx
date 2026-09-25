@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import OperatorCommandCenter from '@/components/dashboard/OperatorCommandCenter';
+import OperatorInbox from '@/components/dashboard/inbox/OperatorInbox';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { Badge } from '@/components/ui/badge';
@@ -243,6 +243,8 @@ export default function DashboardPage() {
   const tz = useDeploymentTimezone();
 
   const [dashboardViewMode, setDashboardViewMode] = useState<'kanban' | 'collapsed' | 'ledger'>('ledger');
+  /** Inbox → map: which trip's truck to fly to. The nonce lets the same trip be requested twice. */
+  const [mapFocus, setMapFocus] = useState<{ tripId: string; nonce: number } | null>(null);
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
   const [selectedCompany, setSelectedCompany] = useState<string>('all');
@@ -910,17 +912,17 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* ── TOP ROW: Unified 2-Column Command Center + Active Fleet Map ─────────── */}
+          {/* ── TOP ROW: live fleet map + the operator's inbox ─────────── */}
           <div className="flex flex-col lg:flex-row gap-4 items-stretch transition-all duration-300 ease-in-out">
 
-            {/* 1. Unified 2-Column Operator Command Center (~58% width) */}
-            <div className={cn("w-full lg:w-[58%] xl:w-[60%] shrink-0 flex flex-col transition-all duration-300 ease-in-out", dashboardViewMode === 'collapsed' ? "h-[calc(100vh-325px)] min-h-[300px] max-h-[365px]" : "h-[390px] max-h-[390px]")}>
-              <OperatorCommandCenter trips={rawTrips} />
+            {/* 1. Live fleet map — every truck and on-trip driver */}
+            <div className={cn("flex-1 min-w-0 rounded-[18px] border border-black/[0.06] shadow-sm overflow-hidden transition-all duration-300 ease-in-out", dashboardViewMode === 'collapsed' ? "h-[calc(100vh-325px)] min-h-[300px] max-h-[365px]" : "h-[390px] max-h-[390px]")}>
+              <FleetCommandMap focusTripId={mapFocus?.tripId} focusNonce={mapFocus?.nonce} />
             </div>
 
-            {/* 2. Live fleet map — every truck and on-trip driver (~42% width) */}
-            <div className={cn("flex-1 min-w-0 rounded-[18px] border border-black/[0.06] shadow-sm overflow-hidden transition-all duration-300 ease-in-out", dashboardViewMode === 'collapsed' ? "h-[calc(100vh-325px)] min-h-[300px] max-h-[365px]" : "h-[390px] max-h-[390px]")}>
-              <FleetCommandMap />
+            {/* 2. Inbox — driver updates to forward, document expiries, alerts */}
+            <div className={cn("w-full lg:w-[40%] xl:w-[38%] shrink-0 transition-all duration-300 ease-in-out", dashboardViewMode === 'collapsed' ? "h-[calc(100vh-325px)] min-h-[300px] max-h-[365px]" : "h-[390px] max-h-[390px]")}>
+              <OperatorInbox trips={rawTrips} onFocusTrip={(tripId) => setMapFocus((f) => ({ tripId, nonce: (f?.nonce ?? 0) + 1 }))} />
             </div>
 
           </div>

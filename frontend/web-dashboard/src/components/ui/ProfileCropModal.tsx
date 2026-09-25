@@ -203,7 +203,7 @@ export default function ProfileCropModal({
 
         <div className="flex flex-col items-center justify-center space-y-4 py-3">
           {/* Canvas Area */}
-          <div className="relative group cursor-grab active:cursor-grabbing rounded-2xl overflow-hidden shadow-inner border border-slate-700/50 bg-slate-950">
+          <div className="relative group cursor-grab active:cursor-grabbing rounded-2xl overflow-hidden shadow-inner border border-slate-700/50 bg-charcoal-strong">
             <canvas
               ref={canvasRef}
               onMouseDown={handleMouseDown}
@@ -212,7 +212,7 @@ export default function ProfileCropModal({
               onMouseLeave={handleMouseUp}
               className="touch-none select-none rounded-xl"
             />
-            <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center pointer-events-none px-2 py-1 bg-black/40 backdrop-blur-xs rounded-md text-[10px] text-slate-300 font-mono">
+            <div className="absolute bottom-2 left-2 right-2 flex justify-between items-center pointer-events-none px-2 py-1 bg-charcoal-strong/40 backdrop-blur-xs rounded-md text-[10px] text-slate-300 font-mono">
               <span>Zoom: {zoom.toFixed(2)}x</span>
               <span>Rotation: {rotation}°</span>
             </div>

@@ -276,7 +276,7 @@ const CustomFinancialTooltip = ({ active, payload }: any) => {
     const data = payload[0].payload;
     const isProfit = data.net_profit >= 0;
     return (
-      <div className="p-2.5 bg-slate-900/95 text-white border border-slate-700 rounded-xl shadow-xl text-xs space-y-1 backdrop-blur-xs min-w-[155px]">
+      <div className="p-2.5 bg-charcoal/95 text-white border border-slate-700 rounded-xl shadow-xl text-xs space-y-1 backdrop-blur-xs min-w-[155px]">
         <div className="font-bold text-slate-200 border-b border-slate-700/80 pb-1 flex items-center justify-between">
           <span>{data.plate_number}</span>
           <span className="text-[10px] text-slate-400 font-normal">{data.asset_type}</span>

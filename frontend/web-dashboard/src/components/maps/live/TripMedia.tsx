@@ -65,7 +65,7 @@ export function StopMediaStrip({
               key={v.id}
               type="button"
               onClick={() => open(v)}
-              className="flex h-8 items-center gap-1.5 rounded-lg bg-slate-900 pr-2.5 pl-1.5 text-[11px] font-medium text-white transition hover:bg-slate-700 dark:bg-white/10 dark:hover:bg-white/20"
+              className="flex h-8 items-center gap-1.5 rounded-lg bg-charcoal pr-2.5 pl-1.5 text-[11px] font-medium text-white transition hover:bg-slate-700 dark:bg-white/10 dark:hover:bg-white/20"
             >
               <span className="flex size-5 items-center justify-center rounded-full bg-white/15">
                 <Play className="size-3 fill-current" />
@@ -99,7 +99,7 @@ export function StopMediaStrip({
               >
                 <img src={resolveFileUrl(p.url)} alt={itemLabel(p)} loading="lazy" className="size-full object-cover" />
                 {i === 3 && group.length > 4 && (
-                  <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-[11px] font-semibold text-white">
+                  <span className="absolute inset-0 flex items-center justify-center bg-charcoal-strong/55 text-[11px] font-semibold text-white">
                     +{group.length - 3}
                   </span>
                 )}
@@ -136,7 +136,7 @@ export function MediaViewer({
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       {/* The shared dialog overlay sits under the full-screen map, so the viewer brings its own. */}
-      {createPortal(<div className="fixed inset-0 z-[9999] bg-black/75" aria-hidden />, document.body)}
+      {createPortal(<div className="fixed inset-0 z-[9999] bg-charcoal-strong/75" aria-hidden />, document.body)}
       <DialogContent hideCloseButton className="z-[10000] max-w-3xl gap-0 overflow-hidden rounded-2xl p-0 sm:p-0">
         <div className="flex items-center gap-3 border-b px-4 py-3">
           <div className="min-w-0 flex-1">
@@ -154,7 +154,7 @@ export function MediaViewer({
           </button>
         </div>
 
-        <div className="relative flex h-[min(70vh,560px)] items-center justify-center bg-slate-950">
+        <div className="relative flex h-[min(70vh,560px)] items-center justify-center bg-charcoal-strong">
           {broken ? (
             <p className="flex items-center gap-2 text-sm text-slate-400"><ImageIcon className="size-4" /> This file couldn't be loaded.</p>
           ) : item.kind === 'video' ? (
@@ -180,7 +180,7 @@ export function MediaViewer({
                 className={cn('relative size-12 shrink-0 overflow-hidden rounded-lg ring-1 ring-black/10', i === index && 'ring-2 ring-blue-600')}
               >
                 {m.kind === 'video' ? (
-                  <span className="flex size-full items-center justify-center bg-slate-900 text-white"><Play className="size-4 fill-current" /></span>
+                  <span className="flex size-full items-center justify-center bg-charcoal text-white"><Play className="size-4 fill-current" /></span>
                 ) : (
                   <img src={resolveFileUrl(m.url)} alt="" loading="lazy" className="size-full object-cover" />
                 )}

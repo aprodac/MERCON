@@ -62,6 +62,9 @@ function boundsOf(points: { lat: number; lng: number }[]): [[number, number], [n
 
 interface Props {
   className?: string;
+  /** Ask the map to fly to this trip's truck; bump `focusNonce` to repeat the same trip. */
+  focusTripId?: string | null;
+  focusNonce?: number;
 }
 
 /**
@@ -69,7 +72,7 @@ interface Props {
  * Click a unit to fly to it and see its trip, both GPS feeds, the road route to
  * the next stop with a drive-time ETA, and share that ETA on WhatsApp.
  */
-export default function FleetCommandMap({ className }: Props) {
+export default function FleetCommandMap({ className, focusTripId, focusNonce }: Props) {
   const mapRef = useRef<MapRef>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const tz = useDeploymentTimezone();
@@ -288,6 +291,17 @@ export default function FleetCommandMap({ className }: Props) {
     setFollow(false);
   }, [selected, panelPadding]);
 
+  // Requests from outside (the inbox): select the trip's unit and fly to it.
+  const handledFocus = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!focusTripId || focusNonce === handledFocus.current || !data) return;
+    handledFocus.current = focusNonce;
+    const u = units.find((x) => x.trip?.id === focusTripId);
+    if (!u) return void toast.info('That trip has no truck or driver on the map');
+    if (!u.position) return void toast.info(`${unitTitle(u)} hasn't reported a GPS position yet`);
+    select(u.key);
+  }, [focusTripId, focusNonce, data, units, select]);
+
   // First data: frame everything once.
   useEffect(() => {
     if (!fittedOnce.current && data && mapRef.current) {
@@ -391,7 +405,7 @@ export default function FleetCommandMap({ className }: Props) {
         className,
       )}
     >
-      {expanded && <div className="fixed inset-0 -z-10 bg-black/40 backdrop-blur-sm" onClick={() => setExpanded(false)} />}
+      {expanded && <div className="fixed inset-0 -z-10 bg-charcoal-strong/40 backdrop-blur-sm" onClick={() => setExpanded(false)} />}
 
       <div ref={wrapRef} className="absolute inset-0 isolate">
         <MapGL
@@ -523,7 +537,7 @@ export default function FleetCommandMap({ className }: Props) {
                     className={cn(
                       'flex shrink-0 items-center gap-1.5 rounded-lg py-1 text-xs font-medium transition-colors',
                       compact ? 'px-2' : 'px-2.5',
-                      filter === f.id ? 'bg-slate-900 text-white shadow-sm dark:bg-white dark:text-slate-900' : 'text-muted-foreground hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10',
+                      filter === f.id ? 'bg-charcoal text-white shadow-sm dark:bg-white dark:text-slate-900' : 'text-muted-foreground hover:bg-charcoal-strong/5 hover:text-foreground dark:hover:bg-white/10',
                     )}
                   >
                     {f.id === 'on_trip' && <span className={cn('size-1.5 rounded-full', TONE.active.dot)} />}
@@ -633,7 +647,7 @@ function CtlButton({ label, onClick, active, children }: { label: string; onClic
       aria-label={label}
       onClick={onClick}
       className={cn(
-        'flex size-9 items-center justify-center text-foreground/80 transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10 [&_svg]:size-4',
+        'flex size-9 items-center justify-center text-foreground/80 transition-colors hover:bg-charcoal-strong/5 hover:text-foreground dark:hover:bg-white/10 [&_svg]:size-4',
         'border-b border-black/[0.05] last:border-b-0 dark:border-white/10',
         active && 'text-blue-600 dark:text-blue-400',
       )}
