@@ -683,6 +683,104 @@ export interface BillPayment {
   createdAt: string;
 }
 
+export interface GLContraLine {
+  account_id: string;
+  account_code: string;
+  name: string;
+  amount: number;
+}
+
+export interface BalanceWithSide {
+  signed: number;
+  side: 'Dr' | 'Cr';
+  net?: number;
+}
+
+export interface GeneralLedgerLineItem {
+  line_id: string;
+  journal_entry_id: string;
+  journal_entry_status: 'Posted' | 'Voided';
+  reversal_of_id?: string | null;
+  reversed_by_id?: string | null;
+  entry_date: string;
+  ref_id: string | null;
+  memo: string | null;
+  description: string | null;
+  source_type: string | null;
+  source_id: string | null;
+  debit: number;
+  credit: number;
+  running_balance: number;
+  signed_balance: number;
+  balance_side: 'Dr' | 'Cr';
+  contra: GLContraLine[];
+}
+
+export interface GeneralLedgerData {
+  account: {
+    id: string;
+    account_code: string;
+    name: string;
+    account_type: AccountType;
+    parent_id?: string | null;
+    parent_code?: string | null;
+    parent_name?: string | null;
+  } | null;
+  opening_balance: number;
+  opening_balance_side?: 'Dr' | 'Cr';
+  page_opening_balance: number;
+  page_opening_signed_balance: number;
+  lines: GeneralLedgerLineItem[];
+  closing_balance: number;
+  closing_balance_side?: 'Dr' | 'Cr';
+  total_debit: number;
+  total_credit: number;
+  count: number;
+  pagination?: {
+    page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+  };
+}
+
+export interface GeneralLedgerSummaryItem {
+  account_id: string;
+  code: string;
+  name: string;
+  type: AccountType;
+  parent_id?: string | null;
+  parent_code?: string | null;
+  parent_name?: string | null;
+  opening: BalanceWithSide;
+  period_debit: number;
+  period_credit: number;
+  closing: BalanceWithSide;
+  line_count: number;
+}
+
+export interface GeneralLedgerSummaryData {
+  items: GeneralLedgerSummaryItem[];
+  total_debit: number;
+  total_credit: number;
+  is_balanced: boolean;
+}
+
+export interface GeneralLedgerMonthlyItem {
+  month: string;
+  debit: number;
+  credit: number;
+  closing: BalanceWithSide;
+  count: number;
+}
+
+export interface GeneralLedgerMonthlyData {
+  account_id: string;
+  items: GeneralLedgerMonthlyItem[];
+  total_debit: number;
+  total_credit: number;
+}
+
 export interface AuditLog {
   id: string;
   userId?: string | null;

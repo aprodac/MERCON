@@ -41,6 +41,16 @@ export function saveStoredOverrides(overrides: Record<string, string>): void {
   }
 }
 
+export function clearBsStoredOverrides(): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
+
 export function classifyAssetAccount(
   item: ReportLineItem,
   overrides: Record<string, string> = {},
@@ -60,7 +70,10 @@ export function classifyAssetAccount(
 
   const textToMatch = `${item.name} ${item.account_code || ''} ${item.parent_name || ''} ${item.parent_code || ''}`;
 
-  if (item.is_bank_or_cash) {
+  if (/investment/i.test(textToMatch)) {
+    return { category: 'Investments' };
+  }
+  if (item.is_bank_or_cash || /cash|bank|petty|al rajhi|snb|wio|stc pay/i.test(textToMatch)) {
     return { category: 'Current assets', subCategory: 'Cash & bank' };
   }
   if (/receivable/i.test(textToMatch)) {
@@ -71,9 +84,6 @@ export function classifyAssetAccount(
   }
   if (/vehicle|truck|trailer|equipment|machinery|building|land|furniture|computer|fixed/i.test(textToMatch)) {
     return { category: 'Fixed assets' };
-  }
-  if (/investment/i.test(textToMatch)) {
-    return { category: 'Investments' };
   }
 
   return { category: 'Current assets', subCategory: 'Other current assets' };

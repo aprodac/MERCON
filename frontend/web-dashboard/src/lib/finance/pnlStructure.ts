@@ -17,20 +17,30 @@ export function getDefaultPnlClass(
   parentName?: string | null,
   isRevenue: boolean = false,
 ): PnlClass {
-  const nameToTest = (parentName || accountName || '').trim();
+  const combined = `${parentName || ''} ${accountName || ''}`.trim();
   if (isRevenue) {
-    if (/other income|interest income|gain/i.test(nameToTest)) {
+    if (/other income|interest income|gain/i.test(combined)) {
       return 'other_income';
     }
     return 'operating_income';
   } else {
-    if (/cost of (sales|services|goods|revenue)|direct/i.test(nameToTest)) {
+    if (/cost of (sales|services|goods|revenue)|direct/i.test(combined)) {
       return 'cost_of_sales';
     }
-    if (/interest|finance cost|loss on|non.?operating/i.test(nameToTest)) {
+    if (/interest|finance cost|loss on|non.?operating/i.test(combined)) {
       return 'non_operating_expense';
     }
     return 'operating_expense';
+  }
+}
+
+export function clearPnlStoredOverrides(): void {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.removeItem('mercon_pnl_classification_v1');
+    }
+  } catch {
+    // ignore
   }
 }
 
@@ -49,6 +59,7 @@ export interface PnlGroupRow {
   items: PnlAccountItem[];
   total: number;
   compareTotals?: Record<string, number>;
+  isSingleAccount?: boolean;
 }
 
 export interface PnlSection {
@@ -221,6 +232,14 @@ export function buildStructuredVerticalPnl(
       compareCols.forEach((col) => {
         secCompareTotals[col] = (secCompareTotals[col] || 0) + (g.compareTotals?.[col] || 0);
       });
+      // Flag single account groups
+      g.isSingleAccount =
+        g.items.length === 1 &&
+        (!g.items[0].parent_id ||
+          g.name === g.items[0].name ||
+          g.code === g.items[0].account_code ||
+          g.key === g.items[0].account_id ||
+          g.key === g.items[0].account_code);
     });
 
     sections[cls] = {

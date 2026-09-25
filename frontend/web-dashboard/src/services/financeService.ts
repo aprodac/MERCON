@@ -423,8 +423,37 @@ export const financeService = {
     return response.data;
   },
 
-  getGeneralLedger: async (params?: { account_id?: string; date_from?: string; date_to?: string }): Promise<ApiResponse<GeneralLedgerData>> => {
+  getGeneralLedger: async (params?: {
+    account_id?: string;
+    date_from?: string;
+    date_to?: string;
+    page?: number;
+    per_page?: number;
+    source_type?: string;
+    search?: string;
+    side?: 'debit' | 'credit';
+    min_amount?: number;
+    max_amount?: number;
+  }): Promise<ApiResponse<import('@mercon/shared-types').GeneralLedgerData>> => {
     const response = await api.get('/finance/reports/general-ledger', { params });
+    return response.data;
+  },
+
+  getGeneralLedgerSummary: async (params?: {
+    date_from?: string;
+    date_to?: string;
+    include_zero?: boolean | string;
+  }): Promise<ApiResponse<import('@mercon/shared-types').GeneralLedgerSummaryData>> => {
+    const response = await api.get('/finance/reports/general-ledger/summary', { params });
+    return response.data;
+  },
+
+  getGeneralLedgerMonthly: async (params?: {
+    account_id?: string;
+    date_from?: string;
+    date_to?: string;
+  }): Promise<ApiResponse<import('@mercon/shared-types').GeneralLedgerMonthlyData>> => {
+    const response = await api.get('/finance/reports/general-ledger/monthly', { params });
     return response.data;
   },
 
@@ -662,26 +691,14 @@ export interface CashFlowData {
   closing_cash: number;
 }
 
-export interface GeneralLedgerLineItem {
-  entry_date: string;
-  ref_id: string | null;
-  memo: string | null;
-  source_type: string | null;
-  source_id: string | null;
-  debit: number;
-  credit: number;
-  running_balance: number;
-}
+export type {
+  GeneralLedgerLineItem,
+  GeneralLedgerData,
+  GeneralLedgerSummaryItem,
+  GeneralLedgerSummaryData,
+  GeneralLedgerMonthlyItem,
+  GeneralLedgerMonthlyData,
+  GLContraLine,
+} from '@mercon/shared-types';
 
-export interface GeneralLedgerData {
-  account: {
-    id: string;
-    account_code: string;
-    name: string;
-    account_type: AccountType;
-  } | null;
-  opening_balance: number;
-  lines: GeneralLedgerLineItem[];
-  closing_balance: number;
-}
 

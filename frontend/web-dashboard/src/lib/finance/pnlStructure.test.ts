@@ -88,5 +88,23 @@ describe('pnlStructure', () => {
       expect(tFormat.trading.crTotal).toBe(500000);
       expect(tFormat.pnl.drTotal).toBe(tFormat.pnl.crTotal);
     });
+
+    it('correctly flags single-account groups and handles no-parent lines without synthetic duplication', () => {
+      const revenues: ReportLineItem[] = [
+        { account_id: '1', account_code: '4010', name: 'Freight Revenue', amount: 100000 },
+      ];
+      const expenses: ReportLineItem[] = [
+        { account_id: '2', account_code: '5020', name: 'Driver Salaries', parent_name: 'Cost of Services', amount: 50000 },
+      ];
+
+      const vertical = buildStructuredVerticalPnl(revenues, expenses);
+      const incGroup = vertical.sections.operating_income.groups[0];
+      const expGroup = vertical.sections.cost_of_sales.groups[0];
+
+      expect(incGroup.isSingleAccount).toBe(true);
+      expect(expGroup.isSingleAccount).toBe(true);
+      expect(incGroup.items.length).toBe(1);
+      expect(expGroup.items.length).toBe(1);
+    });
   });
 });

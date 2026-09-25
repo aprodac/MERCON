@@ -5,6 +5,7 @@ import {
   classifyEquityAccount,
   getStoredOverrides,
   saveStoredOverrides,
+  clearBsStoredOverrides,
 } from './bsStructure';
 
 describe('Balance Sheet Account Structure & Classification', () => {
@@ -118,7 +119,7 @@ describe('Balance Sheet Account Structure & Classification', () => {
     expect(currentEarnings).toEqual({ category: 'Capital account' });
   });
 
-  it('respects per-account overrides in localStorage', () => {
+  it('respects per-account overrides in localStorage and clears correctly', () => {
     const overrides = {
       '1099': 'Fixed assets',
     };
@@ -130,5 +131,18 @@ describe('Balance Sheet Account Structure & Classification', () => {
       overrides,
     );
     expect(overriddenAsset).toEqual({ category: 'Fixed assets' });
+
+    clearBsStoredOverrides();
+    expect(getStoredOverrides()).toEqual({});
+  });
+
+  it('classifies is_bank_or_cash accounts strictly to Cash & bank', () => {
+    const res = classifyAssetAccount({
+      account_code: '1015',
+      name: 'Unspecified Account',
+      is_bank_or_cash: true,
+      amount: 50000,
+    });
+    expect(res).toEqual({ category: 'Current assets', subCategory: 'Cash & bank' });
   });
 });
