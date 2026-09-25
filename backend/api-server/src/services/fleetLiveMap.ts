@@ -431,13 +431,17 @@ export async function loadLiveUnits(db: PrismaClient): Promise<LiveUnit[]> {
   });
 }
 
-// ── Trip media (POD photos, cargo photos, delay videos) per stop ─────────────
+// ── Trip media (loading / delivery photos, delay videos) per stop ────────────
 
 export type LiveMediaKind = 'pod' | 'photo' | 'video';
+
+/** What the photo is of, from the driver app's `operation` tag. */
+export type LiveMediaStage = 'loaded' | 'arrived' | 'stop' | 'delivered' | 'delay' | 'other';
 
 export interface LiveMediaItem {
   id: string;
   kind: LiveMediaKind;
+  stage: LiveMediaStage;
   url: string;
   mime: string | null;
   captured_at: string;
@@ -452,13 +456,14 @@ export interface LiveStopMedia {
 
 export interface LiveTripMedia {
   stops: LiveStopMedia[];
-  /** Uploads the app did not tie to a stop (older app builds). */
+  /** Uploads that can't be tied to a stop (older app builds). */
   unplaced: LiveMediaItem[];
 }
 
 export interface TripMediaStopRow {
   id: string;
   stop_sequence: number;
+  actual_arrival: Date | null;
   delay_reason: string | null;
   delay_note: string | null;
   delay_logged_at: Date | null;
@@ -482,42 +487,70 @@ function mediaKind(docType: string | null, url: string, mime: string | null): Li
 }
 
 /**
- * Sorts a trip's driver uploads onto the stops they were taken at. The driver
- * app records the stop in `ai_extracted_json.stop_id`; uploads without one
- * (older builds) are kept aside rather than guessed onto a stop.
+ * The driver app tags each upload with the step it was taken at: `pickup`,
+ * `return_loading`, `pickup_arrival`, `intermediate_stop`, `delivery`,
+ * `delay`, … Older uploads have no tag and fall back to the document type.
+ */
+export function mediaStage(operation: unknown, docType: string | null): LiveMediaStage {
+  const op = typeof operation === 'string' ? operation.toLowerCase() : '';
+  if (op.includes('delay')) return 'delay';
+  if (op.includes('arrival')) return 'arrived';
+  if (op.includes('intermediate') || op === 'stop') return 'stop';
+  if (op.includes('delivery') || op.includes('pod')) return 'delivered';
+  if (op.includes('loading') || op.includes('pickup')) return 'loaded';
+  if (!op) return docType === 'POD' ? 'delivered' : docType === 'Waybill' ? 'loaded' : 'other';
+  return 'other';
+}
+
+/**
+ * The stop the truck was heading for at a moment: the first stop not yet
+ * arrived at by then. Used for the delay video, which the app uploads without
+ * a stop — a delay is always on the way to the next stop.
+ */
+function stopHeadingAt(stops: TripMediaStopRow[], at: Date): TripMediaStopRow | undefined {
+  const t = new Date(at).getTime();
+  return stops.find((s) => s.actual_arrival == null || new Date(s.actual_arrival).getTime() > t);
+}
+
+/**
+ * Sorts a trip's driver uploads onto the stops they were taken at, using the
+ * stop the app recorded (`ai_extracted_json.stop_id`). Delay videos carry no
+ * stop, so they go on the stop the truck was heading for when uploaded.
+ * Anything else without a stop is returned as `unplaced` rather than guessed.
+ * The driver's typed delay reason is on the stop itself (`delay_note`),
+ * written when the delay is reported.
  */
 export function groupTripMedia(stops: TripMediaStopRow[], docs: TripMediaDocRow[]): LiveTripMedia {
+  const ordered = [...stops].sort((a, b) => a.stop_sequence - b.stop_sequence);
   const byStop = new Map<string, LiveStopMedia>(
-    [...stops]
-      .sort((a, b) => a.stop_sequence - b.stop_sequence)
-      .map((s) => [
-        s.id,
-        {
-          stop_id: s.id,
-          sequence: s.stop_sequence,
-          delay: s.delay_reason || s.delay_note
-            ? { reason: s.delay_reason, note: s.delay_note, logged_at: iso(s.delay_logged_at) }
-            : null,
-          media: [],
-        },
-      ]),
+    ordered.map((s) => [
+      s.id,
+      {
+        stop_id: s.id,
+        sequence: s.stop_sequence,
+        delay: s.delay_reason || s.delay_note
+          ? { reason: s.delay_reason, note: s.delay_note, logged_at: iso(s.delay_logged_at) }
+          : null,
+        media: [],
+      },
+    ]),
   );
   const unplaced: LiveMediaItem[] = [];
 
   for (const d of [...docs].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())) {
-    const meta = (d.ai_extracted_json ?? {}) as { stop_id?: unknown; gps?: { captured_at?: unknown } };
+    const meta = (d.ai_extracted_json ?? {}) as { stop_id?: unknown; operation?: unknown; gps?: { captured_at?: unknown } };
     const captured = typeof meta.gps?.captured_at === 'string' ? meta.gps.captured_at : iso(d.createdAt)!;
-    const items: LiveMediaItem[] = [
-      { id: d.id, kind: mediaKind(d.doc_type, d.file_url, d.mime_type), url: d.file_url, mime: d.mime_type, captured_at: captured },
-      ...d.files.map((f) => ({
-        id: f.id,
-        kind: mediaKind(d.doc_type, f.file_url, f.mime_type),
-        url: f.file_url,
-        mime: f.mime_type,
-        captured_at: captured,
-      })),
-    ];
-    const target = typeof meta.stop_id === 'string' ? byStop.get(meta.stop_id) : undefined;
+    const stage = mediaStage(meta.operation, d.doc_type);
+    const item = (id: string, url: string, mime: string | null): LiveMediaItem => ({
+      id, kind: mediaKind(d.doc_type, url, mime), stage, url, mime, captured_at: captured,
+    });
+    const items = [item(d.id, d.file_url, d.mime_type), ...d.files.map((f) => item(f.id, f.file_url, f.mime_type))];
+
+    let target = typeof meta.stop_id === 'string' ? byStop.get(meta.stop_id) : undefined;
+    if (!target && stage === 'delay') {
+      const s = stopHeadingAt(ordered, d.createdAt);
+      target = s ? byStop.get(s.id) : undefined;
+    }
     (target ? target.media : unplaced).push(...items);
   }
 
@@ -531,7 +564,7 @@ export async function loadTripMedia(db: PrismaClient, tripId: string): Promise<L
     select: {
       stops: {
         where: { deletedAt: null },
-        select: { id: true, stop_sequence: true, delay_reason: true, delay_note: true, delay_logged_at: true },
+        select: { id: true, stop_sequence: true, actual_arrival: true, delay_reason: true, delay_note: true, delay_logged_at: true },
       },
     },
   });

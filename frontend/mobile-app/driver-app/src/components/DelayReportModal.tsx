@@ -92,7 +92,8 @@ export function DelayReportModal({ visible, tripId, onClose, onSuccess }: DelayR
       }
 
       // 2. Update trip status to Delayed with reason
-      await tripService.updateStatus(tripId, 'Delayed', finalReason);
+      // Reason goes in the reason slot — the third argument is the workflow state.
+      await tripService.updateStatus(tripId, 'Delayed', undefined, finalReason);
 
       Alert.alert(t('status_delayed', 'Delay Reported'), t('msg_delay_submitted', 'Your delay report has been submitted to dispatch.'));
       handleClose();
