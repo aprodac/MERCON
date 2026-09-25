@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { loadLiveUnits } from '../services/fleetLiveMap';
-import { getDrivingRoute, RoutingUnavailableError } from '../services/routing/routeProvider';
+import { getDrivingRouteThrough, MAX_ROUTE_POINTS, RoutingUnavailableError, type GeoPoint } from '../services/routing/routeProvider';
 
 /** GET /vehicles/live-map — every truck and on-trip driver with both GPS feeds. */
 export const getFleetLiveMap = async (_req: Request, res: Response) => {
@@ -15,25 +15,32 @@ export const getFleetLiveMap = async (_req: Request, res: Response) => {
   }
 };
 
+function parsePoint(v: unknown): GeoPoint | null {
+  const [lat, lng] = String(v ?? '').split(',').map(Number);
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
 /**
  * GET /vehicles/live-map/route?from=lat,lng&to=lat,lng
+ * GET /vehicles/live-map/route?points=lat,lng;lat,lng;…
  *
- * Road route and drive time for the unit selected on the map. Goes through the
- * same provider the driver app uses. 503 when routing is down — the map then
- * draws a straight line and shows no drive-time ETA.
+ * Road route and drive time for the unit selected on the map — either truck →
+ * next stop, or through the trip's remaining stops. Goes through the same
+ * provider the driver app uses. 503 when routing is down — the map then shows
+ * no drive-time ETA and draws no road line for the later stops.
  */
 export const getFleetLiveRoute = async (req: Request, res: Response) => {
-  const parse = (v: unknown) => {
-    const [lat, lng] = String(v ?? '').split(',').map(Number);
-    return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
-  };
-  const from = parse(req.query.from);
-  const to = parse(req.query.to);
-  if (!from || !to) {
-    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'from and to must be "lat,lng"' } });
+  const points = req.query.points != null
+    ? String(req.query.points).split(';').map(parsePoint)
+    : [parsePoint(req.query.from), parsePoint(req.query.to)];
+  if (points.length < 2 || points.length > MAX_ROUTE_POINTS || points.some((p) => !p)) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: `Give from and to, or 2–${MAX_ROUTE_POINTS} points, each as "lat,lng"` },
+    });
   }
   try {
-    const route = await getDrivingRoute(from, to);
+    const route = await getDrivingRouteThrough(points as GeoPoint[]);
     res.json({ success: true, data: route });
   } catch (error) {
     if (error instanceof RoutingUnavailableError) {

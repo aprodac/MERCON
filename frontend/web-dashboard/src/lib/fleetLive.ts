@@ -136,3 +136,78 @@ export function buildEtaShareText(u: LiveUnit, eta: EtaInfo | null, formatTime: 
   if (u.driver?.name) lines.push(`Driver: ${u.driver.name}`);
   return lines.join('\n');
 }
+
+/** How much a unit matters on a crowded map — decides which labels survive and a group's colour. */
+export function unitPriority(u: LiveUnit): number {
+  const phase = u.trip?.phase;
+  const base = phase === 'delayed' ? 40 : phase === 'active' ? 30 : phase === 'upcoming' ? 20 : 10;
+  return base + (u.motion === 'moving' ? 5 : u.motion === 'idle' ? 3 : 0);
+}
+
+export interface LabelCandidate {
+  key: string;
+  /** Screen position of the marker centre, in px. */
+  x: number;
+  y: number;
+  priority: number;
+  /** Approximate label width in px. */
+  width: number;
+}
+
+/**
+ * Greedy label placement: highest priority first, a label is kept only if its
+ * box (drawn centred under the marker) overlaps no kept label or marker.
+ */
+export function pickLabels(items: LabelCandidate[], opts = { markerRadius: 17, labelHeight: 18, gap: 2 }): Set<string> {
+  const { markerRadius: r, labelHeight: h, gap } = opts;
+  type Box = [number, number, number, number];
+  const hits = (a: Box, b: Box) => a[0] < b[2] + gap && b[0] < a[2] + gap && a[1] < b[3] + gap && b[1] < a[3] + gap;
+  const markers: Box[] = items.map((i) => [i.x - r, i.y - r, i.x + r, i.y + r]);
+  const kept: Box[] = [];
+  const out = new Set<string>();
+  const order = items.map((it, idx) => ({ it, idx })).sort((a, b) => b.it.priority - a.it.priority);
+  for (const { it, idx } of order) {
+    const box: Box = [it.x - it.width / 2, it.y + r, it.x + it.width / 2, it.y + r + h];
+    if (kept.some((k) => hits(box, k))) continue;
+    if (markers.some((m, j) => j !== idx && hits(box, m))) continue;
+    kept.push(box);
+    out.add(it.key);
+  }
+  return out;
+}
+
+export interface StopGroup {
+  lat: number;
+  lng: number;
+  /** 1-based stop numbers at this spot, in trip order. */
+  numbers: number[];
+  name: string;
+  done: boolean;
+  isNext: boolean;
+}
+
+/** Stops at the same place (two Riyadh drops) share one pin — "4·5" — instead of hiding each other. */
+export function groupStops(u: LiveUnit): StopGroup[] {
+  const trip = u.trip;
+  if (!trip) return [];
+  const groups = new Map<string, StopGroup>();
+  trip.stops.forEach((s, i) => {
+    if (s.lat == null || s.lng == null) return;
+    const k = `${s.lat.toFixed(3)},${s.lng.toFixed(3)}`;
+    const isNext = i === trip.next_stop_index;
+    const g = groups.get(k);
+    if (g) {
+      g.numbers.push(i + 1);
+      g.done = g.done && s.actual_arrival != null;
+      g.isNext = g.isNext || isNext;
+    } else {
+      groups.set(k, { lat: s.lat, lng: s.lng, numbers: [i + 1], name: stopLabel(s), done: s.actual_arrival != null, isNext });
+    }
+  });
+  return [...groups.values()];
+}
+
+/** "3h" / "12m" — for the small age tag under an offline marker. */
+export function shortAgo(iso: string | null | undefined, now = Date.now()): string {
+  return timeAgo(iso, now).replace(' ago', '');
+}
