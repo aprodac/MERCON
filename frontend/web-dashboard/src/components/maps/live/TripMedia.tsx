@@ -6,11 +6,23 @@ import { cn } from '@/lib/utils';
 import { resolveFileUrl } from '@/lib/documents';
 import type { LiveMediaItem, LiveStopMedia } from '@/services/fleetLiveService';
 
-const KIND_LABEL: Record<LiveMediaItem['kind'], string> = {
-  pod: 'Proof of delivery',
-  photo: 'Cargo photo',
-  video: 'Delay video',
+const STAGE_LABEL: Record<LiveMediaItem['stage'], string> = {
+  loaded: 'Loaded',
+  arrived: 'Arrived',
+  stop: 'Stop',
+  delivered: 'Delivered',
+  delay: 'Delay',
+  other: 'Photo',
 };
+
+/** Order the groups appear in under a stop — the sequence a driver works through. */
+const STAGE_ORDER: LiveMediaItem['stage'][] = ['arrived', 'loaded', 'stop', 'delivered', 'other'];
+
+function itemLabel(m: LiveMediaItem): string {
+  if (m.kind === 'video') return m.stage === 'delay' ? 'Delay video' : `${STAGE_LABEL[m.stage]} video`;
+  if (m.stage === 'delivered') return 'Delivered — proof of delivery';
+  return `${STAGE_LABEL[m.stage]} photo`;
+}
 
 /** "VehicleBreakdown" → "Vehicle breakdown". */
 function humanizeDelayReason(reason: string | null): string | null {
@@ -22,7 +34,8 @@ function humanizeDelayReason(reason: string | null): string | null {
 /**
  * What the driver sent from one stop, inline under the stop in the details
  * panel: the delay they reported, a play chip for a delay video, and small
- * thumbnails for POD / cargo photos. Clicking opens the viewer.
+ * thumbnails grouped by step — Arrived, Loaded, Delivered — so it's clear
+ * which photo proves what. Clicking opens the viewer.
  */
 export function StopMediaStrip({
   stop, title, onOpen,
@@ -45,7 +58,7 @@ export function StopMediaStrip({
           </span>
         </p>
       )}
-      {(videos.length > 0 || photos.length > 0) && (
+      {videos.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
           {videos.map((v) => (
             <button
@@ -60,27 +73,41 @@ export function StopMediaStrip({
               Delay video
             </button>
           ))}
-          {photos.slice(0, 4).map((p, i) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => open(p)}
-              title={KIND_LABEL[p.kind]}
-              className="relative size-8 overflow-hidden rounded-lg ring-1 ring-black/10 transition hover:ring-2 hover:ring-blue-500 dark:ring-white/10"
-            >
-              <img src={resolveFileUrl(p.url)} alt={KIND_LABEL[p.kind]} loading="lazy" className="size-full object-cover" />
-              {i === 3 && photos.length > 4 && (
-                <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-[11px] font-semibold text-white">
-                  +{photos.length - 3}
-                </span>
-              )}
-            </button>
-          ))}
-          {photos.some((p) => p.kind === 'pod') && (
-            <span className="rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">POD</span>
-          )}
         </div>
       )}
+      {STAGE_ORDER.map((stage) => {
+        const group = photos.filter((p) => p.stage === stage || (stage === 'other' && p.stage === 'delay'));
+        if (group.length === 0) return null;
+        return (
+          <div key={stage} className="flex items-center gap-1.5">
+            <span
+              className={cn(
+                'w-[62px] shrink-0 text-[10px] font-semibold',
+                stage === 'delivered' ? 'text-emerald-700 dark:text-emerald-300' : 'text-muted-foreground',
+              )}
+            >
+              {STAGE_LABEL[stage]}
+              {stage === 'delivered' && ' · POD'}
+            </span>
+            {group.slice(0, 4).map((p, i) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => open(p)}
+                title={itemLabel(p)}
+                className="relative size-8 overflow-hidden rounded-lg ring-1 ring-black/10 transition hover:ring-2 hover:ring-blue-500 dark:ring-white/10"
+              >
+                <img src={resolveFileUrl(p.url)} alt={itemLabel(p)} loading="lazy" className="size-full object-cover" />
+                {i === 3 && group.length > 4 && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-[11px] font-semibold text-white">
+                    +{group.length - 3}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -113,7 +140,7 @@ export function MediaViewer({
       <DialogContent hideCloseButton className="z-[10000] max-w-3xl gap-0 overflow-hidden rounded-2xl p-0 sm:p-0">
         <div className="flex items-center gap-3 border-b px-4 py-3">
           <div className="min-w-0 flex-1">
-            <DialogTitle className="truncate text-sm font-semibold">{KIND_LABEL[item.kind]}{title && ` · ${title}`}</DialogTitle>
+            <DialogTitle className="truncate text-sm font-semibold">{itemLabel(item)}{title && ` · ${title}`}</DialogTitle>
             <DialogDescription className="text-xs">
               {new Date(item.captured_at).toLocaleString()}
               {items.length > 1 && ` · ${index + 1} of ${items.length}`}
@@ -133,7 +160,7 @@ export function MediaViewer({
           ) : item.kind === 'video' ? (
             <video key={item.id} src={url} controls autoPlay playsInline className="max-h-full max-w-full" onError={() => setBroken(true)} />
           ) : (
-            <img key={item.id} src={url} alt={KIND_LABEL[item.kind]} className="max-h-full max-w-full object-contain" onError={() => setBroken(true)} />
+            <img key={item.id} src={url} alt={itemLabel(item)} className="max-h-full max-w-full object-contain" onError={() => setBroken(true)} />
           )}
           {items.length > 1 && (
             <>
