@@ -23,46 +23,46 @@ export const FIN_TONE_CLASSES: Record<
   { bg: string; text: string; dot: string; combined: string }
 > = {
   positive: {
-    bg: 'bg-[#ECFDF3] dark:bg-emerald-950/40',
-    text: 'text-[#15803D] dark:text-emerald-400',
-    dot: 'bg-[#15803D] dark:bg-emerald-400',
+    bg: 'bg-emerald-500/10 dark:bg-emerald-400/10',
+    text: 'text-emerald-700 dark:text-emerald-300',
+    dot: 'bg-emerald-600 dark:bg-emerald-400',
     combined:
-      'bg-[#ECFDF3] text-[#15803D] dark:bg-emerald-950/40 dark:text-emerald-400',
+      'bg-emerald-500/10 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-400/10 dark:text-emerald-300 dark:ring-emerald-400/20',
   },
   negative: {
-    bg: 'bg-[#FEF1EE] dark:bg-orange-950/40',
-    text: 'text-[#C2410C] dark:text-orange-400',
-    dot: 'bg-[#C2410C] dark:bg-orange-400',
+    bg: 'bg-rose-500/10 dark:bg-rose-400/10',
+    text: 'text-rose-700 dark:text-rose-300',
+    dot: 'bg-rose-600 dark:bg-rose-400',
     combined:
-      'bg-[#FEF1EE] text-[#C2410C] dark:bg-orange-950/40 dark:text-orange-400',
+      'bg-rose-500/10 text-rose-700 ring-rose-600/20 dark:bg-rose-400/10 dark:text-rose-300 dark:ring-rose-400/20',
   },
   info: {
-    bg: 'bg-[#EEF3FF] dark:bg-blue-950/40',
-    text: 'text-[#1D4ED8] dark:text-blue-300',
-    dot: 'bg-[#1D4ED8] dark:bg-blue-300',
+    bg: 'bg-sky-500/10 dark:bg-sky-400/10',
+    text: 'text-sky-700 dark:text-sky-300',
+    dot: 'bg-sky-600 dark:bg-sky-400',
     combined:
-      'bg-[#EEF3FF] text-[#1D4ED8] dark:bg-blue-950/40 dark:text-blue-300',
+      'bg-sky-500/10 text-sky-700 ring-sky-600/20 dark:bg-sky-400/10 dark:text-sky-300 dark:ring-sky-400/20',
   },
   warning: {
-    bg: 'bg-[#FFF6E5] dark:bg-amber-950/40',
-    text: 'text-[#B45309] dark:text-amber-300',
-    dot: 'bg-[#B45309] dark:bg-amber-300',
+    bg: 'bg-amber-500/10 dark:bg-amber-400/10',
+    text: 'text-amber-700 dark:text-amber-300',
+    dot: 'bg-amber-600 dark:bg-amber-400',
     combined:
-      'bg-[#FFF6E5] text-[#B45309] dark:bg-amber-950/40 dark:text-amber-300',
+      'bg-amber-500/10 text-amber-700 ring-amber-600/20 dark:bg-amber-400/10 dark:text-amber-300 dark:ring-amber-400/20',
   },
   neutral: {
-    bg: 'bg-[#F1F2F5] dark:bg-slate-800',
-    text: 'text-[#4B4B57] dark:text-slate-300',
-    dot: 'bg-[#4B4B57] dark:bg-slate-300',
+    bg: 'bg-muted',
+    text: 'text-muted-foreground',
+    dot: 'bg-muted-foreground',
     combined:
-      'bg-[#F1F2F5] text-[#4B4B57] dark:bg-slate-800 dark:text-slate-300',
+      'bg-muted text-muted-foreground ring-border',
   },
   muted: {
-    bg: 'bg-[#F4F4F6] dark:bg-slate-800/60',
-    text: 'text-[#6E6E80] dark:text-slate-400',
-    dot: 'bg-[#6E6E80] dark:bg-slate-400',
+    bg: 'bg-muted/60',
+    text: 'text-muted-foreground',
+    dot: 'bg-muted-foreground/60',
     combined:
-      'bg-[#F4F4F6] text-[#6E6E80] dark:bg-slate-800/60 dark:text-slate-400',
+      'bg-muted/60 text-muted-foreground ring-border/50',
   },
 };
 

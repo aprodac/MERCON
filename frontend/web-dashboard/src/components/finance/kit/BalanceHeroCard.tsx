@@ -24,28 +24,28 @@ export const BalanceHeroCard: React.FC<BalanceHeroCardProps> = ({
   footerRight,
 }) => {
   return (
-    <div className="p-5 rounded-2xl bg-[#3E3C3D] text-white shadow-lg space-y-3">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-white/60">
+    <div className="p-4 rounded-xl border border-border bg-card text-foreground shadow-xs space-y-3">
+      <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
 
       <div className="flex items-baseline gap-2">
-        <span className="text-xs font-mono text-white/60 font-semibold">{currency}</span>
-        <MoneyText value={amount} className="text-3xl font-extrabold fin-num text-white tracking-tight" />
+        <span className="text-xs text-muted-foreground font-medium">{currency}</span>
+        <MoneyText value={amount} className="text-2xl font-semibold fin-num text-foreground tracking-tight" />
       </div>
 
-      <div className="space-y-1">
-        <Progress value={appliedPct} className="h-2 bg-white/12" />
+      <div className="space-y-1.5">
+        <Progress value={appliedPct} className="h-1.5 bg-muted" />
         {appliedAmount !== undefined && totalAmount !== undefined && (
-          <div className="flex items-center justify-between text-[11px] font-mono text-white/60">
-            <span>Applied <MoneyText value={appliedAmount} className="text-white font-semibold" /></span>
-            <span>of <MoneyText value={totalAmount} className="text-white/80" /></span>
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>Applied <MoneyText value={appliedAmount} className="text-foreground font-medium" /></span>
+            <span>of <MoneyText value={totalAmount} className="text-muted-foreground font-medium" /></span>
           </div>
         )}
       </div>
 
       {(footerLeft || footerRight) && (
-        <div className="flex items-center justify-between text-[11px] text-white/60 pt-1 border-t border-white/10 font-medium">
+        <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t border-border/60 font-medium">
           <span>{footerLeft}</span>
           <span>{footerRight}</span>
         </div>
@@ -55,3 +55,4 @@ export const BalanceHeroCard: React.FC<BalanceHeroCardProps> = ({
 };
 
 export default BalanceHeroCard;
+

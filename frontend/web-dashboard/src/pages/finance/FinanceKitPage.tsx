@@ -19,17 +19,17 @@ export default function FinanceKitPage() {
   const [showSelection, setShowSelection] = useState(false);
 
   const sampleBarSegments = [
-    { value: 650000, color: 'bg-[#15803D]', label: 'Collected (65%)' },
-    { value: 250000, color: 'bg-[#FA634E]', label: 'Current due (25%)' },
-    { value: 100000, color: 'bg-[#C2410C]', label: 'Overdue (10%)' },
+    { value: 650000, color: 'bg-emerald-600', label: 'Collected (65%)' },
+    { value: 250000, color: 'bg-amber-500', label: 'Current due (25%)' },
+    { value: 100000, color: 'bg-rose-600', label: 'Overdue (10%)' },
   ];
 
   return (
     <DashboardLayout active="finance" title="Finance Kit Showcase" hideHeader>
-      <div className="px-7 pt-5 pb-6 max-w-[1600px] mx-auto space-y-8 animate-fade-in">
+      <div className="px-6 pt-5 pb-6 max-w-[1600px] mx-auto space-y-6 animate-fade-in">
         {/* Header Showcase */}
         <section>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400 mb-2">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-2">
             1. FinancePageHeader
           </h2>
           <FinancePageHeader
@@ -50,33 +50,33 @@ export default function FinanceKitPage() {
         </section>
 
         {/* MoneyText Showcase */}
-        <section className="bg-white dark:bg-slate-900 border border-black/[0.06] dark:border-slate-800 rounded-[20px] p-6 space-y-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+        <section className="bg-card border border-border rounded-xl p-5 shadow-xs space-y-4">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             2. MoneyText
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 items-baseline">
             <div>
-              <p className="text-xs text-[#757583] mb-1">Hero (default)</p>
+              <p className="text-xs text-muted-foreground mb-1">Hero (default)</p>
               <MoneyText value={1265000.5} currency="SAR" size="hero" />
             </div>
             <div>
-              <p className="text-xs text-[#757583] mb-1">Large (positive)</p>
+              <p className="text-xs text-muted-foreground mb-1">Large (positive)</p>
               <MoneyText value={45200.00} currency="SAR" size="lg" tone="positive" signed />
             </div>
             <div>
-              <p className="text-xs text-[#757583] mb-1">Medium (negative)</p>
+              <p className="text-xs text-muted-foreground mb-1">Medium (negative)</p>
               <MoneyText value={-12400.75} currency="SAR" size="md" tone="negative" signed />
             </div>
             <div>
-              <p className="text-xs text-[#757583] mb-1">Small (muted)</p>
+              <p className="text-xs text-muted-foreground mb-1">Small (muted)</p>
               <MoneyText value={0} currency="SAR" size="sm" tone="muted" />
             </div>
           </div>
         </section>
 
         {/* StatusPill Showcase */}
-        <section className="bg-white dark:bg-slate-900 border border-black/[0.06] dark:border-slate-800 rounded-[20px] p-6 space-y-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+        <section className="bg-card border border-border rounded-xl p-5 shadow-xs space-y-4">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             3. StatusPill (All Kinds & Statuses)
           </h2>
           <div className="flex flex-wrap items-center gap-3">
@@ -96,7 +96,7 @@ export default function FinanceKitPage() {
 
         {/* SummaryStrip Showcase */}
         <section className="space-y-2">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             4. SummaryStrip
           </h2>
           <SummaryStrip
@@ -135,8 +135,8 @@ export default function FinanceKitPage() {
         </section>
 
         {/* StatusTabs Showcase */}
-        <section className="bg-white dark:bg-slate-900 border border-black/[0.06] dark:border-slate-800 rounded-[20px] p-6 space-y-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+        <section className="bg-card border border-border rounded-xl p-5 shadow-xs space-y-4">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             5. StatusTabs
           </h2>
           <StatusTabs
@@ -156,19 +156,19 @@ export default function FinanceKitPage() {
         {/* FilterBar Showcase */}
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+            <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               6. FilterBar & SelectionBar
             </h2>
             <button
               type="button"
               onClick={() => setShowSelection(!showSelection)}
-              className="text-xs font-semibold text-[#FA634E] underline cursor-pointer"
+              className="text-xs font-medium text-foreground underline cursor-pointer"
             >
               Toggle SelectionBar mode
             </button>
           </div>
 
-          <div className="border border-black/[0.06] dark:border-slate-800 rounded-[20px] overflow-hidden">
+          <div className="border border-border rounded-xl overflow-hidden shadow-xs bg-card">
             <FilterBar
               search={search}
               onSearchChange={setSearch}
@@ -187,8 +187,8 @@ export default function FinanceKitPage() {
                 showSelection ? (
                   <>
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-[#FA634E]" />
-                      <span className="text-xs font-bold text-[#111111] dark:text-slate-100">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-xs font-medium text-foreground">
                         3 Invoices Selected
                       </span>
                     </div>
@@ -198,7 +198,7 @@ export default function FinanceKitPage() {
                       <button
                         type="button"
                         onClick={() => setShowSelection(false)}
-                        className="text-xs font-semibold text-[#6E6E80] hover:text-[#111111] ml-2 cursor-pointer"
+                        className="text-xs font-medium text-muted-foreground hover:text-foreground ml-2 cursor-pointer"
                       >
                         Clear
                       </button>
@@ -212,7 +212,7 @@ export default function FinanceKitPage() {
 
         {/* FinanceEmptyState Showcase */}
         <section className="space-y-2">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             7. FinanceEmptyState
           </h2>
           <FinanceEmptyState
@@ -228,3 +228,4 @@ export default function FinanceKitPage() {
     </DashboardLayout>
   );
 }
+

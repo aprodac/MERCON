@@ -39,7 +39,7 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full text-[11.5px] font-bold select-none shrink-0 border border-black/[0.04] dark:border-white/[0.06]',
+        'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset select-none shrink-0',
         toneClasses.combined,
         className
       )}

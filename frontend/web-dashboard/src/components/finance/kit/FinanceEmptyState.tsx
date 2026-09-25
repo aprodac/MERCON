@@ -23,7 +23,7 @@ export function FinanceEmptyState({
 }: FinanceEmptyStateProps) {
   const renderedIcon =
     typeof IconOrElement === 'function' || (typeof IconOrElement === 'object' && IconOrElement && 'render' in (IconOrElement as any))
-      ? React.createElement(IconOrElement as React.ComponentType<{ className?: string }>, { className: 'w-6 h-6 text-[#6E6E80] dark:text-slate-400' })
+      ? React.createElement(IconOrElement as React.ComponentType<{ className?: string }>, { className: 'w-5 h-5 text-muted-foreground' })
       : IconOrElement;
 
   const renderedAction =
@@ -31,7 +31,7 @@ export function FinanceEmptyState({
       <button
         type="button"
         onClick={action.onClick}
-        className="px-4 py-2 text-xs font-semibold rounded-xl bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-xs transition-colors"
+        className="px-3.5 py-1.5 text-xs font-semibold rounded-md bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-2xs transition-colors"
       >
         {action.label}
       </button>
@@ -42,20 +42,20 @@ export function FinanceEmptyState({
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center p-8 sm:p-12 text-center bg-white dark:bg-slate-900 border border-black/[0.06] dark:border-slate-800 rounded-[20px]',
+        'flex flex-col items-center justify-center p-8 sm:p-12 text-center bg-card border border-border rounded-xl shadow-xs',
         className
       )}
     >
       {renderedIcon && (
-        <div className="w-12 h-12 rounded-2xl bg-[#F7F8FA] dark:bg-slate-800/80 border border-black/[0.04] dark:border-white/[0.06] flex items-center justify-center text-[#6E6E80] dark:text-slate-400 mb-3 shadow-xs">
+        <div className="w-10 h-10 rounded-md bg-muted flex items-center justify-center text-muted-foreground mb-3">
           {renderedIcon}
         </div>
       )}
-      <h3 className="text-[15px] font-bold text-[#111111] dark:text-slate-100 mb-1">
+      <h3 className="text-[15px] font-semibold text-foreground mb-1">
         {title}
       </h3>
       {description && (
-        <p className="text-[13px] text-[#6E6E80] dark:text-slate-400 max-w-sm mb-5 leading-relaxed">
+        <p className="text-xs text-muted-foreground max-w-sm mb-4 leading-relaxed">
           {description}
         </p>
       )}

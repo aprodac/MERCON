@@ -5,14 +5,7 @@ import {
   CheckCircle2,
   AlertCircle,
   ArrowRight,
-  PieChart,
-  Sliders,
-  DollarSign,
-  Scale,
-  Sparkles,
 } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { formatMoney, formatPct } from '@/lib/finance/format';
 
 export interface InsightRailProps {
@@ -35,55 +28,55 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
     return (
       <div className="space-y-3 print:hidden">
         {/* At a Glance Card */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3.5 shadow-xs space-y-3">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
               At a Glance
             </span>
             {isBalanced ? (
-              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800 text-[10px] font-bold gap-1">
-                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-600/20">
+                <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
                 <span>Balanced</span>
-              </Badge>
+              </span>
             ) : (
-              <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800 text-[10px] font-bold gap-1">
-                <AlertCircle className="w-3 h-3 text-rose-600" />
+              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-rose-600/20">
+                <AlertCircle className="w-3 h-3 text-rose-600 dark:text-rose-400" />
                 <span>Out by {formatMoney(outAmount)}</span>
-              </Badge>
+              </span>
             )}
           </div>
 
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
-                <span className="w-2 h-2 rounded-full bg-sky-500" />
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
                 <span>Total Assets</span>
               </span>
-              <span className="fin-num font-bold text-slate-900 dark:text-slate-100">{formatMoney(totalAssets)}</span>
+              <span className="fin-num font-medium text-foreground">{formatMoney(totalAssets)}</span>
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
-                <span className="w-2 h-2 rounded-full bg-orange-500" />
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                 <span>Liabilities</span>
               </span>
-              <span className="fin-num font-bold text-slate-900 dark:text-slate-100">{formatMoney(totalLiabilities)}</span>
+              <span className="fin-num font-medium text-foreground">{formatMoney(totalLiabilities)}</span>
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
-                <span className="w-2 h-2 rounded-full bg-violet-500" />
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
                 <span>Equity</span>
               </span>
-              <span className="fin-num font-bold text-slate-900 dark:text-slate-100">{formatMoney(totalEquity)}</span>
+              <span className="fin-num font-medium text-foreground">{formatMoney(totalEquity)}</span>
             </div>
           </div>
 
           {/* Visual Share Bar */}
           {totalAssets > 0 && (
-            <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex">
+            <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden flex">
               <div
-                className="bg-orange-500 h-full"
+                className="bg-amber-500 h-full"
                 style={{ width: `${Math.min(100, (totalLiabilities / totalAssets) * 100)}%` }}
                 title={`Liabilities: ${formatPct((totalLiabilities / totalAssets) * 100)}`}
               />
@@ -97,49 +90,58 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
         </div>
 
         {/* Jump To Section Card */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3.5 shadow-xs space-y-2">
-          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-xs space-y-2">
+          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide block">
             Jump to Section
           </span>
           <div className="space-y-1 text-xs">
             <button
               type="button"
               onClick={() => onJumpTo?.('section-assets')}
-              className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left group"
+              className="w-full flex items-center justify-between p-1.5 rounded-md hover:bg-muted/50 transition-colors text-left group"
             >
-              <span className="font-semibold text-sky-700 dark:text-sky-400 group-hover:underline">Assets</span>
-              <span className="fin-num font-medium text-slate-600 dark:text-slate-400">{formatMoney(totalAssets)}</span>
+              <span className="flex items-center gap-2 font-medium text-foreground group-hover:underline">
+                <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                <span>Assets</span>
+              </span>
+              <span className="fin-num font-normal text-muted-foreground">{formatMoney(totalAssets)}</span>
             </button>
             <button
               type="button"
               onClick={() => onJumpTo?.('section-liabilities')}
-              className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left group"
+              className="w-full flex items-center justify-between p-1.5 rounded-md hover:bg-muted/50 transition-colors text-left group"
             >
-              <span className="font-semibold text-orange-700 dark:text-orange-400 group-hover:underline">Liabilities</span>
-              <span className="fin-num font-medium text-slate-600 dark:text-slate-400">{formatMoney(totalLiabilities)}</span>
+              <span className="flex items-center gap-2 font-medium text-foreground group-hover:underline">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                <span>Liabilities</span>
+              </span>
+              <span className="fin-num font-normal text-muted-foreground">{formatMoney(totalLiabilities)}</span>
             </button>
             <button
               type="button"
               onClick={() => onJumpTo?.('section-equity')}
-              className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left group"
+              className="w-full flex items-center justify-between p-1.5 rounded-md hover:bg-muted/50 transition-colors text-left group"
             >
-              <span className="font-semibold text-violet-700 dark:text-violet-400 group-hover:underline">Equity</span>
-              <span className="fin-num font-medium text-slate-600 dark:text-slate-400">{formatMoney(totalEquity)}</span>
+              <span className="flex items-center gap-2 font-medium text-foreground group-hover:underline">
+                <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
+                <span>Equity</span>
+              </span>
+              <span className="fin-num font-normal text-muted-foreground">{formatMoney(totalEquity)}</span>
             </button>
           </div>
         </div>
 
         {/* Mini Ratios Card */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3.5 shadow-xs space-y-2.5">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-xs space-y-2.5">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
               Key Metrics
             </span>
             {onNavigateAnalysis && (
               <button
                 type="button"
                 onClick={onNavigateAnalysis}
-                className="text-[11px] font-bold text-[#FA634E] hover:underline flex items-center gap-0.5"
+                className="text-xs font-medium text-foreground hover:underline flex items-center gap-0.5"
               >
                 <span>Analysis</span>
                 <ArrowRight className="w-3 h-3" />
@@ -147,13 +149,13 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
             )}
           </div>
           <div className="grid grid-cols-2 gap-2 text-xs">
-            <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg">
-              <span className="text-[10px] text-slate-500 font-medium block">Working Cap</span>
-              <span className="fin-num font-bold text-slate-900 dark:text-slate-100">{formatMoney(workingCapital)}</span>
+            <div className="bg-muted/40 p-2 rounded-md border border-border/60">
+              <span className="text-[10px] text-muted-foreground font-medium block">Working Cap</span>
+              <span className="fin-num font-medium text-foreground">{formatMoney(workingCapital)}</span>
             </div>
-            <div className="bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg">
-              <span className="text-[10px] text-slate-500 font-medium block">Current Ratio</span>
-              <span className="fin-num font-bold text-slate-900 dark:text-slate-100">{currentRatio}</span>
+            <div className="bg-muted/40 p-2 rounded-md border border-border/60">
+              <span className="text-[10px] text-muted-foreground font-medium block">Current Ratio</span>
+              <span className="fin-num font-medium text-foreground">{currentRatio}</span>
             </div>
           </div>
         </div>
@@ -171,41 +173,41 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
     return (
       <div className="space-y-3 print:hidden">
         {/* At a Glance Card */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3.5 shadow-xs space-y-3">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
               At a Glance
             </span>
-            <Badge variant="outline" className={`text-[10px] font-bold gap-1 ${
+            <span className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
               isLoss
-                ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300'
-                : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300'
+                ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-rose-600/20'
+                : 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-600/20'
             }`}>
-              {isLoss ? <TrendingDown className="w-3 h-3 text-rose-600" /> : <TrendingUp className="w-3 h-3 text-emerald-600" />}
+              {isLoss ? <TrendingDown className="w-3 h-3 text-rose-600 dark:text-rose-400" /> : <TrendingUp className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />}
               <span>Margin: {formatPct(netMargin)}</span>
-            </Badge>
+            </span>
           </div>
 
           <div className="space-y-2 text-xs">
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                 <span>Total Income</span>
               </span>
-              <span className="fin-num font-bold text-slate-900 dark:text-slate-100">{formatMoney(totalRev)}</span>
+              <span className="fin-num font-medium text-foreground">{formatMoney(totalRev)}</span>
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
-                <span className="w-2 h-2 rounded-full bg-rose-500" />
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
                 <span>Total Expenses</span>
               </span>
-              <span className="fin-num font-bold text-slate-900 dark:text-slate-100">{formatMoney(totalExpense)}</span>
+              <span className="fin-num font-medium text-foreground">{formatMoney(totalExpense)}</span>
             </div>
 
-            <div className="pt-1 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <span className="font-bold text-slate-900 dark:text-slate-100">Net {isLoss ? 'Loss' : 'Profit'}</span>
-              <span className={`fin-num font-extrabold ${isLoss ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+            <div className="pt-2 border-t border-border/60 flex items-center justify-between">
+              <span className="font-semibold text-foreground">Net {isLoss ? 'Loss' : 'Profit'}</span>
+              <span className={`fin-num font-semibold ${isLoss ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
                 {formatMoney(netProfit)}
               </span>
             </div>
@@ -213,9 +215,9 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
 
           {/* Expense Mix Stacked Bar */}
           {totalExpense > 0 && (
-            <div className="space-y-1">
-              <span className="text-[10px] text-slate-400 font-medium block">Expense Breakdown</span>
-              <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex">
+            <div className="space-y-1.5">
+              <span className="text-[10px] text-muted-foreground font-medium block">Expense Breakdown</span>
+              <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden flex">
                 <div
                   className="bg-amber-500 h-full"
                   style={{ width: `${Math.min(100, (costOfSalesTotal / totalExpense) * 100)}%` }}
@@ -227,7 +229,7 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
                   title={`Operating Exp: ${formatPct((operatingExpenseTotal / totalExpense) * 100)}`}
                 />
                 <div
-                  className="bg-slate-500 h-full"
+                  className="bg-slate-400 dark:bg-slate-500 h-full"
                   style={{ width: `${Math.min(100, (nonOperatingExpenseTotal / totalExpense) * 100)}%` }}
                   title={`Non-Operating Exp: ${formatPct((nonOperatingExpenseTotal / totalExpense) * 100)}`}
                 />
@@ -237,34 +239,43 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
         </div>
 
         {/* Jump To Section Card */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3.5 shadow-xs space-y-2">
-          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-xs space-y-2">
+          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide block">
             Jump to Section
           </span>
           <div className="space-y-1 text-xs">
             <button
               type="button"
               onClick={() => onJumpTo?.('section-operating_income')}
-              className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left group"
+              className="w-full flex items-center justify-between p-1.5 rounded-md hover:bg-muted/50 transition-colors text-left group"
             >
-              <span className="font-semibold text-emerald-700 dark:text-emerald-400 group-hover:underline">Operating Income</span>
-              <span className="fin-num font-medium text-slate-600 dark:text-slate-400">{formatMoney(operatingIncomeTotal)}</span>
+              <span className="flex items-center gap-2 font-medium text-foreground group-hover:underline">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                <span>Operating Income</span>
+              </span>
+              <span className="fin-num font-normal text-muted-foreground">{formatMoney(operatingIncomeTotal)}</span>
             </button>
             <button
               type="button"
               onClick={() => onJumpTo?.('section-cost_of_sales')}
-              className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left group"
+              className="w-full flex items-center justify-between p-1.5 rounded-md hover:bg-muted/50 transition-colors text-left group"
             >
-              <span className="font-semibold text-amber-700 dark:text-amber-400 group-hover:underline">Cost of Sales</span>
-              <span className="fin-num font-medium text-slate-600 dark:text-slate-400">{formatMoney(costOfSalesTotal)}</span>
+              <span className="flex items-center gap-2 font-medium text-foreground group-hover:underline">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                <span>Cost of Sales</span>
+              </span>
+              <span className="fin-num font-normal text-muted-foreground">{formatMoney(costOfSalesTotal)}</span>
             </button>
             <button
               type="button"
               onClick={() => onJumpTo?.('section-operating_expense')}
-              className="w-full flex items-center justify-between p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left group"
+              className="w-full flex items-center justify-between p-1.5 rounded-md hover:bg-muted/50 transition-colors text-left group"
             >
-              <span className="font-semibold text-rose-700 dark:text-rose-400 group-hover:underline">Operating Expenses</span>
-              <span className="fin-num font-medium text-slate-600 dark:text-slate-400">{formatMoney(operatingExpenseTotal)}</span>
+              <span className="flex items-center gap-2 font-medium text-foreground group-hover:underline">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                <span>Operating Expenses</span>
+              </span>
+              <span className="fin-num font-normal text-muted-foreground">{formatMoney(operatingExpenseTotal)}</span>
             </button>
           </div>
         </div>
@@ -273,48 +284,48 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
   }
 
   if (mode === 'general_ledger') {
-    const { account, opening_balance = 0, closing_balance = 0, total_debit = 0, total_credit = 0, count = 0 } = data;
+    const { account, opening_balance = 0, closing_balance = 0, total_debit = 0, total_credit = 0 } = data;
 
     return (
       <div className="space-y-3 print:hidden">
         {/* Account Details Card */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-xl p-3.5 shadow-xs space-y-3">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+            <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
               Account Overview
             </span>
             {account && (
-              <Badge variant="outline" className="bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-300 text-[10px] font-bold">
+              <span className="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset bg-muted text-muted-foreground ring-border">
                 {account.account_type}
-              </Badge>
+              </span>
             )}
           </div>
 
           {account ? (
             <div className="space-y-2 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-medium">Code & Name</span>
-                <span className="font-bold text-slate-900 dark:text-slate-100">{account.account_code} · {account.name}</span>
+                <span className="text-muted-foreground">Code & Name</span>
+                <span className="font-medium text-foreground">{account.account_code} · {account.name}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-medium">Opening Balance</span>
-                <span className="fin-num font-bold text-slate-800 dark:text-slate-200">{formatMoney(opening_balance)}</span>
+                <span className="text-muted-foreground">Opening Balance</span>
+                <span className="fin-num font-medium text-foreground">{formatMoney(opening_balance)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-medium">Period Debits</span>
-                <span className="fin-num font-bold text-emerald-600 dark:text-emerald-400">{formatMoney(total_debit)}</span>
+                <span className="text-muted-foreground">Period Debits</span>
+                <span className="fin-num font-medium text-foreground">{formatMoney(total_debit)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-medium">Period Credits</span>
-                <span className="fin-num font-bold text-orange-600 dark:text-orange-400">{formatMoney(total_credit)}</span>
+                <span className="text-muted-foreground">Period Credits</span>
+                <span className="fin-num font-medium text-foreground">{formatMoney(total_credit)}</span>
               </div>
-              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
-                <span className="font-bold text-slate-900 dark:text-slate-100">Closing Balance</span>
-                <span className="fin-num font-extrabold text-[#3E3C3D] dark:text-slate-100">{formatMoney(closing_balance)}</span>
+              <div className="pt-2 border-t border-border/60 flex items-center justify-between">
+                <span className="font-semibold text-foreground">Closing Balance</span>
+                <span className="fin-num font-semibold text-foreground">{formatMoney(closing_balance)}</span>
               </div>
             </div>
           ) : (
-            <p className="text-xs text-slate-500 italic">No account selected</p>
+            <p className="text-xs text-muted-foreground italic">No account selected</p>
           )}
         </div>
       </div>
@@ -323,3 +334,4 @@ export function InsightRail({ mode, data, onJumpTo, onNavigateAnalysis }: Insigh
 
   return null;
 }
+

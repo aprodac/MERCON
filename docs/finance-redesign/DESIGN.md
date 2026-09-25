@@ -561,3 +561,47 @@ Not part of the UI revamp. Several need schema changes (production impact, see `
 | Multi-currency | Odoo | Yes |
 | Finance overview dashboard (`/finance`) | Zoho "Dashboard" | No |
 | Post bank opening balances as a journal entry (Dr bank / Cr Opening Balance Equity), so the Balance Sheet includes them | Zoho, Odoo | No (needs an equity account + backend) |
+
+---
+
+## 2.6 Visual refinement v2 (Overrides Section 2.1 - 2.3 for /finance pages)
+
+The visual rules below make `/finance` pages feel like a modern, clean financial system (shadcn / Stripe / Linear):
+
+- **R1 One gray family — shadcn tokens only**:
+  - `text-slate-900/800/700`, `#111111`, `text-[#3E3C3D]` (as text) → `text-foreground`
+  - `text-slate-600/500/400`, `#6E6E80`, `#757583`, `#9898A4` → `text-muted-foreground`
+  - `bg-slate-50/100`, `#F7F8FA`, `#FAFAFB`, `#F4F4F5`, `#F1F2F5` → `bg-muted` (or `bg-muted/50`, `bg-muted/30`)
+  - `border-slate-*`, `border-black/[0.0x]`, `border-gray-*` → `border-border` (inner dividers: `border-border/60`)
+  - `bg-white` (surfaces) → `bg-card` / `bg-background`
+  - `focus rings` → `ring-ring`
+  - App canvas and sidebar remain app-wide decisions. Brand coral `#FA634E` stays ONLY for active sidebar item, primary CREATE actions on list pages, and focus/selection accents. Charcoal `#3E3C3D` is not used for text or pills inside finance pages.
+
+- **R2 Colour is an accent, never a fill**:
+  - Allowed colour: (a) status/semantic badges via R5; (b) result and variance figures — losses/negatives `text-rose-600` (dark: `text-rose-400`), favourable variance `text-emerald-600` (dark: `text-emerald-400`); (c) 6px category dots; (d) charts.
+  - NOT allowed: tinted full-width section bands, coloured section titles, coloured link text, coloured ordinary amounts, left-border accent bars, decorative bars carrying no data.
+
+- **R3 Figures in sans UI font with tabular figures — no monospace**:
+  - Update `.fin-num`: `font-family: 'Geist Variable', 'Inter Variable', system-ui, sans-serif; font-variant-numeric: tabular-nums;`
+  - Remove Geist Mono / JetBrains Mono / `font-mono` from finance pages. Weights: 400 lines, 500 subtotals, 600 totals.
+  - Account codes: plain `text-muted-foreground` tabular text in a fixed `w-12` column — no grey code boxes.
+
+- **R4 One container level**:
+  - A page section = ONE card: `rounded-xl border bg-card shadow-xs`. Inside: rows separated by `divide-y divide-border/60`; section header rows at most `bg-muted/40`. No bordered boxes inside cards, no nested rounded backgrounds.
+
+- **R5 Badge recipe (StatusPill, source chips, period/basis/currency chips, delta chips)**:
+  - `inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset`
+  - tone → `bg-{hue}-500/10 text-{hue}-700 ring-{hue}-600/20` (dark: `bg-{hue}-400/10 text-{hue}-300 ring-{hue}-400/20`)
+  - neutral → `bg-muted text-muted-foreground ring-border`
+  - Hues: positive `emerald` · negative `rose` · warning `amber` · info `sky` · `violet`/`teal` only where assigned.
+
+- **R6 Controls**:
+  - Segmented view switches use shadcn `Tabs` styling (`TabsList bg-muted p-[3px] rounded-lg; active trigger bg-background text-foreground shadow-sm`) — no black or charcoal active pills.
+  - Toolbar buttons: shadcn `Button variant="outline" size="sm"`. Report pages (P&L, Balance Sheet, GL, Trial Balance, Cash Flow, Ageing) have NO filled buttons (Export is outline). List pages keep ONE coral filled create button. Selects/date pickers use shadcn triggers at size `sm` (`h-8`).
+
+- **R7 Two radii only**:
+  - `rounded-md` (controls, badges, inputs, menu items) and `rounded-xl` (cards, sheets). Shadows: `shadow-xs` on cards, `shadow-md` only on popovers/menus/sheets, none elsewhere.
+
+- **R8 Type scale**:
+  - `11px uppercase tracking-wide text-muted-foreground font-medium` for column labels only; 13–14px body; 15px card titles (`font-semibold`); no other uppercase text. Spacing on a 4px grid; list/statement rows `h-9`; card padding `p-4` (`p-5` max).
+

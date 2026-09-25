@@ -48,27 +48,27 @@ export function JournalLinesTable({
     return (
       <div
         className={cn(
-          'bg-[#F7F8FA] dark:bg-slate-900/50 border border-black/[0.06] dark:border-slate-800 rounded-[14px] p-4 space-y-3',
+          'bg-muted/40 border border-border rounded-xl p-4 space-y-3 shadow-xs',
           className
         )}
       >
         <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+          <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             {title || 'Will Post to General Ledger'}
           </span>
           <span
             className={cn(
-              'px-2 py-0.5 rounded-full text-[10.5px] font-bold fin-num',
+              'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset fin-num',
               isBalanced
-                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-600/20'
+                : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-600/20'
             )}
           >
             {isBalanced ? '✓ Balanced' : `Out by ${formatMoney(imbalance)}`}
           </span>
         </div>
 
-        <div className="divide-y divide-black/[0.04] dark:divide-slate-800/60 text-[12.5px]">
+        <div className="divide-y divide-border/60 text-xs">
           {lines.map((line, idx) => {
             const isCredit = (Number(line.credit) || 0) > 0;
             const code = line.account?.account_code || '';
@@ -82,33 +82,35 @@ export function JournalLinesTable({
                   isCredit ? 'pl-4' : ''
                 )}
               >
-                <div className="min-w-0">
-                  <div className="font-medium text-[#111111] dark:text-slate-200 truncate">
-                    {code && (
-                      <span className="fin-num text-[#757583] dark:text-slate-400 mr-1.5">
-                        {code}
-                      </span>
-                    )}
-                    <span>{name}</span>
-                  </div>
-                  {line.description && (
-                    <p className="text-[11px] text-[#757583] dark:text-slate-400 truncate">
-                      {line.description}
-                    </p>
+                <div className="min-w-0 flex items-baseline gap-3">
+                  {code && (
+                    <span className="fin-num text-muted-foreground w-12 shrink-0">
+                      {code}
+                    </span>
                   )}
+                  <div>
+                    <div className="font-medium text-foreground truncate">
+                      {name}
+                    </div>
+                    {line.description && (
+                      <p className="text-xs text-muted-foreground truncate">
+                        {line.description}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
-                <div className="text-right font-mono font-medium shrink-0">
+                <div className="text-right fin-num font-medium shrink-0">
                   {Number(line.debit) > 0 ? (
-                    <span className="text-[#111111] dark:text-slate-100">
+                    <span className="text-foreground">
                       Dr {formatMoney(line.debit)}
                     </span>
                   ) : Number(line.credit) > 0 ? (
-                    <span className="text-[#6E6E80] dark:text-slate-400">
+                    <span className="text-muted-foreground">
                       Cr {formatMoney(line.credit)}
                     </span>
                   ) : (
-                    <span className="text-[#6E6E80]/40">—</span>
+                    <span className="text-muted-foreground/40">—</span>
                   )}
                 </div>
               </div>
@@ -122,26 +124,27 @@ export function JournalLinesTable({
   return (
     <div
       className={cn(
-        'border border-black/[0.06] dark:border-slate-800 rounded-[14px] overflow-hidden bg-white dark:bg-slate-900',
+        'border border-border rounded-xl shadow-xs overflow-hidden bg-card',
         className
       )}
     >
       {title && (
-        <div className="px-4 py-3 bg-[#FAFAFB] dark:bg-slate-800/40 border-b border-black/[0.06] dark:border-slate-800 text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+        <div className="px-4 py-2.5 bg-muted/40 border-b border-border text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           {title}
         </div>
       )}
 
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-[13px] border-collapse">
+        <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="bg-[#FAFAFB] dark:bg-slate-800/40 border-b border-black/[0.06] dark:border-slate-800 text-[10px] font-bold uppercase tracking-[0.1em] text-[#757583] dark:text-slate-400">
+            <tr className="bg-muted/40 border-b border-border text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <th className="py-2.5 px-4 w-16">Code</th>
               <th className="py-2.5 px-4">Account</th>
               <th className="py-2.5 px-4 text-right w-36">Debit</th>
               <th className="py-2.5 px-4 text-right w-36">Credit</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-black/[0.04] dark:divide-slate-800/60">
+          <tbody className="divide-y divide-border/60">
             {lines.map((line, idx) => {
               const isCredit = (Number(line.credit) || 0) > 0;
               const code = line.account?.account_code || '';
@@ -150,35 +153,33 @@ export function JournalLinesTable({
               return (
                 <tr
                   key={line.id || idx}
-                  className="hover:bg-[#FAFAFB] dark:hover:bg-slate-800/40 transition-colors"
+                  className="hover:bg-muted/50 transition-colors h-9"
                 >
-                  <td className={cn('py-2.5 px-4', isCredit ? 'pl-8' : '')}>
-                    <div className="font-medium text-[#111111] dark:text-slate-200">
-                      {code && (
-                        <span className="fin-num text-[#757583] dark:text-slate-400 mr-2">
-                          {code}
-                        </span>
-                      )}
-                      <span>{name}</span>
+                  <td className="py-2 px-4 fin-num text-muted-foreground w-16">
+                    {code || '—'}
+                  </td>
+                  <td className={cn('py-2 px-4', isCredit ? 'pl-8' : '')}>
+                    <div className="font-medium text-foreground">
+                      {name}
                     </div>
                     {line.description && (
-                      <div className="text-[11.5px] text-[#757583] dark:text-slate-400">
+                      <div className="text-xs text-muted-foreground">
                         {line.description}
                       </div>
                     )}
                   </td>
-                  <td className="py-2.5 px-4 text-right">
+                  <td className="py-2 px-4 text-right">
                     {Number(line.debit) > 0 ? (
                       <MoneyText value={line.debit} />
                     ) : (
-                      <span className="text-[#6E6E80]/40">—</span>
+                      <span className="text-muted-foreground/40">—</span>
                     )}
                   </td>
-                  <td className="py-2.5 px-4 text-right">
+                  <td className="py-2 px-4 text-right">
                     {Number(line.credit) > 0 ? (
                       <MoneyText value={line.credit} tone="muted" />
                     ) : (
-                      <span className="text-[#6E6E80]/40">—</span>
+                      <span className="text-muted-foreground/40">—</span>
                     )}
                   </td>
                 </tr>
@@ -186,24 +187,24 @@ export function JournalLinesTable({
             })}
           </tbody>
           <tfoot>
-            <tr className="bg-[#F7F8FA] dark:bg-slate-900/50 border-t border-black/[0.06] dark:border-slate-800 font-semibold text-xs">
-              <td className="py-3 px-4 text-[#111111] dark:text-slate-200 flex items-center justify-between">
+            <tr className="bg-muted/40 border-t border-border font-semibold text-xs">
+              <td colSpan={2} className="py-2.5 px-4 text-foreground flex items-center justify-between">
                 <span>Totals ({currency})</span>
                 <span
                   className={cn(
-                    'px-2 py-0.5 rounded-full text-[10.5px] font-bold fin-num ml-2',
+                    'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset fin-num ml-2',
                     isBalanced
-                      ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300'
-                      : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+                      ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-emerald-600/20'
+                      : 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-amber-600/20'
                   )}
                 >
                   {isBalanced ? '✓ Balanced' : `Out by ${formatMoney(imbalance)}`}
                 </span>
               </td>
-              <td className="py-3 px-4 text-right">
+              <td className="py-2.5 px-4 text-right">
                 <MoneyText value={totalDebit} size="md" />
               </td>
-              <td className="py-3 px-4 text-right">
+              <td className="py-2.5 px-4 text-right">
                 <MoneyText value={totalCredit} size="md" />
               </td>
             </tr>
@@ -213,3 +214,4 @@ export function JournalLinesTable({
     </div>
   );
 }
+
