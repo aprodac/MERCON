@@ -3,9 +3,14 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/inter";
-@import "@fontsource-variable/jetbrains-mono";
+@import "@fontsource-variable/geist-mono";
 
 @custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, SFMono-Regular, Consolas, monospace;
+  --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+}
 
 /* Target numbers exclusively for the Geist Mono font */
 @font-face {
@@ -56,6 +61,7 @@
 
   /* Typography */
   --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, SFMono-Regular, Consolas, monospace;
 
   /* Radius */
   --radius-sm:   6px; /* CI/CD pipeline dev speed benchmark */
@@ -654,8 +660,9 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.fin-num-mono {
-  font-family: var(--font-mono, 'JetBrains Mono Variable', monospace);
+.fin-num-mono,
+.font-mono {
+  font-family: var(--font-mono, 'Geist Mono Variable', 'Geist Mono', ui-monospace, SFMono-Regular, Consolas, monospace);
   font-variant-numeric: tabular-nums;
 }
 
