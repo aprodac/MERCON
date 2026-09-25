@@ -2,6 +2,74 @@ import { Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 
+const FALLBACK_TZ = 'Asia/Riyadh';
+
+function localDateToUtc(dateStr: string, tz: string, endOfDay: boolean): Date {
+  const time = endOfDay ? '23:59:59' : '00:00:00';
+  const probe = new Date(`${dateStr}T${time}Z`);
+
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
+  const parts: Record<string, number> = {};
+  for (const p of fmt.formatToParts(probe)) {
+    if (p.type !== 'literal') parts[p.type] = parseInt(p.value, 10);
+  }
+
+  const hour = parts['hour'] === 24 ? 0 : parts['hour'];
+  const tzMs = Date.UTC(
+    parts['year'],
+    parts['month'] - 1,
+    parts['day'],
+    hour,
+    parts['minute'],
+    parts['second'],
+  );
+
+  const offsetMs = tzMs - probe.getTime();
+
+  const result = new Date(probe.getTime() - offsetMs);
+  if (endOfDay) result.setUTCMilliseconds(999);
+  return result;
+}
+
+export async function parseReportDateRange(date_from?: string, date_to?: string) {
+  let tz = FALLBACK_TZ;
+  try {
+    const settings = await prisma.settings.findUnique({
+      where: { id: 'singleton' },
+      select: { timezone: true },
+    });
+    if (settings?.timezone) {
+      tz = settings.timezone;
+    }
+  } catch {
+    // fallback to default
+  }
+
+  let fromDate: Date | undefined;
+  let toDate: Date | undefined;
+
+  if (date_from) {
+    const cleanFrom = String(date_from).split('T')[0];
+    fromDate = localDateToUtc(cleanFrom, tz, false);
+  }
+  if (date_to) {
+    const cleanTo = String(date_to).split('T')[0];
+    toDate = localDateToUtc(cleanTo, tz, true);
+  }
+
+  return { fromDate, toDate, tz };
+}
+
 export const getTrialBalance = async (req: Request, res: Response) => {
   try {
     const { period_id } = req.query;
@@ -91,18 +159,22 @@ export const getTrialBalance = async (req: Request, res: Response) => {
 };
 
 export const calculateProfitAndLossData = async (date_from?: string, date_to?: string) => {
+  const { fromDate, toDate } = await parseReportDateRange(date_from, date_to);
+
   const entryDateFilter: Prisma.DateTimeFilter = {};
-  if (date_from) {
-    entryDateFilter.gte = new Date(String(date_from));
+  if (fromDate) {
+    entryDateFilter.gte = fromDate;
   }
-  if (date_to) {
-    entryDateFilter.lte = new Date(String(date_to));
+  if (toDate) {
+    entryDateFilter.lte = toDate;
   }
 
+  // Exclude FiscalYearClosing entries because year-end closing entries net revenues/expenses to retained earnings for the balance sheet, but should not collapse the period P&L statement to zero.
   const lines = await prisma.journalLine.findMany({
     where: {
       journalEntry: {
         status: { in: ['Posted', 'Voided'] },
+        source_type: { not: 'FiscalYearClosing' },
         entry_date: Object.keys(entryDateFilter).length > 0 ? entryDateFilter : undefined,
       },
       account: {
@@ -110,12 +182,32 @@ export const calculateProfitAndLossData = async (date_from?: string, date_to?: s
       },
     },
     include: {
-      account: true,
+      account: {
+        include: {
+          parent: {
+            select: {
+              id: true,
+              account_code: true,
+              name: true,
+            },
+          },
+        },
+      },
     },
   });
 
-  const revenueMap = new Map<string, { account_id: string; account_code: string; name: string; amount: Prisma.Decimal }>();
-  const expenseMap = new Map<string, { account_id: string; account_code: string; name: string; amount: Prisma.Decimal }>();
+  type MapItem = {
+    account_id: string;
+    account_code: string;
+    name: string;
+    parent_id?: string | null;
+    parent_code?: string | null;
+    parent_name?: string | null;
+    amount: Prisma.Decimal;
+  };
+
+  const revenueMap = new Map<string, MapItem>();
+  const expenseMap = new Map<string, MapItem>();
 
   for (const line of lines) {
     const acc = line.account;
@@ -127,6 +219,9 @@ export const calculateProfitAndLossData = async (date_from?: string, date_to?: s
         account_id: acc.id,
         account_code: acc.account_code,
         name: acc.name,
+        parent_id: acc.parent?.id || null,
+        parent_code: acc.parent?.account_code || null,
+        parent_name: acc.parent?.name || null,
         amount: new Prisma.Decimal(0),
       };
       current.amount = current.amount.plus(credit.minus(debit));
@@ -136,6 +231,9 @@ export const calculateProfitAndLossData = async (date_from?: string, date_to?: s
         account_id: acc.id,
         account_code: acc.account_code,
         name: acc.name,
+        parent_id: acc.parent?.id || null,
+        parent_code: acc.parent?.account_code || null,
+        parent_name: acc.parent?.name || null,
         amount: new Prisma.Decimal(0),
       };
       current.amount = current.amount.plus(debit.minus(credit));
@@ -151,6 +249,9 @@ export const calculateProfitAndLossData = async (date_from?: string, date_to?: s
         account_id: r.account_id,
         account_code: r.account_code,
         name: r.name,
+        parent_id: r.parent_id || null,
+        parent_code: r.parent_code || null,
+        parent_name: r.parent_name || null,
         amount: r.amount.toNumber(),
       };
     })
@@ -164,6 +265,9 @@ export const calculateProfitAndLossData = async (date_from?: string, date_to?: s
         account_id: e.account_id,
         account_code: e.account_code,
         name: e.name,
+        parent_id: e.parent_id || null,
+        parent_code: e.parent_code || null,
+        parent_name: e.parent_name || null,
         amount: e.amount.toNumber(),
       };
     })
@@ -199,8 +303,10 @@ export const getCashFlow = async (req: Request, res: Response) => {
   try {
     const { date_from, date_to } = req.query;
 
-    const fromDate = date_from ? new Date(String(date_from)) : undefined;
-    const toDate = date_to ? new Date(String(date_to)) : undefined;
+    const { fromDate, toDate } = await parseReportDateRange(
+      date_from ? String(date_from) : undefined,
+      date_to ? String(date_to) : undefined,
+    );
 
     const pnl = await calculateProfitAndLossData(
       date_from ? String(date_from) : undefined,
@@ -335,196 +441,264 @@ export const getCashFlow = async (req: Request, res: Response) => {
 export const getBalanceSheet = async (req: Request, res: Response) => {
   try {
     const { as_of } = req.query;
-    const asOfDate = as_of ? new Date(String(as_of)) : new Date();
+    const asOfStr = as_of ? String(as_of) : new Date().toISOString().slice(0, 10);
+    const { toDate } = await parseReportDateRange(undefined, asOfStr);
+    const finalAsOfDate = toDate || new Date();
 
-    const assets: { account_id: string | null; account_code: string; name: string; amount: number }[] = [];
-    const liabilities: { account_id: string | null; account_code: string; name: string; amount: number }[] = [];
-    const equity: { account_id: string | null; account_code: string; name: string; amount: number }[] = [];
+    const assets: {
+      account_id: string | null;
+      account_code: string | null;
+      name: string;
+      parent_id?: string | null;
+      parent_code?: string | null;
+      parent_name?: string | null;
+      is_bank_or_cash?: boolean;
+      kind?: string;
+      amount: number;
+    }[] = [];
+
+    const liabilities: {
+      account_id: string | null;
+      account_code: string | null;
+      name: string;
+      parent_id?: string | null;
+      parent_code?: string | null;
+      parent_name?: string | null;
+      is_bank_or_cash?: boolean;
+      kind?: string;
+      amount: number;
+    }[] = [];
+
+    const equity: {
+      account_id: string | null;
+      account_code: string | null;
+      name: string;
+      parent_id?: string | null;
+      parent_code?: string | null;
+      parent_name?: string | null;
+      is_bank_or_cash?: boolean;
+      kind?: string;
+      amount: number;
+    }[] = [];
 
     let totalAssets = new Prisma.Decimal(0);
     let totalLiabilities = new Prisma.Decimal(0);
     let totalEquity = new Prisma.Decimal(0);
     let using_snapshot = false;
 
-    // Check if as_of matches a Closed accounting period's end_date for snapshot optimization
-    const matchedClosedPeriod = await prisma.accountingPeriod.findFirst({
+    const cleanAsOfDateStr = asOfStr.split('T')[0];
+    const asOfMaxUtc = new Date(`${cleanAsOfDateStr}T23:59:59.999Z`);
+    const queryLte = finalAsOfDate.getTime() > asOfMaxUtc.getTime() ? finalAsOfDate : asOfMaxUtc;
+
+    // Check accounting periods ending on or before finalAsOfDate
+    const periodsOnOrBefore = await prisma.accountingPeriod.findMany({
       where: {
-        status: 'Closed',
-        end_date: {
-          gte: new Date(asOfDate.getFullYear(), asOfDate.getMonth(), asOfDate.getDate(), 0, 0, 0),
-          lte: new Date(asOfDate.getFullYear(), asOfDate.getMonth(), asOfDate.getDate(), 23, 59, 59),
-        },
+        end_date: { lte: queryLte },
       },
+      orderBy: { end_date: 'asc' },
       include: {
-        closingBalances: { include: { account: true } },
+        _count: { select: { closingBalances: true } },
       },
     });
+    const targetPeriod = periodsOnOrBefore.find((p) => {
+      const pEndStr = p.end_date.toISOString().slice(0, 10);
+      return pEndStr === cleanAsOfDateStr;
+    });
 
-    if (matchedClosedPeriod && matchedClosedPeriod.closingBalances.length > 0) {
-      using_snapshot = true;
-      // Fetch AccountClosingBalance snapshot records for all closed periods up to matchedClosedPeriod.end_date
+    let matchedPeriod: typeof targetPeriod | undefined = undefined;
+
+    if (targetPeriod && periodsOnOrBefore.length > 0) {
+      const targetIndex = periodsOnOrBefore.findIndex((p) => p.id === targetPeriod.id);
+      const relevantPeriods = periodsOnOrBefore.slice(0, targetIndex + 1);
+
+      const allEligible = relevantPeriods.every(
+        (p) => p.status === 'Closed' || p.status === 'Locked',
+      );
+
+      if (allEligible) {
+        using_snapshot = true;
+        matchedPeriod = targetPeriod;
+      }
+    }
+
+    type AccountMapItem = {
+      account_id: string;
+      account_code: string;
+      name: string;
+      account_type: string;
+      parent_id: string | null;
+      parent_code: string | null;
+      parent_name: string | null;
+      is_bank_or_cash: boolean;
+      amount: Prisma.Decimal;
+    };
+
+    const accountBalMap = new Map<string, AccountMapItem>();
+
+    if (using_snapshot && matchedPeriod) {
       const closingBalances = await prisma.accountClosingBalance.findMany({
         where: {
           period: {
-            status: 'Closed',
-            end_date: { lte: matchedClosedPeriod.end_date },
+            status: { in: ['Closed', 'Locked'] },
+            end_date: { lte: matchedPeriod.end_date },
           },
         },
-        include: { account: true },
+        include: {
+          account: {
+            include: {
+              parent: { select: { id: true, account_code: true, name: true } },
+              bankAccount: { select: { id: true } },
+            },
+          },
+        },
       });
-
-      const accountBalMap = new Map<string, { account_id: string; account_code: string; name: string; account_type: string; amount: Prisma.Decimal }>();
-      let cumulativeRevenue = new Prisma.Decimal(0);
-      let cumulativeExpense = new Prisma.Decimal(0);
 
       for (const cb of closingBalances) {
         const acc = cb.account;
+        if (acc.account_type === 'Revenue' || acc.account_type === 'Expense') {
+          continue;
+        }
+
         const bal = new Prisma.Decimal(cb.closing_balance);
-
-        if (acc.account_type === 'Revenue') {
-          cumulativeRevenue = cumulativeRevenue.plus(bal);
-          continue;
-        }
-        if (acc.account_type === 'Expense') {
-          cumulativeExpense = cumulativeExpense.plus(bal);
-          continue;
-        }
-
         const current = accountBalMap.get(acc.id) || {
           account_id: acc.id,
           account_code: acc.account_code,
           name: acc.name,
           account_type: acc.account_type,
+          parent_id: acc.parent?.id || null,
+          parent_code: acc.parent?.account_code || null,
+          parent_name: acc.parent?.name || null,
+          is_bank_or_cash: Boolean(acc.bankAccount),
           amount: new Prisma.Decimal(0),
         };
         current.amount = current.amount.plus(bal);
         accountBalMap.set(acc.id, current);
       }
-
-      for (const val of accountBalMap.values()) {
-        const item = {
-          account_id: val.account_id,
-          account_code: val.account_code,
-          name: val.name,
-          amount: val.amount.toNumber(),
-        };
-
-        if (val.account_type === 'Asset') {
-          assets.push(item);
-          totalAssets = totalAssets.plus(val.amount);
-        } else if (val.account_type === 'Liability') {
-          liabilities.push(item);
-          totalLiabilities = totalLiabilities.plus(val.amount);
-        } else if (val.account_type === 'Equity') {
-          equity.push(item);
-          totalEquity = totalEquity.plus(val.amount);
-        }
-      }
-
-      const retainedEarnings = cumulativeRevenue.minus(cumulativeExpense);
-      if (!retainedEarnings.equals(0)) {
-        equity.push({
-          account_id: null,
-          account_code: '3999',
-          name: 'Retained Earnings (Unclosed Net Income)',
-          amount: retainedEarnings.toNumber(),
-        });
-        totalEquity = totalEquity.plus(retainedEarnings);
-      }
     } else {
-      // Raw calculation from Posted journal lines up to asOfDate
-      using_snapshot = false;
       const lines = await prisma.journalLine.findMany({
         where: {
           journalEntry: {
             status: { in: ['Posted', 'Voided'] },
-            entry_date: { lte: asOfDate },
+            entry_date: { lte: finalAsOfDate },
           },
         },
         include: {
-          account: true,
+          account: {
+            include: {
+              parent: { select: { id: true, account_code: true, name: true } },
+              bankAccount: { select: { id: true } },
+            },
+          },
         },
       });
 
-      const accountBalMap = new Map<string, { account_id: string; account_code: string; name: string; account_type: string; amount: Prisma.Decimal }>();
-      let cumulativeRevenue = new Prisma.Decimal(0);
-      let cumulativeExpense = new Prisma.Decimal(0);
-
       for (const line of lines) {
         const acc = line.account;
+        if (acc.account_type === 'Revenue' || acc.account_type === 'Expense') {
+          continue;
+        }
+
         const debit = new Prisma.Decimal(line.debit || 0);
         const credit = new Prisma.Decimal(line.credit || 0);
-
-        if (acc.account_type === 'Revenue') {
-          cumulativeRevenue = cumulativeRevenue.plus(credit.minus(debit));
-          continue;
-        }
-        if (acc.account_type === 'Expense') {
-          cumulativeExpense = cumulativeExpense.plus(debit.minus(credit));
-          continue;
-        }
 
         const current = accountBalMap.get(acc.id) || {
           account_id: acc.id,
           account_code: acc.account_code,
           name: acc.name,
           account_type: acc.account_type,
+          parent_id: acc.parent?.id || null,
+          parent_code: acc.parent?.account_code || null,
+          parent_name: acc.parent?.name || null,
+          is_bank_or_cash: Boolean(acc.bankAccount),
           amount: new Prisma.Decimal(0),
         };
 
         if (acc.account_type === 'Asset') {
           current.amount = current.amount.plus(debit.minus(credit));
         } else {
-          // Liability, Equity
           current.amount = current.amount.plus(credit.minus(debit));
         }
 
         accountBalMap.set(acc.id, current);
       }
+    }
 
-      for (const val of accountBalMap.values()) {
-        const item = {
-          account_id: val.account_id,
-          account_code: val.account_code,
-          name: val.name,
-          amount: val.amount.toNumber(),
-        };
+    for (const val of accountBalMap.values()) {
+      const item = {
+        account_id: val.account_id,
+        account_code: val.account_code,
+        name: val.name,
+        parent_id: val.parent_id,
+        parent_code: val.parent_code,
+        parent_name: val.parent_name,
+        is_bank_or_cash: val.is_bank_or_cash,
+        amount: val.amount.toNumber(),
+      };
 
-        if (val.account_type === 'Asset') {
-          assets.push(item);
-          totalAssets = totalAssets.plus(val.amount);
-        } else if (val.account_type === 'Liability') {
-          liabilities.push(item);
-          totalLiabilities = totalLiabilities.plus(val.amount);
-        } else if (val.account_type === 'Equity') {
-          equity.push(item);
-          totalEquity = totalEquity.plus(val.amount);
-        }
-      }
-
-      // Retained Earnings = Cumulative Revenue - Cumulative Expense up to asOfDate
-      const retainedEarnings = cumulativeRevenue.minus(cumulativeExpense);
-      if (!retainedEarnings.equals(0)) {
-        equity.push({
-          account_id: null,
-          account_code: '3999',
-          name: 'Retained Earnings (Unclosed Net Income)',
-          amount: retainedEarnings.toNumber(),
-        });
-        totalEquity = totalEquity.plus(retainedEarnings);
+      if (val.account_type === 'Asset') {
+        assets.push(item);
+        totalAssets = totalAssets.plus(val.amount);
+      } else if (val.account_type === 'Liability') {
+        liabilities.push(item);
+        totalLiabilities = totalLiabilities.plus(val.amount);
+      } else if (val.account_type === 'Equity') {
+        equity.push(item);
+        totalEquity = totalEquity.plus(val.amount);
       }
     }
 
-    assets.sort((a, b) => a.account_code.localeCompare(b.account_code));
-    liabilities.sort((a, b) => a.account_code.localeCompare(b.account_code));
-    equity.sort((a, b) => a.account_code.localeCompare(b.account_code));
+    // Earnings split:
+    // 1. current_year_earnings = P&L net from 1 Jan of the as_of year to as_of
+    const asOfYear = finalAsOfDate.getFullYear();
+    const startOfYearStr = `${asOfYear}-01-01`;
+    const currentYearPnl = await calculateProfitAndLossData(startOfYearStr, cleanAsOfDateStr);
+    const currentYearEarnings = currentYearPnl.net_profit;
+
+    // 2. unclosed_prior_earnings = total cumulative unclosed net income up to as_of - current_year_earnings
+    const totalCumulativePnl = await calculateProfitAndLossData(undefined, cleanAsOfDateStr);
+    const totalCumulativeNetIncome = totalCumulativePnl.net_profit;
+    const unclosedPriorEarnings = totalCumulativeNetIncome - currentYearEarnings;
+
+    if (Math.abs(unclosedPriorEarnings) > 0.0001) {
+      equity.push({
+        account_id: null,
+        account_code: null,
+        name: 'Retained Earnings (Unclosed Prior Years)',
+        parent_id: null,
+        parent_code: null,
+        parent_name: null,
+        is_bank_or_cash: false,
+        kind: 'unclosed_prior_earnings',
+        amount: unclosedPriorEarnings,
+      });
+      totalEquity = totalEquity.plus(unclosedPriorEarnings);
+    }
+
+    if (Math.abs(currentYearEarnings) > 0.0001) {
+      equity.push({
+        account_id: null,
+        account_code: null,
+        name: 'Current Year Earnings',
+        parent_id: null,
+        parent_code: null,
+        parent_name: null,
+        is_bank_or_cash: false,
+        kind: 'current_year_earnings',
+        amount: currentYearEarnings,
+      });
+      totalEquity = totalEquity.plus(currentYearEarnings);
+    }
+
+    assets.sort((a, b) => (a.account_code || '').localeCompare(b.account_code || ''));
+    liabilities.sort((a, b) => (a.account_code || '').localeCompare(b.account_code || ''));
+    equity.sort((a, b) => (a.account_code || '').localeCompare(b.account_code || ''));
 
     const is_balanced = totalAssets.equals(totalLiabilities.plus(totalEquity));
 
     res.json({
       success: true,
       data: {
-        as_of: asOfDate.toISOString(),
+        as_of: finalAsOfDate.toISOString(),
         using_snapshot,
         assets,
         liabilities,
@@ -575,8 +749,10 @@ export const getGeneralLedger = async (req: Request, res: Response) => {
 
     const isDebitNormal = account.account_type === 'Asset' || account.account_type === 'Expense';
 
-    const fromDate = date_from ? new Date(String(date_from)) : undefined;
-    const toDate = date_to ? new Date(String(date_to)) : undefined;
+    const { fromDate, toDate } = await parseReportDateRange(
+      date_from ? String(date_from) : undefined,
+      date_to ? String(date_to) : undefined,
+    );
 
     let openingBalance = new Prisma.Decimal(0);
 

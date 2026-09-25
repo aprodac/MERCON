@@ -542,8 +542,13 @@ export interface TrialBalanceData {
 
 export interface ReportLineItem {
   account_id?: string | null;
-  account_code: string;
+  account_code?: string | null;
   name: string;
+  parent_id?: string | null;
+  parent_code?: string | null;
+  parent_name?: string | null;
+  is_bank_or_cash?: boolean;
+  kind?: string;
   amount: number;
 }
 
