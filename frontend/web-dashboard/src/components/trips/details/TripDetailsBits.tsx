@@ -1,5 +1,9 @@
 import { Check, CircleAlert, Plus, FileText, ListOrdered, Phone, Smartphone, Truck, UploadCloud, UserRound, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
+import DriverAvatar from '@/components/ui/DriverAvatar';
+import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
+import type { DriverStatus } from '@/services/driverService';
 import { resolveFileUrl } from '@/lib/documents';
 import { formatDuration, formatKm, timeAgo } from '@/lib/fleetLive';
 import type { LiveGpsFix, TripOverview } from '@/services/fleetLiveService';
@@ -114,46 +118,107 @@ function Feed({ icon: Icon, label, fix, missing }: { icon: typeof Truck; label: 
   );
 }
 
-/** Truck and driver, as a small card on the map (top-left). */
+/** Truck and driver, as a card on the map (top-left): photos, class, contact, and links to their profiles. */
 export function TruckDriverOverlay({
   trip, overview, truckLabel, onReassign,
 }: { trip: Trip; overview: TripOverview | undefined; truckLabel: string; onReassign: (mode: 'driver' | 'truck') => void }) {
-  const d = trip.driver;
-  const coDriver = (trip as any).coDriver as { first_name?: string; last_name?: string } | undefined;
+  const navigate = useNavigate();
+  const d = trip.driver as (NonNullable<Trip['driver']> & { status?: DriverStatus; ref_id?: string }) | null | undefined;
+  const v = trip.vehicle as (NonNullable<Trip['vehicle']> & { image_url?: string | null; trailer_number?: string | null }) | null | undefined;
+  const coDriver = (trip as any).coDriver as { id?: string; first_name?: string; last_name?: string; avatar_url?: string | null; phone_primary?: string | null } | undefined;
   const unit = overview?.unit;
   const showFeeds = overview?.phase === 'active' || overview?.phase === 'planned';
-  const driverName = d ? `${d.first_name} ${d.last_name}` : trip.is_third_party ? (trip as any).third_party_driver_name || 'Third-party driver' : 'No driver assigned';
+  const truckSub = [
+    v?.capacity_kg ? `${Math.round(v.capacity_kg / 1000)} ton` : null,
+    v?.asset_type ?? null,
+    v?.trailer_number ? `Trailer ${v.trailer_number}` : null,
+  ].filter(Boolean).join(' · ');
+  const change = (mode: 'driver' | 'truck') => (
+    <button type="button" onClick={() => onReassign(mode)} className="shrink-0 text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400">Change</button>
+  );
+  const phoneDigits = (p?: string | null) => (p ?? '').replace(/[^0-9]/g, '');
+
   return (
-    <div className="pointer-events-auto w-[260px] rounded-2xl border border-black/[0.06] bg-white/90 p-3 shadow-[0_8px_30px_rgba(0,0,0,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/80">
-      <div className="flex items-center gap-2">
-        <Truck className="size-4 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate font-mono text-[13px] font-semibold text-foreground">{truckLabel}</span>
-        {!trip.is_third_party && (
-          <button type="button" onClick={() => onReassign('truck')} className="text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400">Change</button>
+    <div className="pointer-events-auto w-[300px] overflow-hidden rounded-2xl border border-black/[0.06] bg-white/92 shadow-[0_8px_30px_rgba(0,0,0,0.12)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/85">
+      {/* Truck */}
+      <div className="flex items-start gap-3 p-3">
+        {v?.image_url ? (
+          <img src={resolveFileUrl(v.image_url)} alt="" className="size-10 shrink-0 rounded-xl border border-black/[0.06] bg-white object-cover dark:border-white/10" />
+        ) : (
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-500/10 text-slate-600 dark:text-slate-300"><Truck className="size-5" /></span>
         )}
-      </div>
-      <div className="mt-2 flex items-center gap-2">
-        <UserRound className="size-4 shrink-0 text-muted-foreground" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-medium text-foreground">{driverName}</p>
-          {(d?.phone_primary || coDriver?.first_name) && (
-            <p className="truncate text-[11px] text-muted-foreground">
-              {d?.phone_primary ?? ''}
-              {coDriver?.first_name && ` · co-driver ${`${coDriver.first_name} ${coDriver.last_name ?? ''}`.trim()}`}
+          {v && !trip.is_third_party ? (
+            <button type="button" onClick={() => navigate(`/vehicles/${v.id}`)} title="Open truck profile" className="block max-w-full truncate text-left font-mono text-sm font-semibold text-foreground hover:underline">
+              {v.plate_number}
+            </button>
+          ) : (
+            <p className="truncate font-mono text-sm font-semibold text-foreground">{truckLabel}</p>
+          )}
+          <p className="truncate text-[11px] text-muted-foreground">{trip.is_third_party ? 'Third-party truck' : truckSub || 'No truck assigned'}</p>
+          {v && (
+            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+              <span className={cn('size-1.5 rounded-full', v.icces_device_id ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600')} />
+              {v.icces_device_id ? 'GPS tracker fitted' : 'No GPS tracker'}
             </p>
           )}
         </div>
-        {d?.phone_primary && (
-          <a href={`tel:${d.phone_primary}`} aria-label={`Call ${d.first_name}`} className="flex size-7 items-center justify-center rounded-full text-emerald-600 hover:bg-emerald-600/10">
-            <Phone className="size-3.5" />
-          </a>
-        )}
-        {!trip.is_third_party && (
-          <button type="button" onClick={() => onReassign('driver')} className="text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400">Change</button>
-        )}
+        {!trip.is_third_party && change('truck')}
       </div>
+
+      {/* Driver */}
+      <div className="flex items-start gap-3 border-t border-black/[0.06] p-3 dark:border-white/10">
+        {d ? (
+          <DriverAvatar src={d.avatar_url} firstName={d.first_name} lastName={d.last_name} size="md" status={d.status} showStatusDot={!!d.status} />
+        ) : (
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-500/10 text-slate-600 dark:text-slate-300"><UserRound className="size-5" /></span>
+        )}
+        <div className="min-w-0 flex-1">
+          {d ? (
+            <button type="button" onClick={() => navigate(`/drivers/${d.id}`)} title="Open driver profile" className="line-clamp-2 text-left text-sm leading-snug font-semibold text-foreground hover:underline">
+              {`${d.first_name} ${d.last_name}`.trim()}
+            </button>
+          ) : (
+            <p className="text-sm font-semibold text-foreground">
+              {trip.is_third_party ? (trip as any).third_party_driver_name || 'Third-party driver' : 'No driver assigned'}
+            </p>
+          )}
+          {d && (
+            <p className="truncate text-[11px] text-muted-foreground">
+              {[d.ref_id, d.phone_primary, d.status ? DRIVER_STATUS_LABEL[d.status] : null].filter(Boolean).join(' · ')}
+            </p>
+          )}
+          {d?.phone_primary && (
+            <div className="mt-1.5 flex gap-1.5">
+              <a href={`tel:${d.phone_primary}`} className="flex h-6 items-center gap-1 rounded-full bg-emerald-600/10 px-2 text-[11px] font-medium text-emerald-700 hover:bg-emerald-600/15 dark:text-emerald-300">
+                <Phone className="size-3" /> Call
+              </a>
+              <a href={`https://wa.me/${phoneDigits(d.phone_primary)}`} target="_blank" rel="noreferrer" className="flex h-6 items-center gap-1 rounded-full bg-[#25D366]/12 px-2 text-[11px] font-medium text-emerald-700 hover:bg-[#25D366]/20 dark:text-emerald-300">
+                <WhatsAppIcon className="size-3" /> WhatsApp
+              </a>
+            </div>
+          )}
+        </div>
+        {!trip.is_third_party && change('driver')}
+      </div>
+
+      {/* Co-driver */}
+      {coDriver?.first_name && (
+        <div className="flex items-center gap-2 border-t border-black/[0.06] px-3 py-2 dark:border-white/10">
+          <DriverAvatar src={coDriver.avatar_url} firstName={coDriver.first_name} lastName={coDriver.last_name} size="xs" />
+          <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+            <span className="text-muted-foreground">Co-driver · </span>
+            {`${coDriver.first_name} ${coDriver.last_name ?? ''}`.trim()}
+          </span>
+          {coDriver.phone_primary && (
+            <a href={`tel:${coDriver.phone_primary}`} aria-label="Call co-driver" className="text-emerald-600 hover:text-emerald-700"><Phone className="size-3.5" /></a>
+          )}
+        </div>
+      )}
+
+      {/* Live GPS feeds while it matters */}
       {showFeeds && (
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-black/[0.06] pt-2 dark:border-white/10">
+        <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-black/[0.06] bg-muted/40 px-3 py-2 dark:border-white/10">
           <Feed icon={Truck} label="Tracker" fix={unit?.vehicle_gps} missing={unit?.vehicle?.has_tracker === false ? 'No tracker' : 'No fix'} />
           <Feed icon={Smartphone} label="App" fix={unit?.driver_gps} missing={overview?.phase === 'planned' ? 'Off trip' : 'Not sending'} />
         </div>
@@ -161,6 +226,13 @@ export function TruckDriverOverlay({
     </div>
   );
 }
+
+const DRIVER_STATUS_LABEL: Record<string, string> = {
+  Available: 'Available',
+  OnTrip: 'On a trip',
+  OffDuty: 'Off duty',
+  Inactive: 'Inactive',
+};
 
 export interface FinancialFigures {
   billing: number;
