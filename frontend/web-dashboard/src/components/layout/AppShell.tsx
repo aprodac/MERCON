@@ -10,17 +10,22 @@ import CommandPalette from './CommandPalette';
 import { NAV_PAGES, SETTINGS_PAGES, findActiveEntry } from '@/config/navigation';
 import { navStore } from '@/lib/navigation/navStore';
 
+const SIDEBAR_KEY = 'mercon_sidebar_collapsed';
+
 /** Inner shell — reads metadata from context set by each page's DashboardLayout */
 function ShellInner() {
   const location = useLocation();
   const { meta } = useLayoutMeta();
   const contentRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // The sidebar starts collapsed each time the app is opened, leaving the room to
+  // the page. Expanding it holds for the rest of this tab's session (across page
+  // changes), then it's collapsed again next time — sessionStorage, not localStorage.
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('mercon_sidebar_collapsed') === 'true';
+      return sessionStorage.getItem(SIDEBAR_KEY) !== 'false';
     } catch {
-      return false;
+      return true;
     }
   });
 
@@ -28,7 +33,7 @@ function ShellInner() {
     setSidebarCollapsed((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem('mercon_sidebar_collapsed', String(next));
+        sessionStorage.setItem(SIDEBAR_KEY, String(next));
       } catch {}
       return next;
     });
