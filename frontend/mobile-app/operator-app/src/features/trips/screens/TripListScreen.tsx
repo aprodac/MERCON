@@ -80,29 +80,29 @@ const TripCard = ({ item, onPress }: { item: OperatorTrip; onPress: () => void }
 
       {/* Route Row */}
       <View style={styles.routeContainer}>
-        <View style={styles.routePoint}>
+        <View style={[styles.routePoint, { justifyContent: 'flex-start' }]}>
           <View style={[styles.routeDot, { backgroundColor: '#10B981' }]} />
-          <Text style={styles.routeText} numberOfLines={1}>{origin}</Text>
+          <Text style={[styles.routeText, { textAlign: 'left' }]} numberOfLines={1}>{origin}</Text>
         </View>
 
         <View style={styles.arrowCapsule}>
           <ArrowRight size={12} color={Colors.white} strokeWidth={2.5} />
         </View>
 
-        <View style={[styles.routePoint, { alignItems: 'flex-end' }]}>
-          <Text style={styles.routeText} numberOfLines={1}>{destination}</Text>
+        <View style={[styles.routePoint, { justifyContent: 'flex-end' }]}>
+          <Text style={[styles.routeText, { textAlign: 'right' }]} numberOfLines={1}>{destination}</Text>
           <View style={[styles.routeDot, { backgroundColor: Colors.primary }]} />
         </View>
       </View>
 
       {/* Meta Footer (Driver + Vehicle + Date) */}
       <View style={styles.cardFooter}>
-        <View style={styles.metaItem}>
+        <View style={[styles.metaItem, { flexShrink: 1, marginRight: 8 }]}>
           <User size={13} color={Colors.gray500} strokeWidth={2} />
-          <Text style={styles.metaText} numberOfLines={1}>{driverName(item)}</Text>
+          <Text style={[styles.metaText, { flexShrink: 1 }]} numberOfLines={1}>{driverName(item)}</Text>
         </View>
 
-        <View style={styles.metaItem}>
+        <View style={[styles.metaItem, { flexShrink: 0 }]}>
           <Calendar size={13} color={Colors.gray400} strokeWidth={2} />
           <Text style={styles.tripDate}>{formatDate(item.planned_start ?? item.createdAt)}</Text>
         </View>
@@ -314,7 +314,7 @@ const styles = StyleSheet.create({
     fontSize: Typography.xs,
     fontWeight: '800',
     color: Colors.gray900,
-    flex: 1,
+    flexShrink: 1,
   },
   arrowCapsule: {
     backgroundColor: Colors.primary,
