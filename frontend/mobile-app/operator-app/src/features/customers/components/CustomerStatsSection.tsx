@@ -61,19 +61,6 @@ export function CustomerStatsSection({ stats, loading, inset }: CustomerStatsSec
       label: 'Active Rate Cards',
       caption: 'no contract entity yet',
     },
-    {
-      key: 'trips',
-      Icon: Truck,
-      value: String(stats.tripsThisMonth),
-      label: 'Trips This Month',
-    },
-    {
-      key: 'bills',
-      Icon: ReceiptText,
-      value: String(stats.pendingBills),
-      label: 'Pending Bills',
-      caption: 'pending + overdue',
-    },
   ];
 
   const contentContainerStyle = { paddingHorizontal: inset, gap: GAP };
