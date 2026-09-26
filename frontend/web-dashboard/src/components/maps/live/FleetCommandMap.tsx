@@ -4,7 +4,7 @@ import MapGL, { Layer, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import Supercluster from 'supercluster';
-import { Compass, Focus, Navigation, Maximize2, Minimize2, Minus, Moon, Plus, Search, SignalLow, Sun, X } from 'lucide-react';
+import { Compass, Focus, Map as MapIcon, Navigation, Maximize2, Minimize2, Minus, Moon, Plus, Search, SignalLow, Sun, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { formatInDeploymentTz, useDeploymentTimezone } from '@/lib/datetime';
@@ -87,6 +87,10 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
   const [follow, setFollow] = useState(true);
   /** Driver view: camera low behind the selected arrow, facing where it is going. */
   const [pov, setPov] = useState(false);
+  /** Trip overview: flat, north-up, fitted to the truck and every stop of its trip. */
+  const [overview, setOverview] = useState(false);
+  /** Either focus view hides the other trucks. */
+  const focusView = pov || overview;
   const [firstSymbolId, setFirstSymbolId] = useState<string | undefined>();
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   /** Camera snapshot taken when movement ends — drives grouping and label placement. */
@@ -275,6 +279,7 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
       setSelectedKey(key);
       setFollow(true);
       setPov(false);
+      setOverview(false);
       const u = units.find((x) => x.key === key);
       if (u) flyToUnit(u);
     },
@@ -284,15 +289,19 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
   const deselect = useCallback(() => {
     setSelectedKey(null);
     setPov(false);
+    setOverview(false);
     fitAll();
   }, [fitAll]);
 
+  /** Top-down trip overview: every stop — done ones ticked, the rest numbered — and where the truck is now. */
   const showRoute = useCallback(() => {
     if (!selected?.position || !selected.trip) return;
     const pts = [selected.position, ...selected.trip.stops.filter((s) => s.lat != null && s.lng != null).map((s) => ({ lat: s.lat!, lng: s.lng! }))];
     const b = boundsOf(pts);
-    if (b) mapRef.current?.fitBounds(b, { padding: panelPadding(), pitch: 30, bearing: 0, duration: 1400, maxZoom: 14 });
+    setPov(false);
+    setOverview(true);
     setFollow(false);
+    if (b) mapRef.current?.fitBounds(b, { padding: { ...panelPadding(), top: 90 }, pitch: 0, bearing: 0, duration: 1400, maxZoom: 15 });
   }, [selected, panelPadding]);
 
   // ── Driver view ──
@@ -314,6 +323,7 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
   const enterPov = useCallback(() => {
     const map = mapRef.current;
     if (!map || !selected?.position) return;
+    setOverview(false);
     setPov(true);
     setFollow(true);
     map.easeTo({
@@ -327,8 +337,11 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
     });
   }, [selected, povBearing, povPadding]);
 
+  /** Leave driver view or trip overview, back to the normal close-up of the truck. */
   const exitPov = useCallback(() => {
     setPov(false);
+    setOverview(false);
+    setFollow(true);
     const pos = selected?.position;
     mapRef.current?.easeTo({
       ...(pos ? { center: [pos.lng, pos.lat] as [number, number] } : {}),
@@ -356,18 +369,29 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
   }, [data, fitAll]);
 
   // Follow the selected unit as fresh positions arrive.
+  // Only a real change of position moves the camera. Selecting a unit and
+  // entering driver view start their own zoom + tilt animation; an easeTo fired
+  // here at the same moment would cancel it half-way (the map stayed zoomed out).
   const followLat = selected?.position?.lat;
   const followLng = selected?.position?.lng;
+  const lastFollowed = useRef<{ key: string | null; lat?: number; lng?: number }>({ key: null });
+  const povRef = useRef(pov);
+  povRef.current = pov;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
   useEffect(() => {
+    const prev = lastFollowed.current;
+    lastFollowed.current = { key: selectedKey, lat: followLat, lng: followLng };
     if (!follow || followLat == null || followLng == null) return;
-    if (pov && selected) {
-      mapRef.current?.easeTo({ center: [followLng, followLat], bearing: povBearing(selected), duration: 1200, padding: povPadding() });
-      return;
+    if (prev.key !== selectedKey) return; // a new selection — its fly-to is in flight
+    if (prev.lat === followLat && prev.lng === followLng) return; // nothing moved
+    const u = selectedRef.current;
+    if (povRef.current && u) {
+      mapRef.current?.easeTo({ center: [followLng, followLat], bearing: povBearing(u), duration: 1200, padding: povPadding() });
+    } else {
+      mapRef.current?.easeTo({ center: [followLng, followLat], duration: 1200, padding: panelPadding() });
     }
-    mapRef.current?.easeTo({ center: [followLng, followLat], duration: 1200, padding: panelPadding() });
-    // selected changes every refresh; position (followLat/Lng) is what should trigger a move
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [followLat, followLng, follow, pov, panelPadding, povPadding]);
+  }, [followLat, followLng, selectedKey, follow, povBearing, povPadding, panelPadding]);
 
   // Escape: close details, then leave expanded view.
   useEffect(() => {
@@ -375,13 +399,13 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
       if (e.key !== 'Escape') return;
       // An open photo/video viewer handles its own Escape.
       if (document.querySelector('[role="dialog"][data-state="open"]')) return;
-      if (pov) exitPov();
+      if (focusView) exitPov();
       else if (selectedKey) deselect();
       else if (expanded) setExpanded(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedKey, expanded, deselect, pov, exitPov]);
+  }, [selectedKey, expanded, deselect, focusView, exitPov]);
 
   const toggleTheme = () => {
     const next = theme === 'light' ? 'dark' : 'light';
@@ -525,7 +549,8 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
             <StopPin key={`stop-${g.numbers.join('-')}`} group={g} eta={g.isNext && eta?.arrival ? formatTime(eta.arrival) : null} />
           ))}
 
-          {clusters.map((c) => (
+          {/* Driver view is about one truck — the others step aside. */}
+          {!focusView && clusters.map((c) => (
             <ClusterMarker
               key={`cluster-${c.id}`}
               lng={c.lng}
@@ -539,7 +564,7 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
             />
           ))}
 
-          {singles.map((u) => (
+          {(focusView ? singles.filter((u) => u.key === selectedKey) : singles).map((u) => (
             <LiveUnitMarker
               key={u.key}
               unit={u}
@@ -557,11 +582,30 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
 
       {/* ── Overlays ── */}
       <div className="pointer-events-none absolute inset-0 z-10 p-3">
-        {pov && selected && (
-          <div className="absolute top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full bg-charcoal/90 p-1 pl-3 text-xs font-medium text-white shadow-lg backdrop-blur-md pointer-events-auto">
-            <Navigation className="size-3.5 fill-current text-sky-300" />
-            <span className="px-1">Driver view · <span className="font-mono">{unitTitle(selected)}</span></span>
-            {!follow && (
+        {focusView && selected && (
+          <div className="absolute top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full bg-charcoal/90 p-1 text-xs font-medium text-white shadow-lg backdrop-blur-md pointer-events-auto">
+            <span className="px-2 font-mono">{unitTitle(selected)}</span>
+            <span className="flex rounded-full bg-white/10 p-0.5">
+              <button
+                type="button"
+                onClick={enterPov}
+                aria-pressed={pov}
+                className={cn('flex items-center gap-1 rounded-full px-2.5 py-1', pov ? 'bg-white text-charcoal' : 'hover:bg-white/15')}
+              >
+                <Navigation className="size-3" /> Driver view
+              </button>
+              {selected.trip && (
+                <button
+                  type="button"
+                  onClick={showRoute}
+                  aria-pressed={overview}
+                  className={cn('flex items-center gap-1 rounded-full px-2.5 py-1', overview ? 'bg-white text-charcoal' : 'hover:bg-white/15')}
+                >
+                  <MapIcon className="size-3" /> Trip overview
+                </button>
+              )}
+            </span>
+            {pov && !follow && (
               <button type="button" onClick={enterPov} className="rounded-full bg-white/15 px-2.5 py-1 hover:bg-white/25">Recenter</button>
             )}
             <button type="button" onClick={exitPov} className="rounded-full bg-white/15 px-2.5 py-1 hover:bg-white/25">Exit</button>
