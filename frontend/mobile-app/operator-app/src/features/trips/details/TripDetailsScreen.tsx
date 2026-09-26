@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Check, Maximize2, MessageCircle, MoreHorizontal, X } from 'lucide-react-native';
+import { ArrowLeft, Check, LayoutList, Maximize2, MessageCircle, MoreHorizontal, Navigation, Phone, Route, Send, X, type LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
@@ -23,7 +23,7 @@ import {
 } from '../../../lib/operator';
 import { PickerSheet, niceName } from '../create/components/ui';
 import { useTripDetails } from './useTripDetails';
-import { ago, hoursText, makeFormatters, nextActionFor, sortedStops, stopName, updateTitle, type QuickKind, type Stop } from './tripDetailsModel';
+import { ago, digits, hoursText, makeFormatters, mapsLink, nextActionFor, sortedStops, stopName, updateTitle, type QuickKind, type Stop } from './tripDetailsModel';
 import { TripMap } from './components/TripMap';
 import { TripHeader } from './components/TripHeader';
 import { UpdatesTab } from './components/UpdatesTab';
@@ -45,7 +45,7 @@ export default function TripDetailsScreen() {
   const { trip, overview, updates, whatsappApi, tz, phase, remaining, loading, refreshing, error, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
 
-  const [tab, setTab] = useState<Tab>('updates');
+  const [tab, setTab] = useState<Tab>('details');
   const [busy, setBusy] = useState(false);
   const [share, setShare] = useState<ShareTarget | null>(null);
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string; update?: DriverUpdate } | null>(null);
@@ -184,10 +184,22 @@ export default function TripDetailsScreen() {
   const quick = (kind: QuickKind) => setShare({ type: 'quick', kind });
 
   // ── Render ─────────────────────────────────────────────────────────────────
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'updates', label: unsentUpdates ? `Updates · ${unsentUpdates}` : 'Updates' },
-    { id: 'stops', label: `Stops · ${stops.length}` },
-    { id: 'details', label: 'Details' },
+  const tabs: { id: Tab; label: string; icon: LucideIcon; badge?: number }[] = [
+    { id: 'details', label: 'Details', icon: LayoutList },
+    { id: 'updates', label: 'Updates', icon: MessageCircle, badge: unsentUpdates },
+    { id: 'stops', label: 'Stops', icon: Route, badge: undefined },
+  ];
+
+  // One-tap actions under the header: the things an operator does most on a call.
+  const driverPhone = trip.is_third_party ? trip.third_party_driver_phone : trip.driver?.phone_primary;
+  const nextIdx = stops.findIndex((st) => !st.actual_arrival);
+  const target = phase === 'active' && nextIdx >= 0 ? stops[nextIdx] : stops[stops.length - 1];
+  const hasTarget = !!target && Number.isFinite(target.location_lat) && !!(target.location_lat || target.location_lng);
+  const actions: { key: string; label: string; icon: LucideIcon; bg: string; fg: string; onPress?: () => void }[] = [
+    { key: 'call', label: 'Call', icon: Phone, bg: '#E8F5EE', fg: '#146C3C', onPress: driverPhone ? () => Linking.openURL(`tel:${driverPhone}`).catch(() => {}) : undefined },
+    { key: 'wa', label: 'WhatsApp', icon: MessageCircle, bg: '#E3F7EA', fg: '#0F6B37', onPress: driverPhone ? () => Linking.openURL(`https://wa.me/${digits(driverPhone)}`).catch(() => {}) : undefined },
+    { key: 'nav', label: 'Directions', icon: Navigation, bg: '#E7EEFC', fg: '#2449A8', onPress: hasTarget ? () => Linking.openURL(mapsLink(target.location_lat, target.location_lng)).catch(() => {}) : undefined },
+    { key: 'status', label: 'Send status', icon: Send, bg: '#FDECE8', fg: '#B43A27', onPress: () => quick('status') },
   ];
 
   return (
@@ -217,6 +229,16 @@ export default function TripDetailsScreen() {
           </View>
           <View style={s.sheetTop}>
             <TripHeader trip={trip} phase={phase} f={f} />
+            <View style={s.actions}>
+              {actions.map((a) => (
+                <TouchableOpacity key={a.key} style={[s.action, !a.onPress && { opacity: 0.4 }]} disabled={!a.onPress} onPress={() => { tap(); a.onPress?.(); }} activeOpacity={0.75}>
+                  <View style={[s.actionIcon, { backgroundColor: a.bg }]}>
+                    <a.icon size={19} color={a.fg} strokeWidth={2.2} />
+                  </View>
+                  <Text style={s.actionText} numberOfLines={1}>{a.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </View>
 
@@ -226,8 +248,12 @@ export default function TripDetailsScreen() {
             {tabs.map((t) => {
               const on = t.id === tab;
               return (
-                <TouchableOpacity key={t.id} style={[s.tab, on && s.tabOn]} onPress={() => { if (!on) tap(); setTab(t.id); }} activeOpacity={0.8}>
+                <TouchableOpacity key={t.id} style={[s.tab, on && s.tabOn]} onPress={() => { if (!on) tap(); setTab(t.id); }} activeOpacity={0.8} accessibilityRole="tab" accessibilityState={{ selected: on }}>
+                  <t.icon size={15} color={on ? INK : '#6E6E80'} strokeWidth={on ? 2.4 : 2} />
                   <Text style={[s.tabText, on && s.tabTextOn]} numberOfLines={1}>{t.label}</Text>
+                  {t.badge ? (
+                    <View style={s.badge}><Text style={s.badgeText}>{t.badge}</Text></View>
+                  ) : null}
                 </TouchableOpacity>
               );
             })}
@@ -279,7 +305,7 @@ export default function TripDetailsScreen() {
 
       {/* Bottom bar */}
       <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) + 4 }]}>
-        <TouchableOpacity style={[s.barIcon, { backgroundColor: WA }]} onPress={() => quick('status')} accessibilityLabel="Send status on WhatsApp">
+        <TouchableOpacity style={[s.barIcon, { backgroundColor: WA }]} onPress={() => { tap(); setTab('updates'); }} accessibilityLabel="WhatsApp updates">
           <MessageCircle size={22} color={Colors.white} strokeWidth={2.3} />
         </TouchableOpacity>
         {next ? (
@@ -371,7 +397,13 @@ const s = StyleSheet.create({
   sheetTop: { marginTop: -24, backgroundColor: PAGE, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 12, paddingTop: 12 },
   tabsWrap: { backgroundColor: PAGE, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
   tabs: { flexDirection: 'row', gap: 4, backgroundColor: '#E1E4EC', borderRadius: 13, padding: 3 },
-  tab: { flex: 1, height: 38, borderRadius: 10, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  tab: { flex: 1, height: 40, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 4 },
+  badge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: WA, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
+  badgeText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
+  actions: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  action: { flex: 1, alignItems: 'center', gap: 5, backgroundColor: Colors.white, borderRadius: 16, paddingVertical: 10 },
+  actionIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  actionText: { fontSize: 11, fontWeight: '700', color: INK },
   tabOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   tabText: { fontSize: 13, fontWeight: '700', color: '#4A4A55' },
   tabTextOn: { color: INK, fontWeight: '800' },

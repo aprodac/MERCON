@@ -6,7 +6,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
-  Check, ChevronRight, FileText, ListOrdered, MessageCircle, Phone, Plus, Receipt, Smartphone, Timer, Route, Truck, UploadCloud, X,
+  Check, ChevronRight, FileText, ListOrdered, Phone, Plus, Receipt, Smartphone, Timer, Route, Truck, UploadCloud, X,
 } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
@@ -14,10 +14,10 @@ import { DriverAvatar } from '../../../drivers/components/DriverAvatar';
 import { initialsOf, niceName } from '../../create/components/ui';
 import type { LiveGpsFix, OperatorTripDetail, OperatorTripDocument, TripOverview, TripPhase } from '../../../../lib/operator';
 import {
-  ON_TIME_GRACE_MIN, TONE, ago, billingLabel, canChangeAssignment, digits, formatDuration, lineType, minutesLate, moneyOf, sar, sortedStops,
+  ON_TIME_GRACE_MIN, TONE, ago, billingLabel, canChangeAssignment, formatDuration, lineType, minutesLate, moneyOf, sar, sortedStops,
   type Formatters,
 } from '../tripDetailsModel';
-import { Card, Chip, Divider, Fact, INK, MUTED, SectionHead, SoftButton, WA_INK, WA_LIGHT } from './parts';
+import { Card, Chip, Divider, Fact, INK, MUTED, SectionHead, SoftButton } from './parts';
 
 interface Props {
   trip: OperatorTripDetail;
@@ -37,8 +37,11 @@ export function DetailsTab({ trip, phase, overview, f, onChange, onCharges, onUp
     <View style={{ gap: 10 }}>
       {phase === 'planned' && overview?.checks ? <PreTripChecks checks={overview.checks} f={f} /> : null}
       {phase === 'done' ? <TripSummary trip={trip} overview={overview} f={f} /> : null}
+      <Text style={s.group}>Truck & driver</Text>
       <Assignment trip={trip} phase={phase} overview={overview} onChange={onChange} />
+      <Text style={s.group}>Money</Text>
       <MoneyCard trip={trip} onCharges={onCharges} />
+      <Text style={s.group}>Trip info</Text>
       <Card style={{ gap: 8 }}>
         <View style={s.factRow}>
           <Fact label="Scheduled" value={trip.planned_start ? f.dayTime(trip.planned_start) : '—'} />
@@ -230,12 +233,6 @@ function Assignment({ trip, phase, overview, onChange }: { trip: OperatorTripDet
         </View>
         {changeBtn('driver')}
       </TouchableOpacity>
-      {phone ? (
-        <View style={s.contactRow}>
-          <SoftButton label="Call" icon={Phone} bg="#E8F5EE" fg="#146C3C" style={{ flex: 1 }} onPress={() => Linking.openURL(`tel:${phone}`).catch(() => {})} />
-          <SoftButton label="WhatsApp" icon={MessageCircle} bg={WA_LIGHT} fg={WA_INK} style={{ flex: 1 }} onPress={() => Linking.openURL(`https://wa.me/${digits(phone)}`).catch(() => {})} />
-        </View>
-      ) : null}
       {co && !tp ? (
         <View style={s.coRow}>
           <DriverAvatar initials={initialsOf(`${co.first_name} ${co.last_name}`)} avatarUrl={co.avatar_url} size={28} />
@@ -305,6 +302,7 @@ function MoneyCard({ trip, onCharges }: { trip: OperatorTripDetail; onCharges: (
 
 const s = StyleSheet.create({
   muted: { fontSize: 12, color: MUTED },
+  group: { fontSize: 12, fontWeight: '800', color: '#3B3B44', marginTop: 4, marginBottom: -2, marginLeft: 4 },
   factRow: { flexDirection: 'row', gap: 8 },
   inlineLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   inlineLinkText: { fontSize: 13, fontWeight: '700', color: '#B43A27' },
@@ -329,7 +327,6 @@ const s = StyleSheet.create({
   driverName: { fontSize: 15, fontWeight: '800', color: INK },
   change: { backgroundColor: '#F1F3F7', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
   changeText: { fontSize: 12, fontWeight: '800', color: INK },
-  contactRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingBottom: 14 },
   coRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#F8F9FB' },
   coText: { flex: 1, fontSize: 13, fontWeight: '700', color: INK },
   feeds: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#F8F9FB', borderBottomLeftRadius: 18, borderBottomRightRadius: 18 },
