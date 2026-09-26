@@ -5,6 +5,7 @@ import { Colors, Radius, Shadows, Spacing } from '@mercon/mobile-shared/theme/to
 import { QuotationValidityBadge } from './QuotationValidityBadge';
 import { formatCurrency, formatValidityRange } from '../services/quotationsService';
 import type { QuotationListItem } from '../types';
+import { useRouter } from 'expo-router';
 
 interface QuotationDetailModalProps {
   visible: boolean;
@@ -13,6 +14,8 @@ interface QuotationDetailModalProps {
 }
 
 export function QuotationDetailModal({ visible, quotation, onClose }: QuotationDetailModalProps) {
+  const router = useRouter();
+
   if (!quotation) return null;
 
   return (
@@ -36,8 +39,8 @@ export function QuotationDetailModal({ visible, quotation, onClose }: QuotationD
             <View className="flex-row items-center gap-2">
               <TouchableOpacity
                 onPress={() => {
-                  // TODO: Implement Edit Navigation
-                  console.log('Edit Quotation:', quotation.id);
+                  onClose();
+                  router.push(`/quotation-edit?id=${quotation.id}`);
                 }}
                 className="h-8 w-8 items-center justify-center rounded-full bg-gray-100"
               >

@@ -463,6 +463,16 @@ export const operatorService = {
     return data.data as OperatorQuotation;
   },
 
+  async updateQuotation(id: string, payload: {
+    name?: string;
+    rate?: number;
+    driver_payout?: number | null;
+    is_active?: boolean;
+  }): Promise<OperatorQuotation> {
+    const { data } = await api.put(`/quotations/${id}`, payload);
+    return data.data as OperatorQuotation;
+  },
+
   /** Same `/quotations/lookup` endpoint the web dashboard's create-trip
    * wizard uses to auto-fill a rate. Swallows errors/no-match and returns
    * null so the screen can fall back to manual entry rather than block. */
@@ -566,6 +576,11 @@ export const operatorService = {
   async quotations(): Promise<OperatorQuotation[]> {
     const { data } = await api.get('/quotations', { params: { per_page: 50 } });
     return (data.data ?? []) as OperatorQuotation[];
+  },
+
+  async quotationById(id: string): Promise<OperatorQuotation> {
+    const { data } = await api.get(`/quotations/${id}`);
+    return data.data as OperatorQuotation;
   },
 
   async maintenanceRecords(): Promise<OperatorMaintenanceRecord[]> {
@@ -1049,6 +1064,32 @@ export function useOperatorQuotations() {
   useEffect(() => { refetch(); }, [refetch]);
 
   return { quotations, loading, error, refetch };
+}
+
+export function useOperatorQuotationById(id?: string) {
+  const [quotation, setQuotation] = useState<OperatorQuotation | null>(null);
+  const [loading, setLoading] = useState(!!id);
+  const [error, setError] = useState<string | null>(null);
+
+  const refetch = useCallback(async () => {
+    if (!id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await operatorService.quotationById(id);
+      setQuotation(data);
+    } catch (e) {
+      setError(getApiErrorMessage(e));
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    refetch();
+  }, [refetch]);
+
+  return { quotation, loading, error, refetch };
 }
 
 export function useOperatorThirdPartyProviders() {
