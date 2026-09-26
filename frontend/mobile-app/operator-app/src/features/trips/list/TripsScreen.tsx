@@ -14,7 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
-  CalendarDays, CircleCheckBig, History, MessageCircle, Phone, Plus, Radio, Search, Send, UserRound, X, ArrowUpRight, type LucideIcon,
+  CalendarDays, CircleCheckBig, History, MessageCircle, Phone, Radio, Search, Send, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -32,8 +32,6 @@ const PAGE = '#F4F5F8';
 
 const tap = () => Haptics.selectionAsync().catch(() => {});
 
-type NowFilter = 'all' | 'attention' | 'road' | 'next' | 'nodriver';
-type DayFilter = 'all' | 'attention' | 'nodriver';
 
 export default function TripsScreen() {
   const router = useRouter();
@@ -41,8 +39,6 @@ export default function TripsScreen() {
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [nowFilter, setNowFilter] = useState<NowFilter>('all');
-  const [dayFilter, setDayFilter] = useState<DayFilter>('all');
   const [day, setDay] = useState<string | null>(null);
   const [actionsFor, setActionsFor] = useState<OperatorTrip | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -82,20 +78,15 @@ export default function TripsScreen() {
       attention: attention.sort(byStart),
       road: road.sort(byStart),
       next: next.sort(byStart),
-      noDriver: data.open.filter((t) => !t.is_third_party && !t.driver),
     };
   }, [data.open, now]);
 
-  const nowSections = useMemo(() => {
-    const all = [
-      { key: 'attention', title: 'Needs attention', tone: '#D92D20', data: board.attention },
-      { key: 'road', title: 'On the road', tone: '#2F5FD0', data: board.road },
-      { key: 'next', title: 'Starting next', tone: '#7651D6', data: board.next },
-    ];
-    if (nowFilter === 'nodriver') return [{ key: 'nodriver', title: 'No driver', tone: '#D92D20', data: board.noDriver }];
-    const pick = nowFilter === 'attention' ? ['attention'] : nowFilter === 'road' ? ['road'] : nowFilter === 'next' ? ['next'] : null;
-    return all.filter((sct) => sct.data.length > 0 && (!pick || pick.includes(sct.key)));
-  }, [board, nowFilter]);
+  // The sections are the grouping — no filter chips on top of them.
+  const nowSections = useMemo(() => [
+    { key: 'attention', title: 'Needs attention', tone: '#D92D20', data: board.attention },
+    { key: 'road', title: 'On the road', tone: '#2F5FD0', data: board.road },
+    { key: 'next', title: 'Starting next', tone: '#7651D6', data: board.next },
+  ].filter((sct) => sct.data.length > 0), [board]);
 
   // ── Schedule: counts per day and the chosen day's trips ───────────────────
   const days = useMemo(() => dayRange(todayKey, SCHEDULE_BEFORE, SCHEDULE_AFTER), [todayKey]);
@@ -115,9 +106,8 @@ export default function TripsScreen() {
   const dayTrips = useMemo(() => {
     return data.window
       .filter((t) => { const iso = tripDayIso(t); return iso && f.dayKey(iso) === selectedDay; })
-      .filter((t) => dayFilter === 'all' || (dayFilter === 'attention' ? needsAttention(t, now) : !t.is_third_party && !t.driver && !['Completed', 'Invoiced', 'Cancelled'].includes(t.status)))
       .sort((a, b) => new Date(tripDayIso(a) ?? 0).getTime() - new Date(tripDayIso(b) ?? 0).getTime());
-  }, [data.window, f, selectedDay, dayFilter, now]);
+  }, [data.window, f, selectedDay]);
 
   // ── History ───────────────────────────────────────────────────────────────
   const historySections = useMemo(() => groupByDay(data.history, f, todayKey, true), [data.history, f, todayKey]);
@@ -144,10 +134,6 @@ export default function TripsScreen() {
             {board.road.length} on the road · {board.attention.length} need attention
           </Text>
         </View>
-        <TouchableOpacity style={s.newBtn} onPress={() => router.push('/create-trip')} activeOpacity={0.85}>
-          <Plus size={17} color={Colors.white} strokeWidth={2.6} />
-          <Text style={s.newText}>New trip</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Search */}
@@ -204,23 +190,10 @@ export default function TripsScreen() {
               contentContainerStyle={s.list}
               refreshControl={refreshControl}
               stickySectionHeadersEnabled={false}
-              ListHeaderComponent={(
-                <Chips
-                  value={nowFilter}
-                  onChange={(v) => setNowFilter(v as NowFilter)}
-                  items={[
-                    { id: 'all', label: 'All', count: data.open.length },
-                    { id: 'attention', label: 'Needs attention', count: board.attention.length, tone: 'red' },
-                    { id: 'road', label: 'On the road', count: board.road.length },
-                    { id: 'next', label: 'Starting next', count: board.next.length },
-                    { id: 'nodriver', label: 'No driver', count: board.noDriver.length, tone: 'red' },
-                  ]}
-                />
-              )}
               renderSectionHeader={({ section }) => <SectionHead title={section.title} count={section.data.length} tone={(section as any).tone} />}
               renderItem={({ item }) => renderCard(item, true)}
               ItemSeparatorComponent={Gap}
-              ListEmptyComponent={data.openLoading ? <Loading /> : <Empty icon={CircleCheckBig} title={nowFilter === 'all' ? 'No open trips' : 'Nothing here'} text={nowFilter === 'all' ? 'Every trip is delivered or cancelled.' : 'No trips match this filter right now.'} good />}
+              ListEmptyComponent={data.openLoading ? <Loading /> : <Empty icon={CircleCheckBig} title="No open trips" text="Every trip is delivered or cancelled." good />}
             />
           ) : view === 'schedule' ? (
             <FlatList
@@ -235,17 +208,11 @@ export default function TripsScreen() {
                   <DateStrip days={days} selected={selectedDay} today={todayKey} counts={perDay} onSelect={(k) => { tap(); setDay(k); }} f={f} />
                   <View style={s.dayHead}>
                     <Text style={s.dayTitle}>{dayLabel(selectedDay, todayKey, f)}</Text>
-                    <Text style={s.dayCount}>{perDay.get(selectedDay)?.total ?? 0} trips</Text>
+                    <Text style={s.dayCount}>
+                      {perDay.get(selectedDay)?.total ?? 0} trips
+                      {perDay.get(selectedDay)?.attention ? <Text style={{ color: '#B42318' }}> · {perDay.get(selectedDay)!.attention} need attention</Text> : null}
+                    </Text>
                   </View>
-                  <Chips
-                    value={dayFilter}
-                    onChange={(v) => setDayFilter(v as DayFilter)}
-                    items={[
-                      { id: 'all', label: 'All' },
-                      { id: 'attention', label: 'Needs attention', count: perDay.get(selectedDay)?.attention, tone: 'red' },
-                      { id: 'nodriver', label: 'No driver', tone: 'red' },
-                    ]}
-                  />
                 </View>
               )}
               ListEmptyComponent={data.windowLoading ? <Loading /> : <Empty icon={CalendarDays} title="No trips this day" text="Pick another day, or create a trip." />}
@@ -299,23 +266,6 @@ function SectionHead({ title, count, tone, sticky }: { title: string; count: num
       {tone ? <View style={[s.sectionDot, { backgroundColor: tone }]} /> : null}
       <Text style={s.sectionTitle}>{title}</Text>
       <Text style={s.sectionCount}>{count}</Text>
-    </View>
-  );
-}
-
-function Chips({ items, value, onChange }: { items: { id: string; label: string; count?: number; tone?: 'red' }[]; value: string; onChange: (v: string) => void }) {
-  return (
-    <View style={s.chips}>
-      {items.map((c) => {
-        const on = c.id === value;
-        const hot = c.tone === 'red' && !!c.count;
-        return (
-          <TouchableOpacity key={c.id} style={[s.chip, on && s.chipOn, !on && hot && s.chipHot]} onPress={() => { tap(); onChange(c.id); }} activeOpacity={0.8}>
-            <Text style={[s.chipText, on && s.chipTextOn, !on && hot && { color: '#912018' }]}>{c.label}</Text>
-            {c.count != null ? <Text style={[s.chipCount, on && s.chipCountOn, !on && hot && { color: '#912018' }]}>{c.count}</Text> : null}
-          </TouchableOpacity>
-        );
-      })}
     </View>
   );
 }
@@ -388,10 +338,8 @@ function QuickActions({ trip, onClose, onOpen }: { trip: OperatorTrip | null; on
 
 const s = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 12 },
-  h1: { fontSize: 28, fontWeight: '800', color: INK, letterSpacing: -0.5 },
+  h1: { fontSize: 24, fontWeight: '700', color: INK, letterSpacing: -0.4 },
   h1sub: { fontSize: 13, fontWeight: '600', color: MUTED, marginTop: 1 },
-  newBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 42, borderRadius: 13, paddingHorizontal: 14, backgroundColor: '#C4432F' },
-  newText: { color: Colors.white, fontSize: 14, fontWeight: '800' },
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, height: 46, borderRadius: 14, backgroundColor: Colors.white, paddingHorizontal: 13, borderWidth: 1, borderColor: '#EEF0F4' },
   searchInput: { flex: 1, fontSize: 15, color: INK, paddingVertical: 0 },
   segment: { flexDirection: 'row', gap: 4, marginHorizontal: 16, marginTop: 12, backgroundColor: '#E4E7EE', borderRadius: 13, padding: 3 },
@@ -403,18 +351,10 @@ const s = StyleSheet.create({
   badgeText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
   list: { padding: 16, paddingBottom: 120, flexGrow: 1 },
   resultsHead: { fontSize: 13, fontWeight: '700', color: MUTED, marginBottom: 10 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, borderRadius: 17, paddingHorizontal: 12, backgroundColor: Colors.white, borderWidth: 1, borderColor: '#E4E7EE' },
-  chipOn: { backgroundColor: INK, borderColor: INK },
-  chipHot: { borderColor: '#F5C2BC', backgroundColor: '#FFF7F6' },
-  chipText: { fontSize: 13, fontWeight: '700', color: '#3B3B44' },
-  chipTextOn: { color: Colors.white },
-  chipCount: { fontSize: 12, fontWeight: '800', color: MUTED },
-  chipCountOn: { color: '#C9C9D2' },
-  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingTop: 14, paddingBottom: 8 },
-  sectionDot: { width: 8, height: 8, borderRadius: 4 },
-  sectionTitle: { fontSize: 13, fontWeight: '800', color: '#3B3B44', textTransform: 'uppercase', letterSpacing: 0.6 },
-  sectionCount: { fontSize: 13, fontWeight: '700', color: '#9898A4' },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 12, paddingBottom: 8 },
+  sectionDot: { width: 6, height: 6, borderRadius: 3 },
+  sectionTitle: { fontSize: 13, fontWeight: '600', color: '#3F3F46' },
+  sectionCount: { fontSize: 13, fontWeight: '500', color: '#A1A1AA' },
   dayHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 4 },
   dayTitle: { fontSize: 18, fontWeight: '800', color: INK },
   dayCount: { fontSize: 13, fontWeight: '700', color: MUTED },

@@ -5,7 +5,7 @@
  * today's trips.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator } from 'react-native';
 import {
   AlarmClock, ChevronDown, ChevronRight, CircleCheckBig, Clock3, FileClock, Images, Phone, Play, Receipt, SignalLow, Siren, Split, Truck, UserX,
   type LucideIcon,
@@ -14,7 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { LiveUnit } from '../../../lib/operator';
-import { whenLabel, type ActionGroup, type ActionIntent, type ActionItem, type ActionKind, type Urgency } from './actionModel';
+import { whenLabel, type ActionIntent, type ActionItem, type ActionKind, type Urgency } from './actionModel';
 
 const INK = '#18181B';
 const MUTED = '#71717A';
@@ -33,19 +33,6 @@ const KIND: Record<ActionKind, { icon: LucideIcon; bg: string; fg: string; noun:
   'overdue-invoice': { icon: Receipt, bg: '#EEF0F4', fg: '#3E3C3D', noun: 'invoices' },
 };
 
-const URGENCY: Record<Urgency, { label: string; dot: string }> = {
-  now: { label: 'Act now', dot: '#D92D20' },
-  today: { label: 'Today', dot: '#E08A00' },
-  watch: { label: 'Keep an eye on', dot: '#9898A4' },
-};
-
-const FILTERS: { id: 'all' | ActionGroup; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'trips', label: 'Trips' },
-  { id: 'whatsapp', label: 'WhatsApp' },
-  { id: 'documents', label: 'Documents' },
-  { id: 'money', label: 'Money' },
-];
 
 /** Rows of one kind shown before folding the rest into "+N more". */
 const PER_KIND = 2;
@@ -54,13 +41,13 @@ const tap = () => Haptics.selectionAsync().catch(() => {});
 
 // ── Summary ───────────────────────────────────────────────────────────────────
 
-export function ActionSummary({ running, delayed, actNow, onRunning, onDelayed, onActNow }: {
-  running: number; delayed: number; actNow: number; onRunning: () => void; onDelayed: () => void; onActNow: () => void;
+export function ActionSummary({ running, delayed, today, onRunning, onDelayed, onToday }: {
+  running: number; delayed: number; today: number; onRunning: () => void; onDelayed: () => void; onToday: () => void;
 }) {
   const cells = [
     { key: 'run', label: 'On the road', value: running, color: '#2449A8', onPress: onRunning },
     { key: 'late', label: 'Delayed', value: delayed, color: delayed ? '#B42318' : INK, onPress: onDelayed },
-    { key: 'act', label: 'Act now', value: actNow, color: actNow ? '#B35C00' : INK, onPress: onActNow },
+    { key: 'today', label: 'Trips today', value: today, color: INK, onPress: onToday },
   ];
   return (
     <View style={s.summary}>
@@ -76,43 +63,48 @@ export function ActionSummary({ running, delayed, actNow, onRunning, onDelayed, 
 
 // ── The list ──────────────────────────────────────────────────────────────────
 
-export function NeedsActionList({ items, loading, onIntent, onOpenTrip, filter, onFilter, now }: {
+const TABS: { id: Urgency; label: string }[] = [
+  { id: 'now', label: 'Act now' },
+  { id: 'today', label: 'Today' },
+  { id: 'watch', label: 'Later' },
+];
+
+const EMPTY: Record<Urgency, string> = {
+  now: 'Nothing urgent right now.',
+  today: 'Nothing else to do today.',
+  watch: 'Nothing to keep an eye on.',
+};
+
+export function NeedsActionList({ items, loading, onIntent, onOpenTrip, now }: {
   items: ActionItem[];
   loading: boolean;
   onIntent: (intent: ActionIntent) => void;
   onOpenTrip: (tripId: string) => void;
-  filter: 'all' | ActionGroup;
-  onFilter: (f: 'all' | ActionGroup) => void;
   now: number;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const [picked, setPicked] = useState<Urgency | null>(null);
   const counts = useMemo(() => {
-    const c: Record<string, number> = { all: items.length };
-    for (const i of items) c[i.group] = (c[i.group] ?? 0) + 1;
+    const c: Record<Urgency, number> = { now: 0, today: 0, watch: 0 };
+    for (const i of items) c[i.urgency] += 1;
     return c;
   }, [items]);
-  const shown = filter === 'all' ? items : items.filter((i) => i.group === filter);
+  // Until the operator picks a tab, show the most urgent one that has something in it.
+  const tab: Urgency = picked ?? (counts.now ? 'now' : counts.today ? 'today' : counts.watch ? 'watch' : 'now');
 
-  // Sections by urgency; inside, each kind shows a couple of rows and folds the rest.
-  const sections = useMemo(() => {
-    const out: { urgency: Urgency; rows: ({ type: 'item'; item: ActionItem } | { type: 'more'; kind: ActionKind; key: string; hidden: number })[]; total: number }[] = [];
-    for (const u of ['now', 'today', 'watch'] as Urgency[]) {
-      const list = shown.filter((i) => i.urgency === u);
-      if (!list.length) continue;
-      const rows: (typeof out)[number]['rows'] = [];
-      const kinds = [...new Set(list.map((i) => i.kind))];
-      for (const k of kinds) {
-        const ofKind = list.filter((i) => i.kind === k);
-        const key = `${u}:${k}`;
-        const expanded = open.has(key);
-        const visible = expanded ? ofKind : ofKind.slice(0, PER_KIND);
-        visible.forEach((item) => rows.push({ type: 'item', item }));
-        if (ofKind.length > PER_KIND) rows.push({ type: 'more', kind: k, key, hidden: expanded ? 0 : ofKind.length - PER_KIND });
-      }
-      out.push({ urgency: u, rows, total: list.length });
+  // Each kind shows a couple of rows and folds the rest into "+N more".
+  const rows = useMemo(() => {
+    const list = items.filter((i) => i.urgency === tab);
+    const out: ({ type: 'item'; item: ActionItem } | { type: 'more'; kind: ActionKind; key: string; hidden: number })[] = [];
+    for (const k of [...new Set(list.map((i) => i.kind))]) {
+      const ofKind = list.filter((i) => i.kind === k);
+      const key = `${tab}:${k}`;
+      const expanded = open.has(key);
+      (expanded ? ofKind : ofKind.slice(0, PER_KIND)).forEach((item) => out.push({ type: 'item', item }));
+      if (ofKind.length > PER_KIND) out.push({ type: 'more', kind: k, key, hidden: expanded ? 0 : ofKind.length - PER_KIND });
     }
     return out;
-  }, [shown, open]);
+  }, [items, tab, open]);
 
   const toggle = (key: string) => {
     tap();
@@ -124,54 +116,54 @@ export function NeedsActionList({ items, loading, onIntent, onOpenTrip, filter, 
   };
 
   return (
-    <View style={{ gap: 12 }}>
+    <View style={{ gap: 10 }}>
       <View style={s.headRow}>
         <Text style={s.h2}>Needs action</Text>
-        {loading ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={s.headCount}>{shown.length} to do</Text>}
+        {loading ? <ActivityIndicator size="small" color={Colors.primary} /> : null}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
-        {FILTERS.filter((f) => f.id === 'all' || counts[f.id]).map((f) => {
-          const on = filter === f.id;
+      {/* One switch instead of filter chips: Act now · Today · Later */}
+      <View style={s.segment} accessibilityRole="tablist">
+        {TABS.map((t) => {
+          const on = t.id === tab;
           return (
-            <TouchableOpacity key={f.id} style={[s.chip, on && s.chipOn]} onPress={() => { tap(); onFilter(f.id); }} activeOpacity={0.8}>
-              <Text style={[s.chipText, on && s.chipTextOn]}>{f.label}</Text>
-              <Text style={[s.chipCount, on && s.chipCountOn]}>{counts[f.id] ?? 0}</Text>
+            <TouchableOpacity
+              key={t.id}
+              style={[s.segItem, on && s.segOn]}
+              onPress={() => { if (!on) tap(); setPicked(t.id); }}
+              activeOpacity={0.8}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on }}
+            >
+              {t.id === 'now' && counts.now ? <View style={s.segDot} /> : null}
+              <Text style={[s.segText, on && s.segTextOn]} numberOfLines={1}>{t.label}</Text>
+              <Text style={[s.segCount, on && s.segCountOn]}>{counts[t.id]}</Text>
             </TouchableOpacity>
           );
         })}
-      </ScrollView>
+      </View>
 
-      {!loading && shown.length === 0 ? (
+      {!loading && rows.length === 0 ? (
         <View style={s.clear}>
-          <CircleCheckBig size={24} color="#1F9D55" />
-          <View style={{ flex: 1 }}>
-            <Text style={s.clearTitle}>All clear</Text>
-            <Text style={s.clearText}>Nothing needs you right now.</Text>
-          </View>
+          <CircleCheckBig size={22} color="#16A34A" />
+          <Text style={s.clearText}>{EMPTY[tab]}</Text>
         </View>
       ) : null}
 
-      {sections.map((sec) => (
-        <View key={sec.urgency} style={{ gap: 8 }}>
-          <View style={s.groupHead}>
-            <View style={[s.groupDot, { backgroundColor: URGENCY[sec.urgency].dot }]} />
-            <Text style={s.groupText}>{URGENCY[sec.urgency].label} · {sec.total}</Text>
-          </View>
-          <View style={s.card}>
-            {sec.rows.map((row, i) =>
-              row.type === 'item' ? (
-                <ActionRow key={row.item.key} item={row.item} first={i === 0} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} />
-              ) : (
-                <TouchableOpacity key={`more-${row.key}`} style={[s.moreRow, i > 0 && s.rowBorder]} onPress={() => toggle(row.key)} activeOpacity={0.7}>
-                  <Text style={s.moreText}>{row.hidden ? `+${row.hidden} more ${KIND[row.kind].noun}` : `Show fewer ${KIND[row.kind].noun}`}</Text>
-                  <ChevronDown size={16} color={MUTED} style={row.hidden ? undefined : { transform: [{ rotate: '180deg' }] }} />
-                </TouchableOpacity>
-              ),
-            )}
-          </View>
+      {rows.length ? (
+        <View style={s.card}>
+          {rows.map((row, i) =>
+            row.type === 'item' ? (
+              <ActionRow key={row.item.key} item={row.item} first={i === 0} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} />
+            ) : (
+              <TouchableOpacity key={`more-${row.key}`} style={[s.moreRow, i > 0 && s.rowBorder]} onPress={() => toggle(row.key)} activeOpacity={0.7}>
+                <Text style={s.moreText}>{row.hidden ? `+${row.hidden} more ${KIND[row.kind].noun}` : `Show fewer ${KIND[row.kind].noun}`}</Text>
+                <ChevronDown size={16} color={MUTED} style={row.hidden ? undefined : { transform: [{ rotate: '180deg' }] }} />
+              </TouchableOpacity>
+            ),
+          )}
         </View>
-      ))}
+      ) : null}
     </View>
   );
 }
@@ -299,17 +291,6 @@ const s = StyleSheet.create({
   cellLabel: { fontSize: 11, fontWeight: '500', color: MUTED },
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   h2: { fontSize: 16, fontWeight: '700', color: INK },
-  headCount: { fontSize: 12, fontWeight: '500', color: MUTED },
-  chips: { gap: 6, paddingRight: 8 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 30, borderRadius: 8, paddingHorizontal: 10, backgroundColor: Colors.white, borderWidth: 1, borderColor: LINE },
-  chipOn: { backgroundColor: INK, borderColor: INK },
-  chipText: { fontSize: 12, fontWeight: '500', color: '#3F3F46' },
-  chipTextOn: { color: Colors.white },
-  chipCount: { fontSize: 12, fontWeight: '500', color: '#A1A1AA' },
-  chipCountOn: { color: '#C9C9D2' },
-  groupHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 2 },
-  groupDot: { width: 6, height: 6, borderRadius: 3 },
-  groupText: { fontSize: 12, fontWeight: '500', color: MUTED },
   groupCount: { fontSize: 12, fontWeight: '700', color: '#9898A4' },
   card: { backgroundColor: Colors.white, borderRadius: 12, borderWidth: 1, borderColor: LINE, overflow: 'hidden' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10 },
@@ -332,9 +313,16 @@ const s = StyleSheet.create({
   callBtn: { width: 30, height: 30, borderRadius: 8, borderWidth: 1, borderColor: LINE, alignItems: 'center', justifyContent: 'center' },
   moreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11 },
   moreText: { fontSize: 12, fontWeight: '500', color: MUTED },
-  clear: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F0FDF4', borderRadius: 12, borderWidth: 1, borderColor: '#BBF7D0', padding: 14 },
-  clearTitle: { fontSize: 15, fontWeight: '800', color: '#146C3C' },
-  clearText: { fontSize: 13, color: '#146C3C' },
+  segment: { flexDirection: 'row', gap: 4, backgroundColor: '#F4F4F5', borderRadius: 10, padding: 3 },
+  segItem: { flex: 1, height: 34, borderRadius: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  segOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  segDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#F04438' },
+  segText: { fontSize: 13, fontWeight: '500', color: MUTED },
+  segTextOn: { color: INK, fontWeight: '600' },
+  segCount: { fontSize: 12, fontWeight: '500', color: '#A1A1AA', fontVariant: ['tabular-nums'] },
+  segCountOn: { color: MUTED },
+  clear: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#F0FDF4', borderRadius: 12, borderWidth: 1, borderColor: '#BBF7D0', padding: 14 },
+  clearText: { flex: 1, fontSize: 13, fontWeight: '500', color: '#15803D' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   linkText: { fontSize: 13, fontWeight: '500', color: MUTED },
   emptyToday: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14 },
