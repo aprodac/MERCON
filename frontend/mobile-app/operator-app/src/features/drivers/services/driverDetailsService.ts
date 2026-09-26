@@ -217,8 +217,8 @@ export function driverDisplayInitials(driver: Pick<DriverDetail, 'firstName' | '
 }
 
 /** Capacity in kg, thousands-separated. */
-export function formatCapacity(kg: number | null): string {
-  if (kg === null || Number.isNaN(kg)) return '—';
+export function formatCapacity(kg: number | null | undefined): string {
+  if (kg == null || Number.isNaN(kg)) return '—';
   return `${kg.toLocaleString()} kg`;
 }
 
