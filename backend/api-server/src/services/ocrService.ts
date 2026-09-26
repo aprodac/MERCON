@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { DocType } from '@prisma/client';
 import { env } from '../config/env';
+import { getUploadDir } from '../middlewares/upload';
 
 export interface OcrResult {
   doc_type: DocType;
@@ -99,6 +100,8 @@ export function getLocalFilePathFromUrl(fileUrl: string): string | null {
   if (!fileUrl) return null;
   const fileName = path.basename(fileUrl);
   const possiblePaths = [
+    // Where multer actually writes (honours UPLOADS_DIR), then legacy spots.
+    path.resolve(getUploadDir(), fileName),
     path.resolve('/tmp', 'uploads', fileName),
     path.resolve('/tmp/uploads', fileName),
     path.resolve(process.cwd(), 'uploads', fileName),
