@@ -15,10 +15,10 @@ import { TripProgressStepper } from '../components/TripProgressStepper';
 import { DelayButton } from '../components/DelayButton';
 import { GeotagPhotoModal } from '../components/GeotagPhotoModal';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 
 import { targetFromWorkflowState, parseStopWorkflowState } from '../utils/routeParser';
-import { takePhoto, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { takePhoto, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 import { showToast } from '../components/AppToast';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
@@ -68,16 +68,8 @@ const LiveNavigationScreen = () => {
   const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const hasArrivedRef = useRef(false);
 
-  useEffect(() => {
-    if (trip?.driver_workflow === 'EXTERNAL_APP') {
-      const ws = trip?.driver_workflow_state || 'ASSIGNED';
-      if (ws === 'ASSIGNED') {
-        router.replace('/');
-      } else {
-        router.replace('/trip/external-app');
-      }
-    }
-  }, [trip?.driver_workflow, trip]);
+  // 1 geotagged photo, or 1 customer-app screenshot on EXTERNAL_APP trips.
+  const evidence = getEvidencePolicy(trip, 'arrival');
 
   const ws = trip?.driver_workflow_state || 'ASSIGNED';
   const isRound = isRoundTrip(trip);
@@ -150,7 +142,7 @@ const LiveNavigationScreen = () => {
   }, [dropoffStop]);
 
   const handleAddPhoto = async () => {
-    const photo = await takePhoto();
+    const photo = evidence.screenshot ? await pickFromGallery().catch(() => null) : await takePhoto();
     if (photo) setArrivalPhoto(photo);
     return photo;
   };
@@ -194,6 +186,14 @@ const LiveNavigationScreen = () => {
           );
         } catch (photoErr) {
           console.warn('Arrival photo upload warning:', photoErr);
+          // The screenshot is the only proof of an external-app arrival (the
+          // operator reads the real time off it), so don't advance without it.
+          if (evidence.screenshot) {
+            hasArrivedRef.current = false;
+            setArriving(false);
+            showToast(t('err_screenshot_upload', 'Screenshot could not upload. Check your connection and tap again.'), 'error');
+            return;
+          }
           showToast(t('warn_arrival_photo_upload', 'Arrival photo could not upload — arrival is still confirmed.'), 'info');
         }
       }
@@ -580,6 +580,8 @@ const LiveNavigationScreen = () => {
             <Text style={styles.primaryArrivedBtnText}>
               {arriving
                 ? t('msg_updating_state', 'Updating State…')
+                : !arrivalPhoto && evidence.screenshot
+                ? t('action_arrived_screenshot', "I'VE ARRIVED — ADD SCREENSHOT")
                 : !arrivalPhoto
                 ? (isHeadingToPickup
                   ? t('action_arrived_pickup_photo', "I'VE ARRIVED — TAKE PHOTO")

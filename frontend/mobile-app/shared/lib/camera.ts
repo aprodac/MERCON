@@ -72,6 +72,8 @@ export interface CapturedPhoto {
   fileName?: string | null;
   location?: LocationTag | null;
   geotag?: LocationTag | null;
+  /** Already on the server (kept in saved drafts so a reopen doesn't upload it twice). */
+  uploaded?: boolean;
 }
 
 /**
@@ -91,6 +93,11 @@ async function compressPhoto(uri: string, location?: Promise<LocationTag | null>
     withTimeout(location ?? getDeviceLocationTag(), 1500, null),
   ]);
   return { uri: result.uri, mimeType: 'image/jpeg', fileName: 'photo.jpg', location: loc };
+}
+
+/** Compress + geotag a photo taken by the in-app camera. */
+export function preparePhoto(uri: string, location?: Promise<LocationTag | null>): Promise<CapturedPhoto> {
+  return compressPhoto(uri, location);
 }
 
 async function toPhoto(result: ImagePicker.ImagePickerResult, location?: Promise<LocationTag | null>): Promise<CapturedPhoto | null> {
