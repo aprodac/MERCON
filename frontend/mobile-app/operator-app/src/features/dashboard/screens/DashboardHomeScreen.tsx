@@ -19,7 +19,7 @@ import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
 import { ErrorState } from '@mercon/mobile-shared/ui';
 import { useActionInbox } from '../actions/useActionInbox';
 import { ActionSummary, NeedsActionList, TodayTrips } from '../actions/NeedsAction';
-import type { ActionGroup, ActionIntent } from '../actions/actionModel';
+import type { ActionIntent } from '../actions/actionModel';
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
@@ -31,7 +31,6 @@ export default function DashboardHomeScreen() {
     return () => clearInterval(id);
   }, []);
   const { refreshing, refresh } = useDashboardRefresh();
-  const [filter, setFilter] = useState<'all' | ActionGroup>('all');
 
   const notifications = useNotifications();
   const { markRead } = useMarkNotificationsRead();
@@ -85,10 +84,10 @@ export default function DashboardHomeScreen() {
         <ActionSummary
           running={inbox.counts.running}
           delayed={inbox.counts.delayed}
-          actNow={inbox.counts.now}
+          today={inbox.today.length}
           onRunning={() => router.push('/trips')}
-          onDelayed={() => setFilter('trips')}
-          onActNow={() => setFilter('all')}
+          onDelayed={() => router.push('/trips')}
+          onToday={() => router.push('/trips')}
         />
 
         {inbox.liveError ? (
@@ -100,8 +99,6 @@ export default function DashboardHomeScreen() {
           loading={inbox.loading}
           onIntent={onIntent}
           onOpenTrip={(id) => openTrip(id)}
-          filter={filter}
-          onFilter={setFilter}
           now={now}
         />
 

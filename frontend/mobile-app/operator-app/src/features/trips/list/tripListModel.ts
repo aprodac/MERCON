@@ -119,6 +119,12 @@ export function flagsOf(t: OperatorTrip, now = Date.now()): Flag[] {
   return flags;
 }
 
+/** The reason the driver gave for the delay, in words ("Traffic Jam"). */
+export function delayReasonOf(t: OperatorTrip): string | null {
+  const reason = stopsOf(t).find((s) => s.delay_reason)?.delay_reason;
+  return reason ? String(reason).replace(/([a-z])([A-Z])/g, '$1 $2') : null;
+}
+
 export const needsAttention = (t: OperatorTrip, now = Date.now()) =>
   flagsOf(t, now).some((f) => f.tone === 'red' || f.tone === 'amber');
 
