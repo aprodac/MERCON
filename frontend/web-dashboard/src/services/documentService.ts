@@ -1,6 +1,7 @@
 import { api, ApiResponse } from '@/lib/api';
 import { MerconFolder } from './folderService';
 import type { DocumentType, DocOwnerType } from './documentTypeService';
+import { chunk, relativePathOf } from '@/lib/fileDrop';
 
 export type DocType   = 'DriverLicense' | 'VehicleRegistration' | 'Insurance' | 'POD' | 'CustomsClearance' | 'Waybill' | 'Contract' | 'Invoice' | 'Emergency' | 'Passport';
 export type DocStatus = 'PendingReview' | 'Verified' | 'Rejected' | 'Expired';
@@ -280,16 +281,68 @@ export const documentService = {
    * Files are uploaded here, read by AI, reviewed, and only become real
    * Documents on confirm — nothing unowned ever reaches the vault. */
 
-  async createImport(files: File[], ownerType?: string, ownerId?: string): Promise<{ id: string; itemCount: number }> {
-    const formData = new FormData();
-    files.forEach((f) => formData.append('files', f));
-    if (ownerType) formData.append('ownerType', ownerType);
-    if (ownerId) formData.append('ownerId', ownerId);
+  async createImport(
+    files: File[],
+    ownerType?: string,
+    ownerId?: string,
+    onUploadProgress?: (progressEvent: any) => void,
+  ): Promise<{ id: string; itemCount: number }> {
+    const formData = importFormData(files, ownerType, ownerId);
     const res = await api.post<ApiResponse<{ id: string; itemCount: number }>>('/documents/imports', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 300_000, // a large batch is a long single upload
+      onUploadProgress,
     });
     return res.data.data;
+  },
+
+  async appendImportFiles(
+    importId: string,
+    files: File[],
+    onUploadProgress?: (progressEvent: any) => void,
+  ): Promise<{ id: string; itemCount: number; added: number }> {
+    const res = await api.post<ApiResponse<{ id: string; itemCount: number; added: number }>>(
+      `/documents/imports/${importId}/files`,
+      importFormData(files),
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 300_000, onUploadProgress },
+    );
+    return res.data.data;
+  },
+
+  /**
+   * Stages any number of files (a whole folder, say) as one import, sending
+   * them in small batches so progress is real and one slow request doesn't
+   * sink the lot. Reports overall progress as a 0–100 percentage.
+   */
+  async stageImport(
+    files: File[],
+    opts: { ownerType?: string; ownerId?: string; onProgress?: (pct: number, sentFiles: number) => void } = {},
+  ): Promise<{ id: string; itemCount: number }> {
+    const batches = batchFiles(files);
+    const totalBytes = files.reduce((n, f) => n + f.size, 0) || 1;
+    let doneBytes = 0;
+    let sentFiles = 0;
+    let importId: string | null = null;
+    let itemCount = 0;
+
+    for (const batch of batches) {
+      const batchBytes = batch.reduce((n, f) => n + f.size, 0);
+      const onUploadProgress = (evt: any) => {
+        const loaded = evt.total ? (evt.loaded / evt.total) * batchBytes : 0;
+        opts.onProgress?.(Math.min(99, Math.round(((doneBytes + loaded) / totalBytes) * 100)), sentFiles);
+      };
+      if (!importId) {
+        const created = await documentService.createImport(batch, opts.ownerType, opts.ownerId, onUploadProgress);
+        importId = created.id;
+        itemCount = created.itemCount;
+      } else {
+        itemCount = (await documentService.appendImportFiles(importId, batch, onUploadProgress)).itemCount;
+      }
+      doneBytes += batchBytes;
+      sentFiles += batch.length;
+      opts.onProgress?.(Math.round((doneBytes / totalBytes) * 100), sentFiles);
+    }
+    return { id: importId!, itemCount };
   },
 
   async getImport(id: string): Promise<DocumentImport> {
@@ -350,3 +403,33 @@ export const documentService = {
     return res.data.data;
   },
 };
+
+/** Multipart body for staging files, carrying each file's folder path. */
+function importFormData(files: File[], ownerType?: string, ownerId?: string): FormData {
+  const formData = new FormData();
+  files.forEach((f) => formData.append('files', f));
+  formData.append('relativePaths', JSON.stringify(files.map(relativePathOf)));
+  if (ownerType) formData.append('ownerType', ownerType);
+  if (ownerId) formData.append('ownerId', ownerId);
+  return formData;
+}
+
+/** Groups files into requests of at most 25 files / ~40 MB each. */
+function batchFiles(files: File[]): File[][] {
+  const MAX_FILES = 25;
+  const MAX_BYTES = 40 * 1024 * 1024;
+  const out: File[][] = [];
+  let current: File[] = [];
+  let bytes = 0;
+  for (const f of files) {
+    if (current.length > 0 && (current.length >= MAX_FILES || bytes + f.size > MAX_BYTES)) {
+      out.push(current);
+      current = [];
+      bytes = 0;
+    }
+    current.push(f);
+    bytes += f.size;
+  }
+  if (current.length) out.push(current);
+  return out.length ? out : chunk(files, MAX_FILES);
+}

@@ -104,59 +104,95 @@ export const getDocumentById = async (req: Request, res: Response) => {
 };
 
 /* ─── Upload document ─────────────────────────────────────────────────────── */
+/** Owner types a document can be filed against (mirrors the DocOwnerType enum). */
+const UPLOAD_OWNER_TYPES = new Set(['Driver', 'Vehicle', 'Trip', 'Customer', 'Company', 'Other', 'MaintenanceRecord']);
+
+/** Legacy doc_type to record when the caller didn't send a valid one. */
+const LEGACY_DOC_TYPE_BY_OWNER: Record<string, DocType> = {
+  Driver: DocType.DriverLicense,
+  Vehicle: DocType.VehicleRegistration,
+  Trip: DocType.Waybill,
+  Customer: DocType.Contract,
+  Company: DocType.Contract,
+  Other: DocType.Contract,
+};
+
+const LEGACY_DOC_TYPES = new Set<string>(Object.values(DocType));
+
+/** Best-effort cleanup of files multer already wrote for a rejected request. */
+function discardUploadedFiles(files: Express.Multer.File[]) {
+  for (const f of files) {
+    fs.promises.unlink(f.path).catch(() => {});
+  }
+}
+
+/**
+ * Creates one Document from one or more files. Several files become the pages
+ * of the same document (e.g. front and back of an ID card), which is why the
+ * route accepts both the legacy single `file` field and a `files` array.
+ */
 export const uploadDocument = async (req: Request, res: Response) => {
+  const fieldFiles = (req.files || {}) as Record<string, Express.Multer.File[]>;
+  const uploaded: Express.Multer.File[] = [
+    ...(req.file ? [req.file] : []),
+    ...(fieldFiles.file || []),
+    ...(fieldFiles.files || []),
+  ];
+  const reject = (message: string) => {
+    discardUploadedFiles(uploaded);
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message } });
+  };
+
   try {
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'No file uploaded' }
-      });
-    }
+    if (uploaded.length === 0) return reject('No file uploaded');
 
     let { entity_type, entity_id, doc_type, document_type_id, issue_date, expiry_date, is_confidential, folder_id, folderId } = req.body;
 
     if (!entity_type || !entity_id || (!doc_type && !document_type_id)) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'entity_type, entity_id, and either doc_type or document_type_id are required' }
-      });
+      return reject('entity_type, entity_id, and either doc_type or document_type_id are required');
+    }
+    if (!UPLOAD_OWNER_TYPES.has(entity_type)) {
+      return reject(`Unknown owner type "${entity_type}"`);
     }
 
     let documentType = null;
     if (document_type_id) {
       documentType = await prisma.documentType.findUnique({ where: { id: document_type_id as string } });
-      if (!documentType) {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Unknown document_type_id' } });
-      }
-      if (documentType.requiresExpiryDate && !expiry_date) {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `${documentType.name} requires an expiry date` } });
-      }
-      if (documentType.requiresIssueDate && !issue_date) {
-        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `${documentType.name} requires an issue date` } });
-      }
-      // doc_type is still a required, non-nullable legacy column (kept for back-compat
-      // readers) — derive a reasonable default from the configured type's owner so
-      // callers using the new document_type_id flow never need to know about it.
-      if (!doc_type) {
-        const LEGACY_FALLBACK: Record<string, DocType> = {
-          Driver: DocType.DriverLicense,
-          Vehicle: DocType.VehicleRegistration,
-          Trip: DocType.Waybill,
-          Customer: DocType.Contract,
-          Company: DocType.Contract,
-          Other: DocType.Contract,
-        };
-        doc_type = LEGACY_FALLBACK[documentType.ownerType] || DocType.Contract;
+      if (!documentType) return reject('Unknown document type');
+      if (documentType.requiresExpiryDate && !expiry_date) return reject(`${documentType.name} requires an expiry date`);
+      if (documentType.requiresIssueDate && !issue_date) return reject(`${documentType.name} requires an issue date`);
+      if (uploaded.length > 1 && !documentType.allowsMultipleFiles) {
+        return reject(`${documentType.name} holds a single file — upload one file, or use AI sort to file them separately`);
       }
     }
 
-    // Compress image to save disk space & mobile data bandwidth
-    await compressUploadedImage(req.file.path);
+    // doc_type is a legacy enum column. Configured types carry free-form codes
+    // ("Isthimara", "IQAMA", custom ones) that are not enum members, and
+    // writing one would make Prisma throw — so only keep a real enum value and
+    // otherwise derive one from the owner.
+    if (!doc_type || !LEGACY_DOC_TYPES.has(doc_type)) {
+      if (documentType && LEGACY_DOC_TYPES.has(documentType.code)) {
+        doc_type = documentType.code;
+      } else if (documentType || doc_type) {
+        doc_type = LEGACY_DOC_TYPE_BY_OWNER[documentType?.ownerType || entity_type] || DocType.Contract;
+      }
+    }
 
-    // Build the public URL for the uploaded file (relative by default)
-    const file_url = env.BASE_URL
-      ? `${env.BASE_URL}/uploads/${req.file.filename}`
-      : `/uploads/${req.file.filename}`;
+    const parsedIssue = issue_date ? new Date(issue_date) : null;
+    const parsedExpiry = expiry_date ? new Date(expiry_date) : null;
+    if ((parsedIssue && Number.isNaN(parsedIssue.getTime())) || (parsedExpiry && Number.isNaN(parsedExpiry.getTime()))) {
+      return reject('Invalid issue or expiry date');
+    }
+    if (parsedIssue && parsedExpiry && parsedExpiry < parsedIssue) {
+      return reject('Expiry date cannot be before the issue date');
+    }
+
+    // Compress images to save disk space & mobile data bandwidth
+    for (const f of uploaded) await compressUploadedImage(f.path);
+
+    const urlFor = (f: Express.Multer.File) => (env.BASE_URL ? `${env.BASE_URL}/uploads/${f.filename}` : `/uploads/${f.filename}`);
+    const primary = uploaded[0];
+    const userId = (req as any).user?.id;
     const targetFolderId = folder_id || folderId || null;
 
     const document = await prisma.document.create({
@@ -166,20 +202,30 @@ export const uploadDocument = async (req: Request, res: Response) => {
         doc_type: doc_type ? (doc_type as DocType) : null,
         documentTypeId: documentType?.id ?? null,
         status: DocStatus.PendingReview,
-        file_url,
-        mime_type: req.file.mimetype,
+        file_url: urlFor(primary),
+        mime_type: primary.mimetype,
         folderId: targetFolderId,
-        issue_date: issue_date ? new Date(issue_date) : null,
-        expiry_date: expiry_date ? new Date(expiry_date) : null,
+        issue_date: parsedIssue,
+        expiry_date: parsedExpiry,
         is_confidential: is_confidential === 'true' || is_confidential === true,
-        created_by: (req as any).user?.id,
-        files: { create: { file_url, mime_type: req.file.mimetype, created_by: (req as any).user?.id } }
+        created_by: userId,
+        files: {
+          create: uploaded.map((f, i) => ({
+            file_url: urlFor(f),
+            displayOrder: i,
+            mime_type: f.mimetype,
+            label: uploaded.length > 1 ? f.originalname : null,
+            created_by: userId,
+          })),
+        },
       },
       include: { folder: true, documentType: true, files: true }
     });
 
     res.status(201).json({ success: true, data: document });
   } catch (error) {
+    console.error('uploadDocument failed:', error);
+    discardUploadedFiles(uploaded);
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to upload document' } });
   }
 };
