@@ -4,13 +4,13 @@ import MapGL, { Layer, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import Supercluster from 'supercluster';
-import { Compass, Focus, Maximize2, Minimize2, Minus, Moon, Plus, Search, SignalLow, Sun, X } from 'lucide-react';
+import { Compass, Focus, Navigation, Maximize2, Minimize2, Minus, Moon, Plus, Search, SignalLow, Sun, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { formatInDeploymentTz, useDeploymentTimezone } from '@/lib/datetime';
 import { whatsAppLink } from '@/lib/share';
 import {
-  LIVE_FILTERS, buildEtaShareText, computeEta, groupStops, isOffline, matchesFilter, matchesQuery, nextStop, pickLabels, timeAgo,
+  LIVE_FILTERS, buildEtaShareText, computeEta, groupStops, isOffline, matchesFilter, matchesQuery, nextStop, pickLabels, routeBearing, timeAgo,
   unitPriority, unitTitle, type LiveFilter,
 } from '@/lib/fleetLive';
 import { fleetLiveService, type LiveUnit } from '@/services/fleetLiveService';
@@ -85,6 +85,8 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
   const [query, setQuery] = useState('');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [follow, setFollow] = useState(true);
+  /** Driver view: camera low behind the selected arrow, facing where it is going. */
+  const [pov, setPov] = useState(false);
   const [firstSymbolId, setFirstSymbolId] = useState<string | undefined>();
   const [hoverKey, setHoverKey] = useState<string | null>(null);
   /** Camera snapshot taken when movement ends — drives grouping and label placement. */
@@ -272,6 +274,7 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
     (key: string) => {
       setSelectedKey(key);
       setFollow(true);
+      setPov(false);
       const u = units.find((x) => x.key === key);
       if (u) flyToUnit(u);
     },
@@ -280,6 +283,7 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
 
   const deselect = useCallback(() => {
     setSelectedKey(null);
+    setPov(false);
     fitAll();
   }, [fitAll]);
 
@@ -289,6 +293,47 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
     const b = boundsOf(pts);
     if (b) mapRef.current?.fitBounds(b, { padding: panelPadding(), pitch: 30, bearing: 0, duration: 1400, maxZoom: 14 });
     setFollow(false);
+  }, [selected, panelPadding]);
+
+  // ── Driver view ──
+  // Heading when moving; otherwise the direction the road route leaves in, so a
+  // parked truck still faces its next stop.
+  const povBearing = useCallback(
+    (u: LiveUnit) => {
+      if (u.motion === 'moving' && u.position?.heading_deg != null) return u.position.heading_deg;
+      return (route?.geometry ? routeBearing(route.geometry) : null) ?? mapRef.current?.getBearing() ?? 0;
+    },
+    [route],
+  );
+  // The arrow sits in the lower part of the view with the road ahead above it.
+  const povPadding = useCallback(() => {
+    const h = mapRef.current?.getContainer().clientHeight ?? 400;
+    return { ...panelPadding(), top: Math.round(h * 0.5) };
+  }, [panelPadding]);
+
+  const enterPov = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || !selected?.position) return;
+    setPov(true);
+    setFollow(true);
+    map.easeTo({
+      center: [selected.position.lng, selected.position.lat],
+      zoom: 17.5,
+      pitch: 72,
+      bearing: povBearing(selected),
+      padding: povPadding(),
+      duration: 1600,
+      essential: true,
+    });
+  }, [selected, povBearing, povPadding]);
+
+  const exitPov = useCallback(() => {
+    setPov(false);
+    const pos = selected?.position;
+    mapRef.current?.easeTo({
+      ...(pos ? { center: [pos.lng, pos.lat] as [number, number] } : {}),
+      zoom: 14, pitch: 50, padding: panelPadding(), duration: 900,
+    });
   }, [selected, panelPadding]);
 
   // Requests from outside (the inbox): select the trip's unit and fly to it.
@@ -315,8 +360,14 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
   const followLng = selected?.position?.lng;
   useEffect(() => {
     if (!follow || followLat == null || followLng == null) return;
+    if (pov && selected) {
+      mapRef.current?.easeTo({ center: [followLng, followLat], bearing: povBearing(selected), duration: 1200, padding: povPadding() });
+      return;
+    }
     mapRef.current?.easeTo({ center: [followLng, followLat], duration: 1200, padding: panelPadding() });
-  }, [followLat, followLng, follow, panelPadding]);
+    // selected changes every refresh; position (followLat/Lng) is what should trigger a move
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followLat, followLng, follow, pov, panelPadding, povPadding]);
 
   // Escape: close details, then leave expanded view.
   useEffect(() => {
@@ -324,12 +375,13 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
       if (e.key !== 'Escape') return;
       // An open photo/video viewer handles its own Escape.
       if (document.querySelector('[role="dialog"][data-state="open"]')) return;
-      if (selectedKey) deselect();
+      if (pov) exitPov();
+      else if (selectedKey) deselect();
       else if (expanded) setExpanded(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedKey, expanded, deselect]);
+  }, [selectedKey, expanded, deselect, pov, exitPov]);
 
   const toggleTheme = () => {
     const next = theme === 'light' ? 'dark' : 'light';
@@ -415,7 +467,7 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
           maxBounds={MAX_BOUNDS}
           minZoom={3.5}
           maxZoom={19}
-          maxPitch={70}
+          maxPitch={75}
           dragRotate
           touchPitch
           attributionControl={false}
@@ -505,6 +557,16 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
 
       {/* ── Overlays ── */}
       <div className="pointer-events-none absolute inset-0 z-10 p-3">
+        {pov && selected && (
+          <div className="absolute top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full bg-charcoal/90 p-1 pl-3 text-xs font-medium text-white shadow-lg backdrop-blur-md pointer-events-auto">
+            <Navigation className="size-3.5 fill-current text-sky-300" />
+            <span className="px-1">Driver view · <span className="font-mono">{unitTitle(selected)}</span></span>
+            {!follow && (
+              <button type="button" onClick={enterPov} className="rounded-full bg-white/15 px-2.5 py-1 hover:bg-white/25">Recenter</button>
+            )}
+            <button type="button" onClick={exitPov} className="rounded-full bg-white/15 px-2.5 py-1 hover:bg-white/25">Exit</button>
+          </div>
+        )}
         {/* Top-left: next-stop card when a trip is selected in the full layout, otherwise search + filters */}
         <div className="absolute top-3 left-3 flex max-w-[calc(100%-5rem)] flex-col gap-2">
           {selected && compact ? null : selected && selected.trip && stop ? (
@@ -574,7 +636,7 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
         {/* Right: details panel (full layout) */}
         {selected && !compact && (
           <div className="absolute top-16 right-3 bottom-3 flex items-start">
-            <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact={false} onClose={deselect} onShare={share} onShowRoute={showRoute} expanded={expanded} onToggleExpand={() => setExpanded((v) => !v)} />
+            <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact={false} onClose={deselect} onShare={share} onShowRoute={showRoute} expanded={expanded} onToggleExpand={() => setExpanded((v) => !v)} pov={pov} onTogglePov={pov ? exitPov : enterPov} />
           </div>
         )}
 
@@ -614,7 +676,7 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
         {/* Compact: one bottom card */}
         {selected && compact && (
           <div className="absolute right-3 bottom-3 left-3">
-            <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact onClose={deselect} onShare={share} onShowRoute={showRoute} expanded={expanded} onToggleExpand={() => setExpanded((v) => !v)} />
+            <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact onClose={deselect} onShare={share} onShowRoute={showRoute} expanded={expanded} onToggleExpand={() => setExpanded((v) => !v)} pov={pov} onTogglePov={pov ? exitPov : enterPov} />
           </div>
         )}
 

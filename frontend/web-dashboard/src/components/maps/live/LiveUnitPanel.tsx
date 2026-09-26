@@ -22,6 +22,9 @@ interface Props {
   onShowRoute: () => void;
   expanded: boolean;
   onToggleExpand: () => void;
+  /** Driver view: camera behind the arrow, facing its direction. */
+  pov: boolean;
+  onTogglePov: () => void;
 }
 
 const MOTION_LABEL: Record<LiveUnit['motion'], string> = {
@@ -31,7 +34,7 @@ const MOTION_LABEL: Record<LiveUnit['motion'], string> = {
   no_signal: 'No signal',
 };
 
-export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare, onShowRoute, expanded, onToggleExpand }: Props) {
+export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare, onShowRoute, expanded, onToggleExpand, pov, onTogglePov }: Props) {
   const tone = TONE[unitTone(unit)];
   const stop = nextStop(unit);
   const p = punctuality(eta?.lateByMin ?? null);
@@ -80,6 +83,19 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
       >
         <WhatsAppIcon className="size-4" /> Share ETA
       </Button>
+      {unit.position && (
+        <Button
+          variant="outline"
+          size="icon"
+          className={cn('size-9 rounded-xl', pov && 'border-blue-600 bg-blue-600/10 text-blue-700 dark:text-blue-300')}
+          onClick={onTogglePov}
+          title={pov ? 'Leave driver view' : 'Driver view — follow from behind'}
+          aria-label={pov ? 'Leave driver view' : 'Driver view'}
+          aria-pressed={pov}
+        >
+          <Navigation className="size-4" />
+        </Button>
+      )}
       {unit.trip && (
         <Button variant="outline" size="icon" className="size-9 rounded-xl" onClick={onShowRoute} title="Show the whole route" aria-label="Show the whole route">
           <Route className="size-4" />

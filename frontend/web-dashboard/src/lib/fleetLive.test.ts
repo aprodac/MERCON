@@ -95,3 +95,20 @@ describe('map clarity helpers', () => {
     expect(groups[0].done).toBe(true);
   });
 });
+
+describe('driver view direction', () => {
+  it('measures compass bearings', async () => {
+    const { bearingBetween } = await import('./fleetLive');
+    expect(Math.round(bearingBetween({ lat: 24, lng: 46 }, { lat: 25, lng: 46 }))).toBe(0);
+    expect(Math.round(bearingBetween({ lat: 24, lng: 46 }, { lat: 24, lng: 47 }))).toBe(90);
+    expect(Math.round(bearingBetween({ lat: 24, lng: 46 }, { lat: 23, lng: 46 }))).toBe(180);
+  });
+
+  it('takes the road direction past the first wobbly metres', async () => {
+    const { routeBearing } = await import('./fleetLive');
+    // 10 m west (GPS wobble), then the road runs north.
+    const coords: [number, number][] = [[46, 24], [45.9999, 24], [46, 24.01]];
+    expect(Math.round(routeBearing(coords)!)).toBe(0);
+    expect(routeBearing([[46, 24]])).toBeNull();
+  });
+});
