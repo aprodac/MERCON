@@ -135,6 +135,8 @@ export default (): ExpoConfig => ({
       },
     ],
     'expo-image',
+    // Trip maps (native; needs a new build — the trip screen falls back without it).
+    '@maplibre/maplibre-react-native',
     'expo-status-bar',
     'expo-web-browser',
   ],
