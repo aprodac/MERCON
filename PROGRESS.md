@@ -286,6 +286,11 @@ Suggested order: BS-1, BS-5, BS-3 (frontend only), then BS-6; BS-2 and BS-4 afte
 | INV-3 | **ZATCA** — the printed invoice's QR is a decorative placeholder, not a scannable Phase 1 QR (owner said not now); Phase 2 e-invoicing is a separate project | ⬜ |
 | INV-4 | **Bulk PDF download** of selected invoices (needs the print layout split out of `InvoicePrintModal`; no migration) | ⬜ |
 
+### Live map — live GPS in driver view — ⬜ planned (owner: "keep aside, do later", 2026-09-26)
+- ⬜ While driver view is open, join the trip's existing Socket.IO room (`join:trip` → `trip:location_update:<tripId>`, already used by `TripTrackingPage`) instead of waiting for the 15 s `/vehicles/live-map` poll; leave the room on exit. One small message per GPS report — negligible load.
+- ⬜ Glide the arrow between fixes (interpolate position + heading) instead of jumping.
+- Limit: can't be fresher than the sources — ICCES tracker polled every 30 s, driver app every 15 s / 10 m (5 s on its navigation screen). Sending more often from the app costs drivers battery and data — a separate decision, not part of this.
+
 ### Surcharge/trip-charge follow-up (blocked on client, then a schema PR)
 - ⬜ Get the client's confirmed per-customer surcharge rates and units (per-hour vs per-person vs flat, real current AKS additional-stop rate vs. the quotation sheet's stale 100/stop, what HORIZON's 3rd-party rows actually represent) and enter them as `SurchargeRule` rows via the new Surcharge Fees tab — no real rates seeded yet.
 - ⬜ Run `npm run backfill:trip-charges -w @mercon/api-server` then `:verify` against every environment (dev, staging, production) to confirm `waiting_labor_charges`/`additional_stop_charges` migrated cleanly into `TripCharge` rows.
