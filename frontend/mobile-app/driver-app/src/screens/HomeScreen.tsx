@@ -18,6 +18,7 @@ import { DriverChargePill } from '../components/DriverChargePill';
 import { BilingualText } from '@mercon/mobile-shared/components/BilingualText';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { useCurrentTrip } from '../hooks/use-current-trip';
+import { useScheduledTrips } from '../hooks/use-scheduled-trips';
 import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, parseStopWorkflowState, getNextExternalAppAction, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage, getLocalizedStatus } from '@mercon/mobile-shared/lib/language-context';
@@ -124,8 +125,6 @@ const HomeScreen = () => {
   const [activeTab, setActiveTab] = useState('Home');
   const [advancing, setAdvancing] = useState(false);
   const [delayModalVisible, setDelayModalVisible] = useState(false);
-  const [scheduledTrips, setScheduledTrips] = useState<MobileTrip[]>([]);
-  const [scheduledLoading, setScheduledLoading] = useState(true);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const timeOfDay = React.useMemo(() => {
@@ -176,26 +175,10 @@ const HomeScreen = () => {
 //  }, [trip, loading]);
 
 
-  const fetchScheduled = useCallback(async () => {
-    setScheduledLoading(true);
-    try {
-      const data = await tripService.getScheduled();
-      setScheduledTrips(trip ? data.filter((t: MobileTrip) => t.id !== trip.id) : data);
-    } catch {
-      // silently fail
-    } finally {
-      setScheduledLoading(false);
-    }
-  }, [trip]);
-
-  // Load secondary data (scheduled trips) strictly once after primary trip resolves on initial load
-  const secondaryLoadedRef = useRef(false);
-  useEffect(() => {
-    if (!loading && !secondaryLoadedRef.current) {
-      secondaryLoadedRef.current = true;
-      fetchScheduled();
-    }
-  }, [loading, fetchScheduled]);
+  // Loaded in parallel with the current trip (was: only after it resolved)
+  // and served from the shared cache the Trips tab also uses.
+  const { trips: allScheduled, refetch: refetchScheduled } = useScheduledTrips();
+  const scheduledTrips = trip ? allScheduled.filter((st: MobileTrip) => st.id !== trip.id) : allScheduled;
 
   // Refresh the trip whenever Home regains focus
   const displayTrip = trip || (scheduledTrips.length > 0 ? scheduledTrips[0] : null);
@@ -386,8 +369,7 @@ const HomeScreen = () => {
           <RefreshControl
             refreshing={loading}
             onRefresh={async () => {
-              await refetch();
-              await fetchScheduled();
+              await Promise.all([refetch(), refetchScheduled()]);
             }}
             tintColor="#FFFFFF"
             progressBackgroundColor="#FA634E"

@@ -1,26 +1,31 @@
-import { useCallback, useEffect, useState } from 'react';
-import { profileService, type DriverProfile } from '../services/profile';
+import { useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { profileService } from '../services/profile';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { queryClient } from '@mercon/mobile-shared/lib/query-client';
+import { driverKeys } from './query-keys';
 
-/** Loads the driver's profile. Fetch-on-mount with a manual refetch. */
+/** The driver's profile, shared across screens via React Query. */
 export function useProfile() {
-  const [profile, setProfile] = useState<DriverProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: driverKeys.profile,
+    queryFn: () => profileService.get(),
+  });
 
+  const { refetch: queryRefetch } = query;
   const refetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setProfile(await profileService.get());
-    } catch (e) {
-      setError(getApiErrorMessage(e));
-    } finally {
-      setLoading(false);
-    }
+    await queryRefetch();
+  }, [queryRefetch]);
+
+  const refetchIfStale = useCallback(() => {
+    queryClient.refetchQueries({ queryKey: driverKeys.profile, stale: true });
   }, []);
 
-  useEffect(() => { refetch(); }, [refetch]);
-
-  return { profile, loading, error, refetch };
+  return {
+    profile: query.data ?? null,
+    loading: query.isPending,
+    error: query.error ? getApiErrorMessage(query.error) : null,
+    refetch,
+    refetchIfStale,
+  };
 }

@@ -1,66 +1,62 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { tripService, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { queryClient } from '@mercon/mobile-shared/lib/query-client';
+import { driverKeys } from './query-keys';
 
-let cachedTrip: MobileTrip | null = null;
-let isFetched = false;
+const isFinished = (t: MobileTrip | null | undefined) =>
+  !t || t.status === 'Completed' || t.status === 'Invoiced' || t.status === 'Cancelled' || t.driver_workflow_state === 'COMPLETED';
+
+/** Shared cache value: finished trips are never cached, so a fresh screen never shows a stale "current" trip. */
+const toCache = (t: MobileTrip | null) => (isFinished(t) ? null : t);
 
 export function clearCurrentTripCache() {
-  cachedTrip = null;
-  isFetched = false;
+  queryClient.setQueryData(driverKeys.currentTrip, null);
 }
 
-/** Loads the driver's current active trip. Uses in-memory caching to eliminate tab-switch flickering. */
-export function useCurrentTrip() {
-  const [trip, setTripState] = useState<MobileTrip | null>(() => {
-    if (cachedTrip && (cachedTrip.status === 'Completed' || cachedTrip.status === 'Invoiced' || cachedTrip.status === 'Cancelled' || cachedTrip.driver_workflow_state === 'COMPLETED')) {
-      cachedTrip = null;
-    }
-    return cachedTrip;
+/**
+ * The driver's current active trip, shared by every screen through React
+ * Query — one request serves all mounted screens instead of one per screen.
+ * `pollMs` keeps it fresh in the background (used by DriverLiveTracking).
+ */
+export function useCurrentTrip(opts?: { pollMs?: number }) {
+  const query = useQuery({
+    queryKey: driverKeys.currentTrip,
+    queryFn: async () => toCache(await tripService.getCurrent()),
+    refetchInterval: opts?.pollMs,
   });
-  const [loading, setLoading] = useState(!isFetched);
-  const [error, setError] = useState<string | null>(null);
 
-  const setTrip = useCallback((newTrip: MobileTrip | null | ((prev: MobileTrip | null) => MobileTrip | null)) => {
-    const toCache = (next: MobileTrip | null) =>
-      !next || next.status === 'Completed' || next.status === 'Invoiced' || next.status === 'Cancelled' || next.driver_workflow_state === 'COMPLETED'
-        ? null
-        : next;
-    // Update the shared cache right away, not inside the state updater: a screen
-    // that navigates immediately after setTrip (e.g. Stop → Navigate) must hand
-    // the NEXT screen the new trip. The updater runs later, so the next screen
-    // read the stale trip ("still at stop") and bounced back to the stop screen.
-    if (typeof newTrip !== 'function') cachedTrip = toCache(newTrip);
-    setTripState((prev) => {
-      const next = typeof newTrip === 'function' ? newTrip(prev) : newTrip;
-      cachedTrip = toCache(next);
-      return next;
-    });
-  }, []);
+  // A screen that just finished a trip keeps showing that trip locally (as the
+  // old per-screen state did) while the shared cache already holds null. The
+  // override lapses as soon as the cache is refreshed from the server.
+  const [local, setLocal] = useState<{ trip: MobileTrip | null; at: number } | null>(null);
 
-  const refetch = useCallback(async (opts?: { showLoading?: boolean } | any) => {
-    const showLoading = typeof opts === 'boolean' ? opts : typeof opts?.showLoading === 'boolean' ? opts.showLoading : !isFetched;
-    if (showLoading) setLoading(true);
-    setError(null);
-    try {
-      const data = await tripService.getCurrent();
-      if (!data || data.status === 'Completed' || data.status === 'Invoiced' || data.status === 'Cancelled' || data.driver_workflow_state === 'COMPLETED') {
-        cachedTrip = null;
-        setTripState(null);
-      } else {
-        cachedTrip = data;
-        setTripState(data);
-      }
-      isFetched = true;
-    } catch (e) {
-      setError(getApiErrorMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const setTrip = useCallback(
+    (next: MobileTrip | null | ((prev: MobileTrip | null) => MobileTrip | null)) => {
+      const prev = queryClient.getQueryData<MobileTrip | null>(driverKeys.currentTrip) ?? null;
+      const value = typeof next === 'function' ? next(prev) : next;
+      // Synchronous: a screen that navigates right after setTrip hands the next
+      // screen the new trip, not the stale one.
+      queryClient.setQueryData(driverKeys.currentTrip, toCache(value));
+      const at = queryClient.getQueryState(driverKeys.currentTrip)?.dataUpdatedAt ?? 0;
+      setLocal(toCache(value) === value ? null : { trip: value, at });
+    },
+    [],
+  );
 
-  useEffect(() => { refetch(); }, [refetch]);
+  const { refetch: queryRefetch } = query;
+  const refetch = useCallback(async (_opts?: unknown) => {
+    await queryRefetch();
+  }, [queryRefetch]);
 
-  return { trip, loading, error, refetch, setTrip };
+  const trip = local && local.at === query.dataUpdatedAt ? local.trip : (query.data ?? null);
+
+  return {
+    trip,
+    loading: query.isPending,
+    error: query.error ? getApiErrorMessage(query.error) : null,
+    refetch,
+    setTrip,
+  };
 }
-
