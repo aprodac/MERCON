@@ -160,6 +160,7 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   title_upload_screenshot_caps: { en: 'UPLOAD CUSTOMER APP SCREENSHOT', ur: 'کسٹمر ایپ کا اسکرین شاٹ اپلوڈ کریں' },
   hint_upload_screenshot: { en: "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.", ur: 'کسٹمر ایپ کا اسکرین شاٹ لگائیں جس میں یہ اپڈیٹ نظر آئے۔ کیمرہ استعمال کرنے کے لیے دبائے رکھیں۔' },
   label_screenshot: { en: 'Screenshot', ur: 'اسکرین شاٹ' },
+  action_take_photo_instead: { en: 'Take a photo instead', ur: 'اس کے بجائے تصویر لیں' },
   action_arrived_screenshot: { en: "I'VE ARRIVED — ADD SCREENSHOT", ur: 'میں پہنچ گیا — اسکرین شاٹ لگائیں' },
   err_screenshot_upload: { en: 'Screenshot could not upload. Check your connection and tap again.', ur: 'اسکرین شاٹ اپلوڈ نہیں ہو سکا۔ کنکشن چیک کریں اور دوبارہ دبائیں۔' },
   title_upload_return_loading_photos: { en: 'UPLOAD RETURN LOADING PHOTOS', ur: 'واپسی لوڈنگ کی تصاویر اپلوڈ کریں' },
