@@ -224,15 +224,23 @@ export function FinancialSummary({ f, onCharges }: { f: FinancialFigures; onChar
             <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <span className={cn('size-1.5 shrink-0 rounded-full', p.color)} />
               <span className="truncate">{p.label}</span>
+            </p>
+            <div className="flex items-center gap-1.5">
+              <p className={cn('truncate text-sm font-semibold tabular-nums', p.key === 'margin' && p.value < 0 ? 'text-rose-700 dark:text-rose-400' : 'text-foreground')}>
+                {sar(p.value)}
+              </p>
               {p.key === 'charges' && (
-                <button type="button" onClick={onCharges} title="Add or edit additional charges" className="ml-auto flex shrink-0 items-center gap-0.5 font-medium text-blue-600 hover:underline dark:text-blue-400">
-                  <Plus className="size-3" /> Add
+                <button
+                  type="button"
+                  onClick={onCharges}
+                  title="Add or edit additional charges"
+                  aria-label="Add charge"
+                  className="flex h-5 shrink-0 items-center gap-0.5 rounded-full border border-amber-300 bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-800 transition-colors hover:border-amber-400 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
+                >
+                  <Plus className="size-3" strokeWidth={2.5} /> Add
                 </button>
               )}
-            </p>
-            <p className={cn('truncate text-sm font-semibold tabular-nums', p.key === 'margin' && p.value < 0 ? 'text-rose-700 dark:text-rose-400' : 'text-foreground')}>
-              {sar(p.value)}
-            </p>
+            </div>
           </div>
         ))}
       </div>
