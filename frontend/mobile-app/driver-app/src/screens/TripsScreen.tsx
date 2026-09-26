@@ -226,8 +226,8 @@ const TripsScreen = ({ navigation }: any) => {
   const { t, language } = useLanguage();
 
   const { trip: currentTrip, loading: loadingCurrent, refetch: refetchCurrent } = useCurrentTrip();
-  const { trips: scheduledList, loading: loadingScheduled, error: errorScheduled, refetch: refetchScheduled } = useScheduledTrips();
-  const { trips: historyList, loading: loadingHistory, error: errorHistory, refetch: refetchHistory } = useTripHistory();
+  const { trips: scheduledList, loading: loadingScheduled, error: errorScheduled, refetch: refetchScheduled, refetchIfStale: refreshScheduledIfStale } = useScheduledTrips();
+  const { trips: historyList, loading: loadingHistory, error: errorHistory, refetch: refetchHistory, refetchIfStale: refreshHistoryIfStale } = useTripHistory();
 
   const isFirstFocusRef = useRef(true);
 
@@ -238,9 +238,11 @@ const TripsScreen = ({ navigation }: any) => {
         return;
       }
       refetchCurrent();
-      refetchScheduled();
-      refetchHistory();
-    }, [refetchCurrent, refetchScheduled, refetchHistory])
+      // Tab switch: only reload lists that are stale — the full history is
+      // the heaviest driver request. Pull-to-refresh still reloads everything.
+      refreshScheduledIfStale();
+      refreshHistoryIfStale();
+    }, [refetchCurrent, refreshScheduledIfStale, refreshHistoryIfStale])
   );
 
   const loading = loadingCurrent || loadingScheduled || loadingHistory;

@@ -143,16 +143,16 @@ export default function ProfileScreen() {
   const router = useRouter();
   const { t, language, openLanguageModal } = useLanguage();
   const { profile: authProfile, signOut } = useAuth();
-  const { profile, loading, refetch } = useProfile();
+  const { profile, loading, refetchIfStale: refreshProfileIfStale } = useProfile();
   const { documents: backendDocs, refetch: refetchDocs } = useDocuments();
   const [avatarZoomed, setAvatarZoomed] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
 
   useFocusEffect(
     useCallback(() => {
-      refetch();
+      refreshProfileIfStale();
       refetchDocs();
-    }, [refetch, refetchDocs])
+    }, [refreshProfileIfStale, refetchDocs])
   );
 
   const name = profile?.name || authProfile?.name || 'Driver Profile';

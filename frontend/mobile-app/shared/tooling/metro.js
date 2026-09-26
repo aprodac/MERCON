@@ -15,7 +15,10 @@ module.exports = function createMetroConfig(projectRoot) {
 
   const config = getDefaultConfig(projectRoot);
 
-  config.watchFolders = [workspaceRoot];
+  // Only what the apps actually import: the mobile workspace (apps, shared,
+  // node_modules) and packages/shared-types. Watching the whole repo root made
+  // Metro crawl the backend and web dashboard (and their node_modules) too.
+  config.watchFolders = [mobileRoot, path.resolve(workspaceRoot, 'packages/shared-types')];
   // Mobile node_modules come first so shared code gets the mobile React/React
   // Native versions, never the web dashboard's copies in the repo root.
   config.resolver.nodeModulesPaths = [
