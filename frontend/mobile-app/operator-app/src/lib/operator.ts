@@ -231,7 +231,46 @@ export interface ShareResult {
   headline: string;
 }
 
-/** Document kinds an operator attaches to a trip from the phone (Prisma `DocType`). */
+/** A truck / driver on the live map with its running trip (backend services/fleetLiveMap.ts). */
+export interface LiveUnit {
+  key: string;
+  vehicle: { id: string; ref_id: string | null; plate_number: string; asset_type: string; status: string; image_url: string | null; has_tracker: boolean } | null;
+  driver: { id: string; ref_id: string | null; name: string; phone: string | null; avatar_url: string | null } | null;
+  trip: {
+    id: string;
+    ref_id: string | null;
+    status: string;
+    phase: 'upcoming' | 'active' | 'delayed';
+    customer_name: string | null;
+    planned_start: string | null;
+    planned_end: string | null;
+    stops: { id: string; sequence: number; type: string; name: string | null; address: string | null; lat: number | null; lng: number | null; planned_arrival: string | null; actual_arrival: string | null; actual_departure: string | null }[];
+    next_stop_index: number | null;
+  } | null;
+  vehicle_gps: LiveGpsFix | null;
+  driver_gps: LiveGpsFix | null;
+  position: (LiveGpsFix & { source: 'vehicle' | 'driver' }) | null;
+  feeds_gap_m?: number | null;
+}
+
+/** A document or licence that has expired or expires soon (backend services/operatorInbox.ts). */
+export interface ExpiryItem {
+  key: string;
+  entity_type: 'Vehicle' | 'Driver' | 'Customer' | 'Company' | 'Other';
+  entity_id: string;
+  entity_name: string;
+  label: string;
+  expiry_date: string;
+  /** Whole days until expiry; negative once expired. */
+  days: number;
+  document_id: string | null;
+  document_type_id: string | null;
+  doc_type: string | null;
+  contact: { name: string; phone: string } | null;
+  on_trip_ref: string | null;
+}
+
+
 export type TripDocKind = 'POD' | 'Waybill' | 'Emergency' | 'CustomsClearance' | 'Invoice' | 'Contract';
 
 export interface CreateTripStopInput {
@@ -819,6 +858,30 @@ export const operatorService = {
   ): Promise<OperatorTripStop> {
     const { data } = await api.patch(`/trips/${tripId}/stops/${stopId}/confirm-time`, payload);
     return data.data as OperatorTripStop;
+  },
+
+  /** Every truck/driver with a running or scheduled trip and its GPS — the web's live map. */
+  async liveMap(): Promise<LiveUnit[]> {
+    const { data } = await api.get('/vehicles/live-map');
+    return (data.data?.units ?? []) as LiveUnit[];
+  },
+
+  /** Recent driver photo updates across all trips, with who already forwarded them. */
+  async driverUpdates(): Promise<{ updates: DriverUpdate[]; whatsapp_api_available: boolean }> {
+    const { data } = await api.get('/operator-inbox/driver-updates');
+    return data.data as { updates: DriverUpdate[]; whatsapp_api_available: boolean };
+  },
+
+  /** Documents and licences expired or expiring soon. */
+  async documentExpiries(): Promise<ExpiryItem[]> {
+    const { data } = await api.get('/operator-inbox/document-expiries');
+    return (data.data?.items ?? data.data ?? []) as ExpiryItem[];
+  },
+
+  /** Trip documents waiting for review (external-app screenshots whose time must be confirmed). */
+  async tripDocumentsToReview(): Promise<(OperatorTripDocument & { entity_id?: string })[]> {
+    const { data } = await api.get('/documents', { params: { entity_type: 'Trip', status: 'PendingReview', per_page: 100 } });
+    return (data.data ?? []) as (OperatorTripDocument & { entity_id?: string })[];
   },
 
   /** Phase, pre-trip checks, live GPS and the path driven — the web map's data. */
