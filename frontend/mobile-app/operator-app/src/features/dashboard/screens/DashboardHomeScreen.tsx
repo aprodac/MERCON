@@ -7,46 +7,75 @@
  * operator screen shares one persistent nav instead of remounting it.
  */
 import React, { useState } from 'react';
-import { RefreshControl, ScrollView, View } from 'react-native';
+import { Alert, Linking, RefreshControl, ScrollView, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 
-import {
-  useActiveTrips, useCurrentUser, useDashboardRefresh,
-  useDashboardSummary, useDelayedDeliveries,
-} from '../hooks';
-import { useNotifications } from '@/features/notifications/hooks/useNotifications';
-import {
-  AppHeader, DashboardMetricCard,
-  OperatorCommandCenterSection, ScannerButton, SearchBar,
-} from '../components';
-import { ErrorState, SkeletonMetricCard } from '@mercon/mobile-shared/ui';
+import { useCurrentUser, useDashboardRefresh } from '../hooks';
+import { useMarkNotificationsRead, useNotifications } from '@/features/notifications/hooks/useNotifications';
+import { AppHeader, ScannerButton, SearchBar } from '../components';
+import { ErrorState } from '@mercon/mobile-shared/ui';
+import { useActionInbox } from '../actions/useActionInbox';
+import { ActionSummary, NeedsActionList, TodayTrips } from '../actions/NeedsAction';
+import type { ActionGroup, ActionIntent } from '../actions/actionModel';
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
   const { role } = useAuth();
   const { refreshing, refresh } = useDashboardRefresh();
-
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState<'all' | ActionGroup>('all');
 
   const currentUser = useCurrentUser();
   const notifications = useNotifications();
-  const summary = useDashboardSummary();
-  const activeTrips = useActiveTrips();
-  const delayedDeliveries = useDelayedDeliveries();
+  const { markRead } = useMarkNotificationsRead();
+  const inbox = useActionInbox();
 
   const firstName = (currentUser.data?.name ?? 'Operator').split(' ')[0];
   const unreadCount = notifications.data?.filter((n) => !n.is_read).length ?? 0;
 
+  const openTrip = (id: string, extra: Record<string, string> = {}) =>
+    router.push({ pathname: '/trip-details', params: { id, ...extra } });
+
+  const onIntent = (intent: ActionIntent) => {
+    switch (intent.type) {
+      case 'call':
+        Linking.openURL(`tel:${intent.phone}`).catch(() => {});
+        return;
+      case 'whatsapp':
+        Linking.openURL(`https://wa.me/${(intent.phone ?? '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(intent.text)}`)
+          .catch(() => Alert.alert('Could not open WhatsApp'));
+        return;
+      case 'trip': {
+        const extra: Record<string, string> = {};
+        if (intent.tab) extra.tab = intent.tab;
+        if (intent.share) extra.share = intent.share;
+        if (intent.assign) extra.assign = intent.assign;
+        openTrip(intent.tripId, extra);
+        return;
+      }
+      case 'handled':
+        markRead(intent.notificationId);
+        return;
+      case 'driver':
+        router.push({ pathname: '/driver-details', params: { id: intent.id } });
+        return;
+      case 'vehicle':
+        router.push({ pathname: '/vehicle-edit', params: { id: intent.id } });
+        return;
+      case 'invoices':
+        router.push('/invoices');
+    }
+  };
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFFFFF' }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F7F8FA' }} edges={['top']}>
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 96, gap: 20 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 110, gap: 18 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#FA634E" />}
       >
-        {/* 1. AppHeader */}
         <AppHeader
           logoSource={require('@mercon/mobile-shared/assets/images/mercon-logo.png')}
           greeting="Welcome back,"
@@ -56,43 +85,35 @@ export default function DashboardHomeScreen() {
           onNotificationPress={() => router.push('/notifications')}
         />
 
-        {/* 2. Search Row */}
         <View className="flex-row items-center gap-2">
           <SearchBar value={search} onChangeText={setSearch} onSubmit={() => router.push('/trips')} />
           <ScannerButton />
         </View>
 
-        {/* 3. Dashboard Metrics */}
-        {summary.isLoading || activeTrips.isLoading || delayedDeliveries.isLoading ? (
-          <View className="flex-row gap-3">
-            <SkeletonMetricCard />
-            <SkeletonMetricCard />
-          </View>
-        ) : summary.isError ? (
-          <ErrorState message="Couldn't load dashboard metrics." onRetry={() => summary.refetch()} />
-        ) : (
-          <View className="flex-row gap-3">
-            <DashboardMetricCard
-              title="Active Trips"
-              value={activeTrips.data?.length ?? 0}
-              image={require('@/assets/images/mobile-truck.webp')}
-              onPress={() => router.push('/trips')}
-            />
-            <DashboardMetricCard
-              title="Delayed Deliveries"
-              value={delayedDeliveries.data?.length ?? 0}
-              onPress={() => router.push('/trips')}
-            />
-          </View>
-        )}
-
-        {/* 4. UNIFIED OPERATOR COMMAND CENTER */}
-        <OperatorCommandCenterSection
-          onTripPress={(tripId) => router.push({ pathname: '/trip-details', params: { id: tripId } })}
+        <ActionSummary
+          running={inbox.counts.running}
+          delayed={inbox.counts.delayed}
+          action={inbox.counts.action}
+          onRunning={() => router.push('/trips')}
+          onDelayed={() => setFilter('trips')}
+          onAction={() => setFilter('all')}
         />
+
+        {inbox.liveError ? (
+          <ErrorState message="Couldn't load live trips." onRetry={inbox.retry} />
+        ) : null}
+
+        <NeedsActionList
+          items={inbox.items}
+          loading={inbox.loading}
+          onIntent={onIntent}
+          onOpenTrip={(id) => openTrip(id)}
+          filter={filter}
+          onFilter={setFilter}
+        />
+
+        <TodayTrips rows={inbox.today} tz={inbox.tz} onOpenTrip={(id) => openTrip(id)} onAll={() => router.push('/trips')} />
       </ScrollView>
     </SafeAreaView>
   );
 }
-
-
