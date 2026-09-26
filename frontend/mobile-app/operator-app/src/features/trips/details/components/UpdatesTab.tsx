@@ -145,7 +145,7 @@ const s = StyleSheet.create({
   title: { fontSize: 14, fontWeight: '800', color: INK },
   note: { fontSize: 13, color: INK, backgroundColor: '#F7F8FA', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
   thumbs: { flexDirection: 'row', gap: 6 },
-  thumb: { width: 60, height: 60, borderRadius: 12, overflow: 'hidden', backgroundColor: '#E4E7EE' },
+  thumb: { flex: 1, maxWidth: '24%', aspectRatio: 1, borderRadius: 12, overflow: 'hidden', backgroundColor: '#E4E7EE' },
   thumbFill: { width: '100%', height: '100%' },
   sentTag: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(20,20,26,0.55)', paddingVertical: 1 },
   sentTagText: { color: Colors.white, fontSize: 9, fontWeight: '700', textAlign: 'center' },

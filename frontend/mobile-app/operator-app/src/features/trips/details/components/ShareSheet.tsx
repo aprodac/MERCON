@@ -14,6 +14,7 @@ import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { operatorService, type DriverUpdate, type OperatorTripDetail, type ShareRecipient, type TripPhase } from '../../../../lib/operator';
 import { digits, quickMessage, sortedStops, stopName, updateTitle, waLink, type Formatters, type QuickKind, type Remaining } from '../tripDetailsModel';
 import { INK, MUTED, WA, tap } from './parts';
+import { shareMediaFiles } from '../shareMedia';
 
 export type ShareTarget = { type: 'update'; update: DriverUpdate } | { type: 'quick'; kind: QuickKind };
 
@@ -42,7 +43,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   const [otherPhone, setOtherPhone] = useState('');
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [withNext, setWithNext] = useState(true);
-  const [asImages, setAsImages] = useState(false);
+  const [viaCompany, setViaCompany] = useState(true);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
 
@@ -62,7 +63,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   function resetFor(target: ShareTarget) {
     setWho(trip.customer?.whatsapp_group_name || !customerPhone ? 'customer_group' : 'customer_contact');
     setOtherPhone('');
-    setAsImages(false);
+    setViaCompany(true);
     setWithNext(true);
     if (target.type === 'update') {
       const unsent = target.update.items.filter((m) => !target.update.sent_ids.includes(m.id)).map((m) => m.id);
@@ -87,15 +88,24 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   const current = options.find((o) => o.id === who) ?? options[0];
   const needsNumber = who === 'other' || (who === 'customer_contact' && !customerPhone);
   const phone = needsNumber ? otherPhone.trim() : current.phone;
-  const canSendImages = !!update && whatsappApi && !!digits(phone);
+  // The company's WhatsApp Business number can send straight to a phone number (not to groups).
+  const canSendDirect = !!update && whatsappApi && !!digits(phone);
+  const direct = viaCompany && canSendDirect;
+  const chosenItems = update ? update.items.filter((m) => chosen.has(m.id)) : [];
+  const photoCount = chosenItems.filter((m) => m.kind !== 'video').length;
+  const videoCount = chosenItems.length - photoCount;
+  const attached = [photoCount ? `${photoCount} photo${photoCount > 1 ? 's' : ''}` : '', videoCount ? `${videoCount} video${videoCount > 1 ? 's' : ''}` : '']
+    .filter(Boolean)
+    .join(' + ');
 
-  const previewUpdate = update
+  // Same wording as the server's message (services/operatorInbox.ts), minus its link — the photos go as files.
+  const caption = update
     ? [
         `*${[trip.ref_id, updateTitle(update)].filter(Boolean).join(' · ')}${update.stop ? ` · ${update.stop.name}` : ''}*`,
         [trip.customer?.name, update.trip.route].filter(Boolean).join(' · '),
+        [update.vehicle_plate ? `Truck ${update.vehicle_plate}` : '', update.driver?.name ? `Driver ${update.driver.name}` : ''].filter(Boolean).join(' · '),
         update.delay_note ? `Reason: ${update.delay_note}` : null,
         withNext && nextLine ? nextLine : null,
-        `${chosen.size} ${chosen.size === 1 ? 'item' : 'items'}: link added when you send`,
       ].filter(Boolean).join('\n')
     : '';
 
@@ -114,24 +124,35 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
       return;
     }
     setSending(true);
+    const record = (channel: 'link' | 'whatsapp_api') => operatorService.shareDriverUpdate({
+      trip_id: trip.id,
+      update_key: update.key,
+      media_ids: chosenItems.map((m) => m.id),
+      recipient: (who === 'driver' ? 'other' : who) as ShareRecipient,
+      recipient_phone: digits(phone) || null,
+      channel,
+    });
     try {
-      const recipient: ShareRecipient = who === 'driver' ? 'other' : who;
-      const r = await operatorService.shareDriverUpdate({
-        trip_id: trip.id,
-        update_key: update.key,
-        media_ids: [...chosen],
-        recipient,
-        recipient_phone: digits(phone) || null,
-        channel: asImages && canSendImages ? 'whatsapp_api' : 'link',
-      });
-      onShared();
-      if (r.sent_via_api) {
-        Alert.alert('Sent', `${chosen.size} ${chosen.size === 1 ? 'item' : 'items'} sent to ${phone}.`);
-      } else {
-        const message = withNext && nextLine ? `${r.text}\n${nextLine}` : r.text;
-        await Linking.openURL(waLink(phone, message)).catch(() => Alert.alert('Could not open WhatsApp', message));
+      if (direct) {
+        // The server sends the images itself, the caption on the first one.
+        await record('whatsapp_api');
+        onShared();
+        onClose();
+        Alert.alert('Sent', `${attached} sent to ${phone} from the company WhatsApp.`);
+        return;
       }
+      // The images themselves go through the share sheet; pick WhatsApp and the chat there.
+      const r = await shareMediaFiles(chosenItems, caption);
+      if (r.dismissed) return;
+      // Marked as sent only once they actually went out.
+      await record('link').catch(() => {});
+      onShared();
       onClose();
+      if (r.onlyFirst) {
+        Alert.alert('Only the first photo was sent', 'This app version can send one photo at a time. Update the app to send them all together.');
+      } else if (r.captionCopied && chosenItems.length > 1) {
+        Alert.alert('Caption copied', 'If WhatsApp didn’t keep the text, paste it into the chat.');
+      }
     } catch (e) {
       Alert.alert('Could not send', getApiErrorMessage(e));
     } finally {
@@ -203,17 +224,36 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
                 <Switch value={withNext} onValueChange={setWithNext} trackColor={{ true: WA }} />
               </View>
             ) : null}
-            {canSendImages ? (
+            {canSendDirect ? (
               <View style={s.switchRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={s.switchText}>Send as real images</Text>
-                  <Text style={s.optDetail}>Through WhatsApp Business, straight to {phone}</Text>
+                  <Text style={s.switchText}>Send from company WhatsApp</Text>
+                  <Text style={s.optDetail}>Straight to {phone}, no need to open WhatsApp</Text>
                 </View>
-                <Switch value={asImages} onValueChange={setAsImages} trackColor={{ true: WA }} />
+                <Switch value={viaCompany} onValueChange={setViaCompany} trackColor={{ true: WA }} />
               </View>
             ) : null}
             <Text style={s.label}>Preview</Text>
-            <View style={s.chat}><Text style={s.bubble}>{previewUpdate}</Text></View>
+            <View style={s.chat}>
+              <View style={s.bubbleWrap}>
+                <View style={s.bubbleMedia}>
+                  {chosenItems.slice(0, 4).map((m, i) => {
+                    const uri = resolveMediaUrl(m.url);
+                    const more = i === 3 && chosenItems.length > 4 ? chosenItems.length - 3 : 0;
+                    return (
+                      <View key={m.id} style={[s.bubbleThumb, chosenItems.length === 1 && s.bubbleThumbOne]}>
+                        {m.kind === 'video' || !uri ? (
+                          <View style={[s.pickImg, { backgroundColor: INK, alignItems: 'center', justifyContent: 'center' }]}><Play size={16} color={Colors.white} fill={Colors.white} /></View>
+                        ) : <Image source={{ uri }} style={s.pickImg} />}
+                        {more ? <View style={s.bubbleMore}><Text style={s.bubbleMoreText}>+{more}</Text></View> : null}
+                      </View>
+                    );
+                  })}
+                </View>
+                <Text style={s.bubbleCaption}>{caption}</Text>
+              </View>
+            </View>
+            {!direct ? <Text style={[s.optDetail, { textAlign: 'center' }]}>{attached || 'Nothing'} sent as files. Pick WhatsApp and the chat in the share menu.</Text> : null}
           </>
         ) : (
           <>
@@ -224,7 +264,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
 
         <TouchableOpacity style={[s.sendBtn, sending && { opacity: 0.7 }]} activeOpacity={0.85} onPress={send} disabled={sending}>
           <MessageCircle size={19} color={Colors.white} strokeWidth={2.3} />
-          <Text style={s.sendText}>{sending ? 'Preparing…' : asImages && canSendImages ? 'Send images' : 'Open WhatsApp'}</Text>
+          <Text style={s.sendText}>{sending ? (update && !direct ? 'Getting photos ready…' : 'Sending…') : update ? (direct ? `Send ${attached}` : `Share ${attached || 'photos'}`) : 'Open WhatsApp'}</Text>
         </TouchableOpacity>
         {update ? <Text style={[s.optDetail, { textAlign: 'center' }]}>Marked as sent for everyone, so nothing goes out twice</Text> : null}
       </ScrollView>
@@ -251,6 +291,13 @@ const s = StyleSheet.create({
   switchText: { fontSize: 14, fontWeight: '600', color: INK },
   chat: { backgroundColor: '#E9E2D6', borderRadius: 16, padding: 12 },
   bubble: { backgroundColor: '#D9FDD3', borderRadius: 12, borderBottomRightRadius: 4, padding: 10, marginLeft: 30, fontSize: 13, lineHeight: 19, color: INK },
+  bubbleCaption: { paddingHorizontal: 6, paddingVertical: 5, fontSize: 13, lineHeight: 19, color: INK },
+  bubbleWrap: { marginLeft: 30, backgroundColor: '#D9FDD3', borderRadius: 12, borderBottomRightRadius: 4, padding: 4, gap: 2 },
+  bubbleMedia: { flexDirection: 'row', flexWrap: 'wrap', gap: 3 },
+  bubbleThumb: { width: '49%', aspectRatio: 1, borderRadius: 9, overflow: 'hidden', backgroundColor: '#C9E9C2' },
+  bubbleThumbOne: { width: '100%', aspectRatio: 4 / 3 },
+  bubbleMore: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
+  bubbleMoreText: { color: Colors.white, fontSize: 20, fontWeight: '800' },
   sendBtn: { height: 52, borderRadius: 14, backgroundColor: WA, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 },
   sendText: { color: Colors.white, fontSize: 16, fontWeight: '800' },
 });
