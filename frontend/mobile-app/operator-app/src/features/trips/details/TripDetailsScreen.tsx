@@ -7,7 +7,7 @@
  *   Details — pre-trip checks or trip summary, truck & driver, money, paperwork.
  * The next status step, WhatsApp and "more" stay pinned at the bottom.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, Alert, Modal, Linking, StatusBar,
 } from 'react-native';
@@ -41,11 +41,13 @@ const MAP_H = 250;
 export default function TripDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // Links from the home's "Needs action" cards can open a tab, a message or a picker straight away.
+  const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; assign?: string }>();
+  const { id } = params;
   const { trip, overview, updates, whatsappApi, tz, phase, remaining, loading, refreshing, error, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
 
-  const [tab, setTab] = useState<Tab>('details');
+  const [tab, setTab] = useState<Tab>(params.tab === 'updates' || params.tab === 'stops' ? params.tab : 'details');
   const [busy, setBusy] = useState(false);
   const [share, setShare] = useState<ShareTarget | null>(null);
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string; update?: DriverUpdate } | null>(null);
@@ -54,6 +56,26 @@ export default function TripDetailsScreen() {
   const [fullMap, setFullMap] = useState(false);
   const [picker, setPicker] = useState<{ kind: 'driver' | 'truck'; drivers?: OperatorDriver[]; vehicles?: OperatorVehicle[] } | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  // Once the trip is here: open what the link asked for (only once).
+  const [linkDone, setLinkDone] = useState(false);
+  if (trip && !linkDone) {
+    setLinkDone(true);
+    if (params.share === 'delay' || params.share === 'status') setShare({ type: 'quick', kind: params.share });
+  }
+  const assignKind = params.assign === 'driver' || params.assign === 'truck' ? params.assign : null;
+  const tripLoaded = !!trip;
+  useEffect(() => {
+    if (!tripLoaded || !assignKind) return;
+    let live = true;
+    (assignKind === 'driver' ? operatorService.availableDrivers() : operatorService.availableVehicles())
+      .then((list) => {
+        if (!live) return;
+        setPicker(assignKind === 'driver' ? { kind: 'driver', drivers: list as OperatorDriver[] } : { kind: 'truck', vehicles: list as OperatorVehicle[] });
+      })
+      .catch(() => {});
+    return () => { live = false; };
+  }, [tripLoaded, assignKind]);
 
   if (loading && !trip) {
     return (
