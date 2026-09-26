@@ -97,7 +97,7 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
         </Button>
       )}
       {unit.trip && (
-        <Button variant="outline" size="icon" className="size-9 rounded-xl" onClick={onShowRoute} title="Show the whole route" aria-label="Show the whole route">
+        <Button variant="outline" size="icon" className="size-9 rounded-xl" onClick={onShowRoute} title="Trip overview — every stop from above" aria-label="Trip overview">
           <Route className="size-4" />
         </Button>
       )}
