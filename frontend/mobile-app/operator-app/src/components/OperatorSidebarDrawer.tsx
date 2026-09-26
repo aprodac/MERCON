@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Alert,
   TouchableWithoutFeedback,
   Dimensions,
+  Image,
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import {
@@ -80,13 +81,16 @@ const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.82, 340);
 interface OperatorSidebarDrawerProps {
   visible: boolean;
   onClose: () => void;
+  /** Which edge it slides in from — match the side of the button that opens it. */
+  side?: 'left' | 'right';
 }
 
-export function OperatorSidebarDrawer({ visible, onClose }: OperatorSidebarDrawerProps) {
+export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: OperatorSidebarDrawerProps) {
+  const hidden = side === 'left' ? -DRAWER_WIDTH : DRAWER_WIDTH;
   const router = useRouter();
   const pathname = usePathname();
   const { profile, role, signOut } = useAuth();
-  const slideAnim = useRef(new Animated.Value(DRAWER_WIDTH)).current;
+  const [slideAnim] = useState(() => new Animated.Value(hidden));
 
   useEffect(() => {
     if (visible) {
@@ -97,12 +101,12 @@ export function OperatorSidebarDrawer({ visible, onClose }: OperatorSidebarDrawe
       }).start();
     } else {
       Animated.timing(slideAnim, {
-        toValue: DRAWER_WIDTH,
+        toValue: hidden,
         duration: 200,
         useNativeDriver: true,
       }).start();
     }
-  }, [visible, slideAnim]);
+  }, [visible, slideAnim, hidden]);
 
   const handleNavigate = (route: string) => {
     onClose();
@@ -130,7 +134,7 @@ export function OperatorSidebarDrawer({ visible, onClose }: OperatorSidebarDrawe
 
   return (
     <Modal transparent visible={visible} onRequestClose={onClose} animationType="none">
-      <View style={styles.overlay}>
+      <View style={[styles.overlay, side === 'left' && { flexDirection: 'row-reverse' }]}>
         {/* Backdrop */}
         <TouchableWithoutFeedback onPress={onClose}>
           <View style={styles.backdrop} />
@@ -141,9 +145,13 @@ export function OperatorSidebarDrawer({ visible, onClose }: OperatorSidebarDrawe
           {/* Header */}
           <View style={styles.drawerHeader}>
             <View className="flex-row items-center gap-2">
-              <View style={styles.logoBadge}>
-                <Text style={styles.logoText}>M</Text>
-              </View>
+              {/* Same mark as the web dashboard's sidebar (merconclosed.png). */}
+              <Image
+                source={require('@mercon/mobile-shared/assets/images/merconclosed.png')}
+                style={styles.logoMark}
+                resizeMode="contain"
+                accessibilityLabel="MERCON"
+              />
               <View>
                 <Text style={styles.brandTitle}>MERCON</Text>
                 <Text style={styles.brandSub}>Operator System</Text>
@@ -243,6 +251,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray100,
+  },
+  logoMark: {
+    width: 48,
+    height: 32,
   },
   logoBadge: {
     width: 32,
