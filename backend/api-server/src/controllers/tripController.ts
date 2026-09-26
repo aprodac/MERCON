@@ -347,6 +347,7 @@ export const getTrips = async (req: Request, res: Response) => {
               last_name: true,
               status: true,
               avatar_url: true,
+              phone_primary: true,
               deletedAt: true,
             }
           },

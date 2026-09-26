@@ -89,6 +89,7 @@ export function useActionInbox() {
       running,
       delayed,
       action: items.filter((i) => i.urgency !== 'watch').length,
+      now: items.filter((i) => i.urgency === 'now').length,
     },
     loading: live.isLoading,
     liveError: live.isError,

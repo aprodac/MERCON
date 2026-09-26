@@ -138,7 +138,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
       detail: n.message,
       at: n.createdAt,
       tripId,
-      primary: phone ? { label: 'Call driver', intent: { type: 'call', phone } } : tripId ? { label: 'Open trip', intent: { type: 'trip', tripId } } : { label: 'Handled', intent: { type: 'handled', notificationId: n.id } },
+      primary: phone ? { label: 'Call', intent: { type: 'call', phone } } : tripId ? { label: 'Open', intent: { type: 'trip', tripId } } : { label: 'Handled', intent: { type: 'handled', notificationId: n.id } },
       secondary: { label: 'Handled', intent: { type: 'handled', notificationId: n.id } },
     });
   }
@@ -153,7 +153,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
 
     // 2 · Delayed trips — tell the customer.
     if (t.phase === 'delayed') {
-      const reported = [...t.stops].reverse().find((s) => s.actual_arrival == null && s.planned_arrival);
+      const due = t.next_stop_index != null ? t.stops[t.next_stop_index]?.planned_arrival ?? null : null;
       out.push({
         key: `delay-${t.id}`,
         kind: 'delayed',
@@ -161,9 +161,9 @@ export function buildActions(src: ActionSources): ActionItem[] {
         group: 'trips',
         title: `${t.ref_id ?? 'Trip'} is delayed`,
         detail: [name, next ? `heading to ${next}` : null, t.customer_name].filter(Boolean).join(' · '),
-        at: reported?.planned_arrival ?? null,
+        at: due,
         tripId: t.id,
-        primary: { label: 'Send delay notice', intent: { type: 'trip', tripId: t.id, tab: 'updates', share: 'delay' } },
+        primary: { label: 'Notify', intent: { type: 'trip', tripId: t.id, tab: 'updates', share: 'delay' } },
         secondary: phone ? { label: 'Call', intent: { type: 'call', phone } } : undefined,
       });
     }
@@ -179,8 +179,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
         detail: [`${durationText(minutesSince(t.planned_start, now))} past its start`, name, t.customer_name].filter(Boolean).join(' · '),
         at: t.planned_start,
         tripId: t.id,
-        primary: phone ? { label: 'Call driver', intent: { type: 'call', phone } } : { label: 'Open trip', intent: { type: 'trip', tripId: t.id } },
-        secondary: { label: 'Open', intent: { type: 'trip', tripId: t.id } },
+        primary: phone ? { label: 'Call', intent: { type: 'call', phone } } : { label: 'Open', intent: { type: 'trip', tripId: t.id } },
       });
     }
 
@@ -192,12 +191,11 @@ export function buildActions(src: ActionSources): ActionItem[] {
         kind: 'gps-quiet',
         urgency: 'now',
         group: 'trips',
-        title: `${name || t.ref_id} has no GPS ${Number.isFinite(quiet) ? `for ${durationText(quiet)}` : 'at all'}`,
+        title: `${name || t.ref_id} has no GPS${Number.isFinite(quiet) ? '' : ' at all'}`,
         detail: [who, u.driver?.name ? `driver ${u.driver.name}` : null].filter(Boolean).join(' · '),
         at: u.position?.recorded_at ?? null,
         tripId: t.id,
-        primary: phone ? { label: 'Call driver', intent: { type: 'call', phone } } : { label: 'Open trip', intent: { type: 'trip', tripId: t.id } },
-        secondary: phone ? { label: 'Open', intent: { type: 'trip', tripId: t.id } } : undefined,
+        primary: phone ? { label: 'Call', intent: { type: 'call', phone } } : { label: 'Open', intent: { type: 'trip', tripId: t.id } },
       });
     }
 
@@ -211,8 +209,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
         detail: `${(u.feeds_gap_m / 1000).toFixed(1)} km apart · ${t.ref_id ?? ''}`,
         at: null,
         tripId: t.id,
-        primary: { label: 'Open trip', intent: { type: 'trip', tripId: t.id } },
-        secondary: phone ? { label: 'Call', intent: { type: 'call', phone } } : undefined,
+        primary: phone ? { label: 'Call', intent: { type: 'call', phone } } : { label: 'Open', intent: { type: 'trip', tripId: t.id } },
       });
     }
   }
@@ -235,8 +232,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
       detail: [t.customer?.name, start == null ? 'no start time' : overdue ? 'should have started' : `starts in ${durationText((start - now) / 60000)}`].filter(Boolean).join(' · '),
       at: t.planned_start,
       tripId: t.id,
-      primary: { label: `Assign ${missing[0]}`, intent: { type: 'trip', tripId: t.id, assign: missing[0] } },
-      secondary: { label: 'Open', intent: { type: 'trip', tripId: t.id } },
+      primary: { label: 'Assign', intent: { type: 'trip', tripId: t.id, assign: missing[0] } },
     });
   }
 
@@ -253,7 +249,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
       detail: [u.trip.ref_id, u.stop?.name ?? u.customer?.name, `${u.unsent_count} new`].filter(Boolean).join(' · '),
       at: u.latest_at,
       tripId: u.trip.id,
-      primary: { label: 'Send on WhatsApp', intent: { type: 'trip', tripId: u.trip.id, tab: 'updates' } },
+      primary: { label: 'Send', intent: { type: 'trip', tripId: u.trip.id, tab: 'updates' } },
       media: unsent.slice(0, 4).map((m) => ({ id: m.id, url: m.url, kind: m.kind })),
     });
   }
@@ -275,7 +271,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
       detail: [u?.trip?.ref_id, u?.trip?.customer_name, u ? unitName(u) : null].filter(Boolean).join(' · ') || 'Driver uses the customer’s app',
       at: null,
       tripId,
-      primary: { label: 'Confirm times', intent: { type: 'trip', tripId, tab: 'stops' } },
+      primary: { label: 'Confirm', intent: { type: 'trip', tripId, tab: 'stops' } },
     });
   }
 
@@ -297,11 +293,8 @@ export function buildActions(src: ActionSources): ActionItem[] {
       at: e.expiry_date,
       tripId: null,
       primary: e.contact
-        ? { label: 'Remind on WhatsApp', intent: { type: 'whatsapp', phone: e.contact.phone, text: remind } }
-        : e.entity_type === 'Vehicle' ? { label: 'Open truck', intent: { type: 'vehicle', id: e.entity_id } } : { label: 'Open driver', intent: { type: 'driver', id: e.entity_id } },
-      secondary: e.contact
-        ? e.entity_type === 'Vehicle' ? { label: 'Truck', intent: { type: 'vehicle', id: e.entity_id } } : e.entity_type === 'Driver' ? { label: 'Driver', intent: { type: 'driver', id: e.entity_id } } : undefined
-        : undefined,
+        ? { label: 'Remind', intent: { type: 'whatsapp', phone: e.contact.phone, text: remind } }
+        : e.entity_type === 'Vehicle' ? { label: 'Open', intent: { type: 'vehicle', id: e.entity_id } } : { label: 'Open', intent: { type: 'driver', id: e.entity_id } },
     });
   }
 
@@ -319,7 +312,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
       detail: [inv.customer?.name, `${inv.currency || 'SAR'} ${Math.round(Number(inv.total_amount) || 0).toLocaleString('en-US')}`].filter(Boolean).join(' · '),
       at: inv.due_date,
       tripId: null,
-      primary: { label: 'Open invoices', intent: { type: 'invoices' } },
+      primary: { label: 'Open', intent: { type: 'invoices' } },
     });
   }
 
@@ -349,4 +342,27 @@ export function todaysTrips(units: LiveUnit[], tz: string, now = Date.now()) {
       return new Date(a.planned_start ?? 0).getTime() - new Date(b.planned_start ?? 0).getTime();
     })
     .map((t) => ({ trip: t, unit: units.find((u) => u.trip?.id === t.id)! }));
+}
+
+/** The small time on a row, worded for its kind: "42h late", "in 3h", "10m ago", "expired 2d". */
+export function whenLabel(item: ActionItem, now = Date.now()): { text: string; hot: boolean } | null {
+  if (!item.at) return null;
+  const diffMin = (now - new Date(item.at).getTime()) / 60000;
+  if (!Number.isFinite(diffMin)) return null;
+  const d = durationText(Math.abs(diffMin)).replace(' days', 'd').replace(' h', 'h').replace(' min', 'm');
+  switch (item.kind) {
+    case 'delayed':
+    case 'late-start':
+      return diffMin > 0 ? { text: `${d} late`, hot: true } : { text: `due in ${d}`, hot: false };
+    case 'unassigned':
+      return diffMin > 0 ? { text: `${d} overdue`, hot: true } : { text: `in ${d}`, hot: diffMin > -360 };
+    case 'expiry':
+      return diffMin > 0 ? { text: `expired ${d}`, hot: true } : { text: `in ${d}`, hot: false };
+    case 'overdue-invoice':
+      return { text: `${d} overdue`, hot: false };
+    case 'gps-quiet':
+      return { text: `${d} silent`, hot: true };
+    default:
+      return diffMin < 1 ? { text: 'now', hot: false } : { text: `${d} ago`, hot: false };
+  }
 }

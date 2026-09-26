@@ -6,8 +6,8 @@
  * the route stack, in src/app/_layout.tsx (`<OperatorBottomNav />`), so every
  * operator screen shares one persistent nav instead of remounting it.
  */
-import React, { useState } from 'react';
-import { Alert, Linking, RefreshControl, ScrollView, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, Linking, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -15,7 +15,9 @@ import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 
 import { useCurrentUser, useDashboardRefresh } from '../hooks';
 import { useMarkNotificationsRead, useNotifications } from '@/features/notifications/hooks/useNotifications';
-import { AppHeader, ScannerButton, SearchBar } from '../components';
+import { ScannerButton, SearchBar } from '../components';
+import { HomeTopBar } from '../components/HomeTopBar';
+import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
 import { ErrorState } from '@mercon/mobile-shared/ui';
 import { useActionInbox } from '../actions/useActionInbox';
 import { ActionSummary, NeedsActionList, TodayTrips } from '../actions/NeedsAction';
@@ -23,7 +25,14 @@ import type { ActionGroup, ActionIntent } from '../actions/actionModel';
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
-  const { role } = useAuth();
+  const { profile } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
+  // Ticks each minute so "12m late" / "in 2h" stay current.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const { refreshing, refresh } = useDashboardRefresh();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | ActionGroup>('all');
@@ -33,7 +42,10 @@ export default function DashboardHomeScreen() {
   const { markRead } = useMarkNotificationsRead();
   const inbox = useActionInbox();
 
-  const firstName = (currentUser.data?.name ?? 'Operator').split(' ')[0];
+  const firstName = (currentUser.data?.name ?? profile?.name ?? 'there').split(' ')[0];
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: inbox.tz, hour: '2-digit', hour12: false }).format(now)) % 24;
+  const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+  const today = new Intl.DateTimeFormat('en-GB', { timeZone: inbox.tz, weekday: 'long', day: 'numeric', month: 'long' }).format(now);
   const unreadCount = notifications.data?.filter((n) => !n.is_read).length ?? 0;
 
   const openTrip = (id: string, extra: Record<string, string> = {}) =>
@@ -71,19 +83,18 @@ export default function DashboardHomeScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F7F8FA' }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F4F5F8' }} edges={['top']}>
+      <View style={st.topBar}>
+        <HomeTopBar unread={unreadCount} onMenu={() => setMenuOpen(true)} onNotifications={() => router.push('/notifications')} />
+      </View>
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 110, gap: 18 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 6, paddingBottom: 120, gap: 18 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#FA634E" />}
       >
-        <AppHeader
-          logoSource={require('@mercon/mobile-shared/assets/images/mercon-logo.png')}
-          greeting="Welcome back,"
-          userName={firstName}
-          role={role ?? 'Operator'}
-          unreadNotifications={unreadCount}
-          onNotificationPress={() => router.push('/notifications')}
-        />
+        <View style={{ gap: 2 }}>
+          <Text style={st.greeting} numberOfLines={1}>{greeting}, {firstName}</Text>
+          <Text style={st.date}>{today}</Text>
+        </View>
 
         <View className="flex-row items-center gap-2">
           <SearchBar value={search} onChangeText={setSearch} onSubmit={() => router.push('/trips')} />
@@ -93,10 +104,10 @@ export default function DashboardHomeScreen() {
         <ActionSummary
           running={inbox.counts.running}
           delayed={inbox.counts.delayed}
-          action={inbox.counts.action}
+          actNow={inbox.counts.now}
           onRunning={() => router.push('/trips')}
           onDelayed={() => setFilter('trips')}
-          onAction={() => setFilter('all')}
+          onActNow={() => setFilter('all')}
         />
 
         {inbox.liveError ? (
@@ -110,10 +121,18 @@ export default function DashboardHomeScreen() {
           onOpenTrip={(id) => openTrip(id)}
           filter={filter}
           onFilter={setFilter}
+          now={now}
         />
 
         <TodayTrips rows={inbox.today} tz={inbox.tz} onOpenTrip={(id) => openTrip(id)} onAll={() => router.push('/trips')} />
       </ScrollView>
+      <OperatorSidebarDrawer visible={menuOpen} onClose={() => setMenuOpen(false)} side="left" />
     </SafeAreaView>
   );
 }
+
+const st = StyleSheet.create({
+  topBar: { paddingHorizontal: 16, paddingBottom: 4, backgroundColor: '#F4F5F8' },
+  greeting: { fontSize: 24, fontWeight: '800', color: '#2B2A2B', letterSpacing: -0.4 },
+  date: { fontSize: 13, fontWeight: '600', color: '#5F5F6E' },
+});
