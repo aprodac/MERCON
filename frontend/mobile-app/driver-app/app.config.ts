@@ -120,6 +120,10 @@ export default (): ExpoConfig => ({
       {
         icon: client.icon,
         color: client.brandColor,
+        // TestFlight / App Store builds talk to Apple's production push service.
+        // Codemagic's iOS workflows set APS_ENVIRONMENT=production; local and
+        // dev-client builds keep 'development' (matching a development profile).
+        mode: process.env.APS_ENVIRONMENT === 'production' ? 'production' : 'development',
       },
     ],
     [
