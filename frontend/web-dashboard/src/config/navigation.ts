@@ -4,7 +4,7 @@ import {
   ReceiptText, Clock, CreditCard, Wallet, Landmark, Scale, HandCoins, BookOpen, BookOpenText,
   FolderTree, CalendarCheck, BarChart3, FileBarChart, Coins, TrendingUp, FileSpreadsheet,
   SlidersHorizontal, Files, GraduationCap, Bell, Settings, Palette, UserCog, ShieldCheck,
-  MapPin, Layers, Tags, FileType, Trash2, ScrollText, AlertTriangle, Activity, FolderArchive,
+  Map as MapIcon, MapPin, Layers, Tags, FileType, Trash2, ScrollText, AlertTriangle, Activity, FolderArchive,
 } from 'lucide-react';
 import type { ModuleKey } from '@mercon/shared-types';
 
@@ -140,6 +140,10 @@ export const NAV_PAGES: NavPage[] = [
   { id: 'home', label: 'Home', path: '/', icon: Home, section: 'home', moduleKey: 'dashboard', keywords: ['dashboard', 'overview'], match: (p) => p === '/' },
 
   // Operations
+  {
+    id: 'live-map', label: 'Live map', path: '/live-map', icon: MapIcon, section: 'operations', moduleKey: 'trips',
+    keywords: ['map', 'tracking', 'gps', 'fleet map', 'active trips', 'scheduled', 'dispatch board'],
+  },
   {
     id: 'trips', label: 'Trips', path: '/trips', icon: Truck, section: 'operations', moduleKey: 'trips', keywords: ['dispatch', 'shipments'],
     match: (p) => p === '/trips' || (p.startsWith('/trips/') && !p.startsWith('/trips/monthly')),
