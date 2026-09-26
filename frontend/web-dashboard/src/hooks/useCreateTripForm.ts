@@ -11,7 +11,7 @@ import { tripService, BulkImportTripRow, BulkImportResult, TripStatus, Trip } fr
 import { quotationService, RateCard } from '@/services/quotationService';
 import { estimateTravelTimeByName, calculateArrivalDropoffTime } from '@/services/travelTimeService';
 import { useDeploymentTimezone, localDateTimeToUtcIso } from '@/lib/datetime';
-import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory, quotationMatchesRoute } from '@mercon/shared-types';
+import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory, quotationMatchesRoute, validateTripDraft, type TripValidationIssue } from '@mercon/shared-types';
 import { buildStopsFromSlot, routeLegsFromSlot } from '@/utils/tripStopsHelper';
 import { parseSheet, TRIP_COLUMNS } from '@/utils/importUtils';
 import { analyzePastDateRows, applyPastStatusToRows, PastDateAnalysis } from '@/utils/pastDateTripUtils';
@@ -843,113 +843,26 @@ export function useCreateTripForm() {
   const [editDriver, setEditDriver] = useState<any | null>(null);
 
   const getStepValidationErrors = (step: number): string[] => {
-    const errors: string[] = [];
     const isMonthly = contractBillingType?.toLowerCase() === 'monthly';
-
-    if (step === 1) {
-      if (!contractCustomer) {
-        errors.push('Customer is required');
-      }
-      if (!contractSlots || contractSlots.length === 0) {
-        errors.push('At least 1 route slot is required');
-      } else {
-        contractSlots.forEach((slot, idx) => {
-          const laneLabel =
-            slot.origin && slot.destination ? `${slot.origin} → ${slot.destination}` : `Slot #${idx + 1}`;
-          if (!slot.origin?.trim()) {
-            errors.push(`${laneLabel}: Select an origin location`);
-          }
-          if (!slot.destination?.trim()) {
-            errors.push(`${laneLabel}: Select a destination location`);
-          }
-          if (!isMonthly && !slot.date) {
-            errors.push(`${laneLabel}: Select a trip date`);
-          }
-          if (!slot.pickupTime) {
-            errors.push(`${laneLabel}: Select pickup time`);
-          }
-          if (!slot.dropoffTime) {
-            errors.push(`${laneLabel}: Select drop-off time`);
-          }
-
-          if (!isMonthly && slot.date && slot.pickupTime && slot.dropoffTime) {
-            const dropoffDate = slot.dropoffDate || slot.date;
-            if (dropoffDate < slot.date) {
-              errors.push(`${laneLabel}: Drop-off date cannot be before trip date`);
-            } else {
-              try {
-                const pStartIso = localDateTimeToUtcIso(slot.date, slot.pickupTime, tz);
-                const pEndIso = localDateTimeToUtcIso(dropoffDate, slot.dropoffTime, tz);
-                const pStartMs = new Date(pStartIso).getTime();
-                const pEndMs = new Date(pEndIso).getTime();
-                if (isNaN(pStartMs) || isNaN(pEndMs) || pEndMs <= pStartMs) {
-                  errors.push(`${laneLabel}: Drop-off time must be strictly after pickup time`);
-                }
-              } catch {
-                errors.push(`${laneLabel}: Invalid pickup or drop-off time format`);
-              }
-            }
-          }
-
-          // Commercial Pricing & Rate Validation
-          const hasRateMatched = Boolean(slot.matchedRateCard || slot.rateMatched);
-          const hasBillingInput = slot.billingAmount !== undefined && slot.billingAmount !== null && slot.billingAmount !== '' && Number(slot.billingAmount) > 0;
-
-          if (!hasRateMatched && !hasBillingInput) {
-            errors.push(`${laneLabel}: Select a Commercial Quotation card or enter Customer Billing Rate`);
-          }
-
-          const is3PL = assignmentType === 'third_party' || (assignmentType as string) === '3pl';
-          if (!is3PL) {
-            const hasTripChargeInput = slot.tripCharges !== undefined && slot.tripCharges !== null && slot.tripCharges !== '';
-            const hasDriverPayoutProp = slot.driverPayout !== undefined && slot.driverPayout !== null && slot.driverPayout !== '';
-            const hasMatchedPayout = slot.matchedRateCard?.driver_payout != null || slot.matchedRateCard?.default_trip_charge != null;
-
-            if (!hasTripChargeInput && !hasDriverPayoutProp && !hasMatchedPayout) {
-              errors.push(`${laneLabel}: Enter Driver Payout / Charge`);
-            }
-          } else {
-            if (!thirdPartyCost || Number(thirdPartyCost) <= 0) {
-              errors.push('3PL Cost (SAR) is required');
-            }
-          }
-        });
-      }
-
-      // Mandatory Fleet & Driver Assignment Validation for Daily/Spot (Monthly handles assignment on Page 2)
-      if (contractBillingType !== 'Monthly') {
-        if (assignmentType === 'third_party') {
-          if (!thirdPartyProviderId && !thirdPartyDriverName) {
-            errors.push('3PL Logistics Partner selection is required');
-          }
-        } else {
-          const hasDriverSelection = Boolean(masterDriver);
-          const hasVehicleSelection = Boolean(masterVehicle);
-          if (!hasDriverSelection && !hasVehicleSelection) {
-            errors.push('Select an assignment choice: Driver & Vehicle or Assign Later');
-          }
-        }
-      }
-    } else if (step === 2) {
-      if (contractBillingType === 'Monthly') {
-        if (selectedDates.length === 0) {
-          errors.push('Select at least 1 operating date on the calendar');
-        }
-        if (assignmentType === 'third_party') {
-          if (!thirdPartyProviderId && !thirdPartyDriverName) {
-            errors.push('3PL Logistics Partner selection is required');
-          }
-        } else {
-          const hasDriverSelection = Boolean(masterDriver);
-          const hasVehicleSelection = Boolean(masterVehicle);
-          if (!hasDriverSelection && !hasVehicleSelection) {
-            errors.push('Select an assignment choice: Driver & Vehicle or Assign Later');
-          }
-        }
-      }
-    }
-
-    return errors;
+    const issues = validateTripDraft({
+      customerId: contractCustomer,
+      slots: contractSlots,
+      billingType: contractBillingType,
+      assignmentType,
+      masterDriver,
+      masterVehicle,
+      thirdPartyProviderId,
+      thirdPartyDriverName,
+      thirdPartyCost,
+      selectedDates,
+      toUtcIso: (date, time) => localDateTimeToUtcIso(date, time, tz),
+    });
+    // Monthly trips pick days and assign the fleet on step 2; everything else is step 1.
+    const onStep = (i: TripValidationIssue) => {
+      const isStep2 = isMonthly && (i.section === 'assignment' ? i.field !== 'thirdPartyCost' : i.field === 'selectedDates');
+      return step === 2 ? isStep2 : step === 1 && !isStep2;
+    };
+    return issues.filter(onStep).map((i) => i.message);
   };
 
   const isStepValid = (step: number): boolean => {

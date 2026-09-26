@@ -1,18 +1,18 @@
 /**
  * Streams the driver's GPS to the server while a trip is active (foreground).
- * Requests location permission, watches position (~10s / 20m), and emits
- * 'driver:location_update' over the shared socket. Stops when the trip ends
- * or the component unmounts. Background tracking is a later hardening step.
+ * Requests location permission, watches position (~15s / 10m), and POSTs each
+ * fix to /mobile/trips/:id/location — the server stores it and rebroadcasts it
+ * to the live map (fleet + trip room), so no separate socket emit is needed.
+ * Stops when the trip ends, when `paused`, or when the component unmounts.
  */
 import { useEffect, useRef } from 'react';
 import * as Location from 'expo-location';
-import { getSocket } from '../services/socket';
 import { tripService, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
 
 const UPDATE_INTERVAL_MS = 15_000;
 const MIN_DISTANCE_M = 10;
 
-export function useLiveTracking(trip: MobileTrip | null, driverId: string | null | undefined) {
+export function useLiveTracking(trip: MobileTrip | null, driverId: string | null | undefined, paused = false) {
   const subRef = useRef<Location.LocationSubscription | null>(null);
   const tripId = trip?.id ?? null;
 
@@ -20,7 +20,7 @@ export function useLiveTracking(trip: MobileTrip | null, driverId: string | null
     let cancelled = false;
 
     async function start() {
-      if (!tripId || !driverId || !trip) return;
+      if (paused || !tripId || !driverId || !trip) return;
 
       // Tracking starts ONLY after driver taps Start Trip (e.g. GOING_TO_PICKUP, LOADING, IN_TRANSIT)
       const isStarted =
@@ -42,9 +42,6 @@ export function useLiveTracking(trip: MobileTrip | null, driverId: string | null
       const perm = await Location.requestForegroundPermissionsAsync();
       if (!perm.granted || cancelled) return;
 
-      const socket = await getSocket().catch(() => null);
-      if (cancelled) return;
-
       const sub = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.Balanced,
@@ -58,21 +55,6 @@ export function useLiveTracking(trip: MobileTrip | null, driverId: string | null
           const heading = loc.coords.heading ?? 0;
           const accuracy = loc.coords.accuracy ?? 0;
 
-          // 1. Real-time WebSocket emission for live dashboard maps
-          if (socket) {
-            try {
-              socket.emit('driver:location_update', {
-                tripId,
-                driverId,
-                lat,
-                lng,
-                speed,
-                heading,
-              });
-            } catch {}
-          }
-
-          // 2. HTTP REST API emission to POST /api/mobile/trips/:id/location
           try {
             await tripService.sendLocationUpdate(tripId, {
               latitude: lat,
@@ -102,5 +84,5 @@ export function useLiveTracking(trip: MobileTrip | null, driverId: string | null
         subRef.current = null;
       }
     };
-  }, [tripId, driverId, trip?.status, trip?.driver_workflow_state]);
+  }, [tripId, driverId, trip?.status, trip?.driver_workflow_state, paused]);
 }

@@ -27,6 +27,9 @@ export {
   type AuthoritativeActiveStop,
 };
 
+/** Last workflow state written per trip this session, to skip redundant SecureStore writes. */
+const lastSavedWorkflowState = new Map<string, string>();
+
 export const workflowStateStore = {
   async getState(tripId: string): Promise<string | null> {
     try {
@@ -39,6 +42,7 @@ export const workflowStateStore = {
     }
   },
   async saveState(tripId: string, state: string): Promise<void> {
+    lastSavedWorkflowState.set(tripId, state);
     try {
       if (Platform.OS === 'web') {
         localStorage.setItem(`workflow_state_${tripId}`, state);
@@ -48,6 +52,7 @@ export const workflowStateStore = {
     } catch {}
   },
   async clearState(tripId: string): Promise<void> {
+    lastSavedWorkflowState.delete(tripId);
     try {
       if (Platform.OS === 'web') {
         localStorage.removeItem(`workflow_state_${tripId}`);
@@ -315,10 +320,12 @@ export const tripService = {
     const { data } = await api.get('/mobile/trips/current');
     const trip = data.data as MobileTrip | null;
     if (trip) {
-      const localState = await workflowStateStore.getState(trip.id);
-      if (localState && !trip.driver_workflow_state) {
-        trip.driver_workflow_state = localState;
-      } else if (trip.driver_workflow_state) {
+      if (!trip.driver_workflow_state) {
+        const localState = await workflowStateStore.getState(trip.id);
+        if (localState) trip.driver_workflow_state = localState;
+      } else if (lastSavedWorkflowState.get(trip.id) !== trip.driver_workflow_state) {
+        // SecureStore writes are slow on Android (Keystore encryption) and this
+        // runs on every current-trip poll — only write when the state changed.
         await workflowStateStore.saveState(trip.id, trip.driver_workflow_state);
       }
     }
@@ -378,17 +385,13 @@ export const tripService = {
       const { data } = await api.get(`/mobile/trips/${id}`);
       if (data?.data) return data.data as MobileTrip;
     } catch {
-      // Endpoint not on dev server yet, fallback to list lookup
+      // Not found by id/ref_id — fall back to matching the short display ids below
     }
 
-    try {
-      const { data } = await api.get(`/trips/${id}`);
-      if (data?.data) return data.data as MobileTrip;
-    } catch {
-      // Fallback to searching driver trip lists
-    }
+    // (A `/trips/:id` attempt used to sit here. That route is Admin/Operator
+    // only, so for a driver it was always a wasted round trip that failed.)
 
-    // Unstoppable fallback: search history, scheduled, and current trip
+    // Fallback: match short display ids (TRP-xxxx, id prefix) in the driver's lists
     try {
       const [history, scheduled, current] = await Promise.all([
         tripService.getHistory().catch(() => []),

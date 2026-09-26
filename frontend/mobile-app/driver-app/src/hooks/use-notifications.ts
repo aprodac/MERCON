@@ -1,28 +1,25 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { notificationService } from '../services/notifications';
 import type { AppNotification } from '@mercon/mobile-shared/lib/notifications';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { queryClient } from '@mercon/mobile-shared/lib/query-client';
+import { driverKeys } from './query-keys';
 
-/** Loads the driver's notifications with optimistic mark-as-read. Mirrors the
- *  other mobile hooks — fetch-on-mount with a manual refetch (no React Query). */
+const setItems = (fn: (prev: AppNotification[]) => AppNotification[]) =>
+  queryClient.setQueryData<AppNotification[]>(driverKeys.notifications, (prev) => fn(prev ?? []));
+
+/** The driver's notifications (React Query cache) with optimistic mark-as-read. */
 export function useNotifications() {
-  const [items, setItems] = useState<AppNotification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const query = useQuery({
+    queryKey: driverKeys.notifications,
+    queryFn: () => notificationService.list(),
+  });
 
+  const { refetch: queryRefetch } = query;
   const refetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setItems(await notificationService.list());
-    } catch (e) {
-      setError(getApiErrorMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { refetch(); }, [refetch]);
+    await queryRefetch();
+  }, [queryRefetch]);
 
   const markRead = useCallback((id: string) => {
     setItems((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
@@ -31,12 +28,17 @@ export function useNotifications() {
   }, []);
 
   const markAll = useCallback(() => {
-    setItems((prev) => {
-      const unread = prev.filter((n) => !n.is_read).map((n) => n.id);
-      unread.forEach((id) => notificationService.markRead(id).catch(() => {}));
-      return prev.map((n) => ({ ...n, is_read: true }));
-    });
+    const items = queryClient.getQueryData<AppNotification[]>(driverKeys.notifications) ?? [];
+    items.filter((n) => !n.is_read).forEach((n) => notificationService.markRead(n.id).catch(() => {}));
+    setItems((prev) => prev.map((n) => ({ ...n, is_read: true })));
   }, []);
 
-  return { items, loading, error, refetch, markRead, markAll };
+  return {
+    items: query.data ?? [],
+    loading: query.isFetching,
+    error: query.error ? getApiErrorMessage(query.error) : null,
+    refetch,
+    markRead,
+    markAll,
+  };
 }

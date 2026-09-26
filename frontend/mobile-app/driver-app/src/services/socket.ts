@@ -8,15 +8,15 @@
  * without one is rejected.
  */
 import { io, type Socket } from 'socket.io-client';
-import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
-import { API_URL, TOKEN_KEY } from '@mercon/mobile-shared/lib/api';
+import { API_URL, ensureAuthToken } from '@mercon/mobile-shared/lib/api';
 
 const SOCKET_URL = API_URL.replace(/\/api\/?$/, '');
 
 let socket: Socket | null = null;
 
 export async function getSocket(): Promise<Socket> {
-  const token = await SecureStore.getItemAsync(TOKEN_KEY);
+  // In-memory token (SecureStore is only read once, on the first call after launch).
+  const token = await ensureAuthToken();
   if (!socket) {
     socket = io(SOCKET_URL, { transports: ['websocket'], auth: { token } });
   } else {
