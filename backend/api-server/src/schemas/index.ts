@@ -381,6 +381,13 @@ export const bulkImportTripsBody = z.object({
     co_driver_id: z.string().trim().nullable().optional(),
     co_driver_payout: z.coerce.number().nullable().optional(),
     additional_charge: z.coerce.number().nullable().optional(),
+    // Extra charges billed on top of billing_amount — same shape as POST /trips.
+    charges: z.array(z.object({
+      charge_type: z.string().trim().min(1),
+      rate: z.coerce.number(),
+      quantity: z.coerce.number().optional().default(1),
+      amount: z.coerce.number(),
+    })).optional(),
     update_quotation_driver_payout: z.boolean().optional(),
     awb_number: z.string().trim().nullable().optional(),
     stops: z.array(z.object({

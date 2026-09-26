@@ -347,6 +347,7 @@ export const getTrips = async (req: Request, res: Response) => {
               last_name: true,
               status: true,
               avatar_url: true,
+              phone_primary: true,
               deletedAt: true,
             }
           },
@@ -1176,6 +1177,21 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
           explicitCoDriverPayout: row.co_driver_payout,
         });
 
+        // Extra charges: the create-trip forms send `charges`; spreadsheet imports send one `additional_charge`.
+        const rowCharges: Array<Record<string, unknown>> = Array.isArray((row as any).charges)
+          ? (row as any).charges
+              .filter((c: any) => Number(c.amount ?? c.rate ?? 0) > 0)
+              .map((c: any) => ({
+                charge_type: String(c.charge_type || 'Extra Charge').trim(),
+                rate: Number(c.rate ?? c.amount ?? 0),
+                quantity: Number(c.quantity ?? 1),
+                amount: Number(c.amount ?? c.rate ?? 0),
+              }))
+          : [];
+        if (row.additional_charge !== undefined && row.additional_charge !== null && !isNaN(Number(row.additional_charge)) && Number(row.additional_charge) > 0) {
+          rowCharges.push({ amount: Number(row.additional_charge), description: 'Additional Charge' });
+        }
+
         const trip = await prisma.$transaction(async (tx) => {
           return tx.trip.create({
             data: {
@@ -1224,13 +1240,12 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
                 : (appliedQuotation?.rate != null ? { billing_amount: Number(appliedQuotation.rate) } : {})),
               driver_payout: finalRowDriverPayout,
               ...(createdBy ? { created_by: createdBy } : {}),
-              ...(row.additional_charge !== undefined && row.additional_charge !== null && !isNaN(Number(row.additional_charge)) && Number(row.additional_charge) > 0 ? {
+              ...(rowCharges.length > 0 ? {
                 charges: {
-                  create: [{
-                    amount: Number(row.additional_charge),
-                    description: 'Additional Charge',
-                    ...(createdBy ? { created_by: createdBy } : {})
-                  }]
+                  create: rowCharges.map((c) => ({
+                    ...c,
+                    ...(createdBy ? { created_by: createdBy } : {}),
+                  })),
                 }
               } : {}),
               ...(resolvedImportStops.length > 0 ? {

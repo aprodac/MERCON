@@ -30,6 +30,11 @@ export interface RouteResult {
   geometry: [number, number][];
   distanceMeters: number;
   durationSeconds: number;
+  /**
+   * One entry per hop between consecutive points (points.length - 1 of them),
+   * so a caller can time each stop — e.g. the create-trip schedule's ETAs.
+   */
+  legs: { distanceMeters: number; durationSeconds: number }[];
   /** Which provider answered. Diagnostic; lets a support ticket be traced. */
   provider: string;
 }
@@ -115,6 +120,9 @@ export async function getDrivingRouteThrough(points: GeoPoint[]): Promise<RouteR
       geometry,
       distanceMeters: Number(route.distance) || 0,
       durationSeconds: Number(route.duration) || 0,
+      legs: Array.isArray(route.legs)
+        ? route.legs.map((l: any) => ({ distanceMeters: Number(l?.distance) || 0, durationSeconds: Number(l?.duration) || 0 }))
+        : [],
       provider: 'osrm',
     };
   } catch (err) {

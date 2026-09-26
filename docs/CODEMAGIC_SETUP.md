@@ -93,7 +93,9 @@ iOS `buildNumber`, so a new build always installs over the previous one.
 
 ## Not covered yet
 
-- **Push notifications (driver app):** Android push needs a Firebase project
-  with an Android app for `tech.mercon.driver` (its `google-services.json` and
-  the FCM setup Expo push uses); iOS push needs an APNs key. Until then, builds
-  work but drivers get no push notifications.
+- **Push notifications (driver app):** step-by-step for iOS (App ID push
+  capability, profiles, APNs key → Expo, TestFlight external testers, testing)
+  is in **`docs/IOS_DISTRIBUTION_AND_PUSH.md`**. Android push still needs a
+  Firebase project with an Android app for `tech.mercon.driver` (its
+  `google-services.json` and the FCM v1 key in Expo). Until then, builds work
+  but drivers get no push notifications.
