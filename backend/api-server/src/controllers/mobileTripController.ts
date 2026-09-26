@@ -26,7 +26,23 @@ import { splitDelayReason } from '../utils/delayReason';
  */
 const tripInclude = {
   customer: true,
-  vehicle: true,
+  // Explicit select, never `vehicle: true`: Vehicle.image_url can hold a
+  // base64 data-URL photo (2.5 MB on dev), and it was sent with every trip —
+  // an 18-trip history came to ~44 MB and made the driver app crawl. The app
+  // only shows the plate; these are the fields a driver-facing trip needs.
+  vehicle: {
+    select: {
+      id: true,
+      ref_id: true,
+      plate_number: true,
+      asset_type: true,
+      status: true,
+      capacity_kg: true,
+      trailer_number: true,
+      trailer_type: true,
+      trailer_capacity_kg: true,
+    },
+  },
   quotation: {
     select: {
       id: true,
