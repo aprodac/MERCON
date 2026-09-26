@@ -1,38 +1,43 @@
 /**
- * Operator home: the three numbers that matter, then everything that needs
- * someone to act — grouped Act now / Today / Keep an eye on, filterable,
- * each card with its action right on it — then today's trips.
+ * Operator home: three numbers, then everything that needs someone to act —
+ * compact rows grouped Act now / Today / Keep an eye on, each with its one
+ * action as a pill; long runs of the same kind fold into "+N more" — then
+ * today's trips.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ActivityIndicator, ScrollView } from 'react-native';
 import {
-  AlarmClock, ChevronRight, CircleCheckBig, Clock3, FileClock, Images, Play, Receipt, SignalLow, Siren, Split, Truck, UserX,
+  AlarmClock, ChevronDown, ChevronRight, CircleCheckBig, Clock3, FileClock, Images, Phone, Play, Receipt, SignalLow, Siren, Split, Truck, UserX,
   type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { LiveUnit } from '../../../lib/operator';
-import { durationText, type ActionGroup, type ActionIntent, type ActionItem, type ActionKind, type Urgency } from './actionModel';
+import { whenLabel, type ActionGroup, type ActionIntent, type ActionItem, type ActionKind, type Urgency } from './actionModel';
 
 const INK = '#2B2A2B';
 const MUTED = '#5F5F6E';
+const LINE = '#EEF0F4';
 
-const KIND: Record<ActionKind, { icon: LucideIcon; bg: string; fg: string; button: string }> = {
-  emergency: { icon: Siren, bg: '#FDE3E0', fg: '#B42318', button: '#C4302B' },
-  delayed: { icon: Clock3, bg: '#FDEDEB', fg: '#912018', button: '#C4432F' },
-  'late-start': { icon: AlarmClock, bg: '#FFF1E0', fg: '#8A4B00', button: '#B35C00' },
-  unassigned: { icon: UserX, bg: '#FDEDEB', fg: '#912018', button: '#C4432F' },
-  'gps-quiet': { icon: SignalLow, bg: '#FFF4D6', fg: '#7A4F00', button: '#946200' },
-  'gps-mismatch': { icon: Split, bg: '#FFF4D6', fg: '#7A4F00', button: '#946200' },
-  photos: { icon: Images, bg: '#E3F7EA', fg: '#0F6B37', button: '#1A9E55' },
-  'time-check': { icon: Clock3, bg: '#FFF4D6', fg: '#7A4F00', button: '#946200' },
-  expiry: { icon: FileClock, bg: '#F0EBFC', fg: '#4A2A93', button: '#6A45C8' },
-  'overdue-invoice': { icon: Receipt, bg: '#EEF0F4', fg: '#3E3C3D', button: '#3E3C3D' },
+const KIND: Record<ActionKind, { icon: LucideIcon; bg: string; fg: string; noun: string }> = {
+  emergency: { icon: Siren, bg: '#FDE3E0', fg: '#B42318', noun: 'emergencies' },
+  delayed: { icon: Clock3, bg: '#FDEDEB', fg: '#912018', noun: 'delayed trips' },
+  'late-start': { icon: AlarmClock, bg: '#FFF1E0', fg: '#8A4B00', noun: 'trips not started' },
+  unassigned: { icon: UserX, bg: '#FDEDEB', fg: '#912018', noun: 'trips without driver or truck' },
+  'gps-quiet': { icon: SignalLow, bg: '#FFF4D6', fg: '#7A4F00', noun: 'silent trucks' },
+  'gps-mismatch': { icon: Split, bg: '#FFF4D6', fg: '#7A4F00', noun: 'GPS mismatches' },
+  photos: { icon: Images, bg: '#E3F7EA', fg: '#0F6B37', noun: 'photo updates' },
+  'time-check': { icon: Clock3, bg: '#FFF4D6', fg: '#7A4F00', noun: 'screenshot checks' },
+  expiry: { icon: FileClock, bg: '#F0EBFC', fg: '#4A2A93', noun: 'documents' },
+  'overdue-invoice': { icon: Receipt, bg: '#EEF0F4', fg: '#3E3C3D', noun: 'invoices' },
 };
 
-const URGENCY_LABEL: Record<Urgency, string> = { now: 'Act now', today: 'Today', watch: 'Keep an eye on' };
-const URGENCY_DOT: Record<Urgency, string> = { now: '#D92D20', today: '#E08A00', watch: '#9898A4' };
+const URGENCY: Record<Urgency, { label: string; dot: string }> = {
+  now: { label: 'Act now', dot: '#D92D20' },
+  today: { label: 'Today', dot: '#E08A00' },
+  watch: { label: 'Keep an eye on', dot: '#9898A4' },
+};
 
 const FILTERS: { id: 'all' | ActionGroup; label: string }[] = [
   { id: 'all', label: 'All' },
@@ -42,35 +47,27 @@ const FILTERS: { id: 'all' | ActionGroup; label: string }[] = [
   { id: 'money', label: 'Money' },
 ];
 
-const COLLAPSED = 6;
-
-function ago(iso: string | null): string | null {
-  if (!iso) return null;
-  const min = (Date.now() - new Date(iso).getTime()) / 60000;
-  if (!Number.isFinite(min)) return null;
-  if (min < 0) return `in ${durationText(-min)}`;
-  if (min < 1) return 'just now';
-  return `${durationText(min)} ago`;
-}
+/** Rows of one kind shown before folding the rest into "+N more". */
+const PER_KIND = 2;
 
 const tap = () => Haptics.selectionAsync().catch(() => {});
 
 // ── Summary ───────────────────────────────────────────────────────────────────
 
-export function ActionSummary({ running, delayed, action, onRunning, onDelayed, onAction }: {
-  running: number; delayed: number; action: number; onRunning: () => void; onDelayed: () => void; onAction: () => void;
+export function ActionSummary({ running, delayed, actNow, onRunning, onDelayed, onActNow }: {
+  running: number; delayed: number; actNow: number; onRunning: () => void; onDelayed: () => void; onActNow: () => void;
 }) {
-  const tiles = [
-    { key: 'running', label: 'Running now', value: running, onPress: onRunning, bg: '#2B2A2B', fg: Colors.white, sub: '#C9C9D2' },
-    { key: 'delayed', label: 'Delayed', value: delayed, onPress: onDelayed, bg: delayed ? '#FDEDEB' : Colors.white, fg: delayed ? '#912018' : INK, sub: delayed ? '#912018' : MUTED },
-    { key: 'action', label: 'Need action', value: action, onPress: onAction, bg: action ? '#FFF1E0' : Colors.white, fg: action ? '#8A4B00' : INK, sub: action ? '#8A4B00' : MUTED },
+  const cells = [
+    { key: 'run', label: 'On the road', value: running, color: '#2449A8', onPress: onRunning },
+    { key: 'late', label: 'Delayed', value: delayed, color: delayed ? '#B42318' : INK, onPress: onDelayed },
+    { key: 'act', label: 'Act now', value: actNow, color: actNow ? '#B35C00' : INK, onPress: onActNow },
   ];
   return (
     <View style={s.summary}>
-      {tiles.map((t) => (
-        <TouchableOpacity key={t.key} style={[s.tile, { backgroundColor: t.bg }]} onPress={() => { tap(); t.onPress(); }} activeOpacity={0.8}>
-          <Text style={[s.tileValue, { color: t.fg }]}>{t.value}</Text>
-          <Text style={[s.tileLabel, { color: t.sub }]} numberOfLines={1}>{t.label}</Text>
+      {cells.map((c, i) => (
+        <TouchableOpacity key={c.key} style={[s.cell, i > 0 && s.cellBorder]} onPress={() => { tap(); c.onPress(); }} activeOpacity={0.7}>
+          <Text style={[s.cellValue, { color: c.color }]}>{c.value}</Text>
+          <Text style={s.cellLabel} numberOfLines={1}>{c.label}</Text>
         </TouchableOpacity>
       ))}
     </View>
@@ -79,122 +76,157 @@ export function ActionSummary({ running, delayed, action, onRunning, onDelayed, 
 
 // ── The list ──────────────────────────────────────────────────────────────────
 
-export function NeedsActionList({ items, loading, onIntent, onOpenTrip, filter, onFilter }: {
+export function NeedsActionList({ items, loading, onIntent, onOpenTrip, filter, onFilter, now }: {
   items: ActionItem[];
   loading: boolean;
   onIntent: (intent: ActionIntent) => void;
   onOpenTrip: (tripId: string) => void;
   filter: 'all' | ActionGroup;
   onFilter: (f: 'all' | ActionGroup) => void;
+  now: number;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [open, setOpen] = useState<Set<string>>(new Set());
   const counts = useMemo(() => {
     const c: Record<string, number> = { all: items.length };
     for (const i of items) c[i.group] = (c[i.group] ?? 0) + 1;
     return c;
   }, [items]);
   const shown = filter === 'all' ? items : items.filter((i) => i.group === filter);
-  const visible = expanded ? shown : shown.slice(0, COLLAPSED);
 
+  // Sections by urgency; inside, each kind shows a couple of rows and folds the rest.
+  const sections = useMemo(() => {
+    const out: { urgency: Urgency; rows: ({ type: 'item'; item: ActionItem } | { type: 'more'; kind: ActionKind; key: string; hidden: number })[]; total: number }[] = [];
+    for (const u of ['now', 'today', 'watch'] as Urgency[]) {
+      const list = shown.filter((i) => i.urgency === u);
+      if (!list.length) continue;
+      const rows: (typeof out)[number]['rows'] = [];
+      const kinds = [...new Set(list.map((i) => i.kind))];
+      for (const k of kinds) {
+        const ofKind = list.filter((i) => i.kind === k);
+        const key = `${u}:${k}`;
+        const expanded = open.has(key);
+        const visible = expanded ? ofKind : ofKind.slice(0, PER_KIND);
+        visible.forEach((item) => rows.push({ type: 'item', item }));
+        if (ofKind.length > PER_KIND) rows.push({ type: 'more', kind: k, key, hidden: expanded ? 0 : ofKind.length - PER_KIND });
+      }
+      out.push({ urgency: u, rows, total: list.length });
+    }
+    return out;
+  }, [shown, open]);
+
+  const toggle = (key: string) => {
+    tap();
+    setOpen((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: 12 }}>
       <View style={s.headRow}>
         <Text style={s.h2}>Needs action</Text>
-        {loading ? <ActivityIndicator size="small" color={Colors.primary} /> : null}
+        {loading ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={s.headCount}>{shown.length} to do</Text>}
       </View>
 
-      <View style={s.chips}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips}>
         {FILTERS.filter((f) => f.id === 'all' || counts[f.id]).map((f) => {
           const on = filter === f.id;
           return (
-            <TouchableOpacity key={f.id} style={[s.chip, on && s.chipOn]} onPress={() => { tap(); onFilter(f.id); setExpanded(false); }} activeOpacity={0.8}>
+            <TouchableOpacity key={f.id} style={[s.chip, on && s.chipOn]} onPress={() => { tap(); onFilter(f.id); }} activeOpacity={0.8}>
               <Text style={[s.chipText, on && s.chipTextOn]}>{f.label}</Text>
-              {counts[f.id] ? <Text style={[s.chipCount, on && s.chipCountOn]}>{counts[f.id]}</Text> : null}
+              <Text style={[s.chipCount, on && s.chipCountOn]}>{counts[f.id] ?? 0}</Text>
             </TouchableOpacity>
           );
         })}
-      </View>
+      </ScrollView>
 
       {!loading && shown.length === 0 ? (
         <View style={s.clear}>
-          <View style={s.clearIcon}><CircleCheckBig size={26} color="#1F9D55" /></View>
-          <Text style={s.clearTitle}>All clear</Text>
-          <Text style={s.clearText}>No delays, silent trucks, unsent photos or expiring documents right now.</Text>
+          <CircleCheckBig size={24} color="#1F9D55" />
+          <View style={{ flex: 1 }}>
+            <Text style={s.clearTitle}>All clear</Text>
+            <Text style={s.clearText}>Nothing needs you right now.</Text>
+          </View>
         </View>
       ) : null}
 
-      {visible.map((item, i) => {
-        // A section header where the urgency changes.
-        const header = i === 0 || visible[i - 1].urgency !== item.urgency ? item.urgency : null;
-        return (
-          <React.Fragment key={item.key}>
-            {header ? (
-              <View style={s.groupHead}>
-                <View style={[s.groupDot, { backgroundColor: URGENCY_DOT[header] }]} />
-                <Text style={s.groupText}>{URGENCY_LABEL[header]}</Text>
-              </View>
-            ) : null}
-            <ActionCard item={item} onIntent={onIntent} onOpenTrip={onOpenTrip} />
-          </React.Fragment>
-        );
-      })}
-
-      {shown.length > COLLAPSED ? (
-        <TouchableOpacity style={s.more} onPress={() => { tap(); setExpanded((e) => !e); }}>
-          <Text style={s.moreText}>{expanded ? 'Show less' : `Show all ${shown.length}`}</Text>
-        </TouchableOpacity>
-      ) : null}
+      {sections.map((sec) => (
+        <View key={sec.urgency} style={{ gap: 8 }}>
+          <View style={s.groupHead}>
+            <View style={[s.groupDot, { backgroundColor: URGENCY[sec.urgency].dot }]} />
+            <Text style={s.groupText}>{URGENCY[sec.urgency].label}</Text>
+            <Text style={s.groupCount}>{sec.total}</Text>
+          </View>
+          <View style={s.card}>
+            {sec.rows.map((row, i) =>
+              row.type === 'item' ? (
+                <ActionRow key={row.item.key} item={row.item} first={i === 0} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} />
+              ) : (
+                <TouchableOpacity key={`more-${row.key}`} style={[s.moreRow, i > 0 && s.rowBorder]} onPress={() => toggle(row.key)} activeOpacity={0.7}>
+                  <Text style={s.moreText}>{row.hidden ? `+${row.hidden} more ${KIND[row.kind].noun}` : `Show fewer ${KIND[row.kind].noun}`}</Text>
+                  <ChevronDown size={16} color={MUTED} style={row.hidden ? undefined : { transform: [{ rotate: '180deg' }] }} />
+                </TouchableOpacity>
+              ),
+            )}
+          </View>
+        </View>
+      ))}
     </View>
   );
 }
 
-function ActionCard({ item, onIntent, onOpenTrip }: { item: ActionItem; onIntent: (i: ActionIntent) => void; onOpenTrip: (id: string) => void }) {
+function ActionRow({ item, first, now, onIntent, onOpenTrip }: { item: ActionItem; first: boolean; now: number; onIntent: (i: ActionIntent) => void; onOpenTrip: (id: string) => void }) {
   const k = KIND[item.kind];
   const Icon = k.icon;
-  const when = ago(item.at);
+  const when = whenLabel(item, now);
+  const call = item.secondary?.intent.type === 'call' ? item.secondary : null;
+  const other = item.secondary && !call ? item.secondary : null;
+  const openRow = () => {
+    if (item.tripId) onOpenTrip(item.tripId);
+    else onIntent(item.primary.intent);
+  };
   return (
-    <TouchableOpacity
-      activeOpacity={item.tripId ? 0.85 : 1}
-      disabled={!item.tripId}
-      onPress={() => item.tripId && onOpenTrip(item.tripId)}
-      style={[s.card, item.urgency === 'now' && s.cardNow]}
-    >
-      <View style={s.cardTop}>
-        <View style={[s.icon, { backgroundColor: k.bg }]}>
-          <Icon size={19} color={k.fg} strokeWidth={2.2} />
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={s.title} numberOfLines={2}>{item.title}</Text>
-          {item.detail ? <Text style={s.detail} numberOfLines={2}>{item.detail}</Text> : null}
-        </View>
-        {when ? <Text style={s.when}>{when}</Text> : null}
+    <TouchableOpacity style={[s.row, !first && s.rowBorder]} onPress={openRow} activeOpacity={0.7}>
+      <View style={[s.icon, { backgroundColor: k.bg }]}>
+        <Icon size={17} color={k.fg} strokeWidth={2.2} />
       </View>
-
-      {item.media?.length ? (
-        <View style={s.thumbs}>
-          {item.media.map((m) => {
-            const uri = resolveMediaUrl(m.url);
-            return (
-              <View key={m.id} style={s.thumb}>
-                {m.kind === 'video' || !uri ? (
-                  <View style={[s.thumbFill, { backgroundColor: INK, alignItems: 'center', justifyContent: 'center' }]}><Play size={14} color={Colors.white} fill={Colors.white} /></View>
-                ) : <Image source={{ uri }} style={s.thumbFill} />}
-              </View>
-            );
-          })}
+      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+        <View style={s.titleRow}>
+          <Text style={s.title} numberOfLines={1}>{item.title}</Text>
+          {when ? <Text style={[s.when, when.hot && s.whenHot]} numberOfLines={1}>{when.text}</Text> : null}
         </View>
-      ) : null}
-
+        {item.detail ? <Text style={s.detail} numberOfLines={1}>{item.detail}</Text> : null}
+        {item.media?.length ? (
+          <View style={s.thumbs}>
+            {item.media.map((m) => {
+              const uri = resolveMediaUrl(m.url);
+              return (
+                <View key={m.id} style={s.thumb}>
+                  {m.kind === 'video' || !uri ? (
+                    <View style={[s.thumbFill, { backgroundColor: INK, alignItems: 'center', justifyContent: 'center' }]}><Play size={10} color={Colors.white} fill={Colors.white} /></View>
+                  ) : <Image source={{ uri }} style={s.thumbFill} />}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+      </View>
       <View style={s.actions}>
-        <TouchableOpacity style={[s.primary, { backgroundColor: k.button }]} onPress={() => { tap(); onIntent(item.primary.intent); }} activeOpacity={0.85}>
-          <Text style={s.primaryText} numberOfLines={1}>{item.primary.label}</Text>
-        </TouchableOpacity>
-        {item.secondary ? (
-          <TouchableOpacity style={s.secondary} onPress={() => { tap(); onIntent(item.secondary!.intent); }} activeOpacity={0.8}>
-            <Text style={s.secondaryText} numberOfLines={1}>{item.secondary.label}</Text>
+        {call ? (
+          <TouchableOpacity style={s.callBtn} onPress={() => { tap(); onIntent(call.intent); }} hitSlop={6} accessibilityLabel="Call driver">
+            <Phone size={15} color="#146C3C" strokeWidth={2.3} />
           </TouchableOpacity>
         ) : null}
+        {other ? (
+          <TouchableOpacity style={s.ghost} onPress={() => { tap(); onIntent(other.intent); }} hitSlop={4}>
+            <Text style={s.ghostText}>{other.label}</Text>
+          </TouchableOpacity>
+        ) : null}
+        <TouchableOpacity style={[s.pill, { backgroundColor: k.bg }]} onPress={() => { tap(); onIntent(item.primary.intent); }} hitSlop={4}>
+          <Text style={[s.pillText, { color: k.fg }]}>{item.primary.label}</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -222,26 +254,32 @@ export function TodayTrips({ rows, tz, onOpenTrip, onAll }: {
         <Text style={s.h2}>Today’s trips</Text>
         <TouchableOpacity onPress={onAll} hitSlop={8} style={s.link}>
           <Text style={s.linkText}>All trips</Text>
-          <ChevronRight size={15} color={Colors.primary} />
+          <ChevronRight size={15} color="#B43A27" />
         </TouchableOpacity>
       </View>
       {rows.length === 0 ? (
-        <View style={s.emptyToday}><Truck size={18} color={MUTED} /><Text style={s.detail}>Nothing running or starting today.</Text></View>
+        <View style={[s.card, s.emptyToday]}><Truck size={18} color={MUTED} /><Text style={s.detail}>Nothing running or starting today.</Text></View>
       ) : (
-        <View style={s.todayCard}>
+        <View style={s.card}>
           {rows.slice(0, 8).map(({ trip: t, unit }, i) => {
             const done = t.stops.filter((st) => st.actual_arrival).length;
             const next = t.next_stop_index != null ? t.stops[t.next_stop_index] : null;
-            const state = t.phase === 'delayed' ? { label: 'Delayed', bg: '#FDEDEB', fg: '#912018' }
-              : t.phase === 'active' ? { label: 'Running', bg: '#E7EEFC', fg: '#2449A8' }
-              : { label: `Starts ${time(t.planned_start)}`, bg: '#F0EBFC', fg: '#4A2A93' };
+            const state = t.phase === 'delayed' ? { label: 'Delayed', bg: '#FDEDEB', fg: '#912018', bar: '#D92D20' }
+              : t.phase === 'active' ? { label: 'On the road', bg: '#E7EEFC', fg: '#2449A8', bar: '#2F5FD0' }
+              : { label: 'Scheduled', bg: '#F0EBFC', fg: '#4A2A93', bar: '#7651D6' };
+            const pct = t.stops.length ? done / t.stops.length : 0;
             return (
-              <TouchableOpacity key={t.id} style={[s.todayRow, i > 0 && s.todayBorder]} onPress={() => onOpenTrip(t.id)} activeOpacity={0.75}>
-                <Text style={s.todayTime}>{time(t.planned_start)}</Text>
+              <TouchableOpacity key={t.id} style={[s.todayRow, i > 0 && s.rowBorder]} onPress={() => onOpenTrip(t.id)} activeOpacity={0.7}>
+                <View style={s.todayTimeBox}>
+                  <Text style={s.todayTime}>{time(t.planned_start)}</Text>
+                  <View style={[s.todayBar, { backgroundColor: LINE }]}>
+                    <View style={{ width: `${Math.round(pct * 100)}%`, height: '100%', backgroundColor: state.bar, borderRadius: 2 }} />
+                  </View>
+                </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={s.todayRef} numberOfLines={1}>{t.ref_id ?? 'Trip'} · {t.customer_name ?? '—'}</Text>
+                  <Text style={s.todayRef} numberOfLines={1}>{t.customer_name ?? '—'}</Text>
                   <Text style={s.detail} numberOfLines={1}>
-                    {[unit.vehicle?.plate_number, t.phase !== 'upcoming' && t.stops.length ? `${done}/${t.stops.length} stops` : null, t.phase !== 'upcoming' && next?.name ? `→ ${next.name}` : null].filter(Boolean).join(' · ') || '—'}
+                    {[t.ref_id, unit.vehicle?.plate_number, t.phase !== 'upcoming' && next?.name ? `→ ${next.name}` : null].filter(Boolean).join(' · ')}
                   </Text>
                 </View>
                 <View style={[s.state, { backgroundColor: state.bg }]}><Text style={[s.stateText, { color: state.fg }]}>{state.label}</Text></View>
@@ -255,50 +293,55 @@ export function TodayTrips({ rows, tz, onOpenTrip, onAll }: {
 }
 
 const s = StyleSheet.create({
-  summary: { flexDirection: 'row', gap: 8 },
-  tile: { flex: 1, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 12, borderWidth: 1, borderColor: '#EEF0F4' },
-  tileValue: { fontSize: 28, fontWeight: '800', letterSpacing: -0.5 },
-  tileLabel: { fontSize: 12, fontWeight: '700', marginTop: 2 },
+  summary: { flexDirection: 'row', backgroundColor: Colors.white, borderRadius: 18, borderWidth: 1, borderColor: LINE, paddingVertical: 14 },
+  cell: { flex: 1, paddingHorizontal: 14 },
+  cellBorder: { borderLeftWidth: 1, borderLeftColor: LINE },
+  cellValue: { fontSize: 24, fontWeight: '800', letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
+  cellLabel: { fontSize: 12, fontWeight: '600', color: MUTED, marginTop: 1 },
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   h2: { fontSize: 18, fontWeight: '800', color: INK, letterSpacing: -0.2 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, borderRadius: 17, paddingHorizontal: 13, backgroundColor: '#F1F3F7' },
-  chipOn: { backgroundColor: INK },
+  headCount: { fontSize: 13, fontWeight: '600', color: MUTED },
+  chips: { gap: 6, paddingRight: 8 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, borderRadius: 16, paddingHorizontal: 12, backgroundColor: Colors.white, borderWidth: 1, borderColor: LINE },
+  chipOn: { backgroundColor: INK, borderColor: INK },
   chipText: { fontSize: 13, fontWeight: '700', color: '#3B3B44' },
   chipTextOn: { color: Colors.white },
-  chipCount: { fontSize: 11, fontWeight: '800', color: MUTED, backgroundColor: Colors.white, borderRadius: 9, minWidth: 18, paddingHorizontal: 5, textAlign: 'center', overflow: 'hidden', lineHeight: 18 },
-  chipCountOn: { color: INK },
-  groupHead: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, marginLeft: 2 },
-  groupDot: { width: 8, height: 8, borderRadius: 4 },
+  chipCount: { fontSize: 12, fontWeight: '800', color: '#9898A4' },
+  chipCountOn: { color: '#C9C9D2' },
+  groupHead: { flexDirection: 'row', alignItems: 'center', gap: 7, marginLeft: 4 },
+  groupDot: { width: 7, height: 7, borderRadius: 4 },
   groupText: { fontSize: 12, fontWeight: '800', color: '#3B3B44', textTransform: 'uppercase', letterSpacing: 0.6 },
-  card: { backgroundColor: Colors.white, borderRadius: 18, padding: 14, gap: 12, borderWidth: 1, borderColor: '#EEF0F4' },
-  cardNow: { borderColor: '#F5C2BC', shadowColor: '#D92D20', shadowOpacity: 0.08, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
-  cardTop: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  icon: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 15, fontWeight: '800', color: INK },
-  detail: { fontSize: 12.5, color: MUTED, marginTop: 2, lineHeight: 17 },
-  when: { fontSize: 11, color: MUTED, fontWeight: '600', marginTop: 2 },
-  thumbs: { flexDirection: 'row', gap: 6, marginLeft: 52 },
-  thumb: { width: 52, height: 52, borderRadius: 10, overflow: 'hidden', backgroundColor: '#E4E7EE' },
+  groupCount: { fontSize: 12, fontWeight: '700', color: '#9898A4' },
+  card: { backgroundColor: Colors.white, borderRadius: 18, borderWidth: 1, borderColor: LINE, overflow: 'hidden' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 11 },
+  rowBorder: { borderTopWidth: 1, borderTopColor: '#F2F3F6' },
+  icon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { flex: 1, fontSize: 14, fontWeight: '800', color: INK },
+  when: { fontSize: 11, fontWeight: '700', color: '#9898A4' },
+  whenHot: { color: '#B42318' },
+  detail: { fontSize: 12.5, color: MUTED },
+  thumbs: { flexDirection: 'row', gap: 4, marginTop: 4 },
+  thumb: { width: 30, height: 30, borderRadius: 7, overflow: 'hidden', backgroundColor: '#E4E7EE' },
   thumbFill: { width: '100%', height: '100%' },
-  actions: { flexDirection: 'row', gap: 8, marginLeft: 52 },
-  primary: { flex: 1, height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 },
-  primaryText: { color: Colors.white, fontSize: 13, fontWeight: '800' },
-  secondary: { height: 40, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, backgroundColor: '#F1F3F7' },
-  secondaryText: { color: INK, fontSize: 13, fontWeight: '700' },
-  more: { height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F3F7' },
-  moreText: { fontSize: 14, fontWeight: '800', color: INK },
-  clear: { alignItems: 'center', gap: 6, backgroundColor: '#F2FBF5', borderRadius: 18, paddingVertical: 22, paddingHorizontal: 20 },
-  clearIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
-  clearTitle: { fontSize: 16, fontWeight: '800', color: '#146C3C' },
-  clearText: { fontSize: 13, color: '#146C3C', textAlign: 'center' },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  pill: { height: 32, borderRadius: 10, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
+  pillText: { fontSize: 13, fontWeight: '800' },
+  ghost: { height: 32, borderRadius: 10, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F3F7' },
+  ghostText: { fontSize: 12, fontWeight: '700', color: INK },
+  callBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E8F5EE', alignItems: 'center', justifyContent: 'center' },
+  moreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11 },
+  moreText: { fontSize: 13, fontWeight: '700', color: MUTED },
+  clear: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F2FBF5', borderRadius: 18, padding: 16 },
+  clearTitle: { fontSize: 15, fontWeight: '800', color: '#146C3C' },
+  clearText: { fontSize: 13, color: '#146C3C' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  linkText: { fontSize: 13, fontWeight: '700', color: Colors.primary },
-  emptyToday: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#F5F6F9', borderRadius: 14, padding: 14 },
-  todayCard: { backgroundColor: Colors.white, borderRadius: 18, borderWidth: 1, borderColor: '#EEF0F4', paddingHorizontal: 14 },
-  todayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
-  todayBorder: { borderTopWidth: 1, borderTopColor: '#F1F3F7' },
-  todayTime: { width: 44, fontSize: 14, fontWeight: '800', color: INK, fontVariant: ['tabular-nums'] },
+  linkText: { fontSize: 13, fontWeight: '700', color: '#B43A27' },
+  emptyToday: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14 },
+  todayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 11 },
+  todayTimeBox: { width: 46, gap: 5 },
+  todayTime: { fontSize: 14, fontWeight: '800', color: INK, fontVariant: ['tabular-nums'] },
+  todayBar: { height: 4, borderRadius: 2, overflow: 'hidden' },
   todayRef: { fontSize: 14, fontWeight: '700', color: INK },
   state: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
   stateText: { fontSize: 11, fontWeight: '800' },
