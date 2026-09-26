@@ -16,9 +16,9 @@ import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import type { LiveUnit } from '../../../lib/operator';
 import { whenLabel, type ActionGroup, type ActionIntent, type ActionItem, type ActionKind, type Urgency } from './actionModel';
 
-const INK = '#2B2A2B';
-const MUTED = '#5F5F6E';
-const LINE = '#EEF0F4';
+const INK = '#18181B';
+const MUTED = '#71717A';
+const LINE = '#E4E4E7';
 
 const KIND: Record<ActionKind, { icon: LucideIcon; bg: string; fg: string; noun: string }> = {
   emergency: { icon: Siren, bg: '#FDE3E0', fg: '#B42318', noun: 'emergencies' },
@@ -156,8 +156,7 @@ export function NeedsActionList({ items, loading, onIntent, onOpenTrip, filter, 
         <View key={sec.urgency} style={{ gap: 8 }}>
           <View style={s.groupHead}>
             <View style={[s.groupDot, { backgroundColor: URGENCY[sec.urgency].dot }]} />
-            <Text style={s.groupText}>{URGENCY[sec.urgency].label}</Text>
-            <Text style={s.groupCount}>{sec.total}</Text>
+            <Text style={s.groupText}>{URGENCY[sec.urgency].label} · {sec.total}</Text>
           </View>
           <View style={s.card}>
             {sec.rows.map((row, i) =>
@@ -216,7 +215,7 @@ function ActionRow({ item, first, now, onIntent, onOpenTrip }: { item: ActionIte
       <View style={s.actions}>
         {call ? (
           <TouchableOpacity style={s.callBtn} onPress={() => { tap(); onIntent(call.intent); }} hitSlop={6} accessibilityLabel="Call driver">
-            <Phone size={15} color="#146C3C" strokeWidth={2.3} />
+            <Phone size={14} color="#16A34A" strokeWidth={2.2} />
           </TouchableOpacity>
         ) : null}
         {other ? (
@@ -224,8 +223,8 @@ function ActionRow({ item, first, now, onIntent, onOpenTrip }: { item: ActionIte
             <Text style={s.ghostText}>{other.label}</Text>
           </TouchableOpacity>
         ) : null}
-        <TouchableOpacity style={[s.pill, { backgroundColor: k.bg }]} onPress={() => { tap(); onIntent(item.primary.intent); }} hitSlop={4}>
-          <Text style={[s.pillText, { color: k.fg }]}>{item.primary.label}</Text>
+        <TouchableOpacity style={[s.pill, item.kind === 'photos' && s.pillGo]} onPress={() => { tap(); onIntent(item.primary.intent); }} hitSlop={4}>
+          <Text style={[s.pillText, item.kind === 'photos' && { color: Colors.white }]}>{item.primary.label}</Text>
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
@@ -254,7 +253,7 @@ export function TodayTrips({ rows, tz, onOpenTrip, onAll }: {
         <Text style={s.h2}>Today’s trips</Text>
         <TouchableOpacity onPress={onAll} hitSlop={8} style={s.link}>
           <Text style={s.linkText}>All trips</Text>
-          <ChevronRight size={15} color="#B43A27" />
+          <ChevronRight size={15} color={MUTED} />
         </TouchableOpacity>
       </View>
       {rows.length === 0 ? (
@@ -293,56 +292,57 @@ export function TodayTrips({ rows, tz, onOpenTrip, onAll }: {
 }
 
 const s = StyleSheet.create({
-  summary: { flexDirection: 'row', backgroundColor: Colors.white, borderRadius: 18, borderWidth: 1, borderColor: LINE, paddingVertical: 14 },
-  cell: { flex: 1, paddingHorizontal: 14 },
-  cellBorder: { borderLeftWidth: 1, borderLeftColor: LINE },
-  cellValue: { fontSize: 24, fontWeight: '800', letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
-  cellLabel: { fontSize: 12, fontWeight: '600', color: MUTED, marginTop: 1 },
+  summary: { flexDirection: 'row', backgroundColor: Colors.white, borderRadius: 12, borderWidth: 1, borderColor: LINE, paddingVertical: 9 },
+  cell: { flex: 1, paddingHorizontal: 12 },
+  cellBorder: { borderLeftWidth: 1, borderLeftColor: '#F4F4F5' },
+  cellValue: { fontSize: 20, fontWeight: '700', letterSpacing: -0.3, fontVariant: ['tabular-nums'] },
+  cellLabel: { fontSize: 11, fontWeight: '500', color: MUTED },
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  h2: { fontSize: 18, fontWeight: '800', color: INK, letterSpacing: -0.2 },
-  headCount: { fontSize: 13, fontWeight: '600', color: MUTED },
+  h2: { fontSize: 16, fontWeight: '700', color: INK },
+  headCount: { fontSize: 12, fontWeight: '500', color: MUTED },
   chips: { gap: 6, paddingRight: 8 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, borderRadius: 16, paddingHorizontal: 12, backgroundColor: Colors.white, borderWidth: 1, borderColor: LINE },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 30, borderRadius: 8, paddingHorizontal: 10, backgroundColor: Colors.white, borderWidth: 1, borderColor: LINE },
   chipOn: { backgroundColor: INK, borderColor: INK },
-  chipText: { fontSize: 13, fontWeight: '700', color: '#3B3B44' },
+  chipText: { fontSize: 12, fontWeight: '500', color: '#3F3F46' },
   chipTextOn: { color: Colors.white },
-  chipCount: { fontSize: 12, fontWeight: '800', color: '#9898A4' },
+  chipCount: { fontSize: 12, fontWeight: '500', color: '#A1A1AA' },
   chipCountOn: { color: '#C9C9D2' },
-  groupHead: { flexDirection: 'row', alignItems: 'center', gap: 7, marginLeft: 4 },
-  groupDot: { width: 7, height: 7, borderRadius: 4 },
-  groupText: { fontSize: 12, fontWeight: '800', color: '#3B3B44', textTransform: 'uppercase', letterSpacing: 0.6 },
+  groupHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 2 },
+  groupDot: { width: 6, height: 6, borderRadius: 3 },
+  groupText: { fontSize: 12, fontWeight: '500', color: MUTED },
   groupCount: { fontSize: 12, fontWeight: '700', color: '#9898A4' },
-  card: { backgroundColor: Colors.white, borderRadius: 18, borderWidth: 1, borderColor: LINE, overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 11 },
-  rowBorder: { borderTopWidth: 1, borderTopColor: '#F2F3F6' },
-  icon: { width: 36, height: 36, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  card: { backgroundColor: Colors.white, borderRadius: 12, borderWidth: 1, borderColor: LINE, overflow: 'hidden' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingVertical: 10 },
+  rowBorder: { borderTopWidth: 1, borderTopColor: '#F4F4F5' },
+  icon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  title: { flex: 1, fontSize: 14, fontWeight: '800', color: INK },
-  when: { fontSize: 11, fontWeight: '700', color: '#9898A4' },
-  whenHot: { color: '#B42318' },
-  detail: { fontSize: 12.5, color: MUTED },
+  title: { flexShrink: 1, fontSize: 14, fontWeight: '600', color: INK },
+  when: { fontSize: 11, fontWeight: '500', color: '#A1A1AA' },
+  whenHot: { color: '#B42318', fontWeight: '600' },
+  detail: { fontSize: 12, color: MUTED },
   thumbs: { flexDirection: 'row', gap: 4, marginTop: 4 },
   thumb: { width: 30, height: 30, borderRadius: 7, overflow: 'hidden', backgroundColor: '#E4E7EE' },
   thumbFill: { width: '100%', height: '100%' },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  pill: { height: 32, borderRadius: 10, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },
-  pillText: { fontSize: 13, fontWeight: '800' },
-  ghost: { height: 32, borderRadius: 10, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F1F3F7' },
-  ghostText: { fontSize: 12, fontWeight: '700', color: INK },
-  callBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E8F5EE', alignItems: 'center', justifyContent: 'center' },
+  pill: { height: 30, borderRadius: 8, paddingHorizontal: 11, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: LINE, backgroundColor: Colors.white },
+  pillGo: { backgroundColor: '#16A34A', borderColor: '#16A34A' },
+  pillText: { fontSize: 12, fontWeight: '600', color: INK },
+  ghost: { height: 30, borderRadius: 8, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
+  ghostText: { fontSize: 12, fontWeight: '500', color: MUTED },
+  callBtn: { width: 30, height: 30, borderRadius: 8, borderWidth: 1, borderColor: LINE, alignItems: 'center', justifyContent: 'center' },
   moreRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 11 },
-  moreText: { fontSize: 13, fontWeight: '700', color: MUTED },
-  clear: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F2FBF5', borderRadius: 18, padding: 16 },
+  moreText: { fontSize: 12, fontWeight: '500', color: MUTED },
+  clear: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F0FDF4', borderRadius: 12, borderWidth: 1, borderColor: '#BBF7D0', padding: 14 },
   clearTitle: { fontSize: 15, fontWeight: '800', color: '#146C3C' },
   clearText: { fontSize: 13, color: '#146C3C' },
   link: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  linkText: { fontSize: 13, fontWeight: '700', color: '#B43A27' },
+  linkText: { fontSize: 13, fontWeight: '500', color: MUTED },
   emptyToday: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 14 },
   todayRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 11 },
   todayTimeBox: { width: 46, gap: 5 },
-  todayTime: { fontSize: 14, fontWeight: '800', color: INK, fontVariant: ['tabular-nums'] },
+  todayTime: { fontSize: 14, fontWeight: '600', color: INK, fontVariant: ['tabular-nums'] },
   todayBar: { height: 4, borderRadius: 2, overflow: 'hidden' },
-  todayRef: { fontSize: 14, fontWeight: '700', color: INK },
+  todayRef: { fontSize: 14, fontWeight: '600', color: INK },
   state: { borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
-  stateText: { fontSize: 11, fontWeight: '800' },
+  stateText: { fontSize: 11, fontWeight: '600' },
 });
