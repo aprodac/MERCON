@@ -1,29 +1,39 @@
-import React, { useEffect, useState } from 'react';
+/**
+ * Add / edit a driver. `/driver-edit` with no id creates one (POST /drivers);
+ * with `?id=` it edits (PATCH /drivers/:id, only the fields that changed —
+ * the backend re-validates whatever it's sent, e.g. a past licence expiry).
+ * A password typed here is set on save via POST /drivers/:id/set-password,
+ * which also creates the driver's app login if it doesn't exist yet.
+ */
+import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, StatusBar, ActivityIndicator, Alert,
+  View, Text, ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StatusBar,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography } from '@mercon/mobile-shared/theme/tokens';
-import { Button } from '@mercon/mobile-shared/components/Button';
-import { Card } from '@mercon/mobile-shared/components/Card';
-import { Input } from '@mercon/mobile-shared/components/Input';
+import { useQueryClient } from '@tanstack/react-query';
+import { CircleUser, IdCard, KeyRound, Activity } from 'lucide-react-native';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { FilterChip } from '@mercon/mobile-shared/components/Badge';
+import { DatePickerModal } from '@mercon/mobile-shared/components/common/DateTimePickerModal';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import {
   operatorService, invalidateOperatorDrivers, useOperatorDriverById,
-  type UpdateDriverInput,
+  type OperatorDriver, type UpdateDriverInput,
 } from '../../../lib/operator';
+import { Field, FormHeader, PasswordField, SaveBar, Section, formStyles } from '@/features/users/components/FormKit';
 
-const STATUSES: UpdateDriverInput['status'][] = ['Available', 'OnTrip', 'OffDuty', 'Inactive'];
+const STATUSES: NonNullable<UpdateDriverInput['status']>[] = ['Available', 'OnTrip', 'OffDuty', 'Inactive'];
 const STATUS_LABELS: Record<string, string> = {
   Available: 'Available',
   OnTrip: 'On Trip',
   OffDuty: 'Off Duty',
   Inactive: 'Inactive',
 };
+
+// Same rules as the backend's createDriverBody / updateDriverBody.
+const PHONE_RE = /^(\+966|00966|0)?5\d{8}$/;
+const LICENSE_RE = /^[12]\d{9}$/;
 
 function toDDMMYYYY(iso?: string | null): string {
   if (!iso) return '';
@@ -32,177 +42,212 @@ function toDDMMYYYY(iso?: string | null): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
-function parseDDMMYYYY(value: string): string | undefined {
+function parseDDMMYYYY(value: string): Date | undefined {
   const match = value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!match) return undefined;
   const [, dd, mm, yyyy] = match;
   const d = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
-  return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
+  return Number.isNaN(d.getTime()) ? undefined : d;
 }
 
 const DriverEditScreen = () => {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id } = useLocalSearchParams<{ id?: string }>();
   const { driver, loading, error } = useOperatorDriverById(id);
+  const isNew = !id;
 
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [licenseNumber, setLicenseNumber] = useState('');
-  const [licenseExpiry, setLicenseExpiry] = useState('');
-  const [status, setStatus] = useState<UpdateDriverInput['status']>('Available');
+  const body = () => {
+    if (isNew) return <DriverForm onDone={() => router.back()} />;
+    if (loading && !driver) return <ActivityIndicator color={Colors.primary} style={{ marginTop: 48 }} />;
+    if (!driver) return <Text style={formStyles.errorText}>{error ?? 'Driver not found'}</Text>;
+    return <DriverForm key={driver.id} driver={driver} onDone={() => router.back()} />;
+  };
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
+      <FormHeader
+        title={isNew ? 'Add driver' : 'Edit driver'}
+        subtitle={isNew ? 'Profile, licence and app login' : driver ? `${driver.first_name} ${driver.last_name}` : undefined}
+        onBack={() => router.back()}
+      />
+      {body()}
+    </SafeAreaView>
+  );
+};
+
+type Errors = Partial<Record<'firstName' | 'lastName' | 'phone' | 'license' | 'expiry' | 'password', string>>;
+
+function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const isNew = !driver;
+  const initialExpiry = toDDMMYYYY(driver?.license_expiry);
+
+  const [firstName, setFirstName] = useState(driver?.first_name ?? '');
+  const [lastName, setLastName] = useState(driver?.last_name ?? '');
+  const [phone, setPhone] = useState(driver?.phone_primary ?? '');
+  const [licenseNumber, setLicenseNumber] = useState(driver?.license_number ?? '');
+  const [licenseExpiry, setLicenseExpiry] = useState(initialExpiry);
+  const [status, setStatus] = useState<UpdateDriverInput['status']>((driver?.status as UpdateDriverInput['status']) ?? 'Available');
+  const [password, setPassword] = useState('');
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!driver) return;
-    setFirstName(driver.first_name);
-    setLastName(driver.last_name);
-    setPhone(driver.phone_primary ?? '');
-    setLicenseNumber(driver.license_number);
-    setLicenseExpiry(toDDMMYYYY(driver.license_expiry));
-    setStatus((driver.status as UpdateDriverInput['status']) ?? 'Available');
-  }, [driver]);
+  const validate = (): Errors => {
+    const e: Errors = {};
+    if (!firstName.trim()) e.firstName = 'Required';
+    if (!lastName.trim()) e.lastName = 'Required';
+    if (!PHONE_RE.test(phone.replace(/[\s-]/g, ''))) e.phone = 'Saudi mobile, e.g. 0501234567';
+    if (!LICENSE_RE.test(licenseNumber.trim())) e.license = '10 digits starting with 1 or 2';
+    const expiry = parseDDMMYYYY(licenseExpiry);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (!expiry) e.expiry = 'Pick a date';
+    else if (licenseExpiry !== initialExpiry && expiry < today) e.expiry = 'Must be today or later';
+    if (password && password.trim().length < 4) e.password = 'At least 4 characters';
+    return e;
+  };
 
   const handleSave = async () => {
-    if (!id || saving) return;
+    if (saving) return;
+    const e = validate();
+    setErrors(e);
+    if (Object.keys(e).length) return;
+
     setSaving(true);
     try {
-      const payload: UpdateDriverInput = {
-        first_name: firstName.trim() || undefined,
-        last_name: lastName.trim() || undefined,
-        phone_primary: phone.trim() || undefined,
-        license_number: licenseNumber.trim() || undefined,
-        license_expiry: parseDDMMYYYY(licenseExpiry),
-        status,
-      };
-      await operatorService.updateDriver(id, payload);
+      const expiryIso = parseDDMMYYYY(licenseExpiry)!.toISOString();
+      let driverId = driver?.id;
+      if (isNew) {
+        const created = await operatorService.createDriver({
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          phone_primary: phone.trim(),
+          license_number: licenseNumber.trim(),
+          license_expiry: expiryIso,
+        });
+        driverId = created.id;
+      } else {
+        const payload: UpdateDriverInput = {};
+        if (firstName.trim() !== driver.first_name) payload.first_name = firstName.trim();
+        if (lastName.trim() !== driver.last_name) payload.last_name = lastName.trim();
+        if (phone.trim() !== (driver.phone_primary ?? '')) payload.phone_primary = phone.trim();
+        if (licenseNumber.trim() !== driver.license_number) payload.license_number = licenseNumber.trim();
+        if (licenseExpiry !== initialExpiry) payload.license_expiry = expiryIso;
+        if (status !== driver.status) payload.status = status;
+        if (Object.keys(payload).length) await operatorService.updateDriver(driver.id, payload);
+      }
+
+      if (password && driverId) {
+        try {
+          await operatorService.setDriverPassword(driverId, password.trim());
+        } catch (err) {
+          Alert.alert('Driver saved, password not set', getApiErrorMessage(err));
+        }
+      }
+
       invalidateOperatorDrivers();
-      router.back();
-    } catch (e) {
-      Alert.alert('Could not save driver', getApiErrorMessage(e));
+      await queryClient.invalidateQueries({ queryKey: ['user-management', 'drivers'] });
+      onDone();
+    } catch (err) {
+      Alert.alert(isNew ? 'Could not add driver' : 'Could not save driver', getApiErrorMessage(err));
     } finally {
       setSaving(false);
     }
   };
 
+  const clear = (k: keyof Errors) => errors[k] && setErrors((prev) => ({ ...prev, [k]: undefined }));
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-          <ArrowLeft size={22} color={Colors.gray900} strokeWidth={2.2} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Edit Driver</Text>
-        <View style={styles.placeholder} />
-      </View>
-
-      {loading && !driver ? (
-        <ActivityIndicator color={Colors.primary} style={{ marginTop: Spacing['3xl'] }} />
-      ) : !driver ? (
-        <Text style={styles.errorText}>{error ?? 'Driver not found'}</Text>
-      ) : (
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Text style={styles.sectionTitle}>Name</Text>
-          <Card style={styles.formCard}>
-            <View style={styles.rowFields}>
-              <Input style={{ flex: 1 }} label="First Name" value={firstName} onChangeText={setFirstName} />
-              <Input style={{ flex: 1 }} label="Last Name" value={lastName} onChangeText={setLastName} />
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={formStyles.scroll} keyboardShouldPersistTaps="handled">
+        <Section title="Profile" Icon={CircleUser}>
+          <View style={formStyles.row}>
+            <View style={{ flex: 1 }}>
+              <Field label="First name" required value={firstName} error={errors.firstName}
+                onChangeText={(v) => { setFirstName(v); clear('firstName'); }} />
             </View>
-          </Card>
-
-          <Text style={styles.sectionTitle}>Contact & License</Text>
-          <Card style={styles.formCard}>
-            <Input label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" />
-            <View style={styles.formDivider} />
-            <Input label="License Number" value={licenseNumber} onChangeText={setLicenseNumber} />
-            <View style={styles.formDivider} />
-            <Input label="License Expiry" value={licenseExpiry} onChangeText={setLicenseExpiry} placeholder="DD/MM/YYYY" keyboardType="numeric" />
-          </Card>
-
-          <Text style={styles.sectionTitle}>Status</Text>
-          <View style={styles.statusRow}>
-            {STATUSES.map((s) => (
-              <FilterChip key={s} label={STATUS_LABELS[s!]} active={status === s} onPress={() => setStatus(s)} />
-            ))}
+            <View style={{ flex: 1 }}>
+              <Field label="Last name" required value={lastName} error={errors.lastName}
+                onChangeText={(v) => { setLastName(v); clear('lastName'); }} />
+            </View>
           </View>
-
-          <Button
-            title={saving ? 'Saving…' : 'Save Changes'}
-            onPress={handleSave}
-            disabled={saving}
-            loading={saving}
-            style={{ marginTop: Spacing.lg }}
+          <Field
+            label="Mobile number"
+            required
+            value={phone}
+            onChangeText={(v) => { setPhone(v); clear('phone'); }}
+            keyboardType="phone-pad"
+            placeholder="05XXXXXXXX"
+            error={errors.phone}
+            hint="The driver signs in to the Driver app with this number."
           />
-        </ScrollView>
-      )}
-    </SafeAreaView>
-  );
-};
+        </Section>
 
-const styles = StyleSheet.create({
-  header: {
-    backgroundColor: Colors.white,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.gray100,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: Typography.lg,
-    fontWeight: '700',
-    color: Colors.gray900,
-  },
-  placeholder: {
-    width: 40,
-  },
-  errorText: {
-    fontSize: Typography.sm,
-    color: Colors.error,
-    textAlign: 'center',
-    marginTop: Spacing.xl,
-  },
-  scroll: {
-    padding: Spacing.lg,
-    paddingBottom: Spacing['3xl'],
-    gap: Spacing.sm,
-  },
-  sectionTitle: {
-    fontSize: Typography.sm,
-    fontWeight: '700',
-    color: Colors.gray500,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.xs,
-  },
-  formCard: {
-    borderRadius: Radius.xl,
-    padding: Spacing.lg,
-    gap: Spacing.md,
-  },
-  formDivider: {
-    height: 1,
-  },
-  rowFields: {
-    flexDirection: 'row',
-    gap: Spacing.lg,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
-  },
-});
+        <Section title="Licence" Icon={IdCard}>
+          <Field
+            label="Licence / Iqama number"
+            required
+            value={licenseNumber}
+            onChangeText={(v) => { setLicenseNumber(v); clear('license'); }}
+            keyboardType="number-pad"
+            maxLength={10}
+            placeholder="10 digits"
+            error={errors.license}
+          />
+          <Field
+            label="Licence expiry"
+            required
+            value={licenseExpiry}
+            placeholder="Select date"
+            onPressBox={() => setPickerOpen(true)}
+            error={errors.expiry}
+          />
+        </Section>
+
+        {!isNew && (
+          <Section title="Status" Icon={Activity}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {STATUSES.map((s) => (
+                <FilterChip key={s} label={STATUS_LABELS[s]} active={status === s} onPress={() => setStatus(s)} />
+              ))}
+            </View>
+          </Section>
+        )}
+
+        <Section
+          title="App login"
+          Icon={KeyRound}
+          note={
+            isNew
+              ? 'Optional. Without a password the driver signs in with mobile number + licence number.'
+              : driver?.user
+                ? 'This driver already has a password. Type a new one to reset it, or leave blank.'
+                : 'No password yet — the driver signs in with mobile number + licence number until you set one.'
+          }
+        >
+          <PasswordField
+            label={isNew || !driver?.user ? 'Password' : 'New password'}
+            value={password}
+            onChangeText={(v) => { setPassword(v); clear('password'); }}
+            error={errors.password}
+            placeholder="Leave blank to skip"
+            hint={password ? 'Tap the eye to check it, or Copy to share it with the driver.' : undefined}
+          />
+        </Section>
+      </ScrollView>
+
+      <SaveBar label={isNew ? 'Add driver' : 'Save changes'} onPress={handleSave} saving={saving} />
+
+      <DatePickerModal
+        visible={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        selectedDate={licenseExpiry || toDDMMYYYY(new Date().toISOString())}
+        onSelectDate={(d) => { setLicenseExpiry(d); clear('expiry'); setPickerOpen(false); }}
+      />
+    </KeyboardAvoidingView>
+  );
+}
 
 export default DriverEditScreen;

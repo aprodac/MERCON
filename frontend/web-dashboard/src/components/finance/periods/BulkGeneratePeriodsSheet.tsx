@@ -55,7 +55,7 @@ export function BulkGeneratePeriodsSheet({
         <div className="space-y-4 py-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label className="text-xs font-bold text-foreground block mb-1">
                 Fiscal Year
               </label>
               <Input
@@ -67,7 +67,7 @@ export function BulkGeneratePeriodsSheet({
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label className="text-xs font-bold text-foreground block mb-1">
                 Frequency
               </label>
               <Select value={generateFreq} onValueChange={(val) => setGenerateFreq(val as any)}>
@@ -83,10 +83,10 @@ export function BulkGeneratePeriodsSheet({
           </div>
 
           <div className="space-y-1.5 pt-2">
-            <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
+            <div className="text-xs font-bold text-foreground">
               Generation Preview
             </div>
-            <div className="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-xl p-2 space-y-1 bg-slate-50 dark:bg-slate-900/50 divide-y divide-slate-100 dark:divide-slate-800">
+            <div className="max-h-48 overflow-y-auto border border-border dark:border-border rounded-xl p-2 space-y-1 bg-muted divide-y divide-border/60 dark:divide-border/60">
               {Array.from({ length: generateFreq === 'monthly' ? 12 : 4 }).map((_, idx) => {
                 let pName = '';
                 if (generateFreq === 'monthly') {
@@ -99,13 +99,13 @@ export function BulkGeneratePeriodsSheet({
 
                 return (
                   <div key={idx} className="py-1 flex items-center justify-between text-xs px-2">
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">{pName}</span>
+                    <span className="font-semibold text-foreground">{pName}</span>
                     {exists ? (
-                      <span className="text-[10px] text-amber-700 font-semibold bg-amber-50 px-2 py-0.5 rounded">
+                      <span className="text-[10px] text-amber-700 font-semibold bg-amber-500/10 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 px-2 py-0.5 rounded">
                         Exists (skip)
                       </span>
                     ) : (
-                      <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-50 px-2 py-0.5 rounded">
+                      <span className="text-[10px] text-emerald-700 font-semibold bg-emerald-500/10 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 px-2 py-0.5 rounded">
                         Will create
                       </span>
                     )}
@@ -117,15 +117,15 @@ export function BulkGeneratePeriodsSheet({
 
           {isGenerating && (
             <div className="space-y-1">
-              <div className="text-xs text-slate-500 font-medium">Generating periods... {generateProgress}%</div>
-              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+              <div className="text-xs text-muted-foreground font-medium">Generating periods... {generateProgress}%</div>
+              <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
                 <div className="h-full bg-[#FA634E] transition-all" style={{ width: `${generateProgress}%` }} />
               </div>
             </div>
           )}
         </div>
 
-        <SheetFooter className="pt-4 border-t border-slate-100 dark:border-slate-800">
+        <SheetFooter className="pt-4 border-t border-border dark:border-border">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

@@ -153,8 +153,8 @@ describe('Finance Status Helpers (status.ts)', () => {
   });
 
   it('provides tone class mappings in FIN_TONE_CLASSES', () => {
-    expect(FIN_TONE_CLASSES.positive.text).toContain('text-[#15803D]');
-    expect(FIN_TONE_CLASSES.negative.text).toContain('text-[#C2410C]');
+    expect(FIN_TONE_CLASSES.positive.text).toContain('text-emerald-700');
+    expect(FIN_TONE_CLASSES.negative.text).toContain('text-rose-700');
   });
 
   describe('getDisplayStatus', () => {

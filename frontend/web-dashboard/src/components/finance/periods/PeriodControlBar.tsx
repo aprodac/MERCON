@@ -41,30 +41,30 @@ export function PeriodControlBar({
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl px-5 py-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-xs">
+    <div className="bg-card border border-border dark:border-border rounded-xl px-5 py-3 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 shadow-xs">
       <div className="flex flex-wrap items-center gap-4">
         {/* FY Switcher */}
         <div className="flex items-center gap-2">
-          <span className="text-xs font-bold text-[#3E3C3D] dark:text-slate-200 uppercase tracking-wider">
+          <span className="text-xs font-bold text-[#3E3C3D] uppercase tracking-wider">
             Fiscal Year
           </span>
-          <div className="inline-flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+          <div className="inline-flex items-center bg-muted p-1 rounded-xl">
             <button
               type="button"
               onClick={handlePrevYear}
-              className="p-1 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
+              className="p-1 rounded-lg hover:bg-card dark:hover:bg-slate-700 text-muted-foreground transition-colors"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            <span className="px-3 text-xs font-bold font-mono text-slate-900 dark:text-white">
+            <span className="px-3 text-xs font-bold fin-num text-foreground dark:text-white">
               FY {selectedYear}
             </span>
 
             <button
               type="button"
               onClick={handleNextYear}
-              className="p-1 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors"
+              className="p-1 rounded-lg hover:bg-card dark:hover:bg-slate-700 text-muted-foreground transition-colors"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -72,10 +72,10 @@ export function PeriodControlBar({
         </div>
 
         {/* Lock Line */}
-        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300">
-          <Lock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-muted border border-border dark:border-border text-xs font-medium text-foreground">
+          <Lock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
           <span>
-            Books locked through <strong className="text-slate-900 dark:text-white font-mono">{booksLockedThroughLabel}</strong>
+            Books locked through <strong className="text-foreground dark:text-white fin-num">{booksLockedThroughLabel}</strong>
           </span>
         </div>
       </div>
@@ -89,16 +89,16 @@ export function PeriodControlBar({
             onClick={onOpenGenerateSheet}
             className="h-9 text-xs font-semibold rounded-xl"
           >
-            <RefreshCw className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
+            <RefreshCw className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
             Generate periods
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={onOpenFySheet}
-            className="h-9 text-xs font-semibold rounded-xl border-slate-300 text-slate-700 hover:bg-slate-50"
+            className="h-9 text-xs font-semibold rounded-xl border-border text-foreground hover:bg-muted"
           >
-            <Lock className="w-3.5 h-3.5 mr-1.5 text-slate-500" />
+            <Lock className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
             Close fiscal year
           </Button>
           <Button

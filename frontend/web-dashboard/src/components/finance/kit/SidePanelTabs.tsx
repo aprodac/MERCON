@@ -25,12 +25,12 @@ export function SidePanelTabs({
   return (
     <div
       className={cn(
-        'bg-white dark:bg-slate-900 border border-black/[0.06] dark:border-slate-800 rounded-[20px] p-4 shadow-xs space-y-4',
+        'bg-card border border-border rounded-xl p-4 shadow-xs space-y-4',
         className
       )}
     >
       {/* Segmented Track */}
-      <div className="bg-[#F1F2F5] dark:bg-slate-800 p-1 rounded-xl grid grid-flow-col auto-cols-fr gap-1 select-none">
+      <div className="bg-muted p-[3px] rounded-lg border border-border/60 grid grid-flow-col auto-cols-fr gap-1 select-none">
         {tabs.map((tab) => {
           const isActive = tab.key === value;
           return (
@@ -39,15 +39,15 @@ export function SidePanelTabs({
               type="button"
               onClick={() => onChange(tab.key)}
               className={cn(
-                'flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-[9px] text-[12.5px] font-semibold transition-all cursor-pointer',
+                'flex items-center justify-center gap-1.5 py-1 px-2.5 rounded-md text-xs font-medium transition-all cursor-pointer',
                 isActive
-                  ? 'bg-white dark:bg-slate-900 text-[#111111] dark:text-slate-100 shadow-xs font-bold'
-                  : 'text-[#6E6E80] dark:text-slate-400 hover:text-[#111111] dark:hover:text-slate-200'
+                  ? 'bg-background text-foreground shadow-xs font-semibold'
+                  : 'text-muted-foreground hover:text-foreground'
               )}
             >
               <span>{tab.label}</span>
               {tab.badge !== undefined && (
-                <span className="text-[10px] fin-num font-bold px-1.5 py-0.2 rounded-full bg-black/5 dark:bg-white/10">
+                <span className="text-[10px] fin-num font-medium px-1.5 py-0.2 rounded-full bg-muted-foreground/10 text-muted-foreground">
                   {tab.badge}
                 </span>
               )}
@@ -61,3 +61,4 @@ export function SidePanelTabs({
     </div>
   );
 }
+

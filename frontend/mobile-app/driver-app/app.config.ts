@@ -120,6 +120,10 @@ export default (): ExpoConfig => ({
       {
         icon: client.icon,
         color: client.brandColor,
+        // TestFlight / App Store builds talk to Apple's production push service.
+        // Codemagic's iOS workflows set APS_ENVIRONMENT=production; local and
+        // dev-client builds keep 'development' (matching a development profile).
+        mode: process.env.APS_ENVIRONMENT === 'production' ? 'production' : 'development',
       },
     ],
     [
@@ -135,6 +139,15 @@ export default (): ExpoConfig => ({
       'expo-image-picker',
       {
         cameraPermission: `${client.name} uses the camera to capture cargo and proof-of-delivery photos for your trips.`,
+      },
+    ],
+    [
+      'expo-camera',
+      {
+        cameraPermission: `${client.name} uses the camera to capture cargo and proof-of-delivery photos for your trips.`,
+        // Photos only — the in-app camera never records sound or scans barcodes.
+        recordAudioAndroid: false,
+        barcodeScannerEnabled: false,
       },
     ],
     [

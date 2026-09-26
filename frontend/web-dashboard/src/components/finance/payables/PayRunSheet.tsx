@@ -297,16 +297,16 @@ export function PayRunSheet({
   return (
     <>
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-full sm:max-w-2xl p-0 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800">
+        <SheetContent side="right" className="w-full sm:max-w-2xl p-0 flex flex-col bg-card border-l border-border dark:border-border">
           {/* Header */}
-          <SheetHeader className="p-6 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+          <SheetHeader className="p-6 border-b border-border dark:border-border bg-muted/50">
             <div className="flex items-center justify-between">
               <div>
-                <SheetTitle className="text-xl font-bold text-[#3E3C3D] dark:text-slate-100 flex items-center gap-2">
+                <SheetTitle className="text-xl font-bold text-[#3E3C3D] flex items-center gap-2">
                   <CreditCard className="w-5 h-5 text-[#FA634E]" />
                   Pay Run — Batch Bill Payment
                 </SheetTitle>
-                <SheetDescription className="text-xs text-slate-500 mt-1">
+                <SheetDescription className="text-xs text-muted-foreground mt-1">
                   Select payables, allocate payment amounts, and record transactions in bulk.
                 </SheetDescription>
               </div>
@@ -314,15 +314,15 @@ export function PayRunSheet({
 
             {/* Quick Selection Chips */}
             {!executionResults && (
-              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-slate-200/60 dark:border-slate-800">
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Quick select:</span>
+              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border dark:border-border">
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Quick select:</span>
                 <Button variant="outline" size="sm" onClick={handleSelectAllOverdue} className="h-7 text-xs rounded-full">
                   All overdue
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleSelectDueIn7Days} className="h-7 text-xs rounded-full">
                   Due in 7 days
                 </Button>
-                <Button variant="ghost" size="sm" onClick={handleClearSelection} className="h-7 text-xs text-slate-500 rounded-full">
+                <Button variant="ghost" size="sm" onClick={handleClearSelection} className="h-7 text-xs text-muted-foreground rounded-full">
                   Clear
                 </Button>
               </div>
@@ -334,14 +334,14 @@ export function PayRunSheet({
             {executionResults ? (
               /* Execution Results Summary */
               <div className="space-y-4">
-                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
-                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <div className="p-4 rounded-xl bg-muted border border-border dark:border-border">
+                  <h3 className="text-base font-bold text-foreground flex items-center gap-2">
                     <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                     Pay Run Completed
                   </h3>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Processed {executionResults.length} payment{executionResults.length > 1 ? 's' : ''}. Total paid:{' '}
-                    <span className="font-bold text-slate-900 dark:text-slate-100">
+                    <span className="font-bold text-foreground">
                       {formatMoney(executionResults.filter((r) => r.success).reduce((s, r) => s + r.amount, 0))} SAR
                     </span>
                   </p>
@@ -351,7 +351,7 @@ export function PayRunSheet({
                   {executionResults.map((res) => (
                     <div
                       key={res.billId}
-                      className="p-3 rounded-lg border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs"
+                      className="p-3 rounded-lg border border-border dark:border-border flex items-center justify-between text-xs"
                     >
                       <div className="flex items-center gap-3">
                         {res.success ? (
@@ -360,14 +360,14 @@ export function PayRunSheet({
                           <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
                         )}
                         <div>
-                          <div className="font-bold text-slate-900 dark:text-slate-100">
-                            {res.ref_id} · <span className="text-slate-600">{res.vendor_name}</span>
+                          <div className="font-bold text-foreground">
+                            {res.ref_id} · <span className="text-muted-foreground">{res.vendor_name}</span>
                           </div>
                           {res.error && <div className="text-rose-600 mt-0.5">{res.error}</div>}
                         </div>
                       </div>
                       <div className="text-right">
-                        <div className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                        <div className="fin-num font-bold text-foreground">
                           {formatMoney(res.amount)} SAR
                         </div>
                         {res.jeId && (
@@ -389,16 +389,16 @@ export function PayRunSheet({
                 {/* 1. Selected Bills List */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    <Label className="text-xs font-bold text-foreground uppercase tracking-wider">
                       Bills to Pay ({selectedItems.length})
                     </Label>
-                    <span className="text-xs font-mono text-slate-500">
-                      Total: <span className="font-bold text-slate-900 dark:text-slate-100"><MoneyText value={totalAmountToPay} /></span>
+                    <span className="text-xs fin-num text-muted-foreground">
+                      Total: <span className="font-bold text-foreground"><MoneyText value={totalAmountToPay} /></span>
                     </span>
                   </div>
 
                   {selectedItems.length === 0 ? (
-                    <div className="p-8 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-slate-400 text-xs">
+                    <div className="p-8 text-center border-2 border-dashed border-border dark:border-border rounded-xl text-muted-foreground text-xs">
                       No bills selected for payment. Select bills from the table or use quick selection above.
                     </div>
                   ) : (
@@ -406,14 +406,14 @@ export function PayRunSheet({
                       {selectedItems.map(({ bill, amountToPay }) => (
                         <div
                           key={bill.id}
-                          className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 flex items-center justify-between gap-3 text-xs"
+                          className="p-3 rounded-xl border border-border dark:border-border bg-muted/50 flex items-center justify-between gap-3 text-xs"
                         >
                           <div className="min-w-0 flex-1">
-                            <div className="font-bold text-slate-900 dark:text-slate-100 truncate">
+                            <div className="font-bold text-foreground truncate">
                               {bill.ref_id || bill.id.slice(0, 8)} ·{' '}
-                              <span className="text-slate-600 dark:text-slate-400">{bill.vendor_name || 'Vendor'}</span>
+                              <span className="text-muted-foreground dark:text-muted-foreground">{bill.vendor_name || 'Vendor'}</span>
                             </div>
-                            <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
+                            <div className="text-[11px] text-muted-foreground flex items-center gap-2 mt-0.5">
                               <span>Due: {formatDate(bill.due_date || bill.bill_date)}</span>
                               <span>·</span>
                               <span>Balance: {formatMoney(bill.balance)} SAR</span>
@@ -429,14 +429,14 @@ export function PayRunSheet({
                                 max={bill.balance}
                                 value={amountToPay}
                                 onChange={(e) => handleAmountChange(bill.id, parseFloat(e.target.value) || 0)}
-                                className="h-8 text-xs font-mono text-right bg-white dark:bg-slate-900"
+                                className="h-8 text-xs fin-num text-right bg-card"
                               />
                             </div>
                             <Button
                               variant="ghost"
                               size="icon"
                               onClick={() => handleRemoveBill(bill.id)}
-                              className="h-7 w-7 text-slate-400 hover:text-rose-600"
+                              className="h-7 w-7 text-muted-foreground hover:text-rose-600"
                             >
                               <X className="w-3.5 h-3.5" />
                             </Button>
@@ -449,7 +449,7 @@ export function PayRunSheet({
 
                 {/* 2. Bank Account Picker Cards */}
                 <div className="space-y-3">
-                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  <Label className="text-xs font-bold text-foreground uppercase tracking-wider">
                     Pay From Account
                   </Label>
 
@@ -464,8 +464,8 @@ export function PayRunSheet({
                           onClick={() => setSelectedAccountId(acc.accountId)}
                           className={`p-3 rounded-xl border cursor-pointer transition-all ${
                             isSelected
-                              ? 'border-[#FA634E] bg-rose-50/20 dark:bg-rose-950/20 ring-1 ring-[#FA634E]'
-                              : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                              ? 'border-[#FA634E] bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20/20 dark:bg-rose-950/20 ring-1 ring-[#FA634E]'
+                              : 'border-border dark:border-border hover:border-border'
                           }`}
                         >
                           <div className="flex items-center gap-2">
@@ -474,13 +474,13 @@ export function PayRunSheet({
                             ) : (
                               <Building2 className="w-4 h-4 text-sky-600 shrink-0" />
                             )}
-                            <div className="font-bold text-xs text-slate-900 dark:text-slate-100 truncate">
+                            <div className="font-bold text-xs text-foreground truncate">
                               {acc.bank_name || (acc.is_cash ? 'Cash Account' : 'Bank Account')}
                             </div>
                           </div>
-                          <div className="mt-2 text-[11px] text-slate-500 font-mono flex items-center justify-between">
+                          <div className="mt-2 text-[11px] text-muted-foreground fin-num flex items-center justify-between">
                             <span>Book balance</span>
-                            <span className="font-bold text-slate-900 dark:text-slate-100">{formatMoney(bal)} SAR</span>
+                            <span className="font-bold text-foreground">{formatMoney(bal)} SAR</span>
                           </div>
                         </div>
                       );
@@ -491,12 +491,12 @@ export function PayRunSheet({
                 {/* 3. Payment Meta Inputs */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <Label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Payment Date</Label>
+                    <Label className="text-xs font-semibold text-muted-foreground dark:text-muted-foreground">Payment Date</Label>
                     <Input
                       type="date"
                       value={paymentDate}
                       onChange={(e) => setPaymentDate(e.target.value)}
-                      className="h-9 text-xs mt-1 bg-white dark:bg-slate-900"
+                      className="h-9 text-xs mt-1 bg-card"
                     />
                     {!isOpenPeriodForDate && (
                       <p className="text-[10px] text-rose-600 font-semibold mt-1">No open accounting period covers this date.</p>
@@ -504,9 +504,9 @@ export function PayRunSheet({
                   </div>
 
                   <div>
-                    <Label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Method</Label>
+                    <Label className="text-xs font-semibold text-muted-foreground dark:text-muted-foreground">Method</Label>
                     <Select value={paymentMethod} onValueChange={setPaymentMethod}>
-                      <SelectTrigger className="h-9 text-xs mt-1 bg-white dark:bg-slate-900">
+                      <SelectTrigger className="h-9 text-xs mt-1 bg-card">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -518,32 +518,32 @@ export function PayRunSheet({
                   </div>
 
                   <div>
-                    <Label className="text-xs font-semibold text-slate-600 dark:text-slate-400">Reference Prefix</Label>
+                    <Label className="text-xs font-semibold text-muted-foreground dark:text-muted-foreground">Reference Prefix</Label>
                     <Input
                       type="text"
                       value={referencePrefix}
                       onChange={(e) => setReferencePrefix(e.target.value)}
-                      className="h-9 text-xs mt-1 bg-white dark:bg-slate-900 font-mono"
+                      className="h-9 text-xs mt-1 bg-card fin-num"
                     />
                   </div>
                 </div>
 
                 {/* 4. Live Summary Card */}
-                <div className="p-4 rounded-xl bg-slate-900 text-white space-y-3">
-                  <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Payment Impact Summary</div>
+                <div className="p-4 rounded-xl bg-card text-foreground border border-border text-white space-y-3">
+                  <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Payment Impact Summary</div>
 
-                  <div className="grid grid-cols-3 gap-3 border-y border-slate-800 py-3 text-xs">
+                  <div className="grid grid-cols-3 gap-3 border-y border-border py-3 text-xs">
                     <div>
-                      <div className="text-[10px] text-slate-400">Total to Pay</div>
-                      <div className="font-mono font-bold text-lg text-[#FA634E]">{formatMoney(totalAmountToPay)} SAR</div>
+                      <div className="text-[10px] text-muted-foreground">Total to Pay</div>
+                      <div className="fin-num font-bold text-lg text-[#FA634E]">{formatMoney(totalAmountToPay)} SAR</div>
                     </div>
                     <div>
-                      <div className="text-[10px] text-slate-400">Bank Balance Before</div>
-                      <div className="font-mono font-bold text-sm text-slate-200">{formatMoney(bankBookBalance)} SAR</div>
+                      <div className="text-[10px] text-muted-foreground">Bank Balance Before</div>
+                      <div className="fin-num font-bold text-sm text-slate-200">{formatMoney(bankBookBalance)} SAR</div>
                     </div>
                     <div>
-                      <div className="text-[10px] text-slate-400">Balance After</div>
-                      <div className={`font-mono font-bold text-sm ${balanceAfterPayment < 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      <div className="text-[10px] text-muted-foreground">Balance After</div>
+                      <div className={`fin-num font-bold text-sm ${balanceAfterPayment < 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
                         {formatMoney(balanceAfterPayment)} SAR
                       </div>
                     </div>
@@ -560,7 +560,7 @@ export function PayRunSheet({
                 {/* 5. Journal Lines Preview */}
                 {selectedItems.length > 0 && (
                   <div className="space-y-2">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                    <Label className="text-xs font-bold text-foreground uppercase tracking-wider">
                       Posting Preview (Dr Accounts Payable / Cr Bank)
                     </Label>
                     <JournalLinesTable
@@ -588,9 +588,9 @@ export function PayRunSheet({
           </div>
 
           {/* Footer */}
-          <SheetFooter className="p-6 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between">
+          <SheetFooter className="p-6 border-t border-border dark:border-border bg-muted/50 flex items-center justify-between">
             {executionResults ? (
-              <Button onClick={() => onOpenChange(false)} className="w-full bg-slate-900 hover:bg-slate-800 text-white">
+              <Button onClick={() => onOpenChange(false)} className="w-full bg-card text-foreground border border-border hover:bg-slate-800 text-white">
                 Close Pay Run
               </Button>
             ) : (
@@ -627,11 +627,11 @@ export function PayRunSheet({
               <ShieldCheck className="w-5 h-5 text-[#FA634E]" />
               Confirm Batch Payment Execution
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-xs text-slate-600 dark:text-slate-400 space-y-2">
+            <AlertDialogDescription className="text-xs text-muted-foreground dark:text-muted-foreground space-y-2">
               <p>
-                You are about to record <span className="font-bold text-slate-900 dark:text-slate-100">{selectedItems.length} bill payments</span> totalling{' '}
+                You are about to record <span className="font-bold text-foreground">{selectedItems.length} bill payments</span> totalling{' '}
                 <span className="font-bold text-[#FA634E]">{formatMoney(totalAmountToPay)} SAR</span> from{' '}
-                <span className="font-bold text-slate-900 dark:text-slate-100">{currentBankAccount?.bank_name || 'Bank Account'}</span>.
+                <span className="font-bold text-foreground">{currentBankAccount?.bank_name || 'Bank Account'}</span>.
               </p>
               <p>This action will immediately post general ledger transactions and update bank balances.</p>
             </AlertDialogDescription>

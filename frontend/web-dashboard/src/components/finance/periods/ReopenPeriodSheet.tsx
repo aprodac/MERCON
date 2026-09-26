@@ -43,7 +43,7 @@ export function ReopenPeriodSheet({
         </SheetHeader>
 
         <div className="space-y-4 py-4">
-          <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 p-3 rounded-xl text-xs text-amber-900 dark:text-amber-200 space-y-1">
+          <div className="bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-950/40 border border-amber-200 p-3 rounded-xl text-xs text-amber-900 dark:text-amber-200 space-y-1">
             <div className="font-bold flex items-center gap-1.5">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
               Important Note
@@ -54,7 +54,7 @@ export function ReopenPeriodSheet({
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="text-xs font-bold text-foreground block mb-1">
               Reason for reopening * (10–500 characters)
             </label>
             <Textarea
@@ -64,13 +64,13 @@ export function ReopenPeriodSheet({
               maxLength={500}
               className="text-xs h-24"
             />
-            <div className="text-[10px] text-slate-400 text-right mt-1 font-mono">
+            <div className="text-[10px] text-muted-foreground text-right mt-1 fin-num">
               {reopenReason.length} / 500
             </div>
           </div>
         </div>
 
-        <SheetFooter className="pt-4 border-t border-slate-100 dark:border-slate-800">
+        <SheetFooter className="pt-4 border-t border-border dark:border-border">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

@@ -33,6 +33,8 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import { Chip } from '@/components/ui/chip';
+import { BucketChip } from '@/lib/finance/chips';
 import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -75,21 +77,21 @@ function getVendorHashColor(name: string): string {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
   const colors = [
-    'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
+    'bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-600/20 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
     'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',
     'bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300',
     'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300',
-    'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
-    'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+    'bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
+    'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
   ];
   return colors[Math.abs(hash) % colors.length];
 }
 
 const BUCKET_STYLES: Record<string, { bg: string; text: string; border: string; bar: string }> = {
-  current: { bg: 'bg-emerald-50 dark:bg-emerald-950/40', text: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-200/60 dark:border-emerald-800/60', bar: 'bg-emerald-500' },
-  '1-30': { bg: 'bg-amber-50 dark:bg-amber-950/40', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-200/60 dark:border-amber-800/60', bar: 'bg-amber-500' },
+  current: { bg: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/40', text: 'text-emerald-700 dark:text-emerald-300', border: 'border-emerald-200/60 dark:border-emerald-800/60', bar: 'bg-emerald-500' },
+  '1-30': { bg: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-950/40', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-200/60 dark:border-amber-800/60', bar: 'bg-amber-500' },
   '31-60': { bg: 'bg-orange-50 dark:bg-orange-950/40', text: 'text-orange-700 dark:text-orange-300', border: 'border-orange-200/60 dark:border-orange-800/60', bar: 'bg-orange-500' },
-  '61-90': { bg: 'bg-rose-50 dark:bg-rose-950/40', text: 'text-rose-700 dark:text-rose-300', border: 'border-rose-200/60 dark:border-rose-800/60', bar: 'bg-rose-500' },
+  '61-90': { bg: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 dark:bg-rose-950/40', text: 'text-rose-700 dark:text-rose-300', border: 'border-rose-200/60 dark:border-rose-800/60', bar: 'bg-rose-500' },
   '90+': { bg: 'bg-red-50 dark:bg-red-950/40', text: 'text-red-700 dark:text-red-300 font-bold', border: 'border-red-200/60 dark:border-red-800/60', bar: 'bg-red-600' },
 };
 
@@ -501,20 +503,20 @@ export default function APAgeingPage() {
   ];
 
   return (
-    <DashboardLayout active="finance" title="AP Ageing">
-      <div className="p-6 space-y-6 max-w-7xl mx-auto fin-report">
+    <DashboardLayout active="finance" title="AP Ageing" fixedViewport>
+      <div className="p-4 flex flex-col flex-1 min-h-0 gap-3 overflow-hidden h-full max-md:overflow-y-auto max-md:h-auto max-w-7xl mx-auto w-full fin-report">
         {/* ========================================================================= */}
         {/* 1. TOOLBAR ROW (§4.0a Page Shell Specification)                          */}
         {/* ========================================================================= */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-card p-3 rounded-xl border border-border dark:border-border shadow-xs">
           {/* Left: View Mode Segmented Controls */}
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
+          <div className="flex items-center gap-1 bg-muted p-1 rounded-xl">
             <button
               onClick={() => handleViewChange('vendor')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 viewMode === 'vendor'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  ? 'bg-card  text-foreground  shadow-xs'
+                  : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground'
               }`}
             >
               <Users className="w-3.5 h-3.5" />
@@ -528,8 +530,8 @@ export default function APAgeingPage() {
               onClick={() => handleViewChange('bill')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 viewMode === 'bill'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  ? 'bg-card  text-foreground  shadow-xs'
+                  : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground'
               }`}
             >
               <FileText className="w-3.5 h-3.5" />
@@ -543,8 +545,8 @@ export default function APAgeingPage() {
               onClick={() => handleViewChange('schedule')}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 viewMode === 'schedule'
-                  ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  ? 'bg-card  text-foreground  shadow-xs'
+                  : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground'
               }`}
             >
               <CalendarClock className="w-3.5 h-3.5" />
@@ -557,14 +559,14 @@ export default function APAgeingPage() {
             {/* As-Of Date Control Popover */}
             <Popover open={calendarPopoverOpen} onOpenChange={setCalendarPopoverOpen}>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 text-xs gap-2 bg-white dark:bg-slate-900">
-                  <CalendarIcon className="w-3.5 h-3.5 text-slate-500" />
+                <Button variant="outline" size="sm" className="h-9 text-xs gap-2 bg-card">
+                  <CalendarIcon className="w-3.5 h-3.5 text-muted-foreground" />
                   As of: <span className="font-bold">{formatDate(asOfDateStr)}</span>
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="w-auto p-3">
                 <div className="space-y-3">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 border-b pb-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground border-b pb-2">
                     <span>Quick presets:</span>
                     <Button variant="ghost" size="sm" onClick={() => applyDatePreset('today')} className="h-6 text-[11px] px-2">
                       Today
@@ -586,12 +588,12 @@ export default function APAgeingPage() {
             </Popover>
 
             {/* Ageing Basis ToggleGroup */}
-            <div className="flex items-center border border-slate-200 dark:border-slate-800 rounded-xl p-0.5 bg-slate-50 dark:bg-slate-900">
-              <span className="text-[10px] font-semibold text-slate-400 px-2">Age by:</span>
+            <div className="flex items-center border border-border dark:border-border rounded-xl p-0.5 bg-muted">
+              <span className="text-[10px] font-semibold text-muted-foreground px-2">Age by:</span>
               <button
                 onClick={() => handleBasisChange('due')}
                 className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                  basis === 'due' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs' : 'text-slate-500'
+                  basis === 'due' ? 'bg-card  text-foreground  shadow-xs' : 'text-muted-foreground'
                 }`}
               >
                 Due date
@@ -599,7 +601,7 @@ export default function APAgeingPage() {
               <button
                 onClick={() => handleBasisChange('bill')}
                 className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                  basis === 'bill' ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs' : 'text-slate-500'
+                  basis === 'bill' ? 'bg-card  text-foreground  shadow-xs' : 'text-muted-foreground'
                 }`}
               >
                 Bill date
@@ -608,20 +610,20 @@ export default function APAgeingPage() {
 
             {/* Export */}
             <Button variant="outline" size="sm" onClick={() => setIsExportModalOpen(true)} className="h-9 text-xs gap-1.5">
-              <Download className="w-3.5 h-3.5 text-slate-500" />
+              <Download className="w-3.5 h-3.5 text-muted-foreground" />
               Export
             </Button>
 
             {/* Print */}
             <Button variant="outline" size="sm" onClick={handlePrint} className="h-9 text-xs gap-1.5">
-              <Printer className="w-3.5 h-3.5 text-slate-500" />
+              <Printer className="w-3.5 h-3.5 text-muted-foreground" />
               Print
             </Button>
 
             {/* Coral Pay Bills Action */}
             <Button
               onClick={() => handleOpenPayRun([])}
-              className="h-9 text-xs bg-[#FA634E] hover:bg-[#e5533f] text-white font-bold px-4 gap-1.5 shadow-sm"
+              className="h-9 text-xs bg-[#FA634E] hover:bg-[#e5533f] text-white font-bold px-4 gap-1.5 shadow-xs"
             >
               <CreditCard className="w-4 h-4" />
               Pay bills
@@ -647,78 +649,78 @@ export default function APAgeingPage() {
               <div
                 key={tile.key}
                 onClick={() => handleBucketFilterToggle(tile.key as AgeingBucketKey)}
-                className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${tile.style.bg} ${tile.style.border} ${
+                className={`p-3.5 rounded-xl border cursor-pointer transition-all ${tile.style.bg} ${tile.style.border} ${
                   isActive ? 'ring-2 ring-[#FA634E] scale-[1.02]' : 'hover:scale-[1.01]'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <span className={`text-xs font-bold ${tile.style.text}`}>{tile.label}</span>
-                  <Badge variant="outline" className="text-[10px] font-mono py-0 px-1.5 border-transparent bg-white/60 dark:bg-black/40">
+                  <Badge variant="outline" className="text-[10px] font-mono py-0 px-1.5 border-transparent bg-card/60 dark:bg-muted/40">
                     {tile.count} bills
                   </Badge>
                 </div>
 
-                <div className="mt-2 font-mono font-extrabold text-base text-slate-900 dark:text-slate-100">
+                <div className="mt-2 font-mono font-extrabold text-base text-foreground">
                   <MoneyText value={tile.amount} />
                 </div>
 
                 <div className="mt-2 space-y-1">
-                  <div className="w-full h-1 bg-black/10 dark:bg-white/10 rounded-full overflow-hidden">
+                  <div className="w-full h-1 bg-muted/10 dark:bg-card/10 rounded-full overflow-hidden">
                     <div className={`h-full ${tile.style.bar}`} style={{ width: `${Math.min(100, pct)}%` }} />
                   </div>
-                  <div className="text-[10px] text-slate-500 font-mono text-right">{formatPct(pct)} of total</div>
+                  <div className="text-[10px] text-muted-foreground fin-num text-right">{formatPct(pct)} of total</div>
                 </div>
               </div>
             );
           })}
 
           {/* Charcoal Total Tile */}
-          <div className="p-3.5 rounded-2xl bg-[#3E3C3D] text-white flex flex-col justify-between shadow-sm">
+          <div className="p-3.5 rounded-xl bg-card text-foreground border border-border text-white flex flex-col justify-between shadow-xs">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-300">Total payables</span>
-              <Badge className="bg-white/20 text-white border-none text-[10px] font-mono">
+              <span className="text-xs font-bold text-muted-foreground">Total payables</span>
+              <Badge className="bg-card/20 text-white border-none text-[10px] font-mono">
                 {bucketCounts.total} bills
               </Badge>
             </div>
             <div className="font-mono font-extrabold text-lg text-white">
               <MoneyText value={grandTotal.total} currency="SAR" />
             </div>
-            <div className="text-[10px] text-slate-400 font-mono">As of {formatDate(asOfDateStr)}</div>
+            <div className="text-[10px] text-muted-foreground font-mono">As of {formatDate(asOfDateStr)}</div>
           </div>
         </div>
 
         {/* ========================================================================= */}
         {/* 3. CASH COVERAGE STRIP                                                    */}
         {/* ========================================================================= */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="p-4 rounded-xl bg-card border border-border dark:border-border shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <div className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+              <div className="text-xs font-bold text-foreground flex items-center gap-2">
                 Cash Coverage Forecast
                 {availableCash >= payablesDue30d ? (
-                  <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border-none text-[10px] font-bold">
+                  <Chip tone="positive" size="sm">
                     Covered ✓
-                  </Badge>
+                  </Chip>
                 ) : (
-                  <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border-none text-[10px] font-bold">
+                  <Chip tone="warning" size="sm">
                     Short by {formatMoney(payablesDue30d - availableCash)} SAR
-                  </Badge>
+                  </Chip>
                 )}
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatMoney(availableCash)} SAR</span> available in bank & cash accounts ·{' '}
-                <span className="font-mono font-bold text-slate-900 dark:text-slate-100">{formatMoney(payablesDue30d)} SAR</span> due in next 30 days
+              <p className="text-xs text-muted-foreground mt-0.5">
+                <span className="fin-num font-semibold text-foreground">{formatMoney(availableCash)} SAR</span> available in bank & cash accounts ·{' '}
+                <span className="fin-num font-semibold text-foreground">{formatMoney(payablesDue30d)} SAR</span> due in next 30 days
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <div className="text-[10px] font-semibold text-slate-400 uppercase">Overdue Total</div>
-              <div className="font-mono font-bold text-xs text-amber-600 dark:text-amber-400">{formatMoney(totalOverdue)} SAR</div>
+              <div className="text-[10px] font-semibold text-muted-foreground uppercase">Overdue Total</div>
+              <div className="fin-num font-semibold text-xs text-amber-600 dark:text-amber-400">{formatMoney(totalOverdue)} SAR</div>
             </div>
             <Link
               to="/finance/bank-accounts"
@@ -739,15 +741,15 @@ export default function APAgeingPage() {
               return (
                 <div
                   key={item.id}
-                  className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-3"
+                  className="p-3.5 rounded-xl bg-card border border-border dark:border-border shadow-xs flex flex-col justify-between space-y-3"
                 >
                   <div className="flex items-start gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[#FA634E] shrink-0">
+                    <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-[#FA634E] shrink-0">
                       <IconComp className="w-4 h-4" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">{item.title}</div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">{item.subtitle}</div>
+                      <div className="text-xs font-bold text-foreground truncate">{item.title}</div>
+                      <div className="text-[11px] text-muted-foreground mt-0.5">{item.subtitle}</div>
                     </div>
                   </div>
 
@@ -755,7 +757,7 @@ export default function APAgeingPage() {
                     variant="ghost"
                     size="sm"
                     onClick={item.action}
-                    className="h-7 text-xs font-bold text-[#FA634E] hover:text-[#e5533f] hover:bg-rose-50 dark:hover:bg-rose-950/30 justify-start px-2 -ml-2"
+                    className="h-7 text-xs font-bold text-[#FA634E] hover:bg-muted justify-start px-2 -ml-2"
                   >
                     {item.actionText} →
                   </Button>
@@ -769,14 +771,14 @@ export default function APAgeingPage() {
         {/* 5. MAIN CONTENT AREA BY VIEW MODE                                         */}
         {/* ========================================================================= */}
         {isLoading ? (
-          <div className="p-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+          <div className="p-8 bg-card rounded-xl border border-border dark:border-border space-y-4">
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
           </div>
         ) : isError ? (
-          <div className="p-6 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs flex items-center justify-between">
+          <div className="p-6 bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 border border-rose-200 rounded-xl text-rose-800 text-xs flex items-center justify-between">
             <span>Failed to load AP Ageing report. Please try again.</span>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               Retry
@@ -786,18 +788,18 @@ export default function APAgeingPage() {
           <>
             {/* VIEW 1: BY VENDOR */}
             {viewMode === 'vendor' && (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden space-y-4">
+              <div className="bg-card rounded-xl border border-border dark:border-border shadow-xs overflow-hidden space-y-4">
                 {/* Header Controls */}
-                <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-900/50">
+                <div className="p-4 border-b border-border dark:border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/50">
                   <div className="flex items-center gap-3">
                     <div className="relative w-64">
-                      <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-muted-foreground" />
                       <Input
                         type="text"
                         placeholder="Search vendors..."
                         value={searchTerm}
                         onChange={(e) => updateUrlParam('search', e.target.value)}
-                        className="pl-9 h-8 text-xs bg-white dark:bg-slate-900"
+                        className="pl-9 h-8 text-xs bg-card"
                       />
                     </div>
 
@@ -807,7 +809,7 @@ export default function APAgeingPage() {
                         checked={overdueOnly}
                         onCheckedChange={(c) => updateUrlParam('overdue_only', c ? 'true' : null)}
                       />
-                      <label htmlFor="overdue-only" className="text-xs font-semibold text-slate-600 dark:text-slate-400 cursor-pointer">
+                      <label htmlFor="overdue-only" className="text-xs font-semibold text-muted-foreground dark:text-muted-foreground cursor-pointer">
                         Overdue only
                       </label>
                     </div>
@@ -815,7 +817,7 @@ export default function APAgeingPage() {
 
                   <div className="flex items-center gap-2">
                     <Select value={sortBy} onValueChange={(v) => updateUrlParam('sort', v)}>
-                      <SelectTrigger className="h-8 text-xs w-44 bg-white dark:bg-slate-900">
+                      <SelectTrigger className="h-8 text-xs w-44 bg-card">
                         <SelectValue placeholder="Sort by..." />
                       </SelectTrigger>
                       <SelectContent>
@@ -831,7 +833,7 @@ export default function APAgeingPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="bg-slate-50/80 dark:bg-slate-800/80 border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      <tr className="bg-muted/80 border-b border-border dark:border-border text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
                         <th className="py-3 px-4 w-8"></th>
                         <th className="py-3 px-4">Vendor / Payee</th>
                         <th className="py-3 px-4 text-right w-28">Current</th>
@@ -844,10 +846,10 @@ export default function APAgeingPage() {
                         <th className="py-3 px-4 w-12"></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    <tbody className="divide-y divide-border/60 dark:divide-border/60">
                       {filteredVendorRows.length === 0 ? (
                         <tr>
-                          <td colSpan={10} className="py-12 text-center text-slate-400 text-xs">
+                          <td colSpan={10} className="py-12 text-center text-muted-foreground text-xs">
                             No vendors match the current filter criteria.
                           </td>
                         </tr>
@@ -863,13 +865,13 @@ export default function APAgeingPage() {
 
                           return (
                             <React.Fragment key={r.party_id}>
-                              <tr className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors group">
+                              <tr className="hover:bg-muted/60 dark:hover:bg-slate-800/40 transition-colors group">
                                 <td className="py-3 px-4">
                                   <Button
                                     variant="ghost"
                                     size="icon"
                                     onClick={() => toggleVendorExpand(r.party_id)}
-                                    className="h-6 w-6 text-slate-400"
+                                    className="h-6 w-6 text-muted-foreground"
                                   >
                                     {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                                   </Button>
@@ -883,10 +885,10 @@ export default function APAgeingPage() {
                                           {initials}
                                         </div>
                                         <div>
-                                          <div className="font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                                          <div className="font-bold text-foreground flex items-center gap-1.5">
                                             {r.party_name}
                                             {r.party?.type === 'payee' && (
-                                              <Badge variant="outline" className="text-[9px] py-0 px-1 border-slate-200">
+                                              <Badge variant="outline" className="text-[9px] py-0 px-1 border-border">
                                                 payee
                                               </Badge>
                                             )}
@@ -895,10 +897,10 @@ export default function APAgeingPage() {
                                       </div>
                                     </HoverCardTrigger>
                                     <HoverCardContent align="start" className="w-72 p-4 text-xs space-y-3">
-                                      <div className="font-bold text-slate-900 dark:text-slate-100">{r.party_name}</div>
+                                      <div className="font-bold text-foreground">{r.party_name}</div>
                                       {r.party?.phone && (
-                                        <div className="flex items-center gap-2 text-slate-600">
-                                          <Phone className="w-3.5 h-3.5 text-slate-400" />
+                                        <div className="flex items-center gap-2 text-muted-foreground">
+                                          <Phone className="w-3.5 h-3.5 text-muted-foreground" />
                                           {r.party.phone}
                                         </div>
                                       )}
@@ -942,7 +944,7 @@ export default function APAgeingPage() {
                                   );
                                 })}
 
-                                <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                                <td className="py-3 px-4 text-right fin-num font-semibold text-foreground">
                                   {formatMoney(r.total)}
                                 </td>
 
@@ -980,10 +982,10 @@ export default function APAgeingPage() {
 
                               {/* Expanded Vendor Bills Sub-Table */}
                               {isExpanded && r.bills && (
-                                <tr className="bg-slate-50/50 dark:bg-slate-950/40">
+                                <tr className="bg-muted/50">
                                   <td colSpan={10} className="p-4 pl-12">
-                                    <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 p-3 space-y-2">
-                                      <div className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center justify-between">
+                                    <div className="bg-card rounded-xl border border-border dark:border-border p-3 space-y-2">
+                                      <div className="text-[11px] font-bold text-muted-foreground dark:text-muted-foreground flex items-center justify-between">
                                         <span>Open bills for {r.party_name} ({r.bills.length})</span>
                                         {vendorBucketFilterMap.get(r.party_id) && (
                                           <Button
@@ -1003,7 +1005,7 @@ export default function APAgeingPage() {
 
                                       <table className="w-full text-left text-xs font-mono">
                                         <thead>
-                                          <tr className="border-b text-[10px] text-slate-400 uppercase">
+                                          <tr className="border-b text-[10px] text-muted-foreground uppercase">
                                             <th className="py-1.5">Bill Ref</th>
                                             <th className="py-1.5">Bill Date</th>
                                             <th className="py-1.5">Due Date</th>
@@ -1012,29 +1014,29 @@ export default function APAgeingPage() {
                                             <th className="py-1.5 text-right">Action</th>
                                           </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                        <tbody className="divide-y divide-border/60 dark:divide-border/60">
                                           {r.bills
                                             .filter((b) => {
                                               const vBFilter = vendorBucketFilterMap.get(r.party_id);
                                               return !vBFilter || b.bucket === vBFilter;
                                             })
                                             .map((b) => (
-                                              <tr key={b.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                                                <td className="py-2 font-bold text-slate-900 dark:text-slate-100">{b.ref_id || b.id.slice(0, 8)}</td>
-                                                <td className="py-2 text-slate-600">{formatDate(b.bill_date)}</td>
-                                                <td className="py-2 text-slate-600">{formatDate(b.due_date)}</td>
+                                              <tr key={b.id} className="hover:bg-muted dark:hover:bg-slate-800/50">
+                                                <td className="py-2 font-bold text-foreground">{b.ref_id || b.id.slice(0, 8)}</td>
+                                                <td className="py-2 text-muted-foreground">{formatDate(b.bill_date)}</td>
+                                                <td className="py-2 text-muted-foreground">{formatDate(b.due_date)}</td>
                                                 <td className="py-2">
                                                   {b.days_overdue > 0 ? (
-                                                    <Badge className="bg-amber-100 text-amber-800 border-none text-[10px]">
+                                                    <Chip tone="warning" size="sm">
                                                       {b.days_overdue} days
-                                                    </Badge>
+                                                    </Chip>
                                                   ) : (
-                                                    <Badge className="bg-emerald-100 text-emerald-800 border-none text-[10px]">
+                                                    <Chip tone="positive" size="sm">
                                                       Current
-                                                    </Badge>
+                                                    </Chip>
                                                   )}
                                                 </td>
-                                                <td className="py-2 text-right font-bold text-slate-900 dark:text-slate-100">
+                                                <td className="py-2 text-right font-bold text-foreground">
                                                   {formatMoney(b.balance)}
                                                 </td>
                                                 <td className="py-2 text-right">
@@ -1074,7 +1076,7 @@ export default function APAgeingPage() {
 
                     {/* Charcoal Grand Total Footer */}
                     <tfoot>
-                      <tr className="bg-[#3E3C3D] text-white font-bold text-xs">
+                      <tr className="bg-card text-foreground border border-border text-white font-bold text-xs">
                         <td colSpan={2} className="py-3.5 px-4 text-base">Grand Total</td>
                         <td className="py-3.5 px-4 text-right font-mono">{formatMoney(grandTotal.current)}</td>
                         <td className="py-3.5 px-4 text-right font-mono">{formatMoney(grandTotal.days_1_30)}</td>
@@ -1094,18 +1096,18 @@ export default function APAgeingPage() {
 
             {/* VIEW 2: BY BILL */}
             {viewMode === 'bill' && (
-              <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden space-y-4">
+              <div className="bg-card rounded-xl border border-border dark:border-border shadow-xs overflow-hidden space-y-4">
                 {/* Header Controls & Selection Bar */}
-                <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-900/50">
+                <div className="p-4 border-b border-border dark:border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-muted/50">
                   <div className="flex items-center gap-3">
                     <div className="relative w-64">
-                      <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-muted-foreground" />
                       <Input
                         type="text"
                         placeholder="Search bill ref or vendor..."
                         value={searchTerm}
                         onChange={(e) => updateUrlParam('search', e.target.value)}
-                        className="pl-9 h-8 text-xs bg-white dark:bg-slate-900"
+                        className="pl-9 h-8 text-xs bg-card"
                       />
                     </div>
 
@@ -1115,8 +1117,8 @@ export default function APAgeingPage() {
                   </div>
 
                   {selectedBillIds.size > 0 && (
-                    <div className="flex items-center gap-3 bg-rose-50 dark:bg-rose-950/40 p-1.5 px-3 rounded-xl border border-rose-200/60">
-                      <span className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                    <div className="flex items-center gap-3 bg-chip-negative-bg text-chip-negative-fg p-1.5 px-3 rounded-xl border border-chip-negative-border">
+                      <span className="text-xs font-bold text-foreground">
                         {selectedBillIds.size} selected ·{' '}
                         {formatMoney(
                           filteredBillRows
@@ -1140,7 +1142,7 @@ export default function APAgeingPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
                     <thead>
-                      <tr className="bg-slate-50/80 dark:bg-slate-800/80 border-b text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      <tr className="bg-muted/80 border-b text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
                         <th className="py-3 px-4 w-8">
                           <Checkbox
                             checked={
@@ -1164,10 +1166,10 @@ export default function APAgeingPage() {
                         <th className="py-3 px-4 text-right">Action</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    <tbody className="divide-y divide-border/60 dark:divide-border/60">
                       {filteredBillRows.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="py-12 text-center text-slate-400 text-xs">
+                          <td colSpan={8} className="py-12 text-center text-muted-foreground text-xs">
                             No open bills match the current filters.
                           </td>
                         </tr>
@@ -1177,7 +1179,7 @@ export default function APAgeingPage() {
                           const bStyle = BUCKET_STYLES[b.bucket] || BUCKET_STYLES.current;
 
                           return (
-                            <tr key={b.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
+                            <tr key={b.id} className="hover:bg-muted/60 dark:hover:bg-slate-800/40">
                               <td className="py-3 px-4">
                                 <Checkbox
                                   checked={isSelected}
@@ -1189,20 +1191,20 @@ export default function APAgeingPage() {
                                   }}
                                 />
                               </td>
-                              <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-slate-100">
+                              <td className="py-3 px-4 fin-num font-semibold text-foreground">
                                 {b.ref_id || b.id.slice(0, 8)}
                               </td>
-                              <td className="py-3 px-4 font-semibold text-slate-800 dark:text-slate-200">
+                              <td className="py-3 px-4 font-semibold text-foreground">
                                 {b.vendor_name}
                               </td>
-                              <td className="py-3 px-4 text-slate-600">{formatDate(b.bill_date)}</td>
-                              <td className="py-3 px-4 text-slate-600">{formatDate(b.due_date)}</td>
+                              <td className="py-3 px-4 text-muted-foreground">{formatDate(b.bill_date)}</td>
+                              <td className="py-3 px-4 text-muted-foreground">{formatDate(b.due_date)}</td>
                               <td className="py-3 px-4">
                                 <Badge className={`${bStyle.bg} ${bStyle.text} border-none font-bold text-[10px]`}>
                                   {b.days_overdue > 0 ? `${b.days_overdue}d overdue (${b.bucket})` : 'Current'}
                                 </Badge>
                               </td>
-                              <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 dark:text-slate-100">
+                              <td className="py-3 px-4 text-right fin-num font-semibold text-foreground">
                                 {formatMoney(b.balance)}
                               </td>
                               <td className="py-3 px-4 text-right">
@@ -1229,27 +1231,27 @@ export default function APAgeingPage() {
             {viewMode === 'schedule' && (
               <div className="space-y-6">
                 {/* Schedule Visual Timeline */}
-                <div className="p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+                <div className="p-6 bg-card rounded-xl border border-border dark:border-border shadow-xs space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Forward Payment Schedule & Cash Line</h3>
-                    <span className="text-xs text-slate-500 font-mono">
-                      Starting Cash: <span className="font-bold text-slate-900 dark:text-slate-100">{formatMoney(availableCash)} SAR</span>
+                    <h3 className="text-sm font-bold text-foreground">Forward Payment Schedule & Cash Line</h3>
+                    <span className="text-xs text-muted-foreground font-mono">
+                      Starting Cash: <span className="font-bold text-foreground">{formatMoney(availableCash)} SAR</span>
                     </span>
                   </div>
 
                   {/* Custom Bar Timeline Chart */}
-                  <div className="grid grid-cols-8 gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                  <div className="grid grid-cols-8 gap-2 pt-4 border-t border-border dark:border-border">
                     {scheduleWeeks.map((wk, idx) => {
                       const maxTotal = Math.max(...scheduleWeeks.map((w) => w.total)) || 1;
                       const heightPct = Math.max(10, Math.min(100, (wk.total / maxTotal) * 100));
 
                       return (
                         <div key={wk.key} className="flex flex-col items-center space-y-2">
-                          <div className="text-[10px] font-mono font-bold text-slate-700 dark:text-slate-300">
+                          <div className="text-[10px] fin-num font-semibold text-foreground">
                             {formatMoney(wk.total)}
                           </div>
 
-                          <div className="w-full h-32 bg-slate-100 dark:bg-slate-800/50 rounded-xl flex items-end p-1">
+                          <div className="w-full h-32 bg-muted rounded-xl flex items-end p-1">
                             <div
                               className={`w-full rounded-lg transition-all ${
                                 idx === 0 ? 'bg-amber-500' : 'bg-[#FA634E]'
@@ -1258,7 +1260,7 @@ export default function APAgeingPage() {
                             />
                           </div>
 
-                          <div className="text-[10px] font-bold text-slate-500 text-center truncate w-full">
+                          <div className="text-[10px] font-bold text-muted-foreground text-center truncate w-full">
                             {wk.key === 'overdue' ? 'Overdue' : wk.key === 'later' ? 'Later' : `Wk ${idx}`}
                           </div>
                         </div>
@@ -1272,18 +1274,18 @@ export default function APAgeingPage() {
                   {scheduleWeeks.map((wk) => (
                     <div
                       key={wk.key}
-                      className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3"
+                      className="p-4 bg-card rounded-xl border border-border dark:border-border shadow-xs space-y-3"
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">{wk.label}</h4>
+                          <h4 className="text-xs font-bold text-foreground">{wk.label}</h4>
                           <Badge variant="secondary" className="text-[10px] font-mono">
                             {wk.bills.length} bills
                           </Badge>
                         </div>
 
                         <div className="flex items-center gap-3">
-                          <span className="text-xs font-mono font-bold text-slate-900 dark:text-slate-100">
+                          <span className="text-xs fin-num font-semibold text-foreground">
                             {formatMoney(wk.total)} SAR
                           </span>
                           {wk.bills.length > 0 && (
@@ -1300,16 +1302,16 @@ export default function APAgeingPage() {
                       </div>
 
                       {wk.bills.length > 0 && (
-                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1">
+                        <div className="pt-2 border-t border-border dark:border-border space-y-1">
                           {wk.bills.map((b) => (
                             <div
                               key={b.id}
-                              className="p-2 rounded-lg bg-slate-50/50 dark:bg-slate-800/40 flex items-center justify-between text-xs"
+                              className="p-2 rounded-lg bg-muted/50 flex items-center justify-between text-xs"
                             >
-                              <div className="font-bold text-slate-800 dark:text-slate-200">
-                                {b.ref_id || b.id.slice(0, 8)} · <span className="text-slate-500 font-normal">{b.vendor_name}</span>
+                              <div className="font-bold text-foreground">
+                                {b.ref_id || b.id.slice(0, 8)} · <span className="text-muted-foreground font-normal">{b.vendor_name}</span>
                               </div>
-                              <div className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                              <div className="fin-num font-semibold text-foreground">
                                 {formatMoney(b.balance)} SAR
                               </div>
                             </div>

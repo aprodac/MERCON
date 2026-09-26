@@ -87,7 +87,7 @@ export default function PostTripSettlementModal({
   const vehicleInfo = trip.vehicle?.plate_number || trip.third_party_vehicle_plate || 'No Vehicle';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/50 backdrop-blur-xs p-4 animate-fade-in">
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-black/[0.08] dark:border-slate-800 shadow-2xl max-w-lg w-full overflow-hidden max-h-[90vh] flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b border-black/[0.06] dark:border-slate-800 flex items-center justify-between bg-slate-50/60 dark:bg-slate-800/40 shrink-0">

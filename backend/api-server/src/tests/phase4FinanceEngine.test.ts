@@ -1,3 +1,6 @@
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/mercon_db?schema=public';
+}
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '../db';

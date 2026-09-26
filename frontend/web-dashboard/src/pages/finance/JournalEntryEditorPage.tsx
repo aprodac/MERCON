@@ -15,6 +15,7 @@ import { financeService, JournalLineDTO } from '@/services/financeService';
 import type { JournalEntry, Account, AccountingPeriod } from '@mercon/shared-types';
 import { FinancePageHeader, MoneyText, JournalLinesTable } from '@/components/finance/kit';
 import { formatMoney } from '@/lib/finance';
+import { Chip } from '@/components/ui/chip';
 
 export default function JournalEntryEditorPage() {
   const { id } = useParams<{ id?: string }>();
@@ -276,8 +277,8 @@ export default function JournalEntryEditorPage() {
     return (
       <DashboardLayout active="finance" title="Edit Journal Entry">
         <div className="p-8 max-w-5xl mx-auto space-y-4">
-          <div className="h-8 w-48 bg-slate-100 rounded-lg animate-pulse" />
-          <div className="h-40 bg-slate-50 rounded-2xl animate-pulse" />
+          <div className="h-8 w-48 bg-muted rounded-lg animate-pulse" />
+          <div className="h-40 bg-muted rounded-xl animate-pulse" />
         </div>
       </DashboardLayout>
     );
@@ -308,14 +309,14 @@ export default function JournalEntryEditorPage() {
         />
 
         {/* Header Card */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-4">
-          <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+        <div className="bg-card rounded-xl border border-border shadow-xs p-6 space-y-4">
+          <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">
             Entry Metadata
           </h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+              <label className="text-xs font-semibold text-foreground mb-1.5 block">
                 Entry Date <span className="text-rose-500">*</span>
               </label>
               <Input
@@ -330,7 +331,7 @@ export default function JournalEntryEditorPage() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+              <label className="text-xs font-semibold text-foreground mb-1.5 block">
                 Accounting Period <span className="text-rose-500">*</span>
               </label>
               <Select
@@ -360,7 +361,7 @@ export default function JournalEntryEditorPage() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-700 mb-1.5 block">
+              <label className="text-xs font-semibold text-foreground mb-1.5 block">
                 Memo / Reference Description
               </label>
               <Input
@@ -377,9 +378,9 @@ export default function JournalEntryEditorPage() {
         </div>
 
         {/* Lines Card — Spreadsheet Grid */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-4">
+        <div className="bg-card rounded-xl border border-border shadow-xs p-6 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+            <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">
               Double-Entry Line Items
             </h3>
             <Button
@@ -387,16 +388,16 @@ export default function JournalEntryEditorPage() {
               variant="outline"
               size="sm"
               onClick={handleAddLine}
-              className="h-8 text-xs font-semibold text-[#FA634E] border-[#FA634E]/30 hover:bg-rose-50"
+              className="h-8 text-xs font-semibold text-[#FA634E] border-[#FA634E]/30 hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20"
             >
               <Plus className="w-3.5 h-3.5 mr-1" /> Add Line
             </Button>
           </div>
 
-          <div className="border border-slate-200 rounded-xl overflow-hidden">
+          <div className="border border-border rounded-xl overflow-hidden">
             <table className="w-full text-left text-xs">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold">
+                <tr className="bg-muted border-b border-border text-muted-foreground font-semibold">
                   <th className="py-2.5 px-3 w-10 text-center">#</th>
                   <th className="py-2.5 px-3 w-5/12">Account (Code - Name) *</th>
                   <th className="py-2.5 px-3 w-3/12">Description</th>
@@ -405,14 +406,14 @@ export default function JournalEntryEditorPage() {
                   <th className="py-2.5 px-3 w-10 text-center"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-border/60">
                 {lines.map((line, idx) => {
                   const isUnbalancedRow = Number(line.debit) === 0 && Number(line.credit) === 0;
                   const canShowBalanceBtn = isUnbalancedRow && Math.abs(totalDebit - totalCredit) > 0.001;
 
                   return (
-                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-2 px-3 text-center text-slate-400 font-mono text-[11px]">
+                    <tr key={idx} className="hover:bg-muted/50 transition-colors">
+                      <td className="py-2 px-3 text-center text-muted-foreground font-mono text-[11px]">
                         {idx + 1}
                       </td>
 
@@ -469,14 +470,15 @@ export default function JournalEntryEditorPage() {
                       <td className="py-2 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">
                           {canShowBalanceBtn && (
-                            <button
-                              type="button"
-                              onClick={() => handleBalanceRemaining(idx)}
-                              title="Fill remaining balance"
-                              className="px-2 py-1 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 whitespace-nowrap"
-                            >
-                              Balance remaining ({formatMoney(diff, { currency: 'SAR' })})
-                            </button>
+                            <Chip tone="positive" size="sm" asChild>
+                              <button
+                                type="button"
+                                onClick={() => handleBalanceRemaining(idx)}
+                                title="Fill remaining balance"
+                              >
+                                Balance remaining ({formatMoney(diff, { currency: 'SAR' })})
+                              </button>
+                            </Chip>
                           )}
                           <Button
                             type="button"
@@ -484,7 +486,7 @@ export default function JournalEntryEditorPage() {
                             size="sm"
                             disabled={lines.length <= 2}
                             onClick={() => handleRemoveLine(idx)}
-                            className="h-8 w-8 p-0 text-slate-400 hover:text-rose-600 disabled:opacity-30"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-rose-600 disabled:opacity-30"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
@@ -499,31 +501,29 @@ export default function JournalEntryEditorPage() {
         </div>
 
         {/* Sticky Footer Bar */}
-        <div className="fixed bottom-0 left-0 right-0 z-20 bg-white/95 backdrop-blur-md border-t border-slate-200 p-4 shadow-lg">
+        <div className="fixed bottom-0 left-0 right-0 z-20 bg-card/95 backdrop-blur-md border-t border-border p-4 shadow-lg">
           <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
             {/* Totals & Balance Indicator */}
             <div className="flex items-center gap-6 text-xs">
               <div className="flex items-center gap-2">
-                <span className="text-slate-500 font-medium">Total Debit:</span>
-                <MoneyText value={totalDebit} currency="SAR" className="font-bold text-slate-900 text-sm" />
+                <span className="text-muted-foreground font-medium">Total Debit:</span>
+                <MoneyText value={totalDebit} currency="SAR" className="font-bold text-foreground text-sm" />
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-slate-500 font-medium">Total Credit:</span>
-                <MoneyText value={totalCredit} currency="SAR" className="font-bold text-slate-900 text-sm" />
+                <span className="text-muted-foreground font-medium">Total Credit:</span>
+                <MoneyText value={totalCredit} currency="SAR" className="font-bold text-foreground text-sm" />
               </div>
 
               <div>
                 {isBalanced ? (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <Chip tone="positive" icon={CheckCircle2}>
                     Balanced ✓
-                  </span>
+                  </Chip>
                 ) : (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-300">
-                    <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                  <Chip tone="warning" icon={AlertCircle}>
                     Out by {formatMoney(diff, { currency: 'SAR' })}
-                  </span>
+                  </Chip>
                 )}
               </div>
             </div>
@@ -545,7 +545,7 @@ export default function JournalEntryEditorPage() {
                 size="sm"
                 onClick={handleSaveDraft}
                 disabled={createDraftMutation.isPending || updateDraftMutation.isPending}
-                className="h-9 text-xs font-semibold border-slate-300 text-slate-800 hover:bg-slate-50"
+                className="h-9 text-xs font-semibold border-border text-foreground hover:bg-muted"
               >
                 <Save className="w-3.5 h-3.5 mr-1.5" />
                 Save draft
@@ -555,7 +555,7 @@ export default function JournalEntryEditorPage() {
                 size="sm"
                 disabled={!isBalanced || !isFormValid || saveAndPostMutation.isPending}
                 onClick={() => setIsPostConfirmOpen(true)}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white h-9 text-xs font-semibold px-4 shadow-sm disabled:opacity-50"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white h-9 text-xs font-semibold px-4 shadow-xs disabled:opacity-50"
               >
                 <Send className="w-3.5 h-3.5 mr-1.5" />
                 Save & post

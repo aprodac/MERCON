@@ -54,34 +54,34 @@ export function RecordLayout({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex-1">{renderedHeader}</div>
           {pager && pager.total > 0 && (
-            <div className="flex items-center gap-2 self-end sm:self-auto text-xs text-[#6E6E80] dark:text-slate-400 bg-white dark:bg-slate-900 border border-black/[0.06] dark:border-slate-800 rounded-xl px-3 py-1.5 shadow-xs">
-              <span className="fin-num font-semibold text-[#111111] dark:text-slate-200">
+            <div className="flex items-center gap-2 self-end sm:self-auto text-xs text-muted-foreground bg-card border border-border rounded-xl px-3 py-1.5 shadow-xs">
+              <span className="fin-num font-medium text-foreground">
                 {pager.index} of {pager.total}
               </span>
               <div className="flex items-center gap-1">
                 {pager.prevTo ? (
                   <Link
                     to={pager.prevTo}
-                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors text-[#111111] dark:text-slate-200"
+                    className="p-1 hover:bg-muted rounded-md transition-colors text-foreground"
                     title="Previous entry"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </Link>
                 ) : (
-                  <span className="p-1 opacity-30 cursor-not-allowed text-[#6E6E80]">
+                  <span className="p-1 opacity-30 cursor-not-allowed text-muted-foreground">
                     <ChevronLeft className="w-4 h-4" />
                   </span>
                 )}
                 {pager.nextTo ? (
                   <Link
                     to={pager.nextTo}
-                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors text-[#111111] dark:text-slate-200"
+                    className="p-1 hover:bg-muted rounded-md transition-colors text-foreground"
                     title="Next entry"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </Link>
                 ) : (
-                  <span className="p-1 opacity-30 cursor-not-allowed text-[#6E6E80]">
+                  <span className="p-1 opacity-30 cursor-not-allowed text-muted-foreground">
                     <ChevronRight className="w-4 h-4" />
                   </span>
                 )}
@@ -95,10 +95,11 @@ export function RecordLayout({
       {statusBar && <div>{statusBar}</div>}
 
       {/* Main Content & Side Panel */}
-      <div className="flex flex-col lg:flex-row items-start gap-[18px]">
+      <div className="flex flex-col lg:flex-row items-start gap-4">
         <div className="flex-1 w-full min-w-0">{main}</div>
         {side && <div className="w-full lg:w-[360px] shrink-0 space-y-4">{side}</div>}
       </div>
     </div>
   );
 }
+

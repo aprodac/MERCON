@@ -12,6 +12,17 @@ import {
   FilterChip,
   FinanceEmptyState,
 } from '@/components/finance/kit';
+import { Chip } from '@/components/ui/chip';
+import { StatPill } from '@/components/ui/stat-pill';
+import {
+  StatusChip,
+  SourceChip,
+  PartyChip,
+  DirectionChip,
+  BucketChip,
+  AccountChip,
+  ReconChip,
+} from '@/lib/finance/chips';
 
 export default function FinanceKitPage() {
   const [activeTab, setActiveTab] = useState('all');
@@ -19,17 +30,17 @@ export default function FinanceKitPage() {
   const [showSelection, setShowSelection] = useState(false);
 
   const sampleBarSegments = [
-    { value: 650000, color: 'bg-[#15803D]', label: 'Collected (65%)' },
-    { value: 250000, color: 'bg-[#FA634E]', label: 'Current due (25%)' },
-    { value: 100000, color: 'bg-[#C2410C]', label: 'Overdue (10%)' },
+    { value: 650000, color: 'bg-emerald-600', label: 'Collected (65%)' },
+    { value: 250000, color: 'bg-amber-500', label: 'Current due (25%)' },
+    { value: 100000, color: 'bg-rose-600', label: 'Overdue (10%)' },
   ];
 
   return (
     <DashboardLayout active="finance" title="Finance Kit Showcase" hideHeader>
-      <div className="px-7 pt-5 pb-6 max-w-[1600px] mx-auto space-y-8 animate-fade-in">
+      <div className="px-6 pt-5 pb-6 max-w-[1600px] mx-auto space-y-6 animate-fade-in">
         {/* Header Showcase */}
         <section>
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400 mb-2">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-2">
             1. FinancePageHeader
           </h2>
           <FinancePageHeader
@@ -50,53 +61,98 @@ export default function FinanceKitPage() {
         </section>
 
         {/* MoneyText Showcase */}
-        <section className="bg-white dark:bg-slate-900 border border-black/[0.06] dark:border-slate-800 rounded-[20px] p-6 space-y-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+        <section className="bg-card border border-border rounded-xl p-5 shadow-xs space-y-4">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             2. MoneyText
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 items-baseline">
             <div>
-              <p className="text-xs text-[#757583] mb-1">Hero (default)</p>
+              <p className="text-xs text-muted-foreground mb-1">Hero (default)</p>
               <MoneyText value={1265000.5} currency="SAR" size="hero" />
             </div>
             <div>
-              <p className="text-xs text-[#757583] mb-1">Large (positive)</p>
+              <p className="text-xs text-muted-foreground mb-1">Large (positive)</p>
               <MoneyText value={45200.00} currency="SAR" size="lg" tone="positive" signed />
             </div>
             <div>
-              <p className="text-xs text-[#757583] mb-1">Medium (negative)</p>
+              <p className="text-xs text-muted-foreground mb-1">Medium (negative)</p>
               <MoneyText value={-12400.75} currency="SAR" size="md" tone="negative" signed />
             </div>
             <div>
-              <p className="text-xs text-[#757583] mb-1">Small (muted)</p>
+              <p className="text-xs text-muted-foreground mb-1">Small (muted)</p>
               <MoneyText value={0} currency="SAR" size="sm" tone="muted" />
             </div>
           </div>
         </section>
 
         {/* StatusPill Showcase */}
-        <section className="bg-white dark:bg-slate-900 border border-black/[0.06] dark:border-slate-800 rounded-[20px] p-6 space-y-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
-            3. StatusPill (All Kinds & Statuses)
+        <section className="bg-card border border-border rounded-xl p-5 shadow-xs space-y-4">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            3. Token-Driven Chip System & Semantic Registries
           </h2>
-          <div className="flex flex-wrap items-center gap-3">
-            <StatusPill kind="invoice" status="Draft" />
-            <StatusPill kind="invoice" status="Issued" />
-            <StatusPill kind="invoice" status="PartiallyPaid" />
-            <StatusPill kind="invoice" status="Paid" />
-            <StatusPill kind="invoice" status="Void" />
-            <StatusPill kind="invoice" status="Overdue" />
-            <StatusPill kind="bill" status="Approved" />
-            <StatusPill kind="journal" status="Posted" />
-            <StatusPill kind="period" status="Open" />
-            <StatusPill kind="advance" status="PartiallyApplied" />
-            <StatusPill kind="reconciliation" status="Completed" />
+
+          {/* All Tones & Variants */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-semibold text-foreground">A. Token Tones (Soft / Bordered)</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <Chip tone="neutral" dot>Neutral</Chip>
+              <Chip tone="positive" dot>Positive (emerald)</Chip>
+              <Chip tone="negative" dot>Negative (rose)</Chip>
+              <Chip tone="warning" dot>Warning (amber)</Chip>
+              <Chip tone="info" dot>Info (sky)</Chip>
+              <Chip tone="violet" dot>Violet</Chip>
+              <Chip tone="teal" dot>Teal</Chip>
+              <Chip tone="orange" dot>Orange</Chip>
+              <Chip tone="brand" dot>Brand (coral)</Chip>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-xs font-semibold text-foreground">B. Chip Variants & Sizes</h3>
+            <div className="flex flex-wrap items-center gap-3">
+              <Chip tone="positive" variant="soft" size="sm">Soft sm</Chip>
+              <Chip tone="positive" variant="soft" size="md">Soft md</Chip>
+              <Chip tone="negative" variant="solid" size="sm">Solid 12</Chip>
+              <Chip tone="negative" variant="solid" size="md">Solid 90+</Chip>
+              <Chip tone="warning" variant="outline" size="sm">Outline sm</Chip>
+              <Chip tone="warning" variant="outline" size="md">Outline md</Chip>
+              <Chip tone="brand" truncate={120}>Very long label that truncates automatically with tooltip</Chip>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-xs font-semibold text-foreground">C. StatPill (Summary Pill)</h3>
+            <div className="flex flex-wrap items-center gap-3">
+              <StatPill count={12} label="invoices due" value="4,250.00 SAR" tone="warning" />
+              <StatPill label="Total Outstanding" value="1,265,000.50 SAR" tone="positive" />
+              <StatPill count={3} label="overdue accounts" value="12,400.00 SAR" tone="negative" />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-xs font-semibold text-foreground">D. Semantic Registries & Helper Components</h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusChip kind="journal" status="Posted" />
+              <StatusChip kind="invoice" status="Draft" />
+              <SourceChip type="Invoice" />
+              <SourceChip type="Manual" />
+              <PartyChip type="Customer" name="Aramco Logistics" />
+              <PartyChip type="Provider" name="Almajdouie Transport" />
+              <DirectionChip direction="In" />
+              <DirectionChip direction="Out" />
+              <BucketChip bucket="current" />
+              <BucketChip bucket="90+" />
+              <AccountChip side="debit" code="10100" name="Al Rajhi Operating Account" />
+              <AccountChip side="credit" code="40100" name="Commercial Transport Revenue" />
+              <ReconChip lastDate="2026-09-01" />
+              <ReconChip lastDate={null} />
+            </div>
           </div>
         </section>
 
         {/* SummaryStrip Showcase */}
         <section className="space-y-2">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             4. SummaryStrip
           </h2>
           <SummaryStrip
@@ -135,8 +191,8 @@ export default function FinanceKitPage() {
         </section>
 
         {/* StatusTabs Showcase */}
-        <section className="bg-white dark:bg-slate-900 border border-black/[0.06] dark:border-slate-800 rounded-[20px] p-6 space-y-4">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+        <section className="bg-card border border-border rounded-xl p-5 shadow-xs space-y-4">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             5. StatusTabs
           </h2>
           <StatusTabs
@@ -156,19 +212,19 @@ export default function FinanceKitPage() {
         {/* FilterBar Showcase */}
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+            <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               6. FilterBar & SelectionBar
             </h2>
             <button
               type="button"
               onClick={() => setShowSelection(!showSelection)}
-              className="text-xs font-semibold text-[#FA634E] underline cursor-pointer"
+              className="text-xs font-medium text-foreground underline cursor-pointer"
             >
               Toggle SelectionBar mode
             </button>
           </div>
 
-          <div className="border border-black/[0.06] dark:border-slate-800 rounded-[20px] overflow-hidden">
+          <div className="border border-border rounded-xl overflow-hidden shadow-xs bg-card">
             <FilterBar
               search={search}
               onSearchChange={setSearch}
@@ -187,8 +243,8 @@ export default function FinanceKitPage() {
                 showSelection ? (
                   <>
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-[#FA634E]" />
-                      <span className="text-xs font-bold text-[#111111] dark:text-slate-100">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                      <span className="text-xs font-medium text-foreground">
                         3 Invoices Selected
                       </span>
                     </div>
@@ -198,7 +254,7 @@ export default function FinanceKitPage() {
                       <button
                         type="button"
                         onClick={() => setShowSelection(false)}
-                        className="text-xs font-semibold text-[#6E6E80] hover:text-[#111111] ml-2 cursor-pointer"
+                        className="text-xs font-medium text-muted-foreground hover:text-foreground ml-2 cursor-pointer"
                       >
                         Clear
                       </button>
@@ -212,7 +268,7 @@ export default function FinanceKitPage() {
 
         {/* FinanceEmptyState Showcase */}
         <section className="space-y-2">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#757583] dark:text-slate-400">
+          <h2 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
             7. FinanceEmptyState
           </h2>
           <FinanceEmptyState
@@ -228,3 +284,4 @@ export default function FinanceKitPage() {
     </DashboardLayout>
   );
 }
+

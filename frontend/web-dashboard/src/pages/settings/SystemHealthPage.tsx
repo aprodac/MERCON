@@ -192,7 +192,7 @@ export default function SystemHealthPage() {
                 <Button
                   onClick={handleSaveMaintenance}
                   disabled={updateMaintenanceMutation.isPending}
-                  className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs h-9 px-4 shrink-0 cursor-pointer"
+                  className="bg-charcoal hover:bg-slate-800 text-white font-bold text-xs h-9 px-4 shrink-0 cursor-pointer"
                 >
                   Update Notice
                 </Button>

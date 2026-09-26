@@ -143,7 +143,7 @@ export default function TripDocumentsRow({
                 </div>
 
                 {/* Hover Overlay */}
-                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                <div className="absolute inset-0 bg-charcoal-strong/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
                   <Eye size={15} />
                 </div>
               </div>

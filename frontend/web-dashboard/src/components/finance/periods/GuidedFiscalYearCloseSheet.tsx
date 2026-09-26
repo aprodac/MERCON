@@ -60,7 +60,7 @@ export function GuidedFiscalYearCloseSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="flex items-center justify-between py-4 border-b border-slate-100 dark:border-slate-800 my-2">
+        <div className="flex items-center justify-between py-4 border-b border-border dark:border-border my-2">
           {[1, 2, 3, 4].map((stepNum) => (
             <div key={stepNum} className="flex items-center gap-1.5">
               <span
@@ -69,12 +69,12 @@ export function GuidedFiscalYearCloseSheet({
                     ? 'bg-[#FA634E] text-white'
                     : fyStep > stepNum
                     ? 'bg-emerald-600 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                    : 'bg-muted  text-muted-foreground'
                 }`}
               >
                 {fyStep > stepNum ? <Check className="w-3.5 h-3.5" /> : stepNum}
               </span>
-              <span className={`text-xs font-semibold ${fyStep === stepNum ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
+              <span className={`text-xs font-semibold ${fyStep === stepNum ? 'text-foreground dark:text-white' : 'text-muted-foreground'}`}>
                 {stepNum === 1 ? 'Date' : stepNum === 2 ? 'Checks' : stepNum === 3 ? 'Preview' : 'Confirm'}
               </span>
             </div>
@@ -83,11 +83,11 @@ export function GuidedFiscalYearCloseSheet({
 
         {fyStep === 1 && (
           <div className="space-y-4 py-4">
-            <p className="text-xs text-slate-600 dark:text-slate-400">
+            <p className="text-xs text-muted-foreground dark:text-muted-foreground">
               Select the fiscal year closing date. All Revenue and Expense accounts up to this date will be zeroed out.
             </p>
             <div>
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label className="text-xs font-bold text-foreground block mb-1">
                 Closing Date *
               </label>
               <Input
@@ -103,14 +103,14 @@ export function GuidedFiscalYearCloseSheet({
         {fyStep === 2 && (
           <div className="space-y-4 py-4">
             <div className="space-y-3">
-              <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 flex items-start gap-2.5">
+              <div className="p-3 rounded-xl border border-border dark:border-border flex items-start gap-2.5">
                 {fyPreChecks.openPeriodsBefore.length === 0 ? (
                   <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 ) : (
                   <X className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 )}
                 <div className="text-xs">
-                  <div className="font-bold text-slate-900 dark:text-white">
+                  <div className="font-bold text-foreground dark:text-white">
                     All prior accounting periods closed/locked
                   </div>
                   {fyPreChecks.openPeriodsBefore.length > 0 ? (
@@ -119,19 +119,19 @@ export function GuidedFiscalYearCloseSheet({
                       {fyPreChecks.openPeriodsBefore.map((p) => p.name).join(', ')}
                     </div>
                   ) : (
-                    <div className="text-slate-500 mt-0.5">All periods in range are closed or locked.</div>
+                    <div className="text-muted-foreground mt-0.5">All periods in range are closed or locked.</div>
                   )}
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 flex items-start gap-2.5">
+              <div className="p-3 rounded-xl border border-border dark:border-border flex items-start gap-2.5">
                 {fyPreChecks.retainedAccSet ? (
                   <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 ) : (
                   <X className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 )}
                 <div className="text-xs">
-                  <div className="font-bold text-slate-900 dark:text-white">
+                  <div className="font-bold text-foreground dark:text-white">
                     Default Retained Earnings account configured
                   </div>
                   {!fyPreChecks.retainedAccSet ? (
@@ -142,7 +142,7 @@ export function GuidedFiscalYearCloseSheet({
                       </Link>
                     </div>
                   ) : (
-                    <div className="text-slate-500 mt-0.5">Retained Earnings GL account is valid.</div>
+                    <div className="text-muted-foreground mt-0.5">Retained Earnings GL account is valid.</div>
                   )}
                 </div>
               </div>
@@ -152,8 +152,8 @@ export function GuidedFiscalYearCloseSheet({
 
         {fyStep === 3 && (
           <div className="space-y-4 py-4">
-            <div className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-xl border border-slate-200/60 dark:border-slate-700 text-xs flex justify-between items-center">
-              <span className="font-bold text-slate-700 dark:text-slate-300">Estimated FY Net Income</span>
+            <div className="bg-muted p-3 rounded-xl border border-border dark:border-border text-xs flex justify-between items-center">
+              <span className="font-bold text-foreground">Estimated FY Net Income</span>
               <MoneyText
                 value={pnlRes?.data?.net_profit || 0}
                 currency="SAR"
@@ -163,10 +163,10 @@ export function GuidedFiscalYearCloseSheet({
             </div>
 
             <div className="space-y-1.5">
-              <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
+              <div className="text-xs font-bold text-foreground">
                 Estimated Closing Journal Entry Preview
               </div>
-              <div className="max-h-60 overflow-y-auto border border-slate-200/80 dark:border-slate-800 rounded-xl p-2">
+              <div className="max-h-60 overflow-y-auto border border-border dark:border-border rounded-xl p-2">
                 <JournalLinesTable lines={fyClosingPreviewLines} />
               </div>
             </div>
@@ -175,7 +175,7 @@ export function GuidedFiscalYearCloseSheet({
 
         {fyStep === 4 && (
           <div className="space-y-4 py-4">
-            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 p-3 rounded-xl text-xs text-amber-900 dark:text-amber-200 space-y-1">
+            <div className="bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-950/40 border border-amber-200 p-3 rounded-xl text-xs text-amber-900 dark:text-amber-200 space-y-1">
               <div className="font-bold">Irreversible Action</div>
               <p>
                 Closing the fiscal year posts a permanent FiscalYearClosing journal entry and zeros out income accounts.
@@ -183,20 +183,20 @@ export function GuidedFiscalYearCloseSheet({
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label className="text-xs font-bold text-foreground block mb-1">
                 Type &quot;CLOSE FY{selectedYear}&quot; to confirm:
               </label>
               <Input
                 placeholder={`CLOSE FY${selectedYear}`}
                 value={fyTypedConfirm}
                 onChange={(e) => setFyTypedConfirm(e.target.value)}
-                className="h-9 text-xs font-mono"
+                className="h-9 text-xs fin-num"
               />
             </div>
           </div>
         )}
 
-        <SheetFooter className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
+        <SheetFooter className="pt-4 border-t border-border dark:border-border flex justify-between items-center">
           {fyStep > 1 ? (
             <Button variant="outline" size="sm" onClick={() => setFyStep((s) => (s - 1) as any)}>
               Back

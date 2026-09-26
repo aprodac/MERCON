@@ -87,7 +87,7 @@ export function QuotationPrintModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent hideCloseButton className="max-w-4xl p-0 bg-slate-950/60 backdrop-blur-md border border-slate-800 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col rounded-2xl">
+      <DialogContent hideCloseButton className="max-w-4xl p-0 bg-charcoal-strong/60 backdrop-blur-md border border-slate-800 shadow-2xl overflow-hidden max-h-[92vh] flex flex-col rounded-2xl">
         {/* Modal Top Actions Header (Screen only) */}
         <div className="px-4 py-3 bg-[#2D2B2C] text-white flex items-center justify-between border-b border-slate-800 shrink-0 print:hidden">
           <div className="flex items-center gap-2">

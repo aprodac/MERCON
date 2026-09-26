@@ -6,6 +6,11 @@ import { LayoutProvider, useLayoutMeta } from '@/context/LayoutContext';
 import OperationsAssistant from '../assistant/OperationsAssistant';
 import ErrorBoundary from '@/components/ui/ErrorBoundary';
 import { KeyboardShortcutsModal } from '@/components/ui/KeyboardShortcutsModal';
+import CommandPalette from './CommandPalette';
+import { NAV_PAGES, SETTINGS_PAGES, findActiveEntry } from '@/config/navigation';
+import { navStore } from '@/lib/navigation/navStore';
+
+const SIDEBAR_KEY = 'mercon_sidebar_collapsed';
 
 /** Inner shell — reads metadata from context set by each page's DashboardLayout */
 function ShellInner() {
@@ -13,11 +18,14 @@ function ShellInner() {
   const { meta } = useLayoutMeta();
   const contentRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // The sidebar starts collapsed each time the app is opened, leaving the room to
+  // the page. Expanding it holds for the rest of this tab's session (across page
+  // changes), then it's collapsed again next time — sessionStorage, not localStorage.
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('mercon_sidebar_collapsed') === 'true';
+      return sessionStorage.getItem(SIDEBAR_KEY) !== 'false';
     } catch {
-      return false;
+      return true;
     }
   });
 
@@ -25,7 +33,7 @@ function ShellInner() {
     setSidebarCollapsed((prev) => {
       const next = !prev;
       try {
-        localStorage.setItem('mercon_sidebar_collapsed', String(next));
+        sessionStorage.setItem(SIDEBAR_KEY, String(next));
       } catch {}
       return next;
     });
@@ -61,9 +69,11 @@ function ShellInner() {
     };
   }, []);
 
-  // Close mobile drawer and reset scroll position on navigation
+  // Close mobile drawer and reset scroll position on navigation; remember the page for ⌘K "Recent"
   useEffect(() => {
     setSidebarOpen(false);
+    const visited = findActiveEntry([...NAV_PAGES, ...SETTINGS_PAGES], location.pathname);
+    if (visited) navStore.pushRecent(visited.id);
     if (contentRef.current) {
       contentRef.current.scrollTop = 0;
     }
@@ -113,7 +123,7 @@ function ShellInner() {
 
         {/* Collapsed Header Expand Banner */}
         {!meta.hideHeader && isHeaderCollapsed && (
-          <div className="bg-slate-900 text-white px-4 py-1 flex items-center justify-between text-xs shrink-0 animate-fade-in">
+          <div className="bg-charcoal text-white px-4 py-1 flex items-center justify-between text-xs shrink-0 animate-fade-in">
             <span className="font-bold text-slate-300 flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400" /> Header navigation is collapsed to maximize vertical workspace height.
             </span>
@@ -165,6 +175,8 @@ function ShellInner() {
       <OperationsAssistant />
       {/* ERP Keyboard Shortcuts Help Overlay */}
       <KeyboardShortcutsModal />
+      {/* ⌘K / Ctrl+K navigation palette */}
+      <CommandPalette />
     </div>
   );
 }

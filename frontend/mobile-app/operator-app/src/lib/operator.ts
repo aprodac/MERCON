@@ -28,10 +28,17 @@ export interface OperatorTrip {
   ref_id: string | null;
   status: string;
   planned_start?: string | null;
+  planned_end?: string | null;
+  actual_start?: string | null;
+  actual_end?: string | null;
   createdAt?: string;
+  updatedAt?: string;
+  is_third_party?: boolean;
+  driver_workflow?: string | null;
   customer?: { id?: string; name: string; logo_url?: string | null } | null;
-  driver?: { first_name: string; last_name: string; avatar_url?: string | null } | null;
-  vehicle?: { plate_number: string; ref_id?: string | null; asset_type?: string } | null;
+  driver?: { id?: string; first_name: string; last_name: string; avatar_url?: string | null; phone_primary?: string | null } | null;
+  vehicle?: { id?: string; plate_number: string; ref_id?: string | null; asset_type?: string } | null;
+  subcontract?: { driverName?: string | null; driverPhone?: string | null; vehiclePlate?: string | null; provider?: { name?: string | null } | null } | null;
   stops?: any[];
 }
 
@@ -43,6 +50,8 @@ export interface OperatorTripStop {
   location_lat: number;
   location_lng: number;
   location_name: string | null;
+  /** The saved place, when the stop was picked from Locations. */
+  location?: { name?: string | null; code?: string | null; city?: string | null } | null;
   planned_arrival: string | null;
   actual_arrival: string | null;
   actual_departure: string | null;
@@ -54,6 +63,8 @@ export interface OperatorTripStop {
 export interface OperatorTripDocument {
   id: string;
   doc_type: string | null;
+  title?: string | null;
+  documentType?: { name?: string | null } | null;
   file_url: string;
   mime_type?: string | null;
   ocr_raw_text?: string | null;
@@ -73,15 +84,42 @@ export interface OperatorTripDetail {
   planned_end: string | null;
   actual_end: string | null;
   createdAt: string;
-  customer: { id: string; name: string; contact_phone?: string | null; logo_url?: string | null } | null;
-  driver: { id: string; first_name: string; last_name: string; phone_primary: string | null; ref_id: string | null } | null;
-  vehicle: { id: string; plate_number: string; asset_type: string; ref_id: string | null; capacity_kg?: number | null } | null;
+  updatedAt?: string;
+  awb_number?: string | null;
+  customer: {
+    id: string;
+    name: string;
+    contact_phone?: string | null;
+    contact_person?: string | null;
+    whatsapp_number?: string | null;
+    whatsapp_group_name?: string | null;
+    logo_url?: string | null;
+  } | null;
+  driver: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    phone_primary: string | null;
+    ref_id: string | null;
+    avatar_url?: string | null;
+    status?: string | null;
+  } | null;
+  vehicle: {
+    id: string;
+    plate_number: string;
+    asset_type: string;
+    ref_id: string | null;
+    capacity_kg?: number | null;
+    image_url?: string | null;
+    trailer_number?: string | null;
+    icces_device_id?: string | null;
+  } | null;
   stops: OperatorTripStop[];
   documents?: OperatorTripDocument[];
 
   // Co-driver — same DB columns/relation as the web dashboard's Trip type.
   co_driver_id?: string | null;
-  coDriver?: { id: string; first_name: string; last_name: string; phone_primary?: string | null; ref_id?: string | null } | null;
+  coDriver?: { id: string; first_name: string; last_name: string; phone_primary?: string | null; ref_id?: string | null; avatar_url?: string | null } | null;
   co_driver_payout?: number;
 
   // Financials — persisted Trip columns (backend/api-server/prisma/schema.prisma),
@@ -93,7 +131,9 @@ export interface OperatorTripDetail {
   trip_charges?: number;
   paid_amount?: number;
   balance_due?: number | null;
-  charges?: { id: string; charge_type: string; unit: string | null; rate: number; quantity: number; amount: number }[];
+  charges?: OperatorTripCharge[];
+  extra_driver_payment?: number | null;
+  pricing_basis?: string | null;
 
   // Line type / quotation — drives the Round Trip vs Single Trip label.
   quotation_line_type?: string | null;
@@ -109,6 +149,136 @@ export interface OperatorTripDetail {
   third_party_vehicle_type?: string | null;
   third_party_cost?: number | null;
 }
+
+export interface OperatorTripCharge {
+  id?: string;
+  surchargeRuleId?: string | null;
+  charge_type: string;
+  unit: string | null;
+  rate: number;
+  quantity: number;
+  amount: number;
+}
+
+/** Same shape as the web's `fleetLiveService` types (backend services/fleetLiveMap.ts). */
+export type TripPhase = 'planned' | 'active' | 'done' | 'cancelled';
+export type LiveMediaStage = 'loaded' | 'arrived' | 'stop' | 'delivered' | 'delay' | 'other';
+
+export interface LiveGpsFix {
+  lat: number;
+  lng: number;
+  heading?: number | null;
+  speed_kmh?: number | null;
+  recorded_at: string;
+  fresh: boolean;
+}
+
+export interface TripOverview {
+  trip_id: string;
+  status: string;
+  phase: TripPhase;
+  next_stop_index: number | null;
+  unit: {
+    vehicle?: { has_tracker?: boolean } | null;
+    vehicle_gps: LiveGpsFix | null;
+    driver_gps: LiveGpsFix | null;
+    position: (LiveGpsFix & { source: 'vehicle' | 'driver' }) | null;
+  } | null;
+  /** [lng, lat] points driven, oldest first. */
+  path: [number, number][];
+  path_distance_m: number | null;
+  checks: {
+    driver_assigned: boolean;
+    truck_assigned: boolean;
+    third_party: boolean;
+    expiring: { entity: 'Truck' | 'Driver'; name: string; label: string; expiry_date: string; expired: boolean }[];
+  } | null;
+}
+
+export interface LiveMediaItem {
+  id: string;
+  kind: 'photo' | 'video';
+  stage: LiveMediaStage;
+  url: string;
+  mime: string | null;
+  captured_at: string;
+}
+
+export type ShareRecipient = 'customer_contact' | 'customer_group' | 'internal' | 'other';
+
+/** One step's photos from the driver (backend services/operatorInbox.ts). */
+export interface DriverUpdate {
+  key: string;
+  trip: { id: string; ref_id: string | null; status: string; route: string };
+  customer: {
+    name: string;
+    whatsapp_number: string | null;
+    contact_person: string | null;
+    contact_phone: string | null;
+    group_name: string | null;
+    group_link: string | null;
+  } | null;
+  vehicle_plate: string | null;
+  driver: { name: string; phone: string | null } | null;
+  stop: { id: string; name: string; type: string; sequence: number } | null;
+  stage: LiveMediaStage;
+  items: LiveMediaItem[];
+  delay_note: string | null;
+  latest_at: string;
+  shares: { id: string; recipient: ShareRecipient; channel: 'link' | 'whatsapp_api'; shared_by: string | null; shared_at: string; count: number }[];
+  sent_ids: string[];
+  unsent_count: number;
+}
+
+export interface ShareResult {
+  share_url: string;
+  text: string;
+  whatsapp_url: string;
+  sent_via_api: boolean;
+  headline: string;
+}
+
+/** A truck / driver on the live map with its running trip (backend services/fleetLiveMap.ts). */
+export interface LiveUnit {
+  key: string;
+  vehicle: { id: string; ref_id: string | null; plate_number: string; asset_type: string; status: string; image_url: string | null; has_tracker: boolean } | null;
+  driver: { id: string; ref_id: string | null; name: string; phone: string | null; avatar_url: string | null } | null;
+  trip: {
+    id: string;
+    ref_id: string | null;
+    status: string;
+    phase: 'upcoming' | 'active' | 'delayed';
+    customer_name: string | null;
+    planned_start: string | null;
+    planned_end: string | null;
+    stops: { id: string; sequence: number; type: string; name: string | null; address: string | null; lat: number | null; lng: number | null; planned_arrival: string | null; actual_arrival: string | null; actual_departure: string | null }[];
+    next_stop_index: number | null;
+  } | null;
+  vehicle_gps: LiveGpsFix | null;
+  driver_gps: LiveGpsFix | null;
+  position: (LiveGpsFix & { source: 'vehicle' | 'driver' }) | null;
+  feeds_gap_m?: number | null;
+}
+
+/** A document or licence that has expired or expires soon (backend services/operatorInbox.ts). */
+export interface ExpiryItem {
+  key: string;
+  entity_type: 'Vehicle' | 'Driver' | 'Customer' | 'Company' | 'Other';
+  entity_id: string;
+  entity_name: string;
+  label: string;
+  expiry_date: string;
+  /** Whole days until expiry; negative once expired. */
+  days: number;
+  document_id: string | null;
+  document_type_id: string | null;
+  doc_type: string | null;
+  contact: { name: string; phone: string } | null;
+  on_trip_ref: string | null;
+}
+
+
+export type TripDocKind = 'POD' | 'Waybill' | 'Emergency' | 'CustomsClearance' | 'Invoice' | 'Contract';
 
 export interface CreateTripStopInput {
   stop_type: 'Pickup' | 'Dropoff' | 'Stop' | 'Rest' | 'Refuel';
@@ -162,6 +332,58 @@ export interface OperatorThirdPartyProvider {
   email?: string | null;
   isActive?: boolean;
   _count?: { subcontracts?: number };
+}
+
+/** A driver as the create-trip form needs them: status and assigned truck. */
+export interface OperatorDriverOption extends OperatorDriver {
+  assignedVehicleId?: string | null;
+  assigned_vehicle_id?: string | null;
+  assignedVehicle?: { id?: string; plate_number?: string | null; capacity_kg?: number | null; asset_type?: string | null } | null;
+}
+
+export interface OperatorVehicleOption extends OperatorVehicle {
+  isActive?: boolean;
+  assignedDriverId?: string | null;
+  assigned_driver_id?: string | null;
+}
+
+export interface QuotationChange {
+  id: string;
+  old_rate?: number | string | null;
+  new_rate?: number | string | null;
+  old_driver_payout?: number | string | null;
+  new_driver_payout?: number | string | null;
+  changed_by_name?: string | null;
+  changed_by?: string | null;
+  reason?: string | null;
+  source?: string | null;
+  createdAt: string;
+}
+
+export interface LaneQuotation {
+  id: string;
+  quotation_number: string;
+  customer_name: string;
+  vehicle_class: string;
+  line_type?: string | null;
+  billing_type?: string | null;
+  rate: number;
+  driver_payout: number | null;
+  updatedAt: string;
+}
+
+export interface RecommendedDriver {
+  driverId: string;
+  driverName: string;
+  status: string;
+  isAvailable: boolean;
+  unavailabilityReason?: string;
+  routeTripCount: number;
+  capacityMatch: boolean;
+  score: number;
+  badges: string[];
+  vehiclePlate?: string | null;
+  vehicleClass?: string | null;
 }
 
 export interface OperatorLocation {
@@ -344,26 +566,6 @@ export const operatorService = {
     return tripDetail;
   },
 
-  async uploadTripPhoto(tripId: string, uri: string, kind: 'pod' | 'cargo' | 'delay' = 'pod'): Promise<any> {
-    const formData = new FormData();
-    const filename = uri.split('/').pop() || 'media.jpg';
-    const match = /\.(\w+)$/.exec(filename);
-    const isVideo = /\.(mp4|mov|webm|avi|mkv|3gp)$/i.test(filename);
-    const type = isVideo ? 'video/mp4' : (match ? `image/${match[1]}` : 'image/jpeg');
-
-    formData.append('file', {
-      uri,
-      name: filename,
-      type,
-    } as any);
-    formData.append('kind', kind);
-
-    const { data } = await api.post(`/trips/${tripId}/photo`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    return data;
-  },
-
   async customers(): Promise<OperatorCustomer[]> {
     const { data } = await api.get('/customers', { params: { per_page: 100 } });
     return (data.data ?? []) as OperatorCustomer[];
@@ -463,6 +665,108 @@ export const operatorService = {
     return data.data as OperatorQuotation;
   },
 
+  /* ─── Create trip (same endpoints and parameters as the web wizard) ─── */
+
+  /** Every driver with their assigned truck — the web wizard's `mode: 'lookup'` list. */
+  async driversLookup(): Promise<OperatorDriverOption[]> {
+    const { data } = await api.get('/drivers', { params: { per_page: 1000, mode: 'lookup' } });
+    const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.data?.data) ? data.data.data : [];
+    return list as OperatorDriverOption[];
+  },
+
+  async vehiclesLookup(): Promise<OperatorVehicleOption[]> {
+    const { data } = await api.get('/vehicles', { params: { per_page: 1000, mode: 'lookup' } });
+    return (data.data ?? []) as OperatorVehicleOption[];
+  },
+
+  /** All active quotations of one customer (the cards on step 1). */
+  async customerQuotations(customerId: string): Promise<OperatorQuotation[]> {
+    if (!customerId) return [];
+    const { data } = await api.get('/quotations', { params: { customerId, customer_id: customerId, active_only: 'true', per_page: 'all' } });
+    const list = (data.data ?? []) as OperatorQuotation[];
+    return list.filter((q: any) => (q.customerId ?? q.customer_id ?? q.customer?.id ?? customerId) === customerId && q.is_active !== false);
+  },
+
+  /** Server-side quotation match for the exact route (every stop). Null when nothing matches or on error. */
+  async lookupRouteQuotation(params: {
+    customer_id: string;
+    origin_location_id: string;
+    destination_location_id: string;
+    vehicle_type?: string;
+    line_type?: string;
+    billing_type?: string;
+    planned_start?: string;
+    stops: any[];
+  }): Promise<OperatorQuotation | null> {
+    try {
+      const { data } = await api.get('/quotations/lookup', {
+        params: { ...params, stops: JSON.stringify(params.stops) },
+      });
+      return (data?.data?.quotation || data?.data?.rate_card || null) as OperatorQuotation | null;
+    } catch {
+      return null;
+    }
+  },
+
+  /** Drivers ranked for this route and truck class by the server (same as the web). */
+  async recommendedDrivers(params: { origin?: string; destination?: string; vehicleClass?: string; vehicleId?: string }): Promise<RecommendedDriver[]> {
+    try {
+      const { data } = await api.get('/trips/recommendations/drivers', { params });
+      return (data?.data ?? []) as RecommendedDriver[];
+    } catch {
+      return [];
+    }
+  },
+
+  /** The deployment timezone trip times are entered in (Settings.timezone). */
+  async deploymentTimezone(): Promise<string> {
+    try {
+      const { data } = await api.get('/settings/public');
+      return data?.data?.timezone || 'Asia/Riyadh';
+    } catch {
+      return 'Asia/Riyadh';
+    }
+  },
+
+  /**
+   * Road route through points in order (MERCON's routing service, OSRM behind it),
+   * with the drive time of each leg. Null when routing is unavailable.
+   */
+  async roadRoute(points: { lat: number; lng: number }[]): Promise<{ legs: { durationSeconds: number; distanceMeters: number }[]; durationSeconds: number; distanceMeters: number } | null> {
+    try {
+      const { data } = await api.get('/vehicles/live-map/route', {
+        params: { points: points.map((p) => `${p.lat},${p.lng}`).join(';') },
+        timeout: 10_000,
+      });
+      const r = data?.data;
+      return r && Array.isArray(r.legs) ? r : null;
+    } catch {
+      return null;
+    }
+  },
+
+  /** Rate / driver-payout changes made to one quotation, newest first. */
+  async quotationHistory(id: string): Promise<QuotationChange[]> {
+    const { data } = await api.get(`/quotations/${id}/history`);
+    return (data?.data ?? []) as QuotationChange[];
+  },
+
+  /** Every quotation priced on the same origin → destination (same as the web's "Rate history"). */
+  async laneQuotations(params: { origin: string; destination: string; vehicleClass?: string; customerId?: string }): Promise<LaneQuotation[]> {
+    const { data } = await api.get('/quotations/lane-history', { params });
+    return (data?.data ?? []) as LaneQuotation[];
+  },
+
+  async createQuotationRaw(payload: Record<string, unknown>): Promise<OperatorQuotation> {
+    const { data } = await api.post('/quotations', payload);
+    return data.data as OperatorQuotation;
+  },
+
+  async bulkImportTrips(rows: unknown[]): Promise<{ imported: number; failed: number; results: Array<{ row: number; success: boolean; error?: string; created_id?: string }> }> {
+    const { data } = await api.post('/trips/bulk-import', { rows });
+    return data.data;
+  },
+
   /** Same `/quotations/lookup` endpoint the web dashboard's create-trip
    * wizard uses to auto-fill a rate. Swallows errors/no-match and returns
    * null so the screen can fall back to manual entry rather than block. */
@@ -517,6 +821,42 @@ export const operatorService = {
     return data.data as OperatorDriver;
   },
 
+  /** Every driver with its login account, for User management. */
+  async driverAccounts(): Promise<OperatorDriver[]> {
+    const { data } = await api.get('/drivers', { params: { per_page: 1000, sortOrder: 'name_asc' } });
+    return (data.data ?? []) as OperatorDriver[];
+  },
+
+  /** Sets (or resets) a driver's app login password; creates the linked login account if missing. */
+  async setDriverPassword(id: string, password: string): Promise<void> {
+    await api.post(`/drivers/${id}/set-password`, { password });
+  },
+
+  /** Web/operator app accounts (Admin + Operator) — drivers are managed via /drivers. */
+  async platformUsers(): Promise<PlatformUser[]> {
+    const { data } = await api.get('/users');
+    return (data.data ?? []) as PlatformUser[];
+  },
+
+  async createPlatformUser(payload: PlatformUserInput & { password: string }): Promise<PlatformUser> {
+    const { data } = await api.post('/users', payload);
+    return data.data as PlatformUser;
+  },
+
+  async updatePlatformUser(id: string, payload: PlatformUserInput): Promise<PlatformUser> {
+    const { data } = await api.put(`/users/${id}`, payload);
+    return data.data as PlatformUser;
+  },
+
+  async deletePlatformUser(id: string): Promise<void> {
+    await api.delete(`/users/${id}`);
+  },
+
+  async createDriver(payload: CreateDriverInput): Promise<OperatorDriver> {
+    const { data } = await api.post('/drivers', payload);
+    return data.data as OperatorDriver;
+  },
+
   async updateVehicle(id: string, payload: UpdateVehicleInput): Promise<OperatorVehicle> {
     const { data } = await api.patch(`/vehicles/${id}`, payload);
     return data.data as OperatorVehicle;
@@ -563,6 +903,96 @@ export const operatorService = {
     return data.data as OperatorTripStop;
   },
 
+  /** Every truck/driver with a running or scheduled trip and its GPS — the web's live map. */
+  async liveMap(): Promise<LiveUnit[]> {
+    const { data } = await api.get('/vehicles/live-map');
+    return (data.data?.units ?? []) as LiveUnit[];
+  },
+
+  /** Recent driver photo updates across all trips, with who already forwarded them. */
+  async driverUpdates(): Promise<{ updates: DriverUpdate[]; whatsapp_api_available: boolean }> {
+    const { data } = await api.get('/operator-inbox/driver-updates');
+    return data.data as { updates: DriverUpdate[]; whatsapp_api_available: boolean };
+  },
+
+  /** Documents and licences expired or expiring soon. */
+  async documentExpiries(): Promise<ExpiryItem[]> {
+    const { data } = await api.get('/operator-inbox/document-expiries');
+    return (data.data?.items ?? data.data ?? []) as ExpiryItem[];
+  },
+
+  /** Trip documents waiting for review (external-app screenshots whose time must be confirmed). */
+  async tripDocumentsToReview(): Promise<(OperatorTripDocument & { entity_id?: string })[]> {
+    const { data } = await api.get('/documents', { params: { entity_type: 'Trip', status: 'PendingReview', per_page: 100 } });
+    return (data.data ?? []) as (OperatorTripDocument & { entity_id?: string })[];
+  },
+
+  /** Phase, pre-trip checks, live GPS and the path driven — the web map's data. */
+  async tripOverview(id: string): Promise<TripOverview> {
+    const { data } = await api.get(`/vehicles/live-map/trips/${id}/overview`);
+    return data.data as TripOverview;
+  },
+
+  /** Road distance and drive time between two points (null when routing is down) — the web map's route call. */
+  async routeEstimate(from: { lat: number; lng: number }, to: { lat: number; lng: number }): Promise<{ distanceMeters: number; durationSeconds: number } | null> {
+    try {
+      const { data } = await api.get('/vehicles/live-map/route', { params: { from: `${from.lat},${from.lng}`, to: `${to.lat},${to.lng}` } });
+      const r = data?.data;
+      return r && Number.isFinite(r.distanceMeters) ? { distanceMeters: r.distanceMeters, durationSeconds: r.durationSeconds } : null;
+    } catch {
+      return null;
+    }
+  },
+
+  /** The driver's photos for this trip, one entry per stop and step, with who already forwarded them. */
+  async tripDriverUpdates(id: string): Promise<{ updates: DriverUpdate[]; whatsapp_api_available: boolean }> {
+    const { data } = await api.get(`/operator-inbox/trips/${id}/driver-updates`);
+    return data.data as { updates: DriverUpdate[]; whatsapp_api_available: boolean };
+  },
+
+  /** Records a forward and returns the message, a photo-page link and a wa.me link — same call as the web. */
+  async shareDriverUpdate(body: {
+    trip_id: string;
+    update_key: string;
+    media_ids: string[];
+    recipient: ShareRecipient;
+    recipient_phone?: string | null;
+    channel: 'link' | 'whatsapp_api';
+  }): Promise<ShareResult> {
+    const { data } = await api.post('/operator-inbox/driver-updates/share', body);
+    return data.data as ShareResult;
+  },
+
+  /** Replaces the trip's additional charges (PATCH /trips/:id/financials, as the web's charges editor). */
+  async updateTripCharges(id: string, charges: OperatorTripCharge[]): Promise<OperatorTripDetail> {
+    const { data } = await api.patch(`/trips/${id}/financials`, {
+      charges: charges.map((c) => ({
+        surchargeRuleId: c.surchargeRuleId ?? undefined,
+        charge_type: c.charge_type,
+        unit: c.unit,
+        rate: c.rate,
+        quantity: c.quantity,
+        amount: c.amount,
+      })),
+    });
+    return data.data as OperatorTripDetail;
+  },
+
+  /** Attaches a photo, video or file to the trip as a Document (POST /documents, as the web's upload). */
+  async uploadTripDocument(tripId: string, file: { uri: string; name?: string; mimeType?: string | null }, docType: TripDocKind): Promise<OperatorTripDocument> {
+    const name = file.name || file.uri.split('/').pop() || 'upload.jpg';
+    const ext = (/\.(\w+)$/.exec(name)?.[1] || 'jpg').toLowerCase();
+    const type = file.mimeType
+      || (/^(mp4|mov|webm|3gp)$/.test(ext) ? `video/${ext === 'mov' ? 'quicktime' : ext}` : ext === 'pdf' ? 'application/pdf' : `image/${ext === 'jpg' ? 'jpeg' : ext}`);
+    const form = new FormData();
+    form.append('file', { uri: file.uri, name, type } as any);
+    form.append('entity_type', 'Trip');
+    form.append('entity_id', tripId);
+    form.append('doc_type', docType);
+    const { data } = await api.post('/documents', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return data.data as OperatorTripDocument;
+  },
+
   async quotations(): Promise<OperatorQuotation[]> {
     const { data } = await api.get('/quotations', { params: { per_page: 50 } });
     return (data.data ?? []) as OperatorQuotation[];
@@ -592,6 +1022,7 @@ export interface OperatorInvoice {
   total_amount: number;
   due_date: string;
   createdAt: string;
+  customerId?: string | null;
   customer?: { name: string } | null;
   trip?: { ref_id: string | null } | null;
 }
@@ -619,6 +1050,29 @@ export interface OperatorDriver {
   photo_url?: string | null;
   assigned_vehicle?: { plate_number?: string | null } | null;
   current_vehicle?: { plate_number?: string | null } | null;
+  /** Linked login account — present once a password has been set. */
+  user?: { id: string; username: string | null; phone: string | null } | null;
+}
+
+export interface PlatformUser {
+  id: string;
+  name: string;
+  username: string | null;
+  phone: string | null;
+  email: string | null;
+  role: 'Admin' | 'Operator';
+  status: 'Active' | 'Inactive';
+  createdAt: string;
+}
+
+export interface PlatformUserInput {
+  name?: string;
+  username?: string;
+  phone?: string;
+  email?: string | null;
+  role?: 'Admin' | 'Operator';
+  status?: 'Active' | 'Inactive';
+  password?: string;
 }
 
 
@@ -629,6 +1083,14 @@ export interface UpdateDriverInput {
   license_number?: string;
   license_expiry?: string;
   status?: 'Available' | 'OnTrip' | 'OffDuty' | 'Inactive';
+}
+
+export interface CreateDriverInput {
+  first_name: string;
+  last_name: string;
+  phone_primary: string;
+  license_number: string;
+  license_expiry: string;
 }
 
 export interface UpdateVehicleInput {

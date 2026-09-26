@@ -29,8 +29,8 @@ export function CloseWarningModal({
       confirmLabel="Close Anyway"
       isLoading={isPending}
     >
-      <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
-        <p className="text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-200">
+      <div className="space-y-3 text-xs text-muted-foreground">
+        <p className="text-amber-800 dark:text-amber-200 bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-950/40 p-2.5 rounded-xl border border-amber-200">
           Some non-blocking checks have warnings. Are you sure you want to close this period anyway?
         </p>
         <ul className="list-disc pl-4 space-y-1">

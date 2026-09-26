@@ -33,6 +33,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Chip } from '@/components/ui/chip';
+import { StatPill } from '@/components/ui/stat-pill';
 
 import { financeService, CreateInvoiceDTO, InvoiceLineDTO } from '@/services/financeService';
 import { customerService } from '@/services/customerService';
@@ -323,25 +325,25 @@ export default function InvoiceCreatePage() {
 
   return (
     <DashboardLayout active="finance" title="New Draft Invoice">
-      <div className="bg-[#F8FAFC] dark:bg-slate-950 px-4 sm:px-6 py-4 space-y-4 max-w-[1400px] mx-auto pb-16 min-h-full">
+      <div className="bg-[#F8FAFC] px-4 sm:px-6 py-4 space-y-4 max-w-[1400px] mx-auto pb-16 min-h-full">
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           
           {/* Main Form Content (8 Cols) */}
           <div className="lg:col-span-8 space-y-4">
             
             {/* 1. Customer & Billing Card (Zoho Books Design) */}
-            <Card className="py-0 gap-0 border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="py-3 px-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex flex-row items-center justify-between">
-                <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <Card className="py-0 gap-0 border border-border dark:border-border bg-card rounded-xl shadow-xs hover:shadow-md transition-shadow duration-200">
+              <CardHeader className="py-3 px-4 border-b border-border dark:border-border bg-muted/50 flex flex-row items-center justify-between">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
                   <Building2 className="w-3.5 h-3.5 text-[#FA634E]" />
                   Customer & Billing Context
                 </CardTitle>
 
                 {selectedCustomer && (
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-[10px] bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 font-medium">
-                      <Globe className="w-3 h-3 mr-1 text-emerald-600 inline" /> Currency: SAR
-                    </Badge>
+                    <Chip tone="positive" size="sm" icon={Globe}>
+                      Currency: SAR
+                    </Chip>
                   </div>
                 )}
               </CardHeader>
@@ -349,7 +351,7 @@ export default function InvoiceCreatePage() {
               <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5">
                 {/* Customer Select */}
                 <div className="sm:col-span-2 lg:col-span-3 space-y-1">
-                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <Label className="text-xs font-semibold text-foreground">
                     Customer Account *
                   </Label>
                   <Select
@@ -359,7 +361,7 @@ export default function InvoiceCreatePage() {
                       setSelectedTripIds([]);
                     }}
                   >
-                    <SelectTrigger className="h-9 text-xs bg-slate-50/30 dark:bg-slate-900 border-slate-200">
+                    <SelectTrigger className="h-9 text-xs bg-muted/30 border-border">
                       <SelectValue placeholder="Select billing customer account..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -378,11 +380,11 @@ export default function InvoiceCreatePage() {
 
                 {/* Terms Selector */}
                 <div className="sm:col-span-1 lg:col-span-3 space-y-1">
-                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <Label className="text-xs font-semibold text-foreground">
                     Payment Terms
                   </Label>
                   <Select value={paymentTerms} onValueChange={handleTermsChange}>
-                    <SelectTrigger className="h-9 text-xs bg-slate-50/30 dark:bg-slate-900 border-slate-200">
+                    <SelectTrigger className="h-9 text-xs bg-muted/30 border-border">
                       <SelectValue placeholder="Terms..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -397,7 +399,7 @@ export default function InvoiceCreatePage() {
 
                 {/* Dates & VAT */}
                 <div className="sm:col-span-1 lg:col-span-2 space-y-1">
-                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <Label className="text-xs font-semibold text-foreground">
                     Invoice Date *
                   </Label>
                   <Input
@@ -409,7 +411,7 @@ export default function InvoiceCreatePage() {
                 </div>
 
                 <div className="sm:col-span-1 lg:col-span-2 space-y-1">
-                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <Label className="text-xs font-semibold text-foreground">
                     Payment Due Date
                   </Label>
                   <Input
@@ -421,8 +423,8 @@ export default function InvoiceCreatePage() {
                 </div>
 
                 <div className="sm:col-span-1 lg:col-span-2 space-y-1">
-                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                    <Percent className="w-3 h-3 text-slate-400" /> VAT Rate (%)
+                  <Label className="text-xs font-semibold text-foreground flex items-center gap-1">
+                    <Percent className="w-3 h-3 text-muted-foreground" /> VAT Rate (%)
                   </Label>
                   <div className="relative">
                     <Input
@@ -435,28 +437,31 @@ export default function InvoiceCreatePage() {
                       className="h-9 text-xs font-mono pr-7"
                       placeholder="15"
                     />
-                    <span className="absolute right-2.5 top-2 text-xs font-semibold text-slate-400 pointer-events-none">%</span>
+                    <span className="absolute right-2.5 top-2 text-xs font-semibold text-muted-foreground pointer-events-none">%</span>
                   </div>
                 </div>
               </CardContent>
             </Card>
 
             {/* 2. Unbilled Operational Trips Card (Upgraded Operational Component) */}
-            <Card className="py-0 gap-0 border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="py-2.5 px-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <Card className="py-0 gap-0 border border-border dark:border-border bg-card rounded-xl shadow-xs hover:shadow-md transition-shadow duration-200">
+              <CardHeader className="py-2.5 px-4 border-b border-border dark:border-border bg-muted/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <CardTitle className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
                     <Truck className="w-3.5 h-3.5 text-[#FA634E]" />
                     Unbilled Trips
                   </CardTitle>
                   {customerId && unbilledTrips.length > 0 && (
                     <div className="flex items-center gap-1.5">
-                      <Badge variant="outline" className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-none font-medium">
+                      <Chip tone="neutral" size="sm">
                         {unbilledTrips.length} Available
-                      </Badge>
-                      <Badge className="text-[10px] bg-rose-50 text-[#FA634E] border border-rose-200 dark:bg-rose-950/40 font-bold">
-                        {selectedTripIds.length} Selected (SAR {tripsSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })})
-                      </Badge>
+                      </Chip>
+                      <StatPill
+                        count={selectedTripIds.length}
+                        label="Selected"
+                        value={`SAR ${tripsSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
+                        tone="warning"
+                      />
                     </div>
                   )}
                 </div>
@@ -467,7 +472,7 @@ export default function InvoiceCreatePage() {
                     variant="ghost"
                     size="sm"
                     onClick={selectAllTrips}
-                    className="h-7 text-xs font-bold text-[#FA634E] hover:bg-rose-50 dark:hover:bg-rose-950/30 px-2"
+                    className="h-7 text-xs font-bold text-[#FA634E] hover:bg-muted px-2"
                   >
                     {selectedTripIds.length === filteredTrips.length && filteredTrips.length > 0
                       ? 'Deselect All'
@@ -480,36 +485,36 @@ export default function InvoiceCreatePage() {
                 {!customerId ? (
                   <div className="py-12 px-4 text-center">
                     <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs font-medium text-slate-500">Select a customer account to view unbilled trips</p>
+                    <p className="text-xs font-medium text-muted-foreground">Select a customer account to view unbilled trips</p>
                   </div>
                 ) : isLoadingTrips ? (
                   <div className="py-12 px-4 text-center">
                     <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#FA634E] mx-auto mb-2" />
-                    <p className="text-xs font-medium text-slate-500">Loading completed unbilled trips...</p>
+                    <p className="text-xs font-medium text-muted-foreground">Loading completed unbilled trips...</p>
                   </div>
                 ) : unbilledTrips.length === 0 ? (
                   <div className="py-12 px-4 text-center">
                     <CheckSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs font-medium text-slate-500">No completed unbilled trips for this customer</p>
+                    <p className="text-xs font-medium text-muted-foreground">No completed unbilled trips for this customer</p>
                   </div>
                 ) : (
                   <div>
                     {/* Advanced Multi-Filter Bar */}
-                    <div className="p-2.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-900/40 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                    <div className="p-2.5 border-b border-border dark:border-border bg-muted/40 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
                       <div className="sm:col-span-3 relative">
-                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-400" />
+                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
                         <Input
                           placeholder="Search trip..."
                           value={tripSearch}
                           onChange={(e) => setTripSearch(e.target.value)}
-                          className="h-8 text-xs pl-8 bg-white dark:bg-slate-900"
+                          className="h-8 text-xs pl-8 bg-card"
                         />
                       </div>
 
                       <div className="sm:col-span-3">
                         <Select value={vehicleFilter} onValueChange={setVehicleFilter}>
-                          <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-900">
-                            <Filter className="w-3 h-3 mr-1 text-slate-400 inline" />
+                          <SelectTrigger className="h-8 text-xs bg-card">
+                            <Filter className="w-3 h-3 mr-1 text-muted-foreground inline" />
                             <SelectValue placeholder="Vehicle Class" />
                           </SelectTrigger>
                           <SelectContent>
@@ -525,8 +530,8 @@ export default function InvoiceCreatePage() {
 
                       <div className="sm:col-span-3">
                         <Select value={lineTypeFilter} onValueChange={setLineTypeFilter}>
-                          <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-900">
-                            <Filter className="w-3 h-3 mr-1 text-slate-400 inline" />
+                          <SelectTrigger className="h-8 text-xs bg-card">
+                            <Filter className="w-3 h-3 mr-1 text-muted-foreground inline" />
                             <SelectValue placeholder="Line Type" />
                           </SelectTrigger>
                           <SelectContent>
@@ -542,8 +547,8 @@ export default function InvoiceCreatePage() {
 
                       <div className="sm:col-span-3">
                         <Select value={operationTypeFilter} onValueChange={setOperationTypeFilter}>
-                          <SelectTrigger className="h-8 text-xs bg-white dark:bg-slate-900">
-                            <Filter className="w-3 h-3 mr-1 text-slate-400 inline" />
+                          <SelectTrigger className="h-8 text-xs bg-card">
+                            <Filter className="w-3 h-3 mr-1 text-muted-foreground inline" />
                             <SelectValue placeholder="Operation Type" />
                           </SelectTrigger>
                           <SelectContent>
@@ -559,9 +564,9 @@ export default function InvoiceCreatePage() {
                     </div>
 
                     {/* Trips list */}
-                    <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[360px] overflow-y-auto">
+                    <div className="divide-y divide-border/60 dark:divide-border/60 max-h-[360px] overflow-y-auto">
                       {filteredTrips.length === 0 ? (
-                        <div className="py-8 text-center text-xs text-slate-400">
+                        <div className="py-8 text-center text-xs text-muted-foreground">
                           No trips match current filters
                         </div>
                       ) : (
@@ -579,12 +584,12 @@ export default function InvoiceCreatePage() {
                               onClick={() => toggleTrip(t.id)}
                               className={`p-3 flex items-center justify-between gap-3 text-xs cursor-pointer transition-colors ${
                                 isSelected
-                                  ? 'bg-rose-50/60 dark:bg-rose-950/20 border-l-3 border-l-[#FA634E]'
-                                  : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                                  ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20/60 dark:bg-rose-950/20 border-l-3 border-l-[#FA634E]'
+                                  : 'hover:bg-muted/80 dark:hover:bg-slate-800/40'
                               }`}
                             >
                               <div className="flex items-center gap-3 min-w-0">
-                                <div className="shrink-0 text-slate-400 hover:text-[#FA634E]">
+                                <div className="shrink-0 text-muted-foreground hover:text-[#FA634E]">
                                   {isSelected ? (
                                     <CheckSquare className="w-4 h-4 text-[#FA634E]" />
                                   ) : (
@@ -593,44 +598,44 @@ export default function InvoiceCreatePage() {
                                 </div>
                                 <div className="min-w-0 space-y-0.5">
                                   <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-mono font-bold text-slate-800 dark:text-slate-100">
+                                    <span className="font-mono font-bold text-foreground">
                                       {t.ref_id || `TRIP-${t.id.slice(0, 6)}`}
                                     </span>
                                     {t.vehicle_type && (
-                                      <Badge variant="outline" className="text-[10px] font-semibold text-slate-600 dark:text-slate-400 px-1.5 py-0">
+                                      <Badge variant="outline" className="text-[10px] font-semibold text-muted-foreground dark:text-muted-foreground px-1.5 py-0">
                                         {t.vehicle_type}
                                       </Badge>
                                     )}
                                     {lineTypeVal && (
-                                      <Badge variant="outline" className="text-[10px] font-semibold text-indigo-700 bg-indigo-50 dark:bg-indigo-950/40 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 px-1.5 py-0">
+                                      <Chip tone="violet" size="sm">
                                         {lineTypeVal}
-                                      </Badge>
+                                      </Chip>
                                     )}
                                     {opTypeVal && (
-                                      <Badge variant="outline" className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 px-1.5 py-0">
+                                      <Chip tone="positive" size="sm">
                                         {opTypeVal}
-                                      </Badge>
+                                      </Chip>
                                     )}
                                     {driverName && (
-                                      <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
-                                        <User className="w-2.5 h-2.5 text-slate-400" /> {driverName}
+                                      <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                                        <User className="w-2.5 h-2.5 text-muted-foreground" /> {driverName}
                                       </span>
                                     )}
                                   </div>
-                                  <p className="text-[11px] text-slate-600 dark:text-slate-300 truncate flex items-center gap-1">
+                                  <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1">
                                     <MapPin className="w-3 h-3 text-[#FA634E] shrink-0" />
-                                    <span className="font-medium text-slate-800 dark:text-slate-200">{originName}</span>
-                                    <span className="text-slate-400 font-bold">➔</span>
-                                    <span className="font-medium text-slate-800 dark:text-slate-200">{destName}</span>
+                                    <span className="font-medium text-foreground">{originName}</span>
+                                    <span className="text-muted-foreground font-bold">➔</span>
+                                    <span className="font-medium text-foreground">{destName}</span>
                                   </p>
                                 </div>
                               </div>
 
                               <div className="text-right shrink-0">
-                                <span className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs block">
+                                <span className="font-mono font-bold text-foreground text-xs block">
                                   SAR {(Number(t.billing_amount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
-                                <span className="text-[10px] text-slate-400 flex items-center justify-end gap-1 mt-0.5">
+                                <span className="text-[10px] text-muted-foreground flex items-center justify-end gap-1 mt-0.5">
                                   <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
                                   {t.updated_at ? new Date(t.updated_at).toLocaleDateString() : 'Completed'}
                                 </span>
@@ -646,9 +651,9 @@ export default function InvoiceCreatePage() {
             </Card>
 
             {/* 3. Custom Charges Card */}
-            <Card className="py-0 gap-0 border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="py-2.5 px-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex flex-row items-center justify-between">
-                <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <Card className="py-0 gap-0 border border-border dark:border-border bg-card rounded-xl shadow-xs hover:shadow-md transition-shadow duration-200">
+              <CardHeader className="py-2.5 px-4 border-b border-border dark:border-border bg-muted/50 flex flex-row items-center justify-between">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
                   <ReceiptText className="w-3.5 h-3.5 text-[#FA634E]" />
                   Custom Charges
                 </CardTitle>
@@ -657,19 +662,19 @@ export default function InvoiceCreatePage() {
                   variant="ghost"
                   size="sm"
                   onClick={handleAddManualLine}
-                  className="h-7 text-xs font-semibold text-[#FA634E] hover:bg-rose-50 dark:hover:bg-rose-950/30 px-2"
+                  className="h-7 text-xs font-semibold text-[#FA634E] hover:bg-muted px-2"
                 >
                   <Plus className="w-3.5 h-3.5 mr-1" /> Add Charge Line
                 </Button>
               </CardHeader>
               <CardContent className="p-3 sm:p-4">
                 {manualLines.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-400">
+                  <div className="py-6 text-center text-xs text-muted-foreground">
                     No custom charge lines added. Click "Add Charge Line" for detention fees, labor, or extra services.
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <div className="hidden sm:grid grid-cols-12 gap-2 px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    <div className="hidden sm:grid grid-cols-12 gap-2 px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                       <div className="col-span-5">Description</div>
                       <div className="col-span-2 text-center">Qty</div>
                       <div className="col-span-2 text-right">Rate (SAR)</div>
@@ -680,41 +685,41 @@ export default function InvoiceCreatePage() {
                     {manualLines.map((line, idx) => (
                       <div
                         key={idx}
-                        className="grid grid-cols-1 sm:grid-cols-12 gap-2 p-2.5 sm:p-1.5 bg-slate-50/70 dark:bg-slate-800/40 rounded-lg border border-slate-200/80 dark:border-slate-800 items-center"
+                        className="grid grid-cols-1 sm:grid-cols-12 gap-2 p-2.5 sm:p-1.5 bg-muted/70 rounded-lg border border-border dark:border-border items-center"
                       >
                         <div className="sm:col-span-5">
-                          <Label className="sm:hidden text-[10px] text-slate-400 mb-1 block">Description</Label>
+                          <Label className="sm:hidden text-[10px] text-muted-foreground mb-1 block">Description</Label>
                           <Input
                             placeholder="e.g. Detention fee / Offloading charge"
                             value={line.description}
                             onChange={(e) => handleManualLineChange(idx, 'description', e.target.value)}
-                            className="h-8 text-xs bg-white dark:bg-slate-900"
+                            className="h-8 text-xs bg-card"
                           />
                         </div>
                         <div className="sm:col-span-2">
-                          <Label className="sm:hidden text-[10px] text-slate-400 mb-1 block">Qty</Label>
+                          <Label className="sm:hidden text-[10px] text-muted-foreground mb-1 block">Qty</Label>
                           <Input
                             type="number"
                             min="1"
                             value={line.quantity || 1}
                             onChange={(e) => handleManualLineChange(idx, 'quantity', parseInt(e.target.value) || 1)}
-                            className="h-8 text-xs font-mono text-center bg-white dark:bg-slate-900"
+                            className="h-8 text-xs font-mono text-center bg-card"
                           />
                         </div>
                         <div className="sm:col-span-2">
-                          <Label className="sm:hidden text-[10px] text-slate-400 mb-1 block">Rate (SAR)</Label>
+                          <Label className="sm:hidden text-[10px] text-muted-foreground mb-1 block">Rate (SAR)</Label>
                           <Input
                             type="number"
                             step="0.01"
                             placeholder="0.00"
                             value={line.rate || ''}
                             onChange={(e) => handleManualLineChange(idx, 'rate', parseFloat(e.target.value) || 0)}
-                            className="h-8 text-xs font-mono text-right bg-white dark:bg-slate-900"
+                            className="h-8 text-xs font-mono text-right bg-card"
                           />
                         </div>
                         <div className="sm:col-span-2 flex sm:block justify-between items-center text-right py-1 sm:py-0">
-                          <span className="sm:hidden text-[10px] text-slate-400">Total:</span>
-                          <span className="font-mono font-bold text-slate-900 dark:text-slate-100 text-xs">
+                          <span className="sm:hidden text-[10px] text-muted-foreground">Total:</span>
+                          <span className="font-mono font-bold text-foreground text-xs">
                             {(Number(line.amount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         </div>
@@ -724,7 +729,7 @@ export default function InvoiceCreatePage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleRemoveManualLine(idx)}
-                            className="h-7 w-7 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 dark:hover:bg-rose-950/30"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </Button>
@@ -738,9 +743,9 @@ export default function InvoiceCreatePage() {
 
             {/* 4. Customer Notes & Terms (Zoho Books Footer Style) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Card className="py-0 gap-0 border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl shadow-xs">
-                <CardHeader className="py-2 px-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                  <CardTitle className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+              <Card className="py-0 gap-0 border border-border dark:border-border bg-card rounded-xl shadow-xs">
+                <CardHeader className="py-2 px-3.5 border-b border-border dark:border-border bg-muted/50">
+                  <CardTitle className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                     <MessageSquare className="w-3 h-3 text-[#FA634E]" /> Customer Notes
                   </CardTitle>
                 </CardHeader>
@@ -750,14 +755,14 @@ export default function InvoiceCreatePage() {
                     value={customerNotes}
                     onChange={(e) => setCustomerNotes(e.target.value)}
                     placeholder="Notes visible to customer on invoice..."
-                    className="text-xs resize-none border-slate-200 focus:border-[#FA634E]"
+                    className="text-xs resize-none border-border focus:border-[#FA634E]"
                   />
                 </CardContent>
               </Card>
 
-              <Card className="py-0 gap-0 border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl shadow-xs">
-                <CardHeader className="py-2 px-3.5 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                  <CardTitle className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+              <Card className="py-0 gap-0 border border-border dark:border-border bg-card rounded-xl shadow-xs">
+                <CardHeader className="py-2 px-3.5 border-b border-border dark:border-border bg-muted/50">
+                  <CardTitle className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                     <ShieldCheck className="w-3 h-3 text-[#FA634E]" /> Terms & Conditions
                   </CardTitle>
                 </CardHeader>
@@ -767,7 +772,7 @@ export default function InvoiceCreatePage() {
                     value={termsConditions}
                     onChange={(e) => setTermsConditions(e.target.value)}
                     placeholder="Terms and payment rules..."
-                    className="text-xs resize-none border-slate-200 focus:border-[#FA634E]"
+                    className="text-xs resize-none border-border focus:border-[#FA634E]"
                   />
                 </CardContent>
               </Card>
@@ -777,45 +782,45 @@ export default function InvoiceCreatePage() {
 
           {/* Right Summary Sidebar (4 Cols) */}
           <div className="lg:col-span-4 space-y-4">
-            <Card className="py-0 gap-0 border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl shadow-sm sticky top-4">
-              <CardHeader className="py-2.5 px-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+            <Card className="py-0 gap-0 border border-border dark:border-border bg-card rounded-xl shadow-xs sticky top-4">
+              <CardHeader className="py-2.5 px-4 border-b border-border dark:border-border bg-muted/50">
+                <CardTitle className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
                   <Calculator className="w-3.5 h-3.5 text-[#FA634E]" />
                   Summary
                 </CardTitle>
               </CardHeader>
               <CardContent className="p-4 space-y-3.5">
                 <div className="space-y-2 text-xs">
-                  <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+                  <div className="flex justify-between items-center text-muted-foreground dark:text-muted-foreground">
                     <span>Selected Trips ({selectedTripIds.length})</span>
-                    <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                    <span className="font-mono font-semibold text-foreground">
                       SAR {tripsSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
 
-                  <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+                  <div className="flex justify-between items-center text-muted-foreground dark:text-muted-foreground">
                     <span>Custom Charges ({manualLines.length})</span>
-                    <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                    <span className="font-mono font-semibold text-foreground">
                       SAR {manualLinesSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
 
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center font-semibold text-slate-700 dark:text-slate-300">
+                  <div className="pt-2 border-t border-border dark:border-border flex justify-between items-center font-semibold text-foreground">
                     <span>Subtotal (excl. VAT)</span>
-                    <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                    <span className="font-mono font-bold text-foreground">
                       SAR {estimatedSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
 
-                  <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+                  <div className="flex justify-between items-center text-muted-foreground dark:text-muted-foreground">
                     <span>VAT ({taxRate}%)</span>
-                    <span className="font-mono font-semibold text-slate-800 dark:text-slate-200">
+                    <span className="font-mono font-semibold text-foreground">
                       SAR {estimatedTaxAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
 
-                  <div className="pt-3 border-t-2 border-slate-900 dark:border-slate-700 flex justify-between items-center text-sm font-black">
-                    <span className="text-[#3E3C3D] dark:text-slate-100">Grand Total</span>
+                  <div className="pt-3 border-t-2 border-border dark:border-border flex justify-between items-center text-sm font-black">
+                    <span className="text-[#3E3C3D]">Grand Total</span>
                     <span className="font-mono text-base text-[#FA634E]">
                       SAR {estimatedGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>

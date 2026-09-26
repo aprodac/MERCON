@@ -6,19 +6,20 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import { OsmMapView, type OsmMapViewRef } from '../components/common/OsmMapView';
+import { NavMap } from '../components/common/NavMap';
 import { isValidCoordinate } from '../utils/geo';
-import { ArrowLeft, MapPin, Truck, Siren, Clock, Banknote, ArrowUpRight, Navigation, Camera, Trash2, CheckCircle2 } from 'lucide-react-native';
+import { ArrowLeft, MapPin, Truck, Siren, Clock, Banknote, ArrowUpRight, Navigation, Camera, Trash2, CheckCircle2, Maximize, Moon, Sun } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { DelayReportModal } from '../components/DelayReportModal';
 import { TripProgressStepper } from '../components/TripProgressStepper';
 import { DelayButton } from '../components/DelayButton';
 import { GeotagPhotoModal } from '../components/GeotagPhotoModal';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 
 import { targetFromWorkflowState, parseStopWorkflowState } from '../utils/routeParser';
-import { choosePhoto, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { takePhoto, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { showToast } from '../components/AppToast';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
@@ -35,12 +36,24 @@ function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) 
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/** Clock time the driver arrives if `secondsLeft` more seconds of driving remain ("14:05"). */
+function arrivalClock(secondsLeft: number): string {
+  return new Date(Date.now() + secondsLeft * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
 const LiveNavigationScreen = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t, language } = useLanguage();
   const { trip, loading, refetch } = useCurrentTrip();
-  const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [position, setPosition] = useState<{ lat: number; lng: number; heading?: number | null; speedKph?: number | null } | null>(null);
+  // Map camera: follow the truck in a tilted driver view by default; night map after dark.
+  const [follow, setFollow] = useState(true);
+  const [tilt, setTilt] = useState(true);
+  const [night, setNight] = useState(() => {
+    const h = new Date().getHours();
+    return h >= 18 || h < 6;
+  });
   const [distanceToTarget, setDistanceToTarget] = useState<number | null>(null);
   const [routeCoords, setRouteCoords] = useState<{ latitude: number; longitude: number }[] | null>(null);
   const [baseDuration, setBaseDuration] = useState<number | null>(null);
@@ -50,20 +63,13 @@ const LiveNavigationScreen = () => {
   const [arriving, setArriving] = useState(false);
   const [delayModalVisible, setDelayModalVisible] = useState(false);
   const [arrivalPhoto, setArrivalPhoto] = useState<CapturedPhoto | null>(null);
+  const arrivalPhotoRef = useRef<CapturedPhoto | null>(null);
+  useEffect(() => { arrivalPhotoRef.current = arrivalPhoto; }, [arrivalPhoto]);
   const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const hasArrivedRef = useRef(false);
-  const mapRef = useRef<OsmMapViewRef>(null);
 
-  useEffect(() => {
-    if (trip?.driver_workflow === 'EXTERNAL_APP') {
-      const ws = trip?.driver_workflow_state || 'ASSIGNED';
-      if (ws === 'ASSIGNED') {
-        router.replace('/');
-      } else {
-        router.replace('/trip/external-app');
-      }
-    }
-  }, [trip?.driver_workflow, trip]);
+  // 1 geotagged photo, or 1 customer-app screenshot on EXTERNAL_APP trips.
+  const evidence = getEvidencePolicy(trip, 'arrival');
 
   const ws = trip?.driver_workflow_state || 'ASSIGNED';
   const isRound = isRoundTrip(trip);
@@ -136,30 +142,21 @@ const LiveNavigationScreen = () => {
   }, [dropoffStop]);
 
   const handleAddPhoto = async () => {
-    try {
-      const photo = await choosePhoto();
-      if (photo) {
-        setArrivalPhoto(photo);
-      }
-    } catch (e) {
-      Alert.alert(t('err_camera_title', 'Camera Error'), getApiErrorMessage(e));
-    }
+    const photo = evidence.screenshot ? await pickFromGallery().catch(() => null) : await takePhoto();
+    if (photo) setArrivalPhoto(photo);
+    return photo;
   };
 
-  const goToStop = async () => {
+  /**
+   * "I've arrived": takes the arrival photo right now if there isn't one yet
+   * (camera opens straight away), then confirms arrival — one tap instead of
+   * a separate photo box plus a disabled button.
+   */
+  const goToStop = async (photoArg?: CapturedPhoto | null) => {
     if (!trip || hasArrivedRef.current) return;
 
-    if (!arrivalPhoto) {
-      Alert.alert(
-        t('err_arrival_photo_needed', 'Arrival Photo Required'),
-        t('err_arrival_photo_needed', 'Please capture or attach an arrival photo before confirming arrival.'),
-        [
-          { text: t('action_add_image', 'Add Image') + ' 📷', onPress: handleAddPhoto },
-          { text: t('action_cancel', 'Cancel'), style: 'cancel' },
-        ]
-      );
-      return;
-    }
+    const arrivalPhoto = photoArg ?? arrivalPhotoRef.current ?? (await handleAddPhoto());
+    if (!arrivalPhoto) return;
 
     hasArrivedRef.current = true;
     setArriving(true);
@@ -189,6 +186,15 @@ const LiveNavigationScreen = () => {
           );
         } catch (photoErr) {
           console.warn('Arrival photo upload warning:', photoErr);
+          // The screenshot is the only proof of an external-app arrival (the
+          // operator reads the real time off it), so don't advance without it.
+          if (evidence.screenshot) {
+            hasArrivedRef.current = false;
+            setArriving(false);
+            showToast(t('err_screenshot_upload', 'Screenshot could not upload. Check your connection and tap again.'), 'error');
+            return;
+          }
+          showToast(t('warn_arrival_photo_upload', 'Arrival photo could not upload — arrival is still confirmed.'), 'info');
         }
       }
 
@@ -266,7 +272,17 @@ const LiveNavigationScreen = () => {
             }
           }
 
-          setPosition({ lat, lng });
+          // Heading is only meaningful while moving; keep the last one when stopped
+          // so the map does not spin at traffic lights.
+          const speedMs = loc.coords.speed != null && loc.coords.speed >= 0 ? loc.coords.speed : null;
+          const moving = speedMs != null && speedMs > 1.5;
+          const heading = moving && loc.coords.heading != null && loc.coords.heading >= 0 ? loc.coords.heading : undefined;
+          setPosition((prev) => ({
+            lat,
+            lng,
+            heading: heading ?? prev?.heading ?? null,
+            speedKph: speedMs != null ? Math.round(speedMs * 3.6) : null,
+          }));
 
           // Send throttled location update to backend every 15 seconds
           const now = Date.now();
@@ -285,7 +301,7 @@ const LiveNavigationScreen = () => {
           if (activeStop && isValidCoordinate(activeStop.location_lat, activeStop.location_lng)) {
             const dist = distanceMeters(lat, lng, activeStop.location_lat, activeStop.location_lng);
             setDistanceToTarget(dist);
-            if (dist <= ARRIVAL_RADIUS_M && !hasArrivedRef.current && arrivalPhoto) goToStop();
+            if (dist <= ARRIVAL_RADIUS_M && !hasArrivedRef.current && arrivalPhotoRef.current) goToStop();
           } else {
             setDistanceToTarget(null);
           }
@@ -324,9 +340,6 @@ const LiveNavigationScreen = () => {
     fetchRoute();
   }, [trip, position, activeStop]);
 
-  const recenterMap = useCallback(() => {
-    mapRef.current?.recenter();
-  }, []);
 
   if (loading && !trip) {
     return (
@@ -342,6 +355,7 @@ const LiveNavigationScreen = () => {
 
   let displayEta = '';
   let displayDistance = '';
+  let displayArrival = '';
   if (baseDuration && baseDistance && distanceToTarget != null) {
     const ratio = Math.min(1, distanceToTarget / baseDistance);
     let secondsLeft = baseDuration * ratio;
@@ -352,6 +366,8 @@ const LiveNavigationScreen = () => {
       ? `${Math.floor(mins / 60)}h ${mins % 60}m` 
       : `${mins} min`;
       
+    displayArrival = arrivalClock(secondsLeft);
+
     displayDistance = distanceToTarget > 1000 
       ? `${(distanceToTarget / 1000).toFixed(1)} km` 
       : `${Math.round(distanceToTarget)} m`;
@@ -369,18 +385,21 @@ const LiveNavigationScreen = () => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
-      {/* ── Background Map (OpenStreetMap OSM Layer via Leaflet WebView) ─── */}
+      {/* ── Background Map (MapLibre vector map, same style as the web dashboard) ─── */}
       <View style={StyleSheet.absoluteFill}>
-        <OsmMapView
-          ref={mapRef}
+        <NavMap
           pickup={pickupMarker}
           destination={dropoffMarker}
           driverPosition={
             position && isValidCoordinate(position.lat, position.lng)
-              ? { latitude: position.lat, longitude: position.lng }
+              ? { latitude: position.lat, longitude: position.lng, heading: position.heading }
               : null
           }
           routeCoordinates={routeCoords}
+          follow={follow}
+          tilt={tilt}
+          night={night}
+          onFollowChange={setFollow}
         />
       </View>
 
@@ -425,7 +444,7 @@ const LiveNavigationScreen = () => {
       </View>
 
       {/* ── Floating Controls on Map (ETA Pill + Recenter Button) ────────── */}
-      {(displayDistance || displayEta) && (
+      {Boolean(displayDistance || displayEta) && (
         <View style={[styles.floatingEtaContainer, { top: Math.max(insets.top + 8, 16) + 124 }]}>
           <View style={styles.floatingEtaPill}>
             <View style={[styles.etaPulseDot, { backgroundColor: position ? '#10B981' : '#F59E0B' }]} />
@@ -438,18 +457,62 @@ const LiveNavigationScreen = () => {
             {displayEta ? (
               <Text style={styles.floatingEtaText}>{displayEta} {language === 'ur' ? 'باقی' : 'remaining'}</Text>
             ) : null}
+            {displayArrival ? (
+              <>
+                <Text style={styles.floatingEtaDivider}>•</Text>
+                <Text style={styles.floatingArrivalText}>{language === 'ur' ? `آمد ${displayArrival}` : `Arrive ${displayArrival}`}</Text>
+              </>
+            ) : null}
           </View>
         </View>
       )}
 
-      {/* Floating Recenter Map Button */}
-      <TouchableOpacity
-        style={[styles.floatingRecenterBtn, { bottom: Math.max(insets.bottom + 16, 24) + 225 }]}
-        activeOpacity={0.85}
-        onPress={recenterMap}
-      >
-        <Navigation size={18} color="#FA634E" strokeWidth={2.4} />
-      </TouchableOpacity>
+      {/* Map controls: 3D/2D, follow truck / whole route, day/night */}
+      <View style={[styles.mapControls, { bottom: Math.max(insets.bottom + 16, 24) + 225 }]}>
+        <TouchableOpacity
+          style={[styles.mapControlBtn, styles.sosBtn]}
+          activeOpacity={0.85}
+          accessibilityLabel="Emergency SOS"
+          onPress={() => router.push('/trip/emergency')}
+        >
+          <Text style={styles.sosText}>SOS</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.mapControlBtn}
+          activeOpacity={0.85}
+          accessibilityLabel={tilt ? 'Switch to 2D map' : 'Switch to 3D map'}
+          onPress={() => { setTilt((v) => !v); setFollow(true); }}
+        >
+          <Text style={styles.mapControlText}>{tilt ? '2D' : '3D'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.mapControlBtn}
+          activeOpacity={0.85}
+          accessibilityLabel={follow ? 'Show whole route' : 'Follow my truck'}
+          onPress={() => setFollow((v) => !v)}
+        >
+          {follow ? (
+            <Maximize size={19} color="#3E3C3D" strokeWidth={2.2} />
+          ) : (
+            <Navigation size={19} color="#2563EB" strokeWidth={2.4} />
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.mapControlBtn}
+          activeOpacity={0.85}
+          accessibilityLabel={night ? 'Switch to day map' : 'Switch to night map'}
+          onPress={() => setNight((v) => !v)}
+        >
+          {night ? <Sun size={19} color="#3E3C3D" strokeWidth={2.2} /> : <Moon size={19} color="#3E3C3D" strokeWidth={2.2} />}
+        </TouchableOpacity>
+      </View>
+
+      {position?.speedKph != null ? (
+        <View style={[styles.speedChip, { bottom: Math.max(insets.bottom + 16, 24) + 225 }]}>
+          <Text style={styles.speedValue}>{position.speedKph}</Text>
+          <Text style={styles.speedUnit}>km/h</Text>
+        </View>
+      ) : null}
 
 
       {/* Bottom Sheet Container */}
@@ -491,19 +554,7 @@ const LiveNavigationScreen = () => {
                     <Trash2 size={11} color="#FFFFFF" strokeWidth={2.2} />
                   </TouchableOpacity>
                 </View>
-              ) : (
-                <TouchableOpacity
-                  style={styles.addArrivalPhotoBtn}
-                  activeOpacity={0.8}
-                  onPress={handleAddPhoto}
-                >
-                  <View style={styles.addPhotoIconCircle}>
-                    <Camera size={18} color="#FA634E" strokeWidth={2.2} />
-                  </View>
-                  <Text style={styles.addPhotoBtnText}>{t('action_add_image', 'Add Image')}</Text>
-                  <Text style={styles.requiredBadge}>{t('badge_required', 'Required')}</Text>
-                </TouchableOpacity>
-              )}
+              ) : null}
             </View>
 
             {!hasValidActiveCoords && (
@@ -519,18 +570,22 @@ const LiveNavigationScreen = () => {
           <TouchableOpacity
             style={[
               styles.primaryArrivedBtn,
-              { backgroundColor: !arrivalPhoto ? '#94A3B8' : (isHeadingToPickup ? '#FA634E' : '#10B981') },
+              { backgroundColor: isHeadingToPickup ? '#FA634E' : '#10B981' },
               arriving && { opacity: 0.6 }
             ]}
             activeOpacity={0.88}
-            onPress={goToStop}
+            onPress={() => goToStop()}
             disabled={arriving}
           >
             <Text style={styles.primaryArrivedBtnText}>
               {arriving
                 ? t('msg_updating_state', 'Updating State…')
+                : !arrivalPhoto && evidence.screenshot
+                ? t('action_arrived_screenshot', "I'VE ARRIVED — ADD SCREENSHOT")
                 : !arrivalPhoto
-                ? t('action_add_image_first', 'ADD IMAGE TO CONFIRM ARRIVAL')
+                ? (isHeadingToPickup
+                  ? t('action_arrived_pickup_photo', "I'VE ARRIVED — TAKE PHOTO")
+                  : t('action_arrived_delivery_photo', "I'VE ARRIVED — TAKE PHOTO"))
                 : isHeadingToPickup
                 ? t('action_arrived_pickup', "I'VE ARRIVED AT PICKUP")
                 : t('action_arrived_delivery', "I'VE ARRIVED AT DELIVERY")}
@@ -676,12 +731,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  floatingRecenterBtn: {
+  floatingArrivalText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#4ADE80',
+  },
+  mapControls: {
     position: 'absolute',
     right: 16,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    gap: 10,
+    zIndex: 45,
+  },
+  mapControlBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -692,7 +756,50 @@ const styles = StyleSheet.create({
     elevation: 6,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+  },
+  sosBtn: {
+    backgroundColor: '#DC2626',
+    borderColor: '#DC2626',
+  },
+  sosText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  mapControlText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#3E3C3D',
+  },
+  speedChip: {
+    position: 'absolute',
+    left: 16,
+    minWidth: 58,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     zIndex: 45,
+  },
+  speedValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1E293B',
+    lineHeight: 22,
+  },
+  speedUnit: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
   },
 
   topOverlay: {

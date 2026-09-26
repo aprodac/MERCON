@@ -528,7 +528,7 @@ export default function LocationListPage() {
                 className={cn(
                   'px-3 py-1 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5',
                   viewMode === 'list'
-                    ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-2xs'
+                    ? 'bg-charcoal dark:bg-slate-100 text-white dark:text-slate-900 shadow-2xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900',
                 )}
               >
@@ -540,7 +540,7 @@ export default function LocationListPage() {
                 className={cn(
                   'px-3 py-1 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5',
                   viewMode === 'map'
-                    ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-2xs'
+                    ? 'bg-charcoal dark:bg-slate-100 text-white dark:text-slate-900 shadow-2xs'
                     : 'text-slate-600 dark:text-slate-400 hover:text-slate-900',
                 )}
               >

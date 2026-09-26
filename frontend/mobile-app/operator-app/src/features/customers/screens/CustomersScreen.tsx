@@ -57,10 +57,10 @@ export default function CustomersScreen() {
     [router],
   );
 
-  // No customer-details screen exists yet — customer-edit is the real screen
-  // that shows the full record, so "View Details" opens that rather than a
-  // dead route.
-  const openDetails = openEdit;
+  const openDetails = useCallback(
+    (customer: CustomerListItem) => router.push({ pathname: '/customer-details', params: { id: customer.id } }),
+    [router],
+  );
 
   const openCreate = useCallback(
     () => router.push('/customer-edit'),

@@ -244,7 +244,7 @@ function RealVehicleDocumentPreviewMiddleBox({
           </div>
 
           {/* 3. REAL SCANNED DOCUMENT IMAGE / PDF PREVIEW BOX */}
-          <div className="flex-1 min-h-[180px] bg-slate-950 rounded-xl border border-slate-800 p-2 flex items-center justify-center relative overflow-hidden group">
+          <div className="flex-1 min-h-[180px] bg-charcoal-strong rounded-xl border border-slate-800 p-2 flex items-center justify-center relative overflow-hidden group">
             {resolvedUrl ? (
               isImage ? (
                 <div className="relative w-full h-full flex items-center justify-center overflow-auto">
@@ -261,7 +261,7 @@ function RealVehicleDocumentPreviewMiddleBox({
                     href={resolvedUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="absolute top-2 right-2 px-2.5 py-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-900 text-white text-[11px] font-bold flex items-center gap-1.5 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                    className="absolute top-2 right-2 px-2.5 py-1.5 rounded-lg bg-charcoal/90 hover:bg-charcoal-strong text-white text-[11px] font-bold flex items-center gap-1.5 backdrop-blur-md opacity-0 group-hover:opacity-100 transition-opacity z-20"
                   >
                     <Eye className="w-3.5 h-3.5" />
                     <span>Full Screen Scan</span>
@@ -332,21 +332,21 @@ function RealVehicleDocumentPreviewMiddleBox({
               <div className="absolute bottom-2 right-2 flex items-center gap-1 z-20">
                 <button
                   onClick={() => setDocZoom(prev => Math.min(prev + 0.25, 2.5))}
-                  className="p-1 rounded-md bg-slate-900/80 hover:bg-slate-900 text-white shadow-xs cursor-pointer"
+                  className="p-1 rounded-md bg-charcoal/80 hover:bg-charcoal-strong text-white shadow-xs cursor-pointer"
                   title="Zoom In"
                 >
                   <ZoomIn className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => setDocZoom(prev => Math.max(prev - 0.25, 0.5))}
-                  className="p-1 rounded-md bg-slate-900/80 hover:bg-slate-900 text-white shadow-xs cursor-pointer"
+                  className="p-1 rounded-md bg-charcoal/80 hover:bg-charcoal-strong text-white shadow-xs cursor-pointer"
                   title="Zoom Out"
                 >
                   <ZoomOut className="w-3.5 h-3.5" />
                 </button>
                 <button
                   onClick={() => setDocRotation(prev => (prev + 90) % 360)}
-                  className="p-1 rounded-md bg-slate-900/80 hover:bg-slate-900 text-white shadow-xs cursor-pointer"
+                  className="p-1 rounded-md bg-charcoal/80 hover:bg-charcoal-strong text-white shadow-xs cursor-pointer"
                   title="Rotate"
                 >
                   <RotateCw className="w-3.5 h-3.5" />
@@ -1204,7 +1204,7 @@ export default function CargoLoadingView() {
         <div className="flex items-center gap-3">
           <Button 
             onClick={() => navigate(`/vehicles/${vehicle?.id || id}/edit`)}
-            className="font-bold bg-[#3E3C3D] hover:bg-slate-900 text-white gap-2 h-10 text-xs sm:text-sm shadow-xs rounded-xl px-5 transition-colors cursor-pointer"
+            className="font-bold bg-[#3E3C3D] hover:bg-charcoal-strong text-white gap-2 h-10 text-xs sm:text-sm shadow-xs rounded-xl px-5 transition-colors cursor-pointer"
           >
             <Edit2 className="w-4 h-4" />
             Edit
@@ -1626,7 +1626,7 @@ export default function CargoLoadingView() {
                           className="w-5 h-5 rounded-md object-contain border border-slate-200 dark:border-slate-700 bg-white p-0.5 shrink-0 shadow-2xs"
                         />
                       ) : (
-                        <div className="w-5 h-5 rounded-md bg-slate-900 text-white font-mono font-black text-[8.5px] flex items-center justify-center border border-slate-800 shadow-2xs shrink-0">
+                        <div className="w-5 h-5 rounded-md bg-charcoal text-white font-mono font-black text-[8.5px] flex items-center justify-center border border-slate-800 shadow-2xs shrink-0">
                           {previewTripDisplay.customerName.slice(0, 2).toUpperCase()}
                         </div>
                       )}

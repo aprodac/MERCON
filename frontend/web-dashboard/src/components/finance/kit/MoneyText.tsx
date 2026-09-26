@@ -22,16 +22,16 @@ export function MoneyText({
   const formatted = formatMoney(value, { signed });
 
   const toneClasses: Record<'default' | 'positive' | 'negative' | 'muted', string> = {
-    default: 'text-[#111111] dark:text-slate-100',
-    positive: 'text-[#15803D] dark:text-emerald-400',
-    negative: 'text-[#C2410C] dark:text-orange-400',
-    muted: 'text-[#6E6E80] dark:text-slate-400',
+    default: 'text-foreground',
+    positive: 'text-emerald-600 dark:text-emerald-400',
+    negative: 'text-rose-600 dark:text-rose-400',
+    muted: 'text-muted-foreground',
   };
 
   const sizeClasses: Record<'sm' | 'md' | 'lg' | 'hero', string> = {
     sm: 'text-xs',
     md: 'text-[13px]',
-    lg: 'text-[15px] font-bold',
+    lg: 'text-[15px] font-semibold',
     hero: 'text-[28px] lg:text-[30px] font-semibold tracking-[-0.02em]',
   };
 
@@ -45,7 +45,7 @@ export function MoneyText({
       )}
     >
       {currency && (
-        <span className="text-[0.75em] font-sans font-medium text-[#6E6E80] dark:text-slate-400 mr-1 select-none">
+        <span className="text-[0.75em] font-sans font-medium text-muted-foreground mr-1 select-none">
           {currency}
         </span>
       )}

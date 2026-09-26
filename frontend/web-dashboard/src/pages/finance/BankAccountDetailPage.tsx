@@ -34,6 +34,7 @@ import {
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Chip } from '@/components/ui/chip';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -158,7 +159,7 @@ export default function BankAccountDetailPage() {
   const txColumns: Column<BankTransactionRow>[] = [
     {
       header: 'Date',
-      accessor: (row) => <span className="font-medium text-slate-800 dark:text-slate-200 text-xs">{formatDate(row.date)}</span>,
+      accessor: (row) => <span className="font-medium text-foreground text-xs">{formatDate(row.date)}</span>,
     },
     {
       header: 'JE Ref',
@@ -179,7 +180,7 @@ export default function BankAccountDetailPage() {
     {
       header: 'Description / Memo',
       accessor: (row) => (
-        <span className="text-xs text-slate-700 dark:text-slate-300 truncate max-w-[240px] block">
+        <span className="text-xs text-foreground truncate max-w-[240px] block">
           {row.description || row.journal_entry.memo || '—'}
         </span>
       ),
@@ -209,7 +210,7 @@ export default function BankAccountDetailPage() {
     {
       header: 'Running Balance',
       accessor: (row) => (
-        <span className="fin-num font-extrabold text-xs text-slate-900 dark:text-slate-100">
+        <span className="fin-num font-extrabold text-xs text-foreground">
           {formatMoney(row.running_balance)}
         </span>
       ),
@@ -229,7 +230,7 @@ export default function BankAccountDetailPage() {
             </UiTooltip>
           </TooltipProvider>
         ) : (
-          <span className="text-slate-300 dark:text-slate-700 text-xs">—</span>
+          <span className="text-slate-300 dark:text-foreground text-xs">—</span>
         ),
     },
   ];
@@ -238,8 +239,8 @@ export default function BankAccountDetailPage() {
     return (
       <DashboardLayout active="finance" title="Bank Account Details">
         <div className="p-6 max-w-[1400px] mx-auto space-y-4">
-          <div className="h-44 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-2xl" />
-          <div className="h-64 bg-slate-200 dark:bg-slate-800 animate-pulse rounded-2xl" />
+          <div className="h-44 bg-slate-200 animate-pulse rounded-xl" />
+          <div className="h-64 bg-slate-200 animate-pulse rounded-xl" />
         </div>
       </DashboardLayout>
     );
@@ -249,9 +250,9 @@ export default function BankAccountDetailPage() {
     return (
       <DashboardLayout active="finance" title="Bank Account Details">
         <div className="p-8 max-w-[1400px] mx-auto">
-          <div className="bg-white dark:bg-slate-900 rounded-[20px] border border-slate-200 dark:border-slate-800 p-8 text-center space-y-4">
-            <h2 className="text-xl font-extrabold text-slate-900 dark:text-slate-100">Bank Account Not Found</h2>
-            <p className="text-xs text-slate-500">The requested bank or cash account does not exist or was deleted.</p>
+          <div className="bg-card rounded-[20px] border border-border dark:border-border p-8 text-center space-y-4">
+            <h2 className="text-xl font-extrabold text-foreground">Bank Account Not Found</h2>
+            <p className="text-xs text-muted-foreground">The requested bank or cash account does not exist or was deleted.</p>
             <Button onClick={() => navigate('/finance/bank-accounts')} className="bg-[#FA634E] text-white text-xs font-bold">
               Return to Bank Accounts
             </Button>
@@ -269,15 +270,15 @@ export default function BankAccountDetailPage() {
     <DashboardLayout active="finance" title={`${account.is_cash ? 'Cash Drawer' : account.bank_name || 'Bank Account'} Details`}>
       <div className="p-4 space-y-4 max-w-[1400px] mx-auto animate-fade-in">
         {/* ROW 1: Toolbar Navigation Row */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 dark:border-slate-800 pb-2.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-border dark:border-border pb-2.5">
           {/* Segmented Category Tabs */}
-          <div className="flex items-center gap-1 bg-[#F4F4F5] dark:bg-slate-900 p-1 rounded-xl">
+          <div className="flex items-center gap-1 bg-[#F4F4F5] p-1 rounded-xl">
             <button
               onClick={() => { setActiveTab('transactions'); setPage(1); }}
               className={`px-3.5 py-1.5 rounded-[9px] text-xs font-bold transition-all ${
                 activeTab === 'transactions'
-                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  ? 'bg-card  text-foreground  shadow-xs'
+                  : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground dark:hover:text-slate-200'
               }`}
             >
               Transactions
@@ -286,8 +287,8 @@ export default function BankAccountDetailPage() {
               onClick={() => setActiveTab('reconciliations')}
               className={`px-3.5 py-1.5 rounded-[9px] text-xs font-bold transition-all ${
                 activeTab === 'reconciliations'
-                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  ? 'bg-card  text-foreground  shadow-xs'
+                  : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground dark:hover:text-slate-200'
               }`}
             >
               Reconciliations
@@ -296,8 +297,8 @@ export default function BankAccountDetailPage() {
               onClick={() => setActiveTab('details')}
               className={`px-3.5 py-1.5 rounded-[9px] text-xs font-bold transition-all ${
                 activeTab === 'details'
-                  ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+                  ? 'bg-card  text-foreground  shadow-xs'
+                  : 'text-muted-foreground dark:text-muted-foreground hover:text-foreground dark:hover:text-slate-200'
               }`}
             >
               Details
@@ -310,9 +311,9 @@ export default function BankAccountDetailPage() {
               variant="outline"
               size="sm"
               onClick={() => setIsTransferSheetOpen(true)}
-              className="h-8 text-xs font-semibold gap-1.5 border-slate-200 dark:border-slate-700 rounded-xl"
+              className="h-8 text-xs font-semibold gap-1.5 border-border dark:border-border rounded-xl"
             >
-              <ArrowRightLeft className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
+              <ArrowRightLeft className="w-3.5 h-3.5 text-muted-foreground dark:text-muted-foreground" />
               <span>Transfer</span>
             </Button>
 
@@ -320,7 +321,7 @@ export default function BankAccountDetailPage() {
               variant="outline"
               size="sm"
               onClick={() => navigate(`/finance/reconciliation?bankAccountId=${account.id}`)}
-              className="h-8 text-xs font-semibold gap-1.5 border-slate-200 dark:border-slate-700 rounded-xl"
+              className="h-8 text-xs font-semibold gap-1.5 border-border dark:border-border rounded-xl"
             >
               <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
               <span>Reconcile</span>
@@ -330,16 +331,16 @@ export default function BankAccountDetailPage() {
               variant="outline"
               size="sm"
               onClick={() => navigate(`/finance/bank-accounts/${account.id}/edit`)}
-              className="h-8 text-xs font-semibold gap-1.5 border-slate-200 dark:border-slate-700 rounded-xl"
+              className="h-8 text-xs font-semibold gap-1.5 border-border dark:border-border rounded-xl"
             >
-              <Pencil className="w-3.5 h-3.5 text-slate-500" />
+              <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
               <span>Edit</span>
             </Button>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-slate-200 dark:border-slate-700 rounded-xl">
-                  <Power className="w-3.5 h-3.5 text-slate-500" />
+                <Button variant="outline" size="sm" className="h-8 w-8 p-0 border-border dark:border-border rounded-xl">
+                  <Power className="w-3.5 h-3.5 text-muted-foreground" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
@@ -356,11 +357,11 @@ export default function BankAccountDetailPage() {
         </div>
 
         {/* IDENTITY HERO (Charcoal Surface Card #3E3C3D) */}
-        <div className="rounded-[20px] bg-[#3E3C3D] text-white p-6 shadow-md border border-slate-800 space-y-4">
+        <div className="rounded-[20px] bg-card text-foreground border border-border text-white p-6 shadow-md space-y-4">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             {/* Left Bank Metadata */}
             <div className="flex items-start gap-4">
-              <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-base ${tint.bg} ${tint.text} border ${tint.border} shadow-sm shrink-0`}>
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center font-black text-base ${tint.bg} ${tint.text} border ${tint.border} shadow-xs shrink-0`}>
                 {account.is_cash ? <Wallet className="w-6 h-6" /> : getBankInitials(account.bank_name)}
               </div>
               <div className="space-y-1">
@@ -369,11 +370,11 @@ export default function BankAccountDetailPage() {
                     {account.is_cash ? 'Cash Drawer' : account.bank_name || 'Bank Account'}
                   </h1>
                   {!account.isActive && (
-                    <Badge variant="outline" className="bg-slate-800 text-slate-400 border-slate-700 text-[10px] font-bold">
+                    <Chip tone="neutral" size="sm">
                       Inactive
-                    </Badge>
+                    </Chip>
                   )}
-                  <Badge variant="outline" className="bg-white/10 text-white border-white/20 text-[10px] font-mono">
+                  <Badge variant="outline" className="bg-card/10 text-white border-white/20 text-[10px] font-mono">
                     {account.currency || 'SAR'}
                   </Badge>
                 </div>
@@ -385,7 +386,7 @@ export default function BankAccountDetailPage() {
                   {!account.is_cash && account.iban && (
                     <div className="flex items-center gap-1">
                       <span>IBAN: <span className="font-bold text-white">{formatIban(account.iban)}</span></span>
-                      <button onClick={handleCopyIban} className="p-1 hover:text-white text-slate-400 transition-colors" title="Copy IBAN">
+                      <button onClick={handleCopyIban} className="p-1 hover:text-white text-muted-foreground transition-colors" title="Copy IBAN">
                         <Copy className="w-3 h-3" />
                       </button>
                     </div>
@@ -401,7 +402,7 @@ export default function BankAccountDetailPage() {
                       to={`/finance/general-ledger?account_id=${account.accountId}`}
                       className="inline-flex items-center gap-1.5 text-xs text-[#FA634E] hover:underline font-semibold"
                     >
-                      <span className="font-mono bg-white/10 px-1.5 py-0.5 rounded text-[11px]">GL {account.account.account_code}</span>
+                      <span className="font-mono bg-card/10 px-1.5 py-0.5 rounded text-[11px]">GL {account.account.account_code}</span>
                       <span>{account.account.name} →</span>
                     </Link>
                   </div>
@@ -410,8 +411,8 @@ export default function BankAccountDetailPage() {
             </div>
 
             {/* Right Book Balance Hero */}
-            <div className="md:text-right space-y-1 bg-white/5 md:bg-transparent p-4 md:p-0 rounded-xl border border-white/10 md:border-none">
-              <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block">Book Balance as of Today</span>
+            <div className="md:text-right space-y-1 bg-card/5 md:bg-transparent p-4 md:p-0 rounded-xl border border-white/10 md:border-none">
+              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground block">Book Balance as of Today</span>
               <div className="text-3xl font-extrabold fin-num text-white tracking-tight">
                 {formatMoney(bookBal, { currency: account.currency || 'SAR' })}
               </div>
@@ -425,25 +426,25 @@ export default function BankAccountDetailPage() {
         </div>
 
         {/* BALANCE CHART CARD */}
-        <div className="rounded-[20px] bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs space-y-3">
+        <div className="rounded-[20px] bg-card border border-border dark:border-border p-5 shadow-xs space-y-3">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
                 Balance & Cash Flow History
               </h3>
             </div>
             <ToggleGroup
               value={[String(chartDays)]}
               onValueChange={(v) => v && v[0] && setChartDays(Number(v[0]))}
-              className="bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/70 dark:border-slate-700 h-7"
+              className="bg-muted p-0.5 rounded-xl border border-border dark:border-border h-7"
             >
-              <ToggleGroupItem value="30" className="h-6 px-2 text-[11px] font-bold rounded-lg data-[state=on]:bg-white dark:data-[state=on]:bg-slate-900 shadow-2xs">
+              <ToggleGroupItem value="30" className="h-6 px-2 text-[11px] font-bold rounded-lg data-[state=on]:bg-card dark:data-[state=on]:bg-card text-foreground border border-border shadow-xs">
                 30 Days
               </ToggleGroupItem>
-              <ToggleGroupItem value="90" className="h-6 px-2 text-[11px] font-bold rounded-lg data-[state=on]:bg-white dark:data-[state=on]:bg-slate-900 shadow-2xs">
+              <ToggleGroupItem value="90" className="h-6 px-2 text-[11px] font-bold rounded-lg data-[state=on]:bg-card dark:data-[state=on]:bg-card text-foreground border border-border shadow-xs">
                 90 Days
               </ToggleGroupItem>
-              <ToggleGroupItem value="365" className="h-6 px-2 text-[11px] font-bold rounded-lg data-[state=on]:bg-white dark:data-[state=on]:bg-slate-900 shadow-2xs">
+              <ToggleGroupItem value="365" className="h-6 px-2 text-[11px] font-bold rounded-lg data-[state=on]:bg-card dark:data-[state=on]:bg-card text-foreground border border-border shadow-xs">
                 1 Year
               </ToggleGroupItem>
             </ToggleGroup>
@@ -451,7 +452,7 @@ export default function BankAccountDetailPage() {
 
           <div className="h-56 w-full pt-2">
             {balanceHistory.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-xs text-slate-400">No history available</div>
+              <div className="h-full flex items-center justify-center text-xs text-muted-foreground">No history available</div>
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={balanceHistory} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
@@ -480,13 +481,13 @@ export default function BankAccountDetailPage() {
                       if (active && payload && payload.length) {
                         const data = payload[0].payload;
                         return (
-                          <div className="bg-slate-900 text-white p-3 rounded-xl text-xs space-y-1 shadow-lg border border-slate-700">
+                          <div className="bg-card text-foreground border border-border text-white p-3 rounded-xl text-xs space-y-1 shadow-lg">
                             <p className="font-bold text-slate-300">{formatDate(label)}</p>
                             <p className="fin-num font-extrabold text-sm text-[#FA634E]">
                               Balance: {formatMoney(data.balance)}
                             </p>
                             {(data.money_in > 0 || data.money_out > 0) && (
-                              <div className="flex gap-3 text-[11px] pt-1 border-t border-slate-800">
+                              <div className="flex gap-3 text-[11px] pt-1 border-t border-border">
                                 <span className="text-emerald-400 font-semibold">↓ +{formatMoney(data.money_in)}</span>
                                 <span className="text-orange-400 font-semibold">↑ −{formatMoney(data.money_out)}</span>
                               </div>
@@ -506,18 +507,18 @@ export default function BankAccountDetailPage() {
 
         {/* MAIN CONTENT AREA BY TAB */}
         {activeTab === 'transactions' && (
-          <div className="bg-white dark:bg-slate-900 rounded-[20px] border border-slate-200/80 dark:border-slate-800 p-4 shadow-xs space-y-3">
+          <div className="bg-card rounded-[20px] border border-border dark:border-border p-4 shadow-xs space-y-3">
             {/* Header Toolbar Filters */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-2.5 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/60 dark:border-slate-700">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-2.5 bg-muted rounded-xl border border-border dark:border-border">
               <div className="flex items-center gap-2 flex-wrap flex-1">
                 {/* Search */}
                 <div className="relative w-full sm:w-56">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     placeholder="Search ref, memo..."
                     value={search}
                     onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                    className="pl-9 h-8 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+                    className="pl-9 h-8 text-xs bg-card border-border dark:border-border"
                   />
                 </div>
 
@@ -527,20 +528,20 @@ export default function BankAccountDetailPage() {
                     type="date"
                     value={dateFrom}
                     onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-                    className="h-8 text-xs w-32 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+                    className="h-8 text-xs w-32 bg-card border-border dark:border-border"
                   />
-                  <span className="text-xs text-slate-400">to</span>
+                  <span className="text-xs text-muted-foreground">to</span>
                   <Input
                     type="date"
                     value={dateTo}
                     onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-                    className="h-8 text-xs w-32 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+                    className="h-8 text-xs w-32 bg-card border-border dark:border-border"
                   />
                 </div>
 
                 {/* Direction Select */}
                 <Select value={direction} onValueChange={(v: any) => { setDirection(v); setPage(1); }}>
-                  <SelectTrigger className="w-[125px] h-8 text-xs font-semibold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700">
+                  <SelectTrigger className="w-[125px] h-8 text-xs font-semibold bg-card border-border dark:border-border">
                     <SelectValue placeholder="Direction" />
                   </SelectTrigger>
                   <SelectContent>
@@ -552,7 +553,7 @@ export default function BankAccountDetailPage() {
 
                 {/* Reconciled Select */}
                 <Select value={reconciledFilter} onValueChange={(v: any) => { setReconciledFilter(v); setPage(1); }}>
-                  <SelectTrigger className="w-[145px] h-8 text-xs font-semibold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700">
+                  <SelectTrigger className="w-[145px] h-8 text-xs font-semibold bg-card border-border dark:border-border">
                     <SelectValue placeholder="Reconciled" />
                   </SelectTrigger>
                   <SelectContent>
@@ -575,7 +576,7 @@ export default function BankAccountDetailPage() {
                     setSearch('');
                     setPage(1);
                   }}
-                  className="h-8 text-xs text-slate-500 hover:text-slate-800"
+                  className="h-8 text-xs text-muted-foreground hover:text-foreground"
                 >
                   Clear filters
                 </Button>
@@ -584,9 +585,9 @@ export default function BankAccountDetailPage() {
 
             {/* Opening Balance Banner Row */}
             {txData && (
-              <div className="flex items-center justify-between p-3 bg-slate-100/70 dark:bg-slate-800/40 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300">
+              <div className="flex items-center justify-between p-3 bg-muted/70 rounded-xl text-xs font-bold text-foreground">
                 <span>Range Opening Balance {dateFrom ? `(as of ${formatDate(dateFrom)})` : '(account start)'}</span>
-                <span className="fin-num text-sm text-slate-900 dark:text-slate-100">{formatMoney(txData.opening_balance)}</span>
+                <span className="fin-num text-sm text-foreground">{formatMoney(txData.opening_balance)}</span>
               </div>
             )}
 
@@ -600,15 +601,15 @@ export default function BankAccountDetailPage() {
 
             {/* Closing Balance Banner Row */}
             {txData && (
-              <div className="flex items-center justify-between p-3 bg-slate-100/70 dark:bg-slate-800/40 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300">
+              <div className="flex items-center justify-between p-3 bg-muted/70 rounded-xl text-xs font-bold text-foreground">
                 <span>Range Closing Balance</span>
-                <span className="fin-num text-sm text-slate-900 dark:text-slate-100">{formatMoney(txData.closing_balance)}</span>
+                <span className="fin-num text-sm text-foreground">{formatMoney(txData.closing_balance)}</span>
               </div>
             )}
 
             {/* Pagination Controls */}
             {pagination && pagination.total_pages > 1 && (
-              <div className="flex items-center justify-between pt-2 text-xs text-slate-500">
+              <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
                 <span>
                   Showing {((page - 1) * pagination.per_page) + 1}–{Math.min(page * pagination.per_page, pagination.total)} of {pagination.total} transactions
                 </span>
@@ -618,11 +619,11 @@ export default function BankAccountDetailPage() {
                     size="sm"
                     disabled={page <= 1}
                     onClick={() => setPage((p) => p - 1)}
-                    className="h-7 w-7 p-0 border-slate-200 dark:border-slate-700"
+                    className="h-7 w-7 p-0 border-border dark:border-border"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </Button>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 px-2">
+                  <span className="font-bold text-foreground px-2">
                     Page {page} of {pagination.total_pages}
                   </span>
                   <Button
@@ -630,7 +631,7 @@ export default function BankAccountDetailPage() {
                     size="sm"
                     disabled={page >= pagination.total_pages}
                     onClick={() => setPage((p) => p + 1)}
-                    className="h-7 w-7 p-0 border-slate-200 dark:border-slate-700"
+                    className="h-7 w-7 p-0 border-border dark:border-border"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </Button>
@@ -641,11 +642,11 @@ export default function BankAccountDetailPage() {
         )}
 
         {activeTab === 'reconciliations' && (
-          <div className="bg-white dark:bg-slate-900 rounded-[20px] border border-slate-200/80 dark:border-slate-800 p-6 shadow-xs space-y-4">
+          <div className="bg-card rounded-[20px] border border-border dark:border-border p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Reconciliation Statements History</h3>
-                <p className="text-xs text-slate-500">Completed bank statement reconciliations for this account.</p>
+                <h3 className="text-sm font-bold text-foreground">Reconciliation Statements History</h3>
+                <p className="text-xs text-muted-foreground">Completed bank statement reconciliations for this account.</p>
               </div>
               <Button
                 onClick={() => navigate(`/finance/reconciliation?bankAccountId=${account.id}`)}
@@ -657,33 +658,33 @@ export default function BankAccountDetailPage() {
             </div>
 
             {(!account.reconciliations || account.reconciliations.length === 0) ? (
-              <div className="p-8 text-center bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-                <Clock className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                <p className="text-xs font-bold text-slate-700 dark:text-slate-300">No statement reconciliations recorded yet</p>
-                <p className="text-[11.5px] text-slate-500 mt-1">Reconcile this account against bank statements to audit posted entries.</p>
+              <div className="p-8 text-center bg-muted rounded-xl border border-dashed border-border dark:border-border">
+                <Clock className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                <p className="text-xs font-bold text-foreground">No statement reconciliations recorded yet</p>
+                <p className="text-[11.5px] text-muted-foreground mt-1">Reconcile this account against bank statements to audit posted entries.</p>
               </div>
             ) : (
               <div className="space-y-2">
                 {account.reconciliations.map((rec) => (
-                  <div key={rec.id} className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/60 dark:border-slate-700">
+                  <div key={rec.id} className="flex items-center justify-between p-4 bg-muted rounded-xl border border-border dark:border-border">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xs">
+                      <div className="w-8 h-8 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 flex items-center justify-center font-bold text-xs">
                         <CheckCircle2 className="w-4 h-4" />
                       </div>
                       <div>
-                        <div className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                        <div className="text-xs font-bold text-foreground">
                           Statement Date: {formatDate(rec.statement_date)}
                         </div>
-                        <div className="text-[11px] text-slate-500">
-                          Status: <span className="font-semibold text-slate-700 dark:text-slate-300">{rec.status}</span>
+                        <div className="text-[11px] text-muted-foreground">
+                          Status: <span className="font-semibold text-foreground">{rec.status}</span>
                         </div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="fin-num text-sm font-extrabold text-slate-900 dark:text-slate-100">
+                      <div className="fin-num text-sm font-extrabold text-foreground">
                         {formatMoney(Number(rec.statement_closing_balance))}
                       </div>
-                      <span className="text-[10.5px] text-slate-400">Closing Balance</span>
+                      <span className="text-[10.5px] text-muted-foreground">Closing Balance</span>
                     </div>
                   </div>
                 ))}
@@ -693,13 +694,13 @@ export default function BankAccountDetailPage() {
         )}
 
         {activeTab === 'details' && (
-          <div className="bg-white dark:bg-slate-900 rounded-[20px] border border-slate-200/80 dark:border-slate-800 p-6 shadow-xs space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Account Specifications</h3>
+          <div className="bg-card rounded-[20px] border border-border dark:border-border p-6 shadow-xs space-y-6">
+            <div className="flex items-center justify-between border-b border-border dark:border-border pb-3">
+              <h3 className="text-sm font-bold text-foreground">Account Specifications</h3>
               <Button
                 size="sm"
                 onClick={() => navigate(`/finance/bank-accounts/${account.id}/edit`)}
-                className="h-8 text-xs font-bold gap-1.5 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-xl"
+                className="h-8 text-xs font-bold gap-1.5 bg-card text-foreground border border-border dark:bg-muted text-white dark:text-foreground rounded-xl"
               >
                 <Pencil className="w-3.5 h-3.5" />
                 <span>Edit Account</span>
@@ -708,48 +709,48 @@ export default function BankAccountDetailPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 text-xs">
               <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Account Type</span>
-                <p className="font-bold text-slate-800 dark:text-slate-200">{account.is_cash ? 'Physical Cash Account' : 'Bank Account'}</p>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Account Type</span>
+                <p className="font-bold text-foreground">{account.is_cash ? 'Physical Cash Account' : 'Bank Account'}</p>
               </div>
 
               <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Bank Name</span>
-                <p className="font-bold text-slate-800 dark:text-slate-200">{account.is_cash ? '—' : account.bank_name || '—'}</p>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Bank Name</span>
+                <p className="font-bold text-foreground">{account.is_cash ? '—' : account.bank_name || '—'}</p>
               </div>
 
               <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Account Number</span>
-                <p className="font-mono font-bold text-slate-800 dark:text-slate-200">{account.is_cash ? '—' : account.account_number || '—'}</p>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Account Number</span>
+                <p className="font-mono font-bold text-foreground">{account.is_cash ? '—' : account.account_number || '—'}</p>
               </div>
 
               <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">IBAN</span>
-                <p className="font-mono font-bold text-slate-800 dark:text-slate-200">{account.is_cash ? '—' : (account.iban ? formatIban(account.iban) : '—')}</p>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">IBAN</span>
+                <p className="font-mono font-bold text-foreground">{account.is_cash ? '—' : (account.iban ? formatIban(account.iban) : '—')}</p>
               </div>
 
               <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">SWIFT / BIC Code</span>
-                <p className="font-mono font-bold text-slate-800 dark:text-slate-200">{account.is_cash ? '—' : account.swift_code || '—'}</p>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">SWIFT / BIC Code</span>
+                <p className="font-mono font-bold text-foreground">{account.is_cash ? '—' : account.swift_code || '—'}</p>
               </div>
 
               <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Base Currency</span>
-                <p className="font-bold text-slate-800 dark:text-slate-200">{account.currency || 'SAR'}</p>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Base Currency</span>
+                <p className="font-bold text-foreground">{account.currency || 'SAR'}</p>
               </div>
 
               <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Opening Balance</span>
-                <p className="fin-num font-bold text-slate-800 dark:text-slate-200">{formatMoney(openingBal)}</p>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Opening Balance</span>
+                <p className="fin-num font-bold text-foreground">{formatMoney(openingBal)}</p>
               </div>
 
               <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Opening Date</span>
-                <p className="font-bold text-slate-800 dark:text-slate-200">{account.opening_date ? formatDate(account.opening_date) : '—'}</p>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Opening Date</span>
+                <p className="font-bold text-foreground">{account.opening_date ? formatDate(account.opening_date) : '—'}</p>
               </div>
 
               <div className="space-y-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Linked GL Account</span>
-                <p className="font-bold text-slate-800 dark:text-slate-200">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Linked GL Account</span>
+                <p className="font-bold text-foreground">
                   {account.account ? `${account.account.account_code} · ${account.account.name}` : '—'}
                 </p>
               </div>
@@ -766,12 +767,12 @@ export default function BankAccountDetailPage() {
 
         {/* Deactivate/Activate Dialog */}
         <AlertDialog open={isDeactivateDialogOpen} onOpenChange={setIsDeactivateDialogOpen}>
-          <AlertDialogContent className="rounded-2xl">
+          <AlertDialogContent className="rounded-xl">
             <AlertDialogHeader>
               <AlertDialogTitle className="text-lg font-bold">
                 {account.isActive ? 'Deactivate' : 'Activate'} Account?
               </AlertDialogTitle>
-              <AlertDialogDescription className="text-xs text-slate-500">
+              <AlertDialogDescription className="text-xs text-muted-foreground">
                 {account.isActive
                   ? 'Deactivating this account stops new transfers or payments from being posted to it.'
                   : 'Activating this account makes it available for transfers and payments.'}

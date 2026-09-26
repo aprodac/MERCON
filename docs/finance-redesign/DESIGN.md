@@ -172,6 +172,55 @@ Rules:
 
 ---
 
+## 2.7 Chip system
+
+The finance module uses a token-driven, component-based **Chip system** (`Chip` component in `@/components/ui/chip`, `StatPill` in `@/components/ui/stat-pill`, and semantic registries in `@/lib/finance/chips.tsx`). Hardcoded Tailwind palette color classes in pages are strictly forbidden.
+
+### Tones & CSS Variables
+Each tone defines three CSS variables in `:root` and `.dark` (`--chip-{tone}-bg`, `--chip-{tone}-fg`, `--chip-{tone}-border`, and `--chip-{tone}-dot`), registered in `@theme inline`:
+- `neutral`: shadcn tokens (`--muted`, `--muted-foreground`, `--border`)
+- `positive`: emerald (`var(--color-emerald-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `negative`: rose (`var(--color-rose-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `warning`: amber (`var(--color-amber-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `info`: sky (`var(--color-sky-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `violet`: purple (`var(--color-purple-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `teal`: teal (`var(--color-teal-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `orange`: orange (`var(--color-orange-50)`, `700`, `200` in light; `950/30`, `400`, `800` in dark)
+- `brand`: MERCON Coral (`#FA634E`) using `color-mix` for background and border.
+
+Text contrast ratios meet or exceed 4.5:1 across all tones in both light and dark modes.
+
+### Variants & Sizes
+- **`variant="soft"`** (default): Bordered soft chip (`bg-chip-{tone}-bg text-chip-{tone}-fg border-chip-{tone}-border`).
+- **`variant="solid"`**: Filled chip with tone foreground color + white text (used for count badges / >90 day ageing).
+- **`variant="outline"`**: Border + tone text with transparent background.
+- **`size="sm"`**: `h-5 px-2 text-[11px]`
+- **`size="md"`** (default): `h-6 px-2.5 text-xs`
+
+### Semantic Registries & Helpers
+Pages MUST use semantic wrappers instead of direct tone styling:
+- `FIN_STATUS` → `<StatusChip kind status />`
+- `SOURCE_TYPES` → `<SourceChip type link? />`
+- `PARTY_TYPES` → `<PartyChip type name />`
+- `DIRECTIONS` → `<DirectionChip direction />`
+- `AGEING_BUCKETS` → `<BucketChip bucket />`
+- `ENTRY_SIDE` → `<AccountChip side="debit"|"credit" name code? truncate />`
+- `RECON_STATE` → `<ReconChip lastDate />`
+- Summary Pill → `<StatPill count? label value? tone? />`
+
+### How to Add a New Tone or Registry Entry
+1. **New Tone**:
+   - Add variables `--chip-{tone}-bg`, `--chip-{tone}-fg`, `--chip-{tone}-border`, `--chip-{tone}-dot` in `:root` and `.dark` in `src/index.css`.
+   - Register inline colors in `@theme inline` in `src/index.css`.
+   - Add `{tone}` to `ChipTone` type in `components/ui/chip.tsx` and CVA variant maps.
+2. **New Registry Entry**:
+   - Add the key to the appropriate registry in `src/lib/finance/chips.tsx` with `{ label, tone, icon? }`.
+
+### Automated Guardrail Test
+The Vitest test `src/lib/finance/__tests__/no-hardcoded-chip-colors.test.ts` scans all `.tsx` files in `pages/finance` and `components/finance` to enforce zero hardcoded Tailwind color palette classes (`bg-emerald-50`, `text-amber-700`, etc.).
+
+---
+
 ## 4. Page patterns
 
 ### 4.0 Same building blocks, different pages
@@ -561,3 +610,74 @@ Not part of the UI revamp. Several need schema changes (production impact, see `
 | Multi-currency | Odoo | Yes |
 | Finance overview dashboard (`/finance`) | Zoho "Dashboard" | No |
 | Post bank opening balances as a journal entry (Dr bank / Cr Opening Balance Equity), so the Balance Sheet includes them | Zoho, Odoo | No (needs an equity account + backend) |
+
+---
+
+## 2.6 Visual refinement v2 (Overrides Section 2.1 - 2.3 for /finance pages)
+
+The visual rules below make `/finance` pages feel like a modern, clean financial system (shadcn / Stripe / Linear):
+
+- **R1 One gray family — shadcn tokens only**:
+  - `text-slate-900/800/700`, `#111111`, `text-[#3E3C3D]` (as text) → `text-foreground`
+  - `text-slate-600/500/400`, `#6E6E80`, `#757583`, `#9898A4` → `text-muted-foreground`
+  - `bg-slate-50/100`, `#F7F8FA`, `#FAFAFB`, `#F4F4F5`, `#F1F2F5` → `bg-muted` (or `bg-muted/50`, `bg-muted/30`)
+  - `border-slate-*`, `border-black/[0.0x]`, `border-gray-*` → `border-border` (inner dividers: `border-border/60`)
+  - `bg-white` (surfaces) → `bg-card` / `bg-background`
+  - `focus rings` → `ring-ring`
+  - App canvas and sidebar remain app-wide decisions. Brand coral `#FA634E` stays ONLY for active sidebar item, primary CREATE actions on list pages, and focus/selection accents. Charcoal `#3E3C3D` is not used for text or pills inside finance pages.
+
+- **R2 Colour is an accent, never a fill**:
+  - Allowed colour: (a) status/semantic badges via R5; (b) result and variance figures — losses/negatives `text-rose-600` (dark: `text-rose-400`), favourable variance `text-emerald-600` (dark: `text-emerald-400`); (c) 6px category dots; (d) charts.
+  - NOT allowed: tinted full-width section bands, coloured section titles, coloured link text, coloured ordinary amounts, left-border accent bars, decorative bars carrying no data.
+
+- **R3 Figures in sans UI font with tabular figures — no monospace**:
+  - Update `.fin-num`: `font-family: 'Geist Variable', 'Inter Variable', system-ui, sans-serif; font-variant-numeric: tabular-nums;`
+  - Remove Geist Mono / JetBrains Mono / `font-mono` from finance pages. Weights: 400 lines, 500 subtotals, 600 totals.
+  - Account codes: plain `text-muted-foreground` tabular text in a fixed `w-12` column — no grey code boxes.
+
+- **R4 One container level**:
+  - A page section = ONE card: `rounded-xl border bg-card shadow-xs`. Inside: rows separated by `divide-y divide-border/60`; section header rows at most `bg-muted/40`. No bordered boxes inside cards, no nested rounded backgrounds.
+
+- **R5 Badge recipe (StatusPill, source chips, period/basis/currency chips, delta chips)**:
+  - `inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ring-1 ring-inset`
+  - tone → `bg-{hue}-500/10 text-{hue}-700 ring-{hue}-600/20` (dark: `bg-{hue}-400/10 text-{hue}-300 ring-{hue}-400/20`)
+  - neutral → `bg-muted text-muted-foreground ring-border`
+  - Hues: positive `emerald` · negative `rose` · warning `amber` · info `sky` · `violet`/`teal` only where assigned.
+
+- **R6 Controls**:
+  - Segmented view switches use shadcn `Tabs` styling (`TabsList bg-muted p-[3px] rounded-lg; active trigger bg-background text-foreground shadow-sm`) — no black or charcoal active pills.
+  - Toolbar buttons: shadcn `Button variant="outline" size="sm"`. Report pages (P&L, Balance Sheet, GL, Trial Balance, Cash Flow, Ageing) have NO filled buttons (Export is outline). List pages keep ONE coral filled create button. Selects/date pickers use shadcn triggers at size `sm` (`h-8`).
+
+- **R7 Two radii only**:
+  - `rounded-md` (controls, badges, inputs, menu items) and `rounded-xl` (cards, sheets). Shadows: `shadow-xs` on cards, `shadow-md` only on popovers/menus/sheets, none elsewhere.
+
+- **R8 Type scale**:
+  - `11px uppercase tracking-wide text-muted-foreground font-medium` for column labels only; 13–14px body; 15px card titles (`font-semibold`); no other uppercase text. Spacing on a 4px grid; list/statement rows `h-9`; card padding `p-4` (`p-5` max).
+
+---
+
+## 2.7 E-Wheels Table System & Viewport-Fit Layout (Prompt 17)
+
+- **Viewport-fit Pages (`fixedViewport={true}`)**:
+  - Main app shell container stays `overflow-hidden` on desktop. Page root is `flex min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4`.
+  - Only the table container inside `<ScrollTableCard>` scrolls (`.table-container overflow-auto flex-1`).
+  - Mobile fallback (`<768px`): pages switch to normal scrolling (`max-md:overflow-y-auto max-md:h-auto`).
+
+- **ScrollTableCard Component**:
+  - `Card`: `flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card shadow-xs`.
+  - Card toolbar: `px-3 py-2 border-b border-border flex flex-wrap items-center justify-between gap-2 shrink-0`.
+  - Pinned Card footer: `border-t border-border bg-background px-4 py-2.5 text-xs flex items-center justify-between shrink-0`.
+
+- **Bordered Chips Recipe**:
+  - `border-{hue}-200 bg-{hue}-50 text-{hue}-700 dark:border-{hue}-800 dark:bg-{hue}-950/30 dark:text-{hue}-400 rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap`.
+  - Neutral chips: `border-border bg-muted text-muted-foreground`.
+  - Non-wrapping (`whitespace-nowrap`), `max-w-[180px]` with truncation + tooltip for long names.
+
+- **Table Typography Rules**:
+  - `thead` headers: sticky top-0 z-10 bg-background shadow-xs border-b; sentence case `text-xs font-semibold text-foreground`.
+  - Body cells: `px-3 py-1.5 text-xs align-middle`.
+  - Amounts: Monospaced tabular figures (`font-mono tabular-nums` / `.fin-num-mono font-semibold text-xs text-foreground`). Statement pages (P&L, Balance Sheet) retain sans tabular figures (`.fin-num`).
+  - Date cells: `text-muted-foreground text-xs font-medium whitespace-nowrap`.
+  - Text cells: `text-xs text-foreground`, truncate with `max-w` + title attribute.
+
+

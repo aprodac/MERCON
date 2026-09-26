@@ -46,14 +46,14 @@ export function ActivityTimeline({
   if (isLoading) {
     return (
       <div className="space-y-3 py-2">
-        <div className="h-4 bg-slate-100 rounded animate-pulse w-3/4" />
-        <div className="h-4 bg-slate-100 rounded animate-pulse w-1/2" />
+        <div className="h-4 bg-muted rounded animate-pulse w-3/4" />
+        <div className="h-4 bg-muted rounded animate-pulse w-1/2" />
       </div>
     );
   }
   if (items.length === 0) {
     return (
-      <div className="text-center py-6 text-xs text-[#6E6E80] dark:text-slate-400">
+      <div className="text-center py-6 text-xs text-muted-foreground">
         {emptyMessage}
       </div>
     );
@@ -63,16 +63,16 @@ export function ActivityTimeline({
     'default' | 'brand' | 'positive' | 'negative',
     string
   > = {
-    default: 'bg-[#6E6E80] dark:bg-slate-400',
-    brand: 'bg-[#FA634E]',
-    positive: 'bg-[#15803D] dark:bg-emerald-400',
-    negative: 'bg-[#C2410C] dark:bg-orange-400',
+    default: 'bg-muted-foreground',
+    brand: 'bg-primary',
+    positive: 'bg-emerald-600 dark:bg-emerald-400',
+    negative: 'bg-rose-600 dark:bg-rose-400',
   };
 
   return (
     <div className={cn('relative pl-4 space-y-4 select-none', className)}>
       {/* Connecting Line */}
-      <div className="absolute left-[7px] top-2 bottom-2 w-[2px] bg-black/[0.06] dark:bg-slate-800" />
+      <div className="absolute left-[7px] top-2 bottom-2 w-[2px] bg-border" />
 
       {items.map((item, idx) => {
         const tone = item.tone || 'default';
@@ -81,16 +81,16 @@ export function ActivityTimeline({
             {/* Dot */}
             <span
               className={cn(
-                'absolute -left-[13px] top-1.5 w-2.5 h-2.5 rounded-full ring-4 ring-white dark:ring-slate-900 z-10 shrink-0',
+                'absolute -left-[13px] top-1.5 w-2.5 h-2.5 rounded-full ring-4 ring-background z-10 shrink-0',
                 toneDotClasses[tone]
               )}
             />
             <div className="min-w-0">
-              <div className="text-[13px] font-semibold text-[#111111] dark:text-slate-100 leading-tight">
+              <div className="text-xs font-semibold text-foreground leading-tight">
                 {item.title}
               </div>
               {item.meta && (
-                <div className="text-[11.5px] text-[#6E6E80] dark:text-slate-400 mt-0.5">
+                <div className="text-xs text-muted-foreground mt-0.5">
                   {item.meta}
                 </div>
               )}
@@ -101,3 +101,4 @@ export function ActivityTimeline({
     </div>
   );
 }
+
