@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { ArrowRight, MapPin, X, Wallet, Truck, Building2, Tag, Calendar } from 'lucide-react-native';
+import { ArrowRight, MapPin, X, Wallet, Truck, Building2, Tag, Calendar, Pencil } from 'lucide-react-native';
 import { Colors, Radius, Shadows, Spacing } from '@mercon/mobile-shared/theme/tokens';
 import { QuotationValidityBadge } from './QuotationValidityBadge';
 import { formatCurrency, formatValidityRange } from '../services/quotationsService';
@@ -33,12 +33,24 @@ export function QuotationDetailModal({ visible, quotation, onClose }: QuotationD
               </Text>
             </View>
 
-            <TouchableOpacity
-              onPress={onClose}
-              className="h-8 w-8 items-center justify-center rounded-full bg-gray-100"
-            >
-              <X size={16} color={Colors.charcoal} strokeWidth={2.2} />
-            </TouchableOpacity>
+            <View className="flex-row items-center gap-2">
+              <TouchableOpacity
+                onPress={() => {
+                  // TODO: Implement Edit Navigation
+                  console.log('Edit Quotation:', quotation.id);
+                }}
+                className="h-8 w-8 items-center justify-center rounded-full bg-gray-100"
+              >
+                <Pencil size={14} color={Colors.charcoal} strokeWidth={2.2} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={onClose}
+                className="h-8 w-8 items-center justify-center rounded-full bg-gray-100"
+              >
+                <X size={16} color={Colors.charcoal} strokeWidth={2.2} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <ScrollView contentContainerStyle={{ paddingVertical: 16, gap: 16 }} showsVerticalScrollIndicator={false}>
