@@ -18,6 +18,7 @@
     "test:routing": "node -r ts-node/register --test src/services/routing/routeProvider.test.ts",
     "test:trip-financials": "node -r ts-node/register --test src/services/tripFinancials.test.ts",
     "test:trip-board": "node -r ts-node/register --test src/services/tripBoard.test.ts",
+    "test:invoice-query": "node -r ts-node/register --test src/tests/invoiceQuery.test.ts",
     "test:fleet-live-map": "node -r ts-node/register --test src/tests/fleetLiveMap.test.ts",
     "test:operator-inbox": "node -r ts-node/register --test src/tests/operatorInbox.test.ts",
     "test:trip-overview": "node -r ts-node/register --test src/tests/tripOverview.test.ts",

@@ -105,16 +105,18 @@ export const SOURCE_TYPES_REGISTRY: Record<string, RegistryItem> = {
 export function SourceChip({
   type,
   link,
+  size,
   className,
 }: {
   type?: string | null;
   link?: string;
+  size?: 'sm' | 'md';
   className?: string;
 }) {
   if (!type) return null;
   const config = SOURCE_TYPES_REGISTRY[type] || { label: type, tone: 'neutral' as ChipTone };
   const chip = (
-    <Chip tone={config.tone} icon={config.icon} className={className} asChild={Boolean(link)}>
+    <Chip tone={config.tone} icon={config.icon} size={size} className={className} asChild={Boolean(link)}>
       {link ? <Link to={link}>{config.label}</Link> : config.label}
     </Chip>
   );

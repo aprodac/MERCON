@@ -141,6 +141,38 @@ async function analyzeBatch(itemIds: string[]) {
   await Promise.all(workers);
 }
 
+/**
+ * Where each uploaded file sat inside the folder the user picked
+ * ("Truck 1234/Isthimara.pdf"). Browsers strip directories from multipart
+ * filenames, so the client sends them alongside as a JSON array in file
+ * order. Keeping the folder path matters: folder names are often the only
+ * thing that says which truck or driver a scan belongs to, and the matcher
+ * reads the filename as a signal.
+ */
+function readRelativePaths(body: any, count: number): Array<string | null> {
+  let paths: unknown = body?.relativePaths;
+  if (typeof paths === 'string') {
+    try { paths = JSON.parse(paths); } catch { paths = null; }
+  }
+  if (!Array.isArray(paths)) return Array(count).fill(null);
+  return Array.from({ length: count }, (_, i) => {
+    const p = paths as unknown[];
+    return typeof p[i] === 'string' && (p[i] as string).trim() ? (p[i] as string).trim().slice(0, 500) : null;
+  });
+}
+
+function stagedItemsFor(files: Express.Multer.File[], body: any, ownerType?: string | null, ownerId?: string | null) {
+  const paths = readRelativePaths(body, files.length);
+  return files.map((f, i) => ({
+    original_filename: paths[i] || f.originalname,
+    file_url: `/uploads/${f.filename}`,
+    mime_type: f.mimetype,
+    status: ImportItemStatus.Pending,
+    proposed_owner_type: ownerType || null,
+    proposed_owner_id: ownerId || null,
+  }));
+}
+
 /* ─── POST /documents/imports — stage uploaded files ───────────────────────── */
 export const createImport = async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -155,16 +187,7 @@ export const createImport = async (req: AuthenticatedRequest, res: Response) => 
     const created = await prisma.documentImport.create({
       data: {
         created_by: req.user?.id,
-        items: {
-          create: files.map((f) => ({
-            original_filename: f.originalname,
-            file_url: `/uploads/${f.filename}`,
-            mime_type: f.mimetype,
-            status: ImportItemStatus.Pending,
-            proposed_owner_type: ownerType || null,
-            proposed_owner_id: ownerId || null,
-          })),
-        },
+        items: { create: stagedItemsFor(files, req.body, ownerType, ownerId) },
       },
       include: { items: { select: { id: true } } },
     });
@@ -173,6 +196,40 @@ export const createImport = async (req: AuthenticatedRequest, res: Response) => 
   } catch (error: any) {
     console.error('createImport failed:', error);
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to stage the upload' } });
+  }
+};
+
+/* ─── POST /documents/imports/:id/files — add more files to a staged batch ─── */
+// Large folders are sent in several smaller requests so one slow or failed
+// request doesn't lose the whole folder, and so the batch isn't capped by a
+// single request's file-count limit.
+export const appendImportFiles = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const files = (req.files as Express.Multer.File[]) || [];
+    if (files.length === 0) {
+      return res.status(400).json({ success: false, error: { code: 'NO_FILES', message: 'No files were uploaded' } });
+    }
+
+    const imp = await prisma.documentImport.findFirst({
+      where: { id: req.params.id as string, deletedAt: null, isActive: true },
+      include: { items: { select: { proposed_owner_type: true, proposed_owner_id: true }, take: 1, orderBy: { createdAt: 'asc' } } },
+    });
+    if (!imp) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Import not found' } });
+    }
+
+    const ownerType = (req.body.ownerType as string | undefined) ?? imp.items[0]?.proposed_owner_type;
+    const ownerId = (req.body.ownerId as string | undefined) ?? imp.items[0]?.proposed_owner_id;
+
+    await prisma.documentImportItem.createMany({
+      data: stagedItemsFor(files, req.body, ownerType, ownerId).map((item) => ({ ...item, importId: imp.id })),
+    });
+    const itemCount = await prisma.documentImportItem.count({ where: { importId: imp.id } });
+
+    res.status(201).json({ success: true, data: { id: imp.id, itemCount, added: files.length } });
+  } catch (error: any) {
+    console.error('appendImportFiles failed:', error);
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to add files to the import' } });
   }
 };
 

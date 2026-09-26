@@ -6,7 +6,7 @@ import {
 } from '../controllers/documentController';
 import { importLocalTrucksDocs, importUploadedTrucksDocsFolder, uploadRawFileChunk } from '../controllers/batchImportController';
 import { extractAllDocumentsOcr, extractSingleDocumentOcr, syncLocalDocumentRecords, autoAssignUnlinkedDocs, previewAutoAssignUnlinkedDocs, confirmAutoAssignDocs } from '../controllers/bulkOcrController';
-import { createImport, getImport, updateImportItem, confirmImport, listImports, discardImport, triggerImportAnalysis } from '../controllers/documentImportController';
+import { createImport, appendImportFiles, getImport, updateImportItem, confirmImport, listImports, discardImport, triggerImportAnalysis } from '../controllers/documentImportController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 import { upload } from '../middlewares/upload';
@@ -34,6 +34,7 @@ router.post('/bulk-move', bulkMoveDocumentsToFolder);
 // Document row exists. Registered before '/:id' so 'imports' isn't captured
 // as an id param.
 router.post('/imports', upload.array('files', 200), createImport);
+router.post('/imports/:id/files', upload.array('files', 200), appendImportFiles);
 router.get('/imports', listImports);
 router.get('/imports/:id', getImport);
 router.post('/imports/:id/analyze', triggerImportAnalysis);
@@ -52,8 +53,8 @@ router.get('/', getDocuments);
 // Get a single document
 router.get('/:id', getDocumentById);
 
-// Upload a new document — 'file' is the multipart field name
-router.post('/', upload.single('file'), uploadDocument);
+// Upload a new document — 'file' (single) or 'files' (several pages of one document)
+router.post('/', upload.fields([{ name: 'file', maxCount: 1 }, { name: 'files', maxCount: 50 }]), uploadDocument);
 
 // Update document status (Verified, Rejected, PendingReview, Expired)
 router.patch('/:id/status', updateDocumentStatus);
