@@ -188,8 +188,11 @@ export interface StopGroup {
 
 /** Stops at the same place (two Riyadh drops) share one pin — "4·5" — instead of hiding each other. */
 export function groupStops(u: LiveUnit): StopGroup[] {
-  const trip = u.trip;
-  if (!trip) return [];
+  return u.trip ? groupStopsOf(u.trip) : [];
+}
+
+/** Same as groupStops, for a trip without a live unit (planned, finished, cancelled). */
+export function groupStopsOf(trip: { stops: LiveStop[]; next_stop_index: number | null }): StopGroup[] {
   const groups = new Map<string, StopGroup>();
   trip.stops.forEach((s, i) => {
     if (s.lat == null || s.lng == null) return;
