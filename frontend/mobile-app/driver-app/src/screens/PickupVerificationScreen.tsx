@@ -143,7 +143,7 @@ const PickupVerificationScreen = () => {
     // an already-departed stop from a leg that's no longer relevant,
     // producing the exact "back to a completed pickup" loop this guards.
     if (ws === 'COMPLETED') {
-      router.replace('/trip/completed');
+      router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
       return;
     }
     if (pickupStop.actual_departure) {

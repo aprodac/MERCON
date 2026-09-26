@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 110,
+    paddingBottom: 140, // clears the floating bottom nav
     gap: 24,
     paddingTop: 8,
   },

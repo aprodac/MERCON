@@ -137,7 +137,7 @@ const DeliveryVerificationScreen = () => {
     if (loading || !trip || !dropoffStop || showReturnModal) return;
     if (dropoffStop.actual_departure) {
       if (isReturnDelivery || !isRound) {
-        router.replace('/trip/completed');
+        router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
       } else {
         router.replace({ pathname: '/trip/pickup', params: { showReturnPrompt: '1' } } as any);
       }
@@ -370,12 +370,12 @@ const DeliveryVerificationScreen = () => {
         } catch (statusErr) {
           console.warn('Status update warning:', statusErr);
         }
-        router.replace('/trip/completed');
+        router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
       }
     } catch (err) {
       console.error('Delivery completion error:', err);
       triggerGPayHapticsAndSound();
-      router.replace('/trip/completed');
+      router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
     } finally {
       setSubmitting(false);
     }

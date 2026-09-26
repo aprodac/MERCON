@@ -6,9 +6,9 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import { OsmMapView, type OsmMapViewRef } from '../components/common/OsmMapView';
+import { NavMap } from '../components/common/NavMap';
 import { isValidCoordinate } from '../utils/geo';
-import { ArrowLeft, MapPin, Truck, Siren, Clock, Banknote, ArrowUpRight, Navigation, Camera, Trash2, CheckCircle2 } from 'lucide-react-native';
+import { ArrowLeft, MapPin, Truck, Siren, Clock, Banknote, ArrowUpRight, Navigation, Camera, Trash2, CheckCircle2, Maximize, Moon, Sun } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { DelayReportModal } from '../components/DelayReportModal';
 import { TripProgressStepper } from '../components/TripProgressStepper';
@@ -35,12 +35,24 @@ function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) 
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/** Clock time the driver arrives if `secondsLeft` more seconds of driving remain ("14:05"). */
+function arrivalClock(secondsLeft: number): string {
+  return new Date(Date.now() + secondsLeft * 1000).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
 const LiveNavigationScreen = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t, language } = useLanguage();
   const { trip, loading, refetch } = useCurrentTrip();
-  const [position, setPosition] = useState<{ lat: number; lng: number } | null>(null);
+  const [position, setPosition] = useState<{ lat: number; lng: number; heading?: number | null; speedKph?: number | null } | null>(null);
+  // Map camera: follow the truck in a tilted driver view by default; night map after dark.
+  const [follow, setFollow] = useState(true);
+  const [tilt, setTilt] = useState(true);
+  const [night, setNight] = useState(() => {
+    const h = new Date().getHours();
+    return h >= 18 || h < 6;
+  });
   const [distanceToTarget, setDistanceToTarget] = useState<number | null>(null);
   const [routeCoords, setRouteCoords] = useState<{ latitude: number; longitude: number }[] | null>(null);
   const [baseDuration, setBaseDuration] = useState<number | null>(null);
@@ -52,7 +64,6 @@ const LiveNavigationScreen = () => {
   const [arrivalPhoto, setArrivalPhoto] = useState<CapturedPhoto | null>(null);
   const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const hasArrivedRef = useRef(false);
-  const mapRef = useRef<OsmMapViewRef>(null);
 
   useEffect(() => {
     if (trip?.driver_workflow === 'EXTERNAL_APP') {
@@ -266,7 +277,17 @@ const LiveNavigationScreen = () => {
             }
           }
 
-          setPosition({ lat, lng });
+          // Heading is only meaningful while moving; keep the last one when stopped
+          // so the map does not spin at traffic lights.
+          const speedMs = loc.coords.speed != null && loc.coords.speed >= 0 ? loc.coords.speed : null;
+          const moving = speedMs != null && speedMs > 1.5;
+          const heading = moving && loc.coords.heading != null && loc.coords.heading >= 0 ? loc.coords.heading : undefined;
+          setPosition((prev) => ({
+            lat,
+            lng,
+            heading: heading ?? prev?.heading ?? null,
+            speedKph: speedMs != null ? Math.round(speedMs * 3.6) : null,
+          }));
 
           // Send throttled location update to backend every 15 seconds
           const now = Date.now();
@@ -324,9 +345,6 @@ const LiveNavigationScreen = () => {
     fetchRoute();
   }, [trip, position, activeStop]);
 
-  const recenterMap = useCallback(() => {
-    mapRef.current?.recenter();
-  }, []);
 
   if (loading && !trip) {
     return (
@@ -342,6 +360,7 @@ const LiveNavigationScreen = () => {
 
   let displayEta = '';
   let displayDistance = '';
+  let displayArrival = '';
   if (baseDuration && baseDistance && distanceToTarget != null) {
     const ratio = Math.min(1, distanceToTarget / baseDistance);
     let secondsLeft = baseDuration * ratio;
@@ -352,6 +371,8 @@ const LiveNavigationScreen = () => {
       ? `${Math.floor(mins / 60)}h ${mins % 60}m` 
       : `${mins} min`;
       
+    displayArrival = arrivalClock(secondsLeft);
+
     displayDistance = distanceToTarget > 1000 
       ? `${(distanceToTarget / 1000).toFixed(1)} km` 
       : `${Math.round(distanceToTarget)} m`;
@@ -369,18 +390,21 @@ const LiveNavigationScreen = () => {
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
       
-      {/* ── Background Map (OpenStreetMap OSM Layer via Leaflet WebView) ─── */}
+      {/* ── Background Map (MapLibre vector map, same style as the web dashboard) ─── */}
       <View style={StyleSheet.absoluteFill}>
-        <OsmMapView
-          ref={mapRef}
+        <NavMap
           pickup={pickupMarker}
           destination={dropoffMarker}
           driverPosition={
             position && isValidCoordinate(position.lat, position.lng)
-              ? { latitude: position.lat, longitude: position.lng }
+              ? { latitude: position.lat, longitude: position.lng, heading: position.heading }
               : null
           }
           routeCoordinates={routeCoords}
+          follow={follow}
+          tilt={tilt}
+          night={night}
+          onFollowChange={setFollow}
         />
       </View>
 
@@ -425,7 +449,7 @@ const LiveNavigationScreen = () => {
       </View>
 
       {/* ── Floating Controls on Map (ETA Pill + Recenter Button) ────────── */}
-      {(displayDistance || displayEta) && (
+      {Boolean(displayDistance || displayEta) && (
         <View style={[styles.floatingEtaContainer, { top: Math.max(insets.top + 8, 16) + 124 }]}>
           <View style={styles.floatingEtaPill}>
             <View style={[styles.etaPulseDot, { backgroundColor: position ? '#10B981' : '#F59E0B' }]} />
@@ -438,18 +462,54 @@ const LiveNavigationScreen = () => {
             {displayEta ? (
               <Text style={styles.floatingEtaText}>{displayEta} {language === 'ur' ? 'باقی' : 'remaining'}</Text>
             ) : null}
+            {displayArrival ? (
+              <>
+                <Text style={styles.floatingEtaDivider}>•</Text>
+                <Text style={styles.floatingArrivalText}>{language === 'ur' ? `آمد ${displayArrival}` : `Arrive ${displayArrival}`}</Text>
+              </>
+            ) : null}
           </View>
         </View>
       )}
 
-      {/* Floating Recenter Map Button */}
-      <TouchableOpacity
-        style={[styles.floatingRecenterBtn, { bottom: Math.max(insets.bottom + 16, 24) + 225 }]}
-        activeOpacity={0.85}
-        onPress={recenterMap}
-      >
-        <Navigation size={18} color="#FA634E" strokeWidth={2.4} />
-      </TouchableOpacity>
+      {/* Map controls: 3D/2D, follow truck / whole route, day/night */}
+      <View style={[styles.mapControls, { bottom: Math.max(insets.bottom + 16, 24) + 225 }]}>
+        <TouchableOpacity
+          style={styles.mapControlBtn}
+          activeOpacity={0.85}
+          accessibilityLabel={tilt ? 'Switch to 2D map' : 'Switch to 3D map'}
+          onPress={() => { setTilt((v) => !v); setFollow(true); }}
+        >
+          <Text style={styles.mapControlText}>{tilt ? '2D' : '3D'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.mapControlBtn}
+          activeOpacity={0.85}
+          accessibilityLabel={follow ? 'Show whole route' : 'Follow my truck'}
+          onPress={() => setFollow((v) => !v)}
+        >
+          {follow ? (
+            <Maximize size={19} color="#3E3C3D" strokeWidth={2.2} />
+          ) : (
+            <Navigation size={19} color="#2563EB" strokeWidth={2.4} />
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.mapControlBtn}
+          activeOpacity={0.85}
+          accessibilityLabel={night ? 'Switch to day map' : 'Switch to night map'}
+          onPress={() => setNight((v) => !v)}
+        >
+          {night ? <Sun size={19} color="#3E3C3D" strokeWidth={2.2} /> : <Moon size={19} color="#3E3C3D" strokeWidth={2.2} />}
+        </TouchableOpacity>
+      </View>
+
+      {position?.speedKph != null ? (
+        <View style={[styles.speedChip, { bottom: Math.max(insets.bottom + 16, 24) + 225 }]}>
+          <Text style={styles.speedValue}>{position.speedKph}</Text>
+          <Text style={styles.speedUnit}>km/h</Text>
+        </View>
+      ) : null}
 
 
       {/* Bottom Sheet Container */}
@@ -676,12 +736,21 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  floatingRecenterBtn: {
+  floatingArrivalText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#4ADE80',
+  },
+  mapControls: {
     position: 'absolute',
     right: 16,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    gap: 10,
+    zIndex: 45,
+  },
+  mapControlBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
@@ -692,7 +761,40 @@ const styles = StyleSheet.create({
     elevation: 6,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+  },
+  mapControlText: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#3E3C3D',
+  },
+  speedChip: {
+    position: 'absolute',
+    left: 16,
+    minWidth: 58,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     zIndex: 45,
+  },
+  speedValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1E293B',
+    lineHeight: 22,
+  },
+  speedUnit: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#64748B',
   },
 
   topOverlay: {
