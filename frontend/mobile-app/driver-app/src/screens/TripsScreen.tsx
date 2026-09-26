@@ -527,7 +527,7 @@ const styles = StyleSheet.create({
   },
   listContainer: {
     paddingHorizontal: 20,
-    paddingBottom: 110,
+    paddingBottom: 140, // clears the floating bottom nav
     gap: 14,
   },
 

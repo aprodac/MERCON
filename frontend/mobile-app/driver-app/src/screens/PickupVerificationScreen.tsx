@@ -18,7 +18,9 @@ import { ReturnLoadingModal } from '../components/ReturnLoadingModal';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
 
-import { choosePhoto, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { takePhoto, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { showToast } from '../components/AppToast';
+import { isValidCoordinate } from '../utils/geo';
 import { API_URL, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { triggerGPayHapticsAndSound } from '../services/sound';
@@ -105,6 +107,10 @@ const PickupVerificationScreen = () => {
   // URIs already uploaded in this session — a retry after a failed upload
   // must not send them again.
   const uploadedUrisRef = useRef<Set<string>>(new Set());
+  // Uploads started right after each photo is taken, so "Loading complete"
+  // does not have to upload all three at the end.
+  const pendingUploadsRef = useRef<Map<string, Promise<boolean>>>(new Map());
+  const photosRef = useRef<CapturedPhoto[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const [showDelayModal, setShowDelayModal] = useState(false);
@@ -143,7 +149,7 @@ const PickupVerificationScreen = () => {
     // an already-departed stop from a leg that's no longer relevant,
     // producing the exact "back to a completed pickup" loop this guards.
     if (ws === 'COMPLETED') {
-      router.replace('/trip/completed');
+      router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
       return;
     }
     if (pickupStop.actual_departure) {
@@ -245,31 +251,66 @@ const PickupVerificationScreen = () => {
     loadDraft();
   }, [trip?.id, isReturnLoading, pickupStop?.id, trip?.documents]);
 
-  const addPhoto = async (slotIndex?: number) => {
-    try {
-      const photo = await choosePhoto();
-      if (photo) {
-        setPhotos((prev) => {
-          const next = [...prev];
-          if (slotIndex !== undefined && slotIndex < 3) {
-            next[slotIndex] = photo;
-          } else {
-            next.push(photo);
-          }
-          const valid = next.filter(Boolean).slice(0, 3);
-          if (trip?.id) {
-            const stopKey = pickupStop?.id ? `pickup_draft_${trip.id}_${pickupStop.id}` : null;
-            const draftKey = isReturnLoading ? `return_pickup_draft_photos_${trip.id}` : `pickup_draft_photos_${trip.id}`;
-            const completedKey = isReturnLoading ? `return_pickup_completed_photos_${trip.id}` : `pickup_completed_photos_${trip.id}`;
-            if (stopKey) SecureStore.setItemAsync(stopKey, JSON.stringify(valid));
-            SecureStore.setItemAsync(draftKey, JSON.stringify(valid));
-            SecureStore.setItemAsync(completedKey, JSON.stringify(valid));
-          }
-          return valid;
-        });
-      }
-    } catch (e) {
-      Alert.alert(t('err_camera_title', 'Camera'), getApiErrorMessage(e));
+  useEffect(() => { photosRef.current = photos; }, [photos]);
+
+  const savePhotoDrafts = (valid: CapturedPhoto[]) => {
+    if (!trip?.id) return;
+    const stopKey = pickupStop?.id ? `pickup_draft_${trip.id}_${pickupStop.id}` : null;
+    const draftKey = isReturnLoading ? `return_pickup_draft_photos_${trip.id}` : `pickup_draft_photos_${trip.id}`;
+    const completedKey = isReturnLoading ? `return_pickup_completed_photos_${trip.id}` : `pickup_completed_photos_${trip.id}`;
+    if (stopKey) SecureStore.setItemAsync(stopKey, JSON.stringify(valid));
+    SecureStore.setItemAsync(draftKey, JSON.stringify(valid));
+    SecureStore.setItemAsync(completedKey, JSON.stringify(valid));
+  };
+
+  /** Upload one photo (once); resolves true when it is on the server. */
+  const uploadPhotoNow = (p: CapturedPhoto): Promise<boolean> => {
+    if (!trip?.id || !p.uri) return Promise.resolve(false);
+    if (uploadedUrisRef.current.has(p.uri)) return Promise.resolve(true);
+    const pending = pendingUploadsRef.current.get(p.uri);
+    if (pending) return pending;
+    const job = tripService.uploadPhoto(
+      trip.id,
+      'cargo',
+      {
+        uri: p.uri,
+        location: p.location ? { latitude: p.location.latitude, longitude: p.location.longitude, timestamp: p.location.timestamp } : null,
+      },
+      isReturnLoading ? 1 : 0,
+      isReturnLoading ? 'return_loading' : 'pickup',
+      pickupStop?.id,
+    ).then(() => {
+      uploadedUrisRef.current.add(p.uri);
+      return true;
+    }).catch((err) => {
+      console.warn('Cargo photo upload warning:', err);
+      return false;
+    }).finally(() => {
+      pendingUploadsRef.current.delete(p.uri);
+    });
+    pendingUploadsRef.current.set(p.uri, job);
+    return job;
+  };
+
+  /**
+   * Tap an empty box: the camera opens straight away, and keeps going to the
+   * next box until all three are taken (cancel stops). Long-press: gallery.
+   */
+  const addPhoto = async (slotIndex?: number, source: 'camera' | 'gallery' = 'camera') => {
+    let slot = slotIndex;
+    for (;;) {
+      const photo = source === 'gallery' ? await pickFromGallery().catch(() => null) : await takePhoto();
+      if (!photo) return;
+      const next = [...photosRef.current];
+      if (slot !== undefined && slot < 3 && !next[slot]) next[slot] = photo;
+      else next.push(photo);
+      const valid = next.filter(Boolean).slice(0, 3);
+      photosRef.current = valid;
+      setPhotos(valid);
+      savePhotoDrafts(valid);
+      uploadPhotoNow(photo);
+      if (source === 'gallery' || valid.length >= 3) return;
+      slot = undefined;
     }
   };
 
@@ -332,33 +373,9 @@ const PickupVerificationScreen = () => {
           await SecureStore.setItemAsync('last_pickup_photos', JSON.stringify(photos));
         }
       }
-      // Upload photos via tripService.uploadPhoto
-      let failedUploads = 0;
-      for (const p of photos) {
-        if (p.uri && !uploadedUrisRef.current.has(p.uri)) {
-          try {
-            await tripService.uploadPhoto(
-              trip.id,
-              'cargo',
-              {
-                uri: p.uri,
-                location: p.location ? {
-                  latitude: p.location.latitude,
-                  longitude: p.location.longitude,
-                  timestamp: p.location.timestamp,
-                } : null,
-              },
-              isReturnLoading ? 1 : 0,
-              isReturnLoading ? 'return_loading' : 'pickup',
-              pickupStop?.id
-            );
-            uploadedUrisRef.current.add(p.uri);
-          } catch (photoErr) {
-            console.warn('Cargo photo upload warning:', photoErr);
-            failedUploads++;
-          }
-        }
-      }
+      // Most photos are already uploaded (started when taken); finish or retry the rest.
+      const results = await Promise.all(photos.filter((p) => p.uri).map((p) => uploadPhotoNow(p)));
+      const failedUploads = results.filter((ok) => !ok).length;
       // Don't advance the trip with evidence missing — the photos would be
       // lost for good once this screen is left.
       if (failedUploads > 0) {
@@ -384,7 +401,11 @@ const PickupVerificationScreen = () => {
         const updated = await tripService.updateStatus(trip.id, 'InTransit', nextWorkflowState);
         setTrip(updated);
       } catch (statusErr) {
-        console.warn('Status update warning:', statusErr);
+        // Don't pretend it worked: the trip would stay "loading" on the server
+        // while the driver drives off. Stay here so they can tap again.
+        console.warn('Status update failed:', statusErr);
+        showToast(`${t('err_status_not_saved', 'Could not save loading complete. Check your connection and tap again.')} (${getApiErrorMessage(statusErr)})`, 'error');
+        return;
       }
       triggerGPayHapticsAndSound();
 
@@ -403,27 +424,20 @@ const PickupVerificationScreen = () => {
       }
     } catch (err) {
       console.error('Pickup completion error:', err);
-      triggerGPayHapticsAndSound();
-      if (isReturnLoading) {
-        if (returnStops.length > 0) {
-          router.replace({ pathname: '/trip/stop', params: { legIndex: '1', stopIndex: '0' } } as any);
-        } else {
-          router.replace('/trip/navigate');
-        }
-      } else {
-        if (outboundStops.length > 0) {
-          router.replace({ pathname: '/trip/stop', params: { legIndex: '0', stopIndex: '0' } } as any);
-        } else {
-          router.replace('/trip/navigate');
-        }
-      }
+      showToast(getApiErrorMessage(err), 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
   const openNavigation = () => {
-    const address = stopAddress(pickupStop) || 'King Khalid International Airport, Riyadh';
+    // Real stop data only (a hard-coded city used to be the fallback, which
+    // sent drivers to the wrong place when a stop had no address).
+    const address = stopAddress(pickupStop) || stopLabel(pickupStop) || (pickupStop && isValidCoordinate(pickupStop.location_lat, pickupStop.location_lng) ? `${pickupStop.location_lat},${pickupStop.location_lng}` : null);
+    if (!address) {
+      showToast(t('err_no_stop_address', 'This stop has no address yet. Ask your operator.'), 'error');
+      return;
+    }
     const url = Platform.OS === 'ios'
       ? `maps://0,0?q=${encodeURIComponent(address)}`
       : `geo:0,0?q=${encodeURIComponent(address)}`;
@@ -432,8 +446,8 @@ const PickupVerificationScreen = () => {
     });
   };
 
-  const pickupLocationName = stopLabel(pickupStop) || 'King Khalid International Airport';
-  const pickupLocationAddr = stopAddress(pickupStop) || 'King Khalid International Airport, Riyadh governorate, Riyadh Region, Saudi Arabia';
+  const pickupLocationName = stopLabel(pickupStop) || 'Pickup';
+  const pickupLocationAddr = stopAddress(pickupStop) || '';
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
@@ -493,6 +507,7 @@ const PickupVerificationScreen = () => {
                 style={[styles.photoPreview, photos[i] ? styles.photoFilled : styles.photoEmpty]}
                 activeOpacity={0.8}
                 onPress={photos[i] ? () => setPreviewPhoto(photos[i]) : () => addPhoto(i)}
+                onLongPress={photos[i] ? undefined : () => addPhoto(i, 'gallery')}
               >
                 {photos[i] ? (
                   <>
