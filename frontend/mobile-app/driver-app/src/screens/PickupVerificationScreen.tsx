@@ -545,7 +545,7 @@ const PickupVerificationScreen = () => {
             ))}
           </View>
 
-          <UploadProgressBar items={uploads.itemsFor(photos)} accent="#2563EB" />
+          <UploadProgressBar items={uploads.itemsFor(photos)} total={need} accent="#2563EB" />
           {!hasAllPhotos ? (
             <TouchableOpacity style={styles.galleryLink} activeOpacity={0.7} onPress={() => addPhoto(otherSource)}>
               <Text style={styles.galleryLinkText}>

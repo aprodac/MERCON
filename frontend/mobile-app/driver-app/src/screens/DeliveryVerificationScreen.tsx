@@ -518,7 +518,7 @@ const DeliveryVerificationScreen = () => {
             ))}
           </View>
 
-          <UploadProgressBar items={uploads.itemsFor(photos)} accent="#16A34A" />
+          <UploadProgressBar items={uploads.itemsFor(photos)} total={need} accent="#16A34A" />
           {!hasAllPhotos ? (
             <TouchableOpacity style={styles.galleryLink} activeOpacity={0.7} onPress={() => addPhoto(otherSource)}>
               <Text style={styles.galleryLinkText}>

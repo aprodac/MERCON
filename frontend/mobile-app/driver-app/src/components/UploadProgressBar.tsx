@@ -1,5 +1,6 @@
 /**
  * Thin bar under the Loading / Delivery photo boxes: fills as photos 1–3
+ * (or the one screenshot on external-app trips)
  * upload ("Uploading photo 2 of 3 · 47%"), green with "All 3 photos uploaded"
  * when done, red when one failed (it is retried on the Complete button).
  */
@@ -34,7 +35,12 @@ export function UploadProgressBar({ items, total = 3, accent }: Props) {
   const pct = Math.round((items.reduce((a, i) => a + (i.done ? 1 : i.progress), 0) / total) * 100);
 
   let label: string;
-  if (allDone) label = ur ? `تمام ${total} تصاویر اپ لوڈ ہو گئیں` : `All ${total} photos uploaded`;
+  if (total === 1) {
+    // External-app trips: a single screenshot.
+    if (allDone) label = ur ? 'اپ لوڈ ہو گئی' : 'Uploaded';
+    else if (failedIdx >= 0) label = ur ? 'اپ لوڈ نہیں ہوئی — دوبارہ کوشش ہوگی' : "Didn't upload — will retry";
+    else label = ur ? 'اپ لوڈ ہو رہی ہے' : 'Uploading';
+  } else if (allDone) label = ur ? `تمام ${total} تصاویر اپ لوڈ ہو گئیں` : `All ${total} photos uploaded`;
   else if (failedIdx >= 0) label = ur ? `تصویر ${failedIdx + 1} اپ لوڈ نہیں ہوئی — دوبارہ کوشش ہوگی` : `Photo ${failedIdx + 1} didn't upload — will retry`;
   else if (activeIdx >= 0) label = ur ? `تصویر ${activeIdx + 1} از ${total} اپ لوڈ ہو رہی ہے` : `Uploading photo ${activeIdx + 1} of ${total}`;
   else label = ur ? `${uploaded} از ${total} اپ لوڈ · ${total - items.length} مزید لیں` : `${uploaded} of ${total} uploaded · take ${total - items.length} more`;
