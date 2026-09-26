@@ -523,12 +523,17 @@ export default function TripDetailsPage() {
                           <CheckCircle2 size={14} className="mr-2 text-emerald-600" /> Advance to {nextStatusOption}
                         </DropdownMenuItem>
                       )}
-                      <DropdownMenuItem onClick={() => handleOpenReassign('driver')}>
-                        <UserIcon size={14} className="mr-2 text-muted-foreground" /> Reassign driver
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleOpenReassign('truck')}>
-                        <Truck size={14} className="mr-2 text-muted-foreground" /> Reassign truck
-                      </DropdownMenuItem>
+                      {/* A finished trip keeps its driver and truck — the server refuses a change too. */}
+                      {canCancel && (
+                        <>
+                          <DropdownMenuItem onClick={() => handleOpenReassign('driver')}>
+                            <UserIcon size={14} className="mr-2 text-muted-foreground" /> Reassign driver
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleOpenReassign('truck')}>
+                            <Truck size={14} className="mr-2 text-muted-foreground" /> Reassign truck
+                          </DropdownMenuItem>
+                        </>
+                      )}
                       <DropdownMenuItem onClick={() => setIsLaborModalOpen(true)}>
                         <Coins size={14} className="mr-2 text-muted-foreground" /> Additional charges
                       </DropdownMenuItem>
