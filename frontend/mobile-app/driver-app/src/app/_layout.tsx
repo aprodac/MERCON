@@ -14,6 +14,7 @@ import { LanguageProvider } from '@mercon/mobile-shared/lib/language-context';
 import { ThemeProvider } from '@mercon/mobile-shared/lib/theme-context';
 import { DriverLiveTracking } from '@/components/DriverLiveTracking';
 import { DriverNotificationManager } from '@/components/DriverNotificationManager';
+import { AppToastHost } from '@/components/AppToast';
 import { signInDriver, syncPushToken, unregisterPushToken } from '@/services/auth';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -86,6 +87,8 @@ function RootNavigator() {
           <DriverBottomNav />
         </View>
       )}
+
+      <AppToastHost />
     </View>
   );
 }

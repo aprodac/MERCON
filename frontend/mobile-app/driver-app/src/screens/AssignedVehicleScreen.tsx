@@ -132,7 +132,7 @@ const AssignedVehicleScreen = () => {
 
 const styles = StyleSheet.create({
   scroll: {
-    paddingBottom: Spacing['3xl'],
+    paddingBottom: 140, // clears the floating bottom nav
     flexGrow: 1,
   },
   darkHeader: {

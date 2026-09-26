@@ -83,3 +83,50 @@ export const raiseEmergency = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: { message: 'Internal server error' } });
   }
 };
+
+/**
+ * Who the driver's "Call operator" button dials. There is no dedicated
+ * emergency-number setting, so this picks a real person: the user who created
+ * the driver's active trip, else the most recently active Operator, else an
+ * Admin — the first of those with a phone on their account. `data: null` when
+ * nobody has one; the app then says so instead of dialling a made-up number
+ * (it used to ship a placeholder). The emergency report itself still notifies
+ * every active Admin/Operator.
+ */
+export const getEmergencyContact = async (req: Request, res: Response) => {
+  const driverId = (req as any).user?.driver_id;
+  if (!driverId) return res.status(403).json({ success: false, error: { message: 'Driver not authenticated' } });
+
+  const staffWithPhone = { isActive: true, deletedAt: null, phone: { not: null } } as const;
+  const pick = { name: true, username: true, phone: true } as const;
+
+  try {
+    const activeTrip = await prisma.trip.findFirst({
+      where: {
+        driverId,
+        deletedAt: null,
+        status: { in: [TripStatus.Draft, TripStatus.Scheduled, TripStatus.Loading, TripStatus.InTransit, TripStatus.Delayed] },
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { created_by: true },
+    });
+
+    const creator = activeTrip?.created_by
+      ? await prisma.user.findFirst({
+          where: { id: activeTrip.created_by, role: { in: [Role.Admin, Role.Operator] }, ...staffWithPhone },
+          select: pick,
+        })
+      : null;
+    const contact =
+      creator ??
+      (await prisma.user.findFirst({ where: { role: Role.Operator, ...staffWithPhone }, orderBy: { updatedAt: 'desc' }, select: pick })) ??
+      (await prisma.user.findFirst({ where: { role: Role.Admin, ...staffWithPhone }, orderBy: { updatedAt: 'desc' }, select: pick }));
+
+    res.json({
+      success: true,
+      data: contact?.phone ? { name: contact.name || contact.username, phone: contact.phone } : null,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: { message: 'Internal server error' } });
+  }
+};

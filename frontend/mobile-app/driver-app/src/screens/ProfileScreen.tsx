@@ -837,7 +837,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 95,
+    paddingBottom: 140, // clears the floating bottom nav (Logout was hidden under it)
     backgroundColor: '#FFFFFF',
   },
   sectionSurface: {
