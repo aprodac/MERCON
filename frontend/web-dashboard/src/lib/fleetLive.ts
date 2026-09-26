@@ -211,3 +211,26 @@ export function groupStops(u: LiveUnit): StopGroup[] {
 export function shortAgo(iso: string | null | undefined, now = Date.now()): string {
   return timeAgo(iso, now).replace(' ago', '');
 }
+
+/** Compass bearing in degrees (0 = north, clockwise) from a to b. */
+export function bearingBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const y = Math.sin(toRad(b.lng - a.lng)) * Math.cos(toRad(b.lat));
+  const x = Math.cos(toRad(a.lat)) * Math.sin(toRad(b.lat)) - Math.sin(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.cos(toRad(b.lng - a.lng));
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
+/**
+ * Which way the road leads out of the route's first point — the direction a
+ * stopped truck will drive off in, for the driver view when there's no heading.
+ * Looks past the first few metres so a GPS wobble at the start doesn't decide it.
+ */
+export function routeBearing(coords: [number, number][], minMeters = 40): number | null {
+  if (coords.length < 2) return null;
+  const start = { lng: coords[0][0], lat: coords[0][1] };
+  for (const [lng, lat] of coords.slice(1)) {
+    if (haversineKm(start, { lat, lng }) * 1000 >= minMeters) return bearingBetween(start, { lat, lng });
+  }
+  const [lng, lat] = coords[coords.length - 1];
+  return haversineKm(start, { lat, lng }) > 0 ? bearingBetween(start, { lat, lng }) : null;
+}
