@@ -462,6 +462,8 @@ export const tripService = {
     legIndex?: number,
     operation?: string,
     stopId?: string,
+    /** Called with 0..1 as the file uploads (drives the upload bar). */
+    onProgress?: (fraction: number) => void,
   ): Promise<void> {
     const form = new FormData();
     form.append('kind', kind);
@@ -494,6 +496,9 @@ export const tripService = {
     // Use extended 180s timeout for video/media uploads to prevent ECONNABORTED
     await api.post(`/mobile/trips/${id}/photo`, form, {
       timeout: 180000,
+      onUploadProgress: onProgress
+        ? (e) => { if (e.total) onProgress(Math.min(1, e.loaded / e.total)); }
+        : undefined,
     });
   },
 };
