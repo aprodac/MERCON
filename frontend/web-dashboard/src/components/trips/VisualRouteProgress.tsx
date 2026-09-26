@@ -2,11 +2,24 @@ import React, { useMemo } from 'react';
 import { Check, Navigation, Truck, MapPin, Flag, Clock } from 'lucide-react';
 import { formatInDeploymentTz } from '@/lib/datetime';
 import { cn } from '@/lib/utils';
+import { isRoundTrip as checkIsRoundTrip, parseTripRouteNodes, getTimelineProgress, getTimelineVehiclePosition, timelineStopRole, STOP_ROLE_COLORS, type StopRole } from '@mercon/shared-types';
 
 interface VisualRouteProgressProps {
   stops: any[];
   tz: string;
   tripStatus?: string;
+  hideBadges?: boolean;
+  hidePulseAnimation?: boolean;
+  /**
+   * Server-computed route timeline (`route_timeline` on the trip API
+   * response), built by the same function backing the driver app's route
+   * screen — see backend/api-server/src/services/tripRouteTimeline.ts.
+   * When present, this is rendered directly instead of re-deriving a
+   * timeline from `stops` here, so web and mobile can never show a
+   * different route for the same trip again.
+   */
+  timeline?: any[];
+  trip?: any;
 }
 
 interface NormalizedStop {
@@ -18,6 +31,7 @@ interface NormalizedStop {
   status: 'completed' | 'current' | 'upcoming';
   isFirst: boolean;
   isLast: boolean;
+  role?: StopRole;
 }
 
 const DEFAULT_STOPS: NormalizedStop[] = [
@@ -62,100 +76,66 @@ function isTurnaroundPair(prevStop: any, nextStop: any): boolean {
   return (isLegTransition || isDropoffToPickup) && sameLocation;
 }
 
-export default function VisualRouteProgress({ stops, tz, tripStatus }: VisualRouteProgressProps) {
+export default function VisualRouteProgress({ stops, tz, tripStatus, hideBadges, hidePulseAnimation, timeline, trip }: VisualRouteProgressProps) {
   const isTripFullyCompleted = ['completed', 'invoiced'].includes(String(tripStatus || '').trim().toLowerCase());
+  const hasServerTimeline = Array.isArray(timeline) && timeline.length >= 2;
   const isDelayed =
     ['delayed', 'late'].includes(String(tripStatus || '').trim().toLowerCase()) ||
     (stops && stops.some((st: any) => st.is_delayed || (st.delay_minutes && st.delay_minutes > 0)));
 
   const isRoundTrip = useMemo(() => {
-    if (!stops || stops.length < 2) return false;
-    return (
-      stops.some((st: any) => (st.leg_index ?? 0) === 1) ||
-      (stops.length >= 3 && getCanonicalCity(stops[0]).toLowerCase() === getCanonicalCity(stops[stops.length - 1]).toLowerCase())
-    );
-  }, [stops]);
+    return checkIsRoundTrip(trip || { stops, route_timeline: timeline });
+  }, [stops, timeline, trip]);
+
+  const routeNodes: any[] = useMemo(
+    () => (hasServerTimeline ? timeline : (trip?.route_timeline || parseTripRouteNodes(trip || { stops }))) || [],
+    [stops, timeline, hasServerTimeline, trip],
+  );
+
+  // Where the truck is: on a stop, or between two stops once the driver has
+  // left one and not yet reached the next (shared rule — see getTimelineVehiclePosition).
+  const vehicle = useMemo(() => getTimelineVehiclePosition(routeNodes, isTripFullyCompleted), [routeNodes, isTripFullyCompleted]);
 
   const normalizedStops: NormalizedStop[] = useMemo(() => {
-    if (!stops || stops.length < 2) return DEFAULT_STOPS;
+    const nodes = routeNodes;
+    if (!nodes || nodes.length === 0) return DEFAULT_STOPS;
 
-    const groupedItems: { stops: any[]; isTurnaround: boolean }[] = [];
-    let i = 0;
-    while (i < stops.length) {
-      const currentStop = stops[i];
-      const nextStop = stops[i + 1];
+    // Same rule as the driver app: a stop is done once the driver LEFT it,
+    // so the truck stays on the pickup while loading.
+    const progress = getTimelineProgress(nodes, isTripFullyCompleted);
+    return nodes.map((node: any, idx: number) => {
+      const isFirst = idx === 0;
+      const isLast = idx === nodes.length - 1;
+      const completed = progress[idx] === 'completed';
+      const isCurrent = progress[idx] === 'current';
 
-      if (
-        nextStop &&
-        i > 0 &&
-        i + 1 < stops.length &&
-        isTurnaroundPair(currentStop, nextStop)
-      ) {
-        groupedItems.push({
-          stops: [currentStop, nextStop],
-          isTurnaround: true,
-        });
-        i += 2;
-      } else {
-        groupedItems.push({
-          stops: [currentStop],
-          isTurnaround: false,
-        });
-        i += 1;
-      }
-    }
-
-    const totalMilestones = groupedItems.length;
-    let prevAllCompleted = true;
-
-    return groupedItems.map((group, mIdx) => {
-      const isFirst = mIdx === 0;
-      const isLast = mIdx === totalMilestones - 1;
-      const isTurnaround = group.isTurnaround;
-
-      const allStopsCompleted = group.stops.every((st) => !!st.actual_arrival) || isTripFullyCompleted;
-      const isCurrent = !allStopsCompleted && prevAllCompleted;
-      if (!allStopsCompleted) {
-        prevAllCompleted = false;
-      }
-
-      const primaryStop = group.stops[group.stops.length - 1] || group.stops[0];
-      const firstStopInGroup = group.stops[0];
-
-      const city = getCanonicalCity(firstStopInGroup) || (isFirst ? 'Origin' : isLast ? 'Destination' : `Stop ${mIdx}`);
-
-      const relevantTime = primaryStop.actual_arrival || firstStopInGroup.actual_arrival || primaryStop.planned_arrival || firstStopInGroup.planned_arrival;
+      const relevantTime = node.actualArrival || node.plannedArrival;
       const timeStr = relevantTime
         ? formatInDeploymentTz(relevantTime, tz, 'hh:mm a')
         : isLast && !isTripFullyCompleted
         ? 'ETA 20:30 PM'
         : '12:00 PM';
 
-      let label = isFirst
-        ? 'Pickup'
-        : isLast
-        ? (isRoundTrip ? 'Return Delivery' : 'Destination')
-        : isTurnaround
-        ? 'Turnaround'
-        : `Stop ${mIdx}`;
-
       return {
-        id: group.stops.map((s) => s.id || s.seq || s.stop_sequence).join('-') || `m-${mIdx}`,
-        seq: mIdx + 1,
-        label,
-        city,
+        id: node.stopId || node.id || `m-${idx}`,
+        seq: idx + 1,
+        label: node.typeEn || (isFirst ? 'Pickup' : isLast ? 'Destination' : `Stop ${idx}`),
+        city: node.name,
         time: timeStr,
-        status: allStopsCompleted ? 'completed' : isCurrent ? 'current' : 'upcoming',
+        status: completed ? 'completed' : isCurrent ? 'current' : 'upcoming',
         isFirst,
         isLast,
+        role: timelineStopRole(node),
       };
     });
-  }, [stops, tz, tripStatus, isTripFullyCompleted, isRoundTrip]);
+  }, [routeNodes, isTripFullyCompleted, tz]);
 
   const totalStops = normalizedStops.length;
   const completedCount = normalizedStops.filter((s) => s.status === 'completed').length;
   const rawProgress = isTripFullyCompleted
     ? 100
+    : totalStops > 1 && routeNodes.length > 1
+    ? Math.round(((vehicle.index - (vehicle.enRoute ? 0.5 : 0)) / (totalStops - 1)) * 100)
     : totalStops > 1
     ? Math.round((completedCount / (totalStops - 1)) * 100)
     : 100;
@@ -184,12 +164,10 @@ export default function VisualRouteProgress({ stops, tz, tripStatus }: VisualRou
 
   return (
     <div className="relative w-full rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs overflow-hidden flex flex-col justify-between p-3.5 sm:px-5 sm:py-3.5 gap-3">
-      {/* ── 1. TOP HEADER: ROUTE SUMMARY & INLINE TELEMETRY ── */}
+      {/* ── 1. TOP HEADER: ROUTE SUMMARY ── */}
       <div className="flex flex-wrap items-center justify-between gap-3 w-full">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-orange-100/70 dark:bg-orange-950/60 flex items-center justify-center text-[#FA634E] shrink-0">
-            <Navigation className="w-4 h-4 fill-current transform rotate-45" />
-          </div>
+        <div className="flex items-center gap-2.5">
+          <Navigation className="w-5 h-5 text-[#FA634E] fill-current transform rotate-45 shrink-0" />
           <div>
             <h3 className="font-extrabold text-sm text-[#1F2937] dark:text-slate-100 tracking-tight leading-none" title={routeTitle}>
               {routeTitle}
@@ -201,55 +179,57 @@ export default function VisualRouteProgress({ stops, tz, tripStatus }: VisualRou
         </div>
 
         {/* Header Telemetry Pills & Status Badge */}
-        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-          {/* Status Metric */}
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50/80 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50">
-            <Truck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300 capitalize">
-              {isTripFullyCompleted
-                ? 'Completed'
-                : tripStatus
-                ? String(tripStatus).replace(/([A-Z])/g, ' $1').trim()
-                : 'Scheduled'}
-            </span>
-          </div>
+        {!hideBadges && (
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            {/* Status Metric */}
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50/80 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50">
+              <Truck className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300 capitalize">
+                {isTripFullyCompleted
+                  ? 'Completed'
+                  : tripStatus
+                  ? String(tripStatus).replace(/([A-Z])/g, ' $1').trim()
+                  : 'Scheduled'}
+              </span>
+            </div>
 
-          {/* Schedule Metric */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
-            <Clock className={cn("w-3.5 h-3.5", isDelayed ? "text-rose-500" : "text-emerald-500")} />
-            <span className={cn("text-[11px] font-bold", isDelayed ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>
-              {isTripFullyCompleted ? 'On Time' : isDelayed ? 'Delayed' : 'On Time'}
-            </span>
-          </div>
+            {/* Schedule Metric */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
+              <Clock className={cn("w-3.5 h-3.5", isDelayed ? "text-rose-500" : "text-emerald-500")} />
+              <span className={cn("text-[11px] font-bold", isDelayed ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400")}>
+                {isTripFullyCompleted ? 'On Time' : isDelayed ? 'Delayed' : 'On Time'}
+              </span>
+            </div>
 
-          {/* Main Status Pill Badge */}
-          <div className={cn(
-            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-2xs",
-            isTripFullyCompleted || progressPercent === 100
-              ? "bg-[#E6F4EA] dark:bg-emerald-950/50 text-[#0F9D58] dark:text-emerald-400 border-[#CEEAD6] dark:border-emerald-800"
-              : isDelayed
-              ? "bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border-rose-200/80 dark:border-rose-900/60"
-              : "bg-orange-50 dark:bg-orange-950/50 text-[#FA634E] dark:text-orange-400 border-orange-200/80 dark:border-orange-900/60"
-          )}>
-            <span className={cn(
-              "w-2 h-2 rounded-full",
+            {/* Main Status Pill Badge */}
+            <div className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-2xs",
               isTripFullyCompleted || progressPercent === 100
-                ? "bg-[#0F9D58]"
+                ? "bg-[#E6F4EA] dark:bg-emerald-950/50 text-[#0F9D58] dark:text-emerald-400 border-[#CEEAD6] dark:border-emerald-800"
                 : isDelayed
-                ? "bg-rose-500 animate-pulse"
-                : "bg-[#FA634E] animate-pulse"
-            )} />
-            <span>
-              {isTripFullyCompleted || progressPercent === 100
-                ? 'Delivered'
-                : isDelayed
-                ? 'Delayed'
-                : progressPercent > 0
-                ? 'In Transit'
-                : 'Scheduled'}
-            </span>
+                ? "bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border-rose-200/80 dark:border-rose-900/60"
+                : "bg-orange-50 dark:bg-orange-950/50 text-[#FA634E] dark:text-orange-400 border-orange-200/80 dark:border-orange-900/60"
+            )}>
+              <span className={cn(
+                "w-2 h-2 rounded-full",
+                isTripFullyCompleted || progressPercent === 100
+                  ? "bg-[#0F9D58]"
+                  : isDelayed
+                  ? (hidePulseAnimation ? "bg-rose-500" : "bg-rose-500 animate-pulse")
+                  : (hidePulseAnimation ? "bg-[#FA634E]" : "bg-[#FA634E] animate-pulse")
+              )} />
+              <span>
+                {isTripFullyCompleted || progressPercent === 100
+                  ? 'Delivered'
+                  : isDelayed
+                  ? 'Delayed'
+                  : progressPercent > 0
+                  ? 'In Transit'
+                  : 'Scheduled'}
+              </span>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* ── 2. VISUAL ROUTE TRACK & MILESTONES (ALL STOPS RENDERED) ── */}
@@ -272,7 +252,8 @@ export default function VisualRouteProgress({ stops, tz, tripStatus }: VisualRou
                 {!isTripFullyCompleted && progressPercent > 0 && (
                   <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-[35%] w-10 h-10 sm:w-12 sm:h-12 pointer-events-none z-0 flex items-center justify-center">
                     <div className={cn(
-                      "w-full h-full rounded-full border-2 animate-ping",
+                      "w-full h-full rounded-full border-2",
+                      !hidePulseAnimation && "animate-ping",
                       isDelayed
                         ? "border-rose-500/70 bg-rose-500/20"
                         : "border-emerald-400/60 bg-emerald-500/20"
@@ -309,6 +290,8 @@ export default function VisualRouteProgress({ stops, tz, tripStatus }: VisualRou
 
             const isDone = (stop.status === 'completed' || isTripFullyCompleted || (mIdx === 0 && (progressPercent > 0 || completedCount > 0))) && !hideCheckmarkForLast;
             const isCurrent = stop.status === 'current' && !isTripFullyCompleted && !hideCheckmarkForLast;
+            // Origin/loading = blue, destination/delivery = green, stops in between = red.
+            const roleColor = STOP_ROLE_COLORS[(stop as any).role as StopRole] ?? STOP_ROLE_COLORS.stop;
 
             return (
               <div key={`stop-col-${stop.id}-${mIdx}`} className="relative z-10 flex flex-col items-center text-center min-w-[60px] sm:min-w-[85px] max-w-[120px]">
@@ -316,21 +299,36 @@ export default function VisualRouteProgress({ stops, tz, tripStatus }: VisualRou
                   {hideCheckmarkForLast ? (
                     <div className="w-5 h-5 rounded-full bg-transparent border-2 border-emerald-500/30" />
                   ) : isDone ? (
-                    <div className="w-5 h-5 rounded-full bg-[#10B981] text-white flex items-center justify-center ring-4 ring-emerald-100 dark:ring-emerald-950/60 shadow-xs">
+                    <div
+                      className="w-5 h-5 rounded-full text-white flex items-center justify-center ring-4 shadow-xs"
+                      style={{ backgroundColor: roleColor.main, ['--tw-ring-color' as any]: roleColor.soft }}
+                    >
                       <Check className="w-3 h-3 stroke-[3]" />
                     </div>
                   ) : isCurrent ? (
-                    <div className="w-5 h-5 rounded-full bg-[#FA634E] text-white flex items-center justify-center ring-4 ring-orange-100 dark:ring-orange-950/60 shadow-xs animate-pulse">
+                    <div
+                      className={cn(
+                        "w-5 h-5 rounded-full text-white flex items-center justify-center ring-4 shadow-xs",
+                        !hidePulseAnimation && "animate-pulse"
+                      )}
+                      style={{ backgroundColor: roleColor.main, ['--tw-ring-color' as any]: roleColor.soft }}
+                    >
                       <MapPin className="w-3 h-3 fill-current" />
                     </div>
                   ) : (
-                    <div className="w-5 h-5 rounded-full bg-white dark:bg-slate-900 border-2 border-slate-300 dark:border-slate-600 ring-4 ring-slate-100 dark:ring-slate-800/60 shadow-xs" />
+                    <div
+                      className="w-5 h-5 rounded-full bg-white dark:bg-slate-900 border-2 ring-4 shadow-xs"
+                      style={{ borderColor: roleColor.main, ['--tw-ring-color' as any]: roleColor.soft }}
+                    />
                   )}
                 </div>
                 <span className="font-extrabold text-xs sm:text-sm text-[#1F2937] dark:text-slate-100 tracking-tight truncate w-full text-center mt-1.5" title={stop.city}>
                   {stop.city}
                 </span>
-                <span className="mt-0.5 px-2 py-0.5 rounded bg-slate-100/90 dark:bg-slate-800/90 text-[8.5px] sm:text-[9px] font-extrabold uppercase text-slate-500 dark:text-slate-400 tracking-wider">
+                <span
+                  className="mt-0.5 px-2 py-0.5 rounded text-[8.5px] sm:text-[9px] font-extrabold uppercase tracking-wider"
+                  style={{ backgroundColor: roleColor.soft, color: roleColor.text }}
+                >
                   {stop.label}
                 </span>
                 <span className="text-[10.5px] font-mono font-bold text-slate-400 dark:text-slate-500 mt-0.5">

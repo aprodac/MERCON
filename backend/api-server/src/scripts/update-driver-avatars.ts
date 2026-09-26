@@ -36,17 +36,21 @@ function getSlug(name: string): string {
 
 async function main() {
   const rootDir = path.resolve(process.cwd(), '../..');
-  const srcDir = fs.existsSync(path.join(rootDir, 'driverprofile'))
+  const srcDir = fs.existsSync(path.join(rootDir, 'driver profile'))
+    ? path.join(rootDir, 'driver profile')
+    : fs.existsSync(path.join(rootDir, 'driverprofile'))
     ? path.join(rootDir, 'driverprofile')
-    : path.resolve(process.cwd(), 'driverprofile');
+    : path.resolve(process.cwd(), 'driver profile');
 
+  const destDriverProfile = path.join(rootDir, 'driverprofile');
   const destFront = path.join(rootDir, 'frontend/web-dashboard/public/driver-assets');
   const destUploads = path.join(rootDir, 'backend/api-server/uploads');
 
+  fs.mkdirSync(destDriverProfile, { recursive: true });
   fs.mkdirSync(destFront, { recursive: true });
   fs.mkdirSync(destUploads, { recursive: true });
 
-  console.log('📦 Copying driver profile images...');
+  console.log(`📦 Copying compressed driver profile images from "${srcDir}"...`);
   const profileMap = new Map<string, string>(); // normalized name -> avatar url
 
   for (const name of DRIVER_PROFILES) {
@@ -55,15 +59,20 @@ async function main() {
     const srcPath = path.join(srcDir, origFilename);
 
     if (fs.existsSync(srcPath)) {
+      // Replace in driverprofile/
+      fs.copyFileSync(srcPath, path.join(destDriverProfile, origFilename));
+
+      // Copy to frontend driver-assets
       fs.copyFileSync(srcPath, path.join(destFront, slugFilename));
       fs.copyFileSync(srcPath, path.join(destFront, origFilename));
 
+      // Copy to backend uploads
       fs.copyFileSync(srcPath, path.join(destUploads, slugFilename));
       fs.copyFileSync(srcPath, path.join(destUploads, origFilename));
 
       const avatarUrl = `/driver-assets/${slugFilename}`;
       profileMap.set(normalizeName(name), avatarUrl);
-      console.log(`  ✓ Copied: "${name}" -> ${avatarUrl}`);
+      console.log(`  ✓ Replaced compressed image: "${name}" -> ${avatarUrl}`);
     } else {
       console.warn(`  ⚠️ Warning: Source image missing at ${srcPath}`);
     }

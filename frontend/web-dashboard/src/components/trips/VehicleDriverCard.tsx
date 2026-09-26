@@ -1,6 +1,7 @@
 import React from 'react';
 import { Phone, Star, Truck } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import SlowScrollingDriverName from '@/components/ui/SlowScrollingDriverName';
 
 interface VehicleDriverCardProps {
   trip: any;
@@ -99,9 +100,10 @@ export default function VehicleDriverCard({ trip }: VehicleDriverCardProps) {
         </Avatar>
 
         <div className="min-w-0 flex-1 space-y-0.5">
-          <h4 className="font-bold text-[12.5px] text-[#1F2937] truncate leading-tight">
-            {driverName}
-          </h4>
+          <SlowScrollingDriverName
+            name={driverName}
+            className="font-bold text-[12.5px] text-[#1F2937] leading-tight"
+          />
           <div className="flex items-center gap-1 text-[10.5px]">
             <Star size={11} className="text-amber-500 fill-amber-500" />
             <span className="font-bold text-slate-700">{rating}</span>

@@ -19,6 +19,8 @@ jobs:
   deploy:
     name: Deploy to Self-Hosted Runner
     runs-on: self-hosted
+    # Releases reach main through a reviewed dev → main PR (docs/RELEASE_PROCESS.md);
+    # release-check.yml reports on the PR, this workflow deploys the merge.
 
     steps:
       # Native git instead of actions/checkout: this runner keeps its work
@@ -55,6 +57,8 @@ jobs:
 
       - name: Rebuild and Restart Docker Containers
         env:
+          CLIENT_NAME: mercon
+          COMPOSE_PROJECT_NAME: mercon
           # Injected into docker compose interpolation; stored as GitHub
           # Actions secrets, never committed. Rotating JWT_SECRET invalidates
           # all existing JWTs (everyone must log in again). Rotating
@@ -69,8 +73,11 @@ jobs:
           ICCES_USER: ${{ secrets.ICCES_USER }}
           ICCES_PASS: ${{ secrets.ICCES_PASS }}
           ICCES_ACCT: ${{ secrets.ICCES_ACCT }}
-          # Gemini Vision AI — injected from repo/environment secrets
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY || 'AQ.Ab8RN6K3a4t83gB0yRI607axYGS8_JJIHhRuJZkYkLwxDDsNZA' }}
+          # Gemini Vision AI — injected from repo/environment secrets only.
+          # (A hardcoded fallback key used to live here; it's committed in git
+          # history and must be treated as leaked — rotate it in Google AI
+          # Studio and set the new value as the GEMINI_API_KEY repo secret.)
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-flash-latest' }}
           # Google address autocomplete. Reaches the frontend as a
           # docker-compose build arg, because Vite inlines VITE_* at build time
@@ -99,7 +106,6 @@ jobs:
           # Update host NGINX client_max_body_size to 250M and reload configuration
           sudo sed -i 's/client_max_body_size.*/client_max_body_size 250m;/g' /etc/nginx/nginx.conf 2>/dev/null || true
           sudo sed -i 's/client_max_body_size.*/client_max_body_size 250m;/g' /etc/nginx/sites-available/default 2>/dev/null || true
-          sudo cp nginx/mercon-api.conf /etc/nginx/sites-available/default 2>/dev/null || true
           sudo cp nginx/mercon-api.conf /etc/nginx/sites-available/mercon-api.conf 2>/dev/null || true
           sudo nginx -s reload 2>/dev/null || true
 
@@ -113,26 +119,129 @@ jobs:
           docker image prune -f 2>/dev/null || true
           df -h / || true
 
-          # Build and start services in detached mode
-          docker compose up -d --build
+          # Build first (running container untouched), migrate the database
+          # against the newly built image, then replace the container. This
+          # workflow previously ran `docker compose up -d --build` with no
+          # migration step at all — schema changes never reached this
+          # database on a direct push to main. Mirrors ci-cd-dev.yml, which
+          # has done this correctly since it was introduced.
+          echo "Building images..."
+          docker compose -p mercon build
 
-          # Give mercon-api a moment to run its startup chain (prisma db push
-          # && seed && node dist/index.js), then print its logs so a crash in
-          # that chain is visible in the Actions run instead of just a 502.
+          # Back up production right before the migration (after the slow
+          # build, so the dump is as close as possible to the moment the schema
+          # changes). A failed or empty dump aborts the deploy before anything
+          # is touched. Same format/location as backup-db.yml, so its 7-day
+          # pruning covers these too. A first deploy with no database yet has
+          # nothing to back up and continues.
+          if [ "$(docker inspect -f '{{.State.Running}}' mercon-postgres 2>/dev/null)" = "true" ]; then
+            BACKUP_DIR="/var/backups/mercon"
+            sudo mkdir -p "$BACKUP_DIR"
+            sudo chown "$(whoami)" "$BACKUP_DIR"
+            BACKUP_PATH="$BACKUP_DIR/mercon-db-predeploy-$(date +%Y%m%d%H%M%S)-${GITHUB_SHA:0:7}.dump"
+            echo "Backing up production database to $BACKUP_PATH ..."
+            docker exec mercon-postgres pg_dump -U "$POSTGRES_USER" -Fc -d mercon_db > "$BACKUP_PATH"
+            if [ ! -s "$BACKUP_PATH" ]; then
+              echo "::error::Pre-deploy backup is empty or missing ($BACKUP_PATH). Aborting before migrations — production untouched." >&2
+              exit 1
+            fi
+            echo "✓ Backup created: $BACKUP_PATH ($(du -h "$BACKUP_PATH" | cut -f1))"
+            echo "BACKUP_PATH=$BACKUP_PATH" >> "$GITHUB_ENV"
+          else
+            echo "::warning::mercon-postgres is not running — no existing database to back up (first deploy?)."
+          fi
+
+          echo "Executing Prisma database migrations against production database..."
+          docker compose -p mercon run --rm --no-deps mercon-api npx prisma migrate deploy
+
+          echo "Recreating and restarting containers..."
+          docker compose -p mercon up -d --no-build
+
+          # Give mercon-api a moment to finish starting before polling it.
           sleep 8
-          echo "--- mercon-api logs (last 100 lines) ---"
-          docker compose logs --no-color --tail=100 mercon-api || true
-          echo "--- mercon-api container status ---"
-          docker compose ps mercon-api || true
+
+          # Health gate — ported from ci-cd-dev.yml, which already does this
+          # for the dev stack. Without this, `docker compose up -d --build`
+          # exiting 0 was being treated as "deploy succeeded" even when the
+          # container was crash-looping or misconfigured (e.g. the cpus-limit
+          # regression that broke dev and went unnoticed until someone
+          # happened to read the raw logs).
+          echo "Waiting for mercon-api service container to achieve healthy status (bounded 60s timeout)..."
+          HEALTH_STATUS="unknown"
+          TIMEOUT=60
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            CONTAINER_ID=$(docker compose -p mercon ps -q mercon-api 2>/dev/null || echo "")
+            if [ -n "$CONTAINER_ID" ]; then
+              HEALTH_STATUS=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$CONTAINER_ID" 2>/dev/null || echo "container-not-found")
+            else
+              HEALTH_STATUS="container-not-found"
+            fi
+
+            if [ "$HEALTH_STATUS" = "healthy" ]; then
+              echo "✓ Service mercon-api container (ID: ${CONTAINER_ID:0:12}) reported healthy state after ${ELAPSED}s."
+              break
+            elif [ "$HEALTH_STATUS" = "unhealthy" ]; then
+              echo "::error::Service mercon-api container reported UNHEALTHY state." >&2
+              break
+            fi
+            sleep 2
+            ELAPSED=$((ELAPSED + 2))
+          done
+
+          echo "--- mercon-api service container status ---"
+          docker compose -p mercon ps mercon-api || true
+
+          if [ "$HEALTH_STATUS" != "healthy" ]; then
+            echo "::error::Deployment failed! Service mercon-api container did not achieve healthy status (Status: '$HEALTH_STATUS'). Printing logs..." >&2
+            echo "--- mercon-api logs (last 100 lines) ---"
+            docker compose -p mercon logs --no-color --tail=100 mercon-api || true
+            exit 1
+          fi
+
+          echo "--- Verifying external health endpoint ---"
+          if ! curl -fsS http://127.0.0.1:3050/health; then
+            echo "::error::Deployment failed! External health probe GET http://127.0.0.1:3050/health failed or returned non-200. Printing logs..." >&2
+            echo "--- mercon-api logs (last 100 lines) ---"
+            docker compose -p mercon logs --no-color --tail=100 mercon-api || true
+            exit 1
+          fi
+          echo "✓ External health probe GET http://127.0.0.1:3050/health verified successfully."
 
       - name: Deploy Nginx Config & Reload
         run: |
           echo "Deploying nginx reverse proxy config..."
-          # Copy repo-managed nginx config to sites-available
+
+          # Deploy catch-all default SSL block (rejects unknown HTTPS hosts)
+          sudo cp nginx/00-default-ssl.conf /etc/nginx/sites-available/00-default-ssl.conf
+          sudo ln -sf /etc/nginx/sites-available/00-default-ssl.conf /etc/nginx/sites-enabled/00-default-ssl.conf
+
+          # Deploy production nginx config
           sudo cp nginx/mercon-api.conf /etc/nginx/sites-available/mercon-api.conf
-          # Enable it (idempotent — ok if symlink already exists)
           sudo ln -sf /etc/nginx/sites-available/mercon-api.conf /etc/nginx/sites-enabled/mercon-api.conf
+
+          # Remove stale default config if it exists
+          sudo rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true
+
           # Validate config before reloading to avoid taking down the server
           sudo nginx -t
           sudo systemctl reload nginx
           echo "Nginx reloaded successfully."
+
+      # Only runs when an earlier step failed. If the failure came after the
+      # backup (migration, container start, health check), print how to put
+      # the database back. Old containers keep serving if the migration failed,
+      # because containers are only replaced after `migrate deploy` succeeds.
+      - name: Restore instructions (on failure)
+        if: failure()
+        run: |
+          if [ -n "${BACKUP_PATH:-}" ]; then
+            echo "::error::Deploy failed after the pre-deploy backup was taken."
+            echo "Backup: $BACKUP_PATH"
+            echo "To restore production to the pre-deploy state (run on the server):"
+            echo "  docker exec -i mercon-postgres pg_restore --clean --if-exists --no-owner --no-privileges -U \"\$POSTGRES_USER\" -d mercon_db < $BACKUP_PATH"
+            echo "Then redeploy the previous main commit (revert the release merge on main)."
+          else
+            echo "Deploy failed before any database backup or migration — the database was not touched."
+          fi

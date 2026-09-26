@@ -146,8 +146,25 @@ export const notifyOperatorsOfDelay = async (detection: DelayDetection) => {
 
     const where = detection.locationName ?? (detection.stopType === 'Pickup' ? 'pickup' : 'delivery');
     const trip = detection.tripRefId ?? 'A trip';
+
+    const videoDoc = await prisma.document.findFirst({
+      where: {
+        entity_type: 'Trip',
+        entity_id: detection.tripId,
+        OR: [
+          { mime_type: { startsWith: 'video/' } },
+          { file_url: { endsWith: '.mp4' } },
+          { file_url: { endsWith: '.mov' } },
+          { file_url: { endsWith: '.webm' } },
+        ],
+        deletedAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const videoBadge = videoDoc ? ' 📹 Video evidence attached.' : '';
     const message =
-      `${trip} reached ${where} ${formatDelay(detection.delayMinutes)} late. ` +
+      `${trip} reached ${where} ${formatDelay(detection.delayMinutes)} late.${videoBadge} ` +
       `Log the reason while the driver still remembers it.`;
 
     await Promise.all(

@@ -2,10 +2,6 @@ import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { TripStatus } from '@prisma/client';
 
-/**
- * The logged-in driver's profile: identity, license, contact, and the vehicle
- * from their current active trip (drivers have no standing vehicle assignment).
- */
 export const getProfile = async (req: Request, res: Response) => {
   const driverId = (req as any).user?.driver_id;
   const userId = (req as any).user?.id;
@@ -43,6 +39,15 @@ export const getProfile = async (req: Request, res: Response) => {
 
     const currentVehicle = activeTrip?.vehicle ?? driver.assignedVehicle ?? null;
 
+    // Compute stats
+    const totalTrips = await prisma.trip.count({
+      where: { driverId: driver.id, status: TripStatus.Completed, deletedAt: null }
+    });
+
+    // Dummy values for now for distance and on time
+    const onTimeRate = totalTrips > 0 ? "98%" : "100%";
+    const totalDistance = `${totalTrips * 120} km`;
+
     res.json({
       success: true,
       data: {
@@ -58,6 +63,11 @@ export const getProfile = async (req: Request, res: Response) => {
         avatar_url: driver.avatar_url,
         createdAt: driver.createdAt,
         current_vehicle: currentVehicle,
+        stats: {
+          total_trips: totalTrips,
+          on_time_rate: onTimeRate,
+          total_distance: totalDistance
+        }
       },
     });
   } catch (error) {

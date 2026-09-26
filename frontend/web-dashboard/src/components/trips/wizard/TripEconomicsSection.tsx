@@ -23,6 +23,8 @@ interface TripEconomicsSectionProps {
   contractCustomer?: string;
   customers?: any[];
   handleUpdateTripSlot?: (slotId: string, patch: any) => void;
+  isBaseBillingLocked?: boolean;
+  isFinancialsLocked?: boolean;
 }
 
 export const TripEconomicsSection: React.FC<TripEconomicsSectionProps> = ({
@@ -34,6 +36,8 @@ export const TripEconomicsSection: React.FC<TripEconomicsSectionProps> = ({
   contractCustomer,
   customers = [],
   handleUpdateTripSlot,
+  isBaseBillingLocked = false,
+  isFinancialsLocked = false,
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -232,6 +236,7 @@ export const TripEconomicsSection: React.FC<TripEconomicsSectionProps> = ({
                   type="number"
                   min="0"
                   step="1"
+                  disabled={isFinancialsLocked}
                   value={primarySlot.driverPayout !== undefined ? primarySlot.driverPayout : (matchedRateCard?.driver_payout ?? '')}
                   onChange={(e) => {
                     const val = e.target.value;
@@ -244,7 +249,10 @@ export const TripEconomicsSection: React.FC<TripEconomicsSectionProps> = ({
                     });
                   }}
                   placeholder="0"
-                  className="w-20 h-6 px-1.5 text-right text-xs font-mono font-black rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:border-[#FA634E] text-[#3E3C3D] dark:text-white"
+                  className={cn(
+                    "w-20 h-6 px-1.5 text-right text-xs font-mono font-black rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 focus:outline-none focus:border-[#FA634E] text-[#3E3C3D] dark:text-white",
+                    isFinancialsLocked && "bg-slate-100 dark:bg-slate-800 text-slate-500 cursor-not-allowed"
+                  )}
                 />
               </div>
             )}

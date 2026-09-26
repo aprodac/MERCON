@@ -7,8 +7,18 @@ import { logAuditEvent } from '../services/auditService';
 // Get all users (except drivers if we only want dashboard users, but let's just return all non-drivers for now, or all)
 export const getUsers = async (req: Request, res: Response) => {
   try {
+    const requesterId = (req as any).user?.id;
+    const requester = requesterId ? await prisma.user.findUnique({ where: { id: requesterId }, select: { role: true, isSuperAdmin: true } }) : null;
+    const isRequesterSuperAdmin = Boolean(requester?.isSuperAdmin || requester?.role === 'SuperAdmin');
+
+    const whereClause: any = { role: { not: 'Driver' } };
+    if (!isRequesterSuperAdmin) {
+      whereClause.isSuperAdmin = false;
+      whereClause.role = { notIn: ['Driver', 'SuperAdmin'] };
+    }
+
     const users = await prisma.user.findMany({
-      where: { role: { not: 'Driver' } },
+      where: whereClause,
       select: {
         id: true,
         name: true,

@@ -1,9 +1,10 @@
 import { ReactNode } from 'react';
 import { Navigate } from 'react-router-dom';
+import type { UserRole } from '@mercon/shared-types';
 import { authStore } from '@/store/authStore';
 
 interface RequireRoleProps {
-  roles: string[];
+  roles: UserRole[];
   children: ReactNode;
 }
 

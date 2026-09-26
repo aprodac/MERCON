@@ -22,7 +22,7 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: frontend/mobile-app/mercon-app/package-lock.json
+          cache-dependency-path: frontend/mobile-app/package-lock.json
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -33,16 +33,17 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      # Mobile npm workspace root (apps + shared code); lockfile lives here.
       - name: Install dependencies
-        working-directory: frontend/mobile-app/mercon-app
+        working-directory: frontend/mobile-app
         run: npm ci || npm install
 
       - name: Expo Prebuild (Generate Android native project)
-        working-directory: frontend/mobile-app/mercon-app
+        working-directory: frontend/mobile-app/driver-app
         run: npx expo prebuild --platform android --no-install
 
       - name: Build Release APK
-        working-directory: frontend/mobile-app/mercon-app/android
+        working-directory: frontend/mobile-app/driver-app/android
         run: |
           echo "reactNativeArchitectures=armeabi-v7a,arm64-v8a" >> gradle.properties
           chmod +x gradlew
@@ -52,5 +53,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mercon-driver-app
-          path: frontend/mobile-app/mercon-app/android/app/build/outputs/apk/release/*.apk
+          path: frontend/mobile-app/driver-app/android/app/build/outputs/apk/release/*.apk
           retention-days: 14

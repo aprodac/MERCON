@@ -8,6 +8,7 @@ import { driverService } from '@/services/driverService';
 import { vehicleService } from '@/services/vehicleService';
 import { tripService, Trip } from '@/services/tripService';
 import { toast } from 'sonner';
+import { formatDriverDetails } from '@/utils/driverStatusUtils';
 
 interface QuickAssignModalProps {
   isOpen: boolean;
@@ -47,15 +48,13 @@ export default function QuickAssignModal({ isOpen, onClose, trip, onSaved }: Qui
   });
 
   const driverOptions = (driversRes?.data || []).map((d) => {
-    const isNotAvailable = d.status && d.status !== 'Available' && d.status.toLowerCase() !== 'available';
-    const statusTag = isNotAvailable ? (d.status === 'OnTrip' ? 'On Trip' : d.status === 'OffDuty' ? 'Off Duty' : d.status) : '';
-    const phoneStr = (d as any).phone || d.phone_primary || 'No phone';
-    const details = [phoneStr, statusTag].filter(Boolean).join(' • ');
+    const details = formatDriverDetails(d);
+    const phoneStr = (d as any).phone || d.phone_primary || '';
 
     return {
       value: d.id,
       label: `${d.first_name} ${d.last_name} (${details})`,
-      keywords: `${d.first_name} ${d.last_name} ${phoneStr} ${d.status || ''}`,
+      keywords: `${d.first_name} ${d.last_name} ${phoneStr} ${details} ${d.status || ''}`,
     };
   });
 

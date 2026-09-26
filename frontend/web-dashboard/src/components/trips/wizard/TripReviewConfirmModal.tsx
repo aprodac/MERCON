@@ -171,6 +171,39 @@ export const TripReviewConfirmModal: React.FC<TripReviewConfirmModalProps> = ({
 
   const rosterPairs = Array.from(rosterMap.values());
 
+  // Resolve Exact Dispatch Date Display
+  const dispatchDateDisplay = React.useMemo(() => {
+    if (selectedDates && selectedDates.length > 0) {
+      if (selectedDates.length === 1) {
+        return selectedDates[0];
+      }
+      const sorted = [...selectedDates].sort();
+      return `${sorted[0]} — ${sorted[sorted.length - 1]}`;
+    }
+
+    if (primarySlot?.date && primarySlot.date.length >= 10) {
+      return primarySlot.date;
+    }
+
+    const dayKeys = Object.keys(dayAssignments).filter((k) => k !== 'default' && k.length >= 10);
+    if (dayKeys.length === 1) {
+      return dayKeys[0];
+    } else if (dayKeys.length > 1) {
+      const sorted = [...dayKeys].sort();
+      return `${sorted[0]} — ${sorted[sorted.length - 1]}`;
+    }
+
+    if (selectedMonth && /^\d{4}-\d{2}$/.test(selectedMonth)) {
+      const today = new Date().toISOString().slice(0, 10);
+      if (today.startsWith(selectedMonth)) {
+        return today;
+      }
+      return `${selectedMonth}-01`;
+    }
+
+    return new Date().toISOString().slice(0, 10);
+  }, [selectedDates, primarySlot?.date, dayAssignments, selectedMonth]);
+
   // Validate schedule errors
   const scheduleErrors = React.useMemo(() => {
     const errors: string[] = [];
@@ -203,7 +236,7 @@ export const TripReviewConfirmModal: React.FC<TripReviewConfirmModalProps> = ({
   }, [contractSlots]);
 
   return (
-    <div className="fixed inset-0 z-[999] bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[999] bg-charcoal-strong/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
       <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 border-t-4 border-t-[#FA634E] rounded-2xl max-w-4xl w-full shadow-2xl overflow-hidden text-[#3E3C3D] dark:text-slate-200 animate-scale-in flex flex-col max-h-[90vh]">
         
         {/* MODAL HEADER */}
@@ -269,7 +302,7 @@ export const TripReviewConfirmModal: React.FC<TripReviewConfirmModalProps> = ({
                 </span>
               </div>
               <span className="font-mono font-bold text-slate-500 text-[11px]">
-                DISPATCH DATE: {selectedMonth || (contractSlots[0]?.date ? contractSlots[0].date : new Date().toISOString().slice(0, 10))}
+                DISPATCH DATE: {dispatchDateDisplay}
               </span>
             </div>
 
@@ -405,9 +438,9 @@ export const TripReviewConfirmModal: React.FC<TripReviewConfirmModalProps> = ({
 
                 <div className="space-y-3 text-xs">
                   <div>
-                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">CLASS</span>
+                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">CONTRACT TYPE</span>
                     <span className="font-bold text-slate-900 dark:text-white block mt-0.5">
-                      {contractBillingType} • {contractVehicleType}
+                      {contractBillingType ? `${contractBillingType} Contract` : 'Contract'}
                     </span>
                   </div>
 
@@ -415,14 +448,14 @@ export const TripReviewConfirmModal: React.FC<TripReviewConfirmModalProps> = ({
                     <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">PAYLOAD CAPACITY</span>
                     <span className="font-bold text-slate-900 dark:text-white block mt-0.5 flex items-center gap-1.5">
                       <Scale className="w-3.5 h-3.5 text-[#FA634E]" />
-                      {getPayloadCapacityDisplay(contractVehicleType)}
+                      {getPayloadCapacityDisplay(contractVehicleType || primarySlot.vehicleType || '')}
                     </span>
                   </div>
 
                   <div>
                     <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">DISPATCH SCHEDULE</span>
                     <span className="font-bold text-slate-900 dark:text-white block mt-0.5">
-                      {selectedMonth || 'Active Month'} ({totalOperatingDays} Day{totalOperatingDays > 1 ? 's' : ''})
+                      {dispatchDateDisplay} ({totalOperatingDays} Day{totalOperatingDays > 1 ? 's' : ''})
                     </span>
                   </div>
                 </div>
@@ -455,13 +488,15 @@ export const TripReviewConfirmModal: React.FC<TripReviewConfirmModalProps> = ({
                       {costValue > 0 && (
                         <span
                           className={cn(
-                            "text-[10px] font-extrabold px-2 py-0.5 rounded-full border",
+                            "text-[10px] font-extrabold px-2 py-0.5 rounded-full border flex items-center gap-1",
                             netMargin >= 0
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
                               : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
                           )}
+                          title="Net Margin Percentage"
                         >
-                          {netMargin >= 0 ? `+${marginPct.toFixed(1)}%` : `${marginPct.toFixed(1)}%`}
+                          <span className="font-sans text-[9px] uppercase tracking-wider opacity-80">Margin</span>
+                          <span className="font-mono">{netMargin >= 0 ? `+${marginPct.toFixed(1)}%` : `${marginPct.toFixed(1)}%`}</span>
                         </span>
                       )}
                     </div>

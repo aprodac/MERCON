@@ -13,12 +13,23 @@ export const login = async (req: Request, res: Response) => {
 
   try {
     const identifier = String(username).trim();
+    const phoneVariants = [identifier];
+    if (identifier.startsWith('+966')) {
+      const local = identifier.slice(4);
+      phoneVariants.push(`0${local}`, local);
+    } else if (identifier.startsWith('+91')) {
+      const local = identifier.slice(3);
+      phoneVariants.push(`0${local}`, local);
+    } else if (identifier.startsWith('0')) {
+      phoneVariants.push(`+966${identifier.slice(1)}`, `+91${identifier.slice(1)}`, identifier.slice(1));
+    }
+
     const user = await prisma.user.findFirst({
       where: {
         OR: [
           { username: identifier },
-          { phone: identifier },
           { email: identifier },
+          ...phoneVariants.map((p) => ({ phone: p })),
         ],
       },
       include: { driver: true },
@@ -156,6 +167,16 @@ export const changePassword = async (req: Request, res: Response) => {
 
     const hash = await bcrypt.hash(new_password, 10);
     await prisma.user.update({ where: { id: userId }, data: { password_hash: hash } });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'PASSWORD_CHANGED',
+        entityType: 'User',
+        entityId: user.id,
+        metadata: { message: `User ${user.username} changed their password via mobile app` }
+      }
+    });
 
     return res.json({ success: true, data: { message: 'Password updated' } });
   } catch (error) {

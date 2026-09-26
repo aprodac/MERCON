@@ -128,7 +128,7 @@ export default function TripStopTimeline({
       {/* Header */}
       <div className="px-4 py-3 border-b border-[#E5E7EB] flex items-center justify-between bg-white shrink-0">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-xs">
+          <div className="w-7 h-7 rounded-lg bg-charcoal text-white flex items-center justify-center shrink-0 shadow-xs">
             <ListChecks size={15} />
           </div>
           <h3 className="text-xs font-bold text-[#1F2937] tracking-tight">

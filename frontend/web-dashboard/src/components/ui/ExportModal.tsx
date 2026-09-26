@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download } from 'lucide-react';
+import { Download, Edit2 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -22,10 +22,10 @@ import {
 import { cn } from '@/lib/utils';
 import { exportExcelTable, downloadCSVTable, exportPDFTable } from '@/utils/exportUtils';
 
-export interface ExportColumn<T = any> {
+export interface ExportColumn<T> {
   id: string;
   label: string;
-  accessor: (row: T) => any;
+  accessor: (row: T, index: number) => string | number | boolean | null;
   defaultSelected?: boolean;
 }
 
@@ -42,11 +42,13 @@ export interface ExportModalProps<T = any> {
   onClose: () => void;
   title: string;
   description?: string;
-  fileNamePrefix: string;
+  fileNamePrefix?: string;
+  filename?: string;
   sheetName?: string;
   subtitle?: string;
   // Data sources
-  filteredData: T[];
+  filteredData?: T[];
+  data?: T[];
   allData?: T[];
   selectedData?: T[];
   totalCount?: number;
@@ -56,6 +58,9 @@ export interface ExportModalProps<T = any> {
   filters?: ExportFilter<T>[];
   // Formats supported (default: xlsx & csv)
   formats?: ('xlsx' | 'csv' | 'pdf')[];
+  initialFormat?: 'xlsx' | 'csv' | 'pdf';
+  // Themes supported for Excel export
+  themes?: { id: string; label: string }[];
   // Optional date filtering
   rowDateAccessor?: (row: T) => string | Date | null | undefined;
   dateRangeLabel?: string;
@@ -67,26 +72,34 @@ export default function ExportModal<T = any>({
   title,
   description = 'Choose your export preferences, filters, and columns.',
   fileNamePrefix,
+  filename,
   sheetName,
   subtitle,
   filteredData,
+  data,
   allData,
   selectedData = [],
   totalCount,
   columns,
   filters = [],
   formats = ['xlsx', 'pdf'],
+  themes = [],
   rowDateAccessor,
   dateRangeLabel = 'Date Range',
+  initialFormat = 'xlsx',
 }: ExportModalProps<T>) {
+  const effectivePrefix = filename || fileNamePrefix || 'Export';
+  const effectiveFilteredData = data || filteredData || [];
   const allowedFormats = (formats || []).filter((f) => f !== 'csv');
   const [scope, setScope] = useState<'filtered' | 'all' | 'selected'>('filtered');
-  const [format, setFormat] = useState<'xlsx' | 'csv' | 'pdf'>('xlsx');
+  const [format, setFormat] = useState<'xlsx' | 'csv' | 'pdf'>(initialFormat);
+  const [theme, setTheme] = useState<string>(themes[0]?.id || 'standard');
   const [selectedColumns, setSelectedColumns] = useState<Record<string, boolean>>({});
   const [filterValues, setFilterValues] = useState<Record<string, string>>({});
   const [isExporting, setIsExporting] = useState(false);
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [isColumnModalOpen, setIsColumnModalOpen] = useState(false);
 
   // Initialize columns and filter defaults when modal opens or columns change
   useEffect(() => {
@@ -126,6 +139,28 @@ export default function ExportModal<T = any>({
     setSelectedColumns(updated);
   };
 
+  const handleThemeChange = (newTheme: string) => {
+    setTheme(newTheme);
+    if (newTheme === 'jd-monthly') {
+      const jdColumns = [
+        'jd_sl', 'jd_date', 'jd_job', 'jd_driver', 'jd_vehicle', 'jd_vehicle_type', 'jd_mobile', 
+        'jd_provider', 'jd_customer', 'jd_receiver', 'jd_waiting', 'jd_stops', 
+        'jd_billing', 'jd_total', 'jd_trip_charge', 'jd_balance', 'jd_company'
+      ];
+      const updated: Record<string, boolean> = {};
+      columns.forEach((col) => {
+        updated[col.id] = jdColumns.includes(col.id);
+      });
+      setSelectedColumns(updated);
+    } else {
+      const updated: Record<string, boolean> = {};
+      columns.forEach((col) => {
+        updated[col.id] = col.defaultSelected !== false;
+      });
+      setSelectedColumns(updated);
+    }
+  };
+
   const handleExport = async () => {
     try {
       setIsExporting(true);
@@ -135,9 +170,9 @@ export default function ExportModal<T = any>({
       if (scope === 'selected') {
         rows = selectedData;
       } else if (scope === 'all') {
-        rows = allData && allData.length > 0 ? allData : filteredData;
+        rows = allData && allData.length > 0 ? allData : effectiveFilteredData;
       } else {
-        rows = filteredData;
+        rows = effectiveFilteredData;
       }
 
       // 2. Apply additional modal filters (if not exporting explicitly selected rows)
@@ -185,9 +220,9 @@ export default function ExportModal<T = any>({
       }
 
       const headers = activeColumns.map((col) => col.label);
-      const dataRows = rows.map((row) =>
+      const dataRows = rows.map((row, index) =>
         activeColumns.map((col) => {
-          const val = col.accessor(row);
+          const val = col.accessor(row, index);
           if (val === null || val === undefined) return '';
           return val;
         })
@@ -198,10 +233,8 @@ export default function ExportModal<T = any>({
       const exportTitle = title.replace(/^Export\s+/i, 'MERCON ').trim();
 
       if (format === 'xlsx') {
-        await exportExcelTable(exportTitle, headers, dataRows, fileName, {
-          sheetName: sheetName || fileNamePrefix,
-          subtitle,
-        });
+        const headerStrings = headers.map(h => typeof h === 'string' ? h : h);
+        await exportExcelTable(exportTitle, headerStrings, dataRows, fileName, { subtitle, sheetName, theme: theme as any });
       } else if (format === 'csv') {
         downloadCSVTable(headers, dataRows, fileName);
       } else if (format === 'pdf') {
@@ -257,11 +290,11 @@ export default function ExportModal<T = any>({
     return result;
   };
 
-  const filteredPreviewCount = applyModalFilters(filteredData).length;
-  const allPreviewCount = applyModalFilters(allData && allData.length > 0 ? allData : filteredData).length;
+  const filteredPreviewCount = applyModalFilters(effectiveFilteredData).length;
+  const allPreviewCount = applyModalFilters(allData && allData.length > 0 ? allData : effectiveFilteredData).length;
   const selectedPreviewCount = selectedData.length; // selection is already explicit
 
-  const actualTotalCount = totalCount !== undefined ? totalCount : (allData?.length || filteredData.length);
+  const actualTotalCount = totalCount !== undefined ? totalCount : (allData?.length || effectiveFilteredData.length);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -326,6 +359,34 @@ export default function ExportModal<T = any>({
             </div>
           </div>
 
+          {themes && themes.length > 0 && format === 'xlsx' && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="font-bold text-slate-700 dark:text-slate-300">Excel Theme Template</label>
+                <button
+                  type="button"
+                  onClick={() => setIsColumnModalOpen(true)}
+                  className="text-[10px] text-brand hover:underline font-semibold cursor-pointer flex items-center gap-1"
+                >
+                  <Edit2 size={10} />
+                  Edit Columns
+                </button>
+              </div>
+              <Select value={theme} onValueChange={handleThemeChange}>
+                <SelectTrigger className="h-9 w-full rounded-lg border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+                  <SelectValue placeholder="Select theme..." />
+                </SelectTrigger>
+                <SelectContent className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl shadow-xl overflow-hidden text-xs z-[9999]">
+                  {themes.map((t) => (
+                    <SelectItem key={t.id} value={t.id} className="cursor-pointer focus:bg-slate-50 dark:focus:bg-slate-800/50 py-2 font-medium">
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Time / Date Range Filter */}
           {scope !== 'selected' && rowDateAccessor && (
             <div className="space-y-1.5">
@@ -388,43 +449,62 @@ export default function ExportModal<T = any>({
             </div>
           )}
 
-          {/* 4. Columns to Include */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="font-bold text-slate-700 dark:text-slate-300">Columns to Include</label>
-              <button
-                type="button"
-                onClick={toggleAllColumns}
-                className="text-[10px] text-brand hover:underline font-semibold cursor-pointer"
-              >
-                {allColumnsSelected ? 'Deselect All' : 'Select All'}
-              </button>
-            </div>
+          {/* Nested Columns Dialog */}
+          <Dialog open={isColumnModalOpen} onOpenChange={setIsColumnModalOpen}>
+            <DialogContent className="max-w-md p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl z-[99999]">
+              <DialogHeader>
+                <DialogTitle className="text-lg font-extrabold text-slate-900 dark:text-slate-100">
+                  Edit Columns
+                </DialogTitle>
+                <DialogDescription className="text-slate-500 text-xs">
+                  Select which columns to include in your export.
+                </DialogDescription>
+              </DialogHeader>
 
-            <div className="grid grid-cols-2 gap-x-3 gap-y-2 border border-slate-100 dark:border-slate-800/80 rounded-xl p-3 bg-white dark:bg-slate-900 max-h-48 overflow-y-auto">
-              {columns.map((col) => (
-                <div key={col.id} className="flex items-center gap-2">
-                  <Checkbox
-                    id={`export-col-${col.id}`}
-                    checked={!!selectedColumns[col.id]}
-                    onCheckedChange={(checked) => {
-                      setSelectedColumns((prev) => ({
-                        ...prev,
-                        [col.id]: !!checked,
-                      }));
-                    }}
-                  />
-                  <label
-                    htmlFor={`export-col-${col.id}`}
-                    className="text-[11px] text-slate-600 dark:text-slate-400 font-medium select-none cursor-pointer truncate"
-                    title={col.label}
+              <div className="space-y-2 mt-2">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-slate-700 dark:text-slate-300">Columns to Include</label>
+                  <button
+                    type="button"
+                    onClick={toggleAllColumns}
+                    className="text-[10px] text-brand hover:underline font-semibold cursor-pointer"
                   >
-                    {col.label}
-                  </label>
+                    {allColumnsSelected ? 'Deselect All' : 'Select All'}
+                  </button>
                 </div>
-              ))}
-            </div>
-          </div>
+
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2 border border-slate-100 dark:border-slate-800/80 rounded-xl p-3 bg-slate-50/50 dark:bg-slate-950/20 max-h-72 overflow-y-auto">
+                  {columns.map((col) => (
+                    <div key={col.id} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`export-col-${col.id}`}
+                        checked={!!selectedColumns[col.id]}
+                        onCheckedChange={(checked) => {
+                          setSelectedColumns((prev) => ({
+                            ...prev,
+                            [col.id]: !!checked,
+                          }));
+                        }}
+                      />
+                      <label
+                        htmlFor={`export-col-${col.id}`}
+                        className="text-[11px] text-slate-600 dark:text-slate-400 font-medium select-none cursor-pointer truncate"
+                        title={col.label}
+                      >
+                        {col.label}
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <DialogFooter className="pt-2">
+                <Button type="button" onClick={() => setIsColumnModalOpen(false)} className="w-full bg-brand text-white hover:bg-brandDark">
+                  Save Columns
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0 pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between w-full">

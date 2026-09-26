@@ -2,7 +2,7 @@
   "name": "mercon",
   "version": "1.0.0",
   "private": true,
-  "description": "MERCON Logistics — monorepo (API server, web dashboard, shared types). Mobile app is installed standalone.",
+  "description": "MERCON Logistics — monorepo (API server, web dashboard, shared types). Mobile apps are a separate npm workspace in frontend/mobile-app.",
   "workspaces": [
     "packages/*",
     "backend/api-server",
@@ -16,8 +16,11 @@
     "postinstall": "npm run build:types || true",
     "build": "npm run build:types && npm run build -w @mercon/api-server && npm run build -w @mercon/web-dashboard",
     "seed": "npm run seed -w @mercon/api-server",
-    "mobile": "npm --prefix frontend/mobile-app/mercon-app run start",
-    "mobile:tunnel": "npm --prefix frontend/mobile-app/mercon-app run start -- --tunnel"
+    "mobile": "npm run mobile:operator",
+    "mobile:driver": "npm --prefix frontend/mobile-app/driver-app run start",
+    "mobile:operator": "npm --prefix frontend/mobile-app/operator-app run start",
+    "mobile:driver:tunnel": "npm --prefix frontend/mobile-app/driver-app run start -- --tunnel",
+    "mobile:operator:tunnel": "npm --prefix frontend/mobile-app/operator-app run start -- --tunnel"
   },
   "engines": {
     "node": ">=18"

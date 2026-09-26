@@ -5,6 +5,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { TimePicker } from '@/components/ui/time-picker';
 import TransitTimeBadge from '@/components/trips/TransitTimeBadge';
 import { getAllTaxonomyOptions, resolveTaxonomyOption } from '@/utils/taxonomyRegistry';
+import { isDateTimeInPast } from '@/utils/pastDateTripUtils';
 import { cn } from '@/lib/utils';
 
 interface ScheduleServicePanelProps {
@@ -113,12 +114,7 @@ export const ScheduleServicePanel: React.FC<ScheduleServicePanelProps> = ({
       <div className="border-t border-slate-100 dark:border-slate-800 pt-2 space-y-2">
         {/* 2. PICKUP SCHEDULE */}
         {(() => {
-          const isPastSchedule = Boolean(
-            slot.date &&
-            slot.pickupTime &&
-            !isNaN(new Date(`${slot.date}T${slot.pickupTime}:00`).getTime()) &&
-            new Date(`${slot.date}T${slot.pickupTime}:00`).getTime() < Date.now() - 5 * 60 * 1000
-          );
+          const isPastSchedule = isDateTimeInPast(slot.date, slot.pickupTime);
 
           return (
             <div className="space-y-1">

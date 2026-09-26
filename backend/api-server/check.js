@@ -1,1 +1,0 @@
-const { PrismaClient } = require('@prisma/client'); const prisma = new PrismaClient(); async function run() { console.log(await prisma.trip.findFirst({where: {ref_id: 'TRP-0862'}, include: {coDriver: true}})); } run();

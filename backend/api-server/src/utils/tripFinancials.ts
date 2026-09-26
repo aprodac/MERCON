@@ -5,6 +5,9 @@
  * Operational N-Days Scheduling, Balance Margin (Profit), and Margin Percentage.
  */
 
+import { TripStatus } from '@prisma/client';
+import { parseOptionalFloat } from './uuid';
+
 type Money = number | string | null | undefined | { toNumber(): number };
 
 export const asNumber = (v: Money): number => {
@@ -51,7 +54,9 @@ export interface ComputedBackendFinancials {
   perTripBilling: number;        // Base customer rate for active trip
   chargesTotal: number;          // Additional billable charges
   totalCustomerBilling: number;  // perTripBilling + chargesTotal
-  totalDriverPayout: number;     // Driver payout or 3PL subcontract cost (NEVER divided by 30)
+  primaryDriverPayout: number;   // Primary driver payout (SAR)
+  coDriverPayout: number;        // Co-driver payout (SAR)
+  totalDriverPayout: number;     // Sum of primary + co-driver + 3PL cost
   extraDriverPayment: number;    // Extra driver allowance
   balanceMargin: number;         // totalCustomerBilling - totalDriverPayout
   marginPercent: number;         // Margin percentage (%)
@@ -63,6 +68,115 @@ export interface ComputedBackendFinancials {
 export function computeTripChargesTotal(charges: ChargeLike[] | null | undefined): number {
   if (!charges || charges.length === 0) return 0;
   return charges.reduce((sum, c) => sum + asNumber(c.amount), 0);
+}
+
+export interface ResolveDriverPayoutInput {
+  /** trip.driver_payout ?? trip.driver_charge — the payout already on the trip. */
+  currentDriverPayout: Money;
+  isThirdParty: boolean;
+  /** trip.subcontract?.cost ?? trip.third_party_cost */
+  subcontractCost: Money;
+  /**
+   * The raw (unparsed) value of req.body.driver_payout, falling back to
+   * driver_charge then trip_charges — `undefined` only when none of the
+   * three keys were sent, which is what distinguishes "caller didn't touch
+   * this field" from "caller explicitly sent a value" (including a value
+   * that turns out not to parse, which still overrides rather than falling
+   * through to the subcontract-cost guess below).
+   */
+  requestedPayoutRaw: unknown;
+}
+
+/**
+ * MERCON's own driver pulls the lane's agreed payout off the rate card; a
+ * third-party job pulls the subcontractor cost already on the trip. Either
+ * way it stays a suggestion, not a lock — an explicit value in the request
+ * always wins, and the settlement form can still override it before
+ * submitting.
+ */
+export function resolveDriverPayout(input: ResolveDriverPayoutInput): number {
+  const { currentDriverPayout, isThirdParty, subcontractCost, requestedPayoutRaw } = input;
+
+  if (requestedPayoutRaw !== undefined) {
+    return parseOptionalFloat(requestedPayoutRaw) ?? 0;
+  }
+  if (isThirdParty && subcontractCost !== null && subcontractCost !== undefined) {
+    return asNumber(subcontractCost);
+  }
+  return asNumber(currentDriverPayout);
+}
+
+/**
+ * Past-time trips can never be created as Scheduled/Draft: if the planned
+ * start has already passed, the initial status must be Delayed regardless of
+ * what was requested, since "Scheduled for the past" is a contradiction the
+ * rest of the app isn't built to handle.
+ *
+ * `initialStatus` is whatever the caller already resolved the status to
+ * (callers differ here — e.g. bulk-import validates the raw value against
+ * the TripStatus enum first, a single create doesn't — so that step stays
+ * with each caller). `requestedStatusRaw` is the original, unvalidated value
+ * the caller received, which is what the override condition itself checks
+ * against, matching both callers' existing behavior exactly.
+ */
+export function resolveInitialTripStatus(
+  initialStatus: TripStatus,
+  requestedStatusRaw: TripStatus | string | null | undefined,
+  plannedStart: Date | null
+): TripStatus {
+  if (plannedStart) {
+    const diffMs = Date.now() - plannedStart.getTime();
+    if (diffMs >= 0) {
+      if (
+        !requestedStatusRaw ||
+        requestedStatusRaw === TripStatus.Scheduled ||
+        requestedStatusRaw === TripStatus.Draft ||
+        (requestedStatusRaw as string) === 'Scheduled'
+      ) {
+        return TripStatus.Delayed;
+      }
+    }
+  }
+
+  return initialStatus;
+}
+
+export interface CoDriverPayoutSplitInput {
+  totalPayout: number;
+  /** Truthy when a co-driver is assigned (co_driver_id on the trip/row). */
+  hasCoDriver: boolean;
+  /**
+   * The raw (unparsed) co_driver_payout value — `undefined`/`null` is what
+   * distinguishes "caller didn't send a co-driver payout" (split evenly)
+   * from "caller explicitly set one" (use it as-is, don't touch the split).
+   */
+  explicitCoDriverPayout: unknown;
+}
+
+export interface CoDriverPayoutSplit {
+  driverPayout: number;
+  coDriverPayout: number;
+}
+
+/**
+ * When a co-driver is assigned and the caller didn't send an explicit
+ * co-driver payout, the total payout is split evenly between the two
+ * drivers rather than the primary driver keeping all of it.
+ */
+export function splitCoDriverPayout(input: CoDriverPayoutSplitInput): CoDriverPayoutSplit {
+  const { totalPayout, hasCoDriver, explicitCoDriverPayout } = input;
+
+  let driverPayout = totalPayout;
+  let coDriverPayout = explicitCoDriverPayout !== undefined && explicitCoDriverPayout !== null
+    ? asNumber(explicitCoDriverPayout as Money)
+    : 0;
+
+  if (hasCoDriver && (explicitCoDriverPayout === undefined || explicitCoDriverPayout === null) && totalPayout > 0) {
+    driverPayout = Math.round((totalPayout / 2) * 100) / 100;
+    coDriverPayout = Math.round((totalPayout / 2) * 100) / 100;
+  }
+
+  return { driverPayout, coDriverPayout };
 }
 
 /** Base billing price for the customer. */
@@ -83,18 +197,8 @@ export function computeTripTotalAmount(
 
 /** Driver Payout or 3PL Subcontract Cost. NEVER DIVIDED BY 30. */
 export function computeTripDriverPayout(trip: BackendTripFinancialInputs): number {
-  const extraDriver = asNumber(trip.extra_driver_payment);
-  const days = asNumber(trip.selected_operating_days);
-  const multiplier = days > 0 ? days : 1;
-
-  if (trip.is_third_party) {
-    const cost = trip.subcontract?.cost ?? trip.third_party_cost;
-    return Math.max(0, (asNumber(cost) * multiplier) + extraDriver);
-  }
-  const primaryPayout = trip.driver_payout ?? trip.driver_charge ?? trip.trip_charges ?? trip.rateCard?.driver_payout ?? trip.quotation?.driver_payout;
-  const coDriverPayout = trip.co_driver_payout ?? 0;
-  const totalPayout = asNumber(primaryPayout) + asNumber(coDriverPayout);
-  return Math.max(0, (totalPayout * multiplier) + extraDriver);
+  const fin = calculateBackendTripFinancials(trip);
+  return fin.totalDriverPayout;
 }
 
 /** Balance profit kept by MERCON: customer total minus driver payout. */
@@ -143,8 +247,65 @@ export function calculateBackendTripFinancials(trip: BackendTripFinancialInputs)
     : computeTripChargesTotal(trip.charges);
   
   const totalCustomerBilling = perTripBilling + chargesTotal;
-  const totalDriverPayout = computeTripDriverPayout(trip);
   const extraDriverPayment = asNumber(trip.extra_driver_payment);
+
+  let primaryDriverPayout = 0;
+  let coDriverPayout = 0;
+  let totalDriverPayout = 0;
+
+  if (trip.is_third_party) {
+    const cost = trip.subcontract?.cost ?? trip.third_party_cost;
+    primaryDriverPayout = Math.max(0, asNumber(cost));
+    totalDriverPayout = Math.max(0, (primaryDriverPayout * operatingDays) + extraDriverPayment);
+  } else {
+    const quotationDefault = trip.rateCard?.driver_payout ?? trip.quotation?.driver_payout;
+    const quotationDefaultVal = quotationDefault != null ? asNumber(quotationDefault) : 0;
+    const rawPrimary = trip.driver_payout ?? trip.driver_charge ?? trip.trip_charges ?? 0;
+    const rawPrimaryVal = asNumber(rawPrimary);
+    let coVal = asNumber(trip.co_driver_payout);
+
+    const hasCoDriver = Boolean((trip as any).co_driver_id || (trip as any).coDriverId || (trip as any).coDriver || coVal > 0);
+
+    let primaryVal = 0;
+
+    if (hasCoDriver) {
+      if (coVal > 0) {
+        if (rawPrimaryVal > 0) {
+          if (rawPrimaryVal === coVal) {
+            primaryVal = rawPrimaryVal;
+          } else if (rawPrimaryVal >= coVal * 2) {
+            primaryVal = rawPrimaryVal - coVal;
+          } else {
+            primaryVal = rawPrimaryVal;
+          }
+        } else if (quotationDefaultVal > 0) {
+          if (quotationDefaultVal > coVal) {
+            primaryVal = quotationDefaultVal - coVal;
+          } else {
+            primaryVal = quotationDefaultVal;
+          }
+        } else {
+          primaryVal = coVal;
+        }
+      } else if (rawPrimaryVal > 0) {
+        // Equal 50/50 split of the total saved rate driver payout
+        const half = Math.round((rawPrimaryVal / 2) * 100) / 100;
+        primaryVal = half;
+        coVal = half;
+      } else if (quotationDefaultVal > 0) {
+        const half = Math.round((quotationDefaultVal / 2) * 100) / 100;
+        primaryVal = half;
+        coVal = half;
+      }
+    } else {
+      primaryVal = rawPrimaryVal > 0 ? rawPrimaryVal : quotationDefaultVal;
+      coVal = 0;
+    }
+
+    primaryDriverPayout = Math.max(0, primaryVal);
+    coDriverPayout = Math.max(0, coVal);
+    totalDriverPayout = Math.max(0, ((primaryDriverPayout + coDriverPayout) * operatingDays) + extraDriverPayment);
+  }
 
   const balanceMargin = totalCustomerBilling - totalDriverPayout;
   const marginPercent = totalCustomerBilling > 0
@@ -161,6 +322,8 @@ export function calculateBackendTripFinancials(trip: BackendTripFinancialInputs)
     perTripBilling,
     chargesTotal,
     totalCustomerBilling,
+    primaryDriverPayout,
+    coDriverPayout,
     totalDriverPayout,
     extraDriverPayment,
     balanceMargin,

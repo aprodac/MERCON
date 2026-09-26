@@ -157,6 +157,7 @@ export default function CreateTripPage() {
             submissionResult={form.submissionResult}
             isStepValid={form.isStepValid}
             getStepValidationErrors={form.getStepValidationErrors}
+            validateAndFocusErrors={form.validateAndFocusErrors}
             canNavigateToStep={form.canNavigateToStep}
             setContractStep={form.setContractStep}
             handleContractSubmit={() => {
@@ -235,6 +236,8 @@ export default function CreateTripPage() {
                         marginMetrics={form.marginMetrics}
                         drivers={form.drivers}
                         vehicles={form.vehicles}
+                        awbNumber={form.awbNumber}
+                        setAwbNumber={form.setAwbNumber}
                         dayAssignments={form.dayAssignments}
                         setDayAssignments={form.setDayAssignments}
                         fieldErrors={form.fieldErrors}

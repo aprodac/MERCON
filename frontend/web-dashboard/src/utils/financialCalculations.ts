@@ -19,6 +19,8 @@ export interface TripFinancialInputs {
   monthlyRate?: number | string | null;
 
   driverPayout?: number | string | null;
+  coDriverPayout?: number | string | null;
+  quotationDriverPayout?: number | string | null;
   driverCharge?: number | string | null;
   driverPayoutsList?: DriverRotationPayoutInput[] | null;
 
@@ -40,6 +42,8 @@ export interface ComputedTripFinancials {
   perTripBreakdown: number;       // Equivalent daily/per-trip rate (SAR)
   resolvedBilling: number;        // Per-trip or schedule customer billing rate (SAR)
   resolvedDriverPayout: number;   // Driver payout or 3PL carrier cost (SAR) — NEVER divided by 30
+  primaryDriverPayout: number;    // Primary driver per-trip payout rate (SAR)
+  coDriverPayout: number;         // Co-driver per-trip payout rate (SAR)
   perDriverPayout: number;        // Single driver per-trip payout rate (SAR)
   driverCount: number;            // Number of assigned rotation drivers
   additionalChargesTotal: number; // Itemized extra charges sum (SAR)
@@ -84,41 +88,76 @@ export function computeTripFinancials(inputs: TripFinancialInputs): ComputedTrip
       monthlyRate = explicitMonthlyRate;
       dailyRate = Number((monthlyRate / 30).toFixed(2));
     } else if (rawBillingInput > 3000) {
-      // Input is the monthly contract rate (e.g. SAR 15,000)
       monthlyRate = rawBillingInput;
       dailyRate = Number((monthlyRate / 30).toFixed(2));
     } else {
-      // Input is already the per-trip daily breakdown rate (e.g. SAR 500)
       dailyRate = rawBillingInput;
       monthlyRate = Number((dailyRate * 30).toFixed(2));
     }
 
-    // Per-trip customer billing is ALWAYS dailyRate (Monthly Rate / 30).
-    // If selectedOperatingDays is > 1 (multi-day schedule), total customer billing = dailyRate * operatingDays.
     resolvedBilling = operatingDays > 1
       ? Number((dailyRate * operatingDays).toFixed(2))
       : dailyRate;
   }
 
-  // 3. Resolve Driver Payout (NEVER DIVIDED BY 30)
+  // 3. Resolve Driver Payout & Co-Driver Payout (NEVER DIVIDED BY 30)
   const extraDriver = parseMoney(inputs.extraDriverPayment ?? 0);
+  const coDriverPayoutInput = parseMoney(inputs.coDriverPayout ?? 0);
   let perDriverPayout = 0;
+  let primaryDriverPayout = 0;
+  let coDriverPayout = coDriverPayoutInput;
   let totalDriverPayout = 0;
   let driverCount = 1;
 
   if (inputs.is3PL) {
     perDriverPayout = Math.max(0, parseMoney(inputs.subcontractCost ?? 0));
+    primaryDriverPayout = perDriverPayout;
     totalDriverPayout = perDriverPayout * (inputs.selectedOperatingDays != null && inputs.selectedOperatingDays > 0 ? inputs.selectedOperatingDays : 1);
   } else if (inputs.driverPayoutsList && inputs.driverPayoutsList.length > 0) {
     driverCount = inputs.driverPayoutsList.length;
     perDriverPayout = inputs.driverPayoutsList.reduce((sum, d) => sum + parseMoney(d.payout), 0) / driverCount;
+    primaryDriverPayout = perDriverPayout;
     const basePayoutSum = inputs.driverPayoutsList.reduce((sum, d) => sum + parseMoney(d.payout), 0);
     const scheduleDays = inputs.selectedOperatingDays != null && inputs.selectedOperatingDays > 0 ? inputs.selectedOperatingDays : 1;
     totalDriverPayout = basePayoutSum * scheduleDays;
   } else {
-    perDriverPayout = Math.max(0, parseMoney(inputs.driverPayout ?? inputs.driverCharge ?? 0));
+    const quotationDefaultPayout = parseMoney(inputs.quotationDriverPayout ?? 0);
+    const rawPrimaryPayout = parseMoney(inputs.driverPayout ?? inputs.driverCharge ?? 0);
+
+    let primaryVal = 0;
+    let coVal = coDriverPayoutInput;
+
+    if (coDriverPayoutInput > 0) {
+      if (rawPrimaryPayout > 0) {
+        if (rawPrimaryPayout === coDriverPayoutInput) {
+          // Already split 50/50 (e.g. 30 and 30)
+          primaryVal = rawPrimaryPayout;
+        } else if (rawPrimaryPayout >= coDriverPayoutInput * 2) {
+          // Combined total payout (e.g. 60 and 30) -> subtract co-driver's share
+          primaryVal = rawPrimaryPayout - coDriverPayoutInput;
+        } else {
+          primaryVal = rawPrimaryPayout;
+        }
+      } else if (quotationDefaultPayout > 0) {
+        if (quotationDefaultPayout > coDriverPayoutInput) {
+          primaryVal = quotationDefaultPayout - coDriverPayoutInput;
+        } else {
+          primaryVal = quotationDefaultPayout;
+        }
+      } else {
+        // Fallback: match primary driver payout to co-driver payout
+        primaryVal = coDriverPayoutInput;
+      }
+    } else {
+      primaryVal = rawPrimaryPayout > 0 ? rawPrimaryPayout : quotationDefaultPayout;
+      coVal = 0;
+    }
+
+    primaryDriverPayout = Math.max(0, primaryVal);
+    coDriverPayout = Math.max(0, coVal);
+    perDriverPayout = primaryDriverPayout;
     const scheduleDays = inputs.selectedOperatingDays != null && inputs.selectedOperatingDays > 0 ? inputs.selectedOperatingDays : 1;
-    totalDriverPayout = perDriverPayout * scheduleDays;
+    totalDriverPayout = (primaryDriverPayout + coDriverPayout) * scheduleDays;
   }
 
   const resolvedDriverPayout = Math.max(0, totalDriverPayout + extraDriver);
@@ -153,6 +192,8 @@ export function computeTripFinancials(inputs: TripFinancialInputs): ComputedTrip
     perTripBreakdown: dailyRate,
     resolvedBilling,
     resolvedDriverPayout,
+    primaryDriverPayout,
+    coDriverPayout,
     perDriverPayout,
     driverCount,
     additionalChargesTotal,

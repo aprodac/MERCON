@@ -172,6 +172,7 @@ export interface Trip {
   vehicle_type?: string | null;
   rate_category?: string | null;
   billing_type?: string | null;
+  awb_number?: string | null;
   rateCardId?: string | null;
   rateCard?: {
     id: string;
@@ -407,9 +408,13 @@ export interface UpdateTripFinancialsPayload {
   /** Replaces the trip's entire itemised charge list when sent. */
   charges?: TripChargeInput[];
   trip_charges?: number;
+  driver_payout?: number;
+  driver_charge?: number;
   billing_amount?: number;
   carrier_name?: string;
   is_post_trip_settled?: boolean;
+  update_quotation_driver_payout?: boolean;
+  update_quotation_payout?: boolean;
 }
 
 export const tripService = {
@@ -505,8 +510,29 @@ export const tripService = {
     return res.data.data;
   },
 
+  /** Re-construct whole trip route/stops and schedule for a Draft or Scheduled trip. */
+  async updateStops(id: string, payload: any): Promise<Trip> {
+    const res = await api.put<ApiResponse<Trip>>(`/trips/${id}/stops`, payload);
+    return res.data.data;
+  },
+
   async logStopDelay(tripId: string, stopId: string, payload: LogStopDelayPayload): Promise<TripStop> {
     const res = await api.patch<ApiResponse<TripStop>>(`/trips/${tripId}/stops/${stopId}/delay`, payload);
+    return res.data.data;
+  },
+
+  /**
+   * Confirm or correct the real time an EXTERNAL_APP evidence screenshot
+   * happened at. Omit whichever of actual_arrival/actual_departure the
+   * operator didn't change — submitting with both omitted is a pure
+   * confirmation that the recorded time is already correct.
+   */
+  async confirmEvidenceTime(
+    tripId: string,
+    stopId: string,
+    payload: { document_id: string; actual_arrival?: string; actual_departure?: string }
+  ): Promise<TripStop> {
+    const res = await api.patch<ApiResponse<TripStop>>(`/trips/${tripId}/stops/${stopId}/confirm-time`, payload);
     return res.data.data;
   },
 
@@ -599,12 +625,14 @@ export interface BulkImportTripRow {
   rate_category?: string;
   vehicle_type?: string;
   billing_type?: string;
+  awb_number?: string | null;
   billing_amount?: number;
   /** What MERCON paid its own driver for this specific trip. */
   trip_charges?: number;
   driver_charge?: number;
   driver_payout?: number;
   co_driver_payout?: number;
+  additional_charge?: number;
   update_quotation_driver_payout?: boolean;
   origin?: string;
   destination?: string;

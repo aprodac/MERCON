@@ -12,7 +12,8 @@ on:
 # --build` is never interrupted.
 concurrency:
   group: ci-cd-dev
-  cancel-in-progress: true
+  cancel-in-progress: false
+
 
 jobs:
   deploy:
@@ -106,7 +107,7 @@ jobs:
           ICCES_PASS: ${{ secrets.DEV_ICCES_PASS || secrets.ICCES_PASS }}
           ICCES_ACCT: ${{ secrets.DEV_ICCES_ACCT || secrets.ICCES_ACCT }}
           # Gemini Vision AI — injected from repo/environment secrets
-          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY || 'AQ.Ab8RN6K3a4t83gB0yRI607axYGS8_JJIHhRuJZkYkLwxDDsNZA' }}
+          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ secrets.DEV_GEMINI_MODEL || secrets.GEMINI_MODEL || 'gemini-flash-latest' }}
         run: |
           echo "=== REBUILDING DEV STACK (mercon-dev) ==="
@@ -125,20 +126,59 @@ jobs:
           echo "Disk space available immediately prior to build:"
           df -h / || true
 
-          echo "Building and updating mercon-dev services with BuildKit cache..."
-          docker compose -p mercon-dev up -d --build
+          echo "Building mercon-dev images (running container remains untouched during build)..."
+          docker compose -p mercon-dev build
 
-          # Build and start services in detached mode
-          # Migration and prisma generation are handled authoritatively at container boot by Dockerfile CMD:
-          # npx prisma migrate deploy && npx prisma generate && node dist/index.js
-          sleep 8
-          echo "--- dev-api logs (last 100 lines) ---"
-          docker compose -p mercon-dev logs --no-color --tail=100 mercon-api || true
-          echo "--- dev-api container status ---"
+          echo "Executing Prisma database migrations with newly built image..."
+          docker compose -p mercon-dev run --rm --no-deps mercon-api npx prisma migrate deploy
+
+          echo "Recreating and restarting mercon-dev containers..."
+          docker compose -p mercon-dev up -d --no-build
+
+          echo "Waiting for mercon-api service container to achieve healthy status (bounded 60s timeout)..."
+          HEALTH_STATUS="unknown"
+          TIMEOUT=60
+          ELAPSED=0
+
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            CONTAINER_ID=$(docker compose -p mercon-dev ps -q mercon-api 2>/dev/null || echo "")
+            if [ -n "$CONTAINER_ID" ]; then
+              HEALTH_STATUS=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$CONTAINER_ID" 2>/dev/null || echo "container-not-found")
+            else
+              HEALTH_STATUS="container-not-found"
+            fi
+
+            if [ "$HEALTH_STATUS" = "healthy" ]; then
+              echo "✓ Service mercon-api container (ID: ${CONTAINER_ID:0:12}) reported healthy state after ${ELAPSED}s."
+              break
+            elif [ "$HEALTH_STATUS" = "unhealthy" ]; then
+              echo "::error::Service mercon-api container reported UNHEALTHY state." >&2
+              break
+            fi
+            sleep 2
+            ELAPSED=$((ELAPSED + 2))
+          done
+
+          echo "--- mercon-api service container status ---"
           docker compose -p mercon-dev ps mercon-api || true
 
-          echo "--- Verifying dev health endpoint ---"
-          curl -fsS http://127.0.0.1:3051/health 2>/dev/null || curl -fsS http://localhost:3051/health 2>/dev/null || echo "Healthcheck curl probe completed."
+          if [ "$HEALTH_STATUS" != "healthy" ]; then
+            echo "::error::Deployment failed! Service mercon-api container did not achieve healthy status (Status: '$HEALTH_STATUS'). Printing logs..." >&2
+            echo "--- mercon-api logs (last 100 lines) ---"
+            docker compose -p mercon-dev logs --no-color --tail=100 mercon-api || true
+            exit 1
+          fi
+
+          echo "--- Verifying external health endpoint ---"
+          if ! curl -fsS http://127.0.0.1:3051/health; then
+            echo "::error::Deployment failed! External health probe GET http://127.0.0.1:3051/health failed or returned non-200. Printing logs..." >&2
+            echo "--- mercon-api logs (last 100 lines) ---"
+            docker compose -p mercon-dev logs --no-color --tail=100 mercon-api || true
+            exit 1
+          fi
+          echo "✓ External health probe GET http://127.0.0.1:3051/health verified successfully."
+
+
 
           echo "=== FINAL DISK AND DOCKER STORAGE STATE ==="
           df -h / || true
@@ -148,9 +188,19 @@ jobs:
 
       - name: Deploy Nginx Config for Dev & Reload
         run: |
+          echo "Deploying dev nginx config..."
+
+          # Deploy catch-all default SSL block (rejects unknown HTTPS hosts)
+          # Both pipelines deploy this to guarantee the safety net is always present.
+          if [ -f nginx/00-default-ssl.conf ]; then
+            sudo cp nginx/00-default-ssl.conf /etc/nginx/sites-available/00-default-ssl.conf
+            sudo ln -sf /etc/nginx/sites-available/00-default-ssl.conf /etc/nginx/sites-enabled/00-default-ssl.conf
+          fi
+
+          # Deploy dev nginx config
           if [ -f nginx/dev-mercon-api.conf ]; then
-            sudo cp nginx/dev-mercon-api.conf /etc/nginx/sites-available/dev-mercon-api.conf 2>/dev/null || true
-            sudo ln -sf /etc/nginx/sites-available/dev-mercon-api.conf /etc/nginx/sites-enabled/dev-mercon-api.conf 2>/dev/null || true
+            sudo cp nginx/dev-mercon-api.conf /etc/nginx/sites-available/dev-mercon-api.conf
+            sudo ln -sf /etc/nginx/sites-available/dev-mercon-api.conf /etc/nginx/sites-enabled/dev-mercon-api.conf
           fi
 
           # Update dev nginx site configs strictly (*dev*) to proxy to dev API port 3051 and dev Frontend port 3061
@@ -167,5 +217,8 @@ jobs:
             sudo sed -i 's/127\.0\.0\.1:3061/127.0.0.1:3060/g' /etc/nginx/sites-enabled/mercon-api.conf 2>/dev/null || true
           fi
 
-          sudo nginx -t 2>/dev/null && (sudo systemctl reload nginx 2>/dev/null || sudo service nginx reload 2>/dev/null || true)
+          # Validate config before reloading
+          sudo nginx -t
+          sudo systemctl reload nginx || sudo service nginx reload || true
+          echo "Dev nginx config deployed and reloaded."
 

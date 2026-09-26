@@ -1,0 +1,80 @@
+# Scheduled Postgres backup for production. Runs nightly plus on-demand via
+# workflow_dispatch. Reuses the same pg_dump invocation already proven in
+# sync-prod-from-dev.yml's pre-overwrite safety dump, but on a schedule and
+# with retention/off-host copy so it can stand alone as a real backup.
+#
+# Restore procedure (manual, intentionally not automated — see PROGRESS.md /
+# docs/progress entry for this change): copy the .dump file onto the host,
+# then:
+#   docker cp <file>.dump mercon-postgres:/tmp/restore.dump
+#   docker exec mercon-postgres pg_restore --clean --if-exists --no-owner \
+#     --no-privileges -U "$POSTGRES_USER" -d mercon_db /tmp/restore.dump
+name: Backup Production Database
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # 02:00 UTC daily
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    name: Dump and retain production database
+    runs-on: self-hosted
+
+    steps:
+      - name: Verify production Postgres container is running
+        run: |
+          set -euo pipefail
+          if [ "$(docker inspect -f '{{.State.Running}}' mercon-postgres 2>/dev/null)" != "true" ]; then
+            echo "::error::Container 'mercon-postgres' is not running." >&2
+            exit 1
+          fi
+
+      - name: Dump production database
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+        run: |
+          set -euo pipefail
+          if [ -z "$POSTGRES_USER" ]; then
+            echo "::error::POSTGRES_USER secret is not set. Aborting backup." >&2
+            exit 1
+          fi
+
+          # Dedicated non-/tmp directory: /tmp already holds the uploads bind
+          # mounts and this host has a prior ENOSPC incident — backups here
+          # shouldn't compete with or be at risk from /tmp cleanup.
+          BACKUP_DIR="/var/backups/mercon"
+          sudo mkdir -p "$BACKUP_DIR"
+          sudo chown "$(whoami)" "$BACKUP_DIR"
+
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          DUMP_PATH="$BACKUP_DIR/mercon-db-$TIMESTAMP.dump"
+
+          docker exec mercon-postgres pg_dump -U "$POSTGRES_USER" -Fc -d mercon_db > "$DUMP_PATH"
+
+          if [ ! -s "$DUMP_PATH" ]; then
+            echo "::error::Backup file is empty or missing at $DUMP_PATH." >&2
+            exit 1
+          fi
+
+          echo "Backup created: $DUMP_PATH ($(du -h "$DUMP_PATH" | cut -f1))"
+          echo "DUMP_PATH=$DUMP_PATH" >> "$GITHUB_ENV"
+
+      - name: Prune local backups older than 7 days
+        run: |
+          set -euo pipefail
+          # Retention only — this must never be able to cause the ENOSPC
+          # incident this host has already had once. The off-host copy
+          # (uploaded as a GitHub Actions artifact below) is the longer-term
+          # copy; this directory is just a short local buffer.
+          find /var/backups/mercon -name '*.dump' -mtime +7 -delete 2>/dev/null || true
+          echo "--- Remaining local backups ---"
+          ls -lh /var/backups/mercon/ || true
+          df -h / || true
+
+      - name: Upload backup as workflow artifact (off-host copy)
+        uses: actions/upload-artifact@v4
+        with:
+          name: mercon-db-backup-${{ github.run_id }}
+          path: ${{ env.DUMP_PATH }}
+          retention-days: 14

@@ -36,20 +36,21 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { TruckMotion, CheckBadge, RouteLine, ClockIcon, RiskAlert } from '@/components/ui/kpi-icons';
+import { parseTripRouteNodes, getLegEndpoints } from '@mercon/shared-types';
 
 import { format, subDays, addDays } from 'date-fns';
 import { DateRange } from 'react-day-picker';
-import { exportExcelTable, exportPDFTable, parseCSVFile } from '@/utils/exportUtils';
+import { exportExcelTable, exportPDFTable } from '@/utils/exportUtils';
 import ExportModal, { ExportColumn, ExportFilter } from '@/components/ui/ExportModal';
-import { parseSheet, TRIP_COLUMNS } from '@/utils/importUtils';
-import { tripService, Trip, TripStatus, BulkImportTripRow, BulkImportResult, getTripPayloadCapacity, getTripRateCategory, downloadTripExport } from '@/services/tripService';
+import { tripService, Trip, TripStatus, getTripPayloadCapacity, getTripRateCategory, downloadTripExport } from '@/services/tripService';
 import { customerService } from '@/services/customerService';
 import { driverService } from '@/services/driverService';
 import { vehicleService } from '@/services/vehicleService';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useTripWhatsAppShare } from '@/hooks/useTripWhatsAppShare';
+import { useTripBulkImport, findDriverCandidates, downloadImportTemplate } from '@/hooks/useTripBulkImport';
 import { TripDateFilterPicker, DateFilterType } from '@/components/trips/TripDateFilterPicker';
 import { useDeploymentTimezone, formatInDeploymentTz } from '@/lib/datetime';
-import { calculateRoadDistanceKm, resolveCityCoords } from '@/services/travelTimeService';
 import { TaxonomyBadge } from '@/components/common/TaxonomyBadge';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -58,12 +59,11 @@ import StatusBadge from '@/components/ui/StatusBadge';
 import DeletedBadge from '@/components/ui/DeletedBadge';
 import Btn from '@/components/ui/Btn';
 import KpiCard from '@/components/ui/KpiCard';
+import TripKpiCards from '@/components/trips/TripKpiCards';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import { SortDropdown, SortOption } from '@/components/ui/SortDropdown';
-import { analyzePastDateRows, applyPastStatusToRows, PastDateAnalysis } from '@/utils/pastDateTripUtils';
-import { openMultipleWhatsappMessages } from '@/utils/whatsappFormatter';
 import PastDateTripConfirmModal from '@/components/trips/PastDateTripConfirmModal';
 
 
@@ -142,66 +142,57 @@ const matchesExportStatusGroup = (status: TripStatus, group: ExportStatusGroup) 
 };
 
 const TRIP_EXPORT_HEADERS = [
-  'Job / Ref ID', 'Status', 'Customer', 'Pickup Location', 'Dropoff Location', 'Driver', 'Vehicle',
-  'Line Type', 'Vehicle Class', 'Rate Card', 'Planned Start', 'Actual Start', 'Planned End', 'Actual End',
-  'Driver Charge', 'Billing Rate', 'Carrier / Provider',
+  'ref_id', 'status', 'customer', 'pickup_location', 'stops', 'dropoff_location',
+  'driver', 'vehicle', 'rate_category', 'vehicle_type', 'quotation',
+  'planned_start', 'actual_start', 'planned_end', 'actual_end',
+  'driver_payout', 'additional_charge', 'billing_amount', 'carrier_name'
 ];
 
 const formatExportDate = (value: string | null, tz: string = 'Asia/Riyadh') => (value ? formatInDeploymentTz(value, tz, 'yyyy-MM-dd') : '');
 
+const getRouteNodes = (trip: Trip) => {
+  if (Array.isArray((trip as any).route_timeline) && (trip as any).route_timeline.length >= 2) {
+    return (trip as any).route_timeline;
+  }
+  return parseTripRouteNodes(trip);
+};
+
 const getPickupInfo = (trip: Trip) => {
-  const pickup = trip.stops?.find((s) => s.stop_type === 'Pickup') || trip.stops?.[0];
-  if (!pickup) return { name: '—', address: null };
-  const name = pickup.location_name || pickup.location?.name || pickup.location_address || pickup.location?.address || (pickup.location_lat ? `${pickup.location_lat.toFixed(3)}, ${pickup.location_lng.toFixed(3)}` : '—');
-  const address = (pickup.location_name && (pickup.location_address || pickup.location?.address)) ? (pickup.location_address || pickup.location?.address) : null;
-  return { name, address };
+  const nodes = getRouteNodes(trip);
+  if (nodes.length > 0) {
+    return { name: nodes[0].name || '—', address: nodes[0].address || null };
+  }
+  return { name: '—', address: null };
 };
 
 const getDropoffInfo = (trip: Trip) => {
-  const stops = trip.stops || [];
-  if (!stops.length) {
-    const fallback = trip.rateCard?.route_destination || (trip as any).quotation?.route_destination || (trip as any).route_destination || '—';
-    return { name: fallback, address: null };
+  const endpoints0 = getLegEndpoints(trip, 0);
+  if (endpoints0.delivery) {
+    const dest = endpoints0.delivery;
+    return { name: (dest as any).name || (dest as any).location_name || '—', address: (dest as any).address || (dest as any).location_address || null };
   }
-
-  const pickupStop = stops.find((s) => s.stop_type === 'Pickup') || stops[0];
-  const pickupName = (pickupStop?.location_name || pickupStop?.location?.name || '').toLowerCase().trim();
-
-  const outboundStops = stops.filter((s: any) => ((s as any).leg_index ?? 0) === 0);
-  let dropoff = outboundStops.length > 1 ? outboundStops[outboundStops.length - 1] : null;
-
-  if (!dropoff || (outboundStops.length > 1 && (dropoff.location_name || dropoff.location?.name || '').toLowerCase().trim() === pickupName)) {
-    const distinctStop = stops.find((s) => {
-      const sName = (s.location_name || s.location?.name || '').toLowerCase().trim();
-      return sName && sName !== pickupName;
-    });
-    if (distinctStop) {
-      dropoff = distinctStop;
-    }
+  const nodes = getRouteNodes(trip);
+  if (nodes.length > 1) {
+    const lastNode = nodes[nodes.length - 1];
+    return { name: lastNode.name || '—', address: lastNode.address || null };
   }
-
-  if (!dropoff && stops.length > 1) dropoff = stops[stops.length - 1];
-  if (!dropoff && stops.length > 0) dropoff = stops[0];
-  if (!dropoff) return { name: '—', address: null };
-
-  let name = dropoff.location_name || dropoff.location?.name || dropoff.location_address || dropoff.location?.address || (dropoff.location_lat ? `${dropoff.location_lat.toFixed(3)}, ${dropoff.location_lng.toFixed(3)}` : '—');
-  name = name.replace(/🔁\s*/g, '').replace(/\[RETURN:.*?\]/gi, '').trim();
-
-  const address = (dropoff.location_name && (dropoff.location_address || dropoff.location?.address)) ? (dropoff.location_address || dropoff.location?.address) : null;
-  return { name, address };
+  const fallback = trip.rateCard?.route_destination || (trip as any).quotation?.route_destination || (trip as any).route_destination || '—';
+  return { name: fallback, address: null };
 };
 
 const TRIP_EXPORT_COLUMNS: ExportColumn<Trip>[] = [
+  // --- STANDARD COLUMNS (defaultSelected: true) ---
   { id: 'ref_id', label: 'Job / Ref ID', accessor: (t) => t.ref_id || '' },
   { id: 'status', label: 'Status', accessor: (t) => t.status || '' },
   { id: 'customer', label: 'Customer', accessor: (t) => t.customer?.name || 'Unassigned' },
   { id: 'pickup', label: 'Pickup Location', accessor: (t) => {
       const p = getPickupInfo(t);
-      return p.name !== '—' ? (p.address ? `${p.name} (${p.address})` : p.name) : '—';
+      return p.name !== '—' ? p.name.split(/[\[(]/)[0].trim() : '—';
   } },
+  { id: 'stops', label: 'Stops', accessor: (t) => (t.stops || []).filter(s => s.stop_type !== 'Pickup' && s.stop_type !== 'Dropoff').map(s => (s.location_name || s.location?.name || '').split(/[\[(]/)[0].trim() || '—').filter(s => s !== '—').join(', ') || '—' },
   { id: 'dropoff', label: 'Dropoff Location', accessor: (t) => {
       const d = getDropoffInfo(t);
-      return d.name !== '—' ? (d.address ? `${d.name} (${d.address})` : d.name) : '—';
+      return d.name !== '—' ? d.name.split(/[\[(]/)[0].trim() : '—';
   } },
   { id: 'driver', label: 'Driver', accessor: (t) => t.is_third_party
       ? (t.third_party_driver_name ? `${t.third_party_driver_name} (${t.thirdPartyProvider?.name || '3PL Carrier'})` : (t.thirdPartyProvider?.name || '3PL Driver'))
@@ -212,18 +203,55 @@ const TRIP_EXPORT_COLUMNS: ExportColumn<Trip>[] = [
       : (t.vehicle?.plate_number || 'Unassigned')
   },
   { id: 'line_type', label: 'Line Type', accessor: (t) => getTripRateCategory(t) },
-  { id: 'category', label: 'Vehicle Class', accessor: (t) => t.quotation_vehicle_class || t.financials?.quotation_vehicle_class || t.vehicle_type || getTripPayloadCapacity(t) },
+  { id: 'category', label: 'Vehicle Type', accessor: (t) => t.quotation_vehicle_class || t.financials?.quotation_vehicle_class || t.vehicle_type || getTripPayloadCapacity(t) },
   { id: 'rate_card', label: 'Rate Card', accessor: (t) => t.rateCard?.name || 'Manual Rate' },
   { id: 'planned_start', label: 'Planned Start', accessor: (t) => formatExportDate(t.planned_start) },
   { id: 'actual_start', label: 'Actual Start', accessor: (t) => formatExportDate(t.actual_start) },
   { id: 'planned_end', label: 'Planned End', accessor: (t) => formatExportDate(t.planned_end) },
   { id: 'actual_end', label: 'Actual End', accessor: (t) => formatExportDate(t.actual_end) },
-  { id: 'trip_charges', label: 'Driver Charge', accessor: (t) => Number(t.trip_charges || 0) },
-  { id: 'billing_amount', label: 'Billing Rate', accessor: (t) => Number(t.billing_amount || t.rateCard?.base_price || 0) },
+  { id: 'driver_payout', label: 'Trip Charge Per Day', accessor: (t) => Number(t.driver_payout || t.trip_charges || 0) },
+  { id: 'additional_charge', label: 'Additional Charge', accessor: (t) => Number((t.charges || []).reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0)) },
+  { id: 'billing_amount', label: 'Billing Amount', accessor: (t) => Number(t.billing_amount || t.rateCard?.base_price || 0) },
   { id: 'carrier', label: 'Carrier / Provider', accessor: (t) => t.is_third_party
       ? (t.thirdPartyProvider?.name || t.carrier_name || '3PL Provider')
       : (t.carrier_name || 'MERCON LOGISTICS')
   },
+
+  // --- JD MONTHLY SPECIFIC COLUMNS (defaultSelected: false) ---
+  { id: 'jd_sl', label: 'S/L', accessor: (_, index) => index + 1, defaultSelected: false },
+  { id: 'jd_date', label: 'DATE', accessor: (t) => formatExportDate(t.planned_start), defaultSelected: false },
+  { id: 'jd_job', label: 'JOB #', accessor: (t) => t.ref_id || '', defaultSelected: false },
+  { id: 'jd_driver', label: 'DRIVER NAME', accessor: (t) => t.is_third_party
+      ? (t.third_party_driver_name ? `${t.third_party_driver_name} (${t.thirdPartyProvider?.name || '3PL Carrier'})` : (t.thirdPartyProvider?.name || '3PL Driver'))
+      : (t.driver ? `${t.driver.first_name} ${t.driver.last_name}` : 'Unassigned'), defaultSelected: false },
+  { id: 'jd_vehicle', label: 'VEHICLE NO:', accessor: (t) => t.is_third_party
+      ? (t.third_party_vehicle_plate || '3PL Vehicle')
+      : (t.vehicle?.plate_number || 'Unassigned'), defaultSelected: false },
+  { id: 'jd_vehicle_type', label: 'VEHICLE TYPE', accessor: (t) => t.quotation_vehicle_class || t.financials?.quotation_vehicle_class || t.vehicle_type || getTripPayloadCapacity(t), defaultSelected: false },
+  { id: 'jd_mobile', label: 'MOBILE NUMBER', accessor: (t) => t.driver?.phone_primary || t.third_party_driver_phone || '—', defaultSelected: false },
+  { id: 'jd_provider', label: 'MERCON OR 3RD PARTY', accessor: (t) => t.is_third_party ? '3rd Party' : 'MERCON', defaultSelected: false },
+  { id: 'jd_customer', label: 'SENDER/CUSTOMER', accessor: (t) => t.customer?.name || 'Unassigned', defaultSelected: false },
+  { id: 'jd_receiver', label: 'RECEIVER', accessor: (t) => {
+      const d = getDropoffInfo(t);
+      return d.name !== '—' ? d.name.split(/[\[(]/)[0].trim() : '—';
+  }, defaultSelected: false },
+  { id: 'jd_waiting', label: 'WAITING/LABOR CHARGES', accessor: (t) => Number((t.charges || []).reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0)), defaultSelected: false },
+  { id: 'jd_stops', label: 'ADDITIONAL STOPS', accessor: (t) => (t.stops || []).filter(s => s.stop_type !== 'Pickup' && s.stop_type !== 'Dropoff').map(s => (s.location_name || s.location?.name || '').split(/[\[(]/)[0].trim() || '—').filter(s => s !== '—').join(', ') || '—', defaultSelected: false },
+  { id: 'jd_billing', label: 'BILLING AMOUNT', accessor: (t) => Number(t.billing_amount || t.rateCard?.base_price || 0), defaultSelected: false },
+  { id: 'jd_total', label: 'TOTAL AMOUNT', accessor: (t) => {
+      const base = Number(t.billing_amount || t.rateCard?.base_price || 0);
+      const additional = Number((t.charges || []).reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0));
+      return base + additional;
+  }, defaultSelected: false },
+  { id: 'jd_trip_charge', label: 'TRIP CHARGES', accessor: (t) => Number(t.driver_payout || t.trip_charges || 0), defaultSelected: false },
+  { id: 'jd_balance', label: 'BALANCE AMOUNT', accessor: (t) => {
+      const base = Number(t.billing_amount || t.rateCard?.base_price || 0);
+      const additional = Number((t.charges || []).reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0));
+      const total = base + additional;
+      const tripCharge = Number(t.driver_payout || t.trip_charges || 0);
+      return total - tripCharge;
+  }, defaultSelected: false },
+  { id: 'jd_company', label: 'COMPANY NAME', accessor: (t) => t.carrier_name || 'MERCON LOGISTICS', defaultSelected: false },
 ];
 
 
@@ -428,18 +456,20 @@ const tripsToExportRows = (trips: Trip[], tz: string = 'Asia/Riyadh') => trips.m
     t.ref_id,
     t.status,
     t.customer?.name || 'Unassigned',
-    pickup.name !== '—' ? (pickup.address ? `${pickup.name} (${pickup.address})` : pickup.name) : '—',
-    dropoff.name !== '—' ? (dropoff.address ? `${dropoff.name} (${dropoff.address})` : dropoff.name) : '—',
+    pickup.name !== '—' ? pickup.name.split(/[\[(]/)[0].trim() : '—',
+    (t.stops || []).filter(s => s.stop_type !== 'Pickup' && s.stop_type !== 'Dropoff').map(s => (s.location_name || s.location?.name || '').split(/[\[(]/)[0].trim() || '—').filter(s => s !== '—').join(', ') || '—',
+    dropoff.name !== '—' ? dropoff.name.split(/[\[(]/)[0].trim() : '—',
     driverLabel,
     vehicleLabel,
-    getTripPayloadCapacity(t),
     getTripRateCategory(t),
+    getTripPayloadCapacity(t),
     t.rateCard?.name || 'Manual Rate',
     formatExportDate(t.planned_start, tz),
     formatExportDate(t.actual_start, tz),
     formatExportDate(t.planned_end, tz),
     formatExportDate(t.actual_end, tz),
-    Number(t.trip_charges || 0),
+    Number(t.driver_payout || t.trip_charges || 0),
+    Number((t.charges || []).reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0)),
     Number(t.billing_amount || t.rateCard?.base_price || 0),
     carrierLabel,
   ];
@@ -471,123 +501,6 @@ const tripsToExportRowsWithTotals = (trips: Trip[], tz: string = 'Asia/Riyadh') 
   ];
   return [...rows, totalsRow];
 };
-
-const IMPORT_FIELD_ALIASES: Partial<Record<keyof BulkImportTripRow, string[]>> = {
-  customer_name: ['customer_name', 'customer', 'client', 'client_name'],
-  driver_name: ['driver_name', 'driver'],
-  vehicle_plate: ['vehicle_plate', 'vehicle', 'plate_number', 'plate'],
-  planned_start: ['planned_start', 'planned_start_date', 'start_date', 'planned_date'],
-  rate_category: ['rate_category', 'category', 'rate_type', 'trip_type'],
-  vehicle_type: ['vehicle_type', 'truck_type', 'body_type', 'asset_type'],
-  billing_type: ['billing_type', 'billing', 'billing_frequency'],
-  origin: ['origin', 'from', 'pickup', 'starting_point'],
-  destination: ['destination', 'to', 'dropoff', 'drop_off'],
-  billing_amount: ['billing_amount', 'amount', 'price', 'rate', 'charges'],
-  trip_charges: ['trip_charges', 'driver_payout', 'driver_charge', 'payout'],
-  status: ['status', 'trip_status'],
-};
-
-function pickImportField(row: Record<string, string>, field: keyof BulkImportTripRow): string {
-  const aliases = IMPORT_FIELD_ALIASES[field] || [];
-  for (const alias of aliases) {
-    if (row[alias]) return row[alias];
-  }
-  return '';
-}
-
-export function normDriverString(s: string): string {
-  if (!s) return '';
-  let clean = s.trim().toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ');
-  return clean.split(' ').map(t => {
-    if (['mohd', 'mhd', 'md', 'mohammed', 'mohammad', 'muhammed', 'muhammad'].includes(t)) return 'muhammad';
-    return t;
-  }).join(' ').trim();
-}
-
-export function findDriverCandidates(rawName: string, drivers: any[]): any[] {
-  if (!rawName || !rawName.trim() || !drivers.length) return [];
-  const rawClean = rawName.trim();
-  const normalizedInput = normDriverString(rawClean);
-  const inputTokens = normalizedInput.split(' ').filter(Boolean);
-
-  const exact = drivers.filter(d => {
-    const full = `${d.first_name || ''} ${d.last_name || ''}`.trim();
-    return full.toLowerCase() === rawClean.toLowerCase() || (d.first_name || '').toLowerCase() === rawClean.toLowerCase();
-  });
-  if (exact.length > 0) return exact;
-
-  const normMatch = drivers.filter(d => {
-    const full = normDriverString(`${d.first_name || ''} ${d.last_name || ''}`);
-    const fn = normDriverString(d.first_name || '');
-    return full === normalizedInput || fn === normalizedInput;
-  });
-  if (normMatch.length > 0) return normMatch;
-
-  const matches = drivers.filter(d => {
-    const full = normDriverString(`${d.first_name || ''} ${d.last_name || ''}`);
-    const tokens = full.split(' ').filter(Boolean);
-    const matchedCount = inputTokens.filter(it => tokens.some(dt => dt === it || dt.includes(it) || it.includes(dt))).length;
-    return matchedCount > 0 && matchedCount === inputTokens.length;
-  });
-
-  if (matches.length > 0) return matches;
-
-  return drivers.filter(d => {
-    const full = normDriverString(`${d.first_name || ''} ${d.last_name || ''}`);
-    return full.includes(normalizedInput) || normalizedInput.includes(full);
-  });
-}
-
-/** Builds a BulkImportTripRow from a raw parsed row, whichever key style it came in under
- *  (parseCSVFile's snake_case header row, or parseSheet's TRIP_COLUMNS field names). */
-function toImportRow(row: Record<string, string | number>): BulkImportTripRow {
-  const asStrRow = row as Record<string, string>;
-  const get = (field: keyof BulkImportTripRow) => {
-    const direct = row[field];
-    if (direct !== undefined && direct !== null && String(direct).trim() !== '') return String(direct).trim();
-    return pickImportField(asStrRow, field);
-  };
-  const amount = get('billing_amount');
-  const payout = get('trip_charges');
-  const statusRaw = get('status').trim().toLowerCase();
-  const status = statusRaw === 'draft' ? 'Draft' : statusRaw === 'dispatched' ? 'Dispatched'
-    : statusRaw === 'completed' ? 'Completed' : undefined;
-  return {
-    customer_name: get('customer_name'),
-    driver_name: get('driver_name') || undefined,
-    vehicle_plate: get('vehicle_plate') || undefined,
-    planned_start: get('planned_start') || undefined,
-    rate_category: get('rate_category') || undefined,
-    vehicle_type: get('vehicle_type') || undefined,
-    billing_type: get('billing_type') || undefined,
-    origin: get('origin') || undefined,
-    destination: get('destination') || undefined,
-    billing_amount: amount ? Number(amount) : undefined,
-    trip_charges: payout ? Number(payout) : undefined,
-    status,
-  };
-}
-
-function downloadImportTemplate() {
-  const headers = [
-    'Customer Name', 'Driver Name', 'Vehicle Plate', 'Planned Start',
-    'Rate Category', 'Vehicle Type', 'Billing Type', 'Origin', 'Destination',
-    'Billing Amount', 'Trip Charges',
-  ];
-  const example = [
-    'Acme Trading Co.', 'John Doe', 'ABC-1234', '2026-08-15',
-    'Single Trip', '10 TON', 'Extra', 'Riyadh', 'Jeddah', '1600', '450',
-  ];
-  const csv = '﻿' + [headers.join(','), example.join(',')].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.setAttribute('download', 'trips_import_template.csv');
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
 
 type TripStatusFilter = TripStatus | 'All' | 'Active' | 'Issues' | 'Completed,Invoiced';
 
@@ -848,8 +761,17 @@ export default function TripListPage() {
   // Deep-link support: ?driver=UUID&driver_name=... or ?search=PlateNumber pre-fills search & switches to table view
   // ?status=X pre-selects the status filter
   // Run once on mount (searchParams is stable on initial render)
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalTripsResetKey, setTotalTripsResetKey] = useState(0);
+  const [selectedStatus, setSelectedStatus] = useState<TripStatusFilter>('All');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('All');
+  const [selectedDriverId, setSelectedDriverId] = useState<string>('All');
+  const [dateFilter, setDateFilter] = useState<DateFilterType>('3Days');
+  const activeFiltersCount = (selectedStatus !== 'All' ? 1 : 0) + (selectedCustomerId !== 'All' ? 1 : 0) + (selectedDriverId !== 'All' ? 1 : 0);
+
   useEffect(() => {
-    const driverParam = searchParams.get('driver');
+    const driverParam = searchParams.get('driver') || searchParams.get('driver_id');
     const driverNameParam = searchParams.get('driver_name');
     const searchParam = searchParams.get('search') || searchParams.get('vehicle') || searchParams.get('vehicle_name') || searchParams.get('plate_number');
     const statusParam = searchParams.get('status') as TripStatusFilter | null;
@@ -859,17 +781,20 @@ export default function TripListPage() {
     }
 
     if (driverParam || driverNameParam) {
-      // Switch to table view so the filtered rows are immediately visible
+      // Switch to table view and show ALL trips of that driver across all time
+      if (driverParam) {
+        setSelectedDriverId(driverParam);
+      } else if (driverNameParam) {
+        setSearch(driverNameParam);
+      }
+      setDateFilter('All');
       const newParams = new URLSearchParams(searchParams);
       newParams.set('view', 'table');
       newParams.delete('driver');
+      newParams.delete('driver_id');
       newParams.delete('driver_name');
       newParams.delete('status');
       setSearchParams(newParams, { replace: true });
-      // Pre-fill search with driver name so client-side filter matches correctly
-      if (driverNameParam) {
-        setSearch(driverNameParam);
-      }
     } else if (searchParam) {
       const newParams = new URLSearchParams(searchParams);
       newParams.set('view', 'table');
@@ -883,14 +808,6 @@ export default function TripListPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [totalTripsResetKey, setTotalTripsResetKey] = useState(0);
-  const [selectedStatus, setSelectedStatus] = useState<TripStatusFilter>('All');
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('All');
-  const [dateFilter, setDateFilter] = useState<DateFilterType>('3Days');
-  const activeFiltersCount = (selectedStatus !== 'All' ? 1 : 0) + (selectedCustomerId !== 'All' ? 1 : 0);
   const [kpiPeriod, setKpiPeriod] = useState<DateFilterType>('Today');
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
   const [search, setSearch] = useState('');
@@ -926,6 +843,7 @@ export default function TripListPage() {
   const [exportEndDate, setExportEndDate] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const [isCustomExportOpen, setIsCustomExportOpen] = useState(false);
+  const [customExportFormat, setCustomExportFormat] = useState<'xlsx' | 'pdf'>('xlsx');
   const [selectedTripsForExport, setSelectedTripsForExport] = useState<Trip[]>([]);
 
    const { data: exportDriversRes } = useQuery({
@@ -941,7 +859,6 @@ export default function TripListPage() {
   const exportDrivers = exportDriversRes?.data || [];
   const exportVehicles = exportVehiclesRes?.data || [];
 
-  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [selectionResetKey, setSelectionResetKey] = useState(0);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -954,34 +871,45 @@ export default function TripListPage() {
     message: '',
     onConfirm: () => {},
   });
-  const [importFileName, setImportFileName] = useState('');
-  const [importRows, setImportRows] = useState<BulkImportTripRow[]>([]);
-  const [importParseError, setImportParseError] = useState('');
-  const [isImporting, setIsImporting] = useState(false);
-  const [importResult, setImportResult] = useState<BulkImportResult | null>(null);
-  const [driverMappings, setDriverMappings] = useState<Record<string, string>>({});
 
-  const { data: importDriversRes } = useQuery({
-    queryKey: ['import-drivers-list'],
-    queryFn: () => driverService.getAll({ per_page: 200, mode: 'lookup' }),
-    enabled: importDialogOpen,
-  });
-  const activeImportDrivers = importDriversRes?.data || [];
+  // Bulk Excel/CSV import — extracted to useTripBulkImport
+  const {
+    importDialogOpen,
+    setImportDialogOpen,
+    importFileName,
+    importRows,
+    importParseError,
+    isImporting,
+    importResult,
+    driverMappings,
+    setDriverMappings,
+    activeImportDrivers,
+    activeImportVehicles,
+    pastDateModalOpen,
+    setPastDateModalOpen,
+    pastDateAnalysis,
+    handleImportFileChange,
+    handleConfirmImport,
+    handlePastDateImportConfirm,
+    resetImportDialog,
+  } = useTripBulkImport();
 
-  const { data: importVehiclesRes } = useQuery({
-    queryKey: ['import-vehicles-list'],
-    queryFn: () => vehicleService.getAll({ per_page: 200, mode: 'lookup' }),
-    enabled: importDialogOpen,
-  });
-  const activeImportVehicles = importVehiclesRes?.data || [];
-
-  // WhatsApp Share Dialog state
-  const [whatsappDialogOpen, setWhatsappDialogOpen] = useState(false);
-  const [whatsappSelectedTrips, setWhatsappSelectedTrips] = useState<Trip[]>([]);
-  const [whatsappRecipientType, setWhatsappRecipientType] = useState<'driver' | 'customer' | 'custom'>('custom');
-  const [whatsappCustomPhone, setWhatsappCustomPhone] = useState('');
-  const [whatsappMessageText, setWhatsappMessageText] = useState('');
-  const [whatsappWithTailgate, setWhatsappWithTailgate] = useState(false);
+  // WhatsApp Share Dialog — extracted to useTripWhatsAppShare
+  const {
+    whatsappDialogOpen,
+    setWhatsappDialogOpen,
+    whatsappSelectedTrips,
+    whatsappRecipientType,
+    setWhatsappRecipientType,
+    whatsappCustomPhone,
+    setWhatsappCustomPhone,
+    whatsappMessageText,
+    setWhatsappMessageText,
+    whatsappWithTailgate,
+    setWhatsappWithTailgate,
+    openWhatsappShare,
+    handleWhatsappSend,
+  } = useTripWhatsAppShare();
 
   const startDateStr = dateFilter === '3Days'
     ? format(subDays(new Date(), 1), 'yyyy-MM-dd')
@@ -996,10 +924,11 @@ export default function TripListPage() {
 
   // Fetch trips using React Query with server-side pagination (10 trips default, 30s polling).
   const { data: tripsRes, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['trips', selectedStatus, selectedCustomerId, dateFilter, startDateStr, endDateStr, currentPage, pageSize, debouncedSearch],
+    queryKey: ['trips', selectedStatus, selectedCustomerId, selectedDriverId, dateFilter, startDateStr, endDateStr, currentPage, pageSize, debouncedSearch],
     queryFn: () => tripService.getAll({
       status: getServerStatusFilter(selectedStatus) as any,
       customer_id: selectedCustomerId !== 'All' ? selectedCustomerId : undefined,
+      driver_id: selectedDriverId !== 'All' ? selectedDriverId : undefined,
       date_filter: dateFilter === 'All' || dateFilter === 'Custom' ? undefined : dateFilter,
       start_date: startDateStr,
       end_date: endDateStr,
@@ -1066,6 +995,30 @@ export default function TripListPage() {
     queryFn: () => customerService.getAll({ per_page: 200, mode: 'lookup' }),
     staleTime: 5 * 60 * 1000,
   });
+
+  const { data: driverLookupRes } = useQuery({
+    queryKey: ['drivers-lookup'],
+    queryFn: () => driverService.getAll({ per_page: 200, mode: 'lookup' }),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const driverFilterOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    const masterList = driverLookupRes?.data || [];
+    masterList.forEach((d) => {
+      if (d.id) {
+        map.set(d.id, `${d.first_name || ''} ${d.last_name || ''}`.trim() || 'Driver');
+      }
+    });
+    rawTrips.forEach((t) => {
+      if (t.driver?.id) {
+        map.set(t.driver.id, `${t.driver.first_name || ''} ${t.driver.last_name || ''}`.trim());
+      }
+    });
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [driverLookupRes?.data, rawTrips]);
 
   const customerFilterOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -1179,6 +1132,9 @@ export default function TripListPage() {
     if (selectedCustomerId !== 'All') {
       filtered = filtered.filter(t => t.customer?.id === selectedCustomerId);
     }
+    if (selectedDriverId !== 'All') {
+      filtered = filtered.filter(t => t.driver?.id === selectedDriverId || (t as any).driver_id === selectedDriverId);
+    }
     if (debouncedSearch && debouncedSearch.trim()) {
       filtered = filtered.filter(t => computeTripSearchRelevance(t, debouncedSearch) > 0);
     }
@@ -1193,7 +1149,7 @@ export default function TripListPage() {
 
       if (sortOption === 'oldest') {
         const timeA = new Date(a.createdAt || (a as any).created_at || a.planned_start || 0).getTime();
-        const timeB = new Date(b.createdAt || (b as any).created_at || b.planned_start || 0).getTime();
+        const timeB = new Date(b.createdAt || (b as any).created_at || a.planned_start || 0).getTime();
         if (timeA !== timeB) return timeA - timeB;
       } else if (sortOption === 'price_desc') {
         const pA = a.billing_amount ?? a.trip_charges ?? a.rateCard?.base_price ?? 0;
@@ -1378,264 +1334,24 @@ export default function TripListPage() {
   };
 
   const handleDateRangeExport = () => {
-    if (exportFormat === 'pdf') {
-      // PDF: keep existing browser-side generation (limited to 2,000 rows)
+    if (exportFormat === 'pdf' || exportFormat === 'excel') {
+      // PDF / Excel: use beautiful browser-side styled generation (limited to 2,000 rows)
       runExport(exportFormat, {
         statusGroup: exportStatusGroup,
         startDate: exportStartDate,
         endDate: exportEndDate,
       });
+      setExportDialogOpen(false);
     } else {
-      // xlsx / csv: use the scalable backend streaming endpoint
+      // CSV: use the scalable backend streaming endpoint
       triggerExport({
         type: 'date-range',
-        format: exportFormat === 'csv' ? 'csv' : 'xlsx',
+        format: 'csv',
         start_date: exportStartDate || undefined,
         end_date: exportEndDate || undefined,
       });
       setExportDialogOpen(false);
     }
-  };
-
-  const handleImportFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-
-    setImportResult(null);
-    setImportParseError('');
-    setImportRows([]);
-    setImportFileName(file.name);
-
-    try {
-      const isCsv = file.name.toLowerCase().endsWith('.csv');
-      const rawRows: Record<string, string | number>[] = isCsv
-        ? await parseCSVFile(file)
-        : (await parseSheet(file, TRIP_COLUMNS, 'trip')).rows;
-
-      const normalized = rawRows.map(toImportRow).filter(row => row.customer_name);
-
-      if (!normalized.length) {
-        setImportParseError('No valid rows found. Make sure the file has a "Customer Name" column and at least one data row.');
-        return;
-      }
-      setImportRows(normalized);
-    } catch (err: any) {
-      setImportParseError(err?.message || 'Could not read that file. Make sure it\'s a valid .xlsx or .csv.');
-    }
-  };
-
-  const [pastDateModalOpen, setPastDateModalOpen] = useState(false);
-  const [pendingImportRows, setPendingImportRows] = useState<BulkImportTripRow[] | null>(null);
-  const [pastDateAnalysis, setPastDateAnalysis] = useState<PastDateAnalysis | null>(null);
-
-  const doSubmitImport = async (rowsToSubmit: BulkImportTripRow[]) => {
-    try {
-      setIsImporting(true);
-      const result = await tripService.bulkImport(rowsToSubmit);
-      setImportResult(result);
-      if (result.imported > 0) {
-        queryClient.invalidateQueries({ queryKey: ['trips'] });
-        queryClient.invalidateQueries({ queryKey: ['trips-kpi-summary'] });
-      }
-    } catch (e) {
-      toast.error('Failed to import trips.');
-    } finally {
-      setIsImporting(false);
-    }
-  };
-
-  const handleConfirmImport = async () => {
-    if (!importRows.length) return;
-    const rowsToSubmit: BulkImportTripRow[] = importRows.map((row) => {
-      let driver_id = row.driver_id;
-      if (row.driver_name && driverMappings[row.driver_name] && driverMappings[row.driver_name] !== 'none') {
-        driver_id = driverMappings[row.driver_name];
-      }
-      return {
-        ...row,
-        ...(driver_id ? { driver_id } : {}),
-      };
-    });
-
-    const analysis = analyzePastDateRows(rowsToSubmit);
-    if (analysis.hasPastTrips) {
-      setPendingImportRows(rowsToSubmit);
-      setPastDateAnalysis(analysis);
-      setPastDateModalOpen(true);
-    } else {
-      await doSubmitImport(rowsToSubmit);
-    }
-  };
-
-  const handlePastDateImportConfirm = async (selectedStatus: TripStatus) => {
-    if (!pendingImportRows) return;
-    const finalRows = applyPastStatusToRows(pendingImportRows, selectedStatus);
-    setPastDateModalOpen(false);
-    setPendingImportRows(null);
-    await doSubmitImport(finalRows);
-  };
-
-
-  const resetImportDialog = () => {
-    setImportDialogOpen(false);
-    setImportFileName('');
-    setImportRows([]);
-    setImportParseError('');
-    setImportResult(null);
-    setDriverMappings({});
-  };
-
-  const openWhatsappShare = (selectedRows: Trip[]) => {
-    setWhatsappSelectedTrips(selectedRows);
-    if (selectedRows.length === 0) return;
-    setWhatsappWithTailgate(false);
-
-    if (selectedRows.length === 1) {
-      const trip = selectedRows[0];
-      if (!trip.is_third_party && trip.driver?.phone_primary) {
-        setWhatsappRecipientType('driver');
-      } else if (trip.is_third_party && (trip.third_party_driver_phone || trip.thirdPartyProvider?.phone)) {
-        setWhatsappRecipientType('custom');
-        setWhatsappCustomPhone(trip.third_party_driver_phone || trip.thirdPartyProvider?.phone || '');
-      } else if (trip.customer?.contact_phone) {
-        setWhatsappRecipientType('customer');
-      } else {
-        setWhatsappRecipientType('custom');
-        setWhatsappCustomPhone('');
-      }
-    } else {
-      setWhatsappRecipientType('custom');
-      setWhatsappCustomPhone('');
-    }
-
-    setWhatsappDialogOpen(true);
-  };
-
-  useEffect(() => {
-    if (!whatsappDialogOpen || whatsappSelectedTrips.length === 0) return;
-
-    if (whatsappSelectedTrips.length === 1) {
-      const trip = whatsappSelectedTrips[0];
-      const customerName = trip.customer?.name || 'Unassigned';
-      const driverName = trip.is_third_party
-        ? (trip.third_party_driver_name || trip.thirdPartyProvider?.name || '3PL Driver')
-        : (trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name}` : 'Unassigned');
-      const plate = trip.is_third_party
-        ? (trip.third_party_vehicle_plate || '3PL Vehicle')
-        : (trip.vehicle?.plate_number || 'Unassigned');
-      
-      const pickupName = trip.stops?.find((s) => s.stop_type === 'Pickup')?.location_name || trip.stops?.[0]?.location_name || 'Origin';
-      const dropoffStop = trip.stops?.find((s) => s.stop_type === 'Dropoff') || trip.stops?.[trip.stops.length - 1];
-      const dropoffName = dropoffStop?.location_name || 'Destination';
-      
-      const isScheduled = ['Draft', 'Scheduled'].includes(trip.status);
-      let text = '';
-      
-      if (isScheduled) {
-        const isMonthly = trip.billing_type?.toUpperCase().includes('MONTHLY') || trip.quotation_billing_type?.toUpperCase().includes('MONTHLY');
-        const billingLabel = isMonthly ? 'MONTHLY' : 'EXTRA';
-        const vClass = trip.quotation_vehicle_class || trip.vehicle_type || trip.vehicle?.asset_type || 'VEHICLE';
-        const lType = trip.quotation_line_type || 'ROUND TRIP';
-        
-        text = `@${customerName}\n` +
-               `*(${billingLabel} VEHICLE)*\n` +
-               `1. ${pickupName}>>>${dropoffName} ${vClass} (${lType})\n` +
-               `Driver name # ${driverName}\n` +
-               `Number # ${trip.driver?.phone_primary || trip.third_party_driver_phone || 'Unassigned'}\n` +
-               `Truck no # ${plate}`;
-               
-        if (whatsappWithTailgate) {
-           text += `\n\nWITH TAILGATE`;
-        }
-      } else {
-        let distanceText = 'Unavailable';
-        let etaText = 'Unavailable';
-        
-        const vehicleLat = trip.vehicle?.resolved_location?.latitude;
-        const vehicleLng = trip.vehicle?.resolved_location?.longitude;
-        
-        let destLat = dropoffStop?.location_lat;
-        let destLng = dropoffStop?.location_lng;
-        
-        if (!destLat || !destLng) {
-          const resolvedDest = resolveCityCoords(dropoffName);
-          if (resolvedDest) {
-            destLat = resolvedDest.lat;
-            destLng = resolvedDest.lng;
-          }
-        }
-        
-        if (vehicleLat && vehicleLng && destLat && destLng) {
-          const distKm = calculateRoadDistanceKm(vehicleLat, vehicleLng, destLat, destLng);
-          distanceText = `${distKm}KM TO ${dropoffName.toUpperCase()}`;
-          const etaHours = (distKm / 70).toFixed(1);
-          etaText = `${etaHours}HRS`;
-        }
-        
-        let statusDisplay = trip.status;
-        if (trip.status === 'AtPickup') statusDisplay = 'Loading';
-        else if (trip.status === 'AtDelivery') statusDisplay = 'At Delivery';
-        else if (trip.status === 'InTransit') statusDisplay = 'In Transit';
-        
-        text = `Vehicle Status Update\n\n` +
-               `Truck: *${plate}*\n` +
-               `Driver: ${driverName}\n` +
-               `Route: ${pickupName}>>>${dropoffName}\n` +
-               `Distance left: ${distanceText}\n` +
-               `ETA: ${etaText}\n` +
-               `Status: ${statusDisplay}`;
-      }
-      setWhatsappMessageText(text);
-    } else {
-      let text = `*MERCON LOGISTICS - Manifest Summary*\n`;
-      whatsappSelectedTrips.forEach((t) => {
-        const cust = t.customer?.name || 'Unassigned';
-        const drv = t.is_third_party
-          ? (t.third_party_driver_name || t.thirdPartyProvider?.name || '3PL Driver')
-          : (t.driver ? `${t.driver.first_name} ${t.driver.last_name}` : 'Unassigned');
-        const plate = t.is_third_party
-          ? (t.third_party_vehicle_plate || '3PL Vehicle')
-          : (t.vehicle?.plate_number || 'Unassigned');
-        text += `\n*${t.ref_id || 'Draft'}* - ${cust}\n` +
-                (t.is_third_party ? `  • 3PL Provider: ${t.thirdPartyProvider?.name || '3PL'}\n` : '') +
-                `  • Driver: ${drv}\n` +
-                `  • Vehicle: ${plate}\n` +
-                `  • Status: ${t.status}\n`;
-      });
-      setWhatsappMessageText(text);
-    }
-  }, [whatsappSelectedTrips, whatsappWithTailgate, whatsappDialogOpen]);
-
-  const handleWhatsappSend = () => {
-    if (whatsappSelectedTrips.length > 1) {
-      openMultipleWhatsappMessages(whatsappSelectedTrips);
-      setWhatsappDialogOpen(false);
-      return;
-    }
-
-    let phone = '';
-    if (whatsappSelectedTrips.length === 1) {
-      const trip = whatsappSelectedTrips[0];
-      if (whatsappRecipientType === 'driver') {
-        phone = trip.driver?.phone_primary || '';
-      } else if (whatsappRecipientType === 'customer') {
-        phone = trip.customer?.contact_phone || '';
-      } else {
-        phone = whatsappCustomPhone;
-      }
-    } else {
-      phone = whatsappCustomPhone;
-    }
-
-    const cleanPhone = phone.trim().replace(/\+/g, '').replace(/\D/g, '');
-    const baseUrl = cleanPhone 
-      ? `https://api.whatsapp.com/send?phone=${cleanPhone}` 
-      : `https://api.whatsapp.com/send`;
-    
-    const shareUrl = `${baseUrl}?text=${encodeURIComponent(whatsappMessageText)}`;
-    window.open(shareUrl, '_blank');
-    setWhatsappDialogOpen(false);
   };
 
   const getDriverInitials = (driver?: { first_name?: string; last_name?: string } | null) => {
@@ -2006,7 +1722,7 @@ export default function TripListPage() {
                 className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md"
               >
                 <Edit2 className="mr-2 h-3.5 w-3.5 text-amber-600" />
-                Edit Trip Manifest
+                Edit Trip
               </DropdownMenuItem>
 
               <DropdownMenuItem
@@ -2053,7 +1769,7 @@ export default function TripListPage() {
 
   const bulkActions = [
     {
-      label: 'Edit Selected Manifest',
+      label: 'Edit Selected Trip',
       icon: <Edit2 size={13} />,
       variant: 'primary' as const,
       onClick: (selectedRows: Trip[]) => {
@@ -2078,7 +1794,9 @@ export default function TripListPage() {
       icon: <FileSpreadsheet size={13} className="text-emerald-600 dark:text-emerald-400" />,
       variant: 'success' as const,
       onClick: (selectedRows: Trip[]) => {
-        exportExcelTable('Trips Export', TRIP_EXPORT_HEADERS, tripsToExportRowsWithTotals(selectedRows, tz), 'trips_export.xlsx');
+        setCustomExportFormat('xlsx');
+        setSelectedTripsForExport(selectedRows);
+        setIsCustomExportOpen(true);
       }
     },
     {
@@ -2086,14 +1804,7 @@ export default function TripListPage() {
       icon: <FileText size={13} className="text-rose-600 dark:text-rose-400" />,
       variant: 'warning' as const,
       onClick: (selectedRows: Trip[]) => {
-        exportPDFTable('Trips Export', TRIP_EXPORT_HEADERS, tripsToExportRowsWithTotals(selectedRows, tz), 'trips_export.pdf');
-      }
-    },
-    {
-      label: 'Custom Export...',
-      icon: <Download size={13} />,
-      variant: 'secondary' as const,
-      onClick: (selectedRows: Trip[]) => {
+        setCustomExportFormat('pdf');
         setSelectedTripsForExport(selectedRows);
         setIsCustomExportOpen(true);
       }
@@ -2167,142 +1878,23 @@ export default function TripListPage() {
 
         {/* ── 2. Instrument-Panel KPI Cards (Trip Ledger Table View Only) ────────────────── */}
         {viewMode === 'table' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 shrink-0">
-            <KpiCard
-              title={kpiTitle}
-              className="kpi-tint-trips"
-              value={
-                <span>
-                  {periodCount}
-                  <span className="text-[16px] font-semibold ml-1.5 opacity-85">Trips</span>
-                </span>
-              }
-              variant="slate"
-              description={kpiDescription}
-              headerAction={
-                <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200/80 dark:border-slate-700 shadow-2xs">
-                  {(
-                    [
-                      { label: '1D', value: 'Today', title: 'Today (1D)' },
-                      { label: '1W', value: 'ThisWeek', title: 'This Week (1W)' },
-                      { label: '1M', value: 'ThisMonth', title: 'This Month (1M)' },
-                    ] as const
-                  ).map((period) => {
-                    const active = kpiPeriod === period.value;
-                    return (
-                      <button
-                        key={period.value}
-                        type="button"
-                        title={period.title}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setKpiPeriod(period.value);
-                          setDateFilter(period.value);
-                          setCurrentPage(1);
-                        }}
-                        className={cn(
-                          "text-[9px] font-extrabold h-5 px-2 rounded-md transition-all cursor-pointer",
-                          active
-                            ? "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-xs font-black"
-                            : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200"
-                        )}
-                      >
-                        {period.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              }
-              semiCircleGauge={{
-                segments: [
-                  { label: "Completed", count: periodCompletedCount, color: "#10B981" },
-                  { label: "In Transit", count: periodInTransitCount, color: "#64748B" },
-                  { label: "Pending", count: periodQueueCount, color: "#94A3B8" },
-                ],
-              }}
-              isActive={selectedStatus === 'All'}
-              onClick={() => {
-                setSelectedStatus('All');
-                setCurrentPage(1);
-              }}
-            />
-
-            <KpiCard
-              title="IN TRANSIT"
-              className="kpi-tint-trips"
-              value={
-                <span>
-                  {inTransitCount}
-                  <span className="text-[16px] font-semibold ml-1.5 opacity-85">On Road</span>
-                </span>
-              }
-              variant="emerald"
-              description="Trucks on the road now"
-              icon={RouteLine}
-              isActive={selectedStatus === 'InTransit'}
-              onClick={() => {
-                setSelectedStatus('InTransit');
-                setCurrentPage(1);
-              }}
-            />
-
-            <KpiCard
-              title="DELIVERED & COMPLETED"
-              className="kpi-tint-trips"
-              value={
-                <span>
-                  {completedCount}
-                  <span className="text-[16px] font-semibold ml-1.5 opacity-85">Trips</span>
-                </span>
-              }
-              variant="emerald"
-              description={`Delivered: ${deliveredPendingInvoiceCount} | Invoiced: ${invoicedCount}`}
-              icon={CheckBadge}
-              isActive={selectedStatus === 'Completed,Invoiced' || selectedStatus === 'Completed' || selectedStatus === 'Invoiced'}
-              onClick={() => {
-                setSelectedStatus('Completed,Invoiced');
-                setCurrentPage(1);
-              }}
-            />
-
-            <KpiCard
-              title="SCHEDULED TRIPS"
-              className="kpi-tint-trips"
-              value={
-                <span>
-                  {draftTrips.length}
-                  <span className="text-[16px] font-semibold ml-1.5 opacity-85">Scheduled</span>
-                </span>
-              }
-              variant="slate"
-              description="Upcoming & planned trips"
-              icon={ClockIcon}
-              isActive={selectedStatus === 'Draft'}
-              onClick={() => {
-                setSelectedStatus('Draft');
-                setCurrentPage(1);
-              }}
-            />
-
-            <KpiCard
-              title="DELAYED TRIPS"
-              className="kpi-tint-trips"
-              value={
-                <span>
-                  {delayedCount}
-                  <span className="text-[16px] font-semibold ml-1.5 opacity-85">Overdue</span>
-                </span>
-              }
-              variant="rose"
-              description="Active trips past planned end time"
-              icon={RiskAlert}
-              isActive={selectedStatus === 'Issues'}
-              onClick={() => {
-                setSelectedStatus('Issues');
-                setCurrentPage(1);
-              }}
-            />
-          </div>
+          <TripKpiCards
+            kpiTitle={kpiTitle}
+            kpiPeriod={kpiPeriod}
+            setKpiPeriod={setKpiPeriod}
+            setDateFilter={setDateFilter}
+            setCurrentPage={setCurrentPage}
+            selectedStatus={selectedStatus}
+            setSelectedStatus={setSelectedStatus}
+            periodCount={periodCount}
+            periodCompletedCount={periodCompletedCount}
+            periodInTransitCount={periodInTransitCount}
+            periodQueueCount={periodQueueCount}
+            inTransitCount={inTransitCount}
+            completedCount={completedCount}
+            scheduledCount={draftTrips.length}
+            delayedCount={delayedCount}
+          />
         )}
 
         {/* ── Control Toolbar & Views ───────────────────── */}
@@ -2393,6 +1985,26 @@ export default function TripListPage() {
                         ))}
                       </select>
                     </div>
+
+                    {/* Driver Filter */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Driver</label>
+                      <select
+                        value={selectedDriverId}
+                        onChange={(e) => {
+                          setSelectedDriverId(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="w-full h-8 px-2 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer"
+                      >
+                        <option value="All">All Drivers</option>
+                        {driverFilterOptions.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   {activeFiltersCount > 0 && (
@@ -2402,6 +2014,7 @@ export default function TripListPage() {
                         onClick={() => {
                           setSelectedStatus('All');
                           setSelectedCustomerId('All');
+                          setSelectedDriverId('All');
                           setCurrentPage(1);
                         }}
                         className="text-[10px] font-bold text-red-600 hover:underline cursor-pointer"
@@ -2474,8 +2087,9 @@ export default function TripListPage() {
                   
                   <DropdownMenuItem
                     onClick={() => {
+                      setCustomExportFormat('xlsx');
                       setExportMenuOpen(false);
-                      triggerExport({ type: 'all', format: 'xlsx' });
+                      setIsCustomExportOpen(true);
                     }}
                     className="cursor-pointer text-xs font-semibold py-2 px-2.5 rounded-lg flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800"
                   >
@@ -2485,24 +2099,14 @@ export default function TripListPage() {
 
                   <DropdownMenuItem
                     onClick={() => {
+                      setCustomExportFormat('pdf');
                       setExportMenuOpen(false);
-                      runExport('pdf', { statusGroup: 'All' });
+                      setIsCustomExportOpen(true);
                     }}
                     className="cursor-pointer text-xs font-semibold py-2 px-2.5 rounded-lg flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800"
                   >
                     <FileText className="h-4 w-4 text-rose-600 dark:text-rose-455 shrink-0" />
                     <span>Export to PDF</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    onClick={() => {
-                      setSelectedTripsForExport([]);
-                      setExportMenuOpen(false);
-                      setIsCustomExportOpen(true);
-                    }}
-                    className="cursor-pointer text-xs font-semibold py-2 px-2.5 rounded-lg flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 text-brand dark:text-orange-400"
-                  >
-                    <Filter className="h-4 w-4 text-brand dark:text-orange-455 shrink-0" />
-                    <span>Custom Export...</span>
                   </DropdownMenuItem>
 
                   <DropdownMenuSeparator className="my-1 border-slate-100 dark:border-slate-800" />
@@ -2627,7 +2231,7 @@ export default function TripListPage() {
               ) : (
                 <div className="w-full flex flex-col gap-3 animate-fade-in">
 
-                  {/* Active Filter Indicator Banner */}
+                  {/* Active Filter Indicator Banners */}
                   {selectedStatus !== 'All' && (
                     <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-200/80 dark:border-orange-900/40 px-3.5 py-2 rounded-xl flex items-center justify-between gap-3 text-xs font-semibold text-orange-900 dark:text-orange-200 animate-fade-in shrink-0">
                       <div className="flex items-center gap-2">
@@ -2648,16 +2252,38 @@ export default function TripListPage() {
                       </button>
                     </div>
                   )}
+                  {selectedDriverId !== 'All' && (
+                    <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-200/80 dark:border-orange-900/40 px-3.5 py-2 rounded-xl flex items-center justify-between gap-3 text-xs font-semibold text-orange-900 dark:text-orange-200 animate-fade-in shrink-0">
+                      <div className="flex items-center gap-2">
+                        <Filter className="h-3.5 w-3.5 text-brand shrink-0" />
+                        <span>
+                          Filtered by driver: <strong className="underline decoration-brand text-slate-900 dark:text-slate-100 font-bold">{driverFilterOptions.find(d => d.id === selectedDriverId)?.name || 'Driver'}</strong> ({trips.length} trip{trips.length === 1 ? '' : 's'} matching)
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectedDriverId('All');
+                          setCurrentPage(1);
+                        }}
+                        className="px-2.5 py-1 rounded-md bg-white dark:bg-slate-900 border border-orange-200 dark:border-orange-800 text-[11px] font-bold text-brand hover:bg-orange-100 dark:hover:bg-orange-950 transition-colors shadow-2xs cursor-pointer flex items-center gap-1.5"
+                      >
+                        <span>Clear Driver Filter</span>
+                        <X className="w-3 h-3 shrink-0" />
+                      </button>
+                    </div>
+                  )}
 
                   <div className="w-full flex flex-col">
                     <DataTable
-                      key={`${selectedStatus}_${selectedCustomerId}_${dateFilter}_${totalTripsResetKey}`}
+                      key={`${selectedStatus}_${selectedCustomerId}_${selectedDriverId}_${dateFilter}_${totalTripsResetKey}`}
                       title={
                         <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
-                          <div className="flex items-center gap-2 shrink-0">
-                            <Layers className="w-4 h-4 text-brand" />
-                            <span className="font-extrabold text-sm text-slate-900 dark:text-slate-100 tracking-tight">Trip Ledger</span>
-                            <Badge variant="outline" className="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 text-[11px] font-mono font-bold px-2 py-0.5">
+                          <div className="flex flex-col gap-1 shrink-0">
+                            <div className="flex items-center gap-2">
+                              <Layers className="w-4 h-4 text-brand" />
+                              <span className="font-extrabold text-sm text-slate-900 dark:text-slate-100 tracking-tight">Trip Ledger</span>
+                            </div>
+                            <Badge variant="outline" className="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 text-[11px] font-mono font-bold px-2 py-0.5 w-fit">
                               {trips.length} {trips.length === 1 ? 'record' : 'records'}
                             </Badge>
                           </div>
@@ -2882,6 +2508,7 @@ export default function TripListPage() {
         <ExportModal
           isOpen={isCustomExportOpen}
           onClose={() => setIsCustomExportOpen(false)}
+          initialFormat={customExportFormat}
           title="Trip Ledger Export"
           fileNamePrefix="trips_export"
           sheetName="Trips"
@@ -2892,6 +2519,10 @@ export default function TripListPage() {
           columns={TRIP_EXPORT_COLUMNS}
           filters={tripExportFilters}
           formats={['xlsx', 'csv', 'pdf']}
+          themes={[
+            { id: 'standard', label: 'Standard (MERCON Brand)' },
+            { id: 'jd-monthly', label: 'JD Monthly Summary' }
+          ]}
           rowDateAccessor={(t) => t.planned_start || t.createdAt}
         />
 

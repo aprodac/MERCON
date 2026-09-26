@@ -97,8 +97,16 @@ async function main() {
   // client's superadmin can then turn specific modules off deliberately.
   await prisma.settings.upsert({
     where: { id: 'singleton' },
-    update: {}, // never overwrite branding/module config an owner already set
-    create: { id: 'singleton', enabledModules: [...MODULE_KEYS] },
+    update: {
+      vatNumber: '312709215800003',
+      crNumber: '1009152862',
+    },
+    create: {
+      id: 'singleton',
+      enabledModules: [...MODULE_KEYS],
+      vatNumber: '312709215800003',
+      crNumber: '1009152862',
+    },
   });
   console.log('  ✓ Settings row present');
 

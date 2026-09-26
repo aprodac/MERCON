@@ -15,6 +15,7 @@ import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { driverService } from '@/services/driverService';
 import { vehicleService } from '@/services/vehicleService';
 import { tripService, Trip } from '@/services/tripService';
+import { formatDriverDetails } from '@/utils/driverStatusUtils';
 
 export type ReassignMode = 'driver' | 'truck' | 'both';
 
@@ -80,14 +81,12 @@ export function ReassignTripModal({
 
     availableDrivers.forEach((d) => {
       if (d.id !== trip?.driver?.id) {
-        const isNotAvailable = d.status && d.status !== 'Available' && d.status.toLowerCase() !== 'available';
-        const statusTag = isNotAvailable ? (d.status === 'OnTrip' ? 'On Trip' : d.status === 'OffDuty' ? 'Off Duty' : d.status) : '';
-        const detailsStr = [d.phone_primary, statusTag].filter(Boolean).join(' • ');
+        const detailsStr = formatDriverDetails(d);
 
         list.push({
           value: d.id,
-          label: detailsStr ? `${d.first_name} ${d.last_name} (${detailsStr})` : `${d.first_name} ${d.last_name}`,
-          keywords: `${d.first_name} ${d.last_name} ${d.phone_primary || ''} ${d.status || ''}`,
+          label: `${d.first_name} ${d.last_name} (${detailsStr})`,
+          keywords: `${d.first_name} ${d.last_name} ${d.phone_primary || ''} ${detailsStr} ${d.status || ''}`,
         });
       }
     });

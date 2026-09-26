@@ -62,52 +62,40 @@ export default function EditCustomerPage() {
   // Form State
   const [formData, setFormData] = useState({
     name: '',
-    trade_alias: '',
     logo_url: null as string | null,
-    industry: 'Logistics',
-    cr_number: '',
-    vat_number: '',
     contact_phone: '',
     whatsapp_number: '',
     whatsapp_group_link: '',
     whatsapp_group_name: '',
-    email: '',
-    billing_address: '',
     payment_terms: 'Net 30 Days',
     driver_workflow: 'NATIVE' as 'NATIVE' | 'EXTERNAL_APP',
     isActive: true,
   });
 
-  // Dynamic Contact Personnel List
+  // Dynamic Contact Personnel List (Max 2: Primary & Secondary)
   const [contacts, setContacts] = useState<ContactPerson[]>([]);
 
   useEffect(() => {
     if (customer) {
       setFormData({
         name: customer.name || '',
-        trade_alias: '',
         logo_url: customer.logo_url || null,
-        industry: 'Logistics',
-        cr_number: '',
-        vat_number: '',
         contact_phone: customer.contact_phone || customer.primary_contact_phone || customer.phone || '',
         whatsapp_number: customer.whatsapp_number || '',
         whatsapp_group_link: customer.whatsapp_group_link || '',
         whatsapp_group_name: customer.whatsapp_group_name || '',
-        email: '',
-        billing_address: '',
         payment_terms: customer.payment_terms || 'Net 30 Days',
         driver_workflow: customer.driver_workflow || 'NATIVE',
         isActive: customer.isActive ?? true,
       });
 
-      // Populate contacts if available
+      // Populate contacts if available (Max 2)
       const initialContacts: ContactPerson[] = [];
       if (customer.primary_contact_person || customer.primary_contact_phone) {
         initialContacts.push({
           id: '1',
           name: customer.primary_contact_person || '',
-          title: 'Primary Logistics Manager',
+          title: 'Primary Contact',
           phone: customer.primary_contact_phone || customer.contact_phone || '',
           email: '',
           is_primary: true,
@@ -117,7 +105,7 @@ export default function EditCustomerPage() {
         initialContacts.push({
           id: '2',
           name: customer.secondary_contact_person || '',
-          title: 'Operations Coordinator',
+          title: 'Secondary Contact',
           phone: customer.secondary_contact_phone || '',
           email: '',
           is_primary: false,
@@ -141,20 +129,23 @@ export default function EditCustomerPage() {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  // Contact Personnel Actions
+  // Contact Personnel Actions (Capped at 2)
   const addContactPerson = () => {
-    const newId = String(Date.now());
-    setContacts((prev) => [
-      ...prev,
-      {
-        id: newId,
-        name: '',
-        title: 'Operations Contact',
-        phone: '',
-        email: '',
-        is_primary: prev.length === 0,
-      },
-    ]);
+    setContacts((prev) => {
+      if (prev.length >= 2) return prev;
+      const newId = String(Date.now());
+      return [
+        ...prev,
+        {
+          id: newId,
+          name: '',
+          title: 'Secondary Contact',
+          phone: '',
+          email: '',
+          is_primary: false,
+        },
+      ];
+    });
   };
 
   const removeContactPerson = (cid: string) => {
@@ -185,17 +176,11 @@ export default function EditCustomerPage() {
     if (customer) {
       setFormData({
         name: customer.name || '',
-        trade_alias: '',
         logo_url: customer.logo_url || null,
-        industry: 'Logistics',
-        cr_number: '',
-        vat_number: '',
         contact_phone: customer.contact_phone || customer.phone || '',
         whatsapp_number: customer.whatsapp_number || '',
         whatsapp_group_link: customer.whatsapp_group_link || '',
         whatsapp_group_name: customer.whatsapp_group_name || '',
-        email: '',
-        billing_address: '',
         payment_terms: customer.payment_terms || 'Net 30 Days',
         driver_workflow: customer.driver_workflow || 'NATIVE',
         isActive: customer.isActive ?? true,
@@ -261,7 +246,7 @@ export default function EditCustomerPage() {
     const total = 4;
     if (formData.name.trim()) completed += 1;
     if (formData.contact_phone.trim()) completed += 1;
-    if (formData.vat_number.trim() || formData.cr_number.trim()) completed += 1;
+    if (formData.payment_terms) completed += 1;
     if (contacts.some((c) => c.name.trim())) completed += 1;
     return Math.round((completed / total) * 100);
   };
@@ -348,16 +333,15 @@ export default function EditCustomerPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <Building2 className="w-3.5 h-3.5 text-blue-500" /> Corporate Identity & Information
+                      <Building2 className="w-3.5 h-3.5 text-blue-500" /> Corporate Identity
                     </h2>
-                    <span className="text-[10px] text-slate-400 font-mono">* Required fields</span>
                   </div>
 
                   {/* Company Logo Uploader */}
                   <CustomerImageUploader
                     value={formData.logo_url}
                     onChange={(val) => handleChange('logo_url', val)}
-                    companyName={formData.name || formData.trade_alias}
+                    companyName={formData.name}
                     className="mb-2"
                   />
 
@@ -377,22 +361,8 @@ export default function EditCustomerPage() {
                     </div>
 
                     <div className="space-y-1">
-                      <Label htmlFor="trade_alias" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        Trade Alias / Brand Name
-                      </Label>
-                      <Input
-                        id="trade_alias"
-                        type="text"
-                        placeholder="e.g. Al-Futtaim Express"
-                        value={formData.trade_alias}
-                        onChange={(e) => handleChange('trade_alias', e.target.value)}
-                        className="h-8 text-xs font-medium"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
                       <Label htmlFor="driver_workflow" className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                        Driver Workflow Configuration
+                        Driver Workflow
                       </Label>
                       <Select
                         value={formData.driver_workflow}
@@ -402,62 +372,11 @@ export default function EditCustomerPage() {
                           <SelectValue placeholder="Select workflow..." />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="NATIVE">Native CargoPod App (Standard Driver Stepper)</SelectItem>
-                          <SelectItem value="EXTERNAL_APP">External Customer App (Screenshot AI Ingestion)</SelectItem>
+                          <SelectItem value="NATIVE">Native CargoPod App</SelectItem>
+                          <SelectItem value="EXTERNAL_APP">External Customer App</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-
-                    <div className="space-y-1">
-                      <Label htmlFor="industry" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        Industry Sector
-                      </Label>
-                      <Select
-                        value={formData.industry}
-                        onValueChange={(val) => handleChange('industry', val)}
-                      >
-                        <SelectTrigger id="industry" className="h-8 text-xs">
-                          <SelectValue placeholder="Select industry..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Logistics">Logistics & FMCG Shipping</SelectItem>
-                          <SelectItem value="Retail">Retail & E-Commerce</SelectItem>
-                          <SelectItem value="Manufacturing">Manufacturing & Heavy Industry</SelectItem>
-                          <SelectItem value="OilGas">Oil & Gas Energy</SelectItem>
-                          <SelectItem value="Construction">Building Materials & Construction</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label htmlFor="cr_number" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        Commercial Registration (CR) #
-                      </Label>
-                      <Input
-                        id="cr_number"
-                        type="text"
-                        placeholder="e.g. 1010839201"
-                        value={formData.cr_number}
-                        onChange={(e) => handleChange('cr_number', e.target.value)}
-                        className="h-8 text-xs font-mono font-medium"
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label htmlFor="vat_number" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        VAT / Tax Registration #
-                      </Label>
-                      <Input
-                        id="vat_number"
-                        type="text"
-                        placeholder="e.g. 310938201900003"
-                        value={formData.vat_number}
-                        onChange={(e) => handleChange('vat_number', e.target.value)}
-                        className="h-8 text-xs font-mono font-medium"
-                      />
-                    </div>
-
-
 
                     <div className="space-y-1">
                       <Label htmlFor="payment_terms" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
@@ -479,15 +398,45 @@ export default function EditCustomerPage() {
                         </SelectContent>
                       </Select>
                     </div>
+
+                    {/* Account Active Status Toggle */}
+                    <div className="space-y-1 sm:col-span-2">
+                      <Label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                        Account Status
+                      </Label>
+                      <div className="flex items-center gap-2 h-8">
+                        <button
+                          type="button"
+                          onClick={() => handleChange('isActive', true)}
+                          className={`flex-1 h-8 text-[11px] font-semibold rounded-md border text-center transition-all ${
+                            formData.isActive
+                              ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-2xs'
+                              : 'bg-white dark:bg-slate-900 text-slate-500 border-slate-200 dark:border-slate-800'
+                          }`}
+                        >
+                          Active
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleChange('isActive', false)}
+                          className={`flex-1 h-8 text-[11px] font-semibold rounded-md border text-center transition-all ${
+                            !formData.isActive
+                              ? 'bg-rose-600 text-white border-rose-600 font-bold shadow-2xs'
+                              : 'bg-white dark:bg-slate-900 text-slate-500 border-slate-200 dark:border-slate-800'
+                          }`}
+                        >
+                          Inactive
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   {/* WhatsApp Dispatch Integration Fields */}
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                        <WhatsAppIcon className="w-3.5 h-3.5 fill-emerald-600 dark:fill-emerald-400" /> Saved WhatsApp Dispatch Contacts
+                        <WhatsAppIcon className="w-3.5 h-3.5 fill-emerald-600 dark:fill-emerald-400" /> WhatsApp Dispatch Contacts
                       </h3>
-                      <span className="text-[10px] text-slate-400">Auto-filled in WhatsApp Dispatcher</span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -536,46 +485,32 @@ export default function EditCustomerPage() {
                 <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                   <div className="flex items-center justify-between">
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5 text-emerald-500" /> Contact Personnel Roster
+                      <Users className="w-3.5 h-3.5 text-emerald-500" /> Contact Personnel Roster ({contacts.length}/2)
                     </h2>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={addContactPerson}
-                      className="h-6 text-[10px] text-brand hover:text-brand-hover font-bold p-0"
-                    >
-                      <Plus className="w-3 h-3 mr-0.5" /> Add Contact
-                    </Button>
+                    {contacts.length < 2 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={addContactPerson}
+                        className="h-6 text-[10px] text-brand hover:text-brand-hover font-bold p-0"
+                      >
+                        <Plus className="w-3 h-3 mr-0.5" /> Add Secondary Contact
+                      </Button>
+                    )}
                   </div>
 
                   <div className="space-y-2">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <div className="space-y-1">
-                        <Label htmlFor="contact_phone" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                          Primary Switchboard Phone <span className="text-rose-500">*</span>
-                        </Label>
-                        <PhoneInput
-                          id="contact_phone"
-                          value={formData.contact_phone}
-                          onChange={(val) => handleChange('contact_phone', val)}
-                          placeholder="50 123 4567"
-                        />
-                      </div>
-
-                      <div className="space-y-1">
-                        <Label htmlFor="email" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                          Corporate Billing Email
-                        </Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          placeholder="billing@alfuttaim.sa"
-                          value={formData.email}
-                          onChange={(e) => handleChange('email', e.target.value)}
-                          className="h-8 text-xs font-medium"
-                        />
-                      </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="contact_phone" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                        Primary Switchboard Phone <span className="text-rose-500">*</span>
+                      </Label>
+                      <PhoneInput
+                        id="contact_phone"
+                        value={formData.contact_phone}
+                        onChange={(val) => handleChange('contact_phone', val)}
+                        placeholder="50 123 4567"
+                      />
                     </div>
 
                     {/* Personnel List Cards */}
@@ -585,31 +520,25 @@ export default function EditCustomerPage() {
                           <div className="flex items-center justify-between">
                             <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                               <span className="w-1.5 h-1.5 rounded-full bg-brand"></span>
-                              Personnel #{idx + 1} {c.is_primary && '(Primary Contact)'}
+                              {c.is_primary ? 'Primary Contact' : 'Secondary Contact'}
                             </span>
-                            {contacts.length > 1 && (
+                            {contacts.length > 1 && !c.is_primary && (
                               <button
                                 type="button"
                                 onClick={() => removeContactPerson(c.id)}
                                 className="text-slate-400 hover:text-rose-600 transition-colors p-0.5"
-                                title="Remove personnel"
+                                title="Remove secondary personnel"
                               >
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             )}
                           </div>
 
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <Input
                               placeholder="Full Name"
                               value={c.name}
                               onChange={(e) => updateContactPerson(c.id, 'name', e.target.value)}
-                              className="h-7 text-xs"
-                            />
-                            <Input
-                              placeholder="Title (e.g. Director)"
-                              value={c.title}
-                              onChange={(e) => updateContactPerson(c.id, 'title', e.target.value)}
                               className="h-7 text-xs"
                             />
                             <PhoneInput
@@ -623,8 +552,6 @@ export default function EditCustomerPage() {
                     </div>
                   </div>
                 </div>
-
-
 
               </CardContent>
             </Card>
@@ -642,7 +569,7 @@ export default function EditCustomerPage() {
             <Card className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl p-3.5 space-y-3 shadow-2xs">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-brand" /> Live Corporate Profile
+                  <Building2 className="w-3.5 h-3.5 text-brand" /> Live Profile Preview
                 </span>
                 <Badge variant="outline" className="text-[10px] font-mono text-brand border-orange-200">
                   {completionPct}% Complete
@@ -671,7 +598,6 @@ export default function EditCustomerPage() {
                     </p>
                   </div>
                 </div>
-
               </div>
 
               {/* Saved Locations & Activity Quick Links */}
@@ -682,26 +608,6 @@ export default function EditCustomerPage() {
                 <p className="text-[10.5px] text-slate-500">
                   This corporate account has {customer.trips?.length || 0} active trip manifests associated with it.
                 </p>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="space-y-2 pt-1">
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full h-8 text-xs bg-brand hover:bg-brand-hover text-white font-bold shadow-xs"
-                >
-                  <Save className="w-3.5 h-3.5 mr-1.5" />
-                  {isSubmitting ? 'Saving Customer...' : 'Save Customer Changes'}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => navigate(`/customers/${id}`)}
-                  className="w-full h-8 text-xs font-semibold text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-800"
-                >
-                  Cancel & Exit
-                </Button>
               </div>
             </Card>
           </div>

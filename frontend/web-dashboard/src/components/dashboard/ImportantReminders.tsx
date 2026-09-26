@@ -47,6 +47,17 @@ export interface DelayAlertItem {
   severity: 'delay';
 }
 
+export interface TimeReviewAlertItem {
+  id: string;
+  tripId: string;
+  tripRef: string;
+  customerName: string;
+  driverName: string;
+  stopLabel: string;
+  timeAgo: string;
+  severity: 'time_review';
+}
+
 export interface ComplianceDocIssue {
   id: string;
   docName: string;
@@ -73,7 +84,7 @@ export default function ImportantReminders({
   trips: propTrips,
 }: ImportantRemindersProps) {
   const navigate = useNavigate();
-  const [activeSeverityFilter, setActiveSeverityFilter] = useState<'all' | 'expired' | 'critical' | 'warning' | 'delay'>('all');
+  const [activeSeverityFilter, setActiveSeverityFilter] = useState<'all' | 'expired' | 'critical' | 'warning' | 'delay' | 'time_review'>('all');
 
   // Fetch document & entity records
   const { data: docs = [] } = useQuery({
@@ -236,6 +247,50 @@ export default function ImportantReminders({
 
     return alerts;
   }, [allTrips, docs, notificationsRes]);
+
+  // Screenshots from the driver's EXTERNAL_APP tap-to-advance flow: the tap
+  // already advanced the trip using "now" as a provisional timestamp, and
+  // these are sitting PendingReview until an operator reads the real time
+  // off the screenshot and confirms/corrects it.
+  const timeReviewAlerts = useMemo<TimeReviewAlertItem[]>(() => {
+    const tripById = new Map<string, Trip>();
+    for (const t of allTrips) {
+      tripById.set(t.id, t);
+      if (t.ref_id) tripById.set(t.ref_id, t);
+    }
+
+    const alerts: TimeReviewAlertItem[] = [];
+    for (const doc of docs as any[]) {
+      if (doc.ai_extracted_json?.source !== 'external_app_screenshot') continue;
+      if (doc.status !== 'PendingReview') continue;
+
+      const trip = tripById.get(doc.entity_id);
+      const stopId = doc.ai_extracted_json?.stop_id;
+      const stop = trip?.stops?.find((s: any) => s.id === stopId);
+      const stopLabel = stop?.location_name || stop?.location?.name || 'Trip Stop';
+
+      const diffMs = Date.now() - new Date(doc.createdAt).getTime();
+      const mins = Math.floor(diffMs / (60 * 1000));
+      let timeAgo = 'Just now';
+      if (mins >= 1 && mins < 60) timeAgo = `${mins}m ago`;
+      else if (mins >= 60) {
+        const hrs = Math.floor(mins / 60);
+        timeAgo = hrs < 24 ? `${hrs}h ago` : `${Math.floor(hrs / 24)}d ago`;
+      }
+
+      alerts.push({
+        id: `time-review-${doc.id}`,
+        tripId: trip?.id || doc.entity_id,
+        tripRef: trip?.ref_id || doc.entity_id,
+        customerName: trip?.customer?.name || 'Customer',
+        driverName: trip?.driver ? `${trip.driver.first_name || ''} ${trip.driver.last_name || ''}`.trim() : 'Driver',
+        stopLabel,
+        timeAgo,
+        severity: 'time_review',
+      });
+    }
+    return alerts;
+  }, [allTrips, docs]);
 
   // Group compliance issues by Owner (Vehicle, Driver, Company)
   const { ownerGroups, counts } = useMemo(() => {
@@ -612,6 +667,22 @@ export default function ImportantReminders({
                 </button>
               )}
 
+              {timeReviewAlerts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveSeverityFilter(activeSeverityFilter === 'time_review' ? 'all' : 'time_review')}
+                  className={cn(
+                    "px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 border cursor-pointer shrink-0",
+                    activeSeverityFilter === 'time_review'
+                      ? "bg-amber-500 text-black border-amber-500 shadow-2xs font-extrabold ring-1 ring-amber-500/30"
+                      : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/60"
+                  )}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                  <span>{timeReviewAlerts.length} Time Review</span>
+                </button>
+              )}
+
               <button
                 type="button"
                 onClick={() => setActiveSeverityFilter(activeSeverityFilter === 'expired' ? 'all' : 'expired')}
@@ -742,8 +813,72 @@ export default function ImportantReminders({
                 </div>
               )}
 
+              {/* Time Review Alerts Section */}
+              {(activeSeverityFilter === 'all' || activeSeverityFilter === 'time_review') && timeReviewAlerts.length > 0 && (
+                <div className="space-y-1.5 pb-1">
+                  <div className="flex items-center justify-between px-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                      </span>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                        Time Review ({timeReviewAlerts.length})
+                      </span>
+                    </div>
+                    <span className="text-[9.5px] font-bold text-slate-400">
+                      External-app evidence
+                    </span>
+                  </div>
+
+                  {timeReviewAlerts.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => navigate(`/trips/${item.tripId}`)}
+                      className="group relative p-2.5 rounded-xl border border-amber-200/90 dark:border-amber-900/60 bg-gradient-to-r from-amber-50/80 via-white to-amber-50/30 dark:from-amber-950/30 dark:to-slate-900 shadow-2xs hover:shadow-xs hover:border-amber-300 dark:hover:border-amber-800 transition-all duration-150 cursor-pointer space-y-1.5"
+                    >
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+                          <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center shrink-0">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                          </div>
+                          <span className="font-extrabold text-[11.5px] text-[#3E3C3D] dark:text-slate-100 font-mono tracking-tight shrink-0">
+                            {item.tripRef}
+                          </span>
+                          <span className="text-[8.5px] font-black uppercase px-1.5 py-0.5 rounded-full bg-amber-500 text-black flex items-center gap-1 leading-none shadow-2xs shrink-0">
+                            TIME
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[10px] font-extrabold text-[#FA634E] inline-flex items-center group-hover:underline">
+                            Review <ChevronRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-[10.5px] font-semibold text-amber-950 dark:text-amber-200 bg-amber-50/90 dark:bg-amber-900/20 px-2 py-1 rounded-md border border-amber-200/60 dark:border-amber-900/40 line-clamp-2">
+                        <span className="font-bold text-amber-700 dark:text-amber-400 mr-1">Stop:</span>
+                        {item.stopLabel} — confirm the real arrival/departure time from the screenshot
+                      </div>
+
+                      <div className="flex items-center justify-between text-[9.5px] text-slate-500 dark:text-slate-400 pt-0.5 gap-2">
+                        <div className="flex items-center gap-1 truncate min-w-0">
+                          <span className="font-semibold text-slate-700 dark:text-slate-200 truncate">{item.driverName}</span>
+                          <span>•</span>
+                          <span className="truncate">{item.customerName}</span>
+                        </div>
+                        <span className="font-mono text-amber-600/90 dark:text-amber-400 font-bold shrink-0">
+                          {item.timeAgo}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Compliance Groups Section (when not filtering for delays only) */}
-              {activeSeverityFilter !== 'delay' && displayGroups.length > 0 && (
+              {activeSeverityFilter !== 'delay' && activeSeverityFilter !== 'time_review' && displayGroups.length > 0 && (
                 displayGroups.map((group) => {
                   let OwnerIcon = Truck;
                   if (group.ownerType === 'Driver') OwnerIcon = User;
@@ -825,7 +960,17 @@ export default function ImportantReminders({
                 </div>
               )}
 
-              {activeSeverityFilter !== 'delay' && displayGroups.length === 0 && delayAlerts.length === 0 && (
+              {activeSeverityFilter === 'time_review' && timeReviewAlerts.length === 0 && (
+                <div className="p-4 text-center my-auto bg-emerald-50/60 dark:bg-emerald-950/20 rounded-xl border border-emerald-100 dark:border-emerald-900/40 flex flex-col items-center justify-center gap-1">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  <h4 className="text-xs font-bold text-[#3E3C3D] dark:text-slate-100">No Evidence Awaiting Review</h4>
+                  <p className="text-[10.5px] text-slate-500 max-w-xs">
+                    All external-app screenshots have a confirmed time.
+                  </p>
+                </div>
+              )}
+
+              {activeSeverityFilter !== 'delay' && activeSeverityFilter !== 'time_review' && displayGroups.length === 0 && delayAlerts.length === 0 && timeReviewAlerts.length === 0 && (
                 <div className="p-4 text-center my-auto bg-emerald-50/60 dark:bg-emerald-950/20 rounded-xl border border-emerald-100 dark:border-emerald-900/40 flex flex-col items-center justify-center gap-1">
                   <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                   <h4 className="text-xs font-bold text-[#3E3C3D] dark:text-slate-100">All Records Compliant</h4>

@@ -10,7 +10,6 @@ import {
   Plus,
   ShieldCheck,
   AlertCircle,
-  Eye,
   FileText,
   UploadCloud,
   X,
@@ -26,9 +25,10 @@ import {
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import CreateVehicleModal from '@/components/trips/CreateVehicleModal';
+import QuickCreateVehicleModal from '@/components/trips/QuickCreateVehicleModal';
 import { driverService, DriverStatus } from '@/services/driverService';
 import { vehicleService, Vehicle } from '@/services/vehicleService';
+import { getDriverAvatar } from '@/lib/driverAvatarMap';
 import { Card, CardContent } from '@/components/ui/card';
 import PhoneInput from '@/components/ui/PhoneInput';
 import { Badge } from '@/components/ui/badge';
@@ -270,36 +270,12 @@ export default function EditDriverPage() {
 
           <div className="flex items-center gap-1.5 shrink-0">
             <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate(`/drivers/${id}`)}
-              className="h-7 text-xs font-bold text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 px-2"
-            >
-              <Eye className="w-3.5 h-3.5 mr-1 text-indigo-600" /> Driver Dossier
-            </Button>
-            <Button
               variant="ghost"
               size="sm"
               onClick={handleReset}
               className="h-7 text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 px-2"
             >
               <RotateCcw className="w-3.5 h-3.5 mr-1" /> Reset
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate(`/drivers/${id}`)}
-              className="h-7 text-xs font-medium border-slate-200 dark:border-slate-800 px-2.5"
-            >
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSubmit}
-              disabled={updateMutation.isPending || !isFormValid}
-              className="h-7 text-xs bg-[#FA634E] hover:bg-[#e8533e] text-white font-bold px-3 shadow-xs"
-            >
-              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
             </Button>
           </div>
         </div>
@@ -464,7 +440,7 @@ export default function EditDriverPage() {
                       type="button"
                       size="sm"
                       onClick={() => setIsAddVehicleOpen(true)}
-                      className="h-6 text-[10px] font-bold bg-slate-800 hover:bg-slate-900 text-white rounded-md px-2 gap-1"
+                      className="h-6 text-[10px] font-bold bg-slate-800 hover:bg-charcoal-strong text-white rounded-md px-2 gap-1"
                     >
                       <Plus className="w-3 h-3" /> New Vehicle
                     </Button>
@@ -567,11 +543,14 @@ export default function EditDriverPage() {
                 {/* Avatar + Name */}
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-sm text-slate-700 dark:text-slate-300 border-2 border-slate-200 dark:border-slate-700 overflow-hidden shrink-0">
-                    {formData.avatar_url ? (
-                      <img src={formData.avatar_url} alt="Driver" className="w-full h-full object-cover" />
-                    ) : (
-                      `${formData.first_name[0] || 'D'}${formData.last_name[0] || 'R'}`
-                    )}
+                    {(() => {
+                      const avatarSrc = getDriverAvatar(formData.avatar_url, `${formData.first_name} ${formData.last_name}`);
+                      return avatarSrc ? (
+                        <img src={avatarSrc} alt="Driver" className="w-full h-full object-cover" />
+                      ) : (
+                        `${formData.first_name[0] || 'D'}${formData.last_name[0] || 'R'}`
+                      );
+                    })()}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-black text-slate-900 dark:text-slate-100 truncate leading-tight">
@@ -739,7 +718,7 @@ export default function EditDriverPage() {
       </div>
 
       {/* Modal: Create new vehicle on-the-fly */}
-      <CreateVehicleModal
+      <QuickCreateVehicleModal
         isOpen={isAddVehicleOpen}
         onClose={() => setIsAddVehicleOpen(false)}
         onCreated={handleVehicleCreated}

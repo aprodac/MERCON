@@ -70,13 +70,14 @@ export interface DataTableProps<T> {
   tableClassName?: string;
   className?: string;
   hideRecordCount?: boolean;
+  recordCountClassName?: string;
   isSelectionMode?: boolean;
   onSelectionModeChange?: (active: boolean) => void;
   hideSelectButton?: boolean;
   rowClassName?: (row: T) => string;
 }
 
-export default function DataTable<T>({
+export const DataTableContent = function DataTable<T>({
   title,
   subtitle,
   columns,
@@ -88,6 +89,7 @@ export default function DataTable<T>({
   searchPlaceholder = 'Search records...',
   searchValue,
   hideRecordCount = false,
+  recordCountClassName,
   onSearchChange,
   sortAccessor,
   filterElement,
@@ -276,17 +278,25 @@ export default function DataTable<T>({
           
           {/* Left Side: Title, Search & Filters */}
           <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
-            {title && (
+            {(title || !hideRecordCount) && (
               <div className="flex items-center gap-2 shrink-0">
-                {typeof title === 'string' ? (
-                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-                    {title}
-                  </h3>
-                ) : (
-                  title
+                {title && (
+                  typeof title === 'string' ? (
+                    <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
+                      {title}
+                    </h3>
+                  ) : (
+                    title
+                  )
                 )}
                 {!hideRecordCount && (
-                  <Badge variant="outline" className="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 text-[11px] font-mono font-bold px-2 py-0.5">
+                  <Badge 
+                    variant="outline" 
+                    className={cn(
+                      "bg-orange-50/90 dark:bg-orange-950/40 text-[#FA634E] dark:text-orange-400 border-orange-200/80 dark:border-orange-800/60 text-[11px] font-mono font-bold px-2.5 py-0.5 shadow-2xs",
+                      recordCountClassName
+                    )}
+                  >
                     {totalCount} {totalCount === 1 ? 'record' : 'records'}
                   </Badge>
                 )}
@@ -460,7 +470,19 @@ export default function DataTable<T>({
                         }
                       }
                     }}
+                    onClickCapture={(e) => {
+                      if (isSelectionMode) {
+                        const target = e.target as HTMLElement;
+                        if (target.tagName.toLowerCase() === 'input' && (target as HTMLInputElement).type === 'checkbox') {
+                          return;
+                        }
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleSelectRow(rowKey);
+                      }
+                    }}
                     onClick={(e) => {
+                      if (isSelectionMode) return;
                       const target = e.target as HTMLElement;
                       if (
                         target.tagName.toLowerCase() === 'input' ||
@@ -470,11 +492,7 @@ export default function DataTable<T>({
                       ) {
                         return;
                       }
-                      if (isSelectionMode) {
-                        handleSelectRow(rowKey);
-                      } else {
-                        onRowClick?.(row);
-                      }
+                      onRowClick?.(row);
                     }}
                   >
                     {enableSelection && isSelectionMode && (
@@ -560,10 +578,19 @@ export default function DataTable<T>({
                     onRowClick?.(row);
                   }
                 }}
-                onClick={() => {
+                onClickCapture={(e) => {
                   if (isSelectionMode) {
+                    const target = e.target as HTMLElement;
+                    if (target.tagName.toLowerCase() === 'input' && (target as HTMLInputElement).type === 'checkbox') {
+                      return;
+                    }
+                    e.preventDefault();
+                    e.stopPropagation();
                     handleSelectRow(rowKey);
-                  } else {
+                  }
+                }}
+                onClick={() => {
+                  if (!isSelectionMode) {
                     onRowClick?.(row);
                   }
                 }}
@@ -716,3 +743,6 @@ export default function DataTable<T>({
     </div>
   );
 }
+
+// Wrap with generic React.memo while preserving types
+export default React.memo(DataTableContent) as typeof DataTableContent;

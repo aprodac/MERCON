@@ -25,6 +25,7 @@ import ExcelImportDialog from '@/components/fleet/ExcelImportDialog';
 import ExportModal, { ExportColumn, ExportFilter } from '@/components/ui/ExportModal';
 import { SortDropdown, SortOption } from '@/components/ui/SortDropdown';
 import { GpsHealthBadge } from '@/components/fleet/GpsHealthBadge';
+import { RouteLineTruck3D } from '@/components/trips/TripKpiCards';
 
 const VEHICLE_EXPORT_COLUMNS: ExportColumn<Vehicle>[] = [
   { id: 'ref_id', label: 'Vehicle ID', accessor: (v) => v.ref_id || `TRK-${v.id.slice(0, 5).toUpperCase()}` },
@@ -161,16 +162,18 @@ function createVehicleMapIcon(plateNumber: string, status: string, isDarkTheme: 
         </div>
       ` : ''}
 
-      <!-- Pulsing Aura (flashing radar ring below the 3D vehicle) -->
-      ${(status === 'Available' || status === 'OnTrip') ? `<div class="animate-ping" style="position: absolute; width: 36px; height: 36px; border-radius: 50%; background-color: ${glowColor}; opacity: 0.35; z-index: 1;"></div>` : ''}
+      <!-- Pulsing Aura (radar ring below the vehicle) -->
+      ${(status === 'Available' || status === 'OnTrip') ? `<div style="position: absolute; width: 36px; height: 36px; border-radius: 50%; background-color: ${glowColor}; opacity: 0.25; z-index: 1;"></div>` : ''}
       
-      <!-- 3D Google Maps style container truck image -->
-      <div style="position: relative; z-index: 2; transform: translateY(-2px); width: 44px; height: 44px;">
-        <img 
-          src="/truck_3d_orange_transparent.png" 
-          alt="3D Truck Marker" 
-          style="width: 100%; height: 100%; object-fit: contain; filter: ${imgFilter};" 
-        />
+      <!-- 2D Vector Truck Marker -->
+      <div style="position: relative; z-index: 2; transform: translateY(-2px); width: 40px; height: 32px; display: flex; align-items: center; justify-content: center; color: ${glowColor};">
+        <svg viewBox="0 0 28 18" fill="currentColor" style="width: 32px; height: 22px;">
+          <rect x="0" y="2" width="18" height="11" rx="1.5" />
+          <path d="M19 6h5a2 2 0 0 1 2 2v5h-7V6z" />
+          <path d="M21 7.5h3.5v3H21v-3z" fill="white" fill-opacity="0.55" />
+          <circle cx="5" cy="14.5" r="2.2" fill="#1E293B" stroke="white" stroke-width="0.8" />
+          <circle cx="21.5" cy="14.5" r="2.2" fill="#1E293B" stroke="white" stroke-width="0.8" />
+        </svg>
       </div>
 
       <!-- Plate number tag -->
@@ -721,11 +724,7 @@ export default function VehicleListPage() {
           onClick={() => setPreviewVehicle(row)}
           title="Click to view truck profile"
         >
-          {row.image_url ? (
-            <img src={row.image_url} alt={row.plate_number} className="w-6 h-6 rounded-md object-cover border border-slate-200 dark:border-slate-800 shrink-0" />
-          ) : (
-            <Truck className="w-4 h-4 text-slate-600 shrink-0 group-hover:text-brand transition-colors" />
-          )}
+          <Truck className="w-4 h-4 text-slate-600 shrink-0 group-hover:text-brand transition-colors" />
           <div className="font-bold text-xs text-slate-900 dark:text-slate-100 flex items-center gap-1.5 group-hover:text-brand transition-colors">
             <span>{row.plate_number}</span>
             <Badge variant="outline" className="text-[9px] font-mono font-bold px-1.5 py-0 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
@@ -1249,107 +1248,92 @@ export default function VehicleListPage() {
     }
   ];
 
+  const vehicleHeaderActions = useMemo(() => (
+    <div className="flex items-center gap-2 shrink-0">
+      {viewMode === 'map' && (
+        <MapThemeSelector
+          currentThemeId={mapThemeId}
+          onThemeChange={(newTheme) => setMapThemeId(newTheme)}
+        />
+      )}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs dark:bg-slate-900 dark:border-slate-800"
+          >
+            <Download className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
+            Export / Import
+            <ChevronDown className="h-3 w-3 text-slate-400" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-60 p-1.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl">
+          <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
+            Export Data
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={() => handleExportExcel(vehicles)}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
+          >
+            <FileSpreadsheet className="mr-2 h-3.5 w-3.5 text-emerald-600" />
+            Export Excel (.xlsx)
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => handleExportPDF(vehicles)}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
+          >
+            <FileText className="mr-2 h-3.5 w-3.5 text-rose-600" />
+            Export PDF (.pdf)
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onClick={() => {
+              setSelectedVehiclesForExport([]);
+              setIsExportOpen(true);
+            }}
+            className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-brand hover:bg-orange-50 dark:hover:bg-orange-950/40"
+          >
+            <Filter className="mr-2 h-3.5 w-3.5 text-brand" />
+            Custom Export Settings...
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator className="my-1 border-slate-100 dark:border-slate-800" />
+
+          <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
+            Import Data
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={() => setIsImportOpen(true)}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+          >
+            <UploadCloud className="mr-2 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            Import from Excel
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => setIsBatchTruckDocsOpen(true)}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+          >
+            <Truck className="mr-2 h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+            Batch Import Trucks Docs
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Button
+        size="sm"
+        className="h-8 gap-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs rounded-md px-3.5"
+        onClick={() => setIsCreateVehicleOpen(true)}
+      >
+        <Plus className="h-4 w-4" />
+        Add Vehicle
+      </Button>
+    </div>
+  ), [viewMode, mapThemeId, vehicles, handleExportExcel, handleExportPDF]);
+
   return (
     <DashboardLayout active="Vehicles" title="Vehicles">
       <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-5">
-        
-        {/* ── Page Content Header ─────────────────────────────────────────── */}
-        <div className="flex flex-wrap items-center justify-between gap-4 shrink-0 pb-1">
-          <div className="flex items-center gap-3">
-            <Truck className="w-6 h-6 text-blue-600 dark:text-blue-400 shrink-0" />
-
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-                  Vehicles
-                </h1>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            {viewMode === 'map' && (
-              <MapThemeSelector
-                currentThemeId={mapThemeId}
-                onThemeChange={(newTheme) => setMapThemeId(newTheme)}
-              />
-            )}
-
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs dark:bg-slate-900 dark:border-slate-800"
-                >
-                  <Download className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
-                  Export / Import
-                  <ChevronDown className="h-3 w-3 text-slate-400" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-60 p-1.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl">
-                <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
-                  Export Data
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => handleExportExcel(vehicles)}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
-                >
-                  <FileSpreadsheet className="mr-2 h-3.5 w-3.5 text-emerald-600" />
-                  Export Excel (.xlsx)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handleExportPDF(vehicles)}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
-                >
-                  <FileText className="mr-2 h-3.5 w-3.5 text-rose-600" />
-                  Export PDF (.pdf)
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSelectedVehiclesForExport([]);
-                    setIsExportOpen(true);
-                  }}
-                  className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-brand hover:bg-orange-50 dark:hover:bg-orange-950/40"
-                >
-                  <Filter className="mr-2 h-3.5 w-3.5 text-brand" />
-                  Custom Export Settings...
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator className="my-1 border-slate-100 dark:border-slate-800" />
-
-                <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
-                  Import Data
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => setIsImportOpen(true)}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                >
-                  <UploadCloud className="mr-2 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                  Import from Excel
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => setIsBatchTruckDocsOpen(true)}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
-                >
-                  <Truck className="mr-2 h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
-                  Batch Import Trucks Docs
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <Button
-              size="sm"
-              className="h-9 gap-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs rounded-md px-4"
-              onClick={() => setIsCreateVehicleOpen(true)}
-            >
-              <Plus className="h-4 w-4" />
-              Add Vehicle
-            </Button>
-          </div>
-        </div>
 
         {/* ── Standard Full-Width 4-Column Grid: 4 KPI Cards ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 shrink-0">
@@ -1367,7 +1351,8 @@ export default function VehicleListPage() {
               trend="up"
               trendValue={`${activePct}% Active`}
               description="Total assets in database"
-              icon={FleetTruck}
+              icon={<FleetTruck className="w-5.5 h-5.5 text-slate-600 dark:text-slate-400" />}
+              standaloneIcon={true}
               isActive={selectedStatus === 'All'}
               onClick={() => { setSelectedStatus('All'); setViewMode('list'); setCurrentPage(1); }}
               customFooter={
@@ -1419,18 +1404,13 @@ export default function VehicleListPage() {
                     className="absolute"
                     style={{
                       left: '28%',
-                      top: '35%',
-                      transform: 'translate(-50%, -50%) scale(0.55)',
+                      top: '45%',
+                      transform: 'translate(-50%, -50%)',
                       zIndex: 10
                     }}
                   >
                     <div className="relative flex items-center justify-center">
-                      <div className="absolute h-8 w-8 rounded-full bg-orange-500/25 animate-ping" />
-                      <img 
-                        src="/truck_3d_orange_transparent.png" 
-                        alt="Active Truck 1" 
-                        className="h-9 w-9 object-contain"
-                      />
+                      <RouteLineTruck3D className="h-7 w-auto" color="#FA634E" />
                     </div>
                   </div>
 
@@ -1438,19 +1418,13 @@ export default function VehicleListPage() {
                     className="absolute"
                     style={{
                       left: '68%',
-                      top: '55%',
-                      transform: 'translate(-50%, -50%) scale(0.55)',
+                      top: '45%',
+                      transform: 'translate(-50%, -50%)',
                       zIndex: 10
                     }}
                   >
                     <div className="relative flex items-center justify-center">
-                      <div className="absolute h-8 w-8 rounded-full bg-emerald-500/25 animate-ping" />
-                      <img 
-                        src="/truck_3d_orange_transparent.png" 
-                        alt="Active Truck 2" 
-                        className="h-9 w-9 object-contain"
-                        style={{ filter: 'hue-rotate(100deg) saturate(1.3) brightness(0.95)' }}
-                      />
+                      <RouteLineTruck3D className="h-7 w-auto" color="#10B981" />
                     </div>
                   </div>
                 </div>
@@ -1471,7 +1445,8 @@ export default function VehicleListPage() {
               trend="neutral"
               trendValue={`${availableCount} Ready`}
               description="Ready for immediate dispatch"
-              icon={CheckBadge}
+              icon={<CheckBadge className="w-5.5 h-5.5 text-[#2563EB]" />}
+              standaloneIcon={true}
               isActive={selectedStatus === 'Available'}
               onClick={() => { setSelectedStatus('Available'); setViewMode('list'); setCurrentPage(1); }}
               customFooter={
@@ -1523,19 +1498,13 @@ export default function VehicleListPage() {
                     className="absolute"
                     style={{
                       left: '42%',
-                      top: '40%',
-                      transform: 'translate(-50%, -50%) scale(0.65)',
+                      top: '45%',
+                      transform: 'translate(-50%, -50%)',
                       zIndex: 10
                     }}
                   >
                     <div className="relative flex items-center justify-center">
-                      <div className="absolute h-8 w-8 rounded-full bg-blue-500/30 animate-ping" />
-                      <img 
-                        src="/truck_3d_orange_transparent.png" 
-                        alt="Mini Map Truck" 
-                        className="h-9 w-9 object-contain"
-                        style={{ filter: 'hue-rotate(200deg) saturate(1.2) brightness(0.95)' }}
-                      />
+                      <RouteLineTruck3D className="h-7 w-auto" color="#2563EB" />
                     </div>
                   </div>
                 </div>
@@ -1556,7 +1525,8 @@ export default function VehicleListPage() {
               trend={maintenanceCount > 3 ? 'up' : 'down'}
               trendValue={maintenanceCount > 0 ? 'Service Active' : 'All Clear'}
               description="Active servicing units"
-              icon={MaintenanceWrench}
+              icon={<MaintenanceWrench className="w-5.5 h-5.5 text-[#DC2626]" />}
+              standaloneIcon={true}
               isActive={selectedStatus === 'Maintenance'}
               onClick={() => { setSelectedStatus('Maintenance'); setViewMode('list'); setCurrentPage(1); }}
               customFooter={
@@ -1608,30 +1578,12 @@ export default function VehicleListPage() {
                     className="absolute"
                     style={{
                       left: '52%',
-                      top: '50%',
-                      transform: 'translate(-50%, -50%) scale(0.68)',
+                      top: '45%',
+                      transform: 'translate(-50%, -50%)',
                       zIndex: 10
                     }}
                   >
-                    <div className="relative flex items-center justify-center">
-                      <div 
-                        className="absolute bottom-[18px] bg-red-600 text-white text-[8px] font-extrabold px-1.5 py-0.5 rounded-md shadow-md flex items-center gap-1 animate-bounce"
-                        style={{ whiteSpace: 'nowrap' }}
-                      >
-                        <AlertTriangle className="w-2.5 h-2.5 shrink-0" />
-                        <span>MAINTENANCE</span>
-                        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[3px] border-l-transparent border-r-[3px] border-r-transparent border-t-[4px] border-t-red-600" />
-                      </div>
-
-                      <div className="absolute h-8 w-8 rounded-full bg-red-500/20" />
-                      
-                      <img 
-                        src="/truck_3d_orange_transparent.png" 
-                        alt="Servicing Truck" 
-                        className="h-9 w-9 object-contain"
-                        style={{ filter: 'hue-rotate(335deg) saturate(0.8) brightness(0.9)' }}
-                      />
-                    </div>
+                    <RouteLineTruck3D className="h-7 w-auto" color="#DC2626" />
                   </div>
                 </div>
               }
@@ -1651,7 +1603,8 @@ export default function VehicleListPage() {
               trend={onTripCount > 0 ? 'up' : 'neutral'}
               trendValue={`${onTripCount} En Route`}
               description="Currently dispatched on active trips"
-              icon={Truck}
+              icon={<Truck className="w-5.5 h-5.5 text-[#10B981]" />}
+              standaloneIcon={true}
               isActive={selectedStatus === 'OnTrip'}
               onClick={() => { setSelectedStatus('OnTrip'); setViewMode('list'); setCurrentPage(1); }}
               customFooter={
@@ -1663,17 +1616,17 @@ export default function VehicleListPage() {
                       }
                     }
                   `}</style>
-                  <svg className="absolute inset-0 h-full w-full opacity-[0.08]" stroke="currentColor" fill="none">
-                    <pattern id="card-map-grid-full" width="12" height="12" patternUnits="userSpaceOnUse">
+                  <svg className="absolute inset-0 h-full w-full opacity-[0.06]" stroke="currentColor" fill="none">
+                    <pattern id="card-map-grid" width="12" height="12" patternUnits="userSpaceOnUse">
                       <path d="M 12 0 L 0 0 0 12" strokeWidth="0.5" />
                     </pattern>
-                    <rect width="100%" height="100%" fill="url(#card-map-grid-full)" />
+                    <rect width="100%" height="100%" fill="url(#card-map-grid)" />
                   </svg>
                   
-                  <svg className="absolute inset-0 h-full w-full opacity-[0.4]" viewBox="0 0 280 48" preserveAspectRatio="none">
-                    <path d="M 60 -5 C 65 15, 55 35, 60 55" fill="none" stroke="#A7F3D0" strokeWidth="1.5" />
-                    <path d="M 140 -5 C 135 15, 145 35, 138 55" fill="none" stroke="#A7F3D0" strokeWidth="1.5" />
-                    <path d="M 210 -5 C 220 15, 205 35, 215 55" fill="none" stroke="#A7F3D0" strokeWidth="1.5" />
+                  <svg className="absolute inset-0 h-full w-full opacity-[0.3]" viewBox="0 0 280 48" preserveAspectRatio="none">
+                    <path d="M 45 -5 C 50 15, 40 35, 45 55" fill="none" stroke="#A7F3D0" strokeWidth="1.5" />
+                    <path d="M 115 -5 C 110 15, 120 35, 113 55" fill="none" stroke="#A7F3D0" strokeWidth="1.5" />
+                    <path d="M 180 -5 C 190 15, 175 35, 185 55" fill="none" stroke="#A7F3D0" strokeWidth="1.5" />
                   </svg>
 
                   <svg className="absolute inset-0 h-full w-full" viewBox="0 0 280 48" preserveAspectRatio="none">
@@ -1703,19 +1656,13 @@ export default function VehicleListPage() {
                     className="absolute"
                     style={{
                       left: '52%',
-                      top: '50%',
-                      transform: 'translate(-50%, -50%) scale(0.68)',
+                      top: '45%',
+                      transform: 'translate(-50%, -50%)',
                       zIndex: 10
                     }}
                   >
                     <div className="relative flex items-center justify-center">
-                      <div className="absolute h-8 w-8 rounded-full bg-emerald-500/20 animate-ping" />
-                      <img 
-                        src="/truck_3d_orange_transparent.png" 
-                        alt="En Route Truck" 
-                        className="h-9 w-9 object-contain"
-                        style={{ filter: 'hue-rotate(100deg) saturate(1.3) brightness(0.95)' }}
-                      />
+                      <RouteLineTruck3D className="h-7 w-auto" color="#10B981" />
                     </div>
                   </div>
                 </div>
@@ -1808,9 +1755,9 @@ export default function VehicleListPage() {
           <div className="w-full flex flex-col">
             <DataTable
               title={
-                <span className="flex items-center gap-2">
-                  <Truck className="w-4 h-4 text-blue-500" />
-                  <span>Fleet Vehicle Ledger</span>
+                <span className="flex items-center gap-2 text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight">
+                  <Truck className="w-5 h-5 text-blue-500" />
+                  <span>Fleet Vehicles Ledger</span>
                 </span>
               }
               columns={columns}
@@ -1826,6 +1773,7 @@ export default function VehicleListPage() {
               searchValue={search}
               onSearchChange={(val) => { setSearch(val); setCurrentPage(1); }}
               filterElement={vehicleFilters}
+              actionsElement={vehicleHeaderActions}
               currentPage={currentPage}
               totalPages={totalPages}
               pageSize={pageSize}

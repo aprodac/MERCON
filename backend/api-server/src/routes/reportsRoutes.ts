@@ -8,10 +8,12 @@ const router = Router();
 
 router.use(authenticateJWT);
 router.use(authorizeRoles('Admin', 'Operator'));
-router.use(requireModuleEnabled('reports'));
 
 // Dashboard summary KPIs + trip distribution + monthly revenue chart
 router.get('/summary', getSummary);
+
+// Gated Reports module sub-routes
+router.use(requireModuleEnabled('reports'));
 
 // Fleet utilization per vehicle
 router.get('/fleet', getFleetPerformance);

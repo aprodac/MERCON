@@ -53,27 +53,21 @@ export default function AddCustomerPage() {
   // Form State
   const [formData, setFormData] = useState({
     name: '',
-    trade_alias: '',
     logo_url: null as string | null,
-    industry: 'Logistics',
-    cr_number: '',
-    vat_number: '',
     contact_phone: '',
     whatsapp_number: '',
     whatsapp_group_link: '',
     whatsapp_group_name: '',
-    email: '',
-    billing_address: '',
     payment_terms: 'Net 30 Days',
     isActive: true,
   });
 
-  // Dynamic Contact Personnel List
+  // Dynamic Contact Personnel List (Max 2: Primary & Secondary)
   const [contacts, setContacts] = useState<ContactPerson[]>([
     {
       id: '1',
       name: '',
-      title: 'Logistics Director',
+      title: 'Primary Contact',
       phone: '',
       email: '',
       is_primary: true,
@@ -87,20 +81,23 @@ export default function AddCustomerPage() {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  // Contact Personnel Actions
+  // Contact Personnel Actions (Capped at 2)
   const addContactPerson = () => {
-    const newId = String(Date.now());
-    setContacts((prev) => [
-      ...prev,
-      {
-        id: newId,
-        name: '',
-        title: '',
-        phone: '',
-        email: '',
-        is_primary: prev.length === 0,
-      },
-    ]);
+    setContacts((prev) => {
+      if (prev.length >= 2) return prev;
+      const newId = String(Date.now());
+      return [
+        ...prev,
+        {
+          id: newId,
+          name: '',
+          title: 'Secondary Contact',
+          phone: '',
+          email: '',
+          is_primary: false,
+        },
+      ];
+    });
   };
 
   const removeContactPerson = (id: string) => {
@@ -156,17 +153,11 @@ export default function AddCustomerPage() {
   const handleReset = () => {
     setFormData({
       name: '',
-      trade_alias: '',
       logo_url: null,
-      industry: 'Logistics',
-      cr_number: '',
-      vat_number: '',
       contact_phone: '',
       whatsapp_number: '',
       whatsapp_group_link: '',
       whatsapp_group_name: '',
-      email: '',
-      billing_address: '',
       payment_terms: 'Net 30 Days',
       isActive: true,
     });
@@ -174,7 +165,7 @@ export default function AddCustomerPage() {
       {
         id: '1',
         name: '',
-        title: 'Logistics Director',
+        title: 'Primary Contact',
         phone: '',
         email: '',
         is_primary: true,
@@ -246,8 +237,6 @@ export default function AddCustomerPage() {
   const completionFields = [
     { label: 'Company Name', filled: formData.name.trim() !== '' },
     { label: 'Primary Contact Phone', filled: effectivePhone !== '' },
-    { label: 'Billing Email', filled: formData.email.trim() !== '' || primaryContact?.email.trim() !== '' },
-    { label: 'CR Number', filled: formData.cr_number.trim() !== '' },
     { label: 'Contact Person', filled: primaryContact?.name.trim() !== '' },
   ];
   const filledCount = completionFields.filter(f => f.filled).length;
@@ -308,20 +297,19 @@ export default function AddCustomerPage() {
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                       <Building2 className="w-3.5 h-3.5 text-brand" /> Company Information
                     </h2>
-                    <span className="text-[10px] text-slate-400 font-mono">* Required fields</span>
                   </div>
 
                   {/* Company Logo Uploader */}
                   <CustomerImageUploader
                     value={formData.logo_url}
                     onChange={(val) => handleChange('logo_url', val)}
-                    companyName={formData.name || formData.trade_alias}
+                    companyName={formData.name}
                     className="mb-2"
                   />
 
-                  {/* Row 1: Company Name, Trade Alias, Industry */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    <div className="space-y-1 sm:col-span-1">
+                  {/* Company Name & Payment Terms */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="space-y-1 sm:col-span-2">
                       <Label htmlFor="name" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
                         Company Name <span className="text-rose-500">*</span>
                       </Label>
@@ -333,70 +321,6 @@ export default function AddCustomerPage() {
                         className="h-8 text-xs" 
                       />
                     </div>
-
-                    <div className="space-y-1">
-                      <Label htmlFor="trade_alias" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        Trade Name / Alias
-                      </Label>
-                      <Input 
-                        id="trade_alias" 
-                        placeholder="e.g. SABIC" 
-                        value={formData.trade_alias} 
-                        onChange={(e) => handleChange('trade_alias', e.target.value)} 
-                        className="h-8 text-xs" 
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label htmlFor="industry" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        Industry
-                      </Label>
-                      <Select value={formData.industry} onValueChange={(v) => handleChange('industry', v)}>
-                        <SelectTrigger className="h-8 text-xs">
-                          <SelectValue placeholder="Select industry" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Logistics" className="text-xs">Logistics & Freight</SelectItem>
-                          <SelectItem value="Retail" className="text-xs">Retail & E-commerce</SelectItem>
-                          <SelectItem value="Manufacturing" className="text-xs">Manufacturing</SelectItem>
-                          <SelectItem value="FMCG" className="text-xs">FMCG</SelectItem>
-                          <SelectItem value="Healthcare" className="text-xs">Healthcare</SelectItem>
-                          <SelectItem value="Construction" className="text-xs">Construction</SelectItem>
-                          <SelectItem value="General" className="text-xs">General Trading</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  {/* Row 2: CR No., VAT No., Account Status */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    <div className="space-y-1">
-                      <Label htmlFor="cr_number" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        Commercial Reg. (CR) No.
-                      </Label>
-                      <Input 
-                        id="cr_number" 
-                        placeholder="1010XXXXXX" 
-                        value={formData.cr_number} 
-                        onChange={(e) => handleChange('cr_number', e.target.value)} 
-                        className="h-8 text-xs font-mono" 
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label htmlFor="vat_number" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        VAT / Tax Number
-                      </Label>
-                      <Input 
-                        id="vat_number" 
-                        placeholder="310123456700003" 
-                        value={formData.vat_number} 
-                        onChange={(e) => handleChange('vat_number', e.target.value)} 
-                        className="h-8 text-xs font-mono" 
-                      />
-                    </div>
-
-
 
                     <div className="space-y-1">
                       <Label htmlFor="payment_terms" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
@@ -450,27 +374,12 @@ export default function AddCustomerPage() {
                     </div>
                   </div>
 
-                  {/* Row 3: Billing Address & Notes */}
-                  <div className="space-y-1">
-                    <Label htmlFor="billing_address" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                      Company Address & Operational Notes
-                    </Label>
-                    <Input 
-                      id="billing_address" 
-                      placeholder="District 4, Building 829, King Fahd Road, Riyadh, Saudi Arabia" 
-                      value={formData.billing_address} 
-                      onChange={(e) => handleChange('billing_address', e.target.value)} 
-                      className="h-8 text-xs" 
-                    />
-                  </div>
-
                   {/* WhatsApp Dispatch Integration Fields */}
                   <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-2">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                        <WhatsAppIcon className="w-3.5 h-3.5 fill-emerald-600 dark:fill-emerald-400" /> Saved WhatsApp Dispatch Contacts
+                        <WhatsAppIcon className="w-3.5 h-3.5 fill-emerald-600 dark:fill-emerald-400" /> WhatsApp Dispatch Contacts
                       </h3>
-                      <span className="text-[10px] text-slate-400">Auto-filled in WhatsApp Dispatcher</span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -721,7 +630,6 @@ export default function AddCustomerPage() {
                     <p className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
                       {formData.name.trim() || 'New Customer Account'}
                     </p>
-                    <span className="text-[10px] text-slate-500">{formData.industry}</span>
                   </div>
                 </div>
 

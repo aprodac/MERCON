@@ -129,7 +129,7 @@ export function TimePicker({
             className={cn(
               'w-full justify-between text-left font-normal h-9 px-3 rounded-xl border-input bg-background transition-all hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-[#FA634E] focus-visible:outline-none focus-visible:border-[#FA634E]',
               !value && 'text-muted-foreground',
-              error && 'border-destructive ring-1 ring-destructive/30',
+              error && 'border-red-500 ring-2 ring-red-500/30 bg-red-50/20 text-red-900 dark:text-red-200',
               disabled && 'opacity-50 cursor-not-allowed',
               buttonClassName
             )}

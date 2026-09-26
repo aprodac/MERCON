@@ -188,7 +188,7 @@ export function downloadCSVTable(headers: string[], rows: any[][], filename: str
 // ─── Cell classification (shared by the real .xlsx and .pdf engines) ───────
 type CellKind = 'text' | 'number' | 'currency' | 'date' | 'status-good' | 'status-bad' | 'center';
 
-const MONEY_WORDS = ['charges', 'amount', 'billing', 'revenue', 'cost', 'total', 'balance', 'credit', 'limit'];
+const MONEY_WORDS = ['charges', 'amount', 'billing', 'revenue', 'cost', 'total', 'balance', 'credit', 'limit', 'payout'];
 const GOOD_WORDS = ['active', 'completed', 'delivered', 'paid', 'clear', 'approved', 'available'];
 const BAD_WORDS = ['inactive', 'cancelled', 'overdue', 'expired', 'rejected', 'blocked', 'suspended'];
 
@@ -222,6 +222,8 @@ interface TableExportOptions {
   sheetName?: string;
   /** Force landscape/portrait for the PDF; auto-detected from column count if omitted. */
   orientation?: 'portrait' | 'landscape';
+  /** Visual theme for Excel exports */
+  theme?: 'standard' | 'jd-monthly';
 }
 
 /**
@@ -248,40 +250,57 @@ export async function exportExcelTable(
 
   const colCount = headers.length;
 
+  const isJdMonthly = options.theme === 'jd-monthly';
+
   // ── Title & subtitle band ────────────────────────────────────────────
   sheet.mergeCells(1, 1, 1, colCount);
   const titleCell = sheet.getCell(1, 1);
   titleCell.value = title;
-  titleCell.font = { name: 'Calibri', size: 16, bold: true, color: { argb: BRAND.ink } };
-  titleCell.alignment = { vertical: 'middle' };
-  sheet.getRow(1).height = 26;
+  
+  if (isJdMonthly) {
+    titleCell.font = { name: 'Calibri', size: 18, bold: true, color: { argb: 'FF000000' } };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF5C9AD6' } };
+    titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+    titleCell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+    sheet.getRow(1).height = 32;
+  } else {
+    titleCell.font = { name: 'Calibri', size: 16, bold: true, color: { argb: BRAND.ink } };
+    titleCell.alignment = { vertical: 'middle' };
+    sheet.getRow(1).height = 26;
+  }
 
   sheet.mergeCells(2, 1, 2, colCount);
   const subtitleCell = sheet.getCell(2, 1);
   subtitleCell.value = options.subtitle
     || `Generated on ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()} · MERCON Logistics Platform · ${rows.length} record${rows.length === 1 ? '' : 's'}`;
   subtitleCell.font = { name: 'Calibri', size: 10, italic: true, color: { argb: BRAND.subtle } };
-  sheet.getRow(2).height = 16;
+  sheet.getRow(2).height = isJdMonthly ? 0 : 16; // Hide subtitle in JD Monthly
 
-  sheet.getRow(3).height = 6; // spacer
+  sheet.getRow(3).height = isJdMonthly ? 0 : 6; // Hide spacer in JD Monthly
 
   // ── Header row ────────────────────────────────────────────────────────
-  const headerRowIdx = 4;
+  const headerRowIdx = isJdMonthly ? 2 : 4; // Move headers up in JD Monthly
   const headerRow = sheet.getRow(headerRowIdx);
   headers.forEach((h, i) => {
     const cell = headerRow.getCell(i + 1);
     cell.value = h;
-    cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND.primary } };
+    if (isJdMonthly) {
+      cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF000000' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC000' } };
+      cell.border = { top: { style: 'thin' }, bottom: { style: 'thin' }, left: { style: 'thin' }, right: { style: 'thin' } };
+    } else {
+      cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND.primary } };
+      cell.border = {
+        top: { style: 'thin', color: { argb: BRAND.primaryDark } },
+        bottom: { style: 'thin', color: { argb: BRAND.primaryDark } },
+        left: { style: 'thin', color: { argb: BRAND.primaryDark } },
+        right: { style: 'thin', color: { argb: BRAND.primaryDark } },
+      };
+    }
     cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-    cell.border = {
-      top: { style: 'thin', color: { argb: BRAND.primaryDark } },
-      bottom: { style: 'thin', color: { argb: BRAND.primaryDark } },
-      left: { style: 'thin', color: { argb: BRAND.primaryDark } },
-      right: { style: 'thin', color: { argb: BRAND.primaryDark } },
-    };
   });
-  headerRow.height = 22;
+  headerRow.height = isJdMonthly ? 28 : 22;
 
   // ── Data rows ─────────────────────────────────────────────────────────
   rows.forEach((row, rIdx) => {
@@ -296,38 +315,54 @@ export async function exportExcelTable(
       switch (kind) {
         case 'currency':
           cell.numFmt = '#,##0.00 "SAR"';
-          cell.alignment = { horizontal: 'right' };
+          cell.alignment = { horizontal: isJdMonthly ? 'center' : 'right', vertical: 'middle' };
           break;
         case 'number':
           cell.numFmt = '#,##0';
-          cell.alignment = { horizontal: 'right' };
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
           break;
         case 'date':
-          cell.alignment = { horizontal: 'center' };
+          cell.alignment = { horizontal: isJdMonthly ? 'center' : 'left', vertical: 'middle' };
           break;
         case 'status-good':
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND.good } };
-          cell.font = { bold: true, color: { argb: BRAND.goodText } };
-          cell.alignment = { horizontal: 'center' };
+          if (!isJdMonthly) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND.good } };
+            cell.font = { bold: true, color: { argb: BRAND.goodText } };
+          }
+          cell.alignment = { horizontal: isJdMonthly ? 'center' : 'left', vertical: 'middle' };
           break;
         case 'status-bad':
-          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND.bad } };
-          cell.font = { bold: true, color: { argb: BRAND.badText } };
-          cell.alignment = { horizontal: 'center' };
+          if (!isJdMonthly) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: BRAND.bad } };
+            cell.font = { bold: true, color: { argb: BRAND.badText } };
+          }
+          cell.alignment = { horizontal: isJdMonthly ? 'center' : 'left', vertical: 'middle' };
           break;
         case 'center':
-          cell.alignment = { horizontal: 'center' };
+          cell.alignment = { horizontal: 'center', vertical: 'middle' };
           break;
         default:
-          cell.alignment = { horizontal: 'left' };
+          cell.alignment = { horizontal: isJdMonthly ? 'center' : 'left', vertical: 'middle', wrapText: true };
       }
 
-      cell.border = {
-        top: { style: 'thin', color: { argb: BRAND.border } },
-        bottom: { style: 'thin', color: { argb: BRAND.border } },
-        left: { style: 'thin', color: { argb: BRAND.border } },
-        right: { style: 'thin', color: { argb: BRAND.border } },
-      };
+      if (isJdMonthly) {
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'FF000000' } },
+          bottom: { style: 'thin', color: { argb: 'FF000000' } },
+          left: { style: 'thin', color: { argb: 'FF000000' } },
+          right: { style: 'thin', color: { argb: 'FF000000' } },
+        };
+        if (headerLower.includes('charge')) {
+          cell.font = { ...(cell.font || {}), color: { argb: 'FFFF0000' } }; // Red text
+        }
+      } else {
+        cell.border = {
+          top: { style: 'thin', color: { argb: BRAND.border } },
+          bottom: { style: 'thin', color: { argb: BRAND.border } },
+          left: { style: 'thin', color: { argb: BRAND.border } },
+          right: { style: 'thin', color: { argb: BRAND.border } },
+        };
+      }
 
       if (totals) {
         cell.font = { ...(cell.font || {}), bold: true, color: { argb: 'FF0F172A' } };

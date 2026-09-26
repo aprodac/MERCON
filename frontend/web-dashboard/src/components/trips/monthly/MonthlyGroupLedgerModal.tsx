@@ -46,11 +46,13 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { formatDriverDetails } from '@/utils/driverStatusUtils';
 
 import type { TemplateGroup } from './MonthlyCompanyBoard';
 import { tripService, type MonthlyBoardTrip } from '@/services/tripService';
 import { driverService } from '@/services/driverService';
 import { vehicleService } from '@/services/vehicleService';
+import { getDriverAvatar } from '@/lib/driverAvatarMap';
 import { formatDayHeading, formatMoney, formatTime, initialsOf, isUnassigned, formatLocationClean } from './monthlyBoardUtils';
 
 const STATUS_LIST = [
@@ -163,15 +165,13 @@ export default function MonthlyGroupLedgerModal({
       { value: 'unassigned', label: '— Unassign Driver —', keywords: 'none unassign remove' },
     ];
     rawDrivers.forEach((d) => {
-      const isNotAvailable = d.status && d.status !== 'Available' && d.status.toLowerCase() !== 'available';
-      const statusTag = isNotAvailable ? (d.status === 'OnTrip' ? 'On Trip' : d.status === 'OffDuty' ? 'Off Duty' : d.status) : '';
+      const details = formatDriverDetails(d);
       const phoneStr = (d as any).phone || d.phone_primary || '';
-      const details = [phoneStr, statusTag].filter(Boolean).join(' · ');
 
       opts.push({
         value: d.id,
-        label: details ? `${d.first_name} ${d.last_name} (${details})` : `${d.first_name} ${d.last_name}`,
-        keywords: `${d.first_name} ${d.last_name} ${phoneStr} ${d.status || ''}`,
+        label: `${d.first_name} ${d.last_name} (${details})`,
+        keywords: `${d.first_name} ${d.last_name} ${phoneStr} ${details} ${d.status || ''}`,
       });
     });
     return opts;
@@ -998,17 +998,20 @@ export default function MonthlyGroupLedgerModal({
                             >
                               {trip.driver ? (
                                 <>
-                                  {trip.driver.avatar_url ? (
-                                    <img
-                                      src={trip.driver.avatar_url}
-                                      alt={trip.driver.name}
-                                      className="h-5 w-5 rounded-full object-cover shrink-0"
-                                    />
-                                  ) : (
-                                    <span className="h-5 w-5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-extrabold text-[9px] flex items-center justify-center shrink-0">
-                                      {initialsOf(trip.driver.name)}
-                                    </span>
-                                  )}
+                                  {(() => {
+                                    const tripDriverAvatar = getDriverAvatar(trip.driver.avatar_url, trip.driver.name);
+                                    return tripDriverAvatar ? (
+                                      <img
+                                        src={tripDriverAvatar}
+                                        alt={trip.driver.name}
+                                        className="h-5 w-5 rounded-full object-cover shrink-0"
+                                      />
+                                    ) : (
+                                      <span className="h-5 w-5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-extrabold text-[9px] flex items-center justify-center shrink-0">
+                                        {initialsOf(trip.driver.name)}
+                                      </span>
+                                    );
+                                  })()}
                                   <span className="truncate text-slate-800 dark:text-slate-200 group-hover:text-[#FA634E] font-bold">
                                     {trip.driver.name}
                                   </span>
@@ -1058,6 +1061,7 @@ export default function MonthlyGroupLedgerModal({
                                   const isSelected = trip.driver?.id === d.id;
                                   const name = getDriverDisplayName(d);
                                   const phone = (d as any).phone || d.phone_primary || '';
+                                  const dAvatar = getDriverAvatar(d.avatar_url, name);
                                   return (
                                     <button
                                       key={d.id}
@@ -1070,8 +1074,8 @@ export default function MonthlyGroupLedgerModal({
                                       }`}
                                     >
                                       <div className="flex items-center gap-2 truncate">
-                                        {d.avatar_url ? (
-                                          <img src={d.avatar_url} alt="" className="h-5 w-5 rounded-full object-cover shrink-0" />
+                                        {dAvatar ? (
+                                          <img src={dAvatar} alt="" className="h-5 w-5 rounded-full object-cover shrink-0" />
                                         ) : (
                                           <span className="h-5 w-5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-extrabold text-[9px] flex items-center justify-center shrink-0">
                                             {initialsOf(name)}

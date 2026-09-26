@@ -30,6 +30,7 @@ export async function generateSequentialRefId(
 
   for (const record of records) {
     if (!record.ref_id || !record.ref_id.startsWith(fullPrefix)) continue;
+    if (record.ref_id.includes('-DEL-') || record.ref_id.startsWith(`${prefix}-DEL-`)) continue;
     const numPart = record.ref_id.slice(fullPrefix.length);
     const num = parseInt(numPart, 10);
     if (!isNaN(num) && num > 0) {
@@ -53,3 +54,21 @@ export async function generateRefId(
 ): Promise<string> {
   return generateSequentialRefId(prefix, getAllRefIds, opts);
 }
+
+export async function nextJournalEntryRefId(client: any): Promise<string> {
+  return generateRefId(
+    'JE',
+    () => client.journalEntry.findMany({ select: { ref_id: true } }),
+    { padLength: 4 },
+  );
+}
+
+export async function nextBillRefId(client: any): Promise<string> {
+  return generateRefId(
+    'BIL',
+    () => client.bill.findMany({ select: { ref_id: true } }),
+    { padLength: 4 },
+  );
+}
+
+

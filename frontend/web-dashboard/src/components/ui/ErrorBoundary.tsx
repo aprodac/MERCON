@@ -2,6 +2,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RotateCcw, Home, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { isChunkLoadError } from '@/utils/lazyWithRetry';
+import { errorConsoleService } from '@/services/errorConsoleService';
 
 interface Props {
   children: ReactNode;
@@ -26,6 +27,14 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error in React tree:', error, errorInfo);
+
+    // Stale-deploy chunk failures aren't a code bug worth an error-console
+    // entry — they resolve with a reload (see the fallback UI above).
+    if (!isChunkLoadError(error)) {
+      errorConsoleService
+        .reportClientError({ message: error.message, stack: error.stack, route: window.location.pathname })
+        .catch(() => {});
+    }
   }
 
   public componentDidUpdate(prevProps: Props) {

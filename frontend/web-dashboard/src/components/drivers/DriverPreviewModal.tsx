@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   User, IdCard, Phone, Calendar, Truck, FileText, Edit2, ExternalLink,
-  ShieldCheck, AlertTriangle, CheckCircle2, X, ZoomIn, ZoomOut, RotateCw, MapPin
+  ShieldCheck, AlertTriangle, CheckCircle2, X, ZoomIn, MapPin
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
@@ -28,11 +28,9 @@ export default function DriverPreviewModal({ driver, isOpen, onClose, onEdit, on
   const navigate = useNavigate();
   const tz = useDeploymentTimezone();
   const [photoZoom, setPhotoZoom] = useState(false);
-  const [rotation, setRotation] = useState(0);
 
   if (!driver) return null;
 
-  const isAbdulMalik = `${driver.first_name || ''} ${driver.last_name || ''}`.toUpperCase().includes('ABDUL MALIK');
   const isLicenseExpired = driver.license_expiry ? new Date(driver.license_expiry) < new Date() : false;
   const daysUntilExpiry = driver.license_expiry
     ? Math.ceil((new Date(driver.license_expiry).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
@@ -70,7 +68,8 @@ export default function DriverPreviewModal({ driver, isOpen, onClose, onEdit, on
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <>
+      <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-3xl w-[92vw] p-0 overflow-hidden rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-2xl">
         {/* Header Strip */}
         <DialogHeader className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 flex flex-row items-center justify-between shrink-0">
@@ -115,7 +114,7 @@ export default function DriverPreviewModal({ driver, isOpen, onClose, onEdit, on
                   status={driver.status}
                   showStatusDot
                 />
-                <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                <div className="absolute inset-0 rounded-full bg-charcoal-strong/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
                   <ZoomIn className="w-5 h-5" />
                 </div>
               </div>
@@ -163,47 +162,6 @@ export default function DriverPreviewModal({ driver, isOpen, onClose, onEdit, on
               </div>
             </div>
           </div>
-
-          {/* Zoomed Photo Modal Overlay if toggled */}
-          {photoZoom && (driver.avatar_url || isAbdulMalik) && (
-            <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4">
-              <div className="relative max-w-lg w-full bg-slate-900 rounded-2xl p-4 border border-slate-800 shadow-2xl text-center">
-                <button
-                  onClick={() => setPhotoZoom(false)}
-                  className="absolute top-3 right-3 text-slate-400 hover:text-white bg-slate-800 rounded-full p-1.5"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-                <h3 className="text-sm font-bold text-white mb-3">
-                  {driver.first_name} {driver.last_name} — Profile Photo
-                </h3>
-                <img
-                  src={getDriverAvatar(driver.avatar_url, `${driver.first_name} ${driver.last_name}`) || '/driver-assets/abdul_malik.jpg'}
-                  alt={`${driver.first_name} ${driver.last_name}`}
-                  className="max-h-[60vh] max-w-full object-contain mx-auto rounded-xl shadow-lg border border-slate-800"
-                  style={{ transform: `rotate(${rotation}deg)` }}
-                />
-                <div className="mt-3 flex items-center justify-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setRotation((r) => (r + 90) % 360)}
-                    className="text-xs border-slate-700 text-slate-300 hover:bg-slate-800"
-                  >
-                    <RotateCw className="w-3.5 h-3.5 mr-1" /> Rotate
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setPhotoZoom(false)}
-                    className="text-xs border-slate-700 text-slate-300 hover:bg-slate-800"
-                  >
-                    Close Preview
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Quick Specifications Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -325,5 +283,31 @@ export default function DriverPreviewModal({ driver, isOpen, onClose, onEdit, on
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Standalone Zoomed Photo Modal */}
+    {(() => {
+      const zoomPhotoUrl = getDriverAvatar(driver.avatar_url, `${driver.first_name} ${driver.last_name}`);
+      return (
+        <Dialog open={photoZoom && !!zoomPhotoUrl} onOpenChange={setPhotoZoom}>
+          <DialogContent className="max-w-md w-[92vw] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xl flex flex-col items-center">
+            <div className="w-full flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 truncate pr-8">
+                {driver.first_name} {driver.last_name} — Profile Photo
+              </h3>
+            </div>
+            <div className="pt-4 pb-1 flex items-center justify-center w-full">
+              {zoomPhotoUrl && (
+                <img
+                  src={zoomPhotoUrl}
+                  alt={`${driver.first_name} ${driver.last_name}`}
+                  className="max-h-[65vh] w-auto max-w-full object-contain rounded-xl shadow-md border border-slate-100 dark:border-slate-800"
+                />
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+      );
+    })()}
+    </>
   );
 }

@@ -5,6 +5,7 @@ import { nextMaintenanceRefId } from './maintenanceController';
 import { nextExpenseRefId } from './expenseController';
 import { getEnabledModules } from './settingsController';
 import { isFinanciallyProtectedTrip } from './tripController';
+import { generateRefId } from '../utils/refId';
 
 // Which toggleable module a trash entity type belongs to. Customer/Driver/
 // Vehicle/Trip/RateCard aren't here — they're core, always available in trash
@@ -67,9 +68,24 @@ export async function restoreTrashItem(req: Request, res: Response) {
       case 'Vehicle':
         await prisma.vehicle.update({ where: { id }, data: { deletedAt: null } });
         break;
-      case 'Trip':
-        await prisma.trip.update({ where: { id }, data: { deletedAt: null } });
+      case 'Trip': {
+        const existingTrip = await prisma.trip.findUnique({ where: { id }, select: { ref_id: true } });
+        let restoredRefId = existingTrip?.ref_id;
+        if (!restoredRefId || restoredRefId.startsWith('TRP-DEL-')) {
+          restoredRefId = await generateRefId('TRP', () =>
+            prisma.trip.findMany({ where: { deletedAt: null }, select: { ref_id: true } }));
+        }
+        await prisma.trip.update({
+          where: { id },
+          data: {
+            deletedAt: null,
+            deleted_by: null,
+            isActive: true,
+            ref_id: restoredRefId,
+          },
+        });
         break;
+      }
       case 'MaintenanceRecord': {
         // Deleting a service order releases its ref_id so the sequence stays
         // gapless, so a restored order needs a fresh number at the end.

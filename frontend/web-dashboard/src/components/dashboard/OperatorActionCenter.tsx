@@ -61,13 +61,18 @@ export default function OperatorActionCenter({ trips, onOpenQuickAssign }: Opera
         new Date(t.planned_end).getTime() < nowMs;
 
       if (isDelayed) {
+        const hasVideo = (t as any).documents?.some(
+          (d: any) =>
+            d.mime_type?.startsWith('video/') ||
+            /\.(mp4|mov|webm|3gp)$/i.test(d.file_url || '')
+        );
         items.push({
           id: `delayed-${t.id}`,
           trip: t,
           priority: 'critical',
-          typeLabel: 'DELAYED TRIP',
+          typeLabel: hasVideo ? 'DELAYED TRIP 📹' : 'DELAYED TRIP',
           entityId: tripRef,
-          context: `${customerName} • ${routeStr}`,
+          context: `${customerName} • ${routeStr}${hasVideo ? ' (Video Proof Attached)' : ''}`,
           actionLabel: 'Open Trip',
           actionType: 'view',
           icon: Clock,

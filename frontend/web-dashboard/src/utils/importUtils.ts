@@ -55,7 +55,10 @@ export const TRIP_COLUMNS: ColumnMap = {
   vehicle_plate: ['vehicle_plate', 'plate_number', 'plate', 'vehicle'],
   driver_id: ['driver_id', 'driver_ref', 'driver'],
   status: ['status', 'trip_status', 'state'],
-  billing_amount: ['billing_amount', 'rate', 'price', 'amount', 'trip_charge'],
+  billing_amount: ['billing_amount', 'rate', 'price', 'amount'],
+  driver_payout: ['driver_payout', 'payout', 'trip_charge'],
+  additional_charge: ['additional_charge', 'extra_charge', 'surcharge', 'additional_charges'],
+  stops: ['stops', 'waypoints', 'route_stops', 'intermediate_stops'],
 };
 
 export const CUSTOMER_COLUMNS: ColumnMap = {

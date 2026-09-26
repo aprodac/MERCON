@@ -48,6 +48,26 @@ export interface CustomerFilters {
   mode?: 'lookup';
 }
 
+export interface CustomerStatementInvoice {
+  id: string;
+  ref_id?: string | null;
+  invoice_date: string;
+  due_date?: string | null;
+  status: 'Draft' | 'Issued' | 'PartiallyPaid' | 'Paid' | 'Void';
+  total_amount: number;
+  paid_amount: number;
+  balance_due: number;
+  currency: string;
+}
+
+export interface CustomerStatementData {
+  customer: { id: string; name: string };
+  invoices: CustomerStatementInvoice[];
+  total_outstanding: number;
+  total_invoiced: number;
+  total_paid: number;
+}
+
 export const customerService = {
   async getAll(filters: CustomerFilters = {}): Promise<ApiResponse<Customer[]>> {
     const res = await api.get<ApiResponse<Customer[]>>('/customers', { params: filters });
@@ -57,6 +77,11 @@ export const customerService = {
   async getById(id: string): Promise<Customer> {
     const res = await api.get<ApiResponse<Customer>>(`/customers/${id}`);
     return res?.data?.data;
+  },
+
+  async getStatement(id: string, params?: { date_from?: string; date_to?: string }): Promise<CustomerStatementData> {
+    const res = await api.get<ApiResponse<CustomerStatementData>>(`/customers/${id}/statement`, { params });
+    return res.data.data;
   },
 
   async create(payload: CreateCustomerPayload): Promise<Customer> {

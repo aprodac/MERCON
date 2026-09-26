@@ -12,8 +12,8 @@ router.use(requireModuleEnabled('documents'));
 // Read access: Admin + Operator (they need this to populate upload pickers).
 router.get('/', getDocumentTypes);
 
-// Structural configuration changes: Admin only.
-router.post('/', authorizeRoles('Admin'), createDocumentType);
+// Structural configuration changes: Admin + Operator.
+router.post('/', authorizeRoles('Admin', 'Operator'), createDocumentType);
 router.patch('/:id', authorizeRoles('Admin'), updateDocumentType);
 router.delete('/:id', authorizeRoles('Admin'), deleteDocumentType);
 

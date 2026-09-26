@@ -1,0 +1,37 @@
+import React from 'react';
+import { Text, TouchableOpacity, View } from 'react-native';
+import { Menu } from 'lucide-react-native';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
+import { FilterButton } from '@/features/drivers/components/FilterButton';
+
+interface QuotationsHeaderProps {
+  onFilterPress?: () => void;
+  onMenuPress?: () => void;
+  filterActive?: boolean;
+  className?: string;
+}
+
+export function QuotationsHeader({ onFilterPress, onMenuPress, filterActive, className }: QuotationsHeaderProps) {
+  return (
+    <View className={`flex-row items-center justify-between bg-white px-4 pb-3 pt-3 border-b border-[#EEF1F6] ${className ?? ''}`}>
+      <View className="gap-0.5">
+        <Text className="text-[24px] font-extrabold leading-[28px] text-[#3E3C3D]">Quotations</Text>
+        <Text className="text-[12px] font-medium text-gray-500">Commercial rates & customer lanes</Text>
+      </View>
+      <View className="flex-row items-center gap-2">
+        <FilterButton onPress={onFilterPress} active={filterActive} />
+        {onMenuPress && (
+          <TouchableOpacity
+            onPress={onMenuPress}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel="Open sidebar menu"
+            className="h-10 w-10 items-center justify-center rounded-xl bg-[#EEF1F6]"
+          >
+            <Menu size={18} color={Colors.charcoal} strokeWidth={2.2} />
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}

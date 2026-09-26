@@ -457,7 +457,6 @@ const TripPreviewRow = memo(function TripPreviewRow({
   onToggle?: () => void;
   onOpen?: () => void;
 }) {
-  const navigate = useNavigate();
   const gap = isUnassigned(trip);
 
   const statusLower = (trip.status || '').toLowerCase();
@@ -500,7 +499,7 @@ const TripPreviewRow = memo(function TripPreviewRow({
           </span>
         </div>
 
-        <span className="text-[10px] font-mono font-bold text-slate-400 dark:text-slate-500">
+        <span className="text-xs font-mono font-extrabold text-slate-700 dark:text-slate-200 tracking-tight">
           {trip.ref_id || 'TRIP'}
         </span>
       </div>
@@ -508,15 +507,7 @@ const TripPreviewRow = memo(function TripPreviewRow({
       {/* Bottom Line: Driver Avatar + Name (Left) ...... Truck + Plate + Status Badge (Right) */}
       <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200/60 dark:border-slate-700/50 gap-2">
         {/* Left: Driver Avatar + Driver Full Name */}
-        <div
-          onClick={(e) => {
-            if (trip.driver?.id) {
-              e.stopPropagation();
-              navigate(`/drivers/${trip.driver.id}`);
-            }
-          }}
-          className="flex items-center gap-1.5 min-w-0 flex-1 hover:text-purple-600 transition-colors"
-        >
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
           {trip.driver?.avatar_url ? (
             <img
               src={trip.driver.avatar_url}
@@ -540,15 +531,7 @@ const TripPreviewRow = memo(function TripPreviewRow({
 
         {/* Right: Truck Icon + Vehicle Plate + Status Badge */}
         <div className="flex items-center gap-2 shrink-0">
-          <div
-            onClick={(e) => {
-              if (trip.vehicle?.id) {
-                e.stopPropagation();
-                navigate(`/vehicles/${trip.vehicle.id}`);
-              }
-            }}
-            className="flex items-center gap-1 text-[11px] font-mono font-bold text-slate-700 dark:text-slate-300 hover:text-purple-600 transition-colors"
-          >
+          <div className="flex items-center gap-1 text-[11px] font-mono font-bold text-slate-700 dark:text-slate-300">
             <Truck className="h-3.5 w-3.5 text-slate-400 shrink-0" />
             <span>{trip.vehicle?.plate_number ?? 'No Truck'}</span>
           </div>

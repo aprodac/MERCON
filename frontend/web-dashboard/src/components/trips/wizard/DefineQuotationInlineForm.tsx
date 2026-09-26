@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, DollarSign, Truck, Zap } from 'lucide-react';
+import { Sparkles, DollarSign, Truck, Zap, AlertCircle } from 'lucide-react';
 import { getAllTaxonomyOptions, normalizeCode } from '@/utils/taxonomyRegistry';
 import { normalizeRateCategory } from '@/hooks/useCreateTripForm';
 import { LaneRateHistoryPopover } from './LaneRateHistoryPopover';
@@ -189,6 +189,12 @@ export const DefineQuotationInlineForm: React.FC<DefineQuotationInlineFormProps>
               }`}
             />
           </div>
+          {(fieldErrors?.[`billingAmount-${primarySlot?.id}`] || fieldErrors?.['billingAmount']) && (
+            <div className="flex items-center gap-1.5 mt-1 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              <span>Please enter billing rate</span>
+            </div>
+          )}
         </div>
 
         {/* DRIVER PAYOUT — OWN FLEET ONLY */}
@@ -225,6 +231,12 @@ export const DefineQuotationInlineForm: React.FC<DefineQuotationInlineFormProps>
                 }`}
               />
             </div>
+            {(fieldErrors?.[`driverPayout-${primarySlot?.id}`] || fieldErrors?.['driverPayout']) && (
+              <div className="flex items-center gap-1.5 mt-1 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                <span>Please enter driver payout</span>
+              </div>
+            )}
           </div>
         )}
 

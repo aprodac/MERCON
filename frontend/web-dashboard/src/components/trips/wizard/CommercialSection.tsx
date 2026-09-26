@@ -1,5 +1,5 @@
 import React from 'react';
-import { DollarSign, CheckCircle2, Plus, Tag, AlertCircle, ChevronLeft, ChevronRight, Building2, Search, X, Calendar, Zap, Layers, Pencil } from 'lucide-react';
+import { DollarSign, CheckCircle2, Plus, Tag, AlertCircle, ChevronLeft, ChevronRight, Building2, Search, X, Calendar, Zap, Layers, Pencil, Lock as LockIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,7 @@ import { DefineQuotationInlineForm } from './DefineQuotationInlineForm';
 import CustomerCardCarousel from './CustomerCardCarousel';
 import QuotationCardCarousel from './QuotationCardCarousel';
 import { getCardId } from './QuotationRateCard';
+import { quotationRouteLegs } from '@mercon/shared-types';
 
 const CITY_ALIASES: Record<string, string[]> = {
   riyadh: ['ruh', 'ryd', 'riyad', 'الرياض', 'رياض'],
@@ -97,6 +98,7 @@ interface CommercialSectionProps {
   customerOptions?: ComboboxOption[];
   fieldErrors?: Record<string, boolean>;
   assignmentType?: string;
+  isEditMode?: boolean;
 }
 
 export const CommercialSection: React.FC<CommercialSectionProps> = ({
@@ -118,6 +120,7 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
   customerOptions = [],
   fieldErrors = {},
   assignmentType = 'own',
+  isEditMode = false,
 }) => {
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
@@ -178,8 +181,18 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
     });
   }, [effectiveRateCards]);
 
-  // Default to showing saved rate cards if available; only show inline form if explicitly toggled or customer has 0 cards
-  const showInlineForm = isInlineMode || (effectiveRateCards.length === 0 && !quotationSearchQuery);
+  // Check if locations are entered and whether any quotation matches the lane
+  const hasOrigin = Boolean(primarySlot.origin && String(primarySlot.origin).trim());
+  const hasDestination = Boolean(primarySlot.destination && String(primarySlot.destination).trim());
+  const hasLocationsEntered = hasOrigin || hasDestination;
+  const hasMatchingCardsForLane = availableRateCards.length > 0;
+  const isMatchedQuotation = Boolean(primarySlot.rateMatched || primarySlot.matchedRateCard);
+
+  // If locations are entered but NO quotation matches this lane and none is selected, auto-trigger Define Quotation
+  const isLaneUnmatched = hasLocationsEntered && !hasMatchingCardsForLane && !isMatchedQuotation;
+
+  // Show inline form if explicitly toggled, if lane is unmatched, or if customer has 0 cards
+  const showInlineForm = isInlineMode || isLaneUnmatched || (effectiveRateCards.length === 0 && !quotationSearchQuery);
 
   const derivedCustomerOptions = React.useMemo(() => {
     if (customerOptions && customerOptions.length > 0) return customerOptions;
@@ -346,7 +359,7 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
     <div className="p-3.5 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs space-y-2.5 text-[#3E3C3D]">
       {/* UNIFIED SINGLE HEADER: CUSTOMER ACCOUNT */}
       <div className="flex items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800 flex-wrap">
-        {/* LEFT: LOGO + CUSTOMER SEARCH COMBOBOX + MATCHED RATE BADGE */}
+        {/* LEFT: LOGO + CUSTOMER DISPLAY + MATCHED RATE BADGE */}
         <div className="flex items-center gap-2.5 flex-wrap flex-1 min-w-0">
           {/* COMPANY PROFILE PICTURE */}
           {selectedCust ? (
@@ -371,8 +384,14 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
             </div>
           )}
 
-          {/* CUSTOMER SEARCH COMBOBOX */}
-          {setContractCustomer && (
+          {/* CUSTOMER DISPLAY: COMBOBOX IF CREATE MODE, READ-ONLY GRAYED OUT CARD IF EDIT MODE */}
+          {isEditMode ? (
+            <div className="flex items-center gap-2 bg-slate-100/80 dark:bg-slate-800/60 px-3 py-1.5 rounded-xl border border-slate-200/80 dark:border-slate-800 text-slate-500 dark:text-slate-400 cursor-not-allowed select-none">
+              <span className="text-xs font-black text-slate-700 dark:text-slate-300 truncate max-w-[320px]">
+                {selectedCust?.name || 'Assigned Customer'}
+              </span>
+            </div>
+          ) : setContractCustomer ? (
             <div id="field-customer" className="w-full sm:w-[320px] shrink-0">
               <Combobox
                 options={derivedCustomerOptions}
@@ -383,13 +402,19 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
                 searchPlaceholder="Search customer name or code..."
                 triggerClassName="h-8.5 rounded-xl border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-800 dark:text-slate-200 shadow-2xs w-full focus:ring-2 focus:ring-brand"
               />
+              {fieldErrors?.['customer'] && (
+                <div className="flex items-center gap-1.5 mt-1 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Please select customer account</span>
+                </div>
+              )}
             </div>
-          )}
+          ) : null}
         </div>
 
         {/* RIGHT: CREATE / EDIT QUOTATION BUTTON TOGGLE */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {contractCustomer && (
+          {!isEditMode && contractCustomer && (
             <Button
               type="button"
               variant="outline"
@@ -418,16 +443,33 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
         </div>
       </div>
 
-      {/* STAGE 1: NO CUSTOMER SELECTED */}
-      {!contractCustomer && (
+      {/* STAGE 1 & 2: CREATE MODE VS EDIT MODE COMMERCIAL WORKSPACE */}
+      {isEditMode ? (
+        <div className="p-2.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-3 flex-wrap shadow-2xs">
+          <div className="flex items-center gap-2.5 flex-wrap text-xs">
+            <div className="flex items-center gap-1.5 font-black text-slate-800 dark:text-slate-100">
+              <Tag className="w-3.5 h-3.5 text-[#FA634E]" />
+              <span>Quotation Ref:</span>
+              <span className="font-mono text-brand font-black">
+                {primarySlot.matchedRateCard?.quotation_number ? `Q-${primarySlot.matchedRateCard.quotation_number}` : 'Fixed Commercial Rate'}
+              </span>
+            </div>
+            <span className="text-slate-300 dark:text-slate-700">•</span>
+            <div className="flex items-center gap-2 font-bold text-slate-600 dark:text-slate-300">
+              <span>Customer Rate: <strong className="text-slate-900 dark:text-slate-100 font-mono font-black">SAR {Number(primarySlot.billingAmount || 0).toLocaleString()}</strong></span>
+              <span>•</span>
+              <span>Class: <strong className="text-slate-800 dark:text-slate-200">{contractVehicleType}</strong></span>
+              <span>•</span>
+              <span>Line: <strong className="text-slate-800 dark:text-slate-200">{contractRateCategory}</strong></span>
+            </div>
+          </div>
+        </div>
+      ) : !contractCustomer ? (
         <CustomerCardCarousel
           customers={sortedCustomers}
           onSelectCustomer={(id) => setContractCustomer?.(id)}
         />
-      )}
-
-      {/* STAGE 2: CUSTOMER IS SELECTED */}
-      {Boolean(contractCustomer) && (
+      ) : (
         <div className="space-y-2.5">
           {/* SEARCH INPUT TOOLBAR */}
           {!showInlineForm && (
@@ -521,6 +563,33 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
                   const firstStop = rc.stops && rc.stops.length > 0 ? rc.stops[0] : null;
                   const lastStop = rc.stops && rc.stops.length > 1 ? rc.stops[rc.stops.length - 1] : firstStop;
 
+                  // Take the quotation's whole route (every stop, both legs) so the slot's
+                  // route matches the card exactly. Leaving stale names / stops behind made
+                  // the route-change watcher drop the selection → "Define Quotation".
+                  const [qOut, qRet] = quotationRouteLegs(rc);
+                  const hasCardRoute = Boolean(qOut && qOut.length >= 2);
+                  const originId = rc.originLocation?.id || firstStop?.location?.id || firstStop?.location_id || primarySlot.originLocationId;
+                  const destinationId = rc.destinationLocation?.id || lastStop?.location?.id || lastStop?.location_id || primarySlot.destinationLocationId;
+                  const originLabel = origName || primarySlot.origin;
+                  const destinationLabel = destName || primarySlot.destination;
+                  const outMids = hasCardRoute ? qOut.slice(1, -1) : [];
+                  const retMids = qRet && qRet.length >= 2 ? qRet.slice(1, -1) : [];
+                  const routePatch = hasCardRoute
+                    ? {
+                        intermediateLocations: outMids.map((s) => s.name || ''),
+                        intermediateLocationIds: outMids.map((s) => s.id || null),
+                        intermediateStopFees: outMids.map(() => ''),
+                        returnOrigin: qRet && qRet.length >= 2 ? qRet[0].name || '' : '',
+                        returnOriginLocationId: qRet && qRet.length >= 2 ? qRet[0].id || null : null,
+                        returnDestination: qRet && qRet.length >= 2 ? qRet[qRet.length - 1].name || '' : '',
+                        returnDestinationLocationId: qRet && qRet.length >= 2 ? qRet[qRet.length - 1].id || null : null,
+                        returnIntermediateLocations: retMids.map((s) => s.name || ''),
+                        returnIntermediateLocationIds: retMids.map((s) => s.id || null),
+                      }
+                    : {};
+                  const originChanged = originId !== primarySlot.originLocationId;
+                  const destinationChanged = destinationId !== primarySlot.destinationLocationId;
+
                   if (targetCategory && setContractRateCategory) {
                     setContractRateCategory(targetCategory);
                   }
@@ -540,10 +609,16 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
                     rateCategory: targetCategory,
                     vehicleType: targetVehicleClass,
                     pricingBasis: rc.pricing_basis || (normalizeBillingType(rc.operation_type || rc.billing_type) === 'Monthly' ? 'Per Month' : 'Per Trip'),
-                    origin: origName || primarySlot.origin,
-                    destination: destName || primarySlot.destination,
-                    originLocationId: rc.originLocation?.id || firstStop?.location?.id || firstStop?.location_id || primarySlot.originLocationId,
-                    destinationLocationId: rc.destinationLocation?.id || lastStop?.location?.id || lastStop?.location_id || primarySlot.destinationLocationId,
+                    origin: originLabel,
+                    originName: originLabel,
+                    originLocationId: originId,
+                    destination: destinationLabel,
+                    destinationName: destinationLabel,
+                    destinationLocationId: destinationId,
+                    // A different place: the old pin / address no longer applies.
+                    ...(originChanged ? { originLat: null, originLng: null, originAddress: undefined, originPrecision: undefined } : {}),
+                    ...(destinationChanged ? { destinationLat: null, destinationLng: null, destinationAddress: undefined, destinationPrecision: undefined } : {}),
+                    ...routePatch,
                   });
                 });
               }}

@@ -63,7 +63,8 @@ export default function UserManagementPage() {
   const [roleFilter, setRoleFilter] = useState('all');
 
   const currentUser = authStore.getUser();
-  const isAdmin = currentUser?.role === 'Admin' || currentUser?.isSuperAdmin;
+  const isSuperAdmin = Boolean(currentUser?.isSuperAdmin || currentUser?.role === 'SuperAdmin');
+  const isAdmin = currentUser?.role === 'Admin' || isSuperAdmin;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserDTO | null>(null);
@@ -96,19 +97,21 @@ export default function UserManagementPage() {
 
   // Combine Web Users & Driver Accounts into unified dataset
   const combinedUsers: UnifiedUser[] = useMemo(() => {
-    const webItems: UnifiedUser[] = users.map((u, idx) => ({
-      id: u.id || `web-${idx}`,
-      name: u.name || 'Unnamed User',
-      username: u.username || 'user',
-      phone: u.phone || 'No phone',
-      email: u.email || '',
-      role: u.role || 'Operator',
-      isSuperAdmin: u.isSuperAdmin,
-      accountType: 'Web',
-      status: u.status || 'Active',
-      lastLogin: idx === 0 ? 'Today, 10:24 AM' : idx % 2 === 0 ? '14 Sep 2026 08:12 PM' : '13 Sep 2026 11:05 AM',
-      originalUser: u,
-    }));
+    const webItems: UnifiedUser[] = users
+      .filter((u) => isSuperAdmin || (!u.isSuperAdmin && u.role !== 'SuperAdmin'))
+      .map((u, idx) => ({
+        id: u.id || `web-${idx}`,
+        name: u.name || 'Unnamed User',
+        username: u.username || 'user',
+        phone: u.phone || 'No phone',
+        email: u.email || '',
+        role: u.role || 'Operator',
+        isSuperAdmin: u.isSuperAdmin,
+        accountType: 'Web',
+        status: u.status || 'Active',
+        lastLogin: idx === 0 ? 'Today, 10:24 AM' : idx % 2 === 0 ? '14 Sep 2026 08:12 PM' : '13 Sep 2026 11:05 AM',
+        originalUser: u,
+      }));
 
     const driverItems: UnifiedUser[] = driversList.map((d, idx) => {
       const dName = `${d.first_name || ''} ${d.last_name || ''}`.trim() || 'Driver Account';
@@ -129,11 +132,16 @@ export default function UserManagementPage() {
     });
 
     return [...webItems, ...driverItems];
-  }, [users, driversList]);
+  }, [users, driversList, isSuperAdmin]);
 
   // Filtered dataset
   const filteredUsers = useMemo(() => {
     return combinedUsers.filter((item) => {
+      // Security check: Hide SuperAdmin users if current user is not a SuperAdmin
+      if (!isSuperAdmin && (item.isSuperAdmin || item.role === 'SuperAdmin')) {
+        return false;
+      }
+
       // Tab filter
       if (activeTab === 'web' && item.accountType !== 'Web') return false;
       if (activeTab === 'driver' && item.accountType !== 'Driver App') return false;
@@ -160,7 +168,7 @@ export default function UserManagementPage() {
 
       return true;
     });
-  }, [combinedUsers, activeTab, search, roleFilter]);
+  }, [combinedUsers, activeTab, search, roleFilter, isSuperAdmin]);
 
   const handleExportUsers = (rows: UnifiedUser[], format: 'excel' | 'pdf') => {
     if (!rows.length) return;
@@ -565,7 +573,7 @@ export default function UserManagementPage() {
                 <Monitor className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 data-[state=active]:text-[#FA634E]" />
                 <span>Web Platform Users</span>
                 <span className="ml-1 px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700">
-                  {users.length}
+                  {users.filter(u => isSuperAdmin || (!u.isSuperAdmin && u.role !== 'SuperAdmin')).length}
                 </span>
               </TabsTrigger>
 
@@ -618,7 +626,7 @@ export default function UserManagementPage() {
                     <SelectItem value="all">All Roles</SelectItem>
                     <SelectItem value="Admin">Admin</SelectItem>
                     <SelectItem value="Operator">Operator</SelectItem>
-                    <SelectItem value="SuperAdmin">SuperAdmin</SelectItem>
+                    {isSuperAdmin && <SelectItem value="SuperAdmin">SuperAdmin</SelectItem>}
                     <SelectItem value="Driver">Driver</SelectItem>
                   </SelectContent>
                 </Select>

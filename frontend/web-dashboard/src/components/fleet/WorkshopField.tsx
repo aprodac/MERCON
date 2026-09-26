@@ -341,7 +341,7 @@ export default function WorkshopField({
                 type="button"
                 size="sm"
                 onClick={() => setIsOpen(false)}
-                className="h-7 text-xs font-bold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white px-2.5 cursor-pointer rounded-lg shadow-xs"
+                className="h-7 text-xs font-bold bg-charcoal dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white px-2.5 cursor-pointer rounded-lg shadow-xs"
               >
                 Close
               </Button>

@@ -40,6 +40,7 @@ interface TripWizardHeaderProps {
   submissionResult: any;
   isStepValid: (step: number) => boolean;
   getStepValidationErrors?: (step: number) => string[];
+  validateAndFocusErrors?: (step?: number) => boolean;
   canNavigateToStep: (step: number) => boolean;
   setContractStep: React.Dispatch<React.SetStateAction<any>>;
   handleContractSubmit: () => void;
@@ -58,6 +59,7 @@ export const TripWizardHeader: React.FC<TripWizardHeaderProps> = ({
   submissionResult,
   isStepValid,
   getStepValidationErrors,
+  validateAndFocusErrors,
   canNavigateToStep,
   setContractStep,
   handleContractSubmit,
@@ -258,6 +260,9 @@ export const TripWizardHeader: React.FC<TripWizardHeaderProps> = ({
 
           const handleNextClick = () => {
             if (!isValid) {
+              if (validateAndFocusErrors) {
+                validateAndFocusErrors(contractStep);
+              }
               if (errors.length > 0) {
                 toast.error('Required fields missing', {
                   description: (
@@ -282,6 +287,9 @@ export const TripWizardHeader: React.FC<TripWizardHeaderProps> = ({
 
           const handleReviewSubmitClick = () => {
             if (!isStepValid(1)) {
+              if (validateAndFocusErrors) {
+                validateAndFocusErrors(1);
+              }
               const step1Errors = getStepValidationErrors ? getStepValidationErrors(1) : [];
               if (step1Errors.length > 0) {
                 toast.error('Cannot proceed to review', {

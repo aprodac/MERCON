@@ -78,7 +78,7 @@ export async function getRecommendedDriversForTrip(params: {
       trips: {
         where: { deletedAt: null },
         include: {
-          stops: { include: { location: true }, orderBy: { stop_sequence: 'asc' } },
+          stops: { where: { deletedAt: null }, include: { location: true }, orderBy: { stop_sequence: 'asc' } },
         },
       },
     },
@@ -187,9 +187,6 @@ export async function getRecommendedDriversForTrip(params: {
     }
 
     let score = 0;
-    if (reqClassStr && !capacityMatch) {
-      continue;
-    }
     
     if (isAvailable && capacityMatch) {
       score += 200; // Base score for available + capacity-matched drivers

@@ -1,0 +1,21 @@
+{
+  "name": "@mercon/mobile-shared",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Code shared by the MERCON mobile apps: API client, auth, login screen, storage, i18n, theme, UI kit, brand assets. TypeScript source only - Metro compiles it, so there is no build step.",
+  "peerDependencies": {
+    "@mercon/shared-types": "*",
+    "@tanstack/react-query": "*",
+    "axios": "*",
+    "expo-constants": "*",
+    "expo-image-manipulator": "*",
+    "expo-image-picker": "*",
+    "expo-location": "*",
+    "expo-router": "*",
+    "expo-secure-store": "*",
+    "lucide-react-native": "*",
+    "react": "*",
+    "react-native": "*",
+    "react-native-safe-area-context": "*"
+  }
+}

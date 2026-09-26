@@ -4,9 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { tripService, BulkImportTripRow, BulkImportResult, TripStatus } from '@/services/tripService';
 import { analyzePastDateRows, applyPastStatusToRows, PastDateAnalysis } from '@/utils/pastDateTripUtils';
-import { isUuid } from '@/lib/utils';
 import { localDateTimeToUtcIso, useDeploymentTimezone } from '@/lib/datetime';
-import { isRoundTripCategory, addDays } from './useCreateTripForm';
+import { buildQuotationFromSlot, buildTripRows } from '@mercon/shared-types';
 
 export function useTripSubmission(
   contractCustomer: string,
@@ -23,6 +22,7 @@ export function useTripSubmission(
   thirdPartyDriverPhone: string,
   thirdPartyVehiclePlate: string,
   thirdPartyCost: string,
+  awbNumber: string,
   dayAssignments: Record<string, any>,
   selectedDates: string[],
   setContractStep: React.Dispatch<React.SetStateAction<1 | 2 | 3>>,
@@ -295,49 +295,19 @@ export function useTripSubmission(
             }
           }
 
-          const intermediateStops = (slot.intermediateLocations || []).map((locVal: string, idx: number) => {
-            const locId = slot.intermediateLocationIds?.[idx] || (isUuid(locVal) ? locVal : null);
-            return {
-              sequence: idx + 2,
-              location_id: locId || null,
-              source_label: locVal || null,
-              stop_type: 'Dropoff',
-            };
-          });
-
-          const quotationStops = [
-            { sequence: 1, location_id: origId || null, source_label: slot.origin.trim() || null, stop_type: 'Pickup' },
-            ...intermediateStops,
-            { sequence: intermediateStops.length + 2, location_id: destId || null, source_label: slot.destination.trim() || null, stop_type: 'Dropoff' },
-          ];
-
           const is3PLAssignment = assignmentType === 'third_party' || assignmentType === '3pl';
-          const slotDriverPayout = !is3PLAssignment && slot.driverPayout !== undefined ? Number(slot.driverPayout) : (!is3PLAssignment ? (Number(slot.tripCharges) || null) : null);
           return quotationService
-            .create({
-              name: `${slot.origin.trim() || 'Origin'} → ${slot.destination.trim() || 'Destination'}`,
-              rate: Number(slot.billingAmount),
-              base_price: Number(slot.billingAmount),
-              driver_payout: slotDriverPayout,
-              customerId: contractCustomer,
-              origin_location_id: origId || null,
-              destination_location_id: destId || null,
-              origin_name: origId ? null : slot.origin.trim() || null,
-              destination_name: destId ? null : slot.destination.trim() || null,
-              origin_lat: slot.originLat ?? null,
-              origin_lng: slot.originLng ?? null,
-              destination_lat: slot.destinationLat ?? null,
-              destination_lng: slot.destinationLng ?? null,
-              vehicle_class: contractVehicleType || null,
-              source_vehicle_label: contractVehicleType || null,
-              vehicle_type: contractVehicleType || null,
-              line_type: contractRateCategory || null,
-              billing_type: contractBillingType || null,
-              pricing_basis: slot.pricingBasis || 'Per Trip',
-              stops: quotationStops,
-              reason: slot.rateReason?.trim() || `Created inline during trip dispatch for ${slot.origin || 'origin'} → ${slot.destination || 'destination'} (${contractVehicleType || 'Standard'})`,
-              source: 'TRIP_CREATION',
-            })
+            .create(
+              buildQuotationFromSlot(slot, {
+                customerId: contractCustomer,
+                vehicleType: contractVehicleType,
+                rateCategory: contractRateCategory,
+                billingType: contractBillingType,
+                isThirdParty: is3PLAssignment,
+                originLocationId: origId,
+                destinationLocationId: destId,
+              }) as any,
+            )
             .then((res: any) => {
               const createdQuo = res?.data || res;
               const quoId = createdQuo?.id;
@@ -366,214 +336,26 @@ export function useTripSubmission(
       queryClient.invalidateQueries({ queryKey: ['locations-list'] });
     }
 
-    const rows: BulkImportTripRow[] = [];
-    const isMonthlyMode = contractBillingType === 'Monthly' && selectedDates.length > 0;
-    const datesToSchedule: Array<string | null> = isMonthlyMode ? selectedDates : [null];
-
-    datesToSchedule.forEach((currentDateStr) => {
-      contractSlots.forEach((slot) => {
-        const date = currentDateStr || slot.date || new Date().toISOString().slice(0, 10);
-        const dateKey = contractSlots.length > 1 ? `${date}::${slot.id}` : date;
-        const assignment = dayAssignments[dateKey] || dayAssignments[date] || dayAssignments[slot.id] || { driverId: '', vehicleId: '' };
-
-        const outboundStops = slot.intermediateLocations.map((s: string) => s.trim()).filter(Boolean);
-        const returnStops = (slot.returnIntermediateLocations || []).map((s: string) => s.trim()).filter(Boolean);
-
-        const outboundFeesSum = (slot.intermediateStopFees || []).reduce((sum: number, f: string) => sum + (Number(f) || 0), 0);
-        const returnFeesSum = (slot.returnIntermediateStopFees || []).reduce((sum: number, f: string) => sum + (Number(f) || 0), 0);
-        const baseAmount = Number(slot.billingAmount) || 0;
-        const isMonthlySlot = (slot.pricingBasis === 'Per Month' || slot.pricingBasis === 'PER_MONTH' || (contractBillingType || '').toLowerCase().includes('monthly'));
-        const resolvedTripBilling = isMonthlySlot && baseAmount > 0 ? (baseAmount / 30) : baseAmount;
-        const totalAmount = resolvedTripBilling + outboundFeesSum + returnFeesSum;
-
-        const isRound = isRoundTripCategory(contractRateCategory);
-        let destString = slot.destination.trim();
-
-        const returnStart = slot.returnOrigin?.trim() || slot.destination.trim();
-        const returnEnd = slot.returnDestination?.trim() || slot.origin.trim();
-
-        if (isRound) {
-          const outboundChain = outboundStops.length > 0 ? `${outboundStops.join(' → ')} → ` : '';
-          const returnChain = returnStops.length > 0 ? `${returnStops.join(' → ')} → ` : '';
-
-          destString = `${outboundChain}${slot.destination.trim()} [RETURN: ${returnStart} → ${returnChain}${returnEnd}]`;
-        } else if (outboundStops.length > 0) {
-          destString = `${outboundStops.join(' → ')} → ${slot.destination.trim()}`;
-        }
-
-        // Build structured multi-leg stops with explicit leg_index
-        const structuredStops: Array<{
-          stop_sequence: number;
-          leg_index: number;
-          stop_type: string;
-          location_name: string;
-          location_address?: string | null;
-          location_id?: string | null;
-          lat?: number | null;
-          lng?: number | null;
-          coordinate_precision?: string | null;
-          update_canonical_location?: boolean;
-        }> = [];
-        let seq = 1;
-
-        const safeUuid = (id?: string | null) => (id && isUuid(id) ? id : null);
-
-        // 1. Outbound Origin (leg 0)
-        structuredStops.push({
-          stop_sequence: seq++,
-          leg_index: 0,
-          stop_type: 'Pickup',
-          location_name: slot.originName || slot.origin.trim(),
-          location_address: slot.originAddress || null,
-          location_id: safeUuid(slot.originLocationId),
-          lat: slot.originLat ?? null,
-          lng: slot.originLng ?? null,
-          coordinate_precision: slot.originPrecision || (slot.originLat != null ? 'APPROXIMATE' : 'UNKNOWN'),
-          update_canonical_location: slot.updateCanonicalOrigin === true,
-        });
-
-        // 2. Outbound Intermediate Stops (leg 0)
-        outboundStops.forEach((stopName: string, idx: number) => {
-          structuredStops.push({
-            stop_sequence: seq++,
-            leg_index: 0,
-            stop_type: 'Dropoff',
-            location_name: stopName,
-            location_id: safeUuid(slot.intermediateLocationIds?.[idx]),
-          });
-        });
-
-        // 3. Outbound Delivery (leg 0)
-        structuredStops.push({
-          stop_sequence: seq++,
-          leg_index: 0,
-          stop_type: 'Dropoff',
-          location_name: slot.destinationName || slot.destination.trim(),
-          location_address: slot.destinationAddress || null,
-          location_id: safeUuid(slot.destinationLocationId),
-          lat: slot.destinationLat ?? null,
-          lng: slot.destinationLng ?? null,
-          coordinate_precision: slot.destinationPrecision || (slot.destinationLat != null ? 'APPROXIMATE' : 'UNKNOWN'),
-          update_canonical_location: slot.updateCanonicalDestination === true,
-        });
-
-        // 4. Return Leg (leg 1) if round trip
-        if (isRound) {
-          // Return Loading (leg 1)
-          structuredStops.push({
-            stop_sequence: seq++,
-            leg_index: 1,
-            stop_type: 'Pickup',
-            location_name: returnStart,
-            location_id: safeUuid(slot.returnOriginLocationId || (returnStart === slot.destination.trim() ? slot.destinationLocationId : null)),
-          });
-
-          // Return Intermediate Stops (leg 1)
-          returnStops.forEach((stopName: string, idx: number) => {
-            structuredStops.push({
-              stop_sequence: seq++,
-              leg_index: 1,
-              stop_type: 'Dropoff',
-              location_name: stopName,
-              location_id: safeUuid(slot.returnIntermediateLocationIds?.[idx]),
-            });
-          });
-
-          // Return Final Delivery (leg 1)
-          structuredStops.push({
-            stop_sequence: seq++,
-            leg_index: 1,
-            stop_type: 'Dropoff',
-            location_name: returnEnd,
-            location_id: safeUuid(slot.returnDestinationLocationId || (returnEnd === slot.origin.trim() ? slot.originLocationId : null)),
-          });
-        }
-
-        let planned_end_val: string | undefined = undefined;
-        if (slot.dropoffTime) {
-          const isOvernightOrEarlier = slot.isOvernight || (slot.pickupTime && slot.dropoffTime <= slot.pickupTime);
-          const targetDropoffDate = isOvernightOrEarlier ? addDays(date, 1) : (slot.dropoffDate && slot.dropoffDate >= date ? slot.dropoffDate : date);
-          planned_end_val = localDateTimeToUtcIso(targetDropoffDate, slot.dropoffTime, tz);
-        }
-
-        if (assignmentType === 'third_party') {
-          const costVal = thirdPartyCost ? Number(thirdPartyCost) : (Number(slot.tripCharges) || 0);
-          rows.push({
-            customer_id: contractCustomer,
-            planned_start: localDateTimeToUtcIso(date, slot.pickupTime, tz),
-            planned_end: planned_end_val,
-            is_third_party: true,
-            third_party_provider_id: safeUuid(thirdPartyProviderId) || undefined,
-            third_party_driver_name: thirdPartyDriverName.trim() || undefined,
-            third_party_driver_phone: thirdPartyDriverPhone.trim() || undefined,
-            third_party_vehicle_plate: thirdPartyVehiclePlate.trim() || undefined,
-            third_party_vehicle_type: contractVehicleType || undefined,
-            third_party_cost: costVal,
-            trip_charges: costVal,
-            rate_category: contractRateCategory || undefined,
-            billing_type: contractBillingType || undefined,
-            vehicle_type: contractVehicleType || undefined,
-            origin: slot.origin.trim() || undefined,
-            destination: destString || undefined,
-            stops: structuredStops,
-            billing_amount: totalAmount > 0 ? totalAmount : undefined,
-            rate_card_id: safeUuid(slot.rateCardId) || undefined,
-            status: 'Scheduled',
-          });
-        } else {
-          const driverId = (assignment.driverId && assignment.driverId !== 'unassigned')
-            ? assignment.driverId
-            : (masterDriver && masterDriver !== 'unassigned' ? masterDriver : undefined);
-
-          const vehicleId = (assignment.vehicleId && assignment.vehicleId !== 'unassigned')
-            ? assignment.vehicleId
-            : (masterVehicle && masterVehicle !== 'unassigned' ? masterVehicle : undefined);
-
-          const coDriverId = (assignment.coDriverId && assignment.coDriverId !== 'unassigned')
-            ? assignment.coDriverId
-            : (masterCoDriver && masterCoDriver !== 'unassigned' ? masterCoDriver : undefined);
-
-          const slotDriverPayout = slot.driverPayout !== undefined ? Number(slot.driverPayout) : (Number(slot.tripCharges) || 0);
-          const shouldUpdateQuotation = Boolean(slot.updateQuotationPayout || slot.driverPayoutModified);
-
-          let finalDriverPayout = slotDriverPayout;
-          let finalCoDriverPayout = 0;
-
-          if (coDriverId) {
-            // Default 50/50 split if co-driver is present
-            finalDriverPayout = assignment.driverPayoutOverride !== undefined ? assignment.driverPayoutOverride : (slotDriverPayout / 2);
-            finalCoDriverPayout = assignment.coDriverPayoutOverride !== undefined ? assignment.coDriverPayoutOverride : (slotDriverPayout / 2);
-          } else {
-            if (assignment.driverPayoutOverride !== undefined) {
-               finalDriverPayout = assignment.driverPayoutOverride;
-            }
-          }
-
-          rows.push({
-            customer_id: contractCustomer,
-            planned_start: localDateTimeToUtcIso(date, slot.pickupTime, tz),
-            planned_end: planned_end_val,
-            driver_id: safeUuid(driverId) || undefined,
-            co_driver_id: safeUuid(coDriverId) || undefined,
-            vehicle_id: safeUuid(vehicleId) || undefined,
-            rate_category: contractRateCategory || undefined,
-            billing_type: contractBillingType || undefined,
-            vehicle_type: contractVehicleType || undefined,
-            origin: slot.origin.trim() || undefined,
-            destination: destString || undefined,
-            stops: structuredStops,
-            billing_amount: totalAmount > 0 ? totalAmount : undefined,
-            trip_charges: slotDriverPayout, // total combined charges
-            driver_charge: finalDriverPayout, // alias for legacy
-            driver_payout: finalDriverPayout,
-            co_driver_payout: finalCoDriverPayout,
-            update_quotation_driver_payout: shouldUpdateQuotation,
-            rate_card_id: safeUuid(slot.rateCardId || slot.matchedRateCard?.id) || undefined,
-            status: 'Scheduled',
-          });
-        }
-      });
-    });
+    const rows = buildTripRows({
+      customerId: contractCustomer,
+      slots: contractSlots,
+      vehicleType: contractVehicleType,
+      rateCategory: contractRateCategory,
+      billingType: contractBillingType,
+      assignmentType,
+      masterDriver,
+      masterCoDriver,
+      masterVehicle,
+      thirdPartyProviderId,
+      thirdPartyDriverName,
+      thirdPartyDriverPhone,
+      thirdPartyVehiclePlate,
+      thirdPartyCost,
+      awbNumber,
+      dayAssignments,
+      selectedDates,
+      toUtcIso: (date, time) => localDateTimeToUtcIso(date, time, tz),
+    }) as BulkImportTripRow[];
 
     executeBulkSubmit(rows);
   };

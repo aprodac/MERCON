@@ -396,6 +396,32 @@ function getSecondaryContactPhone(phoneOrId?: string): string {
  
   const statusCreditFilters = (
     <div className="flex items-center gap-3">
+      {/* Segmented View Switcher */}
+      <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200/80 dark:border-slate-700">
+        <button
+          type="button"
+          onClick={() => setViewMode('list')}
+          className={cn(
+            'p-1.5 rounded-md transition-all text-xs flex items-center gap-1 font-semibold cursor-pointer',
+            viewMode === 'list' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
+          )}
+          title="List View"
+        >
+          <List size={14} />
+        </button>
+        <button
+          type="button"
+          onClick={() => setViewMode('grid')}
+          className={cn(
+            'p-1.5 rounded-md transition-all text-xs flex items-center gap-1 font-semibold cursor-pointer',
+            viewMode === 'grid' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
+          )}
+          title="Grid View"
+        >
+          <LayoutGrid size={14} />
+        </button>
+      </div>
+
       <Select
         value={selectedStatus}
         onValueChange={(val) => {
@@ -481,7 +507,77 @@ function getSecondaryContactPhone(phoneOrId?: string): string {
       }
     }
   ];
- 
+
+  const customerHeaderActions = useMemo(() => (
+    <div className="flex items-center gap-2 shrink-0">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs dark:bg-slate-900 dark:border-slate-800"
+          >
+            <Download className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
+            Export / Import
+            <ChevronDown className="h-3 w-3 text-slate-400" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl">
+          <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
+            Export Data
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={() => handleExportExcel(filteredCustomers)}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
+          >
+            <FileSpreadsheet className="mr-2 h-3.5 w-3.5 text-emerald-600" />
+            Export Excel (.xlsx)
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => handleExportPDF(filteredCustomers)}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
+          >
+            <FileText className="mr-2 h-3.5 w-3.5 text-rose-600" />
+            Export PDF (.pdf)
+          </DropdownMenuItem>
+
+          <DropdownMenuItem
+            onClick={() => {
+              setSelectedCustomersForExport([]);
+              setIsExportOpen(true);
+            }}
+            className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-brand hover:bg-orange-50 dark:hover:bg-orange-950/40"
+          >
+            <Filter className="mr-2 h-3.5 w-3.5 text-brand" />
+            Custom Export Settings...
+          </DropdownMenuItem>
+
+          <DropdownMenuSeparator className="my-1 border-slate-100 dark:border-slate-800" />
+
+          <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
+            Import Data
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={() => setImportDialogOpen(true)}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
+          >
+            <UploadCloud className="mr-2 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+            Import from Excel
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Button
+        size="sm"
+        className="h-8 gap-1.5 text-xs font-bold bg-brand hover:bg-brand/90 text-white shadow-xs rounded-md px-3.5"
+        onClick={() => setIsCreateCustomerOpen(true)}
+      >
+        <Plus className="h-4 w-4" />
+        Add Customer
+      </Button>
+    </div>
+  ), [filteredCustomers, handleExportExcel, handleExportPDF]);
+
   return (
     <DashboardLayout 
       active="Customers" 
@@ -489,113 +585,6 @@ function getSecondaryContactPhone(phoneOrId?: string): string {
     >
       <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-5">
         
-        {/* Page Content Header Row */}
-        <div className="flex flex-wrap items-center justify-between gap-4 shrink-0 pb-1">
-          <div className="flex items-center gap-3">
-            <Building2 className="w-6 h-6 text-blue-600 dark:text-blue-400 shrink-0" />
- 
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-                  Customers
-                </h1>
-              </div>
-            </div>
-          </div>
- 
-          <div className="flex items-center gap-2.5">
-            {/* Segmented View Switcher */}
-            <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200/80 dark:border-slate-700">
-              <button
-                onClick={() => setViewMode('list')}
-                className={cn(
-                  'p-1.5 rounded-md transition-all text-xs flex items-center gap-1 font-semibold',
-                  viewMode === 'list' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
-                )}
-                title="List View"
-              >
-                <List size={14} />
-              </button>
-              <button
-                onClick={() => setViewMode('grid')}
-                className={cn(
-                  'p-1.5 rounded-md transition-all text-xs flex items-center gap-1 font-semibold',
-                  viewMode === 'grid' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
-                )}
-                title="Grid View"
-              >
-                <LayoutGrid size={14} />
-              </button>
-            </div>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs dark:bg-slate-900 dark:border-slate-800"
-                >
-                  <Download className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
-                  Export / Import
-                  <ChevronDown className="h-3 w-3 text-slate-400" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl">
-                <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
-                  Export Data
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => handleExportExcel(filteredCustomers)}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
-                >
-                  <FileSpreadsheet className="mr-2 h-3.5 w-3.5 text-emerald-600" />
-                  Export Excel (.xlsx)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handleExportPDF(filteredCustomers)}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
-                >
-                  <FileText className="mr-2 h-3.5 w-3.5 text-rose-600" />
-                  Export PDF (.pdf)
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSelectedCustomersForExport([]);
-                    setIsExportOpen(true);
-                  }}
-                  className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-brand hover:bg-orange-50 dark:hover:bg-orange-950/40"
-                >
-                  <Filter className="mr-2 h-3.5 w-3.5 text-brand" />
-                  Custom Export Settings...
-                </DropdownMenuItem>
-
-                <DropdownMenuSeparator className="my-1 border-slate-100 dark:border-slate-800" />
-
-                <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
-                  Import Data
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => setImportDialogOpen(true)}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                >
-                  <UploadCloud className="mr-2 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                  Import from Excel
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
- 
-            <Button
-              size="sm"
-              className="h-9 gap-1.5 text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs rounded-md px-4"
-              onClick={() => setIsCreateCustomerOpen(true)}
-            >
-              <Plus className="h-4 w-4" />
-              Add Customer
-            </Button>
-          </div>
-        </div>
- 
         {/* ── 2. Instrument-Panel KPI Cards ───────────────────────────────── */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 shrink-0">
           {/* Card 1: Total Customers — Tier Breakdown Bar */}
@@ -646,7 +635,7 @@ function getSecondaryContactPhone(phoneOrId?: string): string {
                 <span className="text-[16px] font-semibold ml-1.5 opacity-85">Scheduled</span>
               </span>
             }
-            variant="slate"
+            variant="blue"
             trend="neutral"
             trendValue="30-90 Days"
             description="Commercial contract horizon"
@@ -660,13 +649,10 @@ function getSecondaryContactPhone(phoneOrId?: string): string {
           <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-200/80 dark:border-orange-900/40 px-3.5 py-2 rounded-xl flex items-center justify-between gap-3 text-xs font-semibold text-orange-900 dark:text-orange-200 animate-fade-in shrink-0">
             <div className="flex items-center gap-2 flex-wrap">
               <Filter className="h-3.5 w-3.5 text-brand shrink-0" />
-              <span>
-                Filtered by:{' '}
-                <strong className="underline decoration-brand text-slate-900 dark:text-slate-100 font-bold">
-                  {selectedStatus} Clients
-                </strong>
-                {' '}({filteredCustomers.length} customer{filteredCustomers.length === 1 ? '' : 's'} matching)
-              </span>
+              <span>Filtering by Account Status:</span>
+              <Badge variant="outline" className="bg-white dark:bg-slate-900 border-orange-300 dark:border-orange-800 text-orange-800 dark:text-orange-300 text-[11px] font-bold">
+                {selectedStatus}
+              </Badge>
             </div>
             <button
               onClick={() => {
@@ -686,8 +672,8 @@ function getSecondaryContactPhone(phoneOrId?: string): string {
           <div className="w-full flex flex-col">
             <DataTable
               title={
-                <span className="flex items-center gap-2">
-                  <Building2 className="w-4 h-4 text-blue-600" />
+                <span className="flex items-center gap-2 text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight">
+                  <Building2 className="w-5 h-5 text-indigo-600" />
                   <span>Customer Accounts Ledger</span>
                 </span>
               }
@@ -704,6 +690,7 @@ function getSecondaryContactPhone(phoneOrId?: string): string {
               searchValue={search}
               onSearchChange={(val) => { setSearch(val); setCurrentPage(1); }}
               filterElement={statusCreditFilters}
+              actionsElement={customerHeaderActions}
               currentPage={currentPage}
               totalPages={totalPages}
               pageSize={pageSize}
@@ -756,6 +743,7 @@ function getSecondaryContactPhone(phoneOrId?: string): string {
 
                 <div className="flex w-full xl:w-auto items-center flex-wrap gap-2 sm:shrink-0 xl:ml-auto rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-950/30 p-1.5">
                   {statusCreditFilters}
+                  {customerHeaderActions}
                 </div>
               </div>
             </div>

@@ -447,93 +447,77 @@ export default function MaintenanceListPage() {
     </div>
   );
 
+  const maintenanceHeaderActions = (
+    <div className="flex items-center gap-2">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs text-slate-700 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300"
+          >
+            <Download className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
+            Export
+            <ChevronDown className="h-3 w-3 text-slate-400" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl">
+          <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
+            Export Data
+          </DropdownMenuLabel>
+          <DropdownMenuItem
+            onClick={handleExportExcel}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
+          >
+            <FileSpreadsheet className="mr-2 h-3.5 w-3.5 text-emerald-600" />
+            Export Excel (.xlsx)
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={handleExportPDF}
+            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
+          >
+            <FileText className="mr-2 h-3.5 w-3.5 text-rose-600" />
+            Export PDF (.pdf)
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              setSelectedRecordsForExport([]);
+              setIsExportOpen(true);
+            }}
+            className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-brand hover:bg-orange-50 dark:hover:bg-orange-950/40"
+          >
+            <Filter className="mr-2 h-3.5 w-3.5 text-brand" />
+            Custom Export Settings...
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setIsManageWorkshopsOpen(true)}
+        className="h-9 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs text-slate-700 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300"
+      >
+        <Building2 className="h-3.5 w-3.5 text-amber-500" />
+        Manage Workshops
+      </Button>
+
+      <Button
+        size="sm"
+        onClick={handleOpenCreateModal}
+        className="h-9 gap-1.5 text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-xs rounded-md px-4"
+      >
+        <Plus className="h-4 w-4" />
+        Add Maintenance
+      </Button>
+    </div>
+  );
+
   return (
     <DashboardLayout active="Vehicles" title="Vehicle Maintenance">
       <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-5">
 
-        {/* ── Page Content Header Row ─────────────────────────────────────────── */}
-        <div className="flex flex-wrap items-center justify-between gap-4 shrink-0 pb-1">
-          <div className="flex items-center gap-3">
-            <Wrench className="w-6 h-6 text-red-600 dark:text-red-400 shrink-0" />
-
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-                  Vehicle Maintenance
-                </h1>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs text-slate-700 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300"
-                >
-                  <Download className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
-                  Export
-                  <ChevronDown className="h-3 w-3 text-slate-400" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl">
-                <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
-                  Export Data
-                </DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={handleExportExcel}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
-                >
-                  <FileSpreadsheet className="mr-2 h-3.5 w-3.5 text-emerald-600" />
-                  Export Excel (.xlsx)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={handleExportPDF}
-                  className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
-                >
-                  <FileText className="mr-2 h-3.5 w-3.5 text-rose-600" />
-                  Export PDF (.pdf)
-                </DropdownMenuItem>
-
-                <DropdownMenuItem
-                  onClick={() => {
-                    setSelectedRecordsForExport([]);
-                    setIsExportOpen(true);
-                  }}
-                  className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-brand hover:bg-orange-50 dark:hover:bg-orange-950/40"
-                >
-                  <Filter className="mr-2 h-3.5 w-3.5 text-brand" />
-                  Custom Export Settings...
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsManageWorkshopsOpen(true)}
-              className="h-9 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs text-slate-700 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300"
-            >
-              <Building2 className="h-3.5 w-3.5 text-amber-500" />
-              Manage Workshops
-            </Button>
-
-            <Button
-              size="sm"
-              onClick={handleOpenCreateModal}
-              className="h-9 gap-1.5 text-xs font-bold bg-red-600 hover:bg-red-700 text-white shadow-xs rounded-md px-4"
-            >
-              <Plus className="h-4 w-4" />
-              Add Maintenance
-            </Button>
-          </div>
-        </div>
-
-        {/* ── 2. Instrument-Panel KPI Cards ───────────────────────────────── */}
+        {/* ── 1. Instrument-Panel KPI Cards ───────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 shrink-0">
           
           <KpiCard
@@ -613,65 +597,16 @@ export default function MaintenanceListPage() {
 
         </div>
 
-         {/* Control Toolbar (Search, Filter, View Switcher) */}
-        <div className="flex flex-wrap items-center justify-between gap-3 shrink-0 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs relative z-10">
-          <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
-
-
-            {/* Status Dropdown using shadcn Select */}
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="h-9 px-3 w-auto min-w-[190px] whitespace-nowrap shrink-0 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold">
-                <div className="flex items-center gap-2 whitespace-nowrap">
-                  <Filter className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-                  <SelectValue placeholder="All Statuses" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-xs font-semibold">All Statuses</SelectItem>
-                <SelectItem value="In_Progress" className="text-xs font-semibold">In Progress</SelectItem>
-                <SelectItem value="Scheduled" className="text-xs font-semibold">Scheduled</SelectItem>
-                <SelectItem value="Completed" className="text-xs font-semibold">Completed</SelectItem>
-                <SelectItem value="Cancelled" className="text-xs font-semibold">Cancelled</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Type Dropdown using shadcn Select */}
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="h-9 px-3 w-auto min-w-[190px] whitespace-nowrap shrink-0 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold">
-                <div className="flex items-center gap-2 whitespace-nowrap">
-                  <Wrench className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-                  <SelectValue placeholder="All Types" />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all" className="text-xs font-semibold">All Types</SelectItem>
-                <SelectItem value="Routine" className="text-xs font-semibold">Routine Service</SelectItem>
-                <SelectItem value="Repair" className="text-xs font-semibold">Repair</SelectItem>
-                <SelectItem value="Inspection" className="text-xs font-semibold">Inspection</SelectItem>
-                <SelectItem value="Renewal" className="text-xs font-semibold">Renewal / Istimara</SelectItem>
-                <SelectItem value="Emergency" className="text-xs font-semibold">Emergency</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <SortDropdown
-              value={sortOrder}
-              onChange={setSortOrder}
-              options={MAINTENANCE_SORT_OPTIONS}
-            />
-          </div>
-
-
-        </div>
-
-        {/* ── 3. Data Table Ledger & Empty States ─────────────────────────── */}
+        {/* ── 2. Data Table Ledger & Empty States ─────────────────────────── */}
         <div className="w-full flex flex-col">
             <DataTable
               title={
-                <span className="flex items-center gap-2">
-                  <Wrench className="w-4 h-4 text-red-500" />
+                <span className="flex items-center gap-2 text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight">
+                  <Wrench className="w-5 h-5 text-red-500" />
                   <span>Maintenance Ledger</span>
                 </span>
               }
+              actionsElement={maintenanceHeaderActions}
               columns={[
                 {
                   header: 'Order #',
@@ -783,7 +718,6 @@ export default function MaintenanceListPage() {
               onRowClick={(row) => navigate(`/maintenance/${row.id}`)}
               searchPlaceholder="Search vehicle plate, workshop, invoice, or work done..."
               searchValue={search}
-              onSearchChange={(val) => { setSearch(val); setPage(1); }}
               filterElement={maintenanceFilters}
             />
           </div>

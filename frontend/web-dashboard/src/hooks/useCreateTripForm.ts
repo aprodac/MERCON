@@ -11,7 +11,8 @@ import { tripService, BulkImportTripRow, BulkImportResult, TripStatus, Trip } fr
 import { quotationService, RateCard } from '@/services/quotationService';
 import { estimateTravelTimeByName, calculateArrivalDropoffTime } from '@/services/travelTimeService';
 import { useDeploymentTimezone, localDateTimeToUtcIso } from '@/lib/datetime';
-import { VEHICLE_TYPES, RATE_CATEGORIES } from '@mercon/shared-types';
+import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory, quotationMatchesRoute, validateTripDraft, type TripValidationIssue } from '@mercon/shared-types';
+import { buildStopsFromSlot, routeLegsFromSlot } from '@/utils/tripStopsHelper';
 import { parseSheet, TRIP_COLUMNS } from '@/utils/importUtils';
 import { analyzePastDateRows, applyPastStatusToRows, PastDateAnalysis } from '@/utils/pastDateTripUtils';
 import { getCompatibilityRuleForClass } from '@/utils/vehicleCompatibilityRegistry';
@@ -24,6 +25,7 @@ import { useTripSlotsState } from '@/hooks/useTripSlotsState';
 import { useTripDraftStorage } from '@/hooks/useTripDraftStorage';
 import { useTripSubmission } from '@/hooks/useTripSubmission';
 import { useTripAccelerators } from '@/hooks/useTripAccelerators';
+import { formatDriverDetails } from '@/utils/driverStatusUtils';
 
 export const addDays = (dateStr: string, days: number): string => {
   if (!dateStr) return dateStr;
@@ -44,11 +46,7 @@ export const MODAL_RATE_CATEGORIES = RATE_CATEGORIES.filter(
   (cat) => !REMOVED_MODAL_CATEGORIES.includes(cat as any)
 ).map((cat) => ((cat as any) === 'Trip/Round Trip' ? 'Round Trip' : cat));
 
-export const isRoundTripCategory = (cat: string) => {
-  if (!cat) return false;
-  const c = String(cat).toLowerCase().replace(/_/g, ' ').trim();
-  return c.includes('round') || c === 'round trip' || c === 'trip/round trip';
-};
+export { isRoundTripCategory };
 
 export const getVehicleTypeFromCapacity = (capacityKg?: number | null): string => {
   if (capacityKg == null || capacityKg <= 0) return '40 FEET';
@@ -180,6 +178,7 @@ export function useCreateTripForm() {
   const [thirdPartyDriverPhone, setThirdPartyDriverPhone] = useState('');
   const [thirdPartyVehiclePlate, setThirdPartyVehiclePlate] = useState('');
   const [thirdPartyCost, setThirdPartyCost] = useState('');
+  const [awbNumber, setAwbNumber] = useState('');
   const [isCreateProviderOpen, setIsCreateProviderOpen] = useState(false);
 
   const vehiclesRef = useRef(vehicles);
@@ -255,12 +254,7 @@ export function useCreateTripForm() {
           : 'Truck: Unassigned';
 
         const isNotAvailable = Boolean(d.status && d.status !== 'Available' && d.status.toLowerCase() !== 'available' && d.id !== masterDriver);
-        const statusTag = d.status && d.status !== 'Available' && d.status.toLowerCase() !== 'available'
-          ? d.status === 'OnTrip' ? 'On Trip' : d.status === 'OffDuty' ? 'Off Duty' : d.status
-          : '';
-
-        const badgesStr = rec?.badges ? rec.badges.join(' • ') : '';
-        const detailsStr = [truckInfo, statusTag, badgesStr].filter(Boolean).join(' • ');
+        const detailsStr = formatDriverDetails(d, rec, matchedVeh);
         const fullName = `${d.first_name || ''} ${d.last_name || ''}`.trim() || `Driver #${d.id.slice(0, 5)}`;
 
         const label = React.createElement(
@@ -285,7 +279,7 @@ export function useCreateTripForm() {
           label,
           selectedLabel: fullName,
           disabled: isNotAvailable,
-          keywords: `${fullName} ${detailsStr} ${d.phone_primary || ''} ${d.license_number || ''} ${capacityLabel} ${d.status || ''} ${badgesStr}`,
+          keywords: `${fullName} ${detailsStr} ${d.phone_primary || ''} ${d.license_number || ''} ${capacityLabel} ${d.status || ''}`,
           avatar_url: d.avatar_url,
           avatarUrl: d.avatar_url,
           first_name: d.first_name,
@@ -394,21 +388,18 @@ export function useCreateTripForm() {
 
               if ((!slot.origin && !slot.originLocationId) || (!slot.destination && !slot.destinationLocationId)) return slot;
 
-              const intermediateStops = (slot.intermediateLocations || []).map((locVal, idx) => {
-                const locId = slot.intermediateLocationIds?.[idx] || (isUuid(locVal) ? locVal : null);
-                return {
-                  location_id: locId || null,
-                  location_name: locVal,
-                  stop_type: 'Dropoff',
-                  sequence: idx + 2,
-                };
-              });
+              // The full route — every outbound and return stop with its leg — so
+              // the lookup only returns a quotation defined for exactly this route.
+              const slotIsRound = isRoundTripCategory(rCat || '');
+              const slotStops = buildStopsFromSlot(slot, slotIsRound);
+              const slotLegs = routeLegsFromSlot(slot, slotIsRound);
 
-              const slotStops = [
-                { location_id: slot.originLocationId, stop_type: 'Pickup', sequence: 1 },
-                ...intermediateStops,
-                { location_id: slot.destinationLocationId, stop_type: 'Dropoff', sequence: intermediateStops.length + 2 },
-              ];
+              // Even on a forced re-lookup, a quotation the user picked that still
+              // covers exactly this route stays selected.
+              const cardCustomer = (slot.matchedRateCard as any)?.customer_id;
+              if (slot.matchedRateCard && slot.rateMatched && (!cardCustomer || cardCustomer === custId) && quotationMatchesRoute(slot.matchedRateCard as any, slotLegs, slotIsRound)) {
+                return slot;
+              }
 
               try {
                 let card: RateCard | null = null;
@@ -423,7 +414,13 @@ export function useCreateTripForm() {
                     planned_start: slot.date || undefined,
                     stops: slotStops,
                   });
-                  card = exactRes?.quotation || exactRes?.candidate_quotation || exactRes?.candidateQuotation || exactRes?.rate_card || null;
+                  // Only an exact route match. `candidate_quotation` is the SAME lane with
+                  // DIFFERENT stops — applying it would price A→X→B at A→B's rate.
+                  card = exactRes?.quotation || exactRes?.rate_card || null;
+                  // Never trust a lane-only answer: an older API ignores the stops and
+                  // returns the A→B quotation for A→X→B, which re-selected it right
+                  // after "Define Quotation" opened (the flip-flop). Every stop must match.
+                  if (card && !quotationMatchesRoute(card as any, slotLegs, slotIsRound)) card = null;
                 }
 
                 if (!card) {
@@ -437,12 +434,23 @@ export function useCreateTripForm() {
                     slot.originLocationId,
                     slot.destinationLocationId
                   );
+                  // The local fallback only compares origin + destination; reject it
+                  // unless every stop of this route matches too.
+                  if (card && !quotationMatchesRoute(card as any, slotLegs, slotIsRound)) card = null;
                 }
 
                 if (card) {
                   const cardRate = Number(card.rate ?? card.base_price ?? 0);
                   const driverPayout = card.driver_payout ?? (card as any).driver_charge;
                   if (cardRate > 0) {
+                    const cardClass = card.vehicle_type || card.vehicle_class || (card as any).vehicleClass || (card as any).source_vehicle_label;
+                    if (cardClass) {
+                      const normClass = normalizeVehicleClass(cardClass);
+                      if (normClass) {
+                        setContractVehicleType(normClass);
+                      }
+                    }
+
                     const isMonthlyRate = card.pricing_basis === 'PER_TRIP'
                       ? false
                       : card.pricing_basis === 'PER_MONTH'
@@ -483,6 +491,9 @@ export function useCreateTripForm() {
                 tripCharges: keepTripCharges,
                 ...(keepDriverPayout !== undefined ? { driverPayout: keepDriverPayout } : {}),
                 rateMatched: false,
+                // Clear the previous match too — the page treats any matchedRateCard as
+                // "matched", which kept "Define Quotation" from opening after a route change.
+                matchedRateCard: null,
                 rateCardId: undefined,
                 rateCardName: undefined,
                 rateCardBasePrice: undefined,
@@ -744,9 +755,6 @@ export function useCreateTripForm() {
       : normalizeVehicleClass(matchedVehicle.asset_type);
 
     setMasterVehicle(matchedVehicle.id);
-    if (vClass) {
-      setContractVehicleType(vClass);
-    }
     toast.success(`Auto-selected driver's truck: ${matchedVehicle.plate_number || 'Vehicle'} (${vClass})`);
     return matchedVehicle.id;
   };
@@ -776,6 +784,47 @@ export function useCreateTripForm() {
     }
   }, [contractCustomer, contractVehicleType, contractRateCategory, contractBillingType]);
 
+  // Any stop change — adding/removing/changing an intermediate stop or a
+  // return-leg stop — makes it a different route, so the previous quotation no
+  // longer applies: clear it and look up again (no match → "Define Quotation").
+  // Origin/destination changes already do this in handleSlotLocationChange.
+  const routeKey = useMemo(() => {
+    const isRound = isRoundTripCategory(contractRateCategory || '');
+    return JSON.stringify(contractSlots.map((slot) => routeLegsFromSlot(slot, isRound)));
+  }, [contractSlots, contractRateCategory]);
+  const prevRouteKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = prevRouteKeyRef.current;
+    prevRouteKeyRef.current = routeKey;
+    if (prev === null || prev === routeKey || !contractCustomer) return;
+    const isRound = isRoundTripCategory(contractRateCategory || '');
+    // Selecting a quotation card rewrites the route to the card's own route —
+    // that match is still valid, so keep it instead of opening "Define Quotation".
+    const stillMatches = (s: typeof contractSlots[number]) =>
+      Boolean(s.rateMatched && s.matchedRateCard && quotationMatchesRoute(s.matchedRateCard as any, routeLegsFromSlot(s, isRound), isRound));
+    const current = contractSlotsRef.current;
+    if (current.length > 0 && current.every(stillMatches)) return;
+    setContractSlots((slots) =>
+      slots.map((s) =>
+        (s.rateMatched || s.matchedRateCard) && !stillMatches(s)
+          ? {
+              ...s,
+              rateMatched: false,
+              matchedRateCard: null,
+              rateCardId: undefined,
+              // The price came from the old quotation (not typed by the user) — drop it
+              // so the old route's rate isn't carried into "Define Quotation".
+              ...(s.rateMatched && !s.saveAsQuotation && !s.driverPayoutModified
+                ? { billingAmount: '', tripCharges: '', driverPayout: undefined }
+                : {}),
+            }
+          : s,
+      ),
+    );
+    const t = setTimeout(() => triggerRateLookupForSlots(undefined, undefined, undefined, undefined, true), 150);
+    return () => clearTimeout(t);
+  }, [routeKey]);
+
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [dayAssignments, setDayAssignments] = useState<Record<string, { driverId: string; vehicleId: string; coDriverId?: string; driverPayoutOverride?: number; coDriverPayoutOverride?: number }>>({});
 
@@ -794,113 +843,26 @@ export function useCreateTripForm() {
   const [editDriver, setEditDriver] = useState<any | null>(null);
 
   const getStepValidationErrors = (step: number): string[] => {
-    const errors: string[] = [];
     const isMonthly = contractBillingType?.toLowerCase() === 'monthly';
-
-    if (step === 1) {
-      if (!contractCustomer) {
-        errors.push('Customer is required');
-      }
-      if (!contractSlots || contractSlots.length === 0) {
-        errors.push('At least 1 route slot is required');
-      } else {
-        contractSlots.forEach((slot, idx) => {
-          const laneLabel =
-            slot.origin && slot.destination ? `${slot.origin} → ${slot.destination}` : `Slot #${idx + 1}`;
-          if (!slot.origin?.trim()) {
-            errors.push(`${laneLabel}: Select an origin location`);
-          }
-          if (!slot.destination?.trim()) {
-            errors.push(`${laneLabel}: Select a destination location`);
-          }
-          if (!isMonthly && !slot.date) {
-            errors.push(`${laneLabel}: Select a trip date`);
-          }
-          if (!slot.pickupTime) {
-            errors.push(`${laneLabel}: Select pickup time`);
-          }
-          if (!slot.dropoffTime) {
-            errors.push(`${laneLabel}: Select drop-off time`);
-          }
-
-          if (!isMonthly && slot.date && slot.pickupTime && slot.dropoffTime) {
-            const dropoffDate = slot.dropoffDate || slot.date;
-            if (dropoffDate < slot.date) {
-              errors.push(`${laneLabel}: Drop-off date cannot be before trip date`);
-            } else {
-              try {
-                const pStartIso = localDateTimeToUtcIso(slot.date, slot.pickupTime, tz);
-                const pEndIso = localDateTimeToUtcIso(dropoffDate, slot.dropoffTime, tz);
-                const pStartMs = new Date(pStartIso).getTime();
-                const pEndMs = new Date(pEndIso).getTime();
-                if (isNaN(pStartMs) || isNaN(pEndMs) || pEndMs <= pStartMs) {
-                  errors.push(`${laneLabel}: Drop-off time must be strictly after pickup time`);
-                }
-              } catch {
-                errors.push(`${laneLabel}: Invalid pickup or drop-off time format`);
-              }
-            }
-          }
-
-          // Commercial Pricing & Rate Validation
-          const hasRateMatched = Boolean(slot.matchedRateCard || slot.rateMatched);
-          const hasBillingInput = slot.billingAmount !== undefined && slot.billingAmount !== null && slot.billingAmount !== '' && Number(slot.billingAmount) > 0;
-
-          if (!hasRateMatched && !hasBillingInput) {
-            errors.push(`${laneLabel}: Select a Commercial Quotation card or enter Customer Billing Rate`);
-          }
-
-          const is3PL = assignmentType === 'third_party' || (assignmentType as string) === '3pl';
-          if (!is3PL) {
-            const hasTripChargeInput = slot.tripCharges !== undefined && slot.tripCharges !== null && slot.tripCharges !== '';
-            const hasDriverPayoutProp = slot.driverPayout !== undefined && slot.driverPayout !== null && slot.driverPayout !== '';
-            const hasMatchedPayout = slot.matchedRateCard?.driver_payout != null || slot.matchedRateCard?.default_trip_charge != null;
-
-            if (!hasTripChargeInput && !hasDriverPayoutProp && !hasMatchedPayout) {
-              errors.push(`${laneLabel}: Enter Driver Payout / Charge`);
-            }
-          } else {
-            if (!thirdPartyCost || Number(thirdPartyCost) <= 0) {
-              errors.push('3PL Cost (SAR) is required');
-            }
-          }
-        });
-      }
-
-      // Mandatory Fleet & Driver Assignment Validation for Daily/Spot (Monthly handles assignment on Page 2)
-      if (contractBillingType !== 'Monthly') {
-        if (assignmentType === 'third_party') {
-          if (!thirdPartyProviderId && !thirdPartyDriverName) {
-            errors.push('3PL Logistics Partner selection is required');
-          }
-        } else {
-          const hasDriverSelection = Boolean(masterDriver);
-          const hasVehicleSelection = Boolean(masterVehicle);
-          if (!hasDriverSelection && !hasVehicleSelection) {
-            errors.push('Select an assignment choice: Driver & Vehicle or Assign Later');
-          }
-        }
-      }
-    } else if (step === 2) {
-      if (contractBillingType === 'Monthly') {
-        if (selectedDates.length === 0) {
-          errors.push('Select at least 1 operating date on the calendar');
-        }
-        if (assignmentType === 'third_party') {
-          if (!thirdPartyProviderId && !thirdPartyDriverName) {
-            errors.push('3PL Logistics Partner selection is required');
-          }
-        } else {
-          const hasDriverSelection = Boolean(masterDriver);
-          const hasVehicleSelection = Boolean(masterVehicle);
-          if (!hasDriverSelection && !hasVehicleSelection) {
-            errors.push('Select an assignment choice: Driver & Vehicle or Assign Later');
-          }
-        }
-      }
-    }
-
-    return errors;
+    const issues = validateTripDraft({
+      customerId: contractCustomer,
+      slots: contractSlots,
+      billingType: contractBillingType,
+      assignmentType,
+      masterDriver,
+      masterVehicle,
+      thirdPartyProviderId,
+      thirdPartyDriverName,
+      thirdPartyCost,
+      selectedDates,
+      toUtcIso: (date, time) => localDateTimeToUtcIso(date, time, tz),
+    });
+    // Monthly trips pick days and assign the fleet on step 2; everything else is step 1.
+    const onStep = (i: TripValidationIssue) => {
+      const isStep2 = isMonthly && (i.section === 'assignment' ? i.field !== 'thirdPartyCost' : i.field === 'selectedDates');
+      return step === 2 ? isStep2 : step === 1 && !isStep2;
+    };
+    return issues.filter(onStep).map((i) => i.message);
   };
 
   const isStepValid = (step: number): boolean => {
@@ -919,15 +881,6 @@ export function useCreateTripForm() {
 
   const handleVehicleChange = (vehicleId: string) => {
     setMasterVehicle(vehicleId);
-    if (vehicleId && vehicleId !== 'unassigned') {
-      const selectedVehicle = vehicles.find((v) => v.id === vehicleId);
-      if (selectedVehicle) {
-        const type = getVehicleTypeFromCapacity(selectedVehicle.capacity_kg);
-        setContractVehicleType(type);
-        setIsVehicleTypeEditable(false);
-        triggerRateLookupForSlots(type);
-      }
-    }
   };
 
   const batchTripRows = useMemo(() => {
@@ -1017,6 +970,7 @@ export function useCreateTripForm() {
     thirdPartyDriverPhone,
     thirdPartyVehiclePlate,
     thirdPartyCost,
+    awbNumber,
     dayAssignments,
     selectedDates,
     setContractStep,
@@ -1383,5 +1337,7 @@ export function useCreateTripForm() {
     getAvailableRateCardsForLane,
     handleOpenCreateQuotation,
     getCompatibilityRuleForClass,
+    awbNumber,
+    setAwbNumber,
   };
 }

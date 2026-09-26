@@ -16,3 +16,19 @@ reference/
 *.tsbuildinfo
 uploads/
 backend/api-server/uploads/
+
+# Data dumps and generated reports must not be committed to the repo root.
+# Import templates the app serves live in frontend/web-dashboard/public/templates/;
+# working datasets and scanned documents belong in external storage.
+/*.xlsx
+/*.xlsm
+/*.csv
+/Trucks Docs*/
+/august_import_files/
+/driver profile/
+/driverprofile/
+/image/
+
+# Expo/EAS config belongs to the mobile app, not the repo root.
+/app.json
+/eas.json

@@ -112,6 +112,23 @@ export function Combobox({
     }
   }, [activeIndex, open]);
 
+  // Auto-close popover when parent container or window scrolls (preventing detached floating menus)
+  useEffect(() => {
+    if (!open) return;
+
+    const handleScroll = (e: Event) => {
+      if (listRef.current && listRef.current.contains(e.target as Node)) {
+        return;
+      }
+      setOpen(false);
+    };
+
+    window.addEventListener('scroll', handleScroll, true);
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [open]);
+
   const handleTriggerKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
     if (disabled) return;
     if (!open) {
@@ -204,7 +221,7 @@ export function Combobox({
         }}
         onKeyDownCapture={handleInputKeyDown}
         className={cn(
-          'w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)] max-w-[var(--radix-popover-trigger-width)] p-0 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-[9999] overflow-hidden',
+          'w-[var(--radix-popover-trigger-width)] min-w-[var(--radix-popover-trigger-width)] p-0 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-[9999] overflow-hidden',
           popoverClassName
         )}
       >

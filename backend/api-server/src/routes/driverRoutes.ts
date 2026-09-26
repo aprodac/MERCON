@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getDrivers, getDriverById, createDriver, updateDriver, deleteDriver , bulkDeleteDrivers, bulkUpdateDriverStatus, bulkImportDrivers, getDriverUsage, getDriverStats, setDriverPassword } from '../controllers/driverController';
+import { getDrivers, getDriverById, createDriver, updateDriver, deleteDriver , bulkDeleteDrivers, bulkUpdateDriverStatus, bulkImportDrivers, getDriverUsage, getDriverStats, setDriverPassword, exportDrivers, getDriverPayouts } from '../controllers/driverController';
 import { upsertDriverVehiclePreference } from '../controllers/fleetDispatchController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
@@ -20,6 +20,8 @@ router.post('/import', validate({ body: bulkImportDriversBody }), bulkImportDriv
 
 // Registered before `/:id` so the literal path isn't captured as an id.
 router.get('/stats', getDriverStats);
+router.get('/export', exportDrivers);
+router.get('/payouts', getDriverPayouts);
 router.get('/', validate({ query: listQuery }), getDrivers);
 router.post('/', validate({ body: createDriverBody }), createDriver);
 router.get('/:id', getDriverById);

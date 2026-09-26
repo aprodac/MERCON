@@ -4,6 +4,9 @@ import { Button } from '@/components/ui/button';
 import DriverAvatar from './DriverAvatar';
 import ProfileCropModal from './ProfileCropModal';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
+import { Loader2 } from 'lucide-react';
+
 
 interface DriverImageUploaderProps {
   value?: string | null;
@@ -23,6 +26,39 @@ export default function DriverImageUploader({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [isCropOpen, setIsCropOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleUploadCroppedImage = async (croppedDataUrl: string) => {
+    setIsUploading(true);
+    try {
+      // Convert base64 to Blob
+      const res = await fetch(croppedDataUrl);
+      const blob = await res.blob();
+      const file = new File([blob], `avatar-${Date.now()}.png`, { type: 'image/png' });
+
+      // Upload via existing /api/upload endpoint
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await api.post('/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (response.data?.success && response.data?.data?.file_url) {
+        onChange(response.data.data.file_url);
+      } else {
+        alert('Failed to upload image. Please try again.');
+      }
+    } catch (error) {
+      console.error('Upload failed:', error);
+      alert('Network error while uploading the image. Please try again.');
+    } finally {
+      setIsUploading(false);
+      setIsCropOpen(false);
+    }
+  };
 
   const processFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -82,7 +118,7 @@ export default function DriverImageUploader({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="absolute inset-0 rounded-full bg-black/45 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-md"
+            className="absolute inset-0 rounded-full bg-charcoal-strong/45 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shadow-md"
             title="Upload or Change photo"
           >
             <Camera className="w-5 h-5" />
@@ -116,10 +152,12 @@ export default function DriverImageUploader({
               type="button"
               variant="outline"
               size="sm"
+              disabled={isUploading}
               onClick={() => fileInputRef.current?.click()}
               className="h-8 text-xs gap-1.5 font-semibold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-xs hover:border-indigo-300"
             >
-              <UploadCloud className="w-3.5 h-3.5" /> Upload Image
+              {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UploadCloud className="w-3.5 h-3.5" />} 
+              {isUploading ? 'Uploading...' : 'Upload Image'}
             </Button>
 
             {value && (
@@ -128,6 +166,7 @@ export default function DriverImageUploader({
                   type="button"
                   variant="outline"
                   size="sm"
+                  disabled={isUploading}
                   onClick={handleOpenExistingForCrop}
                   className="h-8 text-xs gap-1.5 font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100"
                 >
@@ -153,7 +192,7 @@ export default function DriverImageUploader({
         isOpen={isCropOpen}
         onClose={() => setIsCropOpen(false)}
         imageSrc={pendingImage}
-        onCropComplete={(croppedUrl) => onChange(croppedUrl)}
+        onCropComplete={handleUploadCroppedImage}
       />
     </>
   );

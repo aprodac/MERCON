@@ -137,7 +137,10 @@ export const listQuery = z.object({
   search: z.string().trim().optional(),
   sort_by: z.string().trim().optional(),
   sort_dir: z.enum(['asc', 'desc']).default('desc'),
+  sort_order: z.enum(['asc', 'desc']).optional(),
   status: z.string().trim().optional(),
+  license_status: z.enum(['All', 'Valid', 'Expired']).optional(),
+  license_filter: z.enum(['All', 'Valid', 'Expired']).optional(),
   customer_id: z.string().uuid().optional(),
 }).passthrough();
 
@@ -151,12 +154,14 @@ export const loginBody = z.object({
 export const createTripBody = z.object({
   customer_id: z.string().uuid('A valid customer is required'),
   driver_id: z.string().uuid('Invalid driver').optional(),
+  co_driver_id: z.string().uuid('Invalid co-driver').nullable().optional(),
   vehicle_id: z.string().uuid('Invalid vehicle').optional(),
   planned_start: z.coerce.date().optional(),
   planned_end: z.coerce.date().optional(),
   billing_amount: z.coerce.number().optional(),
   driver_charge: z.coerce.number().optional(),
   trip_charges: z.coerce.number().optional(),
+  co_driver_payout: z.coerce.number().optional(),
   status: z.enum(['Scheduled', 'Loading', 'InTransit', 'Delayed', 'Completed', 'Invoiced', 'Cancelled', 'Draft']).optional(),
   dispatch_now: z.boolean().optional(),
   // The rate card the dispatcher was shown. Recorded on the trip so invoicing
@@ -176,6 +181,7 @@ export const createTripBody = z.object({
   // "Monthly" commitment — see BILLING_TYPES in @mercon/shared-types.
   operation_type: z.string().trim().max(60).nullable().optional(),
   billing_type: z.string().trim().max(60).nullable().optional(),
+  awb_number: z.string().trim().nullable().optional(),
   // Third-Party Logistics & Rental fields
   is_third_party: z.boolean().optional(),
   third_party_provider_id: z.string().uuid('Invalid provider').nullable().optional(),
@@ -184,8 +190,16 @@ export const createTripBody = z.object({
   third_party_vehicle_plate: z.string().trim().optional(),
   third_party_vehicle_type: z.string().trim().optional(),
   third_party_cost: z.coerce.number().optional(),
+  charges: z.array(z.object({
+    charge_type: z.string().trim().min(1),
+    rate: z.coerce.number(),
+    quantity: z.coerce.number().optional().default(1),
+    amount: z.coerce.number(),
+    surchargeRuleId: z.string().uuid().optional(),
+  })).optional(),
   stops: z.array(z.object({
-    stop_type: z.enum(['Pickup', 'Dropoff', 'Rest', 'Refuel']),
+    stop_type: z.enum(['Pickup', 'Dropoff', 'Rest', 'Refuel', 'Stop']),
+    leg_index: z.number().int().optional(),
     // Client + controller use lat/lng (controller reads stop.lat/stop.lng), not location_*.
     lat: z.coerce.number(),
     lng: z.coerce.number(),
@@ -366,7 +380,16 @@ export const bulkImportTripsBody = z.object({
     driver_payout: z.coerce.number().nullable().optional(),
     co_driver_id: z.string().trim().nullable().optional(),
     co_driver_payout: z.coerce.number().nullable().optional(),
+    additional_charge: z.coerce.number().nullable().optional(),
+    // Extra charges billed on top of billing_amount — same shape as POST /trips.
+    charges: z.array(z.object({
+      charge_type: z.string().trim().min(1),
+      rate: z.coerce.number(),
+      quantity: z.coerce.number().optional().default(1),
+      amount: z.coerce.number(),
+    })).optional(),
     update_quotation_driver_payout: z.boolean().optional(),
+    awb_number: z.string().trim().nullable().optional(),
     stops: z.array(z.object({
       stop_sequence: z.number().int().optional(),
       leg_index: z.number().int().optional(),
@@ -404,6 +427,16 @@ export const logStopDelayBody = z.object({
     'Weather', 'Documentation', 'RouteBlocked', 'Other',
   ]),
   delay_note: z.string().trim().max(500).optional(),
+});
+
+export const confirmEvidenceTimeBody = z.object({
+  document_id: z.string().uuid(),
+  // Neither is required — an operator confirming the recorded time is
+  // already correct submits with both omitted. Not strict ISO validation
+  // since a <input type="datetime-local"> sends "YYYY-MM-DDTHH:mm" with no
+  // offset; the controller parses with `new Date(...)`.
+  actual_arrival: z.string().min(1).optional(),
+  actual_departure: z.string().min(1).optional(),
 });
 
 /* ─── Drivers ────────────────────────────────────────────────────────────── */
@@ -580,4 +613,60 @@ export const createScheduledReportBody = z.object({
 });
 
 export const updateScheduledReportBody = createScheduledReportBody.partial();
+
+export const updateErrorEventBody = z.object({
+  status: z.enum(['New', 'Acknowledged', 'Resolved']),
+  notes: z.string().trim().max(2000).optional(),
+});
+
+export const clientErrorBody = z.object({
+  message: z.string().trim().min(1).max(2000),
+  stack: z.string().trim().max(8000).optional(),
+  route: z.string().trim().min(1).max(500),
+});
+
+const locationInputSchema = z.union([
+  z.string().trim(),
+  z.object({
+    name: z.string().trim().optional(),
+    location_name: z.string().trim().optional(),
+    address: z.string().trim().optional(),
+    location_address: z.string().trim().optional(),
+    location_id: z.string().trim().nullable().optional(),
+    locationId: z.string().trim().nullable().optional(),
+    lat: z.coerce.number().optional().nullable(),
+    lng: z.coerce.number().optional().nullable(),
+    coordinate_precision: z.string().optional().nullable(),
+    update_canonical_location: z.boolean().optional().nullable(),
+  }),
+]);
+
+export const updateTripStopsRouteBody = z.object({
+  origin: locationInputSchema.optional(),
+  destination: locationInputSchema.optional(),
+  intermediates: z.array(locationInputSchema).optional(),
+  isRound: z.boolean().optional(),
+  returnOrigin: locationInputSchema.optional(),
+  returnDestination: locationInputSchema.optional(),
+  returnIntermediates: z.array(locationInputSchema).optional(),
+  stops: z.array(z.object({
+    stop_sequence: z.number().int().optional(),
+    leg_index: z.number().int().optional(),
+    stop_type: z.string().optional(),
+    name: z.string().trim().optional(),
+    location_name: z.string().trim().optional(),
+    address: z.string().trim().optional(),
+    location_address: z.string().trim().optional(),
+    location_id: z.string().trim().nullable().optional(),
+    locationId: z.string().trim().nullable().optional(),
+    lat: z.coerce.number().optional().nullable(),
+    lng: z.coerce.number().optional().nullable(),
+    coordinate_precision: z.string().optional().nullable(),
+    update_canonical_location: z.boolean().optional().nullable(),
+    planned_arrival: z.string().optional().nullable(),
+    notes: z.string().optional().nullable(),
+  })).optional(),
+  planned_start: z.string().optional().nullable(),
+  planned_end: z.string().optional().nullable(),
+});
 

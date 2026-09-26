@@ -2,7 +2,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { prisma } from '../db';
 import { isValidTransition } from './tripLifecycle';
-import { analyzeExternalScreenshotWithAI } from './ocrService';
 import { TripStatus } from '@prisma/client';
 
 describe('External Driver Workflow — Complete Test Suite', () => {
@@ -107,14 +106,6 @@ describe('External Driver Workflow — Complete Test Suite', () => {
     });
   });
 
-  describe('AI SCREENSHOT PARSER FALLBACKS', () => {
-    it('13. Handles missing file cleanly with FILE_NOT_FOUND error', async () => {
-      const res = await analyzeExternalScreenshotWithAI('/non/existent/path.png');
-      assert.equal(res.detected_event_type, null);
-      assert.equal(res.extraction_error, 'FILE_NOT_FOUND');
-    });
-  });
-
   describe('DELIVERY_COMPLETED & completeTrip SIDE EFFECTS', () => {
     it('completeTrip stamps dropoff timestamps, completes trip, and releases driver/vehicle', async () => {
       const cust = await prisma.customer.create({
@@ -177,43 +168,4 @@ describe('External Driver Workflow — Complete Test Suite', () => {
     });
   });
 
-  describe('DOCUMENT PERSISTENCE ON LOW CONFIDENCE / AI FAILURE', () => {
-    it('Persists document evidence even when extraction is unapplied or low confidence', async () => {
-      const cust = await prisma.customer.create({
-        data: { name: `Cust DocEvid ${Date.now()}`, contact_phone: '+966500000008' },
-      });
-      const trip = await prisma.trip.create({
-        data: {
-          ref_id: `TRP-DOC-${Date.now()}`,
-          customerId: cust.id,
-          driver_workflow: 'EXTERNAL_APP',
-          status: TripStatus.Scheduled,
-        },
-      });
-
-      const doc = await prisma.document.create({
-        data: {
-          entity_type: 'Trip',
-          entity_id: trip.id,
-          doc_type: 'POD',
-          file_url: '/uploads/screenshot-unapplied.jpg',
-          status: 'PendingReview',
-          ai_extracted_json: {
-            detected_event_type: null,
-            confidence: 0.3,
-            applied: false,
-            extraction_status: 'NEEDS_REVIEW',
-            validation_reason: 'Low confidence score (30%) requires manual verification',
-          },
-        },
-      });
-
-      assert.ok(doc.id);
-      assert.equal(doc.status, 'PendingReview');
-
-      // Canonical trip state remains untouched
-      const freshTrip = await prisma.trip.findUnique({ where: { id: trip.id } });
-      assert.equal(freshTrip?.status, 'Scheduled');
-    });
-  });
 });

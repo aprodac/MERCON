@@ -78,6 +78,13 @@ export function parseDateTime(dateVal?: string | null, timeVal?: string | null):
  * Checks if a date/time is strictly before the current real time.
  */
 export function isDateTimeInPast(dateVal?: string | null, timeVal?: string | null): boolean {
+  if (!dateVal) return false;
+  // If dateVal is only a YYYY-MM-DD date (no ISO 'T') and timeVal is empty/missing,
+  // evaluate whether the date itself is strictly in the past (prior calendar day).
+  // An empty time field on today's date should NOT be treated as a past time.
+  if (!dateVal.includes('T') && (!timeVal || !timeVal.trim())) {
+    return isDateInPast(dateVal);
+  }
   const dt = parseDateTime(dateVal, timeVal);
   if (!dt) return false;
   return dt.getTime() < Date.now();

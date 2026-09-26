@@ -68,6 +68,7 @@ export interface Vehicle {
   last_heading?: number | null;
   last_status?: string | null;
   last_seen_at?: string | null;
+  resolved_location?: ResolvedLocation | null;
   isActive: boolean;
   deletedAt?: string | null;
   createdAt: string;

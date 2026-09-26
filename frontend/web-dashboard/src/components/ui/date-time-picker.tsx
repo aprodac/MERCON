@@ -204,7 +204,7 @@ export function DateTimePicker({
             className={cn(
               'group relative flex w-full items-center justify-between gap-1.5 rounded-xl border border-input bg-background px-2.5 py-1 text-left text-xs transition-all duration-200 hover:border-primary/50 hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-1',
               !parsedDate && 'text-muted-foreground',
-              error && 'border-destructive ring-1 ring-destructive/30',
+              error && 'border-red-500 ring-2 ring-red-500/30 bg-red-50/20 text-red-900 dark:text-red-200',
               disabled && 'opacity-50 cursor-not-allowed pointer-events-none'
             )}
           >

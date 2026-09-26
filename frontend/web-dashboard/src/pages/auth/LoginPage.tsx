@@ -38,7 +38,7 @@ export default function LoginPage() {
 
   return (
     <div
-      className="relative min-h-screen w-full flex items-center justify-center lg:justify-end px-4 sm:px-6 py-12 lg:pr-[10%] bg-slate-900/5 bg-cover bg-center overflow-hidden"
+      className="relative min-h-screen w-full flex items-center justify-center lg:justify-end px-4 sm:px-6 py-12 lg:pr-[10%] bg-charcoal/5 bg-cover bg-center overflow-hidden"
       style={{
         fontFamily: "'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif",
         backgroundImage: 'url(/login-bg.webp)',

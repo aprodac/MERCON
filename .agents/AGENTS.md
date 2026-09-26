@@ -1,5 +1,12 @@
 # MERCON — Project UI/UX & Engineering Guidelines
 
+## 0. STRICT GIT BRANCHING & REMOTE PUSHING RULES
+- **NEVER PUSH DIRECTLY TO `origin/dev` OR `origin/main` SERVER BRANCHES.**
+- **ALL commits and pushes MUST be pushed ONLY to the `Adarsh` branch (`origin/Adarsh`) unless the USER explicitly specifies otherwise.**
+- **Never push to `dev` or `main` server environments without explicit, written instruction from the USER.**
+
+---
+
 ## 1. Purpose
 This file is the single project-wide UI/UX reference for MERCON.
 
@@ -462,9 +469,17 @@ A **502 Bad Gateway** on `dev.mercon.tech` occurs when Nginx cannot proxy reques
 ---
 
 ### 38.2 Mandatory Pre-Push Verification Checklist
-Before pushing any commit to `origin/dev`:
+Before pushing any commit to `origin/ilan`:
 1. `cd backend/api-server && npx tsc --noEmit` (Must pass with 0 errors)
 2. `cd frontend/web-dashboard && npx tsc -b` (Must pass with 0 errors)
 3. Check `git status` for new Prisma migration SQL files and verify they are committed.
 4. If modifying auto-increment sequence columns, ensure `SELECT setval(...)` is included.
 
+---
+
+## 39. Default Git Branch & Pushing Guidelines
+
+### 39.1 Default Target Branch
+- **Primary Development & Push Branch**: From now on, all code changes, commits, and pushes must default to the `ilan` branch (`origin/ilan`).
+- **Dev Synchronization**: Keep the `ilan` branch updated with `origin/dev` by pulling from `origin/dev` (`git pull origin dev`) before making major updates.
+- **Default Push Behavior**: Do not push directly to `origin/dev` unless explicitly instructed; all automated and agent pushes must target `origin/ilan`.
