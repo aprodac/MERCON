@@ -164,6 +164,58 @@ export interface OperatorThirdPartyProvider {
   _count?: { subcontracts?: number };
 }
 
+/** A driver as the create-trip form needs them: status and assigned truck. */
+export interface OperatorDriverOption extends OperatorDriver {
+  assignedVehicleId?: string | null;
+  assigned_vehicle_id?: string | null;
+  assignedVehicle?: { id?: string; plate_number?: string | null; capacity_kg?: number | null; asset_type?: string | null } | null;
+}
+
+export interface OperatorVehicleOption extends OperatorVehicle {
+  isActive?: boolean;
+  assignedDriverId?: string | null;
+  assigned_driver_id?: string | null;
+}
+
+export interface QuotationChange {
+  id: string;
+  old_rate?: number | string | null;
+  new_rate?: number | string | null;
+  old_driver_payout?: number | string | null;
+  new_driver_payout?: number | string | null;
+  changed_by_name?: string | null;
+  changed_by?: string | null;
+  reason?: string | null;
+  source?: string | null;
+  createdAt: string;
+}
+
+export interface LaneQuotation {
+  id: string;
+  quotation_number: string;
+  customer_name: string;
+  vehicle_class: string;
+  line_type?: string | null;
+  billing_type?: string | null;
+  rate: number;
+  driver_payout: number | null;
+  updatedAt: string;
+}
+
+export interface RecommendedDriver {
+  driverId: string;
+  driverName: string;
+  status: string;
+  isAvailable: boolean;
+  unavailabilityReason?: string;
+  routeTripCount: number;
+  capacityMatch: boolean;
+  score: number;
+  badges: string[];
+  vehiclePlate?: string | null;
+  vehicleClass?: string | null;
+}
+
 export interface OperatorLocation {
   id: string;
   name: string;
@@ -461,6 +513,108 @@ export const operatorService = {
   }): Promise<OperatorQuotation> {
     const { data } = await api.post('/quotations', payload);
     return data.data as OperatorQuotation;
+  },
+
+  /* ─── Create trip (same endpoints and parameters as the web wizard) ─── */
+
+  /** Every driver with their assigned truck — the web wizard's `mode: 'lookup'` list. */
+  async driversLookup(): Promise<OperatorDriverOption[]> {
+    const { data } = await api.get('/drivers', { params: { per_page: 1000, mode: 'lookup' } });
+    const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.data?.data) ? data.data.data : [];
+    return list as OperatorDriverOption[];
+  },
+
+  async vehiclesLookup(): Promise<OperatorVehicleOption[]> {
+    const { data } = await api.get('/vehicles', { params: { per_page: 1000, mode: 'lookup' } });
+    return (data.data ?? []) as OperatorVehicleOption[];
+  },
+
+  /** All active quotations of one customer (the cards on step 1). */
+  async customerQuotations(customerId: string): Promise<OperatorQuotation[]> {
+    if (!customerId) return [];
+    const { data } = await api.get('/quotations', { params: { customerId, customer_id: customerId, active_only: 'true', per_page: 'all' } });
+    const list = (data.data ?? []) as OperatorQuotation[];
+    return list.filter((q: any) => (q.customerId ?? q.customer_id ?? q.customer?.id ?? customerId) === customerId && q.is_active !== false);
+  },
+
+  /** Server-side quotation match for the exact route (every stop). Null when nothing matches or on error. */
+  async lookupRouteQuotation(params: {
+    customer_id: string;
+    origin_location_id: string;
+    destination_location_id: string;
+    vehicle_type?: string;
+    line_type?: string;
+    billing_type?: string;
+    planned_start?: string;
+    stops: any[];
+  }): Promise<OperatorQuotation | null> {
+    try {
+      const { data } = await api.get('/quotations/lookup', {
+        params: { ...params, stops: JSON.stringify(params.stops) },
+      });
+      return (data?.data?.quotation || data?.data?.rate_card || null) as OperatorQuotation | null;
+    } catch {
+      return null;
+    }
+  },
+
+  /** Drivers ranked for this route and truck class by the server (same as the web). */
+  async recommendedDrivers(params: { origin?: string; destination?: string; vehicleClass?: string; vehicleId?: string }): Promise<RecommendedDriver[]> {
+    try {
+      const { data } = await api.get('/trips/recommendations/drivers', { params });
+      return (data?.data ?? []) as RecommendedDriver[];
+    } catch {
+      return [];
+    }
+  },
+
+  /** The deployment timezone trip times are entered in (Settings.timezone). */
+  async deploymentTimezone(): Promise<string> {
+    try {
+      const { data } = await api.get('/settings/public');
+      return data?.data?.timezone || 'Asia/Riyadh';
+    } catch {
+      return 'Asia/Riyadh';
+    }
+  },
+
+  /**
+   * Road route through points in order (MERCON's routing service, OSRM behind it),
+   * with the drive time of each leg. Null when routing is unavailable.
+   */
+  async roadRoute(points: { lat: number; lng: number }[]): Promise<{ legs: { durationSeconds: number; distanceMeters: number }[]; durationSeconds: number; distanceMeters: number } | null> {
+    try {
+      const { data } = await api.get('/vehicles/live-map/route', {
+        params: { points: points.map((p) => `${p.lat},${p.lng}`).join(';') },
+        timeout: 10_000,
+      });
+      const r = data?.data;
+      return r && Array.isArray(r.legs) ? r : null;
+    } catch {
+      return null;
+    }
+  },
+
+  /** Rate / driver-payout changes made to one quotation, newest first. */
+  async quotationHistory(id: string): Promise<QuotationChange[]> {
+    const { data } = await api.get(`/quotations/${id}/history`);
+    return (data?.data ?? []) as QuotationChange[];
+  },
+
+  /** Every quotation priced on the same origin → destination (same as the web's "Rate history"). */
+  async laneQuotations(params: { origin: string; destination: string; vehicleClass?: string; customerId?: string }): Promise<LaneQuotation[]> {
+    const { data } = await api.get('/quotations/lane-history', { params });
+    return (data?.data ?? []) as LaneQuotation[];
+  },
+
+  async createQuotationRaw(payload: Record<string, unknown>): Promise<OperatorQuotation> {
+    const { data } = await api.post('/quotations', payload);
+    return data.data as OperatorQuotation;
+  },
+
+  async bulkImportTrips(rows: unknown[]): Promise<{ imported: number; failed: number; results: Array<{ row: number; success: boolean; error?: string; created_id?: string }> }> {
+    const { data } = await api.post('/trips/bulk-import', { rows });
+    return data.data;
   },
 
   /** Same `/quotations/lookup` endpoint the web dashboard's create-trip

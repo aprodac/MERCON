@@ -25,12 +25,9 @@ const RIGHT_TABS: { label: 'Drivers' | 'More'; Icon: LucideIcon }[] = [{ label: 
 
 const INACTIVE = 'rgba(238, 241, 246, 0.65)'; // Light Cool Gray (#EEF1F6) matching web dashboard sidebar text
 
-import { NewTripMenuModal } from '../components/NewTripMenuModal';
-
 export function OperatorBottomNav({ activeTab: explicitActive, onTabPress, onFabPress }: OperatorBottomNavProps = {}) {
   const router = useRouter();
   const pathname = usePathname();
-  const [showMenu, setShowMenu] = React.useState(false);
 
   // Capsule settles in when the active tab changes. Start fully visible (1) so the
   // first paint doesn't flash or hide the capsule before the entrance animation.
@@ -81,7 +78,7 @@ export function OperatorBottomNav({ activeTab: explicitActive, onTabPress, onFab
           {/* FAB */}
           <View style={styles.fabSlot}>
             <TouchableOpacity
-              onPress={onFabPress ?? (() => setShowMenu(true))}
+              onPress={onFabPress ?? (() => router.push(DEFAULT_FAB_ROUTE as any))}
               activeOpacity={0.85}
               style={styles.fab}
             >
@@ -92,11 +89,6 @@ export function OperatorBottomNav({ activeTab: explicitActive, onTabPress, onFab
           {RIGHT_TABS.map(renderTab)}
         </View>
       </View>
-
-      <NewTripMenuModal
-        visible={showMenu}
-        onClose={() => setShowMenu(false)}
-      />
     </>
   );
 }
