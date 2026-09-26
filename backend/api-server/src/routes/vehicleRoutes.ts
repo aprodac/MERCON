@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getVehicles, getVehicleById, createVehicle, updateVehicle, deleteVehicle , bulkDeleteVehicles, bulkUpdateVehicleStatus, getVehicleFinancials, getFleetFinancials, bulkImportVehicles, getVehicleUsage, getVehicleStats, getPhysicalGpsStatusSummary } from '../controllers/vehicleController';
-import { getFleetLiveMap, getFleetLiveRoute, getFleetLiveTripMedia } from '../controllers/fleetLiveMapController';
+import { getFleetLiveMap, getFleetLiveRoute, getFleetLiveTripMedia, getFleetLiveTripOverview } from '../controllers/fleetLiveMapController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
@@ -21,6 +21,7 @@ router.get('/icces-summary', getPhysicalGpsStatusSummary);
 router.get('/live-map', getFleetLiveMap);
 router.get('/live-map/route', getFleetLiveRoute);
 router.get('/live-map/trips/:id/media', validate({ params: idParam }), getFleetLiveTripMedia);
+router.get('/live-map/trips/:id/overview', validate({ params: idParam }), getFleetLiveTripOverview);
 router.get('/', validate({ query: listQuery }), getVehicles);
 router.post('/', validate({ body: createVehicleBody }), createVehicle);
 // Must be registered before `/:id` so the literal path isn't captured as an id.

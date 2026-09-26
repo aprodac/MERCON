@@ -312,7 +312,7 @@ export interface ExpiryItem {
   on_trip_ref: string | null;
 }
 
-interface ExpiryDocRow {
+export interface ExpiryDocRow {
   id: string;
   entity_type: string;
   entity_id: string;
@@ -323,7 +323,7 @@ interface ExpiryDocRow {
   status: string;
 }
 
-const DOC_TYPE_LABEL: Record<string, string> = {
+export const DOC_TYPE_LABEL: Record<string, string> = {
   DriverLicense: 'Driving licence',
   VehicleRegistration: 'Registration (Istimara)',
   Insurance: 'Insurance',

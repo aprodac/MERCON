@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { nextStop, stopLabel, timeAgo, unitTitle, type StopGroup } from '@/lib/fleetLive';
 import type { LiveGpsFix, LiveUnit } from '@/services/fleetLiveService';
 import { TONE, unitTone, type UnitTone } from './liveMapStyle';
+import { GLASS } from './LiveUnitPanel';
 
 /** A group of nearby units. Ringed in the colour of the most urgent unit inside. */
 export function ClusterMarker({
@@ -85,8 +86,18 @@ function FeedDot({ icon: Icon, label, fix }: { icon: typeof Truck; label: string
 }
 
 /** Numbered stop pin with its name; the next stop also carries the ETA. */
-export function StopPin({ group, eta }: { group: StopGroup; eta: string | null }) {
-  const bg = group.done ? 'bg-slate-400' : group.isNext ? 'bg-blue-600' : 'bg-slate-800 dark:bg-slate-700';
+/**
+ * Pin colours by trip state: live (done grey, next blue), planned (purple),
+ * done (every stop green), cancelled (everything grey).
+ */
+export type StopPinTone = 'live' | 'planned' | 'done' | 'cancelled';
+
+export function StopPin({ group, eta, tone = 'live' }: { group: StopGroup; eta: string | null; tone?: StopPinTone }) {
+  const bg =
+    tone === 'done' ? 'bg-emerald-600' :
+    tone === 'cancelled' ? 'bg-stone-400' :
+    tone === 'planned' ? 'bg-violet-600' :
+    group.done ? 'bg-slate-400' : group.isNext ? 'bg-blue-600' : 'bg-charcoal dark:bg-slate-700';
   return (
     <Marker longitude={group.lng} latitude={group.lat} anchor="bottom" style={{ zIndex: group.isNext ? 15 : 5 }}>
       <div className="flex flex-col items-center">
@@ -182,4 +193,27 @@ function Puck({ children }: { children: React.ReactNode }) {
 
 function Badge({ children }: { children: React.ReactNode }) {
   return <span className="flex items-center gap-px rounded-full bg-charcoal px-1 py-0.5 text-white">{children}</span>;
+}
+
+/** A stack of map control buttons on a frosted card. */
+export function ControlGroup({ children }: { children: React.ReactNode }) {
+  return <div className={cn('pointer-events-auto flex flex-col overflow-hidden rounded-xl', GLASS)}>{children}</div>;
+}
+
+export function CtlButton({ label, onClick, active, children }: { label: string; onClick: () => void; active?: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      onClick={onClick}
+      className={cn(
+        'flex size-9 items-center justify-center text-foreground/80 transition-colors hover:bg-charcoal-strong/5 hover:text-foreground dark:hover:bg-white/10 [&_svg]:size-4',
+        'border-b border-black/[0.05] last:border-b-0 dark:border-white/10',
+        active && 'text-blue-600 dark:text-blue-400',
+      )}
+    >
+      {children}
+    </button>
+  );
 }

@@ -17,7 +17,7 @@ import { fleetLiveService, type LiveUnit } from '@/services/fleetLiveService';
 import { SAUDI_BOUNDS_COORDS, SAUDI_CENTER, DEFAULT_SAUDI_ZOOM } from '@/utils/saudiMapConfig';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { LiveUnitMarker } from './LiveUnitMarker';
-import { ClusterMarker, HoverPeek, MapLegend, StopPin } from './LiveMapBits';
+import { ClusterMarker, ControlGroup, CtlButton, HoverPeek, MapLegend, StopPin } from './LiveMapBits';
 import { EtaStrip, GLASS, LiveUnitPanel, NextStopCard } from './LiveUnitPanel';
 import { BUILDING_EXTRUSION_COLOR, LIVE_MAP_STYLES, ROUTE_COLOR, TONE, applyMapPalette, type LiveMapTheme, type UnitTone } from './liveMapStyle';
 
@@ -738,28 +738,6 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
         )}
       </div>
     </div>
-  );
-}
-
-function ControlGroup({ children }: { children: React.ReactNode }) {
-  return <div className={cn('pointer-events-auto flex flex-col overflow-hidden rounded-xl', GLASS)}>{children}</div>;
-}
-
-function CtlButton({ label, onClick, active, children }: { label: string; onClick: () => void; active?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      onClick={onClick}
-      className={cn(
-        'flex size-9 items-center justify-center text-foreground/80 transition-colors hover:bg-charcoal-strong/5 hover:text-foreground dark:hover:bg-white/10 [&_svg]:size-4',
-        'border-b border-black/[0.05] last:border-b-0 dark:border-white/10',
-        active && 'text-blue-600 dark:text-blue-400',
-      )}
-    >
-      {children}
-    </button>
   );
 }
 

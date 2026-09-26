@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { loadLiveUnits, loadTripMedia } from '../services/fleetLiveMap';
+import { loadTripOverview } from '../services/tripOverview';
 import { getDrivingRouteThrough, MAX_ROUTE_POINTS, RoutingUnavailableError, type GeoPoint } from '../services/routing/routeProvider';
 
 /** GET /vehicles/live-map — every truck and on-trip driver with both GPS feeds. */
@@ -58,6 +59,18 @@ export const getFleetLiveTripMedia = async (req: Request, res: Response) => {
     res.json({ success: true, data: media });
   } catch (error) {
     logger.error({ err: error }, 'fleet live trip media failed');
+    res.status(500).json({ success: false, error: { message: 'Internal server error' } });
+  }
+};
+
+/** GET /vehicles/live-map/trips/:id/overview — the trip details page's map, for a trip in any state. */
+export const getFleetLiveTripOverview = async (req: Request, res: Response) => {
+  try {
+    const overview = await loadTripOverview(prisma, req.params.id as string);
+    if (!overview) return res.status(404).json({ success: false, error: { message: 'Trip not found' } });
+    res.json({ success: true, data: overview });
+  } catch (error) {
+    logger.error({ err: error }, 'trip overview failed');
     res.status(500).json({ success: false, error: { message: 'Internal server error' } });
   }
 };

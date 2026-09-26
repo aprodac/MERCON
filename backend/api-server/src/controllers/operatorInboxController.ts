@@ -161,3 +161,14 @@ export const getPublicShare = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: { message: 'Internal server error' } });
   }
 };
+
+/** GET /operator-inbox/trips/:id/driver-updates — every driver update for one trip (the trip page's per-stop Send). */
+export const getTripDriverUpdates = async (req: Request, res: Response) => {
+  try {
+    const updates = await loadTripDriverUpdates(prisma, req.params.id as string);
+    res.json({ success: true, data: { updates, whatsapp_api_available: whatsappService.isConfigured() } });
+  } catch (error) {
+    logger.error({ err: error }, 'trip driver updates failed');
+    res.status(500).json({ success: false, error: { message: 'Internal server error' } });
+  }
+};

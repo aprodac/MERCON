@@ -229,7 +229,7 @@ function driverOut(d: LiveDriverRow | null): LiveUnit['driver'] {
   };
 }
 
-function tripOut(t: LiveTripRow | undefined): LiveUnit['trip'] {
+export function tripOut(t: LiveTripRow | undefined): LiveUnit['trip'] {
   if (!t) return null;
   const stops: LiveStop[] = [...t.stops]
     .sort((a, b) => a.stop_sequence - b.stop_sequence)
@@ -353,7 +353,7 @@ export function buildLiveUnits(
 
 // ── Loader ──────────────────────────────────────────────────────────────────
 
-const DRIVER_SELECT = {
+export const DRIVER_SELECT = {
   id: true,
   ref_id: true,
   first_name: true,
