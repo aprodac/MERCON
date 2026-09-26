@@ -1496,8 +1496,10 @@ export const dispatchTrip = async (req: Request, res: Response) => {
           ...(driver_id ? { driverId: driver_id } : {}),
           ...(vehicle_id ? { vehicleId: vehicle_id } : {}),
           // Only moves out of Draft once both a driver and a vehicle are on
-          // the trip — a single-sided assignment leaves it in Draft.
-          ...(finalDriverId && finalVehicleId ? { status: 'Scheduled' as const } : {}),
+          // the trip — a single-sided assignment leaves it in Draft. A trip
+          // already past Draft keeps its status: giving a truck to a trip that
+          // is Loading or InTransit must not send it back to Scheduled.
+          ...(finalDriverId && finalVehicleId && trip.status === TripStatus.Draft ? { status: TripStatus.Scheduled } : {}),
           updated_by: (req as any).user?.id
         }
       });

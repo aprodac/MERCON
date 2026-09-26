@@ -10,10 +10,12 @@ interface Props {
   unit: LiveUnit;
   selected: boolean;
   onSelect: () => void;
+  /** Replaces the speed / last-seen column — e.g. "12 km" in search results. */
+  meta?: React.ReactNode;
 }
 
 /** One truck (or on-trip driver phone) in the Fleet tab. */
-const FleetUnitRow = forwardRef<HTMLButtonElement, Props>(function FleetUnitRow({ unit, selected, onSelect }, ref) {
+const FleetUnitRow = forwardRef<HTMLButtonElement, Props>(function FleetUnitRow({ unit, selected, onSelect, meta }, ref) {
   const tone = TONE[unitTone(unit)];
   const canLocate = !!unit.position;
   return (
@@ -46,9 +48,9 @@ const FleetUnitRow = forwardRef<HTMLButtonElement, Props>(function FleetUnitRow(
         </span>
       </span>
       <span className="shrink-0 text-right text-[10.5px] text-muted-foreground tabular-nums">
-        {unit.motion === 'moving' && unit.position?.speed_kph != null
+        {meta ?? (unit.motion === 'moving' && unit.position?.speed_kph != null
           ? `${Math.round(unit.position.speed_kph)} km/h`
-          : unit.position ? timeAgo(unit.position.recorded_at) : '—'}
+          : unit.position ? timeAgo(unit.position.recorded_at) : '—')}
       </span>
     </button>
   );

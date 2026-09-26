@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { invoiceTotals } from './invoiceMath';
 import { prisma } from '../db';
 import { postJournalEntryTx, voidJournalEntry, voidJournalEntryTx, AccountingError } from './accountingEngine';
 import { nextJournalEntryRefId } from './refId';
@@ -96,15 +97,20 @@ export async function issueInvoice(invoiceId: string, userId: string) {
       }
     }
 
-    // Recompute totals
-    let subtotal = new Prisma.Decimal(0);
-    for (const line of invoice.lines) {
-      subtotal = subtotal.plus(new Prisma.Decimal(line.amount));
-    }
+    // Totals from the lines (each line carries its own VAT rate and amount)
+    const totals = invoiceTotals(invoice.lines);
+    const subtotal = new Prisma.Decimal(totals.subtotal);
+    const taxAmount = new Prisma.Decimal(totals.tax_amount);
+    const totalAmount = new Prisma.Decimal(totals.total);
 
-    const taxRate = new Prisma.Decimal(invoice.tax_rate || 0);
-    const taxAmount = subtotal.mul(taxRate.div(100)).toDecimalPlaces(2);
-    const totalAmount = subtotal.plus(taxAmount).toDecimalPlaces(2);
+    // VAT is a liability owed to the tax authority, not revenue: it needs its own account
+    if (taxAmount.gt(0) && !settings.defaultVatOutputAccountId) {
+      throw new AccountingError(
+        'The VAT output account is not set. Choose it in Settings → Accounting before issuing invoices with VAT.',
+        'SETTINGS_NOT_CONFIGURED',
+        400,
+      );
+    }
 
     // Find Open Accounting Period for invoice_date
     const invoiceDate = new Date(invoice.invoice_date);
@@ -146,6 +152,7 @@ export async function issueInvoice(invoiceId: string, userId: string) {
         source_id: invoice.id,
         created_by: creatorUuid,
         lines: {
+          // Dr receivable (total) · Cr revenue (net of VAT) · Cr VAT output (VAT)
           create: [
             {
               accountId: settings.defaultReceivableAccountId,
@@ -157,10 +164,21 @@ export async function issueInvoice(invoiceId: string, userId: string) {
             {
               accountId: settings.defaultRevenueAccountId,
               debit: 0,
-              credit: totalAmount,
+              credit: subtotal,
               currency: invoice.currency || 'SAR',
               description: `Revenue Invoice ${invoice.ref_id || invoice.id}`,
             },
+            ...(taxAmount.gt(0)
+              ? [
+                  {
+                    accountId: settings.defaultVatOutputAccountId as string,
+                    debit: 0,
+                    credit: taxAmount,
+                    currency: invoice.currency || 'SAR',
+                    description: `Output VAT Invoice ${invoice.ref_id || invoice.id}`,
+                  },
+                ]
+              : []),
           ],
         },
       },

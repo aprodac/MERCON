@@ -7,9 +7,10 @@
  * Badges read the same React Query caches the home uses, so opening the menu
  * doesn't fire a burst of requests.
  */
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Modal, Animated, ScrollView, Alert, TouchableWithoutFeedback, Dimensions, Image, TextInput,
+  View, Text, TouchableOpacity, StyleSheet, Modal, Animated, ScrollView, Alert,
+  TouchableWithoutFeedback, Image, TextInput, Easing, useWindowDimensions,
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -93,9 +94,6 @@ const GROUPS: MenuGroup[] = [
   },
 ];
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.8, 320);
-
 interface OperatorSidebarDrawerProps {
   visible: boolean;
   onClose: () => void;
@@ -141,14 +139,56 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const { profile, role, signOut } = useAuth();
-  const hidden = side === 'left' ? -DRAWER_WIDTH : DRAWER_WIDTH;
-  const [slideAnim] = useState(() => new Animated.Value(hidden));
+  const { width: screenWidth } = useWindowDimensions();
+  const drawerWidth = Math.min(screenWidth * 0.82, 320);
+
+  const hidden = side === 'left' ? -drawerWidth : drawerWidth;
+  const [mounted, setMounted] = useState(visible);
+  const slideAnim = useRef(new Animated.Value(hidden)).current;
+  const backdropAnim = useRef(new Animated.Value(0)).current;
   const [query, setQuery] = useState('');
   const badges = useMenuBadges(visible);
 
   useEffect(() => {
-    Animated.timing(slideAnim, { toValue: visible ? 0 : hidden, duration: visible ? 240 : 180, useNativeDriver: true }).start();
-  }, [visible, slideAnim, hidden]);
+    if (visible) {
+      setMounted(true);
+      slideAnim.setValue(hidden);
+      backdropAnim.setValue(0);
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 250,
+          easing: Easing.bezier(0.16, 1, 0.3, 1),
+          useNativeDriver: true,
+        }),
+        Animated.timing(backdropAnim, {
+          toValue: 1,
+          duration: 250,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else if (mounted) {
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: hidden,
+          duration: 210,
+          easing: Easing.bezier(0.4, 0, 1, 1),
+          useNativeDriver: true,
+        }),
+        Animated.timing(backdropAnim, {
+          toValue: 0,
+          duration: 200,
+          easing: Easing.in(Easing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start(({ finished }) => {
+        if (finished) {
+          setMounted(false);
+        }
+      });
+    }
+  }, [visible, hidden, mounted, slideAnim, backdropAnim]);
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -179,23 +219,23 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
     ]);
   };
 
-  if (!visible) return null;
+  if (!mounted) return null;
 
   const name = profile?.name ?? 'Operator';
   const version = Constants.expoConfig?.version ?? '';
 
   return (
-    <Modal transparent visible={visible} onRequestClose={onClose} animationType="none" statusBarTranslucent>
-      <View style={[styles.overlay, side === 'left' && { flexDirection: 'row-reverse' }]}>
+    <Modal transparent visible={mounted} onRequestClose={onClose} animationType="none" statusBarTranslucent>
+      <View style={styles.overlay}>
         <TouchableWithoutFeedback onPress={onClose} accessibilityLabel="Close menu">
-          <View style={styles.backdrop} />
+          <Animated.View style={[styles.backdrop, { opacity: backdropAnim }]} />
         </TouchableWithoutFeedback>
 
         <Animated.View
           style={[
             styles.drawer,
             side === 'left' ? styles.drawerLeft : styles.drawerRight,
-            { transform: [{ translateX: slideAnim }], paddingTop: insets.top + 12 },
+            { width: drawerWidth, transform: [{ translateX: slideAnim }], paddingTop: insets.top + 12 },
           ]}
         >
           {/* Brand */}
@@ -287,14 +327,42 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, flexDirection: 'row' },
-  backdrop: { flex: 1, backgroundColor: 'rgba(9,9,11,0.4)' },
-  drawer: {
-    width: DRAWER_WIDTH, height: '100%', backgroundColor: '#FFFFFF',
-    shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 30, shadowOffset: { width: 8, height: 0 }, elevation: 16,
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
-  drawerLeft: { borderRightWidth: 1, borderRightColor: ZINC.border },
-  drawerRight: { borderLeftWidth: 1, borderLeftColor: ZINC.border },
+  backdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(9, 9, 11, 0.45)',
+  },
+  drawer: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 20,
+  },
+  drawerLeft: {
+    left: 0,
+    borderRightWidth: 1,
+    borderRightColor: ZINC.border,
+  },
+  drawerRight: {
+    right: 0,
+    borderLeftWidth: 1,
+    borderLeftColor: ZINC.border,
+  },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 16 },
   brandTile: { width: 36, height: 36, borderRadius: 9, borderWidth: 1, borderColor: ZINC.border, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
   mark: { width: 30, height: 20 },

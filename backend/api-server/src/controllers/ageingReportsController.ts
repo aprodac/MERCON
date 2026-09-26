@@ -44,7 +44,7 @@ export interface AgeingBucketCounts {
   total: number;
 }
 
-function parseAsOfDate(asOfQuery?: string): Date {
+export function parseAsOfDate(asOfQuery?: string): Date {
   if (!asOfQuery) return new Date();
   const trimmed = asOfQuery.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
@@ -55,16 +55,20 @@ function parseAsOfDate(asOfQuery?: string): Date {
   return isNaN(d.getTime()) ? new Date() : d;
 }
 
-export const getARAgeing = async (req: Request, res: Response) => {
-  try {
-    const asOfRaw = (req.query.as_of || req.query.as_of_date) as string | undefined;
-    const asOf = parseAsOfDate(asOfRaw);
-    const basis = (req.query.basis === 'bill' ? 'bill' : 'due') as 'due' | 'bill';
-    const includeInvoices =
-      req.query.include_bills === 'true' ||
-      req.query.include_documents === 'true' ||
-      req.query.include_invoices === 'true';
-    const customerIdParam = req.query.customer_id as string | undefined;
+/**
+ * Receivables ageing as of a point in time. Shared by the AR ageing report and the customer statement,
+ * so a statement's closing balance always equals that customer's ageing total for the same date.
+ */
+export async function computeARAgeing(opts: {
+  asOf: Date;
+  basis?: 'due' | 'bill';
+  includeInvoices?: boolean;
+  customerId?: string;
+}) {
+    const { asOf } = opts;
+    const basis = opts.basis ?? 'due';
+    const includeInvoices = Boolean(opts.includeInvoices);
+    const customerIdParam = opts.customerId;
 
     // Limitation: Invoices voided after as_of are excluded as no void_date is stored on Invoice.
     const whereClause: Prisma.InvoiceWhereInput = {
@@ -227,18 +231,30 @@ export const getARAgeing = async (req: Request, res: Response) => {
       total_outstanding: grand_total.total,
     };
 
-    return res.json({
-      success: true,
-      data: {
-        as_of: asOf.toISOString(),
-        as_of_date: asOf.toISOString(),
-        basis,
-        summary,
-        grand_total,
-        bucket_counts: bucketCounts,
-        rows,
-      },
+    return {
+      as_of: asOf.toISOString(),
+      as_of_date: asOf.toISOString(),
+      basis,
+      summary,
+      grand_total,
+      bucket_counts: bucketCounts,
+      rows,
+    };
+}
+
+export const getARAgeing = async (req: Request, res: Response) => {
+  try {
+    const asOfRaw = (req.query.as_of || req.query.as_of_date) as string | undefined;
+    const data = await computeARAgeing({
+      asOf: parseAsOfDate(asOfRaw),
+      basis: req.query.basis === 'bill' ? 'bill' : 'due',
+      includeInvoices:
+        req.query.include_bills === 'true' ||
+        req.query.include_documents === 'true' ||
+        req.query.include_invoices === 'true',
+      customerId: req.query.customer_id as string | undefined,
     });
+    return res.json({ success: true, data });
   } catch (error: any) {
     logger.error({ err: error }, 'Failed to generate AR Ageing Report');
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });

@@ -96,6 +96,7 @@ const JournalEntriesPage      = lazyWithRetry(() => import('@/pages/finance/Jour
 const JournalEntryDetailPage  = lazyWithRetry(() => import('@/pages/finance/JournalEntryDetailPage'));
 const JournalEntryEditorPage  = lazyWithRetry(() => import('@/pages/finance/JournalEntryEditorPage'));
 const InvoicesPage            = lazyWithRetry(() => import('@/pages/finance/InvoicesPage'));
+const InvoiceDetailPage       = lazyWithRetry(() => import('@/pages/finance/InvoiceDetailPage'));
 const InvoiceCreatePage       = lazyWithRetry(() => import('@/pages/finance/InvoiceCreatePage'));
 const BillsPage               = lazyWithRetry(() => import('@/pages/finance/BillsPage'));
 const BillCreatePage          = lazyWithRetry(() => import('@/pages/finance/BillCreatePage'));
@@ -214,6 +215,21 @@ export default function AppRouter() {
             }
           />
 
+          {/* Live map — full screen, outside the app shell: no app sidebar or
+              header, the operations panel floats inside the map. */}
+          <Route
+            path="/live-map"
+            element={
+              <ProtectedRoute>
+                <RequireModule moduleKey="trips">
+                  <Suspense fallback={<FullPageSpinner />}>
+                    <LiveMapPage />
+                  </Suspense>
+                </RequireModule>
+              </ProtectedRoute>
+            }
+          />
+
           {/* ── Protected layout route ────────────────────────────────
               AppShell renders the sidebar + header ONCE and keeps them
               mounted. <Outlet> renders the active child page. Each page
@@ -229,9 +245,6 @@ export default function AppRouter() {
           >
             <Route path="/"            element={<RequireModule moduleKey="dashboard"><DashboardPage /></RequireModule>} />
             <Route path="/notifications" element={<NotificationsPage />} />
-
-            {/* Live map — the whole fleet with the operations sidebar */}
-            <Route path="/live-map"                 element={<RequireModule moduleKey="trips"><LiveMapPage /></RequireModule>} />
 
             {/* Trips */}
             <Route path="/trips"                    element={<RequireModule moduleKey="trips"><TripListPage /></RequireModule>} />
@@ -306,6 +319,8 @@ export default function AppRouter() {
             <Route path="/finance/journal-entries/:id/edit" element={<RequireModule moduleKey="finance"><WithIdKey Page={JournalEntryEditorPage} /></RequireModule>} />
             <Route path="/finance/invoices/new"      element={<RequireModule moduleKey="finance"><InvoiceCreatePage /></RequireModule>} />
             <Route path="/finance/invoices"          element={<RequireModule moduleKey="finance"><InvoicesPage /></RequireModule>} />
+            <Route path="/finance/invoices/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={InvoiceDetailPage} /></RequireModule>} />
+            <Route path="/finance/invoices/:id/edit" element={<RequireModule moduleKey="finance"><WithIdKey Page={InvoiceCreatePage} /></RequireModule>} />
             <Route path="/finance/bills/new"        element={<RequireModule moduleKey="finance"><BillCreatePage /></RequireModule>} />
             <Route path="/finance/bills"             element={<RequireModule moduleKey="finance"><BillsPage /></RequireModule>} />
             <Route path="/finance/bank-accounts/new"      element={<RequireModule moduleKey="finance"><BankAccountEditorPage /></RequireModule>} />
