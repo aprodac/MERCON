@@ -21,8 +21,8 @@ const CLIENT_PROFILES = {
     // Slug stays 'mercon-app': it is bound to the existing EAS project (projectId below).
     slug: 'mercon-app',
     scheme: 'mercondriver',
-    iosBundleIdentifier: 'tech.mercon.driver',
-    androidPackage: 'tech.mercon.driver',
+    iosBundleIdentifier: 'tech.merconapp.driver',
+    androidPackage: 'tech.merconapp.driver',
     icon: '../shared/assets/images/merconclosed.png',
     splashImage: '../shared/assets/images/merconclosed.png',
     androidAdaptiveForeground: '../shared/assets/images/merconclosed.png',
