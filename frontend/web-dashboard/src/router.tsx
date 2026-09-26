@@ -214,6 +214,21 @@ export default function AppRouter() {
             }
           />
 
+          {/* Live map — full screen, outside the app shell: no app sidebar or
+              header, the operations panel floats inside the map. */}
+          <Route
+            path="/live-map"
+            element={
+              <ProtectedRoute>
+                <RequireModule moduleKey="trips">
+                  <Suspense fallback={<FullPageSpinner />}>
+                    <LiveMapPage />
+                  </Suspense>
+                </RequireModule>
+              </ProtectedRoute>
+            }
+          />
+
           {/* ── Protected layout route ────────────────────────────────
               AppShell renders the sidebar + header ONCE and keeps them
               mounted. <Outlet> renders the active child page. Each page
@@ -229,9 +244,6 @@ export default function AppRouter() {
           >
             <Route path="/"            element={<RequireModule moduleKey="dashboard"><DashboardPage /></RequireModule>} />
             <Route path="/notifications" element={<NotificationsPage />} />
-
-            {/* Live map — the whole fleet with the operations sidebar */}
-            <Route path="/live-map"                 element={<RequireModule moduleKey="trips"><LiveMapPage /></RequireModule>} />
 
             {/* Trips */}
             <Route path="/trips"                    element={<RequireModule moduleKey="trips"><TripListPage /></RequireModule>} />

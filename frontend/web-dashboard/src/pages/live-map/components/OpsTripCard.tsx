@@ -1,5 +1,5 @@
 import { forwardRef } from 'react';
-import { ExternalLink, Handshake, LocateFixed, MapPin, Phone, SignalLow, Truck, UserPlus } from 'lucide-react';
+import { ExternalLink, Handshake, LocateFixed, MapPin, Phone, SignalLow, Truck, UserPlus, Radar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import { whatsAppLink } from '@/lib/share';
@@ -190,11 +190,20 @@ const OpsTripCard = forwardRef<HTMLDivElement, Props>(function OpsTripCard(
         </span>
       </div>
 
-      {reasons.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1">
+      {(reasons.length > 0 || needsAssign) && (
+        <div className="mt-2 flex flex-wrap items-center gap-1">
           {reasons.map((r) => (
             <span key={r} className={cn('rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset', REASON_TONE[r])}>{ATTENTION_LABEL[r]}</span>
           ))}
+          {needsAssign && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onAssign(); }}
+              className="ml-auto inline-flex h-6 items-center gap-1 rounded-md bg-violet-600 px-2 text-[10.5px] font-semibold text-white hover:bg-violet-700"
+            >
+              {trip.vehicle ? <><UserPlus className="size-3" /> Assign driver</> : <><Radar className="size-3" /> Find nearest truck</>}
+            </button>
+          )}
         </div>
       )}
 
@@ -207,7 +216,6 @@ const OpsTripCard = forwardRef<HTMLDivElement, Props>(function OpsTripCard(
         onClick={(e) => e.stopPropagation()}
       >
         <ActionButton label="Show on map" onClick={onSelect}><LocateFixed /></ActionButton>
-        {needsAssign && <ActionButton label="Assign driver & truck" onClick={onAssign} accent><UserPlus /> Assign</ActionButton>}
         {phone && (
           <>
             <ActionButton label={`Call ${name ?? 'driver'}`} href={`tel:${phone}`}><Phone /></ActionButton>

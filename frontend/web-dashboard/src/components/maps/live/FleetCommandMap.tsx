@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import MapGL, { Layer, Source, type MapRef } from 'react-map-gl/maplibre';
+import MapGL, { Layer, Marker, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import Supercluster from 'supercluster';
@@ -77,6 +77,27 @@ const PREVIEW_LINE: Record<StopPinTone, string> = {
   cancelled: '#a8a29e',
 };
 
+/** A search catchment drawn as a circle — "trucks near Riyadh", or each end of "Riyadh to Jeddah". */
+export interface MapArea {
+  id: string;
+  label: string;
+  lat: number;
+  lng: number;
+  radiusKm: number;
+}
+
+/** A circle as a 64-point polygon — MapLibre has no geodesic circle primitive. */
+function circlePolygon(a: MapArea): [number, number][] {
+  const pts: [number, number][] = [];
+  const latR = a.radiusKm / 110.574;
+  const lngR = a.radiusKm / (111.32 * Math.cos((a.lat * Math.PI) / 180));
+  for (let i = 0; i <= 64; i++) {
+    const t = (i / 64) * 2 * Math.PI;
+    pts.push([a.lng + lngR * Math.cos(t), a.lat + latR * Math.sin(t)]);
+  }
+  return pts;
+}
+
 interface Props {
   className?: string;
   /** Ask the map to fly to this trip's truck; bump `focusNonce` to repeat the same trip. */
@@ -96,6 +117,14 @@ interface Props {
   /** Draw this trip's stops and planned road route; bump `focusNonce` to re-frame it. */
   previewTrip?: PreviewTrip | null;
   onPreviewClose?: () => void;
+  /** When set, only these units are drawn (search results, assign candidates). */
+  onlyKeys?: ReadonlySet<string> | null;
+  /** Catchment circles; the map frames them whenever the set changes. */
+  areas?: MapArea[];
+  /** Width in px of a panel floating over the map's left edge — overlays and framing keep clear of it. */
+  insetLeft?: number;
+  /** Extra controls for the top-right corner (e.g. a back button on a full-screen page). */
+  topRight?: React.ReactNode;
 }
 
 /**
@@ -105,7 +134,7 @@ interface Props {
  */
 export default function FleetCommandMap({
   className, focusTripId, focusUnitKey, focusNonce, filter: filterProp, query: queryProp, hideFinder, hideExpand,
-  onSelectedChange, previewTrip, onPreviewClose,
+  onSelectedChange, previewTrip, onPreviewClose, onlyKeys, areas, insetLeft = 0, topRight,
 }: Props) {
   const mapRef = useRef<MapRef>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -142,7 +171,10 @@ export default function FleetCommandMap({
   const units = useMemo(() => data?.units ?? [], [data]);
 
   const onMap = useMemo(() => units.filter((u) => u.position), [units]);
-  const visible = useMemo(() => onMap.filter((u) => matchesFilter(u, filter) && matchesQuery(u, query)), [onMap, filter, query]);
+  const visible = useMemo(
+    () => onMap.filter((u) => (onlyKeys ? onlyKeys.has(u.key) : matchesFilter(u, filter) && matchesQuery(u, query))),
+    [onMap, filter, query, onlyKeys],
+  );
   const offlineUnits = useMemo(() => units.filter(isOffline), [units]);
   const counts = useMemo(
     () => Object.fromEntries(LIVE_FILTERS.map((f) => [f.id, onMap.filter((u) => matchesFilter(u, f.id)).length])) as Record<LiveFilter, number>,
@@ -269,8 +301,8 @@ export default function FleetCommandMap({
 
   // ── Camera helpers ──
   const panelPadding = useCallback(
-    () => (compact ? { top: 40, bottom: 190, left: 40, right: 40 } : { top: 60, bottom: 60, left: 60, right: 340 }),
-    [compact],
+    () => (compact ? { top: 40, bottom: 190, left: 40 + insetLeft, right: 40 } : { top: 60, bottom: 60, left: 60 + insetLeft, right: 340 }),
+    [compact, insetLeft],
   );
   // Read by the resize timer, which fires after the layout has already switched.
   const panelPaddingRef = useRef(panelPadding);
@@ -287,9 +319,9 @@ export default function FleetCommandMap({
         map.flyTo({ center: [SAUDI_CENTER[1], SAUDI_CENTER[0]], zoom: DEFAULT_SAUDI_ZOOM, pitch: 0, bearing: 0 });
         return;
       }
-      map.fitBounds(b, { padding: 70, maxZoom: 11, pitch: 0, bearing: 0, duration: animate ? 1200 : 0 });
+      map.fitBounds(b, { padding: { top: 70, bottom: 70, right: 70, left: 70 + insetLeft }, maxZoom: 11, pitch: 0, bearing: 0, duration: animate ? 1200 : 0 });
     },
-    [visible],
+    [visible, insetLeft],
   );
 
   const flyToUnit = useCallback(
@@ -310,6 +342,8 @@ export default function FleetCommandMap({
     [panelPadding],
   );
 
+  const insetLeftRef = useRef(insetLeft);
+  insetLeftRef.current = insetLeft;
   const onPreviewCloseRef = useRef(onPreviewClose);
   onPreviewCloseRef.current = onPreviewClose;
 
@@ -440,16 +474,42 @@ export default function FleetCommandMap({
     setOverview(false);
     const b = boundsOf(previewPoints);
     if (!b) return void toast.info('None of this trip\'s stops have a map position');
-    mapRef.current?.fitBounds(b, { padding: { top: 110, bottom: 70, left: 70, right: 70 }, maxZoom: 13, pitch: 0, bearing: 0, duration: 1200 });
+    mapRef.current?.fitBounds(b, { padding: { top: 110, bottom: 70, left: 70 + insetLeftRef.current, right: 70 }, maxZoom: 13, pitch: 0, bearing: 0, duration: 1200 });
   }, [previewId, focusNonce, previewPoints]);
 
-  // First data: frame everything once.
+  // ── Search areas ──
+  const areaShapes = useMemo(() => {
+    if (!areas?.length) return null;
+    return {
+      type: 'FeatureCollection' as const,
+      features: areas.map((a) => ({
+        type: 'Feature' as const,
+        properties: { id: a.id },
+        geometry: { type: 'Polygon' as const, coordinates: [circlePolygon(a)] },
+      })),
+    };
+  }, [areas]);
+  const areasKey = (areas ?? []).map((a) => `${a.id}:${a.lat.toFixed(3)},${a.lng.toFixed(3)}:${a.radiusKm}`).join('|');
+  const framedAreas = useRef('');
   useEffect(() => {
-    if (!fittedOnce.current && data && mapRef.current) {
+    if (!areasKey || framedAreas.current === areasKey || !areas?.length) {
+      if (!areasKey) framedAreas.current = '';
+      return;
+    }
+    framedAreas.current = areasKey;
+    const b = boundsOf(areas.flatMap((a) => circlePolygon(a).map(([lng, lat]) => ({ lat, lng }))));
+    if (b) mapRef.current?.fitBounds(b, { padding: { top: 90, bottom: 60, left: 60 + insetLeftRef.current, right: 60 }, maxZoom: 12, pitch: 0, bearing: 0, duration: 1100 });
+  }, [areasKey, areas]);
+
+  // First data: frame everything once — after the map has loaded, or the
+  // padding (which keeps clear of a floating panel) is dropped.
+  const [mapLoaded, setMapLoaded] = useState(false);
+  useEffect(() => {
+    if (!fittedOnce.current && data && mapLoaded && mapRef.current) {
       fittedOnce.current = true;
       fitAll(false);
     }
-  }, [data, fitAll]);
+  }, [data, fitAll, mapLoaded]);
 
   // Follow the selected unit as fresh positions arrive.
   // Only a real change of position moves the camera. Selecting a unit and
@@ -578,7 +638,7 @@ export default function FleetCommandMap({
           dragRotate
           touchPitch
           attributionControl={false}
-          onLoad={onStyleLoad}
+          onLoad={() => { onStyleLoad(); setMapLoaded(true); }}
           onStyleData={onStyleLoad}
           onMove={syncCamera}
           onMoveEnd={snapshotView}
@@ -626,6 +686,22 @@ export default function FleetCommandMap({
                 }} />
             </Source>
           )}
+
+          {areaShapes && (
+            <Source id="live-areas" type="geojson" data={areaShapes}>
+              <Layer id="live-areas-fill" type="fill" beforeId={firstSymbolId} paint={{ 'fill-color': '#0ea5e9', 'fill-opacity': 0.07 }} />
+              <Layer id="live-areas-line" type="line" beforeId={firstSymbolId}
+                paint={{ 'line-color': '#0284c7', 'line-width': 1.5, 'line-opacity': 0.7, 'line-dasharray': [3, 2] }} />
+            </Source>
+          )}
+          {areas?.map((a) => (
+            // Label on the circle's top edge, so it never covers the trucks inside it.
+            <Marker key={`area-${a.id}`} longitude={a.lng} latitude={a.lat + a.radiusKm / 110.574} anchor="bottom" style={{ zIndex: 1 }}>
+              <span className="pointer-events-none mb-1 block rounded-md bg-sky-700/90 px-1.5 py-0.5 text-[10.5px] font-semibold whitespace-nowrap text-white shadow">
+                {a.label} · {a.radiusKm} km
+              </span>
+            </Marker>
+          ))}
 
           {!selected && previewLine && previewTrip && (
             <Source id="live-preview" type="geojson" data={previewLine}>
@@ -682,7 +758,7 @@ export default function FleetCommandMap({
       </div>
 
       {/* ── Overlays ── */}
-      <div className="pointer-events-none absolute inset-0 z-10 p-3">
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 p-3 transition-[left] duration-300" style={{ left: insetLeft }}>
         {focusView && selected && (
           <div className="absolute top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full bg-charcoal/90 p-1 text-xs font-medium text-white shadow-lg backdrop-blur-md pointer-events-auto">
             <span className="px-2 font-mono">{unitTitle(selected)}</span>
@@ -777,13 +853,16 @@ export default function FleetCommandMap({
 
         {/* Top-right: live status + speed */}
         <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
-          <div className={cn('pointer-events-auto flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium', GLASS)}>
-            <span className="relative flex size-2">
-              {!isError && <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
-              <span className={cn('relative inline-flex size-2 rounded-full', isError ? 'bg-rose-500' : 'bg-emerald-500')} />
-            </span>
-            <span className="text-foreground">{isError ? 'Connection lost' : 'Live'}</span>
-            {lastUpdate && !isError && <span className="text-muted-foreground">· {lastUpdate}</span>}
+          <div className="flex items-center gap-2">
+            <div className={cn('pointer-events-auto flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium', GLASS)}>
+              <span className="relative flex size-2">
+                {!isError && <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
+                <span className={cn('relative inline-flex size-2 rounded-full', isError ? 'bg-rose-500' : 'bg-emerald-500')} />
+              </span>
+              <span className="text-foreground">{isError ? 'Connection lost' : 'Live'}</span>
+              {lastUpdate && !isError && <span className="text-muted-foreground">· {lastUpdate}</span>}
+            </div>
+            {topRight && <div className="pointer-events-auto flex items-center gap-2">{topRight}</div>}
           </div>
           {!compact && selected?.motion === 'moving' && selected.position?.speed_kph != null && (
             <div className={cn('pointer-events-auto flex size-14 flex-col items-center justify-center rounded-2xl', GLASS)}>
