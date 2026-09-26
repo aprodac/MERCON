@@ -28,10 +28,17 @@ export interface OperatorTrip {
   ref_id: string | null;
   status: string;
   planned_start?: string | null;
+  planned_end?: string | null;
+  actual_start?: string | null;
+  actual_end?: string | null;
   createdAt?: string;
+  updatedAt?: string;
+  is_third_party?: boolean;
+  driver_workflow?: string | null;
   customer?: { id?: string; name: string; logo_url?: string | null } | null;
-  driver?: { first_name: string; last_name: string; avatar_url?: string | null } | null;
-  vehicle?: { plate_number: string; ref_id?: string | null; asset_type?: string } | null;
+  driver?: { id?: string; first_name: string; last_name: string; avatar_url?: string | null; phone_primary?: string | null } | null;
+  vehicle?: { id?: string; plate_number: string; ref_id?: string | null; asset_type?: string } | null;
+  subcontract?: { driverName?: string | null; driverPhone?: string | null; vehiclePlate?: string | null; provider?: { name?: string | null } | null } | null;
   stops?: any[];
 }
 

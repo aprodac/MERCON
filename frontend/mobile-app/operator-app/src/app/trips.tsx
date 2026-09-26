@@ -1,6 +1,6 @@
-/** Route: /trips — operator's trip list. */
-import TripListScreen from '@/features/trips/screens/TripListScreen';
+/** Route: /trips — operator's trips (live board, schedule, history). */
+import TripsScreen from '@/features/trips/list/TripsScreen';
 
 export default function OperatorTripsRoute() {
-  return <TripListScreen />;
+  return <TripsScreen />;
 }
