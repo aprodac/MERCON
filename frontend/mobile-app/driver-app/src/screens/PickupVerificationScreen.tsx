@@ -16,9 +16,12 @@ import { DelayReportModal } from '../components/DelayReportModal';
 import { DelayButton } from '../components/DelayButton';
 import { ReturnLoadingModal } from '../components/ReturnLoadingModal';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 
-import { takePhoto, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { PhotoCaptureModal } from '../components/PhotoCaptureModal';
+import { UploadProgressBar } from '../components/UploadProgressBar';
+import { usePhotoUploads } from '../hooks/use-photo-uploads';
 import { showToast } from '../components/AppToast';
 import { isValidCoordinate } from '../utils/geo';
 import { API_URL, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
@@ -103,14 +106,18 @@ const PickupVerificationScreen = () => {
 
   const legIndex = isReturnLoading ? 1 : 0;
   const pickupStop = getLegEndpoints(trip, legIndex).loading;
+  // 3 geotagged photos, or 1 customer-app screenshot on EXTERNAL_APP trips.
+  const evidence = getEvidencePolicy(trip, 'loading');
+  const need = evidence.count;
+  const primarySource: 'camera' | 'gallery' = evidence.screenshot ? 'gallery' : 'camera';
+  const otherSource: 'camera' | 'gallery' = evidence.screenshot ? 'camera' : 'gallery';
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
-  // URIs already uploaded in this session — a retry after a failed upload
-  // must not send them again.
-  const uploadedUrisRef = useRef<Set<string>>(new Set());
-  // Uploads started right after each photo is taken, so "Loading complete"
-  // does not have to upload all three at the end.
-  const pendingUploadsRef = useRef<Map<string, Promise<boolean>>>(new Map());
+  // Each photo uploads right after it is taken (so "Loading complete" doesn't
+  // upload all three at the end) and at most once; drives the upload bar.
+  const uploads = usePhotoUploads();
+  const { markUploaded, isKnown } = uploads;
   const photosRef = useRef<CapturedPhoto[]>([]);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const [showDelayModal, setShowDelayModal] = useState(false);
@@ -132,15 +139,6 @@ const PickupVerificationScreen = () => {
 
   // If this pickup stop is already completed and departed, navigate forward to the next stage
   useEffect(() => {
-    if (trip?.driver_workflow === 'EXTERNAL_APP') {
-      const ws = getEffectiveWorkflowState(trip);
-      if (ws === 'ASSIGNED') {
-        router.replace('/');
-      } else {
-        router.replace('/trip/external-app');
-      }
-      return;
-    }
     if (loading || !trip || !pickupStop) return;
     // Defense in depth: if the trip is already fully completed, never show a
     // pickup screen for it — bounce straight to /trip/completed. Without
@@ -169,10 +167,10 @@ const PickupVerificationScreen = () => {
         }
       }
     }
-  }, [loading, trip?.id, trip?.driver_workflow, pickupStop?.id, pickupStop?.actual_departure, isReturnLoading]);
+  }, [loading, trip?.id, pickupStop?.id, pickupStop?.actual_departure, isReturnLoading]);
 
   const validPhotosCount = photos.filter((p) => !!p?.uri).length;
-  const hasAllPhotos = validPhotosCount >= 3;
+  const hasAllPhotos = validPhotosCount >= need;
 
   // Load draft photos or prefill with already uploaded server documents
   useEffect(() => {
@@ -192,6 +190,7 @@ const PickupVerificationScreen = () => {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
+            markUploaded(parsed.filter((ph: CapturedPhoto) => ph?.uploaded).map((ph: CapturedPhoto) => ph.uri));
             setPhotos(parsed);
             return;
           }
@@ -227,17 +226,18 @@ const PickupVerificationScreen = () => {
           });
 
           if (serverCargoDocs.length > 0) {
-            setPhotos(
-              serverCargoDocs.slice(0, 3).map((d: any) => {
-                const fullUri = d.file_url?.startsWith('http') || d.file_url?.startsWith('file://')
-                  ? d.file_url
-                  : `${FILE_BASE}${d.file_url?.startsWith('/') ? '' : '/'}${d.file_url}`;
-                return {
-                  uri: fullUri,
-                  mimeType: d.mime_type || 'image/jpeg',
-                };
-              })
-            );
+            const serverPhotos: CapturedPhoto[] = serverCargoDocs.slice(0, need).map((d: any) => {
+              const fullUri = d.file_url?.startsWith('http') || d.file_url?.startsWith('file://')
+                ? d.file_url
+                : `${FILE_BASE}${d.file_url?.startsWith('/') ? '' : '/'}${d.file_url}`;
+              return {
+                uri: fullUri,
+                mimeType: d.mime_type || 'image/jpeg',
+              };
+            });
+            // Already on the server — never upload these again.
+            markUploaded(serverPhotos.map((ph) => ph.uri));
+            setPhotos(serverPhotos);
             return;
           }
         }
@@ -249,12 +249,15 @@ const PickupVerificationScreen = () => {
       }
     };
     loadDraft();
-  }, [trip?.id, isReturnLoading, pickupStop?.id, trip?.documents]);
+  }, [trip?.id, isReturnLoading, pickupStop?.id, trip?.documents, markUploaded, need]);
 
   useEffect(() => { photosRef.current = photos; }, [photos]);
 
-  const savePhotoDrafts = (valid: CapturedPhoto[]) => {
+  const savePhotoDrafts = (list: CapturedPhoto[]) => {
     if (!trip?.id) return;
+    // Remember which are already on the server, so reopening the screen
+    // doesn't send them twice.
+    const valid = list.map((ph) => ({ ...ph, uploaded: uploads.isUploaded(ph.uri) || undefined }));
     const stopKey = pickupStop?.id ? `pickup_draft_${trip.id}_${pickupStop.id}` : null;
     const draftKey = isReturnLoading ? `return_pickup_draft_photos_${trip.id}` : `pickup_draft_photos_${trip.id}`;
     const completedKey = isReturnLoading ? `return_pickup_completed_photos_${trip.id}` : `pickup_completed_photos_${trip.id}`;
@@ -266,11 +269,9 @@ const PickupVerificationScreen = () => {
   /** Upload one photo (once); resolves true when it is on the server. */
   const uploadPhotoNow = (p: CapturedPhoto): Promise<boolean> => {
     if (!trip?.id || !p.uri) return Promise.resolve(false);
-    if (uploadedUrisRef.current.has(p.uri)) return Promise.resolve(true);
-    const pending = pendingUploadsRef.current.get(p.uri);
-    if (pending) return pending;
-    const job = tripService.uploadPhoto(
-      trip.id,
+    const tripId = trip.id;
+    return uploads.uploadNow(p, (onProgress) => tripService.uploadPhoto(
+      tripId,
       'cargo',
       {
         uri: p.uri,
@@ -279,39 +280,42 @@ const PickupVerificationScreen = () => {
       isReturnLoading ? 1 : 0,
       isReturnLoading ? 'return_loading' : 'pickup',
       pickupStop?.id,
-    ).then(() => {
-      uploadedUrisRef.current.add(p.uri);
-      return true;
-    }).catch((err) => {
-      console.warn('Cargo photo upload warning:', err);
-      return false;
-    }).finally(() => {
-      pendingUploadsRef.current.delete(p.uri);
+      onProgress,
+    )).then((ok) => {
+      if (ok) savePhotoDrafts(photosRef.current);
+      return ok;
     });
-    pendingUploadsRef.current.set(p.uri, job);
-    return job;
+  };
+
+  // Photos restored from a saved draft that never reached the server: send
+  // them now rather than waiting for the Complete button.
+  useEffect(() => {
+    photos.forEach((p) => { if (p?.uri && !isKnown(p.uri)) uploadPhotoNow(p); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photos, isKnown]);
+
+  /** Put a new photo in the next empty box, save the draft, start its upload. */
+  const acceptPhoto = (photo: CapturedPhoto) => {
+    const valid = [...photosRef.current, photo].filter(Boolean).slice(0, need);
+    photosRef.current = valid;
+    setPhotos(valid);
+    savePhotoDrafts(valid);
+    uploadPhotoNow(photo);
+    if (valid.length >= need) setCameraOpen(false);
   };
 
   /**
-   * Tap an empty box: the camera opens straight away, and keeps going to the
-   * next box until all three are taken (cancel stops). Long-press: gallery.
+   * Tap an empty box: the in-app camera opens and stays open until all three
+   * are taken (it has its own Gallery tab). Long-press: straight to gallery.
    */
-  const addPhoto = async (slotIndex?: number, source: 'camera' | 'gallery' = 'camera') => {
-    let slot = slotIndex;
-    for (;;) {
-      const photo = source === 'gallery' ? await pickFromGallery().catch(() => null) : await takePhoto();
-      if (!photo) return;
-      const next = [...photosRef.current];
-      if (slot !== undefined && slot < 3 && !next[slot]) next[slot] = photo;
-      else next.push(photo);
-      const valid = next.filter(Boolean).slice(0, 3);
-      photosRef.current = valid;
-      setPhotos(valid);
-      savePhotoDrafts(valid);
-      uploadPhotoNow(photo);
-      if (source === 'gallery' || valid.length >= 3) return;
-      slot = undefined;
+  const addPhoto = async (source: 'camera' | 'gallery' = primarySource) => {
+    if (photosRef.current.length >= need) return;
+    if (source === 'camera') {
+      setCameraOpen(true);
+      return;
     }
+    const photo = await pickFromGallery().catch(() => null);
+    if (photo) acceptPhoto(photo);
   };
 
   const removePhoto = (index: number) => {
@@ -345,12 +349,14 @@ const PickupVerificationScreen = () => {
 
   const handleCompletePickup = async () => {
     if (!trip || submitting) return;
-    if (validPhotosCount < 3) {
+    if (validPhotosCount < need) {
       Alert.alert(
-        isReturnLoading
+        evidence.screenshot
+          ? t('title_upload_screenshot', 'Upload Customer App Screenshot')
+          : isReturnLoading
           ? t('title_upload_return_loading_photos', 'Upload Return Loading Photos')
           : t('title_upload_loading_photos', 'Upload Loading Photos'),
-        `${isReturnLoading ? t('title_upload_return_loading_photos', 'Upload return loading photos') : t('title_upload_loading_photos', 'Upload loading photos')} (${validPhotosCount}/3).`
+        `${isReturnLoading ? t('title_upload_return_loading_photos', 'Upload return loading photos') : t('title_upload_loading_photos', 'Upload loading photos')} (${validPhotosCount}/${need}).`
       );
       return;
     }
@@ -493,26 +499,30 @@ const PickupVerificationScreen = () => {
         {/* Upload Loading Photos Section */}
         <View style={styles.uploadSectionCard}>
           <View style={styles.uploadHeaderRow}>
-            <Text style={styles.uploadTitle}>{isReturnLoading ? t('title_upload_return_loading_photos', 'UPLOAD RETURN LOADING PHOTOS') : t('title_upload_loading_photos', 'UPLOAD LOADING PHOTOS')}</Text>
+            <Text style={styles.uploadTitle}>{evidence.screenshot ? t('title_upload_screenshot_caps', 'UPLOAD CUSTOMER APP SCREENSHOT') : isReturnLoading ? t('title_upload_return_loading_photos', 'UPLOAD RETURN LOADING PHOTOS') : t('title_upload_loading_photos', 'UPLOAD LOADING PHOTOS')}</Text>
             <View style={styles.cameraIconCircle}>
               <Camera size={16} color="#2563EB" strokeWidth={2.2} />
             </View>
           </View>
 
-          {/* 3 Photo Slots */}
+          {evidence.screenshot && (
+            <Text style={styles.screenshotHint}>{t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")}</Text>
+          )}
+
+          {/* Photo slots: 3, or 1 wide slot for a screenshot */}
           <View style={styles.photosGrid}>
-            {[0, 1, 2].map((i) => (
+            {Array.from({ length: need }, (_, i) => i).map((i) => (
               <TouchableOpacity
                 key={i}
-                style={[styles.photoPreview, photos[i] ? styles.photoFilled : styles.photoEmpty]}
+                style={[styles.photoPreview, need === 1 && styles.photoPreviewWide, photos[i] ? styles.photoFilled : styles.photoEmpty]}
                 activeOpacity={0.8}
-                onPress={photos[i] ? () => setPreviewPhoto(photos[i]) : () => addPhoto(i)}
-                onLongPress={photos[i] ? undefined : () => addPhoto(i, 'gallery')}
+                onPress={photos[i] ? () => setPreviewPhoto(photos[i]) : () => addPhoto()}
+                onLongPress={photos[i] ? undefined : () => addPhoto(otherSource)}
               >
                 {photos[i] ? (
                   <>
-                    <Image source={{ uri: photos[i].uri }} style={styles.photoImage} />
-                    {!!photos[i].location && (
+                    <Image source={{ uri: photos[i].uri }} style={styles.photoImage} resizeMode={evidence.screenshot ? 'contain' : 'cover'} />
+                    {!evidence.screenshot && !!photos[i].location && (
                       <GoogleMapsGeotagPreview
                         latitude={photos[i].location!.latitude}
                         longitude={photos[i].location!.longitude}
@@ -528,12 +538,23 @@ const PickupVerificationScreen = () => {
                 ) : (
                   <View style={styles.photoPlaceholder}>
                     <BlueCameraPlusIcon />
-                    <Text style={styles.photoPlaceholderText}>{language === 'ur' ? `تصویر ${i + 1}` : `Photo ${i + 1}`}</Text>
+                    <Text style={styles.photoPlaceholderText}>{evidence.screenshot ? t('label_screenshot', 'Screenshot') : language === 'ur' ? `تصویر ${i + 1}` : `Photo ${i + 1}`}</Text>
                   </View>
                 )}
               </TouchableOpacity>
             ))}
           </View>
+
+          <UploadProgressBar items={uploads.itemsFor(photos)} total={need} accent="#2563EB" />
+          {!hasAllPhotos ? (
+            <TouchableOpacity style={styles.galleryLink} activeOpacity={0.7} onPress={() => addPhoto(otherSource)}>
+              <Text style={styles.galleryLinkText}>
+                {evidence.screenshot
+                  ? t('action_take_photo_instead', 'Take a photo instead')
+                  : language === 'ur' ? 'گیلری سے منتخب کریں' : 'Choose from gallery'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           {/* Primary Action Button: LOADING COMPLETE */}
           <TouchableOpacity
@@ -558,6 +579,16 @@ const PickupVerificationScreen = () => {
         {/* Faded Bottom Truck Illustration */}
         <FadedBottomIllustration type="start_loading" height={240} imageOpacity={0.5} resizeMode="contain" />
       </ScrollView>
+
+      <PhotoCaptureModal
+        visible={cameraOpen}
+        photos={photos}
+        uploads={uploads.itemsFor(photos)}
+        total={need}
+        accent="#2563EB"
+        onPhoto={acceptPhoto}
+        onClose={() => setCameraOpen(false)}
+      />
 
       <GeotagPhotoModal
         visible={!!previewPhoto}
@@ -793,6 +824,15 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     overflow: 'hidden',
   },
+  photoPreviewWide: {
+    aspectRatio: 1.8,
+  },
+  screenshotHint: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 17,
+    marginBottom: 10,
+  },
   photoEmpty: {
     borderWidth: 1.5,
     borderColor: '#93C5FD',
@@ -827,6 +867,18 @@ const styles = StyleSheet.create({
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  galleryLink: {
+    alignSelf: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  galleryLinkText: {
+    color: '#2563EB',
+    fontSize: 14,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   mainActionBtn: {
     height: 52,

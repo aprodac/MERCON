@@ -21,7 +21,7 @@ import { BilingualText } from '@mercon/mobile-shared/components/BilingualText';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { useScheduledTrips } from '../hooks/use-scheduled-trips';
-import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, parseStopWorkflowState, getNextExternalAppAction, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
+import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, parseStopWorkflowState, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage, getLocalizedStatus } from '@mercon/mobile-shared/lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, targetFromWorkflowState, type TimelineStop } from '../utils/routeParser';
@@ -235,29 +235,6 @@ const HomeScreen = () => {
   }
 
   const getWorkflowStateInfo = (t: MobileTrip): WorkflowStateInfo => {
-    if (t.driver_workflow === 'EXTERNAL_APP') {
-      const ws = getEffectiveWorkflowState(t);
-      const isAssigned = ws === 'ASSIGNED';
-      const nextAction = getNextExternalAppAction(t);
-      return {
-        badgeLabel: isAssigned ? 'Assigned (External)' : 'External App',
-        btnLabel: isAssigned ? 'Start Trip' : (nextAction?.label ?? 'Trip Completed'),
-        onPress: async () => {
-          if (isAssigned) {
-            setAdvancing(true);
-            try {
-              const updated = await tripService.updateStatus(t.id, 'Scheduled', 'GOING_TO_PICKUP');
-              setTrip(updated);
-            } catch (err) {
-              console.warn('Could not update trip status on start:', err);
-            } finally {
-              setAdvancing(false);
-            }
-          }
-          router.push('/trip/external-app');
-        },
-      };
-    }
     const ws = getEffectiveWorkflowState(t);
     const isRound = isRoundTrip(t);
     const outboundStops = getOutboundIntermediateStops(t);
@@ -561,10 +538,6 @@ const HomeScreen = () => {
                 const timelineStops = parseTripRouteNodes(displayTrip);
 
                 const handleStopPress = (st: TimelineStop) => {
-                  if (displayTrip?.driver_workflow === 'EXTERNAL_APP') {
-                    router.push('/trip/external-app');
-                    return;
-                  }
                   if (st.isIntermediate) {
                     router.push({ pathname: '/trip/stop', params: { legIndex: String(st.legIndex ?? 0) } } as any);
                   } else {

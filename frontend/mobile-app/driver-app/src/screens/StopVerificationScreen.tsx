@@ -16,7 +16,7 @@ import { DelayReportModal } from '../components/DelayReportModal';
 import { DelayButton } from '../components/DelayButton';
 import { FadedBottomIllustration } from '../components/FadedBottomIllustration';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, isRoundTrip, getLegIntermediateDbStops } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopAddress, isRoundTrip, getLegIntermediateDbStops, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 import { parseTripRouteNodes, parseStopWorkflowState, TimelineStop } from '../utils/routeParser';
 import { takePhoto, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
@@ -101,6 +101,11 @@ export default function StopVerificationScreen() {
   const [showDelayModal, setShowDelayModal] = useState(false);
 
   const isRound = isRoundTrip(trip);
+  // 3 geotagged photos, or 1 customer-app screenshot on EXTERNAL_APP trips.
+  const evidence = getEvidencePolicy(trip, 'stop');
+  const MIN_STOP_PHOTOS = evidence.count;
+  const primarySource: 'camera' | 'gallery' = evidence.screenshot ? 'gallery' : 'camera';
+  const otherSource: 'camera' | 'gallery' = evidence.screenshot ? 'camera' : 'gallery';
   const isReturnLeg = isRound && (paramLegIndex === '1' || (trip?.driver_workflow_state || '').includes('RETURN'));
 
   // Parse all route stops cleanly
@@ -131,22 +136,11 @@ export default function StopVerificationScreen() {
     ((activeStop as any)?.stopId || undefined);
 
   useEffect(() => {
-    if (loading || !trip || trip.driver_workflow === 'EXTERNAL_APP') return;
+    if (loading || !trip) return;
     if (activeStopsList.length === 0) {
       router.replace('/trip/navigate' as any);
     }
   }, [loading, trip, activeStopsList.length]);
-
-  useEffect(() => {
-    if (trip?.driver_workflow === 'EXTERNAL_APP') {
-      const ws = trip?.driver_workflow_state || 'ASSIGNED';
-      if (ws === 'ASSIGNED') {
-        router.replace('/');
-      } else {
-        router.replace('/trip/external-app');
-      }
-    }
-  }, [trip?.driver_workflow, trip]);
 
   // Restore photos from SecureStore on mount
   useEffect(() => {
@@ -168,15 +162,18 @@ export default function StopVerificationScreen() {
     }
   };
 
-  /** Camera opens straight away and continues until the stop has 3 photos (cancel stops). Long-press: gallery. */
-  const handleAddPhoto = async (source: 'camera' | 'gallery' = 'camera') => {
+  /**
+   * Camera opens straight away and continues until the stop has enough photos
+   * (cancel stops). Long-press: gallery. Screenshot trips swap the two.
+   */
+  const handleAddPhoto = async (source: 'camera' | 'gallery' = primarySource) => {
     let list = [...photos];
     for (;;) {
       const photo = source === 'gallery' ? await pickFromGallery().catch(() => null) : await takePhoto();
       if (!photo) return;
       list = [...list, photo];
       savePhotosState(list);
-      if (source === 'gallery' || list.filter((p) => !!p?.uri).length + uploadedCountRef.current >= 3) return;
+      if (source === 'gallery' || list.filter((p) => !!p?.uri).length + uploadedCountRef.current >= MIN_STOP_PHOTOS) return;
     }
   };
 
@@ -185,16 +182,16 @@ export default function StopVerificationScreen() {
     savePhotosState(updated);
   };
 
-  const MIN_STOP_PHOTOS = 3;
-
   const handleCompleteStop = async () => {
     if (!trip || submitting) return;
-    // Same rule as loading/delivery: at least 3 photos per stop.
+    // Same rule as loading/delivery (see getEvidencePolicy).
     const totalPhotos = photos.filter((p) => !!p?.uri).length + uploadedCountRef.current;
     if (totalPhotos < MIN_STOP_PHOTOS) {
       Alert.alert(
         t('title_stop_photos_required', 'Stop Photos Required'),
-        `${t('msg_min_stop_photos', 'Please add at least 3 photos for this stop')} (${totalPhotos}/${MIN_STOP_PHOTOS}).`,
+        evidence.screenshot
+          ? `${t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")} (${totalPhotos}/${MIN_STOP_PHOTOS})`
+          : `${t('msg_min_stop_photos', 'Please add at least 3 photos for this stop')} (${totalPhotos}/${MIN_STOP_PHOTOS}).`,
       );
       return;
     }
@@ -326,7 +323,9 @@ export default function StopVerificationScreen() {
         <View style={styles.sectionCard}>
           <View style={styles.sectionTitleRow}>
             <Text style={styles.sectionTitleText}>
-              {isReturnLeg
+              {evidence.screenshot
+                ? t('title_upload_screenshot_caps', 'UPLOAD CUSTOMER APP SCREENSHOT')
+                : isReturnLeg
                 ? t('title_upload_return_stop_photos', 'UPLOAD RETURN STOP PHOTOS')
                 : t('title_upload_stop_photos', 'UPLOAD INTERMEDIATE STOP PHOTOS')}
             </Text>
@@ -337,19 +336,23 @@ export default function StopVerificationScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* 3 Photo Slot Cards Grid */}
+          {evidence.screenshot && (
+            <Text style={styles.screenshotHint}>{t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")}</Text>
+          )}
+
+          {/* Photo slots: 3, or 1 wide slot for a screenshot */}
           <View style={styles.photosGrid}>
-            {[0, 1, 2].map((i) => (
+            {Array.from({ length: MIN_STOP_PHOTOS }, (_, i) => i).map((i) => (
               <TouchableOpacity
                 key={i}
-                style={photos[i] ? styles.photoSlotFilled : styles.addPhotoCardSlot}
+                style={[photos[i] ? styles.photoSlotFilled : styles.addPhotoCardSlot, MIN_STOP_PHOTOS === 1 && styles.photoSlotWide]}
                 activeOpacity={0.8}
                 onPress={photos[i] ? () => setPreviewPhoto(photos[i]) : () => handleAddPhoto()}
-                onLongPress={photos[i] ? undefined : () => handleAddPhoto('gallery')}
+                onLongPress={photos[i] ? undefined : () => handleAddPhoto(otherSource)}
               >
                 {photos[i] ? (
                   <>
-                    <Image source={{ uri: photos[i].uri }} style={styles.photoThumb} />
+                    <Image source={{ uri: photos[i].uri }} style={styles.photoThumb} resizeMode={evidence.screenshot ? 'contain' : 'cover'} />
                     <TouchableOpacity
                       style={styles.removePhotoBtn}
                       activeOpacity={0.7}
@@ -361,7 +364,7 @@ export default function StopVerificationScreen() {
                 ) : (
                   <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                     <RedCameraPlusIcon />
-                    <Text style={styles.addPhotoLabel}>{language === 'ur' ? `تصویر ${i + 1}` : `Photo ${i + 1}`}</Text>
+                    <Text style={styles.addPhotoLabel}>{evidence.screenshot ? t('label_screenshot', 'Screenshot') : language === 'ur' ? `تصویر ${i + 1}` : `Photo ${i + 1}`}</Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -574,6 +577,15 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     backgroundColor: '#F1F5F9',
+  },
+  photoSlotWide: {
+    aspectRatio: 1.8,
+  },
+  screenshotHint: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 17,
+    marginBottom: 10,
   },
   photoThumb: {
     width: '100%',

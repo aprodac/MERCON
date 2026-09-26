@@ -142,6 +142,15 @@ export default (): ExpoConfig => ({
       },
     ],
     [
+      'expo-camera',
+      {
+        cameraPermission: `${client.name} uses the camera to capture cargo and proof-of-delivery photos for your trips.`,
+        // Photos only — the in-app camera never records sound or scans barcodes.
+        recordAudioAndroid: false,
+        barcodeScannerEnabled: false,
+      },
+    ],
+    [
       'expo-location',
       {
         locationWhenInUsePermission: `${client.name} shares your location with your operator while you're on an active trip, so they can track the delivery.`,
