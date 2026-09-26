@@ -16,7 +16,7 @@ import { DelayReportModal } from '../components/DelayReportModal';
 import { DelayButton } from '../components/DelayButton';
 import { ReturnLoadingModal } from '../components/ReturnLoadingModal';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 
 import { takePhoto, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 import { showToast } from '../components/AppToast';
@@ -115,6 +115,11 @@ const DeliveryVerificationScreen = () => {
 
   const legIndex = isReturnDelivery ? 1 : 0;
   const dropoffStop = getLegEndpoints(trip, legIndex).delivery;
+  // 3 geotagged POD photos, or 1 customer-app screenshot on EXTERNAL_APP trips.
+  const evidence = getEvidencePolicy(trip, 'delivery');
+  const need = evidence.count;
+  const primarySource: 'camera' | 'gallery' = evidence.screenshot ? 'gallery' : 'camera';
+  const otherSource: 'camera' | 'gallery' = evidence.screenshot ? 'camera' : 'gallery';
 
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
   // URIs already uploaded in this session — a retry after a failed upload
@@ -131,15 +136,6 @@ const DeliveryVerificationScreen = () => {
 
   // If this delivery stop is already completed and departed, navigate forward
   useEffect(() => {
-    if (trip?.driver_workflow === 'EXTERNAL_APP') {
-      const ws = getEffectiveWorkflowState(trip);
-      if (ws === 'ASSIGNED') {
-        router.replace('/');
-      } else {
-        router.replace('/trip/external-app');
-      }
-      return;
-    }
     if (loading || !trip || !dropoffStop || showReturnModal) return;
     if (dropoffStop.actual_departure) {
       if (isReturnDelivery || !isRound) {
@@ -148,10 +144,10 @@ const DeliveryVerificationScreen = () => {
         router.replace({ pathname: '/trip/pickup', params: { showReturnPrompt: '1' } } as any);
       }
     }
-  }, [loading, trip?.id, trip?.driver_workflow, dropoffStop?.id, dropoffStop?.actual_departure, isReturnDelivery, isRound, showReturnModal]);
+  }, [loading, trip?.id, dropoffStop?.id, dropoffStop?.actual_departure, isReturnDelivery, isRound, showReturnModal]);
 
   const validPhotosCount = photos.filter((p) => !!p?.uri).length;
-  const hasAllPhotos = validPhotosCount >= 3;
+  const hasAllPhotos = validPhotosCount >= need;
 
   // Load draft photos or prefill with already uploaded server documents
   useEffect(() => {
@@ -207,7 +203,7 @@ const DeliveryVerificationScreen = () => {
 
           if (serverPodDocs.length > 0) {
             setPhotos(
-              serverPodDocs.slice(0, 3).map((d: any) => {
+              serverPodDocs.slice(0, need).map((d: any) => {
                 const fullUri = d.file_url?.startsWith('http') || d.file_url?.startsWith('file://')
                   ? d.file_url
                   : `${FILE_BASE}${d.file_url?.startsWith('/') ? '' : '/'}${d.file_url}`;
@@ -282,22 +278,23 @@ const DeliveryVerificationScreen = () => {
 
   /**
    * Tap an empty box: the camera opens straight away, and keeps going to the
-   * next box until all three are taken (cancel stops). Long-press: gallery.
+   * next box until all are taken (cancel stops). Long-press: gallery.
+   * Screenshot trips swap the two: tap opens the gallery.
    */
-  const addPhoto = async (slotIndex?: number, source: 'camera' | 'gallery' = 'camera') => {
+  const addPhoto = async (slotIndex?: number, source: 'camera' | 'gallery' = primarySource) => {
     let slot = slotIndex;
     for (;;) {
       const photo = source === 'gallery' ? await pickFromGallery().catch(() => null) : await takePhoto();
       if (!photo) return;
       const next = [...photosRef.current];
-      if (slot !== undefined && slot < 3 && !next[slot]) next[slot] = photo;
+      if (slot !== undefined && slot < need && !next[slot]) next[slot] = photo;
       else next.push(photo);
-      const valid = next.filter(Boolean).slice(0, 3);
+      const valid = next.filter(Boolean).slice(0, need);
       photosRef.current = valid;
       setPhotos(valid);
       savePhotoDrafts(valid);
       uploadPhotoNow(photo);
-      if (source === 'gallery' || valid.length >= 3) return;
+      if (source === 'gallery' || valid.length >= need) return;
       slot = undefined;
     }
   };
@@ -319,12 +316,14 @@ const DeliveryVerificationScreen = () => {
 
   const handleCompleteDelivery = async () => {
     if (!trip || submitting) return;
-    if (validPhotosCount < 3) {
+    if (validPhotosCount < need) {
       Alert.alert(
-        isReturnDelivery
+        evidence.screenshot
+          ? t('title_upload_screenshot', 'Upload Customer App Screenshot')
+          : isReturnDelivery
           ? t('title_upload_return_delivery_photos', 'Upload Return Delivery Photos')
           : t('title_upload_delivery_photos', 'Upload Delivery Photos'),
-        `${isReturnDelivery ? t('title_upload_return_delivery_photos', 'Upload return delivery photos') : t('title_upload_delivery_photos', 'Upload delivery photos')} (${validPhotosCount}/3).`
+        `${isReturnDelivery ? t('title_upload_return_delivery_photos', 'Upload return delivery photos') : t('title_upload_delivery_photos', 'Upload delivery photos')} (${validPhotosCount}/${need}).`
       );
       return;
     }
@@ -466,26 +465,30 @@ const DeliveryVerificationScreen = () => {
         {/* Upload Delivery Photos Section */}
         <View style={styles.uploadSectionCard}>
           <View style={styles.uploadHeaderRow}>
-            <Text style={styles.uploadTitle}>{isReturnDelivery ? t('title_upload_return_delivery_photos', 'UPLOAD RETURN DELIVERY PHOTOS') : t('title_upload_delivery_photos', 'UPLOAD DELIVERY PHOTOS')}</Text>
+            <Text style={styles.uploadTitle}>{evidence.screenshot ? t('title_upload_screenshot_caps', 'UPLOAD CUSTOMER APP SCREENSHOT') : isReturnDelivery ? t('title_upload_return_delivery_photos', 'UPLOAD RETURN DELIVERY PHOTOS') : t('title_upload_delivery_photos', 'UPLOAD DELIVERY PHOTOS')}</Text>
             <View style={styles.chatIconCircle}>
               <MessageSquare size={16} color="#16A34A" strokeWidth={2.2} />
             </View>
           </View>
 
-          {/* 3 Photo Slots */}
+          {evidence.screenshot && (
+            <Text style={styles.screenshotHint}>{t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")}</Text>
+          )}
+
+          {/* Photo slots: 3, or 1 wide slot for a screenshot */}
           <View style={styles.photosGrid}>
-            {[0, 1, 2].map((i) => (
+            {Array.from({ length: need }, (_, i) => i).map((i) => (
               <TouchableOpacity
                 key={i}
-                style={[styles.photoPreview, photos[i] ? styles.photoFilled : styles.photoEmpty]}
+                style={[styles.photoPreview, need === 1 && styles.photoPreviewWide, photos[i] ? styles.photoFilled : styles.photoEmpty]}
                 activeOpacity={0.8}
                 onPress={photos[i] ? () => setPreviewPhoto(photos[i]) : () => addPhoto(i)}
-                onLongPress={photos[i] ? undefined : () => addPhoto(i, 'gallery')}
+                onLongPress={photos[i] ? undefined : () => addPhoto(i, otherSource)}
               >
                 {photos[i] ? (
                   <>
-                    <Image source={{ uri: photos[i].uri }} style={styles.photoImage} />
-                    {!!photos[i].location && (
+                    <Image source={{ uri: photos[i].uri }} style={styles.photoImage} resizeMode={evidence.screenshot ? 'contain' : 'cover'} />
+                    {!evidence.screenshot && !!photos[i].location && (
                       <GoogleMapsGeotagPreview
                         latitude={photos[i].location!.latitude}
                         longitude={photos[i].location!.longitude}
@@ -501,7 +504,7 @@ const DeliveryVerificationScreen = () => {
                 ) : (
                   <View style={styles.photoPlaceholder}>
                     <GreenCameraPlusIcon />
-                    <Text style={styles.photoPlaceholderText}>{language === 'ur' ? `تصویر ${i + 1}` : `Photo ${i + 1}`}</Text>
+                    <Text style={styles.photoPlaceholderText}>{evidence.screenshot ? t('label_screenshot', 'Screenshot') : language === 'ur' ? `تصویر ${i + 1}` : `Photo ${i + 1}`}</Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -768,6 +771,15 @@ const styles = StyleSheet.create({
     aspectRatio: 1.1,
     borderRadius: 14,
     overflow: 'hidden',
+  },
+  photoPreviewWide: {
+    aspectRatio: 1.8,
+  },
+  screenshotHint: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 17,
+    marginBottom: 10,
   },
   photoEmpty: {
     borderWidth: 1.5,

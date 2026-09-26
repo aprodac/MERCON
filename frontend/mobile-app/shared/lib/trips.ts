@@ -248,61 +248,30 @@ export function getMonthlyDriverPayout(trips: (MobileTrip | null | undefined)[],
   }, 0);
 }
 
-export interface ExternalAppAction {
-  label: string;
-  targetStatus: TripStatus;
-  targetWorkflowState: string;
-  /** Tag written to the evidence photo's Document — matches the vocabulary
-   * `TripPhotoEvidence.tsx` on the web dashboard already categorizes by. */
-  operation: string;
-  legIndex: 0 | 1;
+/** Which proof step a trip screen is collecting. */
+export type EvidenceStage = 'arrival' | 'loading' | 'stop' | 'delivery';
+
+export interface EvidencePolicy {
+  /** Photos the driver must attach before the step can be confirmed. */
+  count: number;
+  /**
+   * true for EXTERNAL_APP trips: the proof is a screenshot of the customer's
+   * own app, so the gallery opens first (camera on long-press) and no
+   * geotag is shown on it.
+   */
+  screenshot: boolean;
 }
 
 /**
- * The single next action for an EXTERNAL_APP-workflow trip, keyed purely off
- * the trip's current state — mirrors the exact (status, workflow_state)
- * pairs the NATIVE screens (PickupVerificationScreen, DeliveryVerificationScreen,
- * LiveNavigationScreen) already use for every stage, including round trips.
- * Returns null once the trip is complete.
+ * The one place that decides what proof each trip step needs. NATIVE and
+ * EXTERNAL_APP trips go through the same screens (navigate → pickup → stop →
+ * navigate → delivery); only this differs. The backend tags uploads on
+ * EXTERNAL_APP trips as `external_app_screenshot` by itself, so the web
+ * dashboard's time confirmation keeps working whichever screen sent them.
  */
-export function getNextExternalAppAction(trip: MobileTrip | null | undefined): ExternalAppAction | null {
-  if (!trip) return null;
-  const ws = getEffectiveWorkflowState(trip);
-  const isRound = isRoundTrip(trip);
-
-  switch (ws) {
-    case 'ASSIGNED':
-    case 'GOING_TO_PICKUP':
-      return { label: 'Arrived at Pickup', targetStatus: 'Loading', targetWorkflowState: 'ARRIVED_AT_PICKUP', operation: 'pickup_arrival', legIndex: 0 };
-    case 'ARRIVED_AT_PICKUP':
-    case 'LOADING':
-      return { label: 'Loading Completed', targetStatus: 'Loading', targetWorkflowState: 'LOADING_COMPLETED', operation: 'pickup', legIndex: 0 };
-    case 'LOADING_COMPLETED':
-      return { label: 'Departed (In Transit)', targetStatus: 'InTransit', targetWorkflowState: 'IN_TRANSIT', operation: 'pickup', legIndex: 0 };
-    case 'IN_TRANSIT':
-    case 'GOING_TO_STOP':
-    case 'ARRIVED_AT_STOP':
-    case 'STOP_VERIFICATION':
-      return { label: 'Arrived at Delivery', targetStatus: 'InTransit', targetWorkflowState: 'ARRIVED_AT_DELIVERY', operation: 'delivery_arrival', legIndex: 0 };
-    case 'ARRIVED_AT_DELIVERY':
-    case 'DELIVERY_VERIFICATION':
-    case 'FIRST_DELIVERY_COMPLETED':
-      return isRound
-        ? { label: 'Delivery Completed', targetStatus: 'Loading', targetWorkflowState: 'RETURN_LOADING', operation: 'delivery', legIndex: 0 }
-        : { label: 'Delivery Completed', targetStatus: 'Completed', targetWorkflowState: 'COMPLETED', operation: 'delivery', legIndex: 0 };
-    case 'RETURN_LOADING':
-      return { label: 'Loading Completed', targetStatus: 'Loading', targetWorkflowState: 'RETURN_LOADING_COMPLETED', operation: 'return_loading_arrival', legIndex: 1 };
-    case 'RETURN_LOADING_COMPLETED':
-      return { label: 'Departed (In Transit)', targetStatus: 'InTransit', targetWorkflowState: 'IN_TRANSIT_RETURN', operation: 'return_loading', legIndex: 1 };
-    case 'IN_TRANSIT_RETURN':
-      return { label: 'Arrived at Final Delivery', targetStatus: 'InTransit', targetWorkflowState: 'ARRIVED_AT_FINAL_DELIVERY', operation: 'return_delivery_arrival', legIndex: 1 };
-    case 'ARRIVED_AT_FINAL_DELIVERY':
-    case 'FINAL_DELIVERY_VERIFICATION':
-      return { label: 'Delivery Completed', targetStatus: 'Completed', targetWorkflowState: 'COMPLETED', operation: 'return_delivery', legIndex: 1 };
-    case 'COMPLETED':
-    default:
-      return null;
-  }
+export function getEvidencePolicy(trip: MobileTrip | null | undefined, stage: EvidenceStage): EvidencePolicy {
+  if (trip?.driver_workflow === 'EXTERNAL_APP') return { count: 1, screenshot: true };
+  return { count: stage === 'arrival' ? 1 : 3, screenshot: false };
 }
 
 /** A road route to the trip's next stop, as MERCON returns it. */
