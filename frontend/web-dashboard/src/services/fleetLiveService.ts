@@ -90,6 +90,27 @@ export interface LiveTripMedia {
   unplaced: LiveMediaItem[];
 }
 
+export type TripPhase = 'planned' | 'active' | 'done' | 'cancelled';
+
+/** Mirrors `TripOverview` in backend/api-server/src/services/tripOverview.ts. */
+export interface TripOverview {
+  trip_id: string;
+  status: string;
+  phase: TripPhase;
+  stops: LiveStop[];
+  next_stop_index: number | null;
+  unit: LiveUnit | null;
+  /** [lng, lat] points driven, oldest first. */
+  path: [number, number][];
+  path_distance_m: number | null;
+  checks: {
+    driver_assigned: boolean;
+    truck_assigned: boolean;
+    third_party: boolean;
+    expiring: { entity: 'Truck' | 'Driver'; name: string; label: string; expiry_date: string; expired: boolean }[];
+  } | null;
+}
+
 export interface LiveRoute {
   /** [lng, lat] pairs. */
   geometry: [number, number][];
@@ -126,6 +147,11 @@ export const fleetLiveService = {
     } catch {
       return null;
     }
+  },
+
+  async getTripOverview(tripId: string): Promise<TripOverview> {
+    const res = await api.get<ApiResponse<TripOverview>>(`/vehicles/live-map/trips/${tripId}/overview`);
+    return res.data.data;
   },
 
   /** POD photos, cargo photos and delay videos for a trip, grouped by stop. */

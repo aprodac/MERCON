@@ -83,6 +83,11 @@ export const operatorInboxService = {
     return res.data.data;
   },
 
+  async getTripDriverUpdates(tripId: string): Promise<{ updates: DriverUpdate[]; whatsapp_api_available: boolean }> {
+    const res = await api.get<ApiResponse<{ updates: DriverUpdate[]; whatsapp_api_available: boolean }>>(`/operator-inbox/trips/${tripId}/driver-updates`);
+    return res.data.data;
+  },
+
   async getDocumentExpiries(): Promise<ExpiryItem[]> {
     const res = await api.get<ApiResponse<{ items: ExpiryItem[] }>>('/operator-inbox/document-expiries');
     return res.data.data.items;
