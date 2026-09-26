@@ -23,10 +23,12 @@ export async function getDeviceLocationTag(): Promise<LocationTag | null> {
 
     let address: string | null = null;
     try {
-      const geocoded = await Location.reverseGeocodeAsync({
-        latitude: pos.coords.latitude,
-        longitude: pos.coords.longitude,
-      });
+      // The street address is a nice-to-have: never hold the photo up for it.
+      const geocoded = await withTimeout(
+        Location.reverseGeocodeAsync({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
+        1200,
+        [],
+      );
       if (geocoded && geocoded.length > 0) {
         const item = geocoded[0];
         const placeParts = [
@@ -52,6 +54,17 @@ export async function getDeviceLocationTag(): Promise<LocationTag | null> {
   }
 }
 
+/** Resolves to `fallback` if `p` has not settled within `ms`. */
+function withTimeout<T>(p: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+    p.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      () => { clearTimeout(timer); resolve(fallback); },
+    );
+  });
+}
+
 export interface CapturedPhoto {
   id?: string;
   uri: string;
@@ -66,22 +79,24 @@ export interface CapturedPhoto {
  * Gallery photos from modern phones can be 5–10 MB. We cap them at 1280px wide
  * and 0.7 JPEG quality → typical output is 150–400 KB, well under nginx's limit.
  */
-async function compressPhoto(uri: string): Promise<CapturedPhoto> {
+async function compressPhoto(uri: string, location?: Promise<LocationTag | null>): Promise<CapturedPhoto> {
   const [result, loc] = await Promise.all([
     ImageManipulator.manipulateAsync(
       uri,
       [{ resize: { width: 1280 } }],
       { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG },
     ),
-    getDeviceLocationTag(),
+    // Started before the camera opened, so it is normally ready by now; cap
+    // the wait so a slow GPS never delays the photo appearing.
+    withTimeout(location ?? getDeviceLocationTag(), 1500, null),
   ]);
   return { uri: result.uri, mimeType: 'image/jpeg', fileName: 'photo.jpg', location: loc };
 }
 
-async function toPhoto(result: ImagePicker.ImagePickerResult): Promise<CapturedPhoto | null> {
+async function toPhoto(result: ImagePicker.ImagePickerResult, location?: Promise<LocationTag | null>): Promise<CapturedPhoto | null> {
   if (result.canceled || !result.assets?.length) return null;
   const a = result.assets[0];
-  return compressPhoto(a.uri);
+  return compressPhoto(a.uri, location);
 }
 
 export async function capturePhoto(): Promise<CapturedPhoto | null> {
@@ -90,23 +105,26 @@ export async function capturePhoto(): Promise<CapturedPhoto | null> {
     throw new Error(translate('err_camera_permission', 'Camera permission is required to take trip photos.'));
   }
 
+  // Look up the location while the driver lines up the shot.
+  const location = getDeviceLocationTag();
   const result = await ImagePicker.launchCameraAsync({
     mediaTypes: 'images',
     quality: 1,
     exif: false,
   });
 
-  return toPhoto(result);
+  return toPhoto(result, location);
 }
 
 export async function pickFromGallery(): Promise<CapturedPhoto | null> {
+  const location = getDeviceLocationTag();
   const result = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: 'images',
     quality: 1,
     exif: false,
   });
 
-  return toPhoto(result);
+  return toPhoto(result, location);
 }
 
 export interface CapturedMedia {
@@ -167,6 +185,29 @@ export async function pickVideoFromGallery(): Promise<CapturedMedia | null> {
     fileName: asset.fileName ?? 'delay-video.mp4',
     location: loc,
   };
+}
+
+/**
+ * Open the camera straight away (no "camera or gallery?" question). If the
+ * camera can't be used — permission denied, no camera — offer the gallery
+ * instead of failing. Screens offer the gallery directly on long-press.
+ */
+export async function takePhoto(): Promise<CapturedPhoto | null> {
+  try {
+    return await capturePhoto();
+  } catch (err: any) {
+    return new Promise((resolve) => {
+      Alert.alert(
+        translate('err_camera_title', 'Camera'),
+        `${err?.message ?? translate('err_camera_permission', 'Camera permission is required to take trip photos.')}`,
+        [
+          { text: translate('action_pick_gallery', 'Choose from Gallery'), onPress: () => { pickFromGallery().then(resolve).catch(() => resolve(null)); } },
+          { text: translate('action_cancel', 'Cancel'), style: 'cancel', onPress: () => resolve(null) },
+        ],
+        { cancelable: true, onDismiss: () => resolve(null) },
+      );
+    });
+  }
 }
 
 /**

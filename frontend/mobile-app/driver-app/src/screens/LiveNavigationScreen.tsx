@@ -18,7 +18,8 @@ import { useCurrentTrip } from '../hooks/use-current-trip';
 import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
 
 import { targetFromWorkflowState, parseStopWorkflowState } from '../utils/routeParser';
-import { choosePhoto, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { takePhoto, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { showToast } from '../components/AppToast';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
@@ -62,6 +63,8 @@ const LiveNavigationScreen = () => {
   const [arriving, setArriving] = useState(false);
   const [delayModalVisible, setDelayModalVisible] = useState(false);
   const [arrivalPhoto, setArrivalPhoto] = useState<CapturedPhoto | null>(null);
+  const arrivalPhotoRef = useRef<CapturedPhoto | null>(null);
+  useEffect(() => { arrivalPhotoRef.current = arrivalPhoto; }, [arrivalPhoto]);
   const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const hasArrivedRef = useRef(false);
 
@@ -147,30 +150,21 @@ const LiveNavigationScreen = () => {
   }, [dropoffStop]);
 
   const handleAddPhoto = async () => {
-    try {
-      const photo = await choosePhoto();
-      if (photo) {
-        setArrivalPhoto(photo);
-      }
-    } catch (e) {
-      Alert.alert(t('err_camera_title', 'Camera Error'), getApiErrorMessage(e));
-    }
+    const photo = await takePhoto();
+    if (photo) setArrivalPhoto(photo);
+    return photo;
   };
 
-  const goToStop = async () => {
+  /**
+   * "I've arrived": takes the arrival photo right now if there isn't one yet
+   * (camera opens straight away), then confirms arrival — one tap instead of
+   * a separate photo box plus a disabled button.
+   */
+  const goToStop = async (photoArg?: CapturedPhoto | null) => {
     if (!trip || hasArrivedRef.current) return;
 
-    if (!arrivalPhoto) {
-      Alert.alert(
-        t('err_arrival_photo_needed', 'Arrival Photo Required'),
-        t('err_arrival_photo_needed', 'Please capture or attach an arrival photo before confirming arrival.'),
-        [
-          { text: t('action_add_image', 'Add Image') + ' 📷', onPress: handleAddPhoto },
-          { text: t('action_cancel', 'Cancel'), style: 'cancel' },
-        ]
-      );
-      return;
-    }
+    const arrivalPhoto = photoArg ?? arrivalPhotoRef.current ?? (await handleAddPhoto());
+    if (!arrivalPhoto) return;
 
     hasArrivedRef.current = true;
     setArriving(true);
@@ -200,6 +194,7 @@ const LiveNavigationScreen = () => {
           );
         } catch (photoErr) {
           console.warn('Arrival photo upload warning:', photoErr);
+          showToast(t('warn_arrival_photo_upload', 'Arrival photo could not upload — arrival is still confirmed.'), 'info');
         }
       }
 
@@ -306,7 +301,7 @@ const LiveNavigationScreen = () => {
           if (activeStop && isValidCoordinate(activeStop.location_lat, activeStop.location_lng)) {
             const dist = distanceMeters(lat, lng, activeStop.location_lat, activeStop.location_lng);
             setDistanceToTarget(dist);
-            if (dist <= ARRIVAL_RADIUS_M && !hasArrivedRef.current && arrivalPhoto) goToStop();
+            if (dist <= ARRIVAL_RADIUS_M && !hasArrivedRef.current && arrivalPhotoRef.current) goToStop();
           } else {
             setDistanceToTarget(null);
           }
@@ -475,6 +470,14 @@ const LiveNavigationScreen = () => {
       {/* Map controls: 3D/2D, follow truck / whole route, day/night */}
       <View style={[styles.mapControls, { bottom: Math.max(insets.bottom + 16, 24) + 225 }]}>
         <TouchableOpacity
+          style={[styles.mapControlBtn, styles.sosBtn]}
+          activeOpacity={0.85}
+          accessibilityLabel="Emergency SOS"
+          onPress={() => router.push('/trip/emergency')}
+        >
+          <Text style={styles.sosText}>SOS</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
           style={styles.mapControlBtn}
           activeOpacity={0.85}
           accessibilityLabel={tilt ? 'Switch to 2D map' : 'Switch to 3D map'}
@@ -551,19 +554,7 @@ const LiveNavigationScreen = () => {
                     <Trash2 size={11} color="#FFFFFF" strokeWidth={2.2} />
                   </TouchableOpacity>
                 </View>
-              ) : (
-                <TouchableOpacity
-                  style={styles.addArrivalPhotoBtn}
-                  activeOpacity={0.8}
-                  onPress={handleAddPhoto}
-                >
-                  <View style={styles.addPhotoIconCircle}>
-                    <Camera size={18} color="#FA634E" strokeWidth={2.2} />
-                  </View>
-                  <Text style={styles.addPhotoBtnText}>{t('action_add_image', 'Add Image')}</Text>
-                  <Text style={styles.requiredBadge}>{t('badge_required', 'Required')}</Text>
-                </TouchableOpacity>
-              )}
+              ) : null}
             </View>
 
             {!hasValidActiveCoords && (
@@ -579,18 +570,20 @@ const LiveNavigationScreen = () => {
           <TouchableOpacity
             style={[
               styles.primaryArrivedBtn,
-              { backgroundColor: !arrivalPhoto ? '#94A3B8' : (isHeadingToPickup ? '#FA634E' : '#10B981') },
+              { backgroundColor: isHeadingToPickup ? '#FA634E' : '#10B981' },
               arriving && { opacity: 0.6 }
             ]}
             activeOpacity={0.88}
-            onPress={goToStop}
+            onPress={() => goToStop()}
             disabled={arriving}
           >
             <Text style={styles.primaryArrivedBtnText}>
               {arriving
                 ? t('msg_updating_state', 'Updating State…')
                 : !arrivalPhoto
-                ? t('action_add_image_first', 'ADD IMAGE TO CONFIRM ARRIVAL')
+                ? (isHeadingToPickup
+                  ? t('action_arrived_pickup_photo', "I'VE ARRIVED — TAKE PHOTO")
+                  : t('action_arrived_delivery_photo', "I'VE ARRIVED — TAKE PHOTO"))
                 : isHeadingToPickup
                 ? t('action_arrived_pickup', "I'VE ARRIVED AT PICKUP")
                 : t('action_arrived_delivery', "I'VE ARRIVED AT DELIVERY")}
@@ -761,6 +754,16 @@ const styles = StyleSheet.create({
     elevation: 6,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+  },
+  sosBtn: {
+    backgroundColor: '#DC2626',
+    borderColor: '#DC2626',
+  },
+  sosText: {
+    fontSize: 13,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
   mapControlText: {
     fontSize: 14,

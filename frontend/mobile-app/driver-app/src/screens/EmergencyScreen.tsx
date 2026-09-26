@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, TextInput,
   StyleSheet, StatusBar, Image, Alert, Linking,
@@ -12,13 +12,12 @@ import {
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { Button } from '@mercon/mobile-shared/components/Button';
-import { emergencyService } from '../services/emergency';
+import { emergencyService, type EmergencyContact } from '../services/emergency';
+import { showToast } from '../components/AppToast';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
-import { choosePhoto, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { takePhoto, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
-
-const OPERATOR_EMERGENCY_PHONE = '+966112345678';
 
 const EmergencyScreen = () => {
   const router = useRouter();
@@ -27,6 +26,14 @@ const EmergencyScreen = () => {
   const [photos, setPhotos] = useState<(CapturedPhoto | undefined)[]>([]);
   const [incidentType, setIncidentType] = useState('');
   const [sending, setSending] = useState(false);
+  const [sentAt, setSentAt] = useState<string | null>(null);
+  // Real operator number from the server (this used to dial a made-up
+  // +966 11 234 5678). undefined = still loading, null = nobody on file.
+  const [contact, setContact] = useState<EmergencyContact | null | undefined>(undefined);
+
+  useEffect(() => {
+    emergencyService.getContact().then(setContact).catch(() => setContact(null));
+  }, []);
 
   const incidentTypes: { id: string; labelKey: string; defaultLabel: string; Icon: LucideIcon }[] = [
     { id: 'accident', labelKey: 'incident_accident', defaultLabel: 'Road Accident', Icon: Zap },
@@ -36,14 +43,24 @@ const EmergencyScreen = () => {
   ];
 
   const callOperator = () => {
-    Linking.openURL(`tel:${OPERATOR_EMERGENCY_PHONE}`).catch(() => {
+    if (!contact) {
+      showToast(
+        contact === undefined
+          ? t('msg_loading_operator_number', 'Getting your operator\'s number…')
+          : t('msg_no_operator_number', 'No operator phone on file. Send the report below — every operator is alerted.'),
+        'info',
+      );
+      return;
+    }
+    Linking.openURL(`tel:${contact.phone.replace(/\s+/g, '')}`).catch(() => {
       Alert.alert(t('title_emergency_call_failed', 'Could not place call'), t('msg_call_operator_manual', 'Please dial the operator manually.'));
     });
   };
 
-  const addPhoto = async (index: number) => {
+  const addPhoto = async (index: number, source: 'camera' | 'gallery' = 'camera') => {
     try {
-      const photo = await choosePhoto();
+      // Camera opens straight away; long-press a box for the gallery.
+      const photo = source === 'gallery' ? await pickFromGallery() : await takePhoto();
       if (!photo) return;
       setPhotos((prev) => {
         const next = [...prev];
@@ -56,10 +73,10 @@ const EmergencyScreen = () => {
   };
 
   const send = async () => {
-    if (sending) return;
+    if (sending || sentAt) return;
     const selected = incidentTypes.find((t) => t.id === incidentType);
     if (!selected) {
-      Alert.alert(t('title_select_incident', 'Select an incident type'), t('msg_select_incident_desc', 'Please choose what kind of emergency this is.'));
+      showToast(t('msg_select_incident_desc', 'Please choose what kind of emergency this is.'), 'info');
       return;
     }
     setSending(true);
@@ -85,12 +102,13 @@ const EmergencyScreen = () => {
         lng,
         photos: photos.filter((p): p is CapturedPhoto => !!p),
       });
-      Alert.alert(
-        t('title_emergency_sent', 'Emergency sent'),
+      // Stay on the screen: the confirmation replaces the pop-up, and the
+      // driver can still call the operator.
+      setSentAt(new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }));
+      showToast(
         notified > 0
           ? t('msg_emergency_notified', 'Your operator has been alerted.')
           : t('msg_emergency_recorded', 'Your report was recorded.'),
-        [{ text: t('action_done', 'OK'), onPress: () => router.back() }],
       );
     } catch (e) {
       Alert.alert(t('title_emergency_call_failed', 'Could not send'), getApiErrorMessage(e));
@@ -118,11 +136,23 @@ const EmergencyScreen = () => {
 
         {/* Body */}
         <View style={styles.body}>
+          {sentAt ? (
+            <View style={styles.sentBanner}>
+              <Text style={styles.sentTitle}>{t('title_emergency_sent_at', 'Report sent at')} {sentAt}</Text>
+              <Text style={styles.sentSub}>{t('msg_emergency_sent_sub', 'Your operator has been alerted with your location. Keep your phone with you.')}</Text>
+            </View>
+          ) : null}
           {/* Call Operator */}
           <TouchableOpacity style={styles.callBtn} activeOpacity={0.8} onPress={callOperator}>
-            <Phone size={26} color={Colors.error} strokeWidth={2.2} />
+            <Phone size={26} color={Colors.white} strokeWidth={2.2} />
             <Text style={styles.callText}>{t('action_call_operator_now', 'Call Operator Now')}</Text>
-            <Text style={[styles.callSub, { writingDirection: 'ltr' }]}>+966 11 234 5678</Text>
+            <Text style={[styles.callSub, { writingDirection: 'ltr' }]}>
+              {contact
+                ? `${contact.name ? `${contact.name} · ` : ''}${contact.phone}`
+                : contact === null
+                ? t('msg_no_operator_number_short', 'No operator phone on file')
+                : '…'}
+            </Text>
           </TouchableOpacity>
 
           {/* Incident Type */}
@@ -152,6 +182,7 @@ const EmergencyScreen = () => {
                 style={[styles.photoSlot, photos[i] ? styles.photoFilled : null]}
                 activeOpacity={0.8}
                 onPress={() => addPhoto(i)}
+                onLongPress={photos[i] ? undefined : () => addPhoto(i, 'gallery')}
               >
                 {photos[i] ? (
                   <Image source={{ uri: photos[i]!.uri }} style={styles.photoImg} />
@@ -186,14 +217,24 @@ const EmergencyScreen = () => {
               <Text style={styles.locationValue}>{t('msg_gps_attached_auto', 'Your current GPS location is attached automatically when you send')}</Text>
             </View>
           </View>
-
-          <Button
-            title={sending ? t('action_sending', 'Sending…') : t('action_send_emergency', 'Send Emergency Report')}
-            onPress={send}
-            style={styles.sendBtn}
-          />
         </View>
       </ScrollView>
+
+      {/* Always visible — it used to sit below the photos and notes, off the screen. */}
+      <View style={styles.sendBar}>
+        <Button
+          title={
+            sentAt
+              ? t('action_report_sent', 'Report sent')
+              : sending
+              ? t('action_sending', 'Sending…')
+              : t('action_send_emergency', 'Send Emergency Report')
+          }
+          onPress={send}
+          disabled={!!sentAt || sending}
+          style={styles.sendBtn}
+        />
+      </View>
     </SafeAreaView>
   );
 };
@@ -201,6 +242,33 @@ const EmergencyScreen = () => {
 const styles = StyleSheet.create({
   scroll: {
     paddingBottom: Spacing['3xl'],
+    backgroundColor: Colors.gray100,
+    flexGrow: 1,
+  },
+  sendBar: {
+    backgroundColor: Colors.white,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: Colors.gray200,
+  },
+  sentBanner: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1.5,
+    borderColor: '#16A34A',
+    borderRadius: Radius.xl,
+    padding: Spacing.md,
+    gap: 2,
+  },
+  sentTitle: {
+    fontSize: Typography.base,
+    fontWeight: '800',
+    color: '#14532D',
+  },
+  sentSub: {
+    fontSize: Typography.xs,
+    color: '#166534',
   },
   header: {
     backgroundColor: Colors.error,

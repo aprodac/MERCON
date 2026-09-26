@@ -18,7 +18,7 @@ import { FadedBottomIllustration } from '../components/FadedBottomIllustration';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { tripService, stopAddress, isRoundTrip, getLegIntermediateDbStops } from '@mercon/mobile-shared/lib/trips';
 import { parseTripRouteNodes, parseStopWorkflowState, TimelineStop } from '../utils/routeParser';
-import { choosePhoto, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { takePhoto, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { openInGoogleMaps } from '../services/maps';
@@ -168,13 +168,15 @@ export default function StopVerificationScreen() {
     }
   };
 
-  const handleAddPhoto = async () => {
-    try {
-      const photo = await choosePhoto();
+  /** Camera opens straight away and continues until the stop has 3 photos (cancel stops). Long-press: gallery. */
+  const handleAddPhoto = async (source: 'camera' | 'gallery' = 'camera') => {
+    let list = [...photos];
+    for (;;) {
+      const photo = source === 'gallery' ? await pickFromGallery().catch(() => null) : await takePhoto();
       if (!photo) return;
-      savePhotosState([...photos, photo]);
-    } catch (e) {
-      Alert.alert(t('err_camera_title', 'Camera Error'), getApiErrorMessage(e));
+      list = [...list, photo];
+      savePhotosState(list);
+      if (source === 'gallery' || list.filter((p) => !!p?.uri).length + uploadedCountRef.current >= 3) return;
     }
   };
 
@@ -328,7 +330,7 @@ export default function StopVerificationScreen() {
                 ? t('title_upload_return_stop_photos', 'UPLOAD RETURN STOP PHOTOS')
                 : t('title_upload_stop_photos', 'UPLOAD INTERMEDIATE STOP PHOTOS')}
             </Text>
-            <TouchableOpacity activeOpacity={0.8} onPress={handleAddPhoto}>
+            <TouchableOpacity activeOpacity={0.8} onPress={() => handleAddPhoto()}>
               <View style={styles.cameraCircleBadge}>
                 <Camera size={16} color="#DC2626" strokeWidth={2.2} />
               </View>
@@ -342,7 +344,8 @@ export default function StopVerificationScreen() {
                 key={i}
                 style={photos[i] ? styles.photoSlotFilled : styles.addPhotoCardSlot}
                 activeOpacity={0.8}
-                onPress={photos[i] ? () => setPreviewPhoto(photos[i]) : handleAddPhoto}
+                onPress={photos[i] ? () => setPreviewPhoto(photos[i]) : () => handleAddPhoto()}
+                onLongPress={photos[i] ? undefined : () => handleAddPhoto('gallery')}
               >
                 {photos[i] ? (
                   <>

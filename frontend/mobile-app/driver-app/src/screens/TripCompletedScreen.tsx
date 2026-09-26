@@ -14,9 +14,6 @@ import { useScheduledTrips } from '../hooks/use-scheduled-trips';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const logo = require('@mercon/mobile-shared/assets/images/mercon-logo.png');
-
 const FILE_BASE = API_URL ? API_URL.replace(/\/api\/?$/, '') : '';
 
 const getPhotoUri = (item: any): string | null => {
@@ -337,9 +334,6 @@ const TripCompletedScreen = () => {
             </TouchableOpacity>
           ) : null}
 
-          <View style={styles.cleanBrandingGroup}>
-            <Image source={logo} style={styles.cleanLogoImage} resizeMode="contain" />
-          </View>
         </ScrollView>
 
         {/* Actions: two secondary side by side, Done full width */}
@@ -845,18 +839,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: '#0F172A',
-  },
-  cleanBrandingGroup: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 'auto',
-    marginBottom: 20,
-  },
-  cleanLogoImage: {
-    width: 75,
-    height: 26,
-    alignSelf: 'center',
   },
   cleanActionBar: {
     gap: 10,
