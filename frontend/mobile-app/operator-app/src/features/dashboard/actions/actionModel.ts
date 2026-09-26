@@ -31,7 +31,8 @@ export type ActionIntent =
   | { type: 'handled'; notificationId: string }
   | { type: 'driver'; id: string }
   | { type: 'vehicle'; id: string }
-  | { type: 'invoices' };
+  | { type: 'invoices' }
+  | { type: 'customer'; id: string };
 
 export interface ActionButton {
   label: string;
@@ -312,7 +313,7 @@ export function buildActions(src: ActionSources): ActionItem[] {
       detail: [inv.customer?.name, `${inv.currency || 'SAR'} ${Math.round(Number(inv.total_amount) || 0).toLocaleString('en-US')}`].filter(Boolean).join(' · '),
       at: inv.due_date,
       tripId: null,
-      primary: { label: 'Open', intent: { type: 'invoices' } },
+      primary: inv.customerId ? { label: 'Customer', intent: { type: 'customer', id: inv.customerId } } : { label: 'Open', intent: { type: 'invoices' } },
     });
   }
 

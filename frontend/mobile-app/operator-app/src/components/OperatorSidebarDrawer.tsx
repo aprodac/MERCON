@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import {
-  Bell, Building2, CalendarClock, CreditCard, FileText, FolderOpen, House, LogOut, Route, Search, SquareUserRound, Tag, Truck, Users, Wrench, X,
+  Bell, Building2, CalendarClock, CreditCard, FileText, FolderOpen, House, LogOut, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
@@ -64,8 +64,9 @@ const GROUPS: MenuGroup[] = [
     title: 'Fleet',
     items: [
       { Icon: Truck, label: 'Vehicles', route: '/vehicles', keywords: 'trucks trailers' },
-      { Icon: Building2, label: '3rd party fleet', route: '/third-party', keywords: 'subcontractors providers 3pl' },
-      { Icon: Wrench, label: 'Maintenance', route: '/maintenance', keywords: 'service repair' },
+      // Hidden until these screens can do more than list (owner, 2026-09-26).
+      // { Icon: Building2, label: '3rd party fleet', route: '/third-party', keywords: 'subcontractors providers 3pl' },
+      // { Icon: Wrench, label: 'Maintenance', route: '/maintenance', keywords: 'service repair' },
       { Icon: CalendarClock, label: 'Renewals', route: '/vehicle-renewals', badge: 'renewals', keywords: 'expiring istimara insurance' },
     ],
   },
@@ -73,15 +74,21 @@ const GROUPS: MenuGroup[] = [
     title: 'Finance',
     items: [
       { Icon: Tag, label: 'Quotations', route: '/quotations', keywords: 'rates lanes' },
-      { Icon: FileText, label: 'Invoices', route: '/invoices', badge: 'invoices', keywords: 'billing payments' },
-      { Icon: CreditCard, label: 'Expenses', route: '/expenses', keywords: 'costs receipts' },
+      // { Icon: FileText, label: 'Invoices', route: '/invoices', badge: 'invoices', keywords: 'billing payments' },
+      // { Icon: CreditCard, label: 'Expenses', route: '/expenses', keywords: 'costs receipts' },
     ],
   },
   {
     title: 'Records',
     items: [
-      { Icon: FolderOpen, label: 'Documents', route: '/documents', badge: 'documents', keywords: 'compliance files' },
+      // { Icon: FolderOpen, label: 'Documents', route: '/documents', badge: 'documents', keywords: 'compliance files' },
       { Icon: SquareUserRound, label: 'Customers', route: '/customers', keywords: 'clients contacts' },
+    ],
+  },
+  {
+    title: 'Settings',
+    items: [
+      { Icon: UserCog, label: 'User management', route: '/user-management', keywords: 'users accounts drivers passwords logins admin operator' },
     ],
   },
 ];

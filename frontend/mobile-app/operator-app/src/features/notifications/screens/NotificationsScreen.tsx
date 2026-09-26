@@ -16,8 +16,6 @@ function targetFor(n: AppNotification): Href | null {
       return n.entity_id ? { pathname: '/trip-details', params: { id: n.entity_id } } : null;
     case 'Driver':
       return n.entity_id ? { pathname: '/driver-details', params: { id: n.entity_id } } : null;
-    case 'MaintenanceRecord':
-      return '/maintenance';
     default:
       return null;
   }

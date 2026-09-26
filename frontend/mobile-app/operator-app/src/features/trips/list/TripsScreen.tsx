@@ -12,9 +12,9 @@ import {
   View, Text, TouchableOpacity, StyleSheet, TextInput, SectionList, FlatList, RefreshControl, ActivityIndicator, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  CalendarDays, CircleCheckBig, History, MessageCircle, Phone, Radio, Search, Send, UserRound, X, ArrowUpRight, type LucideIcon,
+  Building2, CalendarDays, CircleCheckBig, History, MessageCircle, Phone, Radio, Search, Send, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -35,7 +35,16 @@ const tap = () => Haptics.selectionAsync().catch(() => {});
 
 export default function TripsScreen() {
   const router = useRouter();
-  const [view, setView] = useState<ListView>('now');
+  // Opened from a truck's or a customer's details: their trips only, until the chip is cleared.
+  const params = useLocalSearchParams<{ vehicleId?: string; plate?: string; customerId?: string; customerName?: string }>();
+  const [scope, setScope] = useState<{ kind: 'truck' | 'customer'; filter: Record<string, string>; label: string } | null>(
+    params.vehicleId
+      ? { kind: 'truck', filter: { vehicle_id: String(params.vehicleId) }, label: String(params.plate ?? 'This truck') }
+      : params.customerId
+        ? { kind: 'customer', filter: { customer_id: String(params.customerId) }, label: String(params.customerName ?? 'This customer') }
+        : null,
+  );
+  const [view, setView] = useState<ListView>(params.vehicleId || params.customerId ? 'history' : 'now');
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -44,7 +53,7 @@ export default function TripsScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const now = useNow();
-  const data = useTripList(view, debounced, now);
+  const data = useTripList(view, debounced, now, scope?.filter);
   const { f, todayKey } = data;
   const selectedDay = day ?? todayKey;
 
@@ -133,6 +142,22 @@ export default function TripsScreen() {
           <Text style={s.h1sub}>
             {board.road.length} on the road · {board.attention.length} need attention
           </Text>
+          {scope ? (
+            <TouchableOpacity
+              style={s.truckChip}
+              onPress={() => {
+                tap();
+                setScope(null);
+                router.setParams({ vehicleId: undefined, plate: undefined, customerId: undefined, customerName: undefined });
+              }}
+              activeOpacity={0.75}
+              accessibilityLabel="Show all trips"
+            >
+              {scope.kind === 'truck' ? <Truck size={13} color="#0C447C" /> : <Building2 size={13} color="#0C447C" />}
+              <Text style={s.truckChipText} numberOfLines={1}>{scope.label}</Text>
+              <X size={13} color="#0C447C" />
+            </TouchableOpacity>
+          ) : null}
         </View>
       </View>
 
@@ -337,6 +362,8 @@ function QuickActions({ trip, onClose, onOpen }: { trip: OperatorTrip | null; on
 }
 
 const s = StyleSheet.create({
+  truckChip: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: '#E6F1FB' },
+  truckChipText: { fontSize: 12, fontWeight: '700', color: '#0C447C' },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 10, gap: 12 },
   h1: { fontSize: 24, fontWeight: '700', color: INK, letterSpacing: -0.4 },
   h1sub: { fontSize: 13, fontWeight: '600', color: MUTED, marginTop: 1 },
