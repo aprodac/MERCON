@@ -1399,6 +1399,17 @@ export const updateTripStatus = async (req: Request, res: Response) => {
 // PHASE 1: DISPATCH & ASSIGNMENT
 // ==========================================
 
+/**
+ * A completed, invoiced or cancelled trip is a record of what happened: its
+ * driver and truck can't change. Reassigning one also used to flip the new
+ * driver to OnTrip and the old one to Available, corrupting both.
+ */
+const CLOSED_TRIP_STATUSES = ['Completed', 'Invoiced', 'Cancelled'];
+const TRIP_CLOSED_RESPONSE = {
+  success: false,
+  error: { code: 'TRIP_CLOSED', message: "This trip is finished — its driver and truck can't be changed." },
+};
+
 export const dispatchTrip = async (req: Request, res: Response) => {
   try {
     const { driver_id, vehicle_id } = req.body;
@@ -1421,6 +1432,9 @@ export const dispatchTrip = async (req: Request, res: Response) => {
       const trip = await tx.trip.findFirst({ where: { id: tripId, deletedAt: null } });
       if (!trip) {
         throw new Error('NOT_FOUND');
+      }
+      if (CLOSED_TRIP_STATUSES.includes(trip.status)) {
+        throw new Error('TRIP_CLOSED');
       }
 
       // Atomically claim the driver/vehicle — see createTrip for why this
@@ -1501,6 +1515,9 @@ export const dispatchTrip = async (req: Request, res: Response) => {
     if (error.message === 'NOT_FOUND') {
       return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
     }
+    if (error.message === 'TRIP_CLOSED') {
+      return res.status(409).json(TRIP_CLOSED_RESPONSE);
+    }
     if (error.message === 'DRIVER_UNAVAILABLE' || error.message === 'VEHICLE_UNAVAILABLE') {
       return res.status(400).json({ success: false, error: { code: 'CONFLICT', message: error.message } });
     }
@@ -1526,6 +1543,7 @@ export const replaceDriver = async (req: Request, res: Response) => {
     const result = await prisma.$transaction(async (tx) => {
       const trip = await tx.trip.findUnique({ where: { id: tripId } });
       if (!trip || !trip.driverId) throw new Error('TRIP_OR_DRIVER_NOT_FOUND');
+      if (CLOSED_TRIP_STATUSES.includes(trip.status)) throw new Error('TRIP_CLOSED');
 
       const oldDriverId = trip.driverId;
       oldDriverIdToNotify = oldDriverId;
@@ -1599,6 +1617,9 @@ export const replaceDriver = async (req: Request, res: Response) => {
 
     res.json({ success: true, data: result });
   } catch (error: any) {
+    if (error.message === 'TRIP_CLOSED') {
+      return res.status(409).json(TRIP_CLOSED_RESPONSE);
+    }
     if (['TRIP_OR_DRIVER_NOT_FOUND', 'NEW_DRIVER_UNAVAILABLE'].includes(error.message)) {
       return res.status(400).json({ success: false, error: { code: 'CONFLICT', message: error.message } });
     }

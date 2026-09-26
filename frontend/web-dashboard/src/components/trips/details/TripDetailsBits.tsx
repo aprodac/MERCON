@@ -1,4 +1,4 @@
-import { Check, CircleAlert, Plus, FileText, ListOrdered, Phone, Smartphone, Truck, UploadCloud, UserRound, X } from 'lucide-react';
+import { AlarmClock, CalendarCheck, Check, CircleAlert, FileText, ListOrdered, Phone, PlayCircle, Plus, Receipt, Route, Smartphone, Timer, Truck, UploadCloud, UserRound, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import DriverAvatar from '@/components/ui/DriverAvatar';
@@ -56,37 +56,111 @@ export function PreTripChecks({ checks, formatDate }: { checks: NonNullable<Trip
 
 // ── Done: trip summary ───────────────────────────────────────────────────────
 
-export function TripSummary({ trip, overview, formatDateTime }: { trip: Trip; overview: TripOverview | undefined; formatDateTime: (iso: string) => string }) {
-  const stops = trip.stops ?? [];
-  const judged = stops.map((s) => minutesLate(s.planned_arrival, s.actual_arrival)).filter((m): m is number => m != null);
-  const onTime = judged.filter((m) => m <= ON_TIME_GRACE_MIN).length;
-  const start = trip.actual_start;
-  const end = trip.actual_end;
-  const durationSec = start && end ? (new Date(end).getTime() - new Date(start).getTime()) / 1000 : null;
-  const cells: { label: string; value: string; tone?: 'good' | 'bad' }[] = [
-    { label: 'Started', value: start ? formatDateTime(start) : '—' },
-    { label: 'Finished', value: end ? formatDateTime(end) : '—' },
-    { label: 'Time taken', value: durationSec && durationSec > 0 ? formatDuration(durationSec) : '—' },
-    ...(judged.length ? [{ label: 'On time', value: `${onTime} of ${judged.length} stops`, tone: onTime === judged.length ? ('good' as const) : ('bad' as const) }] : []),
-    ...(overview?.path_distance_m ? [{ label: 'Distance driven', value: formatKm(overview.path_distance_m / 1000) }] : []),
-    invoiceCell(trip),
-  ];
+/** A small chequered finish flag — lucide has none. */
+function FinishFlag({ className }: { className?: string }) {
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-2 border-b border-black/[0.06] px-4 py-3 dark:border-white/10">
-      {cells.map((c) => (
-        <div key={c.label}>
-          <p className="text-[11px] text-muted-foreground">{c.label}</p>
-          <p className={cn('text-sm font-medium', c.tone === 'good' ? 'text-emerald-700 dark:text-emerald-400' : c.tone === 'bad' ? 'text-rose-700 dark:text-rose-400' : 'text-foreground')}>{c.value}</p>
-        </div>
-      ))}
+    <svg viewBox="0 0 24 24" className={className} aria-hidden>
+      <path d="M5 21V3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+      <rect x="6" y="3.5" width="14" height="10" rx="1" fill="#fff" stroke="currentColor" strokeWidth="1.2" />
+      {[0, 1, 2, 3].map((c) =>
+        [0, 1].map((r) => (
+          <rect key={`${c}-${r}`} x={6 + c * 3.5} y={3.5 + r * 5 + ((c % 2) * 2.5)} width="3.5" height="2.5" fill="currentColor" />
+        )),
+      )}
+    </svg>
+  );
+}
+
+/** One coloured tile: icon in a tinted square, label, value. */
+function SummaryTile({ icon, iconClass, tileClass, label, value, valueClass }: {
+  icon: React.ReactNode; iconClass: string; tileClass: string; label: string; value: string; valueClass: string;
+}) {
+  return (
+    <div className={cn('flex min-w-0 items-center gap-2.5 rounded-xl px-3 py-2.5', tileClass)}>
+      <span className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg', iconClass)}>{icon}</span>
+      <div className="min-w-0">
+        <p className="truncate text-[11px] leading-tight text-muted-foreground">{label}</p>
+        <p className={cn('truncate text-sm leading-tight font-semibold tabular-nums', valueClass)}>{value}</p>
+      </div>
     </div>
   );
 }
 
-function invoiceCell(trip: Trip): { label: string; value: string; tone?: 'good' | 'bad' } {
+/**
+ * How a finished trip went: a start → finish journey strip (time taken and
+ * distance on the line between), then punctuality and invoice as coloured tiles.
+ */
+export function TripSummary({ trip, overview, formatDateTime }: { trip: Trip; overview: TripOverview | undefined; formatDateTime: (iso: string) => string }) {
+  const stops = trip.stops ?? [];
+  const judged = stops.map((s) => minutesLate(s.planned_arrival, s.actual_arrival)).filter((m): m is number => m != null);
+  const onTime = judged.filter((m) => m <= ON_TIME_GRACE_MIN).length;
+  const allOnTime = judged.length > 0 && onTime === judged.length;
+  const start = trip.actual_start;
+  const end = trip.actual_end;
+  const durationSec = start && end ? (new Date(end).getTime() - new Date(start).getTime()) / 1000 : null;
   const inv = trip.invoices?.[0];
-  if (inv) return { label: 'Invoice', value: `${inv.ref_id} · ${inv.status}`, tone: 'good' };
-  return trip.status === 'Invoiced' ? { label: 'Invoice', value: 'Invoiced', tone: 'good' } : { label: 'Invoice', value: 'Not invoiced yet' };
+  const invoiced = !!inv || trip.status === 'Invoiced';
+
+  return (
+    <div className="space-y-2.5 border-b border-black/[0.06] p-3 dark:border-white/10">
+      {/* Start ──── time · distance ──── finish */}
+      <div className="flex items-center gap-2 rounded-xl bg-muted/50 px-3 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-300">
+            <PlayCircle className="size-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-[11px] leading-tight text-muted-foreground">Started</p>
+            <p className="truncate text-[13px] leading-tight font-semibold text-foreground tabular-nums">{start ? formatDateTime(start) : '—'}</p>
+          </div>
+        </div>
+
+        <div className="relative flex min-w-[90px] flex-1 items-center justify-center">
+          <span className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-gradient-to-r from-emerald-400 to-slate-400 dark:to-slate-500" />
+          <span className="relative flex items-center gap-2 rounded-full border border-black/[0.06] bg-white px-2.5 py-0.5 text-[11px] font-semibold text-foreground shadow-sm dark:border-white/10 dark:bg-slate-900">
+            <span className="flex items-center gap-1 text-blue-700 dark:text-blue-300">
+              <Timer className="size-3.5" />
+              {durationSec && durationSec > 0 ? formatDuration(durationSec) : '—'}
+            </span>
+            <span className="flex items-center gap-1 text-violet-700 dark:text-violet-300">
+              <Route className="size-3.5" />
+              {overview?.path_distance_m ? formatKm(overview.path_distance_m / 1000) : 'no GPS'}
+            </span>
+          </span>
+        </div>
+
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0 text-right">
+            <p className="text-[11px] leading-tight text-muted-foreground">Finished</p>
+            <p className="truncate text-[13px] leading-tight font-semibold text-foreground tabular-nums">{end ? formatDateTime(end) : '—'}</p>
+          </div>
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-charcoal/10 text-charcoal dark:bg-white/10 dark:text-white">
+            <FinishFlag className="size-5" />
+          </span>
+        </div>
+      </div>
+
+      {/* Punctuality and billing */}
+      <div className="grid grid-cols-2 gap-2.5">
+        <SummaryTile
+          icon={allOnTime || judged.length === 0 ? <CalendarCheck className="size-[18px]" /> : <AlarmClock className="size-[18px]" />}
+          iconClass={judged.length === 0 ? 'bg-slate-500/10 text-slate-600 dark:text-slate-300' : allOnTime ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300' : 'bg-rose-500/15 text-rose-600 dark:text-rose-300'}
+          tileClass={judged.length === 0 ? 'bg-muted/50' : allOnTime ? 'bg-emerald-500/[0.07]' : 'bg-rose-500/[0.07]'}
+          label="On time"
+          value={judged.length ? `${onTime} of ${judged.length} stops` : 'No planned times'}
+          valueClass={judged.length === 0 ? 'text-foreground' : allOnTime ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400'}
+        />
+        <SummaryTile
+          icon={<Receipt className="size-[18px]" />}
+          iconClass={invoiced ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300' : 'bg-amber-500/15 text-amber-600 dark:text-amber-300'}
+          tileClass={invoiced ? 'bg-emerald-500/[0.07]' : 'bg-amber-500/[0.08]'}
+          label="Invoice"
+          value={inv ? `${inv.ref_id} · ${inv.status}` : invoiced ? 'Invoiced' : 'Not invoiced yet'}
+          valueClass={invoiced ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-800 dark:text-amber-300'}
+        />
+      </div>
+    </div>
+  );
 }
 
 // ── Banners ─────────────────────────────────────────────────────────────────
@@ -136,6 +210,8 @@ export function TruckDriverOverlay({
   const change = (mode: 'driver' | 'truck') => (
     <button type="button" onClick={() => onReassign(mode)} className="shrink-0 text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400">Change</button>
   );
+  // A finished trip keeps the driver and truck it ran with — no Change (the server refuses it too).
+  const canChange = !trip.is_third_party && !['Completed', 'Invoiced', 'Cancelled'].includes(trip.status);
   const phoneDigits = (p?: string | null) => (p ?? '').replace(/[^0-9]/g, '');
 
   return (
@@ -163,7 +239,7 @@ export function TruckDriverOverlay({
             </p>
           )}
         </div>
-        {!trip.is_third_party && change('truck')}
+        {canChange && change('truck')}
       </div>
 
       {/* Driver */}
@@ -199,7 +275,7 @@ export function TruckDriverOverlay({
             </div>
           )}
         </div>
-        {!trip.is_third_party && change('driver')}
+        {canChange && change('driver')}
       </div>
 
       {/* Co-driver */}
