@@ -821,6 +821,42 @@ export const operatorService = {
     return data.data as OperatorDriver;
   },
 
+  /** Every driver with its login account, for User management. */
+  async driverAccounts(): Promise<OperatorDriver[]> {
+    const { data } = await api.get('/drivers', { params: { per_page: 1000, sortOrder: 'name_asc' } });
+    return (data.data ?? []) as OperatorDriver[];
+  },
+
+  /** Sets (or resets) a driver's app login password; creates the linked login account if missing. */
+  async setDriverPassword(id: string, password: string): Promise<void> {
+    await api.post(`/drivers/${id}/set-password`, { password });
+  },
+
+  /** Web/operator app accounts (Admin + Operator) — drivers are managed via /drivers. */
+  async platformUsers(): Promise<PlatformUser[]> {
+    const { data } = await api.get('/users');
+    return (data.data ?? []) as PlatformUser[];
+  },
+
+  async createPlatformUser(payload: PlatformUserInput & { password: string }): Promise<PlatformUser> {
+    const { data } = await api.post('/users', payload);
+    return data.data as PlatformUser;
+  },
+
+  async updatePlatformUser(id: string, payload: PlatformUserInput): Promise<PlatformUser> {
+    const { data } = await api.put(`/users/${id}`, payload);
+    return data.data as PlatformUser;
+  },
+
+  async deletePlatformUser(id: string): Promise<void> {
+    await api.delete(`/users/${id}`);
+  },
+
+  async createDriver(payload: CreateDriverInput): Promise<OperatorDriver> {
+    const { data } = await api.post('/drivers', payload);
+    return data.data as OperatorDriver;
+  },
+
   async updateVehicle(id: string, payload: UpdateVehicleInput): Promise<OperatorVehicle> {
     const { data } = await api.patch(`/vehicles/${id}`, payload);
     return data.data as OperatorVehicle;
@@ -986,6 +1022,7 @@ export interface OperatorInvoice {
   total_amount: number;
   due_date: string;
   createdAt: string;
+  customerId?: string | null;
   customer?: { name: string } | null;
   trip?: { ref_id: string | null } | null;
 }
@@ -1013,6 +1050,29 @@ export interface OperatorDriver {
   photo_url?: string | null;
   assigned_vehicle?: { plate_number?: string | null } | null;
   current_vehicle?: { plate_number?: string | null } | null;
+  /** Linked login account — present once a password has been set. */
+  user?: { id: string; username: string | null; phone: string | null } | null;
+}
+
+export interface PlatformUser {
+  id: string;
+  name: string;
+  username: string | null;
+  phone: string | null;
+  email: string | null;
+  role: 'Admin' | 'Operator';
+  status: 'Active' | 'Inactive';
+  createdAt: string;
+}
+
+export interface PlatformUserInput {
+  name?: string;
+  username?: string;
+  phone?: string;
+  email?: string | null;
+  role?: 'Admin' | 'Operator';
+  status?: 'Active' | 'Inactive';
+  password?: string;
 }
 
 
@@ -1023,6 +1083,14 @@ export interface UpdateDriverInput {
   license_number?: string;
   license_expiry?: string;
   status?: 'Available' | 'OnTrip' | 'OffDuty' | 'Inactive';
+}
+
+export interface CreateDriverInput {
+  first_name: string;
+  last_name: string;
+  phone_primary: string;
+  license_number: string;
+  license_expiry: string;
 }
 
 export interface UpdateVehicleInput {

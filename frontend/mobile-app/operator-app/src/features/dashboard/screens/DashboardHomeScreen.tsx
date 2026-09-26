@@ -65,7 +65,10 @@ export default function DashboardHomeScreen() {
         router.push({ pathname: '/driver-details', params: { id: intent.id } });
         return;
       case 'vehicle':
-        router.push({ pathname: '/vehicle-edit', params: { id: intent.id } });
+        router.push({ pathname: '/vehicle-details', params: { id: intent.id } });
+        return;
+      case 'customer':
+        router.push({ pathname: '/customer-details', params: { id: intent.id } });
         return;
       case 'invoices':
         router.push('/invoices');
