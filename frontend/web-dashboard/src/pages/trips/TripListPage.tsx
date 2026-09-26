@@ -77,6 +77,7 @@ const TRIP_SORT_OPTIONS: SortOption<TripSortOption>[] = [
 ];
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import PostTripSettlementModal from '@/components/trips/PostTripSettlementModal';
+import { TRIP_TRANSITIONS } from '@/lib/liveOps';
 import TripKanbanBoard, { TripKanbanBoardRef } from '@/components/trips/kanban/TripKanbanBoard';
 import VehiclePreviewModal from '@/components/fleet/VehiclePreviewModal';
 import CustomerPreviewModal from '@/components/customers/CustomerPreviewModal';
@@ -575,16 +576,7 @@ const matchesTripStatusFilter = (trip: Trip, filter: TripStatusFilter) => {
  * taught about yet) allows every transition — failing open, so an unrecognized
  * status blocks nothing and the backend remains the real gate either way.
  */
-const KANBAN_ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  Draft: ['Scheduled', 'Loading', 'InTransit', 'Cancelled'],
-  Scheduled: ['Draft', 'Loading', 'InTransit', 'Delayed', 'Cancelled'],
-  Loading: ['Draft', 'Scheduled', 'InTransit', 'Delayed', 'Cancelled'],
-  InTransit: ['Draft', 'Scheduled', 'Loading', 'Delayed', 'Completed', 'Cancelled'],
-  Delayed: ['Draft', 'Scheduled', 'Loading', 'InTransit', 'Completed', 'Cancelled'],
-  Completed: ['Invoiced', 'InTransit', 'Loading', 'Scheduled'],
-  Invoiced: ['Completed'],
-  Cancelled: ['Draft', 'Scheduled'],
-};
+const KANBAN_ALLOWED_TRANSITIONS = TRIP_TRANSITIONS;
 
 const isKanbanTransitionAllowed = (from: string, to: string): boolean => {
   if (from === to) return true;
