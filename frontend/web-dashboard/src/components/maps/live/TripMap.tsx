@@ -6,7 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { Focus, Map as MapIcon, Minus, Moon, Navigation, Plus, Route, Sun, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatInDeploymentTz, useDeploymentTimezone } from '@/lib/datetime';
-import { computeEta, formatDuration, formatKm, groupStopsOf, routeBearing, type EtaInfo } from '@/lib/fleetLive';
+import { computeEta, formatDuration, formatKm, groupStopsOf, haversineKm, routeBearing, type EtaInfo } from '@/lib/fleetLive';
 import { fleetLiveService, type TripOverview } from '@/services/fleetLiveService';
 import { SAUDI_CENTER, DEFAULT_SAUDI_ZOOM } from '@/utils/saudiMapConfig';
 import { LiveUnitMarker } from './LiveUnitMarker';
@@ -15,6 +15,8 @@ import { EtaStrip, GLASS } from './LiveUnitPanel';
 import { BUILDING_EXTRUSION_COLOR, LIVE_MAP_STYLES, ROUTE_COLOR, applyMapPalette, type LiveMapTheme } from './liveMapStyle';
 
 const THEME_KEY = 'mercon.liveMap.theme';
+/** A driven path with no point within this distance of any stop is flagged. */
+const PATH_NEAR_STOP_KM = 25;
 const ACTIVE_REFRESH_MS = 15_000;
 const PLANNED_REFRESH_MS = 60_000;
 
@@ -102,6 +104,18 @@ export default function TripMap({ tripId, className, overlay, onEta }: {
     [data?.stops, nextIdx],
   );
 
+  // The driven path as points (every 10th is plenty for framing), and whether it
+  // is anywhere near the trip's stops. A phone that never left the office, or the
+  // wrong device, records a path nowhere near the route — say so, don't hide it.
+  const pathPoints = useMemo(
+    () => (data?.path ?? []).filter((_, i, a) => i % 10 === 0 || i === a.length - 1).map(([lng, lat]) => ({ lat, lng })),
+    [data?.path],
+  );
+  const pathFarFromStops = useMemo(() => {
+    if (pathPoints.length < 2 || stopsWithCoords.length === 0) return false;
+    return pathPoints.every((p) => stopsWithCoords.every((s) => haversineKm(p, s) > PATH_NEAR_STOP_KM));
+  }, [pathPoints, stopsWithCoords]);
+
   // ── Routes (each only where its state needs it) ──
   const noDrivenPath = (data?.path.length ?? 0) < 2;
   const needAllStopsRoute = phase === 'planned' || phase === 'cancelled' || (phase === 'done' && noDrivenPath);
@@ -141,12 +155,16 @@ export default function TripMap({ tripId, className, overlay, onEta }: {
   const fitAll = useCallback((animate = true) => {
     const map = mapRef.current;
     if (!map) return;
-    const pts = [...stopsWithCoords, ...(pos && phase !== 'done' && phase !== 'cancelled' ? [pos] : [])];
+    const pts = [
+      ...stopsWithCoords,
+      ...(pos && phase !== 'done' && phase !== 'cancelled' ? [pos] : []),
+      ...pathPoints,
+    ];
     const b = boundsOf(pts);
     if (!b) return;
     setPov(false);
     map.fitBounds(b, { padding: { top: 70, bottom: phase === 'active' ? 110 : 60, left: 60, right: 70 }, maxZoom: 14, pitch: 0, bearing: 0, duration: animate ? 1200 : 0 });
-  }, [stopsWithCoords, pos, phase]);
+  }, [stopsWithCoords, pos, phase, pathPoints]);
 
   const fitted = useRef(false);
   useEffect(() => {
@@ -305,7 +323,7 @@ export default function TripMap({ tripId, className, overlay, onEta }: {
         {/* Top: what the lines mean in this state, and the driver-view switch for a live trip */}
         <div className="absolute top-3 left-3 flex max-w-[calc(100%-15rem)] flex-col items-start gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            {phase && <StateNote overview={data!} legKm={leg ? leg.distanceMeters / 1000 : null} legSec={leg?.durationSeconds ?? null} />}
+            {phase && <StateNote overview={data!} legKm={leg ? leg.distanceMeters / 1000 : null} legSec={leg?.durationSeconds ?? null} pathFar={pathFarFromStops} />}
           </div>
           {overlay}
         </div>
@@ -354,11 +372,19 @@ export default function TripMap({ tripId, className, overlay, onEta }: {
 }
 
 /** One quiet line explaining the lines on the map for this state. */
-function StateNote({ overview, legKm, legSec }: { overview: TripOverview; legKm: number | null; legSec: number | null }) {
+function StateNote({ overview, legKm, legSec, pathFar }: { overview: TripOverview; legKm: number | null; legSec: number | null; pathFar: boolean }) {
   const pill = cn('pointer-events-auto flex h-8 items-center gap-2 rounded-xl px-3 text-xs font-medium text-foreground', GLASS);
   const swatch = (color: string, dashed = false) => (
     <span className="h-1 w-5 rounded-full" style={dashed ? { backgroundImage: `repeating-linear-gradient(90deg, ${color} 0 6px, transparent 6px 10px)` } : { backgroundColor: color }} />
   );
+
+  if (pathFar && (overview.phase === 'active' || overview.phase === 'done')) {
+    return (
+      <span className={cn(pill, 'text-amber-800 dark:text-amber-300')} title="The driver app's GPS points are all far from this trip's stops — typically a test trip, or the app running on a phone that wasn't in the truck.">
+        <Route className="size-3.5" /> GPS path is far from the stops — test trip or wrong device?
+      </span>
+    );
+  }
 
   switch (overview.phase) {
     case 'planned':
