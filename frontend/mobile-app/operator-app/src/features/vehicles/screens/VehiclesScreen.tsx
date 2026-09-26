@@ -57,7 +57,7 @@ export default function VehiclesScreen() {
   const isFiltered = Boolean(debouncedQuery || status);
 
   const openVehicle = (vehicle: VehicleListItem) => {
-    router.push({ pathname: '/vehicle-edit', params: { id: vehicle.id } });
+    router.push({ pathname: '/vehicle-details', params: { id: vehicle.id } });
   };
 
   const openTrip = (tripId: string) => {
