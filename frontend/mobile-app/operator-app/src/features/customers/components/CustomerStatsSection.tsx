@@ -26,9 +26,11 @@ interface CustomerStatsSectionProps {
   inset: number;
 }
 
-function SkeletonTile() {
+import type { DimensionValue } from 'react-native';
+
+function SkeletonTile({ width = CARD_WIDTH }: { width?: DimensionValue }) {
   return (
-    <View style={{ width: CARD_WIDTH, padding: 18 }} className="rounded-[22px] bg-navbg">
+    <View style={{ width, padding: 18 }} className="rounded-[22px] bg-navbg">
       <SkeletonBlock width={44} height={44} radius={16} className="bg-white/10" />
       <View className="mt-5 gap-2">
         <SkeletonBlock width={62} height={26} className="bg-white/10" />
@@ -63,32 +65,28 @@ export function CustomerStatsSection({ stats, loading, inset }: CustomerStatsSec
     },
   ];
 
-  const contentContainerStyle = { paddingHorizontal: inset, gap: GAP };
-  const bleed = { marginHorizontal: -inset };
-
   if (loading) {
     return (
-      <View style={bleed}>
-        <View className="flex-row" style={contentContainerStyle}>
-          <SkeletonTile />
-          <SkeletonTile />
-        </View>
+      <View className="flex-row" style={{ paddingHorizontal: inset, gap: GAP }}>
+        <View style={{ flex: 1 }}><SkeletonTile width="100%" /></View>
+        <View style={{ flex: 1 }}><SkeletonTile width="100%" /></View>
       </View>
     );
   }
 
   return (
-    <FlatList
-      horizontal
-      style={bleed}
-      data={entries}
-      keyExtractor={(e) => e.key}
-      renderItem={({ item }) => (
-        <CustomerStatCardMemo Icon={item.Icon} value={item.value} label={item.label} caption={item.caption} />
-      )}
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={contentContainerStyle}
-      nestedScrollEnabled
-    />
+    <View className="flex-row" style={{ paddingHorizontal: inset, gap: GAP }}>
+      {entries.map((item) => (
+        <View key={item.key} style={{ flex: 1 }}>
+          <CustomerStatCardMemo
+            Icon={item.Icon}
+            value={item.value}
+            label={item.label}
+            caption={item.caption}
+            width={undefined as any}
+          />
+        </View>
+      ))}
+    </View>
   );
 }
