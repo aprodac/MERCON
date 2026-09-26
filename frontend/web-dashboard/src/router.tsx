@@ -34,6 +34,7 @@ const NotificationsPage       = lazyWithRetry(() => import('@/pages/notification
 
 // Trips
 const TripListPage            = lazyWithRetry(() => import('@/pages/trips/TripListPage'));
+const LiveMapPage             = lazyWithRetry(() => import('@/pages/live-map/LiveMapPage'));
 const MonthlyTripsPage        = lazyWithRetry(() => import('@/pages/trips/MonthlyTripsPage'));
 const TripDetailsPage         = lazyWithRetry(() => import('@/pages/trips/TripDetailsPage'));
 const CreateTripPage          = lazyWithRetry(() => import('@/pages/trips/CreateTripPage'));
@@ -228,6 +229,9 @@ export default function AppRouter() {
           >
             <Route path="/"            element={<RequireModule moduleKey="dashboard"><DashboardPage /></RequireModule>} />
             <Route path="/notifications" element={<NotificationsPage />} />
+
+            {/* Live map — the whole fleet with the operations sidebar */}
+            <Route path="/live-map"                 element={<RequireModule moduleKey="trips"><LiveMapPage /></RequireModule>} />
 
             {/* Trips */}
             <Route path="/trips"                    element={<RequireModule moduleKey="trips"><TripListPage /></RequireModule>} />

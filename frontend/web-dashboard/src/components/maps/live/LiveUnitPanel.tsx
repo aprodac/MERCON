@@ -21,7 +21,8 @@ interface Props {
   onShare: () => void;
   onShowRoute: () => void;
   expanded: boolean;
-  onToggleExpand: () => void;
+  /** Omitted where the map already fills the page — the button is then hidden. */
+  onToggleExpand?: () => void;
   /** Driver view: camera behind the arrow, facing its direction. */
   pov: boolean;
   onTogglePov: () => void;
@@ -101,16 +102,18 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
           <Route className="size-4" />
         </Button>
       )}
-      <Button
-        variant="outline"
-        size="icon"
-        className="size-9 rounded-xl"
-        title={expanded ? 'Exit full screen' : 'Full screen'}
-        aria-label={expanded ? 'Exit full screen' : 'Full screen'}
-        onClick={onToggleExpand}
-      >
-        {expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
-      </Button>
+      {onToggleExpand && (
+        <Button
+          variant="outline"
+          size="icon"
+          className="size-9 rounded-xl"
+          title={expanded ? 'Exit full screen' : 'Full screen'}
+          aria-label={expanded ? 'Exit full screen' : 'Full screen'}
+          onClick={onToggleExpand}
+        >
+          {expanded ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+        </Button>
+      )}
     </div>
   );
 
@@ -246,7 +249,7 @@ export function LiveUnitPanel({ unit, eta, formatTime, compact, onClose, onShare
   );
 }
 
-function MotionChip({ unit }: { unit: LiveUnit }) {
+export function MotionChip({ unit }: { unit: LiveUnit }) {
   const cls =
     unit.motion === 'moving'
       ? 'bg-emerald-500/12 text-emerald-700 dark:text-emerald-300'
