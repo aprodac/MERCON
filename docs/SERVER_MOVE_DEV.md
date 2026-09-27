@@ -15,7 +15,7 @@ DNS switch.
 | Dev encryption key | `/etc/aprodac/clients/dev/secrets.env` | Bundle (never through GitHub) |
 | dev.mercon.tech certificate + certbot account | `/etc/letsencrypt` | Bundle, renewed later on the new server |
 | Nginx site | `nginx/dev-mercon-api.conf` (+ new `nginx/00-default-ssl-dev.conf`) | Installed by the dev deploy |
-| Deploy runner | One runner for everything | New runner labelled `dev` on the new server; old one labelled `prod` |
+| Deploy runner | One runner for everything | New runner with **only** the label `dev` (no `self-hosted`, so production jobs can never land there); old one labelled `prod` |
 
 GitHub secrets (`DEV_*`) do not change.
 

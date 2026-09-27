@@ -18,8 +18,9 @@ concurrency:
 jobs:
   deploy:
     name: Deploy dev stack to Self-Hosted Runner
-    # The dev server (82.29.167.128). Production deploys run on the `prod` runner.
-    runs-on: [self-hosted, dev]
+    # The dev server (82.29.167.128). Its runner has only the `dev` label (no
+    # generic `self-hosted`), so production jobs can never land there.
+    runs-on: [dev]
 
     steps:
       - name: Free Disk Space (Pre-checkout)

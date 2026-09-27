@@ -70,7 +70,10 @@ else
     "https://github.com/actions/runner/releases/download/v${version}/actions-runner-linux-x64-${version}.tar.gz"
   tar -xzf /tmp/actions-runner.tgz -C "$RUNNER_DIR" && rm -f /tmp/actions-runner.tgz
   # The production runner also runs as root (the deploy uses docker and sudo).
-  (cd "$RUNNER_DIR" && RUNNER_ALLOW_RUNASROOT=1 ./config.sh --unattended --replace \
+  # --no-default-labels: this runner carries ONLY "$LABEL", never the generic
+  # "self-hosted" — otherwise any workflow still saying `runs-on: self-hosted`
+  # (e.g. production deploys on main) could be picked up here.
+  (cd "$RUNNER_DIR" && RUNNER_ALLOW_RUNASROOT=1 ./config.sh --unattended --replace --no-default-labels \
     --url "$REPO_URL" --token "$RUNNER_TOKEN" --name "$(hostname)-$LABEL" --labels "$LABEL")
 fi
 

@@ -78,7 +78,7 @@ jobs:
   import:
     name: Restore snapshot into dev
     needs: export
-    runs-on: [self-hosted, dev]
+    runs-on: [dev]
 
     steps:
       - name: Fetch snapshot

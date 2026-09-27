@@ -6,7 +6,7 @@ on:
 jobs:
   inspect-dev:
     name: Inspect DEV _prisma_migrations and physical schema
-    runs-on: [self-hosted, dev]
+    runs-on: [dev]
 
     steps:
       - name: Inspect DEV database migration ledger and physical schema
