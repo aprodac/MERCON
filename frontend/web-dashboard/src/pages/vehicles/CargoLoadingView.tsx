@@ -9,6 +9,11 @@ import { maintenanceService } from '@/services/maintenanceService';
 import { documentService } from '@/services/documentService';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import {
+  dk, EMPTY, fmtDate, fmtSar, fmtTons, toNum, personName, routeOf, humanize, tripFacts,
+  StatusPill, entityStatusTone, entityStatusLabel,
+  DetailTitleRow, KpiCard, PanelHeader, PanelSearch, EmptyState, ListPager, ViewAllButton, TripCard, TripPreview,
+} from '@/components/details/DetailKit';
 import { 
   Phone, MessageSquare, ArrowRight, CheckCircle2, 
   Search, SlidersHorizontal, LayoutGrid, Plus, 
@@ -24,7 +29,6 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import DriverAvatar from '@/components/ui/DriverAvatar';
-import SlowScrollingDriverName from '@/components/ui/SlowScrollingDriverName';
 import DocumentsValidityFolder from '@/components/ui/DocumentsValidityFolder';
 import VisualRouteProgress from '@/components/trips/VisualRouteProgress';
 import { useDeploymentTimezone, formatInDeploymentTz } from '@/lib/datetime';
@@ -104,7 +108,7 @@ interface VehicleTripDisplay {
   customerName: string;
   customerLogo: string | null;
   cargoType: string;
-  totalWeight: string;
+  tripValue: string;
   date: string;
 }
 
@@ -482,23 +486,30 @@ export default function CargoLoadingView() {
     : [];
 
   const plateNumber = vehicle?.plate_number || id || '—';
-  const vehicleStatus: string = (vehicle?.status as string) || 'Loading';
+  const vehicleStatus: string = (vehicle?.status as string) || '';
   const assignedDriver = vehicle?.assignedDriver || (vehicle as any)?.driver;
-  const driverFirstName = assignedDriver?.first_name || (assignedDriver?.name ? assignedDriver.name.split(' ')[0] : 'Unassigned');
-  const driverLastName = assignedDriver?.last_name || (assignedDriver?.name ? assignedDriver.name.split(' ').slice(1).join(' ') : 'Driver');
-  const driverName = assignedDriver 
-    ? `${assignedDriver.first_name || ''} ${assignedDriver.last_name || ''}`.trim() || assignedDriver.name
-    : 'Unassigned Driver';
+  const driverFirstName = assignedDriver?.first_name || (assignedDriver?.name ? assignedDriver.name.split(' ')[0] : '');
+  const driverLastName = assignedDriver?.last_name || (assignedDriver?.name ? assignedDriver.name.split(' ').slice(1).join(' ') : '');
+  const driverName = personName(assignedDriver) || 'Unassigned';
+  const driverPhone: string = assignedDriver?.phone_primary || assignedDriver?.phone || '';
   const rawAvatarUrl = assignedDriver?.avatar_url || assignedDriver?.photo_url || assignedDriver?.image_url || (assignedDriver as any)?.avatar || null;
   const driverAvatar = getDriverAvatar(rawAvatarUrl, driverName) || (rawAvatarUrl ? resolveFileUrl(rawAvatarUrl) : '');
   const capacityFormatted = vehicle?.capacity_kg ? `${(vehicle.capacity_kg / 1000).toLocaleString()} Ton` : '—';
-  const tripRoute = vehicleStatus === 'OnTrip' || vehicleStatus === 'In Transit' || vehicleStatus === 'InTransit' ? 'Riyadh → Al Bahah' : 'Riyadh → Al Hasa';
 
-  const rawOdometer = (vehicle as any)?.odometer_reading || (vehicle as any)?.odometer || (maintenanceData?.data?.[0]?.odometer_reading) || 348210;
-  const latestOdometerFormatted = `${Number(rawOdometer).toLocaleString()} km`;
-  const totalYtdSpend = (maintenanceData?.data || []).reduce((acc: number, item: any) => acc + (Number(item.cost) || 0), 0);
-  const ytdSpendFormatted = totalYtdSpend > 0 ? `SAR ${totalYtdSpend.toLocaleString()}` : 'SAR 14,250';
-  const nextServiceDue = 'In 4,800 km';
+  // Telemetry strip: real readings only, "—" when nothing has been recorded.
+  const maintenanceRecords: any[] = maintenanceData?.data || [];
+  const rawOdometer = toNum(vehicle?.current_odometer) ||
+    Math.max(0, ...maintenanceRecords.map((m) => toNum(m.odometer_reading)));
+  const latestOdometerFormatted = rawOdometer > 0 ? `${Math.round(rawOdometer).toLocaleString('en-US')} km` : EMPTY;
+  const thisYear = new Date().getFullYear();
+  const totalYtdSpend = maintenanceRecords
+    .filter((m) => new Date(m.service_date || m.start_date || m.createdAt).getFullYear() === thisYear)
+    .reduce((acc: number, m: any) => acc + toNum(m.cost), 0);
+  const ytdSpendFormatted = fmtSar(totalYtdSpend);
+  const upcomingService = maintenanceRecords
+    .map((m) => m.next_service_due)
+    .filter((d): d is string => !!d && new Date(d).getTime() >= Date.now() - 86400000)
+    .sort()[0];
 
   const tz = useDeploymentTimezone();
   const [selectedSlot, setSelectedSlot] = useState<SlotId | null>(null);
@@ -999,58 +1010,20 @@ export default function CargoLoadingView() {
   }, [vehicle]);
 
   const mapTripToDisplay = (t: any): VehicleTripDisplay => {
-    let originStr = 'Riyadh';
-    let destStr = 'Al Bahah';
-    let routeStr = '—';
-
-    if (t.stops && t.stops.length >= 2) {
-      originStr = formatText(t.stops[0]?.location_name || t.stops[0]?.city || 'Riyadh');
-      destStr = formatText(t.stops[t.stops.length - 1]?.location_name || t.stops[t.stops.length - 1]?.city || 'Al Bahah');
-      routeStr = `${originStr} → ${destStr}`;
-    } else if (t.stops && t.stops.length === 1) {
-      originStr = formatText(t.stops[0]?.location_name || t.stops[0]?.city || 'Riyadh');
-      destStr = 'Al Bahah';
-      routeStr = originStr;
-    } else if (t.origin_city || t.destination_city) {
-      originStr = formatText(t.origin_city || 'Riyadh');
-      destStr = formatText(t.destination_city || 'Al Bahah');
-      routeStr = `${originStr} → ${destStr}`;
-    } else if (t.origin || t.destination) {
-      originStr = formatText(t.origin || 'Riyadh');
-      destStr = formatText(t.destination || 'Al Bahah');
-      routeStr = `${originStr} → ${destStr}`;
-    } else {
-      routeStr = 'Riyadh → Al Bahah';
-    }
-
-    const rawWeight = t.total_weight || t.planned_capacity_kg || t.cargo_weight || vehicle?.capacity_kg;
-    const weightStr = rawWeight 
-      ? `${Number(rawWeight).toLocaleString()} Kg` 
-      : '10,000 Kg';
-
-    const customerName = t.customer?.name || t.customer_name || 'Aprodac';
-    const rawLogo = t.customer?.logo_url || t.customer?.avatar_url || t.customer_logo || null;
-    const customerLogo = rawLogo ? resolveFileUrl(rawLogo) : null;
-    const rawType = t.cargo_type || t.rate_category || t.billing_type || t.line_type || 'Single Trip';
-    const cargoType = formatText(rawType);
-
-    const rawDate = t.departure_date || t.scheduled_date || t.created_at || t.createdAt || t.start_date || t.dispatch_date;
-    const dateStr = rawDate
-      ? new Date(rawDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-      : '14 Sep 2026';
-
+    const { origin, destination } = routeOf(t);
+    const rawLogo = t.customer?.logo_url || null;
     return {
-      id: t.ref_id || (t.id ? `TRP-${t.id.slice(0, 6)}` : 'TRP-001'),
+      id: t.ref_id || String(t.id || '').slice(0, 8).toUpperCase(),
       rawId: t.id,
       status: t.status || 'Scheduled',
-      route: routeStr,
-      origin: originStr,
-      destination: destStr,
-      customerName,
-      customerLogo,
-      cargoType,
-      totalWeight: weightStr,
-      date: dateStr,
+      route: `${origin} → ${destination}`,
+      origin,
+      destination,
+      customerName: t.customer?.name || EMPTY,
+      customerLogo: rawLogo ? resolveFileUrl(rawLogo) : null,
+      cargoType: t.cargo_type ? humanize(t.cargo_type) : EMPTY,
+      tripValue: fmtSar(t.billing_amount),
+      date: fmtDate(t.planned_start || t.createdAt, tz),
     };
   };
 
@@ -1071,8 +1044,8 @@ export default function CargoLoadingView() {
     return ['completed', 'invoiced', 'delivered'].includes(norm);
   });
 
-  // Completed trips dataset shown in trips box
-  const activeDataset = completedTripsList.length > 0 ? completedTripsList : allVehicleTrips;
+  // Every trip for this truck, newest first (same list the driver and customer pages show)
+  const activeDataset = allVehicleTrips;
 
   const filteredTrips = activeDataset.filter(t => {
     if (!tripSearch.trim()) return true;
@@ -1189,327 +1162,131 @@ export default function CargoLoadingView() {
     }
   };
 
-  return (
-    <div className="w-full bg-[#F5F7FA] text-slate-900 font-sans p-5 sm:p-6 lg:p-7 flex flex-col gap-5 sm:gap-6 overflow-y-auto max-w-[1800px] mx-auto min-h-screen">
-      
-      {/* ── Top Header Bar ── */}
-      <div className="flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3.5">
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">{plateNumber}</h1>
-          <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs sm:text-sm font-bold bg-emerald-100/90 text-emerald-700 border border-emerald-200/60 shadow-2xs">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-            Available
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          <Button 
-            onClick={() => navigate(`/vehicles/${vehicle?.id || id}/edit`)}
-            className="font-bold bg-[#3E3C3D] hover:bg-charcoal-strong text-white gap-2 h-10 text-xs sm:text-sm shadow-xs rounded-xl px-5 transition-colors cursor-pointer"
-          >
-            <Edit2 className="w-4 h-4" />
-            Edit
-          </Button>
-        </div>
-      </div>
+  const selectedTrip = selectedTripIdForPreview
+    ? rawTrips.find((t: any) => t.id === selectedTripIdForPreview || t.ref_id === selectedTripIdForPreview)
+    : null;
+  const whatsappDigits = (() => {
+    const d = driverPhone.replace(/[^0-9]/g, '');
+    if (!d) return '';
+    return d.startsWith('966') ? d : d.startsWith('0') ? `966${d.slice(1)}` : `966${d}`;
+  })();
 
-      {/* ── Top Metrics Grid (4 Large Proportional Cards) ── */}
+  return (
+    <div className={dk.page}>
+
+      {/* ── HEADER: plate, status, 4 KPI cards (same cards as Driver / Customer details) ── */}
+      <DetailTitleRow
+        title={plateNumber}
+        status={<StatusPill tone={entityStatusTone(vehicleStatus)} size="lg">{entityStatusLabel(vehicleStatus)}</StatusPill>}
+        onEdit={() => navigate(`/vehicles/${vehicle?.id || id}/edit`)}
+      />
+
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 shrink-0">
-        
-        {/* Card 1: DRIVER */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center justify-between min-h-[96px]">
-          <div 
-            onClick={handleDriverClick}
-            className="flex items-center gap-3.5 min-w-0 flex-1 pr-2 cursor-pointer group"
-            title="View Driver Details"
-          >
+        <KpiCard
+          label="Driver"
+          value={driverName}
+          sub={assignedDriver ? 'Assigned driver' : 'No driver assigned'}
+          onClick={handleDriverClick}
+          title="View driver details"
+          leading={
             <DriverAvatar
               src={driverAvatar}
               firstName={driverFirstName}
               lastName={driverLastName}
               size="lg"
-              className="w-12 h-12 border-2 border-white shadow-2xs shrink-0 rounded-full ring-1 ring-slate-200 group-hover:ring-[#FA634E] group-hover:scale-105 transition-all"
+              className="w-11 h-11 shrink-0 rounded-full ring-1 ring-slate-200 dark:ring-slate-700"
             />
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none mb-1.5 flex items-center gap-1">
-                DRIVER
-                <ExternalLink className="w-2.5 h-2.5 text-slate-400 group-hover:text-[#FA634E] transition-colors" />
-              </p>
-              <SlowScrollingDriverName
-                name={assignedDriver ? `${assignedDriver.first_name || ''} ${assignedDriver.last_name || ''}`.trim() || assignedDriver.name : 'ABDUL MALIK HABIB UR RAHMAN KHAN'}
-                className="text-xs sm:text-sm font-black text-slate-900 group-hover:text-[#FA634E] leading-snug transition-colors"
-              />
+          }
+          trailing={driverPhone ? (
+            <div className="flex items-center gap-1.5 shrink-0">
+              <a href={`tel:${driverPhone}`} onClick={(e) => e.stopPropagation()} className={dk.iconButton} title="Call Driver" aria-label="Call Driver">
+                <Phone className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              </a>
+              <a href={`https://wa.me/${whatsappDigits}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className={dk.iconButton} title="Send WhatsApp Message" aria-label="Send WhatsApp Message">
+                <WhatsAppIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              </a>
             </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0 ml-2">
-            <button 
-              onClick={() => {
-                const phone = vehicle?.assignedDriver?.phone_primary || assignedDriver?.phone;
-                if (phone) window.open(`tel:${phone}`);
-                else handleDriverClick();
-              }}
-              className="w-9 h-9 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-100 text-emerald-600 flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
-              title="Call Driver"
-            >
-              <Phone className="w-4 h-4 text-emerald-600" />
-            </button>
-            <button 
-              onClick={() => {
-                const rawPhone = vehicle?.assignedDriver?.phone_primary || assignedDriver?.phone || '';
-                const cleanDigits = rawPhone.replace(/[^0-9]/g, '');
-                const whatsapp = cleanDigits.startsWith('966')
-                  ? cleanDigits
-                  : (cleanDigits.startsWith('0') ? `966${cleanDigits.slice(1)}` : `966${cleanDigits}`);
-                if (cleanDigits) window.open(`https://wa.me/${whatsapp}`, '_blank');
-                else handleDriverClick();
-              }}
-              className="w-9 h-9 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-100 text-emerald-600 flex items-center justify-center transition-colors cursor-pointer shadow-2xs"
-              title="Send WhatsApp Message"
-            >
-              <WhatsAppIcon className="w-4 h-4 text-emerald-600" />
-            </button>
-          </div>
-        </div>
-
-        {/* Card 2: ASSET & CAPACITY */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center justify-between min-h-[96px] gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <Truck className="w-6 h-6 text-[#FA634E] stroke-[1.75] shrink-0" />
-            <div className="min-w-0">
-              <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none mb-1.5">ASSET TYPE</p>
-              <p className="text-xs sm:text-sm font-black text-slate-900 leading-snug truncate">
-                {vehicle?.asset_type || 'Box'} Truck
-              </p>
-            </div>
-          </div>
-
-          {/* Highlighted Capacity Ton Text on Right Side */}
-          <div className="shrink-0 text-right">
-            <span className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-black text-[#FA634E]">
-              <Gauge className="w-4 h-4 text-[#FA634E] shrink-0" />
-              <span>{capacityFormatted}</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Card 3: DRIVER CONTACT */}
-        <div 
-          onClick={handleDriverClick}
-          className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center gap-3.5 min-h-[96px] cursor-pointer group"
-          title="View Driver Details"
-        >
-          <Phone className="w-6 h-6 text-blue-600 stroke-[1.75] shrink-0 group-hover:scale-110 transition-transform" />
-          <div className="min-w-0">
-            <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none mb-1.5 flex items-center gap-1">
-              DRIVER CONTACT
-              <ExternalLink className="w-2.5 h-2.5 text-slate-400 group-hover:text-blue-600 transition-colors" />
-            </p>
-            <p className="text-xs sm:text-sm font-mono font-black text-slate-900 group-hover:text-blue-600 leading-snug transition-colors">
-              {assignedDriver?.phone_primary || assignedDriver?.phone || '—'}
-            </p>
-            <p className="text-[10px] font-semibold text-slate-400 leading-none mt-1">Assigned Phone</p>
-          </div>
-        </div>
-
-        {/* Card 4: GPS */}
-        <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center gap-3.5 min-h-[96px]">
-          <Navigation className="w-6 h-6 text-emerald-600 stroke-[1.75] shrink-0" />
-          <div className="min-w-0">
-            <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none mb-1.5">GPS</p>
-            <p className="text-xs sm:text-sm font-mono font-black text-slate-900 leading-snug flex items-center gap-2 truncate">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
-              ICCES: {vehicle?.icces_device_id || '—'}
-            </p>
-          </div>
-        </div>
-
+          ) : undefined}
+        />
+        <KpiCard
+          icon={Truck}
+          iconClass="text-[#FA634E]"
+          label="Asset Type"
+          value={vehicle?.asset_type ? humanize(vehicle.asset_type) : EMPTY}
+          sub={`Capacity ${fmtTons(vehicle?.capacity_kg)}`}
+        />
+        <KpiCard
+          icon={Phone}
+          iconClass="text-blue-600 dark:text-blue-400"
+          label="Driver Contact"
+          value={driverPhone || EMPTY}
+          mono
+          sub="Assigned phone"
+          onClick={assignedDriver ? handleDriverClick : undefined}
+        />
+        <KpiCard
+          icon={Navigation}
+          iconClass={vehicle?.icces_device_id ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}
+          label="GPS Tracker (ICCES)"
+          value={vehicle?.icces_device_id || 'Not fitted'}
+          mono={!!vehicle?.icces_device_id}
+          sub={vehicle?.icces_device_id ? 'Device ID' : 'No tracker on this truck'}
+        />
       </div>
 
-      {/* ── Main Content Grid: Left (Trips Ledger), Middle (Truck Visualizer + Service History), Right (Driver Documents & Validity) ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 sm:gap-5 items-stretch">
+      {/* ── MAIN GRID: Trips | Truck & service history | Documents ── */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
 
-        {/* Left Column: Trips Ledger */}
-        <div className="xl:col-span-3 flex flex-col h-full min-h-0">
-          <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col justify-between h-full min-h-[460px] overflow-hidden">
-            <div className="flex flex-col h-full min-h-0 justify-between">
-              {/* Header: Title "Trips" */}
-              <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 shrink-0 gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Truck className="w-5 h-5 text-[#FA634E] stroke-[2] shrink-0" />
-                  <h3 className="text-base font-black text-slate-900 leading-tight truncate">Trips</h3>
-                </div>
-              </div>
+        {/* Left Column: Trips */}
+        <div className={cn(dk.panel, 'xl:col-span-3 h-full')}>
+          <PanelHeader icon={Truck} title="Trips" count={rawTrips.length} />
+          <PanelSearch
+            value={tripSearch}
+            onChange={(v) => { setTripSearch(v); setTripPage(1); }}
+            placeholder="Search truck trips..."
+          />
 
-              {/* Search Bar Input */}
-              <div className="relative mb-2 shrink-0">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search vehicle trips..."
-                  value={tripSearch}
-                  onChange={(e) => {
-                    setTripSearch(e.target.value);
-                    setTripPage(1);
+          <div className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-0 py-1">
+            {filteredTrips.length === 0 ? (
+              <EmptyState icon={Truck} title="No Trips Found" text="No trip records for this truck." />
+            ) : (
+              paginatedTrips.map((trip) => (
+                <TripCard
+                  key={trip.rawId || trip.id}
+                  refId={trip.id}
+                  status={trip.status}
+                  amountLabel="Trip Value"
+                  amount={trip.tripValue}
+                  origin={trip.origin}
+                  destination={trip.destination}
+                  date={trip.date}
+                  footLabel="Customer"
+                  footValue={trip.customerName}
+                  footLeading={trip.customerLogo
+                    ? <img src={trip.customerLogo} alt={trip.customerName} className="w-4 h-4 object-contain shrink-0" />
+                    : <Building2 className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0" />}
+                  selected={selectedTripIdForPreview === (trip.rawId || trip.id)}
+                  onClick={() => {
+                    setSelectedDocId(null);
+                    setSelectedTripIdForPreview((prev) => (prev === (trip.rawId || trip.id) ? null : (trip.rawId || trip.id)));
                   }}
-                  className="w-full pl-8 pr-7 py-1.5 bg-slate-50 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-[#FA634E] focus:ring-1 focus:ring-[#FA634E] transition-all shadow-2xs"
                 />
-                {tripSearch && (
-                  <button 
-                    onClick={() => { setTripSearch(''); setTripPage(1); }}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-extrabold text-slate-400 hover:text-slate-700 bg-slate-200/60 rounded-full w-4 h-4 flex items-center justify-center cursor-pointer"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-
-              {/* Stacked Trip Cards List (Paginated container strictly preserving normal box size) */}
-              <div className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-0 py-1">
-                {activeDataset.length === 0 ? (
-                  <div className="h-full min-h-[220px] p-4 text-center border border-dashed border-slate-200/80 rounded-xl bg-slate-50/50 flex flex-col items-center justify-center">
-                    <Truck className="w-6 h-6 text-slate-300 mx-auto mb-1.5 stroke-[1.5]" />
-                    <p className="text-xs font-bold text-slate-600">No Trips Found</p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">No completed trip records for this vehicle.</p>
-                  </div>
-                ) : (
-                  paginatedTrips.map((trip) => (
-                    <div 
-                      key={trip.id}
-                      onClick={() => {
-                        setSelectedDocId(null);
-                        setSelectedTripIdForPreview((prev) => (prev === (trip.rawId || trip.id) ? null : (trip.rawId || trip.id)));
-                      }}
-                      className={cn(
-                        "relative overflow-hidden rounded-2xl border transition-all cursor-pointer flex flex-col justify-between p-3 sm:p-3.5 gap-2 group shadow-2xs",
-                        selectedTripIdForPreview === (trip.rawId || trip.id)
-                          ? "border-slate-300 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/60"
-                          : "border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 hover:bg-slate-50/60 dark:hover:bg-slate-800/50"
-                      )}
-                    >
-                      {/* TOP ROW: TRIP ID & STATUS BADGE (LEFT) | CAPACITY PILL (RIGHT) */}
-                      <div className="flex items-center justify-between gap-2 z-10">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <p className="text-sm sm:text-base font-black text-slate-900 font-mono leading-none tracking-tight">
-                            {trip.id}
-                          </p>
-                          {renderTripCardBadge(trip.status)}
-                        </div>
-
-                        <div className="flex flex-col items-end shrink-0">
-                          <span className="text-[8.5px] font-black uppercase text-[#FA634E] tracking-wider mb-0.5">
-                            Payload
-                          </span>
-                          <span className="text-[11px] font-black font-mono text-[#FA634E] bg-orange-50 border border-orange-200/80 px-2 py-0.5 rounded-md shadow-2xs leading-none">
-                            {trip.totalWeight}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* MIDDLE ROW: FROM -> TO ROUTE */}
-                      <div className="flex items-center gap-2 sm:gap-3 z-10 py-0.5">
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                          <MapPin className="w-4 h-4 text-[#FA634E] fill-[#FA634E]/20 shrink-0" />
-                          <p className="text-xs sm:text-sm font-black text-slate-900 leading-tight truncate capitalize">
-                            {trip.origin}
-                          </p>
-                        </div>
-
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-400 shrink-0 mx-0.5" />
-
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                          <MapPin className="w-4 h-4 text-blue-600 fill-blue-600/20 shrink-0" />
-                          <p className="text-xs sm:text-sm font-black text-slate-900 leading-tight truncate capitalize">
-                            {trip.destination}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* DIVIDER LINE */}
-                      <div className="w-full h-px bg-slate-100 z-10"></div>
-
-                      {/* BOTTOM ROW: DEPARTURE | CUSTOMER */}
-                      <div className="flex items-center gap-3 justify-between z-10">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <Calendar className="w-4 h-4 text-slate-500 shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-[8.5px] font-extrabold text-slate-400 uppercase tracking-widest leading-none mb-0.5">
-                              DEPARTURE
-                            </p>
-                            <p className="text-[11px] font-black text-slate-900 truncate">
-                              {trip.date}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="h-5 w-px bg-slate-200 shrink-0"></div>
-
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          {trip.customerLogo ? (
-                            <img src={trip.customerLogo} alt={trip.customerName} className="w-4.5 h-4.5 object-contain shrink-0" />
-                          ) : (
-                            <Building2 className="w-4 h-4 text-slate-500 shrink-0" />
-                          )}
-                          <div className="min-w-0">
-                            <p className="text-[8.5px] font-extrabold text-slate-400 uppercase tracking-widest leading-none mb-0.5">
-                              CUSTOMER
-                            </p>
-                            <p className="text-[11px] font-black text-slate-900 truncate">
-                              {trip.customerName}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Pagination Controls Bar */}
-              {totalTripPages > 1 && (
-                <div className="flex items-center justify-between px-3 py-1.5 bg-slate-50/90 rounded-xl border border-slate-200/80 text-xs font-bold text-slate-700 shrink-0 mt-2 shadow-2xs">
-                  <button
-                    disabled={safeTripPage <= 1}
-                    onClick={() => setTripPage(prev => Math.max(1, prev - 1))}
-                    className="p-1 px-2 rounded-lg border border-slate-200/80 bg-white hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-white text-slate-700 hover:text-[#FA634E] cursor-pointer flex items-center gap-1 text-[11px] font-extrabold transition-colors shadow-2xs"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                    <span>Prev</span>
-                  </button>
-                  <span className="text-[11px] font-extrabold text-slate-600 font-mono">
-                    Page {safeTripPage} of {totalTripPages}
-                  </span>
-                  <button
-                    disabled={safeTripPage >= totalTripPages}
-                    onClick={() => setTripPage(prev => Math.min(totalTripPages, prev + 1))}
-                    className="p-1 px-2 rounded-lg border border-slate-200/80 bg-white hover:bg-slate-100 disabled:opacity-30 disabled:hover:bg-white text-slate-700 hover:text-[#FA634E] cursor-pointer flex items-center gap-1 text-[11px] font-extrabold transition-colors shadow-2xs"
-                  >
-                    <span>Next</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-
-              {/* View All Trips Button */}
-              <Button
-                onClick={() => {
-                  const targetSearch = (vehicle?.plate_number && vehicle.plate_number !== '—')
-                    ? vehicle.plate_number
-                    : (plateNumber && plateNumber !== '—' ? plateNumber : (vehicle?.ref_id || ''));
-                  navigate(`/trips?search=${encodeURIComponent(targetSearch)}`);
-                }}
-                variant="ghost"
-                className="w-full mt-3 h-11 bg-slate-100 hover:bg-slate-200 text-slate-900 text-xs sm:text-sm font-black rounded-2xl flex items-center justify-center gap-2 transition-colors cursor-pointer shrink-0"
-              >
-                <span>View All Trips</span>
-                <ArrowRight className="w-4 h-4" />
-              </Button>
-            </div>
+              ))
+            )}
           </div>
-        </div>
 
+          <ListPager page={safeTripPage} totalPages={totalTripPages} onPage={setTripPage} />
+          <ViewAllButton
+            onClick={() => {
+              const targetSearch = vehicle?.plate_number || vehicle?.ref_id || '';
+              navigate(`/trips?search=${encodeURIComponent(targetSearch)}`);
+            }}
+          />
+        </div>
         {/* Middle Column: Unified Truck Visualizer + Service History OR Full Trip Preview */}
         <div className="xl:col-span-6 flex flex-col h-full min-h-0">
           {selectedDocId ? (
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-xs flex flex-col justify-between h-full min-h-[610px] overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-2xs flex flex-col justify-between h-full min-h-[610px] overflow-hidden">
               <RealVehicleDocumentPreviewMiddleBox
                 docId={selectedDocId}
                 vehicleId={vehicle?.id || id}
@@ -1520,213 +1297,20 @@ export default function CargoLoadingView() {
                 onDeleteDocument={(delId) => setDeletedDocIds((prev) => [...prev, delId])}
               />
             </div>
-          ) : selectedTripIdForPreview ? (() => {
-            const targetTripRaw = rawTrips.find((t: any) => t.id === selectedTripIdForPreview || t.ref_id === selectedTripIdForPreview);
-            const fallbackItem = allVehicleTrips.find((t) => t.rawId === selectedTripIdForPreview || t.id === selectedTripIdForPreview);
-
-            const previewTripDisplay = targetTripRaw ? {
-              id: targetTripRaw.id,
-              rawId: targetTripRaw.id,
-              ref_id: targetTripRaw.ref_id || (targetTripRaw.id ? `TRP-${targetTripRaw.id.slice(0, 4).toUpperCase()}` : 'TRP-0742'),
-              startedDate: targetTripRaw.planned_start || targetTripRaw.createdAt ? formatInDeploymentTz(targetTripRaw.planned_start || targetTripRaw.createdAt, tz, 'dd MMM yyyy, HH:mm') : '13 Sep 2026, 23:00',
-              origin: targetTripRaw.route_origin || targetTripRaw.origin_name || targetTripRaw.stops?.[0]?.source_label || targetTripRaw.stops?.[0]?.location_name || 'Riyadh',
-              destination: targetTripRaw.route_destination || targetTripRaw.destination_name || targetTripRaw.stops?.[targetTripRaw.stops?.length - 1]?.source_label || targetTripRaw.stops?.[targetTripRaw.stops?.length - 1]?.location_name || 'Dammam',
-              customerName: targetTripRaw.customer?.name || (vehicle as any)?.customer?.name || 'Customer Account',
-              customerLogo: targetTripRaw.customer?.logo_url || null,
-              vehiclePlate: plateNumber || vehicle?.plate_number || 'DRA-6484',
-              cargoType: targetTripRaw.cargo_type || 'General Goods',
-              rateCard: targetTripRaw.rate_card_name || 'Standard',
-              distance: targetTripRaw.planned_distance || targetTripRaw.distance_km ? `${targetTripRaw.planned_distance || targetTripRaw.distance_km} km` : '420 km',
-              driverPayout: targetTripRaw.driver_charge || targetTripRaw.driver_payout ? `SAR ${Number(targetTripRaw.driver_charge || targetTripRaw.driver_payout).toFixed(2)}` : 'SAR 50.00',
-              status: targetTripRaw.status || 'Completed',
-              stops: targetTripRaw.stops || []
-            } : {
-              id: fallbackItem?.rawId || '1',
-              rawId: fallbackItem?.rawId || '1',
-              ref_id: fallbackItem?.id || 'TRP-0742',
-              startedDate: fallbackItem?.date || '13 Sep 2026, 23:00',
-              origin: fallbackItem?.origin || 'Riyadh',
-              destination: fallbackItem?.destination || 'Dammam',
-              customerName: fallbackItem?.customerName || 'Customer Account',
-              customerLogo: fallbackItem?.customerLogo || null,
-              vehiclePlate: plateNumber || 'DRA-6484',
-              cargoType: fallbackItem?.cargoType || 'General Goods',
-              rateCard: 'Standard',
-              distance: '420 km',
-              driverPayout: 'SAR 50.00',
-              status: fallbackItem?.status || 'Completed',
-              stops: []
-            };
-
-            const previewStops = previewTripDisplay.stops.length > 0 ? previewTripDisplay.stops : [
-              { id: '1', sequence: 1, location_name: previewTripDisplay.origin, stop_type: 'Pickup' },
-              { id: '2', sequence: 2, location_name: previewTripDisplay.destination, stop_type: 'Dropoff' }
-            ];
-
-            return (
-              <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-xs p-4 sm:p-5 flex flex-col justify-between h-full min-h-[610px] overflow-hidden animate-in fade-in zoom-in-95 duration-200 space-y-3">
-                {/* 1. Header Bar with Back Button & Status Badge */}
-                <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800 shrink-0">
-                  <button
-                    onClick={() => setSelectedTripIdForPreview(null)}
-                    className="flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
-                  >
-                    <ArrowLeft className="w-4 h-4 text-[#FA634E]" />
-                    <span>Back to Truck</span>
-                  </button>
-
-                  <span className={cn(
-                    "px-3 py-1 rounded-full text-xs font-black border flex items-center gap-1.5 shadow-2xs uppercase tracking-wider",
-                    (previewTripDisplay.status || '').toLowerCase() === 'completed' || (previewTripDisplay.status || '').toLowerCase() === 'delivered'
-                      ? "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200/80 dark:border-emerald-800/40"
-                      : (previewTripDisplay.status || '').toLowerCase() === 'intransit' || (previewTripDisplay.status || '').toLowerCase() === 'in transit' || (previewTripDisplay.status || '').toLowerCase() === 'dispatched'
-                      ? "bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border-amber-200/80 dark:border-amber-800/40"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700"
-                  )}>
-                    {previewTripDisplay.status || 'Scheduled'}
-                  </span>
-                </div>
-
-                {/* 2. Trip Ref ID & Date */}
-                <div className="flex items-center justify-between text-xs font-bold shrink-0 pt-1">
-                  <span className="text-xl sm:text-2xl font-black font-mono text-[#FA634E]">
-                    {previewTripDisplay.ref_id}
-                  </span>
-                  <span className="text-xs font-bold text-slate-400">
-                    Date: <strong className="text-slate-700 dark:text-slate-300 font-semibold">{previewTripDisplay.startedDate}</strong>
-                  </span>
-                </div>
-
-                {/* 3. Visual Route Progress Stepper */}
-                <div className="shrink-0 my-1 overflow-hidden border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 bg-slate-50/50 dark:bg-slate-800/40">
-                  <VisualRouteProgress
-                    stops={previewStops}
-                    tz={tz}
-                    tripStatus={previewTripDisplay.status}
-                    hideBadges={true}
-                    hidePulseAnimation={true}
-                  />
-                </div>
-
-                {/* 4. 6-Card Grid (2 rows x 3 columns) */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 flex-1 items-stretch my-1">
-                  {/* CUSTOMER */}
-                  <div className="p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shadow-2xs flex flex-col justify-between min-w-0 min-h-[72px]">
-                    <div className="flex items-center gap-1.5">
-                      <User className="w-3.5 h-3.5 text-rose-500 stroke-[2.2] shrink-0" />
-                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
-                        CUSTOMER
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 min-w-0 my-auto pt-0.5">
-                      {previewTripDisplay.customerLogo ? (
-                        <img
-                          src={previewTripDisplay.customerLogo}
-                          alt={previewTripDisplay.customerName}
-                          className="w-5 h-5 rounded-md object-contain border border-slate-200 dark:border-slate-700 bg-white p-0.5 shrink-0 shadow-2xs"
-                        />
-                      ) : (
-                        <div className="w-5 h-5 rounded-md bg-charcoal text-white font-mono font-black text-[8.5px] flex items-center justify-center border border-slate-800 shadow-2xs shrink-0">
-                          {previewTripDisplay.customerName.slice(0, 2).toUpperCase()}
-                        </div>
-                      )}
-                      <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate" title={previewTripDisplay.customerName}>
-                        {previewTripDisplay.customerName}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* VEHICLE */}
-                  <div className="p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shadow-2xs flex flex-col justify-between min-w-0 min-h-[72px]">
-                    <div className="flex items-center gap-1.5">
-                      <Truck className="w-3.5 h-3.5 text-blue-500 stroke-[2.2] shrink-0" />
-                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
-                        VEHICLE
-                      </span>
-                    </div>
-                    <div className="my-auto pt-0.5 min-w-0">
-                      <span className="text-xs sm:text-sm font-black font-mono text-slate-900 dark:text-white truncate block">
-                        {previewTripDisplay.vehiclePlate}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* CARGO TYPE */}
-                  <div className="p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shadow-2xs flex flex-col justify-between min-w-0 min-h-[72px]">
-                    <div className="flex items-center gap-1.5">
-                      <Package className="w-3.5 h-3.5 text-[#FA634E] stroke-[2.2] shrink-0" />
-                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
-                        CARGO TYPE
-                      </span>
-                    </div>
-                    <div className="my-auto pt-0.5 min-w-0">
-                      <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate block">
-                        {previewTripDisplay.cargoType}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* RATE CARD */}
-                  <div className="p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shadow-2xs flex flex-col justify-between min-w-0 min-h-[72px]">
-                    <div className="flex items-center gap-1.5">
-                      <FileText className="w-3.5 h-3.5 text-indigo-500 stroke-[2.2] shrink-0" />
-                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
-                        RATE CARD
-                      </span>
-                    </div>
-                    <div className="my-auto pt-0.5 min-w-0">
-                      <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate block">
-                        {previewTripDisplay.rateCard}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* DISTANCE */}
-                  <div className="p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shadow-2xs flex flex-col justify-between min-w-0 min-h-[72px]">
-                    <div className="flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-amber-500 stroke-[2.2] shrink-0" />
-                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
-                        DISTANCE
-                      </span>
-                    </div>
-                    <div className="my-auto pt-0.5 min-w-0">
-                      <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white truncate block">
-                        {previewTripDisplay.distance}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* DRIVER PAYOUT */}
-                  <div className="p-3 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shadow-2xs flex flex-col justify-between min-w-0 min-h-[72px]">
-                    <div className="flex items-center gap-1.5">
-                      <Banknote className="w-3.5 h-3.5 text-emerald-500 stroke-[2.2] shrink-0" />
-                      <span className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-wider">
-                        DRIVER PAYOUT
-                      </span>
-                    </div>
-                    <div className="my-auto pt-0.5 min-w-0">
-                      <span className="text-xs sm:text-sm font-black font-mono text-[#FA634E] truncate block">
-                        {previewTripDisplay.driverPayout}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 5. Bottom Action Button: View Full Trip Details Page */}
-                <Button
-                  onClick={() => navigate(`/trips/${previewTripDisplay.rawId || previewTripDisplay.id}`)}
-                  variant="ghost"
-                  className="w-full mt-2 h-11 bg-slate-100 dark:bg-slate-800/80 hover:bg-[#FA634E] hover:text-white text-slate-900 dark:text-white hover:dark:text-white text-xs sm:text-sm font-black rounded-2xl flex items-center justify-center gap-2 transition-colors cursor-pointer shrink-0"
-                >
-                  <FileText className="w-4 h-4" />
-                  <span>View Full Trip Details Page</span>
-                  <ArrowRight className="w-4 h-4" />
-                </Button>
-              </div>
-            );
-          })() : (
+          ) : selectedTrip ? (
+            <div className={cn(dk.panel, 'h-full min-h-[610px]')}>
+              <TripPreview
+                facts={tripFacts(selectedTrip, tz, { vehiclePlate: plateNumber })}
+                stops={selectedTrip.stops || []}
+                tz={tz}
+                onBack={() => setSelectedTripIdForPreview(null)}
+                backLabel="Back to Truck"
+                onOpen={() => navigate(`/trips/${selectedTrip.id}`)}
+              />
+            </div>
+          ) : (
             /* ── Default View: Combined Single Box containing Truck Visualizer (Top) + Service History (Bottom) ── */
-            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-3xl shadow-xs flex flex-col justify-between h-full min-h-[610px] overflow-hidden">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-2xs flex flex-col justify-between h-full min-h-[610px] overflow-hidden">
               {/* 1. Top Truck Visualizer Area */}
               <div className="relative w-full h-[360px] sm:h-[385px] shrink-0 flex items-center justify-center overflow-hidden bg-[#EEF1F6] dark:bg-slate-950">
                 {/* TOP LEFT OVERLAY: Total Trips Counter */}
@@ -1738,7 +1322,7 @@ export default function CargoLoadingView() {
                         TOTAL TRIPS
                       </span>
                       <span className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-white leading-none">
-                        {activeDataset.length}
+                        {rawTrips.length}
                       </span>
                     </div>
                   </div>
@@ -1852,7 +1436,7 @@ export default function CargoLoadingView() {
                           NEXT SERVICE DUE
                         </span>
                         <span className="text-xs sm:text-sm font-black text-slate-900 dark:text-white leading-none block truncate">
-                          {nextServiceDue}
+                          {upcomingService ? fmtDate(upcomingService, tz) : EMPTY}
                         </span>
                       </div>
                     </div>

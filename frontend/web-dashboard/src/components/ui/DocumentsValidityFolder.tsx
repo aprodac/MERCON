@@ -5,6 +5,7 @@ import {
   FileText, ShieldCheck, AlertTriangle, Award, CheckCircle2, Loader2, Plus, X, Check, FilePlus, Sparkles
 } from 'lucide-react';
 import { documentService } from '@/services/documentService';
+import { DocsPanelHeader, latestPerDocType } from '@/components/details/DetailKit';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -67,7 +68,7 @@ function getStatusBadge(expiry_date: string | null, status: string) {
         label: `${daysLeft}d left`,
       };
     }
-    const shortDate = format(parseISO(expiry_date), 'dd/MM/yy');
+    const shortDate = format(parseISO(expiry_date), 'MMM yyyy');
     return {
       badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40', badgeText: 'text-emerald-700 dark:text-emerald-400',
       badgeBorder: 'border-emerald-200/80 dark:border-emerald-800/60', dotColor: 'bg-emerald-500',
@@ -96,14 +97,6 @@ function isPodDocument(doc: any) {
     code.includes('waybill')
   );
 }
-
-const DEFAULT_VEHICLE_DOCS = [
-  { id: 'istimara', name: 'Istimara', status: 'Valid · 15/10/27', icon: FileText, iconColor: 'text-[#2563EB]', strokeColor: '#CBD5E1', badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40', badgeText: 'text-emerald-700 dark:text-emerald-400', badgeBorder: 'border-emerald-200/80 dark:border-emerald-800/60', dotColor: 'bg-emerald-500', label: 'Valid · 15/10/27' },
-  { id: 'insurance', name: 'Insurance', status: 'Valid · 10/01/27', icon: ShieldCheck, iconColor: 'text-[#7C3AED]', strokeColor: '#CBD5E1', badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40', badgeText: 'text-emerald-700 dark:text-emerald-400', badgeBorder: 'border-emerald-200/80 dark:border-emerald-800/60', dotColor: 'bg-emerald-500', label: 'Valid · 10/01/27' },
-  { id: 'operation_card', name: 'Operation Card', status: 'Expiring · 28 Sep', icon: AlertTriangle, iconColor: 'text-[#EA580C]', strokeColor: '#CBD5E1', badgeBg: 'bg-amber-50 dark:bg-amber-950/40', badgeText: 'text-amber-700 dark:text-amber-400', badgeBorder: 'border-amber-200/80 dark:border-amber-800/60', dotColor: 'bg-amber-500', label: 'Expiring · 28 Sep' },
-  { id: 'saso_plates', name: 'SASO Plates', status: 'Valid · 04/11/28', icon: Award, iconColor: 'text-[#7C3AED]', strokeColor: '#CBD5E1', badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40', badgeText: 'text-emerald-700 dark:text-emerald-400', badgeBorder: 'border-emerald-200/80 dark:border-emerald-800/60', dotColor: 'bg-emerald-500', label: 'Valid · 04/11/28' },
-  { id: 'fahas', name: 'FAHAS', status: 'Valid · 20/05/27', icon: CheckCircle2, iconColor: 'text-[#059669]', strokeColor: '#CBD5E1', badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40', badgeText: 'text-emerald-700 dark:text-emerald-400', badgeBorder: 'border-emerald-200/80 dark:border-emerald-800/60', dotColor: 'bg-emerald-500', label: 'Valid · 20/05/27' },
-];
 
 const QUICK_VEHICLE_DOC_TYPES = [
   { name: 'Weight Calibration Permit', code: 'weight_permit' },
@@ -135,25 +128,15 @@ export default function DocumentsValidityFolder({
     select: (res) => res.data ?? [],
   });
 
-  const baseDocs = (docs && docs.length > 0) ? docs : null;
+  // Real documents only — no placeholder certificates when a truck has none.
+  const rawDocsList = [...(docs || []), ...addedLocalDocs].filter((d) => !deletedDocIds.includes(d.id) && !isPodDocument(d));
 
-  const rawDocsList = baseDocs
-    ? [...baseDocs, ...addedLocalDocs].filter((d) => !deletedDocIds.includes(d.id) && !isPodDocument(d))
-    : [...DEFAULT_VEHICLE_DOCS, ...addedLocalDocs].filter((d) => !deletedDocIds.includes(d.id) && !isPodDocument(d));
-
-  const documents = rawDocsList.map((doc) => {
-    if (doc.badgeBg) {
-      // Default fallback item
-      return {
-        ...doc,
-        strokeColor: '#CBD5E1',
-      };
-    }
-    const typeName = doc.documentType?.name || doc.doc_type || doc.name || 'Document';
+  const documents = latestPerDocType(rawDocsList, (d: any) => d.documentType?.name || d.doc_type || d.name).map(({ doc, name, count }) => {
+    const typeName = name;
     const badge = getStatusBadge(doc.expiry_date, doc.status || 'Verified');
     return {
       id: doc.id,
-      name: typeName,
+      name: count > 1 ? `${typeName} (${count})` : typeName,
       icon: getDocIcon(typeName),
       iconColor: getDocIconColor(typeName),
       strokeColor: '#CBD5E1',
@@ -204,20 +187,16 @@ export default function DocumentsValidityFolder({
     <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col justify-between h-full min-h-[460px] max-h-[480px] overflow-hidden select-none">
       
       {/* ── Top Header Bar ── */}
-      <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0 z-10">
-        <h2 className="text-sm font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-          <FileText className="w-4.5 h-4.5 text-blue-600" />
-          Documents &amp; Validity
-        </h2>
-        <div className="flex items-center gap-2">
-          <button 
+      <DocsPanelHeader
+        right={
+          <button
             onClick={() => vehicleId && navigate(`/vehicles/${vehicleId}/documents`)}
-            className="text-xs font-bold px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer shrink-0"
+            className="text-[11px] font-bold px-2.5 py-1 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer shrink-0"
           >
             View All
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {/* ── Folder Pocket & Stacked Index Cards (Max 5-6 visible at once, scrollable if more) ── */}
       <div className="relative flex-1 flex flex-col justify-start pt-2 pb-1 min-h-0 max-h-[380px] overflow-y-auto overflow-x-hidden pr-1.5">
