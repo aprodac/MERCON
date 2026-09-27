@@ -18,7 +18,9 @@ concurrency:
 jobs:
   deploy:
     name: Deploy dev stack to Self-Hosted Runner
-    runs-on: self-hosted
+    # The dev server (82.29.167.128). Its runner has only the `dev` label (no
+    # generic `self-hosted`), so production jobs can never land there.
+    runs-on: [dev]
 
     steps:
       - name: Free Disk Space (Pre-checkout)
@@ -210,8 +212,10 @@ jobs:
 
           # Deploy catch-all default SSL block (rejects unknown HTTPS hosts)
           # Both pipelines deploy this to guarantee the safety net is always present.
-          if [ -f nginx/00-default-ssl.conf ]; then
-            sudo cp nginx/00-default-ssl.conf /etc/nginx/sites-available/00-default-ssl.conf
+          # The dev server has only the dev.mercon.tech certificate, so it gets
+          # its own catch-all (00-default-ssl.conf needs the mercon.tech one).
+          if [ -f nginx/00-default-ssl-dev.conf ]; then
+            sudo cp nginx/00-default-ssl-dev.conf /etc/nginx/sites-available/00-default-ssl.conf
             sudo ln -sf /etc/nginx/sites-available/00-default-ssl.conf /etc/nginx/sites-enabled/00-default-ssl.conf
           fi
 

@@ -36,7 +36,7 @@ on:
 jobs:
   demo-data:
     name: ${{ inputs.action }} demo data
-    runs-on: self-hosted
+    runs-on: [self-hosted, prod]
 
     # Gate the run behind a reviewer. Create this environment in
     # Settings → Environments with a required reviewer; until you do, the job
