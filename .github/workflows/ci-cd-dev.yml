@@ -149,6 +149,12 @@ jobs:
           docker compose -p mercon-dev build mercon-api
           docker compose -p mercon-dev build mercon-frontend
 
+          # The migration below runs with --no-deps, so the database must
+          # already be up. On a fresh server (first deploy) nothing has started
+          # it yet; on later deploys this is a no-op for a running database.
+          echo "Ensuring the dev database is running and healthy..."
+          docker compose -p mercon-dev up -d --wait postgres-db
+
           echo "Executing Prisma database migrations with newly built image..."
           docker compose -p mercon-dev run --rm --no-deps mercon-api npx prisma migrate deploy
 
