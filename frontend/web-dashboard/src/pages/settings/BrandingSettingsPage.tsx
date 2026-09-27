@@ -1,22 +1,20 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Palette, Save, Check, RefreshCw, Eye, Sparkles, Image, Shield } from 'lucide-react';
+import { Check, Upload } from 'lucide-react';
 
-import DashboardLayout from '@/components/layout/DashboardLayout';
+import { SettingsPage, SettingsRow, SettingsSection } from '@/components/settings/SettingsKit';
+import Btn from '@/components/ui/Btn';
 import { settingsService } from '@/services/settingsService';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 const PRESET_PALETTES = [
-  { name: 'MERCON Coral (Default)', primary: '#FA634E', charcoal: '#3E3C3D' },
-  { name: 'Emerald Logistics', primary: '#10B981', charcoal: '#1F2937' },
-  { name: 'Sapphire Fleet', primary: '#2563EB', charcoal: '#1E293B' },
-  { name: 'Violet Cargo', primary: '#7C3AED', charcoal: '#2E1065' },
-  { name: 'Amber Operations', primary: '#D97706', charcoal: '#262626' },
+  { name: 'Coral (default)', primary: '#FA634E', charcoal: '#3E3C3D' },
+  { name: 'Emerald', primary: '#10B981', charcoal: '#1F2937' },
+  { name: 'Sapphire', primary: '#2563EB', charcoal: '#1E293B' },
+  { name: 'Violet', primary: '#7C3AED', charcoal: '#2E1065' },
+  { name: 'Amber', primary: '#D97706', charcoal: '#262626' },
 ];
 
 export default function BrandingSettingsPage() {
@@ -28,7 +26,7 @@ export default function BrandingSettingsPage() {
   });
 
   const [primaryColor, setPrimaryColor] = useState('#FA634E');
-  const [appName, setAppName] = useState('MERCON Logistics');
+  const [appName, setAppName] = useState('');
   const [logoUrl, setLogoUrl] = useState('');
   const [statusGreen, setStatusGreen] = useState('#10B981');
   const [statusAmber, setStatusAmber] = useState('#F59E0B');
@@ -38,7 +36,7 @@ export default function BrandingSettingsPage() {
   useEffect(() => {
     if (settings) {
       setPrimaryColor(settings.primaryColor || '#FA634E');
-      setAppName(settings.appName || 'MERCON Logistics');
+      setAppName(settings.appName || '');
       setLogoUrl(settings.logoUrl || '');
 
       const theme = ((settings as any).themeColors) || {};
@@ -54,7 +52,7 @@ export default function BrandingSettingsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       queryClient.invalidateQueries({ queryKey: ['settings', 'public'] });
-      toast.success('Branding & System Theme updated');
+      toast.success('Branding saved');
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error?.message || 'Failed to update branding settings');
@@ -77,255 +75,155 @@ export default function BrandingSettingsPage() {
 
   const applyPreset = (preset: (typeof PRESET_PALETTES)[number]) => {
     setPrimaryColor(preset.primary);
-    toast.info(`Applied ${preset.name} color preset`);
   };
 
+  const uploadLogo = useMutation({
+    mutationFn: (file: File) => settingsService.uploadLogo(file),
+    onSuccess: (url) => {
+      setLogoUrl(url);
+      toast.success('Logo uploaded. Save to apply it.');
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error?.message || 'Upload failed'),
+  });
+
+  const statusColors: { label: string; hint: string; value: string; set: (v: string) => void }[] = [
+    { label: 'Good', hint: 'Active, valid, completed', value: statusGreen, set: setStatusGreen },
+    { label: 'Warning', hint: 'Delayed, expiring soon', value: statusAmber, set: setStatusAmber },
+    { label: 'Problem', hint: 'Expired, failed', value: statusRed, set: setStatusRed },
+    { label: 'Info', hint: 'Scheduled, informational', value: statusBlue, set: setStatusBlue },
+  ];
+
+  const colorField = (id: string, value: string, set: (v: string) => void) => (
+    <div className="flex items-center gap-2">
+      <input
+        id={`${id}-picker`}
+        type="color"
+        value={/^#[0-9a-f]{6}$/i.test(value) ? value : '#000000'}
+        onChange={(e) => set(e.target.value.toUpperCase())}
+        aria-label={`${id} color picker`}
+        className="h-9 w-9 shrink-0 cursor-pointer rounded-lg border border-black/[0.08] bg-card p-1"
+      />
+      <Input id={id} value={value} onChange={(e) => set(e.target.value)} className="h-9 w-28 font-mono text-xs uppercase" maxLength={7} />
+    </div>
+  );
+
   return (
-    <DashboardLayout active="Account" title="Colors & Branding">
-      <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-6 max-w-[1350px] mx-auto">
-        
-        {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-slate-200 dark:border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/50 rounded-xl text-[#FA634E]">
-              <Palette className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-                  Colors & Theme System
-                </h1>
-                <Badge className="bg-rose-100 text-rose-800 border-rose-200 font-bold text-[10px]">
-                  SuperAdmin Only
-                </Badge>
+    <SettingsPage
+      title="Branding"
+      description="The name, logo and colours people see across the dashboard. Mobile app icons are set per client build, not here."
+      actions={<Btn label="Save" isLoading={updateMutation.isPending} onClick={handleSave} />}
+    >
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_320px] gap-5 items-start">
+        <div className="space-y-5 min-w-0">
+          <SettingsSection title="Identity">
+            <SettingsRow label="Product name" description="Shown in the header, the login page and browser tab." htmlFor="app-name">
+              <Input id="app-name" value={appName} onChange={(e) => setAppName(e.target.value)} className="h-9 w-full sm:w-[260px]" placeholder="Operations Platform" />
+            </SettingsRow>
+            <SettingsRow label="Logo" description="PNG, JPG or WebP. Leave empty to show the product name instead." htmlFor="logo-url">
+              <div className="flex w-full items-center gap-2 sm:w-auto">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-black/[0.08] bg-muted">
+                  {logoUrl ? <img src={logoUrl} alt="" className="h-full w-full object-contain" /> : <span className="text-[10px] font-bold text-muted-foreground">—</span>}
+                </span>
+                <Input id="logo-url" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} className="h-9 w-full sm:w-[180px]" placeholder="Image link" />
+                <input
+                  id="logo-file"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = '';
+                    if (file) uploadLogo.mutate(file);
+                  }}
+                />
+                <Btn label="Upload" variant="outline" size="sm" icon={<Upload size={13} />} isLoading={uploadLogo.isPending} onClick={() => document.getElementById('logo-file')?.click()} />
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Customize platform primary accent colors, logo, and semantic status tag themes
-              </p>
+            </SettingsRow>
+          </SettingsSection>
+
+          <SettingsSection title="Brand colour" description="Used for primary buttons, links and the active menu item.">
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Colour presets">
+              {PRESET_PALETTES.map((preset) => {
+                const selected = primaryColor.toLowerCase() === preset.primary.toLowerCase();
+                return (
+                  <button
+                    key={preset.name}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    onClick={() => applyPreset(preset)}
+                    className={cn(
+                      'inline-flex items-center gap-2 h-9 pl-2 pr-3 rounded-full border text-xs font-bold transition-colors',
+                      selected ? 'border-foreground text-foreground' : 'border-black/[0.08] text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ backgroundColor: preset.primary }}>
+                      {selected && <Check className="h-3 w-3 text-white" />}
+                    </span>
+                    {preset.name}
+                  </button>
+                );
+              })}
             </div>
-          </div>
+            <div className="mt-4 pt-4 border-t border-black/[0.05]">
+              <SettingsRow label="Custom colour" description="Any hex colour, e.g. #FA634E." htmlFor="brand-color">
+                {colorField('brand-color', primaryColor, setPrimaryColor)}
+              </SettingsRow>
+            </div>
+          </SettingsSection>
 
-          <Button
-            onClick={handleSave}
-            disabled={updateMutation.isPending}
-            className="bg-[#FA634E] hover:bg-[#FA634E]/90 text-white font-bold text-xs h-9 px-4 rounded-xl gap-2 shadow-xs cursor-pointer"
-          >
-            <Save className="w-4 h-4" />
-            {updateMutation.isPending ? 'Saving Theme...' : 'Save Theme'}
-          </Button>
+          <SettingsSection title="Status colours" description="Used by status badges on trips, drivers, documents and rate cards.">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+              {statusColors.map((c) => (
+                <div key={c.label} className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <label htmlFor={`status-${c.label}`} className="block text-sm font-semibold text-foreground">{c.label}</label>
+                    <p className="text-xs text-muted-foreground truncate">{c.hint}</p>
+                  </div>
+                  {colorField(`status-${c.label}`, c.value, c.set)}
+                </div>
+              ))}
+            </div>
+          </SettingsSection>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-          {/* Left Column: Color Controls (7 cols) */}
-          <div className="lg:col-span-7 space-y-6">
-
-            {/* Presets */}
-            <Card className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl shadow-xs">
-              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
-                <CardTitle className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-500" /> Presets & Primary Brand Accent
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-4 space-y-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {PRESET_PALETTES.map((preset) => (
-                    <button
-                      key={preset.name}
-                      type="button"
-                      onClick={() => applyPreset(preset)}
-                      className={`p-3 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
-                        primaryColor === preset.primary
-                          ? 'border-[#FA634E] bg-orange-50/50 dark:bg-orange-950/20 ring-1 ring-[#FA634E]'
-                          : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className="w-5 h-5 rounded-full border border-black/10 shadow-xs"
-                          style={{ backgroundColor: preset.primary }}
-                        />
-                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                          {preset.name}
-                        </span>
-                      </div>
-                      {primaryColor === preset.primary && <Check className="w-4 h-4 text-[#FA634E]" />}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center gap-4">
-                  <div className="flex-1 space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Custom Hex Code</Label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        value={primaryColor}
-                        onChange={(e) => setPrimaryColor(e.target.value)}
-                        className="w-8 h-8 rounded-lg border border-slate-200 cursor-pointer p-0.5 bg-white"
-                      />
-                      <Input
-                        value={primaryColor}
-                        onChange={(e) => setPrimaryColor(e.target.value)}
-                        className="h-8.5 font-mono text-xs font-bold uppercase max-w-[140px]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex-1 space-y-1.5">
-                    <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Portal Header Title</Label>
-                    <Input
-                      value={appName}
-                      onChange={(e) => setAppName(e.target.value)}
-                      className="h-8.5 text-xs font-bold"
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Semantic Status Colors */}
-            <Card className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl shadow-xs">
-              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
-                <CardTitle className="text-sm font-extrabold text-slate-900 dark:text-slate-100">
-                  Semantic & Status Tag Mappings
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-500">
-                  Universal operational badge colors across trips, drivers, and rate cards
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-4 grid grid-cols-2 gap-4">
-                
-                {/* Active Green */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Active / Completed (Green)</Label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={statusGreen}
-                      onChange={(e) => setStatusGreen(e.target.value)}
-                      className="w-7 h-7 rounded border border-slate-200 cursor-pointer"
-                    />
-                    <Input value={statusGreen} onChange={(e) => setStatusGreen(e.target.value)} className="h-8 text-xs font-mono uppercase" />
-                  </div>
-                </div>
-
-                {/* Warning Amber */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Warning / Delayed (Amber)</Label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={statusAmber}
-                      onChange={(e) => setStatusAmber(e.target.value)}
-                      className="w-7 h-7 rounded border border-slate-200 cursor-pointer"
-                    />
-                    <Input value={statusAmber} onChange={(e) => setStatusAmber(e.target.value)} className="h-8 text-xs font-mono uppercase" />
-                  </div>
-                </div>
-
-                {/* Critical Red */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Critical / Failed (Red)</Label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={statusRed}
-                      onChange={(e) => setStatusRed(e.target.value)}
-                      className="w-7 h-7 rounded border border-slate-200 cursor-pointer"
-                    />
-                    <Input value={statusRed} onChange={(e) => setStatusRed(e.target.value)} className="h-8 text-xs font-mono uppercase" />
-                  </div>
-                </div>
-
-                {/* Info Blue */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-bold text-slate-700 dark:text-slate-300">Informational (Blue)</Label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={statusBlue}
-                      onChange={(e) => setStatusBlue(e.target.value)}
-                      className="w-7 h-7 rounded border border-slate-200 cursor-pointer"
-                    />
-                    <Input value={statusBlue} onChange={(e) => setStatusBlue(e.target.value)} className="h-8 text-xs font-mono uppercase" />
-                  </div>
-                </div>
-
-              </CardContent>
-            </Card>
-
-          </div>
-
-          {/* Right Column: Live UI Theme Preview (5 cols) */}
-          <div className="lg:col-span-5 space-y-6">
-            <Card className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl shadow-xs">
-              <CardHeader className="pb-3 border-b border-slate-100 dark:border-slate-800">
-                <CardTitle className="text-sm font-extrabold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <Eye className="w-4 h-4 text-blue-600" /> Live Theme Preview
-                </CardTitle>
-                <CardDescription className="text-xs text-slate-500">
-                  How components will look for operators & admins
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="pt-5 space-y-5">
-                
-                {/* Header Preview */}
-                <div className="p-3 bg-charcoal text-white rounded-xl flex items-center justify-between shadow-xs">
-                  <span className="text-xs font-extrabold flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: primaryColor }} />
-                    {appName || 'MERCON Logistics'}
+        <aside className="lg:sticky lg:top-4">
+          <SettingsSection title="Preview">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-2 rounded-xl bg-[#3E3C3D] px-3 py-2.5 text-white">
+                <span className="flex min-w-0 items-center gap-2 text-xs font-bold">
+                  {logoUrl ? (
+                    <img src={logoUrl} alt="" className="h-5 max-w-[80px] object-contain" />
+                  ) : (
+                    <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: primaryColor }} />
+                  )}
+                  <span className="truncate">{appName || 'Product name'}</span>
+                </span>
+                <span className="h-1.5 w-8 rounded-full" style={{ backgroundColor: primaryColor }} />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span style={{ backgroundColor: primaryColor }} className="rounded-lg px-3 py-1.5 text-xs font-bold text-white">
+                  New trip
+                </span>
+                <span className="rounded-lg border border-black/[0.08] px-3 py-1.5 text-xs font-bold text-foreground">Export</span>
+                <span style={{ color: primaryColor }} className="text-xs font-bold">View details</span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  ['Active', statusGreen],
+                  ['Delayed', statusAmber],
+                  ['Expired', statusRed],
+                  ['Scheduled', statusBlue],
+                ].map(([label, color]) => (
+                  <span key={label} style={{ backgroundColor: `${color}15`, color, borderColor: `${color}40` }} className="rounded-md border px-2 py-0.5 text-xs font-bold">
+                    {label}
                   </span>
-                  <Badge style={{ backgroundColor: primaryColor, color: '#FFFFFF' }} className="font-bold text-[10px]">
-                    Primary Action
-                  </Badge>
-                </div>
-
-                {/* Buttons Preview */}
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold text-slate-600 dark:text-slate-400">Buttons</Label>
-                  <div className="flex items-center gap-3">
-                    <button
-                      type="button"
-                      style={{ backgroundColor: primaryColor }}
-                      className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-white shadow-xs"
-                    >
-                      + New Operational Trip
-                    </button>
-                    <button
-                      type="button"
-                      className="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-700 border border-slate-200 bg-white hover:bg-slate-50"
-                    >
-                      Export Ledger
-                    </button>
-                  </div>
-                </div>
-
-                {/* Status Badges Preview */}
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold text-slate-600 dark:text-slate-400">Status Badges</Label>
-                  <div className="flex flex-wrap gap-2">
-                    <span style={{ backgroundColor: `${statusGreen}15`, color: statusGreen, borderColor: `${statusGreen}40` }} className="px-2.5 py-0.5 rounded text-xs font-bold border">
-                      Active / Valid
-                    </span>
-                    <span style={{ backgroundColor: `${statusAmber}15`, color: statusAmber, borderColor: `${statusAmber}40` }} className="px-2.5 py-0.5 rounded text-xs font-bold border">
-                      Delayed / Warning
-                    </span>
-                    <span style={{ backgroundColor: `${statusRed}15`, color: statusRed, borderColor: `${statusRed}40` }} className="px-2.5 py-0.5 rounded text-xs font-bold border">
-                      Expired / Failed
-                    </span>
-                    <span style={{ backgroundColor: `${statusBlue}15`, color: statusBlue, borderColor: `${statusBlue}40` }} className="px-2.5 py-0.5 rounded text-xs font-bold border">
-                      Scheduled / Info
-                    </span>
-                  </div>
-                </div>
-
-              </CardContent>
-            </Card>
-          </div>
-
-        </div>
+                ))}
+              </div>
+            </div>
+          </SettingsSection>
+        </aside>
       </div>
-    </DashboardLayout>
+    </SettingsPage>
   );
 }
