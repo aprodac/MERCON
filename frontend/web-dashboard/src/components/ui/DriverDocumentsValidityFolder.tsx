@@ -5,6 +5,7 @@ import {
   FileText, ShieldCheck, AlertTriangle, Award, Loader2, Plus, X, Check, FilePlus, Sparkles
 } from 'lucide-react';
 import { documentService } from '@/services/documentService';
+import { DocsPanelHeader, latestPerDocType } from '@/components/details/DetailKit';
 import { format, differenceInDays, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 
@@ -68,7 +69,7 @@ function getStatusBadge(expiry_date: string | null, status: string) {
       label: `${daysLeft}d left`,
     };
   }
-  const shortDate = format(parseISO(expiry_date), 'dd/MM/yy');
+  const shortDate = format(parseISO(expiry_date), 'MMM yyyy');
   return {
     badgeBg: 'bg-emerald-50 dark:bg-emerald-950/40', badgeText: 'text-emerald-700 dark:text-emerald-400',
     badgeBorder: 'border-emerald-200/80 dark:border-emerald-800/60', dotColor: 'bg-emerald-500',
@@ -129,12 +130,12 @@ export default function DriverDocumentsValidityFolder({
     (d) => !deletedDocIds.includes(d.id) && !isPodDocument(d)
   );
 
-  const documents = combinedDocs.map((doc) => {
-    const typeName = doc.documentType?.name || doc.doc_type || doc.name || 'Document';
+  const documents = latestPerDocType(combinedDocs, (d: any) => d.documentType?.name || d.doc_type || d.name).map(({ doc, name, count }) => {
+    const typeName = name;
     const badge = getStatusBadge(doc.expiry_date, doc.status || 'Verified');
     return {
       id: doc.id,
-      name: typeName,
+      name: count > 1 ? `${typeName} (${count})` : typeName,
       icon: getDocIcon(typeName),
       iconColor: getDocIconColor(typeName),
       strokeColor: '#CBD5E1',
@@ -197,12 +198,16 @@ export default function DriverDocumentsValidityFolder({
     <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex flex-col justify-between h-full min-h-[460px] max-h-[480px] overflow-hidden select-none">
 
       {/* ── Top Header Bar ── */}
-      <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-100 dark:border-slate-800 shrink-0 z-10">
-        <h2 className="text-sm font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-          <FileText className="w-4.5 h-4.5 text-blue-600" />
-          Documents &amp; Validity
-        </h2>
-      </div>
+      <DocsPanelHeader
+        right={
+          <button
+            onClick={() => driverId && navigate(`/drivers/${driverId}/documents`)}
+            className="text-[11px] font-bold px-2.5 py-1 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer shrink-0"
+          >
+            View All
+          </button>
+        }
+      />
 
       {/* ── Folder Pocket & Stacked Index Cards (Max 5-6 visible at once, scrollable if more) ── */}
       <div className="relative flex-1 flex flex-col justify-start pt-2 pb-1 min-h-0 max-h-[380px] overflow-y-auto overflow-x-hidden pr-1.5">
