@@ -225,11 +225,11 @@ export const NAV_ACTION_SECTIONS: { id: NavAction['section']; label: string }[] 
 ];
 
 export const SETTINGS_PAGES: SettingsNavPage[] = [
-  { id: 'system-settings', label: 'System settings', path: '/settings', icon: Settings, settingsGroup: 'general', keywords: ['company', 'profile', 'preferences'], match: (p) => p === '/settings' || p === '/settings/profile' },
+  { id: 'system-settings', label: 'Account & company', path: '/settings', icon: Settings, settingsGroup: 'general', keywords: ['system settings', 'company', 'profile', 'password', 'timezone', 'vat'], match: (p) => p === '/settings' || p === '/settings/profile' },
   { id: 'branding', label: 'Branding', path: '/settings/branding', icon: Palette, settingsGroup: 'general', superAdminOnly: true, keywords: ['logo', 'colors', 'theme'] },
   { id: 'zatca', label: 'ZATCA e-invoicing', path: '/settings/zatca', icon: FileCheck2, settingsGroup: 'general', adminOnly: true, moduleKey: 'zatca', keywords: ['fatoora', 'e-invoice', 'vat', 'tax', 'csid', 'certificate'] },
   { id: 'users', label: 'Users', path: '/settings/users', icon: UserCog, settingsGroup: 'access', adminOnly: true, keywords: ['user management', 'roles', 'accounts'] },
-  { id: 'module-governance', label: 'Module governance', path: '/settings/module-governance', icon: ShieldCheck, settingsGroup: 'access', superAdminOnly: true, keywords: ['modules', 'enable', 'disable'] },
+  { id: 'module-governance', label: 'Modules', path: '/settings/module-governance', icon: ShieldCheck, settingsGroup: 'access', superAdminOnly: true, keywords: ['module governance', 'enable', 'disable', 'features'] },
   {
     id: 'locations', label: 'Locations', path: '/locations', icon: MapPin, settingsGroup: 'master-data', moduleKey: 'locations', permissionKey: 'settings.view', keywords: ['places', 'sites'],
   },
@@ -237,7 +237,7 @@ export const SETTINGS_PAGES: SettingsNavPage[] = [
     id: 'taxonomy', label: 'Taxonomy', path: '/taxonomy', icon: Layers, settingsGroup: 'master-data', moduleKey: 'taxonomy', permissionKey: 'settings.view', keywords: ['universal colors', 'master data'],
     match: (p) => p === '/taxonomy' || p.startsWith('/master-data'),
   },
-  { id: 'taxonomy-settings', label: 'Taxonomy settings', path: '/settings/taxonomy', icon: Tags, settingsGroup: 'master-data', superAdminOnly: true },
+  { id: 'taxonomy-settings', label: 'Taxonomy defaults', path: '/settings/taxonomy', icon: Tags, settingsGroup: 'master-data', superAdminOnly: true },
   { id: 'document-types', label: 'Document types', path: '/settings/document-types', icon: FileType, settingsGroup: 'master-data', adminOnly: true },
   { id: 'recycle-bin', label: 'Recycle bin', path: '/settings/recycle-bin', icon: Trash2, settingsGroup: 'safety', moduleKey: 'recycle-bin', keywords: ['trash', 'deleted', 'restore'] },
   { id: 'audit-log', label: 'Audit log', path: '/settings/audit-log', icon: ScrollText, settingsGroup: 'safety', superAdminOnly: true, keywords: ['audit trail', 'history'] },

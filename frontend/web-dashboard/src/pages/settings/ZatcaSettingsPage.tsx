@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import type { ZatcaEnvironment, ZatcaInvoiceTypes, ZatcaStatus } from '@mercon/shared-types';
 
-import DashboardLayout from '@/components/layout/DashboardLayout';
+import { SettingsPage } from '@/components/settings/SettingsKit';
 import Btn from '@/components/ui/Btn';
 import FormInput from '@/components/ui/FormInput';
 import FormSection from '@/components/ui/FormSection';
@@ -88,12 +88,11 @@ export default function ZatcaSettingsPage() {
   });
 
   return (
-    <DashboardLayout
-      active="Account"
+    <SettingsPage
       title="ZATCA e-invoicing"
-      pageSub="Connect this company’s VAT registration to ZATCA Fatoora (Phase 2)"
+      description="Connect this company’s VAT registration to ZATCA Fatoora (Phase 2), so invoices are signed and cleared automatically."
     >
-      <div className="px-4 sm:px-6 pb-6 w-full max-w-[1100px] mx-auto animate-fade-in">
+      <div>
         {isLoading && (
           <div className="flex items-center justify-center py-24 text-[#6E6E80]">
             <Loader2 className="w-5 h-5 animate-spin" />
@@ -198,7 +197,7 @@ export default function ZatcaSettingsPage() {
         isPending={resetMutation.isPending}
         onConfirm={() => resetMutation.mutate()}
       />
-    </DashboardLayout>
+    </SettingsPage>
   );
 }
 

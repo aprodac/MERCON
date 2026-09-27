@@ -174,26 +174,15 @@ export default function TaxonomyManagementPage() {
   const IconComponent = activeCategoryMeta.icon;
 
   return (
-    <DashboardLayout active="/taxonomy" title="Taxonomy & Master Data">
-      <div className="space-y-5 pb-12 max-w-7xl mx-auto">
+    <DashboardLayout active="/taxonomy" title="Settings">
+      <div className="space-y-5 px-4 sm:px-6 pt-5 pb-12 w-full">
         {/* Crisp White Header Card */}
         <div className="bg-white dark:bg-[#1E1C1D] border border-slate-200/70 dark:border-slate-800 rounded-2xl p-5 shadow-xs">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  Master Data
-                </span>
-                <span className="text-slate-300 dark:text-slate-700">•</span>
-                <span className="text-[11px] font-extrabold text-[#FA634E] uppercase tracking-wider">
-                  Registry
-                </span>
-              </div>
-              <h1 className="text-2xl font-black text-[#3E3C3D] dark:text-white tracking-tight">
-                Taxonomy & Master Data
-              </h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Manage controlled vehicle classes, line types, billing terms, and signature badge color themes.
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold tracking-tight text-foreground">Taxonomy</h1>
+              <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+                The vehicle classes, line types and billing types every dropdown in trips, quotations and rate cards uses, with their badge colours.
               </p>
             </div>
 
@@ -208,7 +197,7 @@ export default function TaxonomyManagementPage() {
                   const url = URL.createObjectURL(blob);
                   const a = document.createElement('a');
                   a.href = url;
-                  a.download = `mercon-taxonomy-${Date.now()}.json`;
+                  a.download = `taxonomy-${Date.now()}.json`;
                   a.click();
                 }}
                 className="h-9 px-3 text-xs font-semibold rounded-xl border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 gap-1.5"
@@ -223,7 +212,7 @@ export default function TaxonomyManagementPage() {
                 className="h-9 px-4 text-xs font-bold bg-[#FA634E] hover:bg-[#DF4834] text-white rounded-xl shadow-xs gap-1.5 transition-all"
               >
                 <Plus size={15} strokeWidth={2.5} />
-                + Add Option
+                Add option
               </Button>
 
               <Button
