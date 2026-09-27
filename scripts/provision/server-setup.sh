@@ -24,10 +24,15 @@ step() { echo; echo "── $* ──"; }
 step "Packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
-apt-get install -y -q ca-certificates curl git rsync jq ufw nginx certbot python3-certbot-nginx \
-  docker.io docker-compose-v2 docker-buildx
+apt-get install -y -q ca-certificates curl git rsync jq ufw nginx certbot python3-certbot-nginx
+# Keep a Docker that is already there (e.g. docker-ce from Docker's own repo,
+# whose packages conflict with Ubuntu's docker.io); install Ubuntu's otherwise.
+if ! command -v docker >/dev/null; then
+  apt-get install -y -q docker.io docker-compose-v2 docker-buildx
+fi
 systemctl enable --now docker nginx
-docker compose version
+docker compose version || die "docker compose plugin missing"
+docker buildx version || die "docker buildx plugin missing"
 
 step "Swap"
 if swapon --show | grep -q .; then
