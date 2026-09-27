@@ -174,6 +174,7 @@ export const MODULE_KEYS = [
   'learning',
   'recycle-bin',
   'finance',
+  'zatca',
 ] as const;
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
@@ -308,6 +309,58 @@ export const COUNTRY_CODES: CountryCode[] = [
 ];
 
 export const DEFAULT_COUNTRY = COUNTRY_CODES[0]; // Saudi Arabia +966
+
+/* ─── ZATCA e-invoicing (Fatoora Phase 2) ─────────────────────────────────── */
+
+export type ZatcaEnvironment = 'Sandbox' | 'Simulation' | 'Production';
+export type ZatcaOnboardingStatus = 'NotStarted' | 'ProfileSaved' | 'ComplianceIssued' | 'ComplianceChecked' | 'Active';
+/** 1000 = standard (B2B) only, 0100 = simplified (B2C) only, 1100 = both. */
+export type ZatcaInvoiceTypes = '1000' | '0100' | '1100';
+
+export interface ZatcaProfile {
+  sellerNameAr: string | null;
+  sellerNameEn: string | null;
+  vatNumber: string | null;
+  crNumber: string | null;
+  branchName: string | null;
+  businessCategory: string | null;
+  invoiceTypes: ZatcaInvoiceTypes;
+  buildingNumber: string | null;
+  streetName: string | null;
+  district: string | null;
+  city: string | null;
+  postalCode: string | null;
+  additionalNumber: string | null;
+  shortAddress: string | null;
+}
+
+export interface ZatcaComplianceCheck {
+  documentType: string;
+  passed: boolean;
+  messages?: string[];
+}
+
+/** GET /zatca — this deployment's ZATCA connection. Never contains keys or secrets. */
+export interface ZatcaStatus {
+  environment: ZatcaEnvironment;
+  status: ZatcaOnboardingStatus;
+  profile: ZatcaProfile;
+  missingProfileFields: string[];
+  /** True once ZATCA has issued a certificate containing these details. */
+  profileLocked: boolean;
+  egs: { serial: string | null; commonName: string | null; hasPrivateKey: boolean };
+  complianceIssuedAt: string | null;
+  complianceChecks: ZatcaComplianceCheck[] | null;
+  productionIssuedAt: string | null;
+  certificateExpiresAt: string | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  /** False when the server has no DATA_ENCRYPTION_KEY — connecting is impossible until the deploy creates it. */
+  encryptionKeyConfigured: boolean;
+  /** True when a certificate is stored but this server no longer has the key it was encrypted with. */
+  certificateUnreadable: boolean;
+  invoicesIssued: number;
+}
 
 /** This deployment's branding + module config. Singleton — one row per client database. */
 export interface Settings {

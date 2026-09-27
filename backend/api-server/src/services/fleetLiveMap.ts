@@ -71,6 +71,7 @@ export interface LiveUnit {
     name: string;
     phone: string | null;
     avatar_url: string | null;
+    status: string | null;
   } | null;
   trip: {
     id: string;
@@ -120,6 +121,8 @@ export interface LiveDriverRow {
   last_name: string;
   phone_primary: string | null;
   avatar_url: string | null;
+  /** Available / OnTrip / OffDuty… — dispatch only accepts an Available driver. Absent on older callers' rows. */
+  status?: string | null;
 }
 
 export interface LiveTripRow {
@@ -226,6 +229,7 @@ function driverOut(d: LiveDriverRow | null): LiveUnit['driver'] {
     name: `${d.first_name ?? ''} ${d.last_name ?? ''}`.trim() || 'Driver',
     phone: d.phone_primary,
     avatar_url: d.avatar_url,
+    status: d.status ?? null,
   };
 }
 
@@ -360,6 +364,7 @@ export const DRIVER_SELECT = {
   last_name: true,
   phone_primary: true,
   avatar_url: true,
+  status: true,
 } as const;
 
 export async function loadLiveUnits(db: PrismaClient): Promise<LiveUnit[]> {

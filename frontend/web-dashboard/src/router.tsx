@@ -148,6 +148,7 @@ const BrandingSettingsPage    = lazyWithRetry(() => import('@/pages/settings/Bra
 const SystemHealthPage        = lazyWithRetry(() => import('@/pages/settings/SystemHealthPage'));
 const AuditLogPage            = lazyWithRetry(() => import('@/pages/settings/AuditLogPage'));
 const ModuleGovernancePage    = lazyWithRetry(() => import('@/pages/settings/ModuleGovernancePage'));
+const ZatcaSettingsPage       = lazyWithRetry(() => import('@/pages/settings/ZatcaSettingsPage'));
 const ErrorConsolePage        = lazyWithRetry(() => import('@/pages/settings/ErrorConsolePage'));
 const ErrorEventDetailPage    = lazyWithRetry(() => import('@/pages/settings/ErrorEventDetailPage'));
 const RecycleBinPage          = lazyWithRetry(() => import('@/pages/recycle-bin/RecycleBinPage'));
@@ -215,6 +216,21 @@ export default function AppRouter() {
             }
           />
 
+          {/* Live map — full screen, outside the app shell: no app sidebar or
+              header, the operations panel floats inside the map. */}
+          <Route
+            path="/live-map"
+            element={
+              <ProtectedRoute>
+                <RequireModule moduleKey="trips">
+                  <Suspense fallback={<FullPageSpinner />}>
+                    <LiveMapPage />
+                  </Suspense>
+                </RequireModule>
+              </ProtectedRoute>
+            }
+          />
+
           {/* ── Protected layout route ────────────────────────────────
               AppShell renders the sidebar + header ONCE and keeps them
               mounted. <Outlet> renders the active child page. Each page
@@ -230,9 +246,6 @@ export default function AppRouter() {
           >
             <Route path="/"            element={<RequireModule moduleKey="dashboard"><DashboardPage /></RequireModule>} />
             <Route path="/notifications" element={<NotificationsPage />} />
-
-            {/* Live map — the whole fleet with the operations sidebar */}
-            <Route path="/live-map"                 element={<RequireModule moduleKey="trips"><LiveMapPage /></RequireModule>} />
 
             {/* Trips */}
             <Route path="/trips"                    element={<RequireModule moduleKey="trips"><TripListPage /></RequireModule>} />
@@ -370,6 +383,7 @@ export default function AppRouter() {
               <Route path="/settings/system-health"   element={<RequireRole roles={['SuperAdmin']}><SystemHealthPage /></RequireRole>} />
               <Route path="/settings/audit-log"       element={<RequireRole roles={['SuperAdmin']}><AuditLogPage /></RequireRole>} />
               <Route path="/settings/module-governance" element={<RequireRole roles={['SuperAdmin']}><ModuleGovernancePage /></RequireRole>} />
+              <Route path="/settings/zatca"           element={<RequireRole roles={['Admin']}><RequireModule moduleKey="zatca"><ZatcaSettingsPage /></RequireModule></RequireRole>} />
               <Route path="/settings/error-console"     element={<RequireRole roles={['Admin']}><ErrorConsolePage /></RequireRole>} />
               <Route path="/settings/error-console/:id" element={<RequireRole roles={['Admin']}><ErrorEventDetailPage /></RequireRole>} />
               <Route path="/settings/recycle-bin"     element={<RequireModule moduleKey="recycle-bin"><RecycleBinPage /></RequireModule>} />

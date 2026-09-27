@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Edit2, Trash2, FileCog } from 'lucide-react';
+import { Plus, Edit2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
-import DashboardLayout from '@/components/layout/DashboardLayout';
+import { SettingsPage } from '@/components/settings/SettingsKit';
 import DataTable from '@/components/ui/DataTable';
-import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import Btn from '@/components/ui/Btn';
@@ -107,65 +107,62 @@ export default function DocumentTypeAdminPage() {
   });
 
   return (
-    <DashboardLayout active="Settings" title="Document Types">
-      <div className="px-4 sm:px-6 pb-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <FileCog className="w-5 h-5 text-brand" />
-            <h2 className="text-sm font-extrabold text-slate-800 dark:text-slate-200">
-              Document Type Configuration
-            </h2>
-          </div>
-          <Button size="sm" onClick={openCreate} className="bg-brand hover:bg-brand-hover text-white gap-1.5 text-xs font-bold">
-            <Plus className="w-4 h-4" /> Add Document Type
-          </Button>
-        </div>
-        <p className="text-xs text-slate-500 mb-4 max-w-2xl">
-          Defines which documents a Driver, Vehicle, or other owner needs. Mandatory types drive the
-          "Missing document" checklist across the Documents Center — no code change needed to add,
-          disable, or retire a requirement.
-        </p>
-
+    <SettingsPage
+      wide
+      title="Document types"
+      description="The documents each driver, vehicle or trip needs. Required types show up as missing in the Documents Center until uploaded."
+      actions={<Btn label="Add document type" icon={<Plus size={14} />} onClick={openCreate} />}
+    >
         <DataTable<DocumentType>
-          title="Document Types"
           data={types}
           isLoading={isLoading}
           columns={[
-            { header: 'Name', accessor: (t) => <span className="font-bold text-xs text-slate-900 dark:text-slate-100">{t.name}</span> },
-            { header: 'Code', accessor: (t) => <span className="font-mono text-[11px] text-slate-500">{t.code}</span> },
-            { header: 'Applies To', accessor: (t) => <Badge variant="outline" className="text-[10px] font-semibold">{t.ownerType}</Badge> },
+            {
+              header: 'Document',
+              accessor: (t) => (
+                <div className="min-w-0">
+                  <p className="font-semibold text-foreground">{t.name}</p>
+                  {t.code.toLowerCase() !== t.name.replace(/\s+/g, '').toLowerCase() && <p className="text-[11px] text-muted-foreground">{t.code}</p>}
+                </div>
+              ),
+            },
+            { header: 'For', accessor: (t) => <span className="text-muted-foreground">{t.ownerType}</span> },
             {
               header: 'Requirement',
               accessor: (t) => (
-                <Badge className={
-                  t.requirementStatus === 'MANDATORY' ? 'bg-rose-50 text-rose-700 border-rose-200 text-[10px] font-bold' :
-                  t.requirementStatus === 'OPTIONAL' ? 'bg-slate-100 text-slate-600 border-slate-200 text-[10px] font-bold' :
-                  'bg-slate-50 text-slate-400 border-slate-200 text-[10px] font-bold'
-                }>
-                  {t.requirementStatus}
-                </Badge>
-              ),
-            },
-            { header: 'Expiry', accessor: (t) => (t.requiresExpiryDate ? 'Yes' : 'No') },
-            { header: 'Multi-File', accessor: (t) => (t.allowsMultipleFiles ? 'Yes' : 'No') },
-            {
-              header: 'Status',
-              accessor: (t) => (
-                <button onClick={() => toggleActiveMutation.mutate(t)} className="cursor-pointer">
-                  <Badge className={t.isActive ? 'bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] font-bold' : 'bg-slate-100 text-slate-400 border-slate-200 text-[10px] font-bold'}>
-                    {t.isActive ? 'Active' : 'Disabled'}
-                  </Badge>
-                </button>
+                <span className={t.requirementStatus === 'MANDATORY' ? 'font-semibold text-foreground' : 'text-muted-foreground'}>
+                  {t.requirementStatus === 'MANDATORY' ? 'Required' : t.requirementStatus === 'OPTIONAL' ? 'Optional' : 'Not used'}
+                </span>
               ),
             },
             {
-              header: 'Actions',
+              header: 'Asks for',
               accessor: (t) => (
-                <div className="flex items-center gap-1">
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => openEdit(t)}>
+                <span className="text-muted-foreground">
+                  {[t.requiresExpiryDate && 'Expiry date', t.allowsMultipleFiles && 'Several files'].filter(Boolean).join(' · ') || '—'}
+                </span>
+              ),
+            },
+            {
+              header: 'In use',
+              accessor: (t) => (
+                <Switch
+                  checked={t.isActive}
+                  onCheckedChange={() => toggleActiveMutation.mutate(t)}
+                  aria-label={`${t.isActive ? 'Disable' : 'Enable'} ${t.name}`}
+                />
+              ),
+            },
+            {
+              header: '',
+              headerClassName: 'text-right',
+              className: 'text-right',
+              accessor: (t) => (
+                <div className="flex items-center justify-end gap-1">
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0" aria-label={`Edit ${t.name}`} onClick={() => openEdit(t)}>
                     <Edit2 className="w-3.5 h-3.5" />
                   </Button>
-                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-rose-500" onClick={() => setDeleteId(t.id)}>
+                  <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-[#DC2626]" aria-label={`Delete ${t.name}`} onClick={() => setDeleteId(t.id)}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </Button>
                 </div>
@@ -173,7 +170,6 @@ export default function DocumentTypeAdminPage() {
             },
           ]}
         />
-      </div>
 
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="max-w-md">
@@ -258,6 +254,6 @@ export default function DocumentTypeAdminPage() {
         message="This can only be deleted if no documents use it. Otherwise, disable it instead."
         isLoading={deleteMutation.isPending}
       />
-    </DashboardLayout>
+    </SettingsPage>
   );
 }
