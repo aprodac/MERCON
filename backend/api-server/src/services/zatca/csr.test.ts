@@ -5,7 +5,6 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { generateKeyAndCsr, CsrInput } from './csr';
-import { sealSecret, openSecret, ZatcaEncryptionKeyMissingError } from './secretBox';
 
 const input: CsrInput = {
   environment: 'Sandbox',
@@ -58,23 +57,4 @@ test('certificate template follows the environment', () => {
   const production = opensslText(generateKeyAndCsr({ ...input, environment: 'Production' }).csrPem);
   assert.match(production, /ZATCA-Code-Signing/);
   assert.doesNotMatch(production, /(TST|PRE)ZATCA/);
-});
-
-test('secrets round-trip and are unreadable without the key', () => {
-  const previous = process.env.ZATCA_ENCRYPTION_KEY;
-  try {
-    process.env.ZATCA_ENCRYPTION_KEY = 'test-key-one';
-    const sealed = sealSecret('-----BEGIN EC PRIVATE KEY-----abc');
-    assert.doesNotMatch(sealed, /PRIVATE KEY/);
-    assert.equal(openSecret(sealed), '-----BEGIN EC PRIVATE KEY-----abc');
-
-    process.env.ZATCA_ENCRYPTION_KEY = 'a-different-key';
-    assert.throws(() => openSecret(sealed));
-
-    delete process.env.ZATCA_ENCRYPTION_KEY;
-    assert.throws(() => sealSecret('x'), ZatcaEncryptionKeyMissingError);
-  } finally {
-    if (previous === undefined) delete process.env.ZATCA_ENCRYPTION_KEY;
-    else process.env.ZATCA_ENCRYPTION_KEY = previous;
-  }
 });

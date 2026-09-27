@@ -109,12 +109,23 @@ jobs:
           # Gemini Vision AI — injected from repo/environment secrets
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ secrets.DEV_GEMINI_MODEL || secrets.GEMINI_MODEL || 'gemini-flash-latest' }}
-          # Its own key, never production's: dev's ZATCA sandbox certificate
-          # must not be decryptable with the production key or vice versa.
-          ZATCA_ENCRYPTION_KEY: ${{ secrets.DEV_ZATCA_ENCRYPTION_KEY }}
         run: |
           echo "=== REBUILDING DEV STACK (mercon-dev) ==="
           echo "Target Project: mercon-dev (CLIENT_NAME=dev)"
+
+          # Per-client secrets live on this server, not in GitHub
+          # (scripts/provision/client-secrets.sh, docs/CLIENT_SECRETS.md).
+          # `ensure` creates dev's own data encryption key on the first deploy
+          # and never replaces it; a missing or malformed key stops the deploy
+          # here, before anything is built or restarted.
+          sudo bash scripts/provision/client-secrets.sh ensure "$CLIENT_NAME"
+          eval "$(sudo bash scripts/provision/client-secrets.sh export "$CLIENT_NAME")"
+          echo "::add-mask::$DATA_ENCRYPTION_KEY"
+          [ -n "$DATA_ENCRYPTION_KEY_PREVIOUS" ] && echo "::add-mask::$DATA_ENCRYPTION_KEY_PREVIOUS"
+          if [ -z "$DATA_ENCRYPTION_KEY" ]; then
+            echo "ERROR: no DATA_ENCRYPTION_KEY for client '$CLIENT_NAME'. Aborting deploy." >&2
+            exit 1
+          fi
 
           echo "Ensuring persistent dev uploads directory exists..."
           sudo mkdir -p /var/lib/mercon/dev-uploads

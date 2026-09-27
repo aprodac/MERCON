@@ -3,7 +3,7 @@ import { Prisma, type ZatcaConfig } from '@prisma/client';
 import type { ZatcaStatus } from '@mercon/shared-types';
 import { prisma } from '../../db';
 import { generateKeyAndCsr } from './csr';
-import { encryptionKeyConfigured, openSecret, sealSecret } from './secretBox';
+import { canOpen, dataKeyConfigured, openSecret, sealSecret } from '../secrets/secretBox';
 import { certificateExpiry, requestComplianceCsid, requestProductionCsid, ZatcaApiError } from './zatcaApi';
 import type { ZatcaProfileInput } from '../../schemas/zatcaSchemas';
 
@@ -63,7 +63,8 @@ export function toStatus(config: ZatcaConfig): ZatcaStatus {
     certificateExpiresAt: config.certificateExpiresAt?.toISOString() ?? null,
     lastError: config.lastError,
     lastErrorAt: config.lastErrorAt?.toISOString() ?? null,
-    encryptionKeyConfigured: encryptionKeyConfigured(),
+    encryptionKeyConfigured: dataKeyConfigured(),
+    certificateUnreadable: [config.privateKeyEnc, config.complianceSecretEnc, config.productionSecretEnc].some((v) => v !== null && !canOpen(v)),
     invoicesIssued: config.invoiceCounter,
   };
 }
@@ -100,8 +101,8 @@ export async function saveProfile(input: ZatcaProfileInput, userId?: string): Pr
 /** OTP step: generate the key pair + CSR and get the compliance certificate. */
 export async function connectWithOtp(otp: string, userId?: string): Promise<ZatcaConfig> {
   const config = await getZatcaConfig();
-  if (!encryptionKeyConfigured()) {
-    throw new ZatcaOnboardingError(409, 'ZATCA_KEY_MISSING', 'ZATCA_ENCRYPTION_KEY is not set on this server. Aprodac must add it before connecting.');
+  if (!dataKeyConfigured()) {
+    throw new ZatcaOnboardingError(409, 'DATA_KEY_MISSING', 'This server has no DATA_ENCRYPTION_KEY yet. Aprodac’s deploy creates it; ask Aprodac to redeploy.');
   }
   if (config.status !== 'ProfileSaved') {
     throw new ZatcaOnboardingError(

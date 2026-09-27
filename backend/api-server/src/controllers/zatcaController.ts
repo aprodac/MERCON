@@ -3,7 +3,7 @@ import { AuthenticatedRequest } from '../middlewares/auth';
 import { logAuditEvent } from '../services/auditService';
 import { activateProduction, connectWithOtp, getZatcaConfig, resetConnection, saveProfile, toStatus, ZatcaOnboardingError } from '../services/zatca/onboarding';
 import { ZatcaApiError } from '../services/zatca/zatcaApi';
-import { ZatcaEncryptionKeyMissingError } from '../services/zatca/secretBox';
+import { DataKeyMissingError, DataKeyUnavailableError } from '../services/secrets/secretBox';
 
 function sendError(res: Response, err: unknown) {
   if (err instanceof ZatcaOnboardingError) {
@@ -14,8 +14,14 @@ function sendError(res: Response, err: unknown) {
     // 502: the dashboard hides 5xx messages, and this one is meant to be read.
     return res.status(422).json({ success: false, error: { code: 'ZATCA_REJECTED', message: err.message } });
   }
-  if (err instanceof ZatcaEncryptionKeyMissingError) {
-    return res.status(409).json({ success: false, error: { code: 'ZATCA_KEY_MISSING', message: err.message } });
+  if (err instanceof DataKeyMissingError) {
+    return res.status(409).json({ success: false, error: { code: 'DATA_KEY_MISSING', message: err.message } });
+  }
+  if (err instanceof DataKeyUnavailableError) {
+    return res.status(409).json({
+      success: false,
+      error: { code: 'DATA_KEY_UNAVAILABLE', message: 'The stored ZATCA certificate can’t be read on this server (its encryption key changed). Reset the connection and connect again.' },
+    });
   }
   console.error('[zatca]', err);
   return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'ZATCA setup failed unexpectedly' } });

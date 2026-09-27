@@ -64,12 +64,16 @@ services:
       ICCES_ACCT: "${ICCES_ACCT:-}"
       GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
       GEMINI_MODEL: "${GEMINI_MODEL:-}"
-      # Encrypts this client's ZATCA private key and API secrets at rest.
-      # Optional like ICCES: unset only blocks connecting to ZATCA (the
-      # settings page says so), nothing else. Generate: openssl rand -base64 32
-      # Never change it once a client is connected — their stored certificate
-      # becomes unreadable and they must onboard again.
-      ZATCA_ENCRYPTION_KEY: "${ZATCA_ENCRYPTION_KEY:-}"
+      # Encrypts stored integration secrets (ZATCA certificate key etc.).
+      # Comes from this client's own server, not GitHub:
+      # /etc/aprodac/clients/<client>/secrets.env, created and exported by
+      # scripts/provision/client-secrets.sh in the deploy workflow, which
+      # refuses to deploy without it. `:-` rather than `:?` because every
+      # `docker compose` command interpolates this file, including read-only
+      # ones in other workflows (db-inspect) that never need the key.
+      # Rotation: docs/CLIENT_SECRETS.md.
+      DATA_ENCRYPTION_KEY: "${DATA_ENCRYPTION_KEY:-}"
+      DATA_ENCRYPTION_KEY_PREVIOUS: "${DATA_ENCRYPTION_KEY_PREVIOUS:-}"
       PORT: 3000
     volumes:
       # Parameterized by CLIENT_NAME so a second stack (e.g. dev) on the same

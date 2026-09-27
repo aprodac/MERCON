@@ -355,8 +355,10 @@ export interface ZatcaStatus {
   certificateExpiresAt: string | null;
   lastError: string | null;
   lastErrorAt: string | null;
-  /** False when the server has no ZATCA_ENCRYPTION_KEY — connecting is impossible until Aprodac sets it. */
+  /** False when the server has no DATA_ENCRYPTION_KEY — connecting is impossible until the deploy creates it. */
   encryptionKeyConfigured: boolean;
+  /** True when a certificate is stored but this server no longer has the key it was encrypted with. */
+  certificateUnreadable: boolean;
   invoicesIssued: number;
 }
 

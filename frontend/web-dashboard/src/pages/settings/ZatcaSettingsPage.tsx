@@ -173,8 +173,14 @@ export default function ZatcaSettingsPage() {
 
             {!status.encryptionKeyConfigured && (
               <Notice tone="warning" title="This server is not ready to store ZATCA certificates">
-                Aprodac must set <code className="font-mono">ZATCA_ENCRYPTION_KEY</code> on this deployment before you can connect.
+                Its data encryption key hasn’t been created yet. Aprodac’s deploy creates it automatically; ask Aprodac to redeploy.
                 You can still fill in the business details now.
+              </Notice>
+            )}
+            {status.certificateUnreadable && (
+              <Notice tone="error" title="The stored ZATCA certificate can’t be used on this server">
+                The server’s encryption key changed since ZATCA was connected. Use <strong>Reset connection</strong>, then connect again with a new OTP.
+                Invoices already sent to ZATCA are not affected.
               </Notice>
             )}
             {step === 'details' && <DetailsStep status={status} settingsDefaults={settings} onSaved={onStatus} />}
