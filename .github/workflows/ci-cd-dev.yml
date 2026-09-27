@@ -109,6 +109,9 @@ jobs:
           # Gemini Vision AI — injected from repo/environment secrets
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ secrets.DEV_GEMINI_MODEL || secrets.GEMINI_MODEL || 'gemini-flash-latest' }}
+          # Its own key, never production's: dev's ZATCA sandbox certificate
+          # must not be decryptable with the production key or vice versa.
+          ZATCA_ENCRYPTION_KEY: ${{ secrets.DEV_ZATCA_ENCRYPTION_KEY }}
         run: |
           echo "=== REBUILDING DEV STACK (mercon-dev) ==="
           echo "Target Project: mercon-dev (CLIENT_NAME=dev)"

@@ -79,6 +79,9 @@ jobs:
           # Studio and set the new value as the GEMINI_API_KEY repo secret.)
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-flash-latest' }}
+          # ZATCA e-invoicing — encrypts the stored certificate key and API
+          # secrets. Optional: absent only blocks connecting to ZATCA.
+          ZATCA_ENCRYPTION_KEY: ${{ secrets.ZATCA_ENCRYPTION_KEY }}
           # Google address autocomplete. Reaches the frontend as a
           # docker-compose build arg, because Vite inlines VITE_* at build time
           # — a runtime env var would arrive after the bundle is written.

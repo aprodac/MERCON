@@ -85,6 +85,7 @@ import bankAccountRoutes from './routes/bankAccountRoutes';
 import advanceRoutes from './routes/advanceRoutes';
 import reconciliationRoutes from './routes/reconciliationRoutes';
 import financeReportsRoutes from './routes/financeReportsRoutes';
+import zatcaRoutes from './routes/zatcaRoutes';
 import { reportClientError } from './controllers/clientErrorController';
 import { validate } from './middlewares/validate';
 import { clientErrorBody } from './schemas';
@@ -179,6 +180,7 @@ apiRouter.use('/bank-accounts', bankAccountRoutes);
 apiRouter.use('/advances', advanceRoutes);
 apiRouter.use('/reconciliations', reconciliationRoutes);
 apiRouter.use('/finance', financeReportsRoutes);
+apiRouter.use('/zatca', zatcaRoutes);
 apiRouter.post('/client-errors', authenticateJWT, validate({ body: clientErrorBody }), reportClientError);
 
 // Mount router on both /api and root for maximum proxy compatibility

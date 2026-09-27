@@ -148,6 +148,7 @@ const BrandingSettingsPage    = lazyWithRetry(() => import('@/pages/settings/Bra
 const SystemHealthPage        = lazyWithRetry(() => import('@/pages/settings/SystemHealthPage'));
 const AuditLogPage            = lazyWithRetry(() => import('@/pages/settings/AuditLogPage'));
 const ModuleGovernancePage    = lazyWithRetry(() => import('@/pages/settings/ModuleGovernancePage'));
+const ZatcaSettingsPage       = lazyWithRetry(() => import('@/pages/settings/ZatcaSettingsPage'));
 const ErrorConsolePage        = lazyWithRetry(() => import('@/pages/settings/ErrorConsolePage'));
 const ErrorEventDetailPage    = lazyWithRetry(() => import('@/pages/settings/ErrorEventDetailPage'));
 const RecycleBinPage          = lazyWithRetry(() => import('@/pages/recycle-bin/RecycleBinPage'));
@@ -382,6 +383,7 @@ export default function AppRouter() {
               <Route path="/settings/system-health"   element={<RequireRole roles={['SuperAdmin']}><SystemHealthPage /></RequireRole>} />
               <Route path="/settings/audit-log"       element={<RequireRole roles={['SuperAdmin']}><AuditLogPage /></RequireRole>} />
               <Route path="/settings/module-governance" element={<RequireRole roles={['SuperAdmin']}><ModuleGovernancePage /></RequireRole>} />
+              <Route path="/settings/zatca"           element={<RequireRole roles={['Admin']}><RequireModule moduleKey="zatca"><ZatcaSettingsPage /></RequireModule></RequireRole>} />
               <Route path="/settings/error-console"     element={<RequireRole roles={['Admin']}><ErrorConsolePage /></RequireRole>} />
               <Route path="/settings/error-console/:id" element={<RequireRole roles={['Admin']}><ErrorEventDetailPage /></RequireRole>} />
               <Route path="/settings/recycle-bin"     element={<RequireModule moduleKey="recycle-bin"><RecycleBinPage /></RequireModule>} />

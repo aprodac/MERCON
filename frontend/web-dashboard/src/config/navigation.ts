@@ -4,7 +4,7 @@ import {
   ReceiptText, Clock, CreditCard, Wallet, Landmark, Scale, HandCoins, BookOpen, BookOpenText,
   FolderTree, CalendarCheck, BarChart3, FileBarChart, Coins, TrendingUp, FileSpreadsheet,
   SlidersHorizontal, Files, GraduationCap, Bell, Settings, Palette, UserCog, ShieldCheck,
-  Map as MapIcon, MapPin, Layers, Tags, FileType, Trash2, ScrollText, AlertTriangle, Activity, FolderArchive,
+  Map as MapIcon, MapPin, Layers, Tags, FileType, Trash2, ScrollText, AlertTriangle, Activity, FolderArchive, FileCheck2,
 } from 'lucide-react';
 import type { ModuleKey } from '@mercon/shared-types';
 
@@ -227,6 +227,7 @@ export const NAV_ACTION_SECTIONS: { id: NavAction['section']; label: string }[] 
 export const SETTINGS_PAGES: SettingsNavPage[] = [
   { id: 'system-settings', label: 'System settings', path: '/settings', icon: Settings, settingsGroup: 'general', keywords: ['company', 'profile', 'preferences'], match: (p) => p === '/settings' || p === '/settings/profile' },
   { id: 'branding', label: 'Branding', path: '/settings/branding', icon: Palette, settingsGroup: 'general', superAdminOnly: true, keywords: ['logo', 'colors', 'theme'] },
+  { id: 'zatca', label: 'ZATCA e-invoicing', path: '/settings/zatca', icon: FileCheck2, settingsGroup: 'general', adminOnly: true, moduleKey: 'zatca', keywords: ['fatoora', 'e-invoice', 'vat', 'tax', 'csid', 'certificate'] },
   { id: 'users', label: 'Users', path: '/settings/users', icon: UserCog, settingsGroup: 'access', adminOnly: true, keywords: ['user management', 'roles', 'accounts'] },
   { id: 'module-governance', label: 'Module governance', path: '/settings/module-governance', icon: ShieldCheck, settingsGroup: 'access', superAdminOnly: true, keywords: ['modules', 'enable', 'disable'] },
   {

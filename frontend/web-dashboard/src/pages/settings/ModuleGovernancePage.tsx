@@ -102,6 +102,11 @@ const MODULE_DESCRIPTIONS: Record<string, { label: string; path: string; desc: s
     path: '/aprodac-documents',
     desc: 'Aprodac compliance document storage & digital archives.',
   },
+  zatca: {
+    label: 'ZATCA E-Invoicing',
+    path: '/settings/zatca',
+    desc: 'Fatoora Phase 2 connection: onboarding, certificates and invoice clearance.',
+  },
   learning: {
     label: 'Learning & Academy',
     path: '/learning',
