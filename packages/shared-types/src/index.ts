@@ -174,6 +174,7 @@ export const MODULE_KEYS = [
   'learning',
   'recycle-bin',
   'finance',
+  'zatca',
 ] as const;
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
@@ -308,6 +309,58 @@ export const COUNTRY_CODES: CountryCode[] = [
 ];
 
 export const DEFAULT_COUNTRY = COUNTRY_CODES[0]; // Saudi Arabia +966
+
+/* ─── ZATCA e-invoicing (Fatoora Phase 2) ─────────────────────────────────── */
+
+export type ZatcaEnvironment = 'Sandbox' | 'Simulation' | 'Production';
+export type ZatcaOnboardingStatus = 'NotStarted' | 'ProfileSaved' | 'ComplianceIssued' | 'ComplianceChecked' | 'Active';
+/** 1000 = standard (B2B) only, 0100 = simplified (B2C) only, 1100 = both. */
+export type ZatcaInvoiceTypes = '1000' | '0100' | '1100';
+
+export interface ZatcaProfile {
+  sellerNameAr: string | null;
+  sellerNameEn: string | null;
+  vatNumber: string | null;
+  crNumber: string | null;
+  branchName: string | null;
+  businessCategory: string | null;
+  invoiceTypes: ZatcaInvoiceTypes;
+  buildingNumber: string | null;
+  streetName: string | null;
+  district: string | null;
+  city: string | null;
+  postalCode: string | null;
+  additionalNumber: string | null;
+  shortAddress: string | null;
+}
+
+export interface ZatcaComplianceCheck {
+  documentType: string;
+  passed: boolean;
+  messages?: string[];
+}
+
+/** GET /zatca — this deployment's ZATCA connection. Never contains keys or secrets. */
+export interface ZatcaStatus {
+  environment: ZatcaEnvironment;
+  status: ZatcaOnboardingStatus;
+  profile: ZatcaProfile;
+  missingProfileFields: string[];
+  /** True once ZATCA has issued a certificate containing these details. */
+  profileLocked: boolean;
+  egs: { serial: string | null; commonName: string | null; hasPrivateKey: boolean };
+  complianceIssuedAt: string | null;
+  complianceChecks: ZatcaComplianceCheck[] | null;
+  productionIssuedAt: string | null;
+  certificateExpiresAt: string | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  /** False when the server has no DATA_ENCRYPTION_KEY — connecting is impossible until the deploy creates it. */
+  encryptionKeyConfigured: boolean;
+  /** True when a certificate is stored but this server no longer has the key it was encrypted with. */
+  certificateUnreadable: boolean;
+  invoicesIssued: number;
+}
 
 /** This deployment's branding + module config. Singleton — one row per client database. */
 export interface Settings {
@@ -683,6 +736,104 @@ export interface BillPayment {
   createdAt: string;
 }
 
+export interface GLContraLine {
+  account_id: string;
+  account_code: string;
+  name: string;
+  amount: number;
+}
+
+export interface BalanceWithSide {
+  signed: number;
+  side: 'Dr' | 'Cr';
+  net?: number;
+}
+
+export interface GeneralLedgerLineItem {
+  line_id: string;
+  journal_entry_id: string;
+  journal_entry_status: 'Posted' | 'Voided';
+  reversal_of_id?: string | null;
+  reversed_by_id?: string | null;
+  entry_date: string;
+  ref_id: string | null;
+  memo: string | null;
+  description: string | null;
+  source_type: string | null;
+  source_id: string | null;
+  debit: number;
+  credit: number;
+  running_balance: number;
+  signed_balance: number;
+  balance_side: 'Dr' | 'Cr';
+  contra: GLContraLine[];
+}
+
+export interface GeneralLedgerData {
+  account: {
+    id: string;
+    account_code: string;
+    name: string;
+    account_type: AccountType;
+    parent_id?: string | null;
+    parent_code?: string | null;
+    parent_name?: string | null;
+  } | null;
+  opening_balance: number;
+  opening_balance_side?: 'Dr' | 'Cr';
+  page_opening_balance: number;
+  page_opening_signed_balance: number;
+  lines: GeneralLedgerLineItem[];
+  closing_balance: number;
+  closing_balance_side?: 'Dr' | 'Cr';
+  total_debit: number;
+  total_credit: number;
+  count: number;
+  pagination?: {
+    page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+  };
+}
+
+export interface GeneralLedgerSummaryItem {
+  account_id: string;
+  code: string;
+  name: string;
+  type: AccountType;
+  parent_id?: string | null;
+  parent_code?: string | null;
+  parent_name?: string | null;
+  opening: BalanceWithSide;
+  period_debit: number;
+  period_credit: number;
+  closing: BalanceWithSide;
+  line_count: number;
+}
+
+export interface GeneralLedgerSummaryData {
+  items: GeneralLedgerSummaryItem[];
+  total_debit: number;
+  total_credit: number;
+  is_balanced: boolean;
+}
+
+export interface GeneralLedgerMonthlyItem {
+  month: string;
+  debit: number;
+  credit: number;
+  closing: BalanceWithSide;
+  count: number;
+}
+
+export interface GeneralLedgerMonthlyData {
+  account_id: string;
+  items: GeneralLedgerMonthlyItem[];
+  total_debit: number;
+  total_credit: number;
+}
+
 export interface AuditLog {
   id: string;
   userId?: string | null;
@@ -932,3 +1083,4 @@ export * from './tripRoute';
 
 
 
+export * from './tripCreation';

@@ -50,7 +50,7 @@ export default function LogDelayReasonModal({ isOpen, onClose, stop, onSuccess }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal-strong/50 backdrop-blur-xs p-4 animate-fade-in">
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-black/10 dark:border-white/10 shadow-2xl max-w-md w-full overflow-hidden">
         {/* Header */}
         <div className="px-6 py-4 border-b border-black/[0.06] dark:border-white/10 flex items-center justify-between bg-gray-50 dark:bg-slate-800/60">

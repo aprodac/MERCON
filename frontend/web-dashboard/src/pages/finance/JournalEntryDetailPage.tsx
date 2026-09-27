@@ -57,8 +57,8 @@ function renderSourceBadge(sourceType?: string, sourceId?: string | null) {
   const link = config.link?.(sourceId);
 
   const content = (
-    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
-      <Icon className="w-3.5 h-3.5 text-slate-500" />
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-muted text-foreground border border-border">
+      <Icon className="w-3.5 h-3.5 text-muted-foreground" />
       {config.label}
     </span>
   );
@@ -149,9 +149,9 @@ export default function JournalEntryDetailPage() {
     return (
       <DashboardLayout active="finance" title="Journal Entry Details">
         <div className="p-8 max-w-6xl mx-auto space-y-4">
-          <div className="h-8 w-64 bg-slate-100 rounded-lg animate-pulse" />
-          <div className="h-32 bg-slate-50 rounded-2xl animate-pulse" />
-          <div className="h-96 bg-white rounded-2xl animate-pulse border border-slate-200" />
+          <div className="h-8 w-64 bg-muted rounded-lg animate-pulse" />
+          <div className="h-32 bg-muted rounded-xl animate-pulse" />
+          <div className="h-96 bg-card rounded-xl animate-pulse border border-border" />
         </div>
       </DashboardLayout>
     );
@@ -162,8 +162,8 @@ export default function JournalEntryDetailPage() {
       <DashboardLayout active="finance" title="Journal Entry Details">
         <div className="p-12 max-w-xl mx-auto text-center space-y-4">
           <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto" />
-          <h2 className="text-xl font-bold text-slate-900">Journal Entry Not Found</h2>
-          <p className="text-xs text-slate-500">
+          <h2 className="text-xl font-bold text-foreground">Journal Entry Not Found</h2>
+          <p className="text-xs text-muted-foreground">
             {(error as any)?.response?.data?.error?.message || 'The requested journal entry does not exist or has been deleted.'}
           </p>
           <Button onClick={() => navigate('/finance/journal-entries')} variant="outline" size="sm">
@@ -201,7 +201,7 @@ export default function JournalEntryDetailPage() {
           ]}
           title={
             <div className="flex items-center gap-3">
-              <span className="font-mono text-2xl font-bold text-slate-900 .fin-num">
+              <span className="font-mono text-2xl font-bold text-foreground .fin-num">
                 {entry.ref_id || `JE-${entry.id.slice(0, 6)}`}
               </span>
               <StatusPill kind="journal" status={entry.status} />
@@ -209,10 +209,10 @@ export default function JournalEntryDetailPage() {
             </div>
           }
           subLine={
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span>Date: <strong className="text-slate-700">{formatDate(entry.entry_date, 'MMM d, yyyy')}</strong></span>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Date: <strong className="text-foreground">{formatDate(entry.entry_date, 'MMM d, yyyy')}</strong></span>
               <span>·</span>
-              <span>Period: <strong className="text-slate-700">{entry.period?.name || '—'}</strong></span>
+              <span>Period: <strong className="text-foreground">{entry.period?.name || '—'}</strong></span>
             </div>
           }
           actions={
@@ -232,7 +232,7 @@ export default function JournalEntryDetailPage() {
                     size="sm"
                     onClick={() => setIsPostConfirmOpen(true)}
                     disabled={isClosedPeriod}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white h-9 text-xs font-semibold px-4 shadow-sm"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white h-9 text-xs font-semibold px-4 shadow-xs"
                   >
                     Post Entry
                   </Button>
@@ -240,7 +240,7 @@ export default function JournalEntryDetailPage() {
                     variant="ghost"
                     size="sm"
                     onClick={() => setIsDeleteConfirmOpen(true)}
-                    className="h-9 text-xs text-slate-400 hover:text-rose-600"
+                    className="h-9 text-xs text-muted-foreground hover:text-rose-600"
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>
@@ -252,7 +252,7 @@ export default function JournalEntryDetailPage() {
                   variant="outline"
                   size="sm"
                   onClick={() => setIsVoidConfirmOpen(true)}
-                  className="h-9 text-xs border-rose-200 text-rose-700 hover:bg-rose-50 font-semibold"
+                  className="h-9 text-xs border-rose-200 text-rose-700 hover:bg-rose-500/10 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 font-semibold"
                 >
                   Void Entry
                 </Button>
@@ -261,22 +261,22 @@ export default function JournalEntryDetailPage() {
           }
           statusBar={<DocStatusBar steps={statusSteps} currentStepIndex={currentStepIndex} />}
           main={
-            <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-6 space-y-6">
+            <div className="bg-card rounded-xl border border-border shadow-xs p-6 space-y-6">
               {/* Detail Strip */}
-              <div className="bg-[var(--fin-surface-sunken)] p-4 rounded-[14px] border border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 text-xs">
+              <div className="bg-[var(--fin-surface-sunken)] p-4 rounded-[14px] border border-border grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 text-xs">
                 <div>
-                  <span className="text-slate-400 block font-medium mb-1">Entry Date</span>
-                  <span className="font-mono font-bold text-slate-900">
+                  <span className="text-muted-foreground block font-medium mb-1">Entry Date</span>
+                  <span className="font-mono font-bold text-foreground">
                     {formatDate(entry.entry_date, 'MMM d, yyyy')}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-medium mb-1">Accounting Period</span>
-                  <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+                  <span className="text-muted-foreground block font-medium mb-1">Accounting Period</span>
+                  <div className="flex items-center gap-1.5 font-semibold text-foreground">
                     <span>{entry.period?.name || '—'}</span>
                     {entry.period && (
                       <span className={`px-1.5 py-0.2 rounded text-[10px] ${
-                        entry.period.status === 'Open' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-200 text-slate-700'
+                        entry.period.status === 'Open' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 text-emerald-700' : 'bg-slate-200 text-foreground'
                       }`}>
                         {entry.period.status}
                       </span>
@@ -284,22 +284,22 @@ export default function JournalEntryDetailPage() {
                   </div>
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-medium mb-1">Source</span>
-                  <span className="font-medium text-slate-800">{entry.source_type || 'Manual'}</span>
+                  <span className="text-muted-foreground block font-medium mb-1">Source</span>
+                  <span className="font-medium text-foreground">{entry.source_type || 'Manual'}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block font-medium mb-1">Reference ID</span>
-                  <span className="font-mono font-bold text-slate-900">{entry.ref_id || '—'}</span>
+                  <span className="text-muted-foreground block font-medium mb-1">Reference ID</span>
+                  <span className="font-mono font-bold text-foreground">{entry.ref_id || '—'}</span>
                 </div>
                 <div className="sm:col-span-2 lg:col-span-1">
-                  <span className="text-slate-400 block font-medium mb-1">Memo / Description</span>
-                  <span className="font-medium text-slate-800 truncate block">{entry.memo || '—'}</span>
+                  <span className="text-muted-foreground block font-medium mb-1">Memo / Description</span>
+                  <span className="font-medium text-foreground truncate block">{entry.memo || '—'}</span>
                 </div>
               </div>
 
               {/* Journal Lines Table */}
               <div>
-                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-3">
+                <h3 className="text-xs font-bold text-foreground uppercase tracking-wider mb-3">
                   General Ledger Lines
                 </h3>
                 <JournalLinesTable lines={entry.lines} />
@@ -309,29 +309,29 @@ export default function JournalEntryDetailPage() {
           side={
             <div className="space-y-5">
               {/* Linked Card */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 space-y-4">
-                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+              <div className="bg-card rounded-xl border border-border shadow-xs p-5 space-y-4">
+                <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">
                   Linked Context
                 </h3>
 
                 <div className="space-y-3 text-xs">
                   <div>
-                    <span className="text-slate-400 block font-medium mb-1">Source Document</span>
+                    <span className="text-muted-foreground block font-medium mb-1">Source Document</span>
                     {entry.source_type !== 'Manual' ? (
-                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                        <div className="font-semibold text-slate-800 flex items-center gap-2">
+                      <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted border border-border">
+                        <div className="font-semibold text-foreground flex items-center gap-2">
                           {renderSourceBadge(entry.source_type, entry.source_id)}
                         </div>
-                        <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+                        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
                       </div>
                     ) : (
-                      <span className="text-slate-500">Manual journal entry</span>
+                      <span className="text-muted-foreground">Manual journal entry</span>
                     )}
                   </div>
 
                   {(entry.reversalOf || entry.reversedBy) && (
-                    <div className="space-y-2 pt-2 border-t border-slate-100">
-                      <span className="text-slate-400 block font-medium">Reversal Relation</span>
+                    <div className="space-y-2 pt-2 border-t border-border">
+                      <span className="text-muted-foreground block font-medium">Reversal Relation</span>
                       {entry.reversalOf && (
                         <Link
                           to={`/finance/journal-entries/${entry.reversalOf.id}`}
@@ -353,10 +353,10 @@ export default function JournalEntryDetailPage() {
                     </div>
                   )}
 
-                  <div className="pt-2 border-t border-slate-100">
-                    <span className="text-slate-400 block font-medium mb-1">Accounting Period</span>
-                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                      <span className="font-semibold text-slate-800">{entry.period?.name || '—'}</span>
+                  <div className="pt-2 border-t border-border">
+                    <span className="text-muted-foreground block font-medium mb-1">Accounting Period</span>
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-muted border border-border">
+                      <span className="font-semibold text-foreground">{entry.period?.name || '—'}</span>
                       {isClosedPeriod && (
                         <span className="flex items-center gap-1 text-[11px] font-semibold text-amber-700">
                           <Lock className="w-3 h-3" /> Closed
@@ -368,8 +368,8 @@ export default function JournalEntryDetailPage() {
               </div>
 
               {/* Activity Timeline Card */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 space-y-4">
-                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+              <div className="bg-card rounded-xl border border-border shadow-xs p-5 space-y-4">
+                <h3 className="text-xs font-bold text-foreground uppercase tracking-wider">
                   Audit Activity
                 </h3>
                 <ActivityTimeline items={activityRes?.data || []} isLoading={isActivityLoading} />
@@ -421,13 +421,13 @@ export default function JournalEntryDetailPage() {
           variant="destructive"
         >
           <div className="my-3 space-y-2">
-            <label className="text-xs font-semibold text-slate-700 block">Reason for voiding (optional):</label>
+            <label className="text-xs font-semibold text-foreground block">Reason for voiding (optional):</label>
             <textarea
               value={voidReason}
               onChange={(e) => setVoidReason(e.target.value)}
               placeholder="Reason memo for reversal record..."
               rows={2}
-              className="w-full text-xs p-2.5 rounded-lg border border-slate-200 focus:outline-none focus:ring-1 focus:ring-rose-500"
+              className="w-full text-xs p-2.5 rounded-lg border border-border focus:outline-none focus:ring-1 focus:ring-rose-500"
             />
           </div>
         </ConfirmModal>

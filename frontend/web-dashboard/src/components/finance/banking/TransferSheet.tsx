@@ -31,7 +31,7 @@ interface TransferSheetProps {
 export function getBankTint(bankName?: string | null, isCash?: boolean) {
   if (isCash) {
     return {
-      bg: 'bg-emerald-50 dark:bg-emerald-950/40',
+      bg: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-600/20 dark:bg-emerald-950/40',
       text: 'text-emerald-700 dark:text-emerald-300',
       border: 'border-emerald-200 dark:border-emerald-800',
       ring: 'ring-emerald-500',
@@ -43,11 +43,11 @@ export function getBankTint(bankName?: string | null, isCash?: boolean) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
   const TINTS = [
-    { bg: 'bg-sky-50 dark:bg-sky-950/40', text: 'text-sky-700 dark:text-sky-300', border: 'border-sky-200 dark:border-sky-800', ring: 'ring-sky-500' },
+    { bg: 'bg-sky-500/10 text-sky-700 dark:text-sky-300 ring-1 ring-inset ring-sky-600/20 dark:bg-sky-950/40', text: 'text-sky-700 dark:text-sky-300', border: 'border-sky-200 dark:border-sky-800', ring: 'ring-sky-500' },
     { bg: 'bg-indigo-50 dark:bg-indigo-950/40', text: 'text-indigo-700 dark:text-indigo-300', border: 'border-indigo-200 dark:border-indigo-800', ring: 'ring-indigo-500' },
     { bg: 'bg-teal-50 dark:bg-teal-950/40', text: 'text-teal-700 dark:text-teal-300', border: 'border-teal-200 dark:border-teal-800', ring: 'ring-teal-500' },
-    { bg: 'bg-amber-50 dark:bg-amber-950/40', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-200 dark:border-amber-800', ring: 'ring-amber-500' },
-    { bg: 'bg-rose-50 dark:bg-rose-950/40', text: 'text-rose-700 dark:text-rose-300', border: 'border-rose-200 dark:border-rose-800', ring: 'ring-rose-500' },
+    { bg: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-950/40', text: 'text-amber-700 dark:text-amber-300', border: 'border-amber-200 dark:border-amber-800', ring: 'ring-amber-500' },
+    { bg: 'bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 dark:bg-rose-950/40', text: 'text-rose-700 dark:text-rose-300', border: 'border-rose-200 dark:border-rose-800', ring: 'ring-rose-500' },
     { bg: 'bg-purple-50 dark:bg-purple-950/40', text: 'text-purple-700 dark:text-purple-300', border: 'border-purple-200 dark:border-purple-800', ring: 'ring-purple-500' },
   ];
   return TINTS[Math.abs(hash) % TINTS.length];
@@ -214,18 +214,18 @@ export const TransferSheet: React.FC<TransferSheetProps> = ({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-[540px] w-full p-0 flex flex-col justify-between overflow-hidden border-l border-slate-200 dark:border-slate-800 shadow-2xl rounded-l-[24px]">
+      <SheetContent className="sm:max-w-[540px] w-full p-0 flex flex-col justify-between overflow-hidden border-l border-border dark:border-border shadow-2xl rounded-l-[24px]">
         {/* Header */}
-        <SheetHeader className="p-6 border-b border-slate-100 dark:border-slate-800/80 bg-white dark:bg-slate-900">
+        <SheetHeader className="p-6 border-b border-border dark:border-border bg-card">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-orange-50 dark:bg-orange-950/50 flex items-center justify-center text-[#FA634E] shrink-0 border border-orange-200/60 dark:border-orange-900/40">
               <ArrowRightLeft className="w-5 h-5" />
             </div>
             <div>
-              <SheetTitle className="text-lg font-extrabold text-slate-900 dark:text-slate-100">
+              <SheetTitle className="text-lg font-extrabold text-foreground">
                 Transfer Funds
               </SheetTitle>
-              <SheetDescription className="text-xs text-slate-500 dark:text-slate-400">
+              <SheetDescription className="text-xs text-muted-foreground dark:text-muted-foreground">
                 Move cash between bank accounts or cash drawers. Posts a 2-line journal entry.
               </SheetDescription>
             </div>
@@ -233,17 +233,17 @@ export const TransferSheet: React.FC<TransferSheetProps> = ({
         </SheetHeader>
 
         {/* Content Body */}
-        <form id="transfer-form" onSubmit={handleSubmit} className="p-6 space-y-5 flex-1 overflow-y-auto bg-slate-50/50 dark:bg-slate-950/40">
+        <form id="transfer-form" onSubmit={handleSubmit} className="p-6 space-y-5 flex-1 overflow-y-auto bg-muted/50">
           {/* Account Selector Cards Grid */}
           <div className="space-y-4">
             {/* From Account */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <Label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
                   From Account (Source) <span className="text-rose-500">*</span>
                 </Label>
                 {fromBankAcc && (
-                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  <span className="text-xs font-semibold text-muted-foreground">
                     Book Balance: <span className="fin-num font-bold">{formatMoney(fromBookBalance)}</span>
                   </span>
                 )}
@@ -263,21 +263,21 @@ export const TransferSheet: React.FC<TransferSheetProps> = ({
                       }}
                       className={`p-3 rounded-xl text-left border transition-all ${
                         isSelected
-                          ? `bg-white dark:bg-slate-900 border-[#FA634E] ring-2 ring-[#FA634E]/20 shadow-xs`
-                          : `bg-white/80 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700`
+                          ? `bg-card  border-[#FA634E] ring-2 ring-[#FA634E]/20 shadow-xs`
+                          : `bg-card/80  border-border dark:border-border hover:border-border dark:hover:border-border`
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <div className={`w-6 h-6 rounded-md flex items-center justify-center font-black text-[10px] ${tint.bg} ${tint.text}`}>
                           {acc.is_cash ? <Wallet className="w-3.5 h-3.5" /> : getBankInitials(acc.bank_name)}
                         </div>
-                        <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate flex-1">
+                        <span className="text-xs font-bold text-foreground truncate flex-1">
                           {acc.is_cash ? 'Cash Drawer' : acc.bank_name}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground dark:text-muted-foreground">
                         <span className="font-mono">{acc.is_cash ? 'Cash' : maskAccountNumber(acc.account_number)}</span>
-                        <span className="fin-num font-semibold text-slate-700 dark:text-slate-300">{formatMoney(bal)}</span>
+                        <span className="fin-num font-semibold text-foreground">{formatMoney(bal)}</span>
                       </div>
                     </button>
                   );
@@ -292,7 +292,7 @@ export const TransferSheet: React.FC<TransferSheetProps> = ({
                 variant="outline"
                 size="sm"
                 onClick={handleSwap}
-                className="h-8 gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full px-4 shadow-2xs"
+                className="h-8 gap-1.5 text-xs font-bold text-muted-foreground border-border dark:border-border hover:bg-muted dark:hover:bg-slate-800 rounded-full px-4 shadow-xs"
               >
                 <ArrowRightLeft className="w-3.5 h-3.5 text-[#FA634E]" />
                 <span>Swap From / To</span>
@@ -302,11 +302,11 @@ export const TransferSheet: React.FC<TransferSheetProps> = ({
             {/* To Account */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <Label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
                   To Account (Destination) <span className="text-rose-500">*</span>
                 </Label>
                 {toBankAcc && (
-                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                  <span className="text-xs font-semibold text-muted-foreground">
                     Book Balance: <span className="fin-num font-bold">{formatMoney(Number(toBankAcc.book_balance ?? toBankAcc.opening_balance ?? 0))}</span>
                   </span>
                 )}
@@ -327,21 +327,21 @@ export const TransferSheet: React.FC<TransferSheetProps> = ({
                         isSameAsFrom ? 'opacity-40 cursor-not-allowed border-dashed' : ''
                       } ${
                         isSelected
-                          ? `bg-white dark:bg-slate-900 border-[#FA634E] ring-2 ring-[#FA634E]/20 shadow-xs`
-                          : `bg-white/80 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700`
+                          ? `bg-card  border-[#FA634E] ring-2 ring-[#FA634E]/20 shadow-xs`
+                          : `bg-card/80  border-border dark:border-border hover:border-border dark:hover:border-border`
                       }`}
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <div className={`w-6 h-6 rounded-md flex items-center justify-center font-black text-[10px] ${tint.bg} ${tint.text}`}>
                           {acc.is_cash ? <Wallet className="w-3.5 h-3.5" /> : getBankInitials(acc.bank_name)}
                         </div>
-                        <span className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate flex-1">
+                        <span className="text-xs font-bold text-foreground truncate flex-1">
                           {acc.is_cash ? 'Cash Drawer' : acc.bank_name}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground dark:text-muted-foreground">
                         <span className="font-mono">{acc.is_cash ? 'Cash' : maskAccountNumber(acc.account_number)}</span>
-                        <span className="fin-num font-semibold text-slate-700 dark:text-slate-300">{formatMoney(bal)}</span>
+                        <span className="fin-num font-semibold text-foreground">{formatMoney(bal)}</span>
                       </div>
                     </button>
                   );
@@ -353,11 +353,11 @@ export const TransferSheet: React.FC<TransferSheetProps> = ({
           {/* Amount & Date inputs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
                 Amount (SAR) <span className="text-rose-500">*</span>
               </Label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
                   SAR
                 </span>
                 <Input
@@ -366,7 +366,7 @@ export const TransferSheet: React.FC<TransferSheetProps> = ({
                   placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="pl-12 h-11 text-base font-extrabold fin-num bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+                  className="pl-12 h-11 text-base font-extrabold fin-num bg-card border-border dark:border-border"
                 />
               </div>
               {transferNum > fromBookBalance && fromBankAcc && (
@@ -378,14 +378,14 @@ export const TransferSheet: React.FC<TransferSheetProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <Label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
                 Transfer Date <span className="text-rose-500">*</span>
               </Label>
               <Input
                 type="date"
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
-                className="h-11 text-xs font-semibold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+                className="h-11 text-xs font-semibold bg-card border-border dark:border-border"
               />
               {!isPeriodOpen && (
                 <div className="flex items-center gap-1.5 text-[11px] text-rose-600 dark:text-rose-400 font-medium pt-0.5">
@@ -398,14 +398,14 @@ export const TransferSheet: React.FC<TransferSheetProps> = ({
 
           {/* Memo */}
           <div className="space-y-1.5">
-            <Label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
               Memo / Description
             </Label>
             <Input
               placeholder="e.g. Internal liquidity balancing transfer..."
               value={memo}
               onChange={(e) => setMemo(e.target.value)}
-              className="h-9 text-xs bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
+              className="h-9 text-xs bg-card border-border dark:border-border"
             />
           </div>
 
@@ -418,12 +418,12 @@ export const TransferSheet: React.FC<TransferSheetProps> = ({
         </form>
 
         {/* Footer Actions */}
-        <SheetFooter className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-end gap-2 shrink-0">
+        <SheetFooter className="p-4 border-t border-border dark:border-border bg-card flex items-center justify-end gap-2 shrink-0">
           <Button
             type="button"
             variant="outline"
             onClick={() => onOpenChange(false)}
-            className="h-9 text-xs font-semibold px-4 border-slate-200 dark:border-slate-700"
+            className="h-9 text-xs font-semibold px-4 border-border dark:border-border"
           >
             Cancel
           </Button>

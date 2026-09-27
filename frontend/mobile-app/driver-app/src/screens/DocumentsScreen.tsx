@@ -163,6 +163,7 @@ const styles = StyleSheet.create({
   },
   list: {
     padding: Spacing.lg,
+    paddingBottom: 140, // clears the floating bottom nav
     gap: Spacing.md,
     flexGrow: 1,
   },

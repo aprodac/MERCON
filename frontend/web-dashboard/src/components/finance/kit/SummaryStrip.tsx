@@ -35,11 +35,11 @@ export function SummaryStrip({
   return (
     <div
       className={cn(
-        'bg-white dark:bg-slate-900 border border-black/[0.06] dark:border-slate-800 rounded-[20px] p-5 shadow-xs',
+        'bg-card border border-border rounded-xl p-4 shadow-xs',
         className
       )}
     >
-      <div className="flex flex-col md:flex-row items-stretch divide-y md:divide-y-0 md:divide-x divide-black/[0.06] dark:divide-slate-800">
+      <div className="flex flex-col md:flex-row items-stretch divide-y md:divide-y-0 md:divide-x divide-border/60">
         {items.map((item, idx) => {
           const flexStyle = item.flex
             ? { flex: `${item.flex} 1 0%` }
@@ -58,7 +58,7 @@ export function SummaryStrip({
               className="py-3 md:py-0 px-4 md:first:pl-0 md:last:pr-0 flex flex-col justify-between min-w-0"
             >
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-[#757583] dark:text-slate-400 mb-1">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground mb-1">
                   {item.label}
                 </p>
 
@@ -74,7 +74,7 @@ export function SummaryStrip({
                 )}
 
                 {item.sub && !isLoading && (
-                  <div className="text-[11.5px] text-[#757583] dark:text-slate-400 mt-0.5">
+                  <div className="text-xs text-muted-foreground mt-0.5">
                     {item.sub}
                   </div>
                 )}
@@ -83,7 +83,7 @@ export function SummaryStrip({
               {/* Optional Stacked Bar for main metric cell */}
               {item.bar && !isLoading && item.bar.segments.length > 0 && (
                 <div className="mt-3">
-                  <div className="h-2 w-full rounded-full bg-[#F1F2F5] dark:bg-slate-800 flex overflow-hidden gap-0.5 p-0.5">
+                  <div className="h-1.5 w-full rounded-full bg-muted flex overflow-hidden gap-0.5 p-0.5">
                     {item.bar.segments.map((seg, sIdx) => {
                       const pct = Math.max(
                         0,
@@ -106,7 +106,7 @@ export function SummaryStrip({
                     {item.bar.segments.map((seg, sIdx) => (
                       <div
                         key={sIdx}
-                        className="flex items-center gap-1.5 text-[11.5px] text-[#757583] dark:text-slate-400"
+                        className="flex items-center gap-1.5 text-[11.5px] text-[#757583] dark:text-muted-foreground"
                       >
                         <span
                           className={cn(

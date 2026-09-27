@@ -33,7 +33,7 @@ export function DocStatusBar({
   return (
     <ol
       className={cn(
-        'bg-white dark:bg-slate-900 border border-black/[0.06] dark:border-slate-800 rounded-2xl p-1.5 grid grid-flow-col auto-cols-fr gap-1 select-none',
+        'bg-card border border-border rounded-xl p-1.5 shadow-xs grid grid-flow-col auto-cols-fr gap-1 select-none',
         className
       )}
     >
@@ -48,34 +48,34 @@ export function DocStatusBar({
           <li
             key={step.key || step.label || idx}
             className={cn(
-              'flex flex-col sm:flex-row items-center justify-center gap-2 py-2 px-3 rounded-xl transition-all text-center sm:text-left',
+              'flex flex-col sm:flex-row items-center justify-center gap-2 py-1.5 px-2.5 rounded-md transition-all text-center sm:text-left',
               isCurrent
-                ? 'bg-[#FFF4F2] dark:bg-[rgba(250,99,78,0.12)] text-[#FA634E] dark:text-[#FA634E] font-semibold'
+                ? 'bg-muted/80 text-foreground font-medium'
                 : isDone
-                ? 'text-[#111111] dark:text-slate-200'
+                ? 'text-foreground'
                 : voided && idx === steps.length - 1
-                ? 'bg-[#F4F4F6] dark:bg-slate-800/80 text-[#6E6E80] dark:text-slate-400 font-medium'
-                : 'text-[#6E6E80] dark:text-slate-400'
+                ? 'bg-muted/50 text-muted-foreground font-medium'
+                : 'text-muted-foreground'
             )}
           >
             <span
               className={cn(
-                'w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold transition-all',
+                'w-4 h-4 rounded-full flex items-center justify-center shrink-0 text-[10px] font-semibold transition-all',
                 isCurrent
-                  ? 'bg-[#FA634E] text-white'
+                  ? 'bg-primary text-primary-foreground'
                   : isDone
-                  ? 'bg-[#3E3C3D] text-white'
+                  ? 'bg-foreground text-background'
                   : voided && idx === steps.length - 1
-                  ? 'bg-[#6E6E80] text-white'
-                  : 'bg-[#F1F2F5] dark:bg-slate-800 text-[#6E6E80] dark:text-slate-400'
+                  ? 'bg-muted-foreground text-background'
+                  : 'bg-muted text-muted-foreground'
               )}
             >
-              {isDone ? <Check className="w-3 h-3 stroke-[3]" /> : idx + 1}
+              {isDone ? <Check className="w-2.5 h-2.5 stroke-[3]" /> : idx + 1}
             </span>
             <div className="flex flex-col">
-              <span className="text-[12.5px] leading-tight">{step.label}</span>
+              <span className="text-xs leading-tight font-medium">{step.label}</span>
               {timeVal && (
-                <span className="text-[10.5px] opacity-70 font-mono">
+                <span className="text-[10px] text-muted-foreground tabular-nums">
                   {typeof timeVal === 'string' && timeVal.includes(',') ? timeVal : formatDate(timeVal)}
                 </span>
               )}
@@ -86,3 +86,4 @@ export function DocStatusBar({
     </ol>
   );
 }
+

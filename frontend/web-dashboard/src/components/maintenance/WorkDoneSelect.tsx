@@ -250,7 +250,7 @@ export default function WorkDoneSelect({ value, onChange }: WorkDoneSelectProps)
               type="button"
               size="sm"
               onClick={() => setIsOpen(false)}
-              className="h-7 text-xs font-bold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white px-3 cursor-pointer rounded-lg shadow-xs inline-flex items-center gap-1"
+              className="h-7 text-xs font-bold bg-charcoal dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white px-3 cursor-pointer rounded-lg shadow-xs inline-flex items-center gap-1"
             >
               <span>Done {selectedItems.length > 0 ? `(${selectedItems.length})` : ''}</span>
               <Check className="w-3 h-3" />

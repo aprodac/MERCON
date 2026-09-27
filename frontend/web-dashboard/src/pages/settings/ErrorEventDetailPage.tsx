@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import DashboardLayout from '@/components/layout/DashboardLayout';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { SettingsPage, SettingsSection, StatusDot } from '@/components/settings/SettingsKit';
+import Btn from '@/components/ui/Btn';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -15,19 +14,19 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { errorConsoleService, ErrorEvent } from '@/services/errorConsoleService';
+import { ERROR_STATUS_TONE } from './ErrorConsolePage';
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</span>
-      <span className="text-sm text-slate-800 dark:text-slate-200 break-all">{value}</span>
+      <span className="text-[10px] font-bold uppercase tracking-wider text-[#9898A4]">{label}</span>
+      <span className="text-sm text-foreground break-all">{value}</span>
     </div>
   );
 }
 
 export default function ErrorEventDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [notes, setNotes] = useState('');
 
@@ -56,92 +55,71 @@ export default function ErrorEventDetailPage() {
 
   if (isLoading) {
     return (
-      <DashboardLayout active="Settings" title="Error Console">
-        <div className="p-6">Loading…</div>
-      </DashboardLayout>
+      <SettingsPage title="Error" description="Loading…">
+        {null}
+      </SettingsPage>
     );
   }
 
   if (isError || !event) {
     return (
-      <DashboardLayout active="Settings" title="Error Console">
-        <div className="p-6 flex flex-col items-start gap-3">
-          <p className="text-sm text-slate-500">This error event could not be loaded.</p>
-          <Button variant="outline" size="sm" onClick={() => navigate('/settings/error-console')}>
-            Back to Error Console
-          </Button>
-        </div>
-      </DashboardLayout>
+      <SettingsPage title="Error not found" description="This error event could not be loaded. It may have been deleted.">
+        {null}
+      </SettingsPage>
     );
   }
 
+  const longMessage = event.message.length > 90;
+
   return (
-    <DashboardLayout active="Settings" title="Error Console">
-      <div className="p-6 max-w-[1100px] mx-auto w-full flex flex-col gap-5 bg-slate-50/50 dark:bg-slate-950">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" onClick={() => navigate('/settings/error-console')}>
-              Back
-            </Button>
-            <h1 className="text-xl font-black text-[#3E3C3D] dark:text-white tracking-tight">
-              {event.code}
-            </h1>
-            <Badge variant="outline">{event.source}</Badge>
-          </div>
-          <Select
-            value={event.status}
-            onValueChange={(v) => updateMutation.mutate({ status: v as ErrorEvent['status'], notes })}
-          >
-            <SelectTrigger className="h-9 w-[180px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="New">New</SelectItem>
-              <SelectItem value="Acknowledged">Acknowledged</SelectItem>
-              <SelectItem value="Resolved">Resolved</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+    <SettingsPage
+      title={longMessage ? `${event.message.slice(0, 90)}…` : event.message}
+      description={
+        <span className="inline-flex items-center gap-2">
+          <StatusDot tone={ERROR_STATUS_TONE[event.status]} />
+          {event.code} · {event.status} · {event.source === 'api' ? 'Backend' : event.source === 'web' ? 'Web' : event.source} · seen {event.count} {event.count === 1 ? 'time' : 'times'}
+        </span>
+      }
+      actions={
+        <Select value={event.status} onValueChange={(v) => updateMutation.mutate({ status: v as ErrorEvent['status'], notes })}>
+          <SelectTrigger className="h-9 w-[170px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="New">New</SelectItem>
+            <SelectItem value="Acknowledged">Acknowledged</SelectItem>
+            <SelectItem value="Resolved">Resolved</SelectItem>
+          </SelectContent>
+        </Select>
+      }
+    >
+      {longMessage && (
+        <SettingsSection title="Message">
+          <p className="text-sm text-foreground break-words">{event.message}</p>
+        </SettingsSection>
+      )}
 
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
-          <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{event.message}</p>
+      <SettingsSection title="Details">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-4">
+          <Field label="Route" value={event.route || '—'} />
+          <Field label="First seen" value={new Date(event.createdAt).toLocaleString()} />
+          <Field label="Last seen" value={new Date(event.updatedAt).toLocaleString()} />
+          <Field label="Last request ID" value={event.lastRequestId ?? '—'} />
+          <Field label="First user ID" value={event.firstUserId ?? '—'} />
         </div>
+      </SettingsSection>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
-          <Field label="Occurrences" value={event.count} />
-          <Field label="Route" value={event.route} />
-          <Field label="First Seen" value={new Date(event.createdAt).toLocaleString()} />
-          <Field label="Last Seen" value={new Date(event.updatedAt).toLocaleString()} />
-          <Field label="Last Request ID" value={event.lastRequestId ?? '—'} />
-          <Field label="First User ID" value={event.firstUserId ?? '—'} />
-        </div>
+      {event.stack && (
+        <SettingsSection title="Stack trace">
+          <pre className="text-xs whitespace-pre-wrap break-all bg-muted/60 rounded-xl p-3 max-h-96 overflow-y-auto">{event.stack}</pre>
+        </SettingsSection>
+      )}
 
-        {event.stack && (
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Stack Trace</span>
-            <pre className="mt-2 text-xs whitespace-pre-wrap break-all bg-slate-50 dark:bg-slate-950 rounded-lg p-3 border border-slate-100 dark:border-slate-800 max-h-96 overflow-y-auto">
-              {event.stack}
-            </pre>
-          </div>
-        )}
-
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 flex flex-col gap-3">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Notes</span>
-          <Textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder="What's the root cause? What's the fix?"
-            rows={4}
-          />
-          <div>
-            <Button
-              size="sm"
-              onClick={() => updateMutation.mutate({ status: event.status, notes })}
-              disabled={updateMutation.isPending}
-            >
-              Save Notes
-            </Button>
-          </div>
-        </div>
-      </div>
-    </DashboardLayout>
+      <SettingsSection
+        title="Notes"
+        description="Root cause and fix, for whoever sees this next."
+        action={<Btn label="Save notes" size="sm" isLoading={updateMutation.isPending} disabled={notes === (event.notes ?? '')} onClick={() => updateMutation.mutate({ status: event.status, notes })} />}
+      >
+        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="What went wrong and how it was fixed" rows={4} />
+      </SettingsSection>
+    </SettingsPage>
   );
 }

@@ -156,15 +156,17 @@ const DriverChargesScreen = ({ navigation }: any) => {
   const { t, language } = useLanguage();
 
   const { trip: currentTrip, loading: loadingCurrent, refetch: refetchCurrent } = useCurrentTrip();
-  const { trips: scheduledList, loading: loadingScheduled, refetch: refetchScheduled } = useScheduledTrips();
-  const { trips: historyList, loading: loadingHistory, refetch: refetchHistory } = useTripHistory();
+  const { trips: scheduledList, loading: loadingScheduled, refetch: refetchScheduled, refetchIfStale: refreshScheduledIfStale } = useScheduledTrips();
+  const { trips: historyList, loading: loadingHistory, refetch: refetchHistory, refetchIfStale: refreshHistoryIfStale } = useTripHistory();
 
   useFocusEffect(
     useCallback(() => {
       refetchCurrent();
-      refetchScheduled();
-      refetchHistory();
-    }, [refetchCurrent, refetchScheduled, refetchHistory])
+      // Tab switch: only reload lists that are stale — the full history is
+      // the heaviest driver request. Pull-to-refresh still reloads everything.
+      refreshScheduledIfStale();
+      refreshHistoryIfStale();
+    }, [refetchCurrent, refreshScheduledIfStale, refreshHistoryIfStale])
   );
 
   const loading = loadingCurrent || loadingScheduled || loadingHistory;
@@ -365,7 +367,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 110,
+    paddingBottom: 140, // clears the floating bottom nav
     gap: 24,
     paddingTop: 8,
   },

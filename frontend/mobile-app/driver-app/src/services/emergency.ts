@@ -19,7 +19,18 @@ export interface EmergencyPayload {
   photos?: EmergencyPhoto[];
 }
 
+export interface EmergencyContact {
+  name: string | null;
+  phone: string;
+}
+
 export const emergencyService = {
+  /** The operator the "Call operator" button dials, or null when nobody has a phone on file. */
+  async getContact(): Promise<EmergencyContact | null> {
+    const { data } = await api.get('/mobile/emergency/contact');
+    return (data.data ?? null) as EmergencyContact | null;
+  },
+
   async raise(payload: EmergencyPayload): Promise<{ notified: number }> {
     const form = new FormData();
     form.append('incident_type', payload.incident_type);

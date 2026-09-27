@@ -48,9 +48,9 @@ export default function TripEvidencePublicGalleryPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col">
+    <div className="min-h-screen bg-charcoal-strong text-slate-100 font-sans flex flex-col">
       {/* Header */}
-      <header className="h-16 px-4 sm:px-6 border-b border-slate-800 flex items-center justify-between bg-slate-900/80 backdrop-blur-md sticky top-0 z-30">
+      <header className="h-16 px-4 sm:px-6 border-b border-slate-800 flex items-center justify-between bg-charcoal/80 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-3">
           <div className="w-8.5 h-8.5 rounded-xl bg-[#FA634E] flex items-center justify-center font-black text-white text-sm shadow-md">
             M
@@ -112,7 +112,7 @@ export default function TripEvidencePublicGalleryPage() {
         {tripData && (
           <>
             {/* Trip Meta Card */}
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
+            <div className="bg-charcoal border border-slate-800 rounded-2xl p-5 shadow-lg space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-800">
                 <div>
                   <span className="text-[11px] font-bold text-[#FA634E] uppercase tracking-wider">
@@ -150,7 +150,7 @@ export default function TripEvidencePublicGalleryPage() {
 
             {/* Document / Video Gallery Grid */}
             {documents.length === 0 ? (
-              <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-12 text-center">
+              <div className="bg-charcoal/50 border border-slate-800 rounded-2xl p-12 text-center">
                 <Camera className="w-8 h-8 text-slate-600 mx-auto mb-2" />
                 <h3 className="text-sm font-semibold text-slate-300">No Evidence Documents Uploaded Yet</h3>
                 <p className="text-xs text-slate-500 mt-1">
@@ -166,12 +166,12 @@ export default function TripEvidencePublicGalleryPage() {
                     <div
                       key={doc.id}
                       onClick={() => setSelectedDoc(doc)}
-                      className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden cursor-pointer group hover:border-[#FA634E] transition-all flex flex-col justify-between shadow-md"
+                      className="bg-charcoal border border-slate-800 rounded-2xl overflow-hidden cursor-pointer group hover:border-[#FA634E] transition-all flex flex-col justify-between shadow-md"
                     >
                       {/* Media Thumbnail Container */}
-                      <div className="aspect-video relative bg-slate-950 overflow-hidden flex items-center justify-center">
+                      <div className="aspect-video relative bg-charcoal-strong overflow-hidden flex items-center justify-center">
                         {doc.isVideo ? (
-                          <div className="relative w-full h-full bg-slate-950 flex flex-col items-center justify-center">
+                          <div className="relative w-full h-full bg-charcoal-strong flex flex-col items-center justify-center">
                             <video
                               src={mediaUrl}
                               preload="metadata"
@@ -180,7 +180,7 @@ export default function TripEvidencePublicGalleryPage() {
                             <div className="absolute z-10 w-12 h-12 rounded-full bg-[#FA634E] text-white flex items-center justify-center shadow-xl group-hover:scale-110 transition-transform">
                               <Play className="w-6 h-6 ml-0.5 fill-white" />
                             </div>
-                            <span className="absolute bottom-2 left-2 bg-black/80 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
+                            <span className="absolute bottom-2 left-2 bg-charcoal-strong/80 backdrop-blur-xs text-white text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1">
                               <Video size={10} className="text-amber-400" />
                               <span>Video Evidence</span>
                             </span>
@@ -201,7 +201,7 @@ export default function TripEvidencePublicGalleryPage() {
                           <Badge className={`text-[10px] font-bold px-2 py-0.5 border-0 ${
                             doc.isDelay 
                               ? 'bg-rose-500 text-white' 
-                              : 'bg-black/70 backdrop-blur-xs text-white'
+                              : 'bg-charcoal-strong/70 backdrop-blur-xs text-white'
                           }`}>
                             {doc.category}
                           </Badge>
@@ -236,10 +236,10 @@ export default function TripEvidencePublicGalleryPage() {
 
       {/* Lightbox / Video Viewer Modal */}
       {selectedDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-strong/90 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-4xl bg-charcoal border border-slate-800 rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-charcoal-strong">
               <div>
                 <Badge className="bg-[#FA634E] text-white border-0 text-xs">
                   {selectedDoc.category}
@@ -258,7 +258,7 @@ export default function TripEvidencePublicGalleryPage() {
             </div>
 
             {/* Modal Media Body */}
-            <div className="p-6 bg-black flex items-center justify-center flex-1 overflow-auto">
+            <div className="p-6 bg-charcoal-strong flex items-center justify-center flex-1 overflow-auto">
               {selectedDoc.isVideo ? (
                 <video
                   controls
@@ -276,7 +276,7 @@ export default function TripEvidencePublicGalleryPage() {
             </div>
 
             {/* Modal Footer Info */}
-            <div className="px-6 py-4 border-t border-slate-800 bg-slate-950 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300">
+            <div className="px-6 py-4 border-t border-slate-800 bg-charcoal-strong flex flex-wrap items-center justify-between gap-3 text-xs text-slate-300">
               <div className="flex items-center gap-4">
                 <span>Location: <strong>{selectedDoc.location}</strong></span>
                 <span>Time: <strong>{selectedDoc.time}</strong></span>

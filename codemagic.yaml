@@ -119,6 +119,8 @@ workflows:
         bundle_identifier: tech.mercon.driver
       vars:
         APP_DIR: frontend/mobile-app/driver-app
+        # Push entitlement for App Store / TestFlight builds (see app.config.ts).
+        APS_ENVIRONMENT: production
     scripts:
       - *select_api
       - *install
@@ -143,6 +145,8 @@ workflows:
         bundle_identifier: tech.mercon.operator
       vars:
         APP_DIR: frontend/mobile-app/operator-app
+        # Push entitlement for App Store / TestFlight builds (see app.config.ts).
+        APS_ENVIRONMENT: production
     scripts:
       - *select_api
       - *install

@@ -140,7 +140,7 @@ export default function DocumentViewerModal({
         <div className="flex-1 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 min-h-0 bg-slate-100/50 dark:bg-slate-950/60">
           
           {/* Left Preview Pane */}
-          <div className="lg:col-span-7 xl:col-span-8 p-4 sm:p-6 flex flex-col items-center justify-center min-h-[340px] sm:min-h-[440px] bg-slate-900/90 dark:bg-slate-950 relative overflow-hidden group">
+          <div className="lg:col-span-7 xl:col-span-8 p-4 sm:p-6 flex flex-col items-center justify-center min-h-[340px] sm:min-h-[440px] bg-charcoal/90 dark:bg-slate-950 relative overflow-hidden group">
             
             {/* Visual background pattern */}
             <div className="absolute inset-0 bg-[radial-gradient(#38bdf8_1px,transparent_1px)] [background-size:16px_16px] opacity-10 pointer-events-none" />
@@ -192,7 +192,7 @@ export default function DocumentViewerModal({
 
             {/* Quick floating toolbar for images */}
             {isImg && (
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-slate-900/90 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-full shadow-xl text-white text-xs opacity-95 hover:opacity-100 transition-opacity">
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-charcoal/90 backdrop-blur-md border border-slate-700/80 px-3 py-1.5 rounded-full shadow-xl text-white text-xs opacity-95 hover:opacity-100 transition-opacity">
                 <button onClick={handleZoomOut} className="hover:text-indigo-400 p-1" title="Zoom Out"><ZoomOut size={14} /></button>
                 <span className="font-mono text-[11px] px-1">{Math.round(zoomLevel * 100)}%</span>
                 <button onClick={handleZoomIn} className="hover:text-indigo-400 p-1" title="Zoom In"><ZoomIn size={14} /></button>

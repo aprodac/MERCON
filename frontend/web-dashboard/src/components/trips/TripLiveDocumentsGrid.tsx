@@ -151,7 +151,7 @@ export default function TripLiveDocumentsGrid({
                   </svg>
                 </div>
               ) : doc.svgThumbnail === 'scale' ? (
-                <div className="w-full h-full bg-slate-900 text-emerald-400 font-mono flex flex-col items-center justify-center p-2">
+                <div className="w-full h-full bg-charcoal text-emerald-400 font-mono flex flex-col items-center justify-center p-2">
                   <span className="text-[9px] text-slate-400 uppercase tracking-widest">Gross Wt</span>
                   <span className="text-sm font-black">12480 kg</span>
                 </div>

@@ -398,7 +398,7 @@ export default function LocationDetailsPage() {
         {/* ── TOP COMPACT HEADER STRIP ── */}
         <div className="flex items-center justify-between gap-3 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            <span className="font-mono text-xs font-black px-2 py-0.5 rounded bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 shrink-0">
+            <span className="font-mono text-xs font-black px-2 py-0.5 rounded bg-charcoal text-white dark:bg-slate-100 dark:text-slate-900 shrink-0">
               {location.code}
             </span>
             <h1 className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate">
@@ -457,7 +457,7 @@ export default function LocationDetailsPage() {
                   type="button"
                   size="sm"
                   onClick={() => setIsEditing(true)}
-                  className="h-7 text-xs font-bold bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 shadow-xs gap-1 px-2.5"
+                  className="h-7 text-xs font-bold bg-charcoal dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 shadow-xs gap-1 px-2.5"
                 >
                   <Edit2 size={12} /> Edit
                 </Button>

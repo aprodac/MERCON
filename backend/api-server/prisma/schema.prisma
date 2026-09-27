@@ -173,6 +173,7 @@ model User {
   notifications        Notification[]
   tripStopDelayLogs    TripStop[]            @relation("TripStopDelayLogger")
   tripAssignmentEvents TripAssignmentEvent[]
+  tripUpdateShares     TripUpdateShare[]     @relation("TripUpdateShareUser")
   quotationHistories   QuotationHistory[]
   auditLogs            AuditLog[]
 }
@@ -434,6 +435,7 @@ model Trip {
   // billing_amount plus the sum of these.
   charges   TripCharge[]
   locations TripLocation[]
+  updateShares TripUpdateShare[]
 
   @@index([vehicleId, driverId])
   @@index([is_third_party])
@@ -630,6 +632,33 @@ model TripStop {
   @@index([tripId])
   @@index([tripId, leg_index])
   @@index([tripId, stop_sequence])
+}
+
+/// A driver update (the photos or video from one stop and step) that an
+/// operator forwarded on WhatsApp. Shared by every operator, so an update is
+/// not forwarded twice. `token` opens a public page showing only the items in
+/// `media_ids` — the link that goes into the WhatsApp message.
+model TripUpdateShare {
+  id              String    @id @default(uuid()) @db.Uuid
+  tripId          String    @db.Uuid
+  trip            Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  /// "<stop id | trip>:<stage>" — which batch of driver uploads this was.
+  update_key      String
+  /// Document and DocumentFile ids that were shared.
+  media_ids       String[]  @db.Uuid
+  token           String    @unique
+  /// "link" (message with a photo-page link) or "whatsapp_api" (images sent through the Business API).
+  channel         String
+  /// "customer_contact" | "customer_group" | "internal" | "other"
+  recipient       String
+  recipient_phone String?
+  shared_by       String?   @db.Uuid
+  sharedBy        User?     @relation("TripUpdateShareUser", fields: [shared_by], references: [id], onDelete: SetNull)
+  expiresAt       DateTime  @db.Timestamptz
+  createdAt       DateTime  @default(now()) @db.Timestamptz
+
+  @@index([tripId, update_key])
+  @@map("trip_update_shares")
 }
 
 model TripLocation {
@@ -1368,6 +1397,10 @@ model Invoice {
   balance_due  Decimal @default(0.0) @db.Decimal(12, 2)
   currency     String  @default("SAR")
 
+  // Shown on the printed invoice
+  notes        String?
+  terms        String?
+
   lines    InvoiceLine[]
   payments InvoicePayment[]
   advanceApplications AdvanceApplication[]
@@ -1398,7 +1431,12 @@ model InvoiceLine {
   description String
   quantity    Float    @default(1)
   rate        Decimal  @db.Decimal(12, 2)
+  // Line discount in percent; `amount` is net of it: quantity × rate × (1 − discount_pct / 100)
+  discount_pct Decimal @default(0) @db.Decimal(5, 2)
   amount      Decimal  @db.Decimal(12, 2)
+  // VAT on this line (e.g. 15, or 0 for zero-rated international freight)
+  tax_rate    Decimal  @default(0) @db.Decimal(5, 2)
+  tax_amount  Decimal  @default(0) @db.Decimal(12, 2)
 
   createdAt   DateTime @default(now()) @db.Timestamptz
 
@@ -1741,6 +1779,16 @@ model Settings {
   defaultProviderAdvanceAccountId String? @db.Uuid
   defaultEmployeeAdvanceAccountId String? @db.Uuid
   defaultRetainedEarningsAccountId String? @db.Uuid
+  // Liability account that invoice VAT is credited to (output VAT payable)
+  defaultVatOutputAccountId String? @db.Uuid
+
+  // Invoice numbering: "INV-0001", or "INV-2026-0001" with the yearly option
+  invoicePrefix        String  @default("INV")
+  invoiceNumberPadding Int     @default(4)
+  invoiceNumberYearly  Boolean @default(false)
+  // Pre-filled on new invoices; each invoice keeps its own copy
+  invoiceDefaultNotes  String?
+  invoiceDefaultTerms  String?
 
   // Module keys this deployment shows/allows.
   enabledModules        String[] @default([])
@@ -1758,6 +1806,81 @@ model Settings {
   maintenanceBanner String?
 
   updated_by String?  @db.Uuid
+  updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz
+}
+
+// -----------------------------------------
+// ZATCA E-INVOICING (Fatoora Phase 2) — this deployment's connection
+// -----------------------------------------
+enum ZatcaEnvironment {
+  Sandbox // ZATCA developer portal: test certificates, nothing is reported
+  Simulation // ZATCA simulation: real taxpayer onboarding, invoices not legally reported
+  Production // Live: invoices are cleared/reported to ZATCA for real
+}
+
+enum ZatcaOnboardingStatus {
+  NotStarted
+  ProfileSaved // seller details filled in
+  ComplianceIssued // compliance certificate received (OTP step done)
+  ComplianceChecked // ZATCA accepted the sample invoices
+  Active // production certificate received — ready to issue invoices
+}
+
+// Singleton like Settings: one ZATCA taxpayer (one VAT number) per client
+// deployment. Private key and API secrets are stored encrypted with
+// ZATCA_ENCRYPTION_KEY and are never returned by the API.
+model ZatcaConfig {
+  id String @id @default("singleton")
+
+  environment ZatcaEnvironment      @default(Sandbox)
+  status      ZatcaOnboardingStatus @default(NotStarted)
+
+  // Seller, exactly as on the VAT registration
+  sellerNameAr     String?
+  sellerNameEn     String?
+  vatNumber        String?
+  crNumber         String?
+  branchName       String? // CSR organisation unit
+  businessCategory String? // CSR businessCategory, e.g. "Transportation"
+  // "1100" = standard (B2B) + simplified (B2C); "1000" standard only; "0100" simplified only
+  invoiceTypes     String  @default("1000")
+
+  // Saudi national address
+  buildingNumber   String?
+  streetName       String?
+  district         String?
+  city             String?
+  postalCode       String?
+  additionalNumber String?
+  shortAddress     String? // e.g. RRRD2929 — used as the CSR registeredAddress when present
+
+  // EGS (e-invoice generation solution) unit
+  egsSerial     String? // 1-<solution>|2-<model>|3-<serial>
+  egsCommonName String?
+  privateKeyEnc String?
+  csrPem        String?
+
+  complianceRequestId   String?
+  complianceCertificate String? // binarySecurityToken as returned by ZATCA
+  complianceSecretEnc   String?
+  complianceIssuedAt    DateTime? @db.Timestamptz
+  complianceChecks      Json?
+
+  productionRequestId   String?
+  productionCertificate String?
+  productionSecretEnc   String?
+  productionIssuedAt    DateTime? @db.Timestamptz
+  certificateExpiresAt  DateTime? @db.Timestamptz
+
+  lastError   String?
+  lastErrorAt DateTime? @db.Timestamptz
+
+  // Invoice chain state for the signing engine: ICV counter and previous invoice hash
+  invoiceCounter      Int     @default(0)
+  previousInvoiceHash String?
+
+  updated_by String?  @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz
   updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz
 }
 

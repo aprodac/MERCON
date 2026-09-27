@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge';
 
 import { AdvanceReadinessRail } from '@/components/finance/advances/AdvanceReadinessRail';
 import { formatDate, formatMoney } from '@/lib/finance/format';
+import { DirectionChip } from '@/lib/finance/chips';
 import { financeService } from '@/services/financeService';
 import { customerService } from '@/services/customerService';
 import { thirdPartyService } from '@/services/thirdPartyService';
@@ -228,12 +229,12 @@ export default function AdvanceEditorPage() {
           {/* Main Form (Left Column) */}
           <div className="flex-1 space-y-6 w-full">
             {/* Card 1: What kind of advance? */}
-            <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4">
+            <div className="p-6 rounded-xl border border-border dark:border-border bg-card space-y-4">
               <div>
-                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                <h2 className="text-sm font-bold text-foreground">
                   1. What kind of advance?
                 </h2>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Select the party and flow direction. Invalid combinations are automatically prevented.
                 </p>
               </div>
@@ -244,21 +245,19 @@ export default function AdvanceEditorPage() {
                   onClick={() => setPartyType('Customer')}
                   className={`p-4 rounded-xl border-2 cursor-pointer transition-all space-y-2 relative ${
                     partyType === 'Customer'
-                      ? 'border-[#FA634E] bg-sky-50/40 dark:bg-sky-950/20 shadow-sm'
-                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
+                      ? 'border-[#FA634E] bg-chip-info-bg/40 shadow-xs'
+                      : 'border-border dark:border-border hover:border-border dark:hover:border-border bg-card '
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="w-8 h-8 rounded-lg bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300 flex items-center justify-center font-bold">
+                    <div className="w-8 h-8 rounded-lg bg-chip-info-bg text-chip-info-fg border border-chip-info-border flex items-center justify-center font-bold">
                       <Building2 className="w-4 h-4" />
                     </div>
-                    <Badge variant="outline" className="bg-sky-50 text-sky-700 dark:bg-sky-950 dark:text-sky-300 border-sky-200 text-[10px] font-semibold">
-                      ↓ Money in
-                    </Badge>
+                    <DirectionChip direction="In" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Customer Advance</h3>
-                    <p className="text-[11.5px] text-slate-500 leading-snug">
+                    <h3 className="text-sm font-bold text-foreground">Customer Advance</h3>
+                    <p className="text-[11.5px] text-muted-foreground leading-snug">
                       Money received from a customer before invoicing.
                     </p>
                   </div>
@@ -269,21 +268,19 @@ export default function AdvanceEditorPage() {
                   onClick={() => setPartyType('Provider')}
                   className={`p-4 rounded-xl border-2 cursor-pointer transition-all space-y-2 relative ${
                     partyType === 'Provider'
-                      ? 'border-[#FA634E] bg-purple-50/40 dark:bg-purple-950/20 shadow-sm'
-                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
+                      ? 'border-[#FA634E] bg-chip-violet-bg/40 shadow-xs'
+                      : 'border-border dark:border-border hover:border-border dark:hover:border-border bg-card '
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-300 flex items-center justify-center font-bold">
+                    <div className="w-8 h-8 rounded-lg bg-chip-violet-bg text-chip-violet-fg border border-chip-violet-border flex items-center justify-center font-bold">
                       <Building2 className="w-4 h-4" />
                     </div>
-                    <Badge variant="outline" className="bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300 border-purple-200 text-[10px] font-semibold">
-                      ↑ Money out
-                    </Badge>
+                    <DirectionChip direction="Out" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Provider Advance</h3>
-                    <p className="text-[11.5px] text-slate-500 leading-snug">
+                    <h3 className="text-sm font-bold text-foreground">Provider Advance</h3>
+                    <p className="text-[11.5px] text-muted-foreground leading-snug">
                       Money paid to a provider ahead of their bill.
                     </p>
                   </div>
@@ -294,21 +291,19 @@ export default function AdvanceEditorPage() {
                   onClick={() => setPartyType('Employee')}
                   className={`p-4 rounded-xl border-2 cursor-pointer transition-all space-y-2 relative ${
                     partyType === 'Employee'
-                      ? 'border-[#FA634E] bg-teal-50/40 dark:bg-teal-950/20 shadow-sm'
-                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
+                      ? 'border-[#FA634E] bg-chip-teal-bg/40 shadow-xs'
+                      : 'border-border dark:border-border hover:border-border dark:hover:border-border bg-card '
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div className="w-8 h-8 rounded-lg bg-teal-100 dark:bg-teal-900 text-teal-600 dark:text-teal-300 flex items-center justify-center font-bold">
+                    <div className="w-8 h-8 rounded-lg bg-chip-teal-bg text-chip-teal-fg border border-chip-teal-border flex items-center justify-center font-bold">
                       <User className="w-4 h-4" />
                     </div>
-                    <Badge variant="outline" className="bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300 border-teal-200 text-[10px] font-semibold">
-                      ↑ Money out
-                    </Badge>
+                    <DirectionChip direction="Out" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Employee Advance</h3>
-                    <p className="text-[11.5px] text-slate-500 leading-snug">
+                    <h3 className="text-sm font-bold text-foreground">Employee Advance</h3>
+                    <p className="text-[11.5px] text-muted-foreground leading-snug">
                       Salary or trip advance paid to a driver.
                     </p>
                   </div>
@@ -317,15 +312,15 @@ export default function AdvanceEditorPage() {
             </div>
 
             {/* Card 2: Party & Advance Amount */}
-            <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            <div className="p-6 rounded-xl border border-border dark:border-border bg-card space-y-4">
+              <h2 className="text-sm font-bold text-foreground">
                 2. Party & Advance Details
               </h2>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Party Combobox Picker */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <Label className="text-xs font-semibold text-foreground">
                     {partyType} Party
                   </Label>
                   <Popover open={isPartyPopoverOpen} onOpenChange={setIsPartyPopoverOpen}>
@@ -334,7 +329,7 @@ export default function AdvanceEditorPage() {
                         variant="outline"
                         role="combobox"
                         aria-expanded={isPartyPopoverOpen}
-                        className="w-full justify-between h-10 text-xs font-medium border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900"
+                        className="w-full justify-between h-10 text-xs font-medium border-border dark:border-border bg-muted/50"
                       >
                         {partyName || 'General / not linked'}
                       </Button>
@@ -352,7 +347,7 @@ export default function AdvanceEditorPage() {
                                 setIsPartyPopoverOpen(false);
                               }}
                             >
-                              <span className="font-semibold text-slate-500">General / not linked</span>
+                              <span className="font-semibold text-muted-foreground">General / not linked</span>
                             </CommandItem>
 
                             {partyType === 'Customer' &&
@@ -366,7 +361,7 @@ export default function AdvanceEditorPage() {
                                   }}
                                   className="flex items-center gap-2"
                                 >
-                                  <div className="w-6 h-6 rounded-full bg-sky-100 text-sky-700 font-bold text-[10px] flex items-center justify-center">
+                                  <div className="w-6 h-6 rounded-full bg-chip-info-bg text-chip-info-fg border border-chip-info-border font-bold text-[10px] flex items-center justify-center">
                                     {c.name.slice(0, 2).toUpperCase()}
                                   </div>
                                   <span>{c.name}</span>
@@ -384,7 +379,7 @@ export default function AdvanceEditorPage() {
                                   }}
                                   className="flex items-center gap-2"
                                 >
-                                  <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-700 font-bold text-[10px] flex items-center justify-center">
+                                  <div className="w-6 h-6 rounded-full bg-chip-violet-bg text-chip-violet-fg border border-chip-violet-border font-bold text-[10px] flex items-center justify-center">
                                     {p.name.slice(0, 2).toUpperCase()}
                                   </div>
                                   <span>{p.name}</span>
@@ -404,7 +399,7 @@ export default function AdvanceEditorPage() {
                                     }}
                                     className="flex items-center gap-2"
                                   >
-                                    <div className="w-6 h-6 rounded-full bg-teal-100 text-teal-700 font-bold text-[10px] flex items-center justify-center">
+                                    <div className="w-6 h-6 rounded-full bg-chip-teal-bg text-chip-teal-fg border border-chip-teal-border font-bold text-[10px] flex items-center justify-center">
                                       {fullName.slice(0, 2).toUpperCase()}
                                     </div>
                                     <span>{fullName}</span>
@@ -419,16 +414,16 @@ export default function AdvanceEditorPage() {
 
                   {/* Inline Party Hint */}
                   {partyHint && (
-                    <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 flex items-center justify-between">
+                    <div className="p-2.5 rounded-xl bg-muted border border-border dark:border-border text-xs text-muted-foreground flex items-center justify-between">
                       <span>Open {partyHint.typeLabel}: <strong>{partyHint.count}</strong></span>
-                      <span>Total due: <MoneyText value={partyHint.totalDue} className="font-bold text-slate-900 dark:text-slate-100" /></span>
+                      <span>Total due: <MoneyText value={partyHint.totalDue} className="font-bold text-foreground" /></span>
                     </div>
                   )}
                 </div>
 
                 {/* Advance Date */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  <Label className="text-xs font-semibold text-foreground">
                     Advance Date
                   </Label>
                   <DatePicker
@@ -440,11 +435,11 @@ export default function AdvanceEditorPage() {
 
               {/* Amount Input */}
               <div className="space-y-1.5">
-                <Label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <Label className="text-xs font-semibold text-foreground">
                   Advance Amount (SAR)
                 </Label>
                 <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 font-mono font-bold text-sm text-slate-400">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 fin-num font-semibold text-sm text-muted-foreground">
                     SAR
                   </span>
                   <Input
@@ -453,19 +448,19 @@ export default function AdvanceEditorPage() {
                     placeholder="0.00"
                     value={amount || ''}
                     onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
-                    className="pl-14 h-12 fin-num font-bold text-xl text-slate-900 dark:text-slate-100 focus-visible:ring-[#FA634E]"
+                    className="pl-14 h-12 fin-num font-bold text-xl text-foreground focus-visible:ring-[#FA634E]"
                   />
                 </div>
               </div>
             </div>
 
             {/* Card 3: Account Selection (Deposit to / Paid from) */}
-            <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-4">
+            <div className="p-6 rounded-xl border border-border dark:border-border bg-card space-y-4">
               <div>
-                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                <h2 className="text-sm font-bold text-foreground">
                   3. {direction === 'Received' ? 'Deposit To (Money In)' : 'Paid From (Money Out)'}
                 </h2>
-                <p className="text-xs text-slate-500">
+                <p className="text-xs text-muted-foreground">
                   Choose the bank account or cash drawer where funds are deposited or paid from.
                 </p>
               </div>
@@ -482,25 +477,25 @@ export default function AdvanceEditorPage() {
                       onClick={() => setAccountId(b.accountId)}
                       className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex items-center justify-between ${
                         selected
-                          ? 'border-[#FA634E] bg-orange-50/20 dark:bg-orange-950/20 shadow-sm'
-                          : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
+                          ? 'border-[#FA634E] bg-amber-500/10 dark:bg-orange-950/20 shadow-xs'
+                          : 'border-border dark:border-border hover:border-border dark:hover:border-border bg-card '
                       }`}
                     >
                       <div className="flex items-center gap-3">
                         <div
                           className={`w-9 h-9 rounded-lg flex items-center justify-center ${
                             b.is_cash
-                              ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
+                              ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
                               : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
                           }`}
                         >
                           {b.is_cash ? <Wallet className="w-4 h-4" /> : <Landmark className="w-4 h-4" />}
                         </div>
                         <div>
-                          <div className="font-bold text-xs text-slate-900 dark:text-slate-100">
+                          <div className="font-bold text-xs text-foreground">
                             {b.is_cash ? 'Cash Drawer' : b.bank_name || 'Bank Account'}
                           </div>
-                          <div className="text-[11px] font-mono text-slate-500">
+                          <div className="text-[11px] font-mono text-muted-foreground">
                             {b.account_number ? `•••• ${b.account_number.slice(-4)}` : 'Cash'} · {glAcc?.account_code || 'GL'}
                           </div>
                         </div>
@@ -518,8 +513,8 @@ export default function AdvanceEditorPage() {
             </div>
 
             {/* Card 4: Memo & Reference */}
-            <div className="p-6 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 space-y-3">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+            <div className="p-6 rounded-xl border border-border dark:border-border bg-card space-y-3">
+              <h2 className="text-sm font-bold text-foreground">
                 4. Memo & Reference
               </h2>
               <Textarea
@@ -527,7 +522,7 @@ export default function AdvanceEditorPage() {
                 placeholder="Enter memo, payment terms, or reference notes..."
                 value={memo}
                 onChange={(e) => setMemo(e.target.value)}
-                className="text-xs bg-slate-50/50 dark:bg-slate-900 border-slate-200 dark:border-slate-800"
+                className="text-xs bg-muted/50 border-border dark:border-border"
               />
             </div>
           </div>
@@ -548,7 +543,7 @@ export default function AdvanceEditorPage() {
         </div>
 
         {/* Sticky Footer Bar */}
-        <div className="fixed bottom-0 left-0 right-0 z-20 bg-white/90 dark:bg-slate-900/90 backdrop-blur border-t border-slate-200 dark:border-slate-800 px-6 py-3 shadow-lg">
+        <div className="fixed bottom-0 left-0 right-0 z-20 bg-card/90 backdrop-blur border-t border-border dark:border-border px-6 py-3 shadow-lg">
           <div className="max-w-[1400px] mx-auto flex items-center justify-between">
             <Button variant="ghost" onClick={() => navigate('/finance/advances')}>
               Cancel
@@ -561,7 +556,7 @@ export default function AdvanceEditorPage() {
                   variant="outline"
                   onClick={() => handleSave(true)}
                   disabled={!isFormValid || createMutation.isPending}
-                  className="border-slate-300 dark:border-slate-700 font-semibold"
+                  className="border-border dark:border-border font-semibold"
                 >
                   Save & apply credits
                 </Button>

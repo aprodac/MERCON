@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
   list: {
     padding: Spacing.lg,
     gap: Spacing.sm,
-    paddingBottom: 80,
+    paddingBottom: 140, // clears the driver app's floating bottom nav
   },
   card: {
     backgroundColor: Colors.white,

@@ -16,9 +16,14 @@ import { DelayReportModal } from '../components/DelayReportModal';
 import { DelayButton } from '../components/DelayButton';
 import { ReturnLoadingModal } from '../components/ReturnLoadingModal';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
 
-import { choosePhoto, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
+import { PhotoCaptureModal } from '../components/PhotoCaptureModal';
+import { UploadProgressBar } from '../components/UploadProgressBar';
+import { usePhotoUploads } from '../hooks/use-photo-uploads';
+import { showToast } from '../components/AppToast';
+import { isValidCoordinate } from '../utils/geo';
 import { API_URL, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { triggerGPayHapticsAndSound } from '../services/sound';
@@ -113,11 +118,19 @@ const DeliveryVerificationScreen = () => {
 
   const legIndex = isReturnDelivery ? 1 : 0;
   const dropoffStop = getLegEndpoints(trip, legIndex).delivery;
+  // 3 geotagged POD photos, or 1 customer-app screenshot on EXTERNAL_APP trips.
+  const evidence = getEvidencePolicy(trip, 'delivery');
+  const need = evidence.count;
+  const primarySource: 'camera' | 'gallery' = evidence.screenshot ? 'gallery' : 'camera';
+  const otherSource: 'camera' | 'gallery' = evidence.screenshot ? 'camera' : 'gallery';
 
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
-  // URIs already uploaded in this session — a retry after a failed upload
-  // must not send them again.
-  const uploadedUrisRef = useRef<Set<string>>(new Set());
+  // Each photo uploads right after it is taken (so "Delivery complete" doesn't
+  // upload all three at the end) and at most once; drives the upload bar.
+  const uploads = usePhotoUploads();
+  const { markUploaded, isKnown } = uploads;
+  const photosRef = useRef<CapturedPhoto[]>([]);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const [showDelayModal, setShowDelayModal] = useState(false);
@@ -125,27 +138,18 @@ const DeliveryVerificationScreen = () => {
 
   // If this delivery stop is already completed and departed, navigate forward
   useEffect(() => {
-    if (trip?.driver_workflow === 'EXTERNAL_APP') {
-      const ws = getEffectiveWorkflowState(trip);
-      if (ws === 'ASSIGNED') {
-        router.replace('/');
-      } else {
-        router.replace('/trip/external-app');
-      }
-      return;
-    }
     if (loading || !trip || !dropoffStop || showReturnModal) return;
     if (dropoffStop.actual_departure) {
       if (isReturnDelivery || !isRound) {
-        router.replace('/trip/completed');
+        router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
       } else {
         router.replace({ pathname: '/trip/pickup', params: { showReturnPrompt: '1' } } as any);
       }
     }
-  }, [loading, trip?.id, trip?.driver_workflow, dropoffStop?.id, dropoffStop?.actual_departure, isReturnDelivery, isRound, showReturnModal]);
+  }, [loading, trip?.id, dropoffStop?.id, dropoffStop?.actual_departure, isReturnDelivery, isRound, showReturnModal]);
 
   const validPhotosCount = photos.filter((p) => !!p?.uri).length;
-  const hasAllPhotos = validPhotosCount >= 3;
+  const hasAllPhotos = validPhotosCount >= need;
 
   // Load draft photos or prefill with already uploaded server documents
   useEffect(() => {
@@ -165,6 +169,7 @@ const DeliveryVerificationScreen = () => {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
+            markUploaded(parsed.filter((ph: CapturedPhoto) => ph?.uploaded).map((ph: CapturedPhoto) => ph.uri));
             setPhotos(parsed);
             return;
           }
@@ -200,17 +205,18 @@ const DeliveryVerificationScreen = () => {
           });
 
           if (serverPodDocs.length > 0) {
-            setPhotos(
-              serverPodDocs.slice(0, 3).map((d: any) => {
-                const fullUri = d.file_url?.startsWith('http') || d.file_url?.startsWith('file://')
-                  ? d.file_url
-                  : `${FILE_BASE}${d.file_url?.startsWith('/') ? '' : '/'}${d.file_url}`;
-                return {
-                  uri: fullUri,
-                  mimeType: d.mime_type || 'image/jpeg',
-                };
-              })
-            );
+            const serverPhotos: CapturedPhoto[] = serverPodDocs.slice(0, need).map((d: any) => {
+              const fullUri = d.file_url?.startsWith('http') || d.file_url?.startsWith('file://')
+                ? d.file_url
+                : `${FILE_BASE}${d.file_url?.startsWith('/') ? '' : '/'}${d.file_url}`;
+              return {
+                uri: fullUri,
+                mimeType: d.mime_type || 'image/jpeg',
+              };
+            });
+            // Already on the server — never upload these again.
+            markUploaded(serverPhotos.map((ph) => ph.uri));
+            setPhotos(serverPhotos);
             return;
           }
         }
@@ -222,34 +228,82 @@ const DeliveryVerificationScreen = () => {
       }
     };
     loadDraft();
-  }, [trip?.id, isReturnDelivery, dropoffStop?.id, trip?.documents]);
+  }, [trip?.id, isReturnDelivery, dropoffStop?.id, trip?.documents, markUploaded, need]);
 
-  const addPhoto = async (slotIndex?: number) => {
-    try {
-      const photo = await choosePhoto();
-      if (photo) {
-        setPhotos((prev) => {
-          const next = [...prev];
-          if (slotIndex !== undefined && slotIndex < 3) {
-            next[slotIndex] = photo;
-          } else {
-            next.push(photo);
-          }
-          const valid = next.filter(Boolean).slice(0, 3);
-          if (trip?.id) {
-            const stopKey = dropoffStop?.id ? `delivery_draft_${trip.id}_${dropoffStop.id}` : null;
-            const draftKey = isReturnDelivery ? `return_delivery_draft_photos_${trip.id}` : `delivery_draft_photos_${trip.id}`;
-            const completedKey = isReturnDelivery ? `return_delivery_completed_photos_${trip.id}` : `delivery_completed_photos_${trip.id}`;
-            if (stopKey) SecureStore.setItemAsync(stopKey, JSON.stringify(valid));
-            SecureStore.setItemAsync(draftKey, JSON.stringify(valid));
-            SecureStore.setItemAsync(completedKey, JSON.stringify(valid));
-          }
-          return valid;
-        });
-      }
-    } catch (e) {
-      Alert.alert(t('err_camera_title', 'Camera'), getApiErrorMessage(e));
+  useEffect(() => { photosRef.current = photos; }, [photos]);
+
+  const savePhotoDrafts = (list: CapturedPhoto[]) => {
+    if (!trip?.id) return;
+    // Remember which are already on the server, so reopening the screen
+    // doesn't send them twice.
+    const valid = list.map((ph) => ({ ...ph, uploaded: uploads.isUploaded(ph.uri) || undefined }));
+    const stopKey = dropoffStop?.id ? `delivery_draft_${trip.id}_${dropoffStop.id}` : null;
+    const draftKey = isReturnDelivery ? `return_delivery_draft_photos_${trip.id}` : `delivery_draft_photos_${trip.id}`;
+    const completedKey = isReturnDelivery ? `return_delivery_completed_photos_${trip.id}` : `delivery_completed_photos_${trip.id}`;
+    if (stopKey) SecureStore.setItemAsync(stopKey, JSON.stringify(valid));
+    SecureStore.setItemAsync(draftKey, JSON.stringify(valid));
+    SecureStore.setItemAsync(completedKey, JSON.stringify(valid));
+  };
+
+  /** Which leg/operation this delivery's photos belong to (final leg of a round trip = return delivery). */
+  const podTarget = () => {
+    const ws = trip?.driver_workflow_state || 'ASSIGNED';
+    const isRound = isRoundTrip(trip);
+    const isFinalLeg = !isRound || ws === 'IN_TRANSIT_RETURN' || ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'FINAL_DELIVERY_VERIFICATION';
+    return { isFinalLeg, legIndex: isRound && isFinalLeg ? 1 : 0, op: isRound && isFinalLeg ? 'return_delivery' : 'delivery' };
+  };
+
+  /** Upload one photo (once); resolves true when it is on the server. */
+  const uploadPhotoNow = (p: CapturedPhoto): Promise<boolean> => {
+    if (!trip?.id || !p.uri) return Promise.resolve(false);
+    const tripId = trip.id;
+    const target = podTarget();
+    return uploads.uploadNow(p, (onProgress) => tripService.uploadPhoto(
+      tripId,
+      'pod',
+      {
+        uri: p.uri,
+        location: p.location ? { latitude: p.location.latitude, longitude: p.location.longitude, timestamp: p.location.timestamp } : null,
+      },
+      target.legIndex,
+      target.op,
+      dropoffStop?.id,
+      onProgress,
+    )).then((ok) => {
+      if (ok) savePhotoDrafts(photosRef.current);
+      return ok;
+    });
+  };
+
+  // Photos restored from a saved draft that never reached the server: send
+  // them now rather than waiting for the Complete button.
+  useEffect(() => {
+    photos.forEach((p) => { if (p?.uri && !isKnown(p.uri)) uploadPhotoNow(p); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [photos, isKnown]);
+
+  /** Put a new photo in the next empty box, save the draft, start its upload. */
+  const acceptPhoto = (photo: CapturedPhoto) => {
+    const valid = [...photosRef.current, photo].filter(Boolean).slice(0, need);
+    photosRef.current = valid;
+    setPhotos(valid);
+    savePhotoDrafts(valid);
+    uploadPhotoNow(photo);
+    if (valid.length >= need) setCameraOpen(false);
+  };
+
+  /**
+   * Tap an empty box: the in-app camera opens and stays open until all three
+   * are taken (it has its own Gallery tab). Long-press: straight to gallery.
+   */
+  const addPhoto = async (source: 'camera' | 'gallery' = primarySource) => {
+    if (photosRef.current.length >= need) return;
+    if (source === 'camera') {
+      setCameraOpen(true);
+      return;
     }
+    const photo = await pickFromGallery().catch(() => null);
+    if (photo) acceptPhoto(photo);
   };
 
   const removePhoto = (index: number) => {
@@ -269,12 +323,14 @@ const DeliveryVerificationScreen = () => {
 
   const handleCompleteDelivery = async () => {
     if (!trip || submitting) return;
-    if (validPhotosCount < 3) {
+    if (validPhotosCount < need) {
       Alert.alert(
-        isReturnDelivery
+        evidence.screenshot
+          ? t('title_upload_screenshot', 'Upload Customer App Screenshot')
+          : isReturnDelivery
           ? t('title_upload_return_delivery_photos', 'Upload Return Delivery Photos')
           : t('title_upload_delivery_photos', 'Upload Delivery Photos'),
-        `${isReturnDelivery ? t('title_upload_return_delivery_photos', 'Upload return delivery photos') : t('title_upload_delivery_photos', 'Upload delivery photos')} (${validPhotosCount}/3).`
+        `${isReturnDelivery ? t('title_upload_return_delivery_photos', 'Upload return delivery photos') : t('title_upload_delivery_photos', 'Upload delivery photos')} (${validPhotosCount}/${need}).`
       );
       return;
     }
@@ -294,45 +350,11 @@ const DeliveryVerificationScreen = () => {
         }
         await SecureStore.setItemAsync('last_completed_trip_id', trip.id);
       }
-      const ws = trip.driver_workflow_state || 'ASSIGNED';
-      const isRound = isRoundTrip(trip);
+      const { isFinalLeg } = podTarget();
 
-      const isFinalLeg =
-        !isRound ||
-        ws === 'IN_TRANSIT_RETURN' ||
-        ws === 'ARRIVED_AT_FINAL_DELIVERY' ||
-        ws === 'FINAL_DELIVERY_VERIFICATION';
-
-      const targetLegIndex = isRound && isFinalLeg ? 1 : 0;
-      const targetOp = isRound && isFinalLeg ? 'return_delivery' : 'delivery';
-
-      // Upload POD photos via tripService.uploadPhoto
-      let failedUploads = 0;
-      for (const p of photos) {
-        if (p.uri && !uploadedUrisRef.current.has(p.uri)) {
-          try {
-            await tripService.uploadPhoto(
-              trip.id,
-              'pod',
-              {
-                uri: p.uri,
-                location: p.location ? {
-                  latitude: p.location.latitude,
-                  longitude: p.location.longitude,
-                  timestamp: p.location.timestamp,
-                } : null,
-              },
-              targetLegIndex,
-              targetOp,
-              dropoffStop?.id
-            );
-            uploadedUrisRef.current.add(p.uri);
-          } catch (photoErr) {
-            console.warn('POD photo upload warning:', photoErr);
-            failedUploads++;
-          }
-        }
-      }
+      // Most photos are already uploaded (started when taken); finish or retry the rest.
+      const results = await Promise.all(photos.filter((p) => p.uri).map((p) => uploadPhotoNow(p)));
+      const failedUploads = results.filter((ok) => !ok).length;
       // Don't advance the trip with evidence missing — the photos would be
       // lost for good once this screen is left.
       if (failedUploads > 0) {
@@ -343,16 +365,18 @@ const DeliveryVerificationScreen = () => {
         return;
       }
 
-      triggerGPayHapticsAndSound();
-
       if (!isFinalLeg) {
         // Round trip outbound delivery completed! Transition to Return Loading
         try {
           const updated = await tripService.updateStatus(trip.id, 'Loading', 'RETURN_LOADING');
           setTrip(updated);
         } catch (statusErr) {
-          console.warn('Status update warning:', statusErr);
+          // Don't pretend it worked — stay here so the driver can tap again.
+          console.warn('Status update failed:', statusErr);
+          showToast(`${t('err_status_not_saved_delivery', 'Could not save the delivery. Check your connection and tap again.')} (${getApiErrorMessage(statusErr)})`, 'error');
+          return;
         }
+        triggerGPayHapticsAndSound();
         await SecureStore.deleteItemAsync(`pickup_draft_photos_${trip.id}`).catch(() => {});
         if (dropoffStop?.id) {
           await SecureStore.deleteItemAsync(`delivery_draft_${trip.id}_${dropoffStop.id}`).catch(() => {});
@@ -368,21 +392,31 @@ const DeliveryVerificationScreen = () => {
           const updated = await tripService.updateStatus(trip.id, 'Completed', 'COMPLETED');
           setTrip(updated);
         } catch (statusErr) {
-          console.warn('Status update warning:', statusErr);
+          // Without this the trip stayed open on the server while the app
+          // showed "Delivered". Stay here so the driver can tap again.
+          console.warn('Status update failed:', statusErr);
+          showToast(`${t('err_status_not_saved_delivery', 'Could not save the delivery. Check your connection and tap again.')} (${getApiErrorMessage(statusErr)})`, 'error');
+          return;
         }
-        router.replace('/trip/completed');
+        triggerGPayHapticsAndSound();
+        router.replace({ pathname: '/trip/completed', params: { tripId: trip.id } } as any);
       }
     } catch (err) {
       console.error('Delivery completion error:', err);
-      triggerGPayHapticsAndSound();
-      router.replace('/trip/completed');
+      showToast(getApiErrorMessage(err), 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
   const openNavigation = () => {
-    const address = stopAddress(dropoffStop) || 'Al Ahsa Governorate, Saudi Arabia';
+    // Real stop data only (a hard-coded city used to be the fallback, which
+    // sent drivers to the wrong place when a stop had no address).
+    const address = stopAddress(dropoffStop) || stopLabel(dropoffStop) || (dropoffStop && isValidCoordinate(dropoffStop.location_lat, dropoffStop.location_lng) ? `${dropoffStop.location_lat},${dropoffStop.location_lng}` : null);
+    if (!address) {
+      showToast(t('err_no_stop_address', 'This stop has no address yet. Ask your operator.'), 'error');
+      return;
+    }
     const url = Platform.OS === 'ios'
       ? `maps://0,0?q=${encodeURIComponent(address)}`
       : `geo:0,0?q=${encodeURIComponent(address)}`;
@@ -391,8 +425,8 @@ const DeliveryVerificationScreen = () => {
     });
   };
 
-  const deliveryLocationName = stopLabel(dropoffStop) || 'Al Ahsa Governorate';
-  const deliveryLocationAddr = stopAddress(dropoffStop) || 'Al Ahsa Governorate, Eastern Province, Saudi Arabia';
+  const deliveryLocationName = stopLabel(dropoffStop) || 'Delivery';
+  const deliveryLocationAddr = stopAddress(dropoffStop) || '';
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
@@ -438,25 +472,30 @@ const DeliveryVerificationScreen = () => {
         {/* Upload Delivery Photos Section */}
         <View style={styles.uploadSectionCard}>
           <View style={styles.uploadHeaderRow}>
-            <Text style={styles.uploadTitle}>{isReturnDelivery ? t('title_upload_return_delivery_photos', 'UPLOAD RETURN DELIVERY PHOTOS') : t('title_upload_delivery_photos', 'UPLOAD DELIVERY PHOTOS')}</Text>
+            <Text style={styles.uploadTitle}>{evidence.screenshot ? t('title_upload_screenshot_caps', 'UPLOAD CUSTOMER APP SCREENSHOT') : isReturnDelivery ? t('title_upload_return_delivery_photos', 'UPLOAD RETURN DELIVERY PHOTOS') : t('title_upload_delivery_photos', 'UPLOAD DELIVERY PHOTOS')}</Text>
             <View style={styles.chatIconCircle}>
               <MessageSquare size={16} color="#16A34A" strokeWidth={2.2} />
             </View>
           </View>
 
-          {/* 3 Photo Slots */}
+          {evidence.screenshot && (
+            <Text style={styles.screenshotHint}>{t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")}</Text>
+          )}
+
+          {/* Photo slots: 3, or 1 wide slot for a screenshot */}
           <View style={styles.photosGrid}>
-            {[0, 1, 2].map((i) => (
+            {Array.from({ length: need }, (_, i) => i).map((i) => (
               <TouchableOpacity
                 key={i}
-                style={[styles.photoPreview, photos[i] ? styles.photoFilled : styles.photoEmpty]}
+                style={[styles.photoPreview, need === 1 && styles.photoPreviewWide, photos[i] ? styles.photoFilled : styles.photoEmpty]}
                 activeOpacity={0.8}
-                onPress={photos[i] ? () => setPreviewPhoto(photos[i]) : () => addPhoto(i)}
+                onPress={photos[i] ? () => setPreviewPhoto(photos[i]) : () => addPhoto()}
+                onLongPress={photos[i] ? undefined : () => addPhoto(otherSource)}
               >
                 {photos[i] ? (
                   <>
-                    <Image source={{ uri: photos[i].uri }} style={styles.photoImage} />
-                    {!!photos[i].location && (
+                    <Image source={{ uri: photos[i].uri }} style={styles.photoImage} resizeMode={evidence.screenshot ? 'contain' : 'cover'} />
+                    {!evidence.screenshot && !!photos[i].location && (
                       <GoogleMapsGeotagPreview
                         latitude={photos[i].location!.latitude}
                         longitude={photos[i].location!.longitude}
@@ -472,12 +511,23 @@ const DeliveryVerificationScreen = () => {
                 ) : (
                   <View style={styles.photoPlaceholder}>
                     <GreenCameraPlusIcon />
-                    <Text style={styles.photoPlaceholderText}>{language === 'ur' ? `تصویر ${i + 1}` : `Photo ${i + 1}`}</Text>
+                    <Text style={styles.photoPlaceholderText}>{evidence.screenshot ? t('label_screenshot', 'Screenshot') : language === 'ur' ? `تصویر ${i + 1}` : `Photo ${i + 1}`}</Text>
                   </View>
                 )}
               </TouchableOpacity>
             ))}
           </View>
+
+          <UploadProgressBar items={uploads.itemsFor(photos)} total={need} accent="#16A34A" />
+          {!hasAllPhotos ? (
+            <TouchableOpacity style={styles.galleryLink} activeOpacity={0.7} onPress={() => addPhoto(otherSource)}>
+              <Text style={styles.galleryLinkText}>
+                {evidence.screenshot
+                  ? t('action_take_photo_instead', 'Take a photo instead')
+                  : language === 'ur' ? 'گیلری سے منتخب کریں' : 'Choose from gallery'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
 
           {/* Primary Action Button: DELIVERY COMPLETE */}
           <TouchableOpacity
@@ -502,6 +552,16 @@ const DeliveryVerificationScreen = () => {
         {/* Faded Bottom Truck Illustration */}
         <FadedBottomIllustration type="delivery" height={240} imageOpacity={0.5} resizeMode="contain" />
       </ScrollView>
+
+      <PhotoCaptureModal
+        visible={cameraOpen}
+        photos={photos}
+        uploads={uploads.itemsFor(photos)}
+        total={need}
+        accent="#16A34A"
+        onPhoto={acceptPhoto}
+        onClose={() => setCameraOpen(false)}
+      />
 
       <GeotagPhotoModal
         visible={!!previewPhoto}
@@ -740,6 +800,15 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     overflow: 'hidden',
   },
+  photoPreviewWide: {
+    aspectRatio: 1.8,
+  },
+  screenshotHint: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 17,
+    marginBottom: 10,
+  },
   photoEmpty: {
     borderWidth: 1.5,
     borderColor: '#86EFAC',
@@ -823,6 +892,18 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '800',
     color: '#15803D',
+  },
+  galleryLink: {
+    alignSelf: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  galleryLinkText: {
+    color: '#16A34A',
+    fontSize: 14,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   mainActionBtn: {
     height: 52,

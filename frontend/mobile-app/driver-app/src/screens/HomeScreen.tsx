@@ -2,23 +2,26 @@
 import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, StatusBar, RefreshControl, ActivityIndicator, Alert, Dimensions,
+  StyleSheet, StatusBar, RefreshControl, ActivityIndicator, Dimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Svg, { Path, G, Circle } from 'react-native-svg';
 import {
   MapPin, Globe, Clock, ChevronRight, ChevronDown, Building2, Navigation,
-  Play, CheckCircle2, Wallet, MoreVertical, ArrowRight, ArrowLeft, Route, House, Camera, Settings, RotateCcw,
+  Play, CheckCircle2, Wallet, MoreVertical, ArrowRight, ArrowLeft, Route, House, Camera, Settings, RotateCcw, Check,
 } from 'lucide-react-native';
+import { getTimelineProgress } from '@mercon/shared-types';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { Badge } from '@mercon/mobile-shared/components/Badge';
 import { DelayReportModal } from '../components/DelayReportModal';
 import { DriverChargePill } from '../components/DriverChargePill';
+import { showToast } from '../components/AppToast';
 import { BilingualText } from '@mercon/mobile-shared/components/BilingualText';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, parseStopWorkflowState, getNextExternalAppAction, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
+import { useScheduledTrips } from '../hooks/use-scheduled-trips';
+import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, parseStopWorkflowState, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage, getLocalizedStatus } from '@mercon/mobile-shared/lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, targetFromWorkflowState, type TimelineStop } from '../utils/routeParser';
@@ -38,6 +41,14 @@ const WORKFLOW_URDU_LABEL: Record<string, string> = {
   ARRIVED_AT_FINAL_DELIVERY: 'واپسی ڈلیوری مکمل کریں',
   FINAL_DELIVERY_VERIFICATION: 'واپسی ڈلیوری مکمل کریں',
   REVIEW_COMPLETE: 'ٹرپ مکمل کریں',
+  LOADING_COMPLETED: 'ڈلیوری پر جائیں',
+  RETURN_LOADING_COMPLETED: 'واپسی ڈلیوری پر جائیں',
+  GOING_TO_STOP: 'اسٹاپ کی تصدیق کریں',
+  ARRIVED_AT_STOP: 'اسٹاپ کی تصدیق کریں',
+  STOP_VERIFICATION: 'اسٹاپ کی تصدیق کریں',
+  GOING_TO_RETURN_STOP: 'واپسی اسٹاپ کی تصدیق کریں',
+  ARRIVED_AT_RETURN_STOP: 'واپسی اسٹاپ کی تصدیق کریں',
+  RETURN_STOP_VERIFICATION: 'واپسی اسٹاپ کی تصدیق کریں',
 };
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -96,6 +107,25 @@ function shortWhen(iso?: string | null, fallback = 'Scheduled'): string {
   return d.toLocaleString(undefined, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+/** "14:05" for a planned/actual stop time, or null when there is none. */
+function fmtTime(value?: Date | string | null): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
+/** Minutes the pickup is overdue (planned start passed, driver not there yet), else 0. */
+function minutesLate(trip: MobileTrip): number {
+  const ws = getEffectiveWorkflowState(trip);
+  if (ws !== 'ASSIGNED' && ws !== 'GOING_TO_PICKUP') return 0;
+  if (!trip.planned_start) return 0;
+  const due = new Date(trip.planned_start).getTime();
+  if (Number.isNaN(due)) return 0;
+  const late = Math.floor((Date.now() - due) / 60000);
+  return late >= 5 ? late : 0;
+}
+
 function formatCharge(val?: number | string | null): string {
   if (val === null || val === undefined) return '0.00';
   const n = typeof val === 'string' ? parseFloat(val) : val;
@@ -121,11 +151,13 @@ const HomeScreen = () => {
   const { profile, signOut } = useAuth();
   const { trip, loading, error, refetch, setTrip } = useCurrentTrip();
   const { language, openLanguageModal, t } = useLanguage();
+  /** Short UI text in the driver's language (bilingual mode shows both). */
+  const L = (en: string, ur: string) => (language === 'ur' ? ur : language === 'ur-en' ? `${ur} / ${en}` : en);
+  /** Same, but one language only — for small pills where both would not fit. */
+  const LS = (en: string, ur: string) => (language === 'ur' ? ur : en);
   const [activeTab, setActiveTab] = useState('Home');
   const [advancing, setAdvancing] = useState(false);
   const [delayModalVisible, setDelayModalVisible] = useState(false);
-  const [scheduledTrips, setScheduledTrips] = useState<MobileTrip[]>([]);
-  const [scheduledLoading, setScheduledLoading] = useState(true);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const timeOfDay = React.useMemo(() => {
@@ -176,26 +208,10 @@ const HomeScreen = () => {
 //  }, [trip, loading]);
 
 
-  const fetchScheduled = useCallback(async () => {
-    setScheduledLoading(true);
-    try {
-      const data = await tripService.getScheduled();
-      setScheduledTrips(trip ? data.filter((t: MobileTrip) => t.id !== trip.id) : data);
-    } catch {
-      // silently fail
-    } finally {
-      setScheduledLoading(false);
-    }
-  }, [trip]);
-
-  // Load secondary data (scheduled trips) strictly once after primary trip resolves on initial load
-  const secondaryLoadedRef = useRef(false);
-  useEffect(() => {
-    if (!loading && !secondaryLoadedRef.current) {
-      secondaryLoadedRef.current = true;
-      fetchScheduled();
-    }
-  }, [loading, fetchScheduled]);
+  // Loaded in parallel with the current trip (was: only after it resolved)
+  // and served from the shared cache the Trips tab also uses.
+  const { trips: allScheduled, refetch: refetchScheduled } = useScheduledTrips();
+  const scheduledTrips = trip ? allScheduled.filter((st: MobileTrip) => st.id !== trip.id) : allScheduled;
 
   // Refresh the trip whenever Home regains focus
   const displayTrip = trip || (scheduledTrips.length > 0 ? scheduledTrips[0] : null);
@@ -219,29 +235,6 @@ const HomeScreen = () => {
   }
 
   const getWorkflowStateInfo = (t: MobileTrip): WorkflowStateInfo => {
-    if (t.driver_workflow === 'EXTERNAL_APP') {
-      const ws = getEffectiveWorkflowState(t);
-      const isAssigned = ws === 'ASSIGNED';
-      const nextAction = getNextExternalAppAction(t);
-      return {
-        badgeLabel: isAssigned ? 'Assigned (External)' : 'External App',
-        btnLabel: isAssigned ? 'Start Trip' : (nextAction?.label ?? 'Trip Completed'),
-        onPress: async () => {
-          if (isAssigned) {
-            setAdvancing(true);
-            try {
-              const updated = await tripService.updateStatus(t.id, 'Scheduled', 'GOING_TO_PICKUP');
-              setTrip(updated);
-            } catch (err) {
-              console.warn('Could not update trip status on start:', err);
-            } finally {
-              setAdvancing(false);
-            }
-          }
-          router.push('/trip/external-app');
-        },
-      };
-    }
     const ws = getEffectiveWorkflowState(t);
     const isRound = isRoundTrip(t);
     const outboundStops = getOutboundIntermediateStops(t);
@@ -254,7 +247,7 @@ const HomeScreen = () => {
       return {
         badgeLabel: isRound ? 'Return Delivery Completed' : 'Trip Completed',
         btnLabel: 'View Completed Summary',
-        onPress: () => router.push('/trip/completed'),
+        onPress: () => router.push({ pathname: '/trip/completed', params: { tripId: t.id } } as any),
       };
     }
 
@@ -301,6 +294,15 @@ const HomeScreen = () => {
           onPress: () => router.push('/trip/pickup'),
         };
       }
+      // Already on the way: continue to the map — "Start Trip" here used to
+      // re-send the start status for a trip that had already started.
+      if (ws === 'GOING_TO_PICKUP') {
+        return {
+          badgeLabel: 'Going to Pickup',
+          btnLabel: 'Continue to Pickup',
+          onPress: () => router.push('/trip/navigate'),
+        };
+      }
       return {
         badgeLabel: 'Assigned',
         btnLabel: 'Start Trip',
@@ -311,7 +313,7 @@ const HomeScreen = () => {
             setTrip(updated);
             router.push('/trip/navigate');
           } catch (err) {
-            Alert.alert('Error', getApiErrorMessage(err));
+            showToast(getApiErrorMessage(err), 'error');
           } finally {
             setAdvancing(false);
           }
@@ -386,8 +388,7 @@ const HomeScreen = () => {
           <RefreshControl
             refreshing={loading}
             onRefresh={async () => {
-              await refetch();
-              await fetchScheduled();
+              await Promise.all([refetch(), refetchScheduled()]);
             }}
             tintColor="#FFFFFF"
             progressBackgroundColor="#FA634E"
@@ -532,17 +533,11 @@ const HomeScreen = () => {
 
               <View style={styles.cardDivider} />
 
-              {/* Route Vertical Timeline — unified row layout */}
+              {/* Route: next stop highlighted, then every stop in a horizontal row */}
               {(() => {
                 const timelineStops = parseTripRouteNodes(displayTrip);
-                const returnLegStartIdx = timelineStops.findIndex((s) => s.legIndex === 1);
-                const isReturnLeg = (idx: number) => returnLegStartIdx !== -1 && idx >= returnLegStartIdx;
 
                 const handleStopPress = (st: TimelineStop) => {
-                  if (displayTrip?.driver_workflow === 'EXTERNAL_APP') {
-                    router.push('/trip/external-app');
-                    return;
-                  }
                   if (st.isIntermediate) {
                     router.push({ pathname: '/trip/stop', params: { legIndex: String(st.legIndex ?? 0) } } as any);
                   } else {
@@ -571,122 +566,105 @@ const HomeScreen = () => {
                   );
                 }
 
+                // Same progress rule as the web trip page: a stop is done once the
+                // driver has left it; the current one is next (or "here" once arrived).
+                const progress = getTimelineProgress(timelineStops, false);
+                const currentIdx = Math.max(0, progress.indexOf('current'));
+                const nextStop = timelineStops[currentIdx];
+                const atNextStop = !!nextStop.actualArrival && !nextStop.actualDeparture;
+                const stopType = (st: TimelineStop) => (language === 'ur' ? st.typeUrdu : st.typeEn);
+                const plannedAt = fmtTime(nextStop.plannedArrival);
+                const scrollStops = timelineStops.length > 4;
+
+                const stepItems = timelineStops.map((st, idx) => {
+                  const state = progress[idx];
+                  const isDone = state === 'completed';
+                  const isCurrent = state === 'current';
+                  const leftDone = idx > 0 && progress[idx - 1] === 'completed';
+                  const tag = isDone
+                    ? LS('Done', 'مکمل')
+                    : isCurrent
+                    ? (atNextStop ? LS('Here now', 'یہاں') : LS('Next', 'اگلا'))
+                    : fmtTime(st.plannedArrival) ?? '';
+                  return (
+                    <TouchableOpacity
+                      key={`step-${st.id}-${idx}`}
+                      activeOpacity={0.7}
+                      onPress={() => handleStopPress(st)}
+                      style={[styles.stepItem, scrollStops && styles.stepItemScroll]}
+                    >
+                      <View style={styles.stepTrack}>
+                        <View style={[styles.stepLine, idx === 0 && styles.stepLineHidden, leftDone && styles.stepLineDone]} />
+                        <View style={[styles.stepDot, isDone && styles.stepDotDone, isCurrent && styles.stepDotCurrent]}>
+                          {isDone ? <Check size={12} color="#FFFFFF" strokeWidth={3.5} /> : null}
+                        </View>
+                        <View style={[styles.stepLine, idx === timelineStops.length - 1 && styles.stepLineHidden, isDone && styles.stepLineDone]} />
+                      </View>
+                      <Text style={[styles.stepName, isDone && styles.stepNameDone]} numberOfLines={1}>{st.name}</Text>
+                      <Text style={styles.stepType} numberOfLines={1}>{stopType(st)}</Text>
+                      {tag ? (
+                        <View style={[styles.stepTag, isDone && styles.stepTagDone, isCurrent && styles.stepTagCurrent]}>
+                          <Text style={[styles.stepTagText, isDone && styles.stepTagTextDone, isCurrent && styles.stepTagTextCurrent]} numberOfLines={1}>{tag}</Text>
+                        </View>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                });
+
                 return (
                   <View style={styles.routeContainer}>
-                    {timelineStops.map((st, idx) => {
-                      const isFirst = idx === 0;
-                      const isLast = idx === timelineStops.length - 1;
-                      const isReturnStart = returnLegStartIdx !== -1 && idx === returnLegStartIdx;
-                      const returnLeg = isReturnLeg(idx);
-                      const dotColor = returnLeg ? '#3E3C3D' : '#FA634E';
-                      const lineColor = returnLeg ? '#3E3C3D' : '#D8D8DC';
-                      const iconColor = returnLeg ? '#3E3C3D' : '#FA634E';
-
-                      return (
-                        <React.Fragment key={`row-${st.id}-${idx}`}>
-                          {/* Return Leg Pill Divider */}
-                          {isReturnStart && (
-                            <View style={styles.returnLegDividerRow}>
-                              <View style={styles.timelineDotCol}>
-                                <View style={styles.returnLegConnector} />
-                              </View>
-                              <View style={styles.returnLegDivider}>
-                                <View style={styles.returnLegDividerLine} />
-                                <View style={styles.returnLegPill}>
-                                  <RotateCcw size={11} color="#FA634E" strokeWidth={2.5} />
-                                  <Text style={styles.returnLegPillText}>{language === 'ur' ? 'واپسی کا سفر' : 'Return Leg'}</Text>
-                                </View>
-                                <View style={styles.returnLegDividerLine} />
-                              </View>
-                            </View>
+                    <TouchableOpacity style={styles.nextStopBox} activeOpacity={0.85} onPress={() => handleStopPress(nextStop)}>
+                      <View style={styles.nextStopHeader}>
+                        <Text style={styles.nextStopLabel}>{atNextStop ? L('YOU ARE HERE', 'آپ یہاں ہیں') : L('NEXT STOP', 'اگلا اسٹاپ')}</Text>
+                        {plannedAt ? <Text style={styles.nextStopMeta}>{L(`Planned ${plannedAt}`, `متوقع ${plannedAt}`)}</Text> : null}
+                      </View>
+                      <View style={styles.nextStopRow}>
+                        <View style={styles.nextStopIcon}>
+                          {nextStop.iconType === 'House' ? (
+                            <House size={20} color="#FFFFFF" strokeWidth={2.2} />
+                          ) : (
+                            <MapPin size={20} color="#FFFFFF" strokeWidth={2.2} />
                           )}
+                        </View>
+                        <View style={styles.routeTextCol}>
+                          <Text style={styles.nextStopType} numberOfLines={1}>{stopType(nextStop)}</Text>
+                          <Text style={styles.routePlaceName} numberOfLines={1}>{nextStop.name}</Text>
+                          {nextStop.address ? (
+                            <Text style={styles.routeAddressText} numberOfLines={1}>{nextStop.address}</Text>
+                          ) : null}
+                        </View>
+                        <View style={styles.navCircleBtn}>
+                          <Navigation size={15} color="#3E3C3D" strokeWidth={2} />
+                        </View>
+                      </View>
+                    </TouchableOpacity>
 
-                          {/* Stop Row */}
-                          <View style={styles.timelineRow}>
-                            {/* Left: dot + connector line */}
-                            <View style={styles.timelineDotCol}>
-                              {/* Top half line (connects to previous row) */}
-                              {isFirst ? (
-                                <View style={styles.lineSegmentHidden} />
-                              ) : (
-                                <View style={[styles.lineSegment, { borderColor: lineColor, opacity: returnLeg ? 0.4 : 1 }]} />
-                              )}
-
-                              {/* The Dot */}
-                              {isFirst ? (
-                                <View style={[styles.pickupNodeOuter, { borderColor: dotColor }]}>
-                                  <View style={[styles.pickupNodeInner, { backgroundColor: dotColor }]} />
-                                </View>
-                              ) : (
-                                <View style={[
-                                  styles.stopNodeDot,
-                                  { borderColor: dotColor },
-                                  returnLeg && { backgroundColor: dotColor },
-                                ]} />
-                              )}
-
-                              {/* Bottom half line (connects to next row) */}
-                              {isLast ? (
-                                <View style={styles.lineSegmentHidden} />
-                              ) : (
-                                <View style={[styles.lineSegment, { borderColor: lineColor, opacity: returnLeg ? 0.4 : 1 }]} />
-                              )}
-                            </View>
-
-                            {/* Right: icon + text + nav button — all in one flat row */}
-                            <View style={styles.routeRowItem}>
-                              <View style={[styles.iconCircleBadge, returnLeg && { backgroundColor: '#F0F0F0' }]}>
-                                {st.iconType === 'House' ? (
-                                  <House size={20} color={iconColor} strokeWidth={2} />
-                                ) : st.iconType === 'MapPin' ? (
-                                  <MapPin size={20} color={iconColor} strokeWidth={2} />
-                                ) : (
-                                  /* Stop node — circle with "STOP" text */
-                                  <View style={[styles.stopLetterCircle, { borderColor: iconColor }]}>
-                                    <Text style={[styles.stopLetterText, { color: iconColor }]}>{t('label_stop', 'STOP')}</Text>
-                                  </View>
-                                )}
-                              </View>
-                              <View style={styles.routeTextCol}>
-                                <BilingualText
-                                  ur={st.typeUrdu}
-                                  en={st.typeEn}
-                                  primaryStyle={styles.stageUrduPrimary}
-                                  subStyle={styles.stageSubEn}
-                                />
-                                <Text style={styles.routePlaceName} numberOfLines={1}>
-                                  {st.name}
-                                </Text>
-                                {st.address ? (
-                                  <Text style={styles.routeAddressText} numberOfLines={1}>
-                                    {st.address}
-                                  </Text>
-                                ) : null}
-                              </View>
-                              <TouchableOpacity
-                                style={styles.navCircleBtn}
-                                activeOpacity={0.7}
-                                onPress={() => handleStopPress(st)}
-                              >
-                                <Navigation size={15} color="#3E3C3D" strokeWidth={2} />
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        </React.Fragment>
-                      );
-                    })}
+                    {scrollStops ? (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stepRow}>
+                        {stepItems}
+                      </ScrollView>
+                    ) : (
+                      <View style={styles.stepRow}>{stepItems}</View>
+                    )}
                   </View>
                 );
               })()}
 
-
-
-
               {/* Primary Action CTA & Secondary Delay Button Below */}
               {(() => {
                 const info = getWorkflowStateInfo(displayTrip);
+                const late = minutesLate(displayTrip);
+                const lateText = late >= 60 ? `${Math.floor(late / 60)} h ${late % 60} min` : `${late} min`;
                 return (
                   <View style={styles.actionsContainer}>
+                    {late > 0 ? (
+                      <View style={styles.lateBanner}>
+                        <Clock size={16} color="#92400E" strokeWidth={2.2} />
+                        <Text style={styles.lateBannerText}>
+                          {L(`Pickup was due ${fmtTime(displayTrip.planned_start)} · ${lateText} late`, `پک اپ ${fmtTime(displayTrip.planned_start)} پر تھا · ${lateText} تاخیر`)}
+                        </Text>
+                      </View>
+                    ) : null}
                     <TouchableOpacity
                       style={[styles.primaryCtaBtn, advancing && { opacity: 0.7 }]}
                       activeOpacity={0.88}
@@ -792,21 +770,14 @@ const HomeScreen = () => {
                       <Clock size={13} color="#64748B" />
                       <Text style={styles.footerTimeText}>{shortWhen(st.planned_start, 'Scheduled')}</Text>
                     </View>
+                    {/* View, not Start: only the current trip (card above) can be started,
+                        so a driver can no longer start the wrong trip from this list. */}
                     <TouchableOpacity
-                      style={styles.startTripSmallBtn}
-                      onPress={async () => {
-                        setTrip(st);
-                        if (st.driver_workflow === 'EXTERNAL_APP') {
-                          try {
-                            await tripService.updateStatus(st.id, 'Scheduled', 'GOING_TO_PICKUP');
-                          } catch {}
-                          router.push('/trip/external-app');
-                        } else {
-                          router.push('/trip/navigate');
-                        }
-                      }}
+                      style={styles.viewTripSmallBtn}
+                      onPress={() => router.push({ pathname: '/trip/details', params: { tripId: st.id } } as any)}
                     >
-                      <Text style={styles.startTripSmallBtnText}>{t('action_start_trip', 'Start Trip')}</Text>
+                      <Text style={styles.viewTripSmallBtnText}>{t('action_view_trip', 'View Trip')}</Text>
+                      <ChevronRight size={14} color="#3E3C3D" strokeWidth={2.4} />
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -933,7 +904,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#EEF1F6',
   },
   scrollContent: {
-    paddingBottom: 120,
+    paddingBottom: 140, // clears the floating bottom nav
   },
   cardWrapper: {
     paddingHorizontal: 16,
@@ -1481,16 +1452,171 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#64748B',
   },
-  startTripSmallBtn: {
-    backgroundColor: '#FA634E',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+  viewTripSmallBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    borderColor: '#E4E4E7',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 14,
   },
-  startTripSmallBtnText: {
-    color: '#FFFFFF',
+  viewTripSmallBtnText: {
+    color: '#3E3C3D',
     fontSize: 12.5,
     fontWeight: '800',
+  },
+
+  /* Next-stop box + horizontal stop row (trip card) */
+  nextStopBox: {
+    backgroundColor: '#FFF7F4',
+    borderWidth: 1.5,
+    borderColor: '#FDBA9F',
+    borderRadius: 18,
+    padding: 12,
+    gap: 8,
+  },
+  nextStopHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  nextStopLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    color: '#C2410C',
+  },
+  nextStopMeta: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#57534E',
+  },
+  nextStopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  nextStopIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: '#D94E38',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  nextStopType: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#57534E',
+  },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 14,
+  },
+  stepItem: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
+    gap: 4,
+  },
+  stepItemScroll: {
+    flex: 0,
+    width: 84,
+  },
+  stepTrack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+  },
+  stepLine: {
+    flex: 1,
+    height: 3,
+    borderRadius: 3,
+    backgroundColor: '#E7E5E4',
+  },
+  stepLineHidden: {
+    backgroundColor: 'transparent',
+  },
+  stepLineDone: {
+    backgroundColor: '#16A34A',
+  },
+  stepDot: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2.5,
+    borderColor: '#D6D3D1',
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepDotDone: {
+    borderWidth: 0,
+    backgroundColor: '#16A34A',
+  },
+  stepDotCurrent: {
+    borderWidth: 5,
+    borderColor: '#D94E38',
+  },
+  stepName: {
+    fontSize: 13.5,
+    fontWeight: '800',
+    color: '#3E3C3D',
+    textAlign: 'center',
+    paddingHorizontal: 2,
+    marginTop: 2,
+  },
+  stepNameDone: {
+    color: '#6E6E80',
+  },
+  stepType: {
+    fontSize: 11,
+    color: '#6E6E80',
+    textAlign: 'center',
+    paddingHorizontal: 2,
+  },
+  stepTag: {
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    backgroundColor: '#F5F5F4',
+  },
+  stepTagDone: {
+    backgroundColor: '#DCFCE7',
+  },
+  stepTagCurrent: {
+    backgroundColor: '#FFF0EB',
+  },
+  stepTagText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#57534E',
+  },
+  stepTagTextDone: {
+    color: '#166534',
+  },
+  stepTagTextCurrent: {
+    color: '#C2410C',
+  },
+  lateBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+  },
+  lateBannerText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#92400E',
   },
 });
 

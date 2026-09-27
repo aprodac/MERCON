@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import KpiCard from '@/components/ui/KpiCard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -310,25 +309,19 @@ export default function AprodacDocumentsPage() {
 
   // Metrics
   const totalDocs = documents.length;
-  const pdfCount = documents.filter((d) => d.fileType === 'pdf').length;
-  const imageCount = documents.filter((d) => d.fileType === 'image').length;
   const totalStorage = documents.reduce((acc, d) => acc + d.sizeBytes, 0);
 
   return (
-    <DashboardLayout active="/aprodac-documents" title="Aprodac Vault">
-      <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-5">
+    <DashboardLayout active="/aprodac-documents" title="Settings">
+      <div className="px-4 sm:px-6 pt-5 pb-6 w-full flex flex-col animate-fade-in gap-5">
         {/* Top Header Row */}
-        <div className="flex flex-wrap items-center justify-between gap-4 shrink-0 pb-1">
-          <div className="flex items-center gap-3">
-            <FolderGit2 className="w-6 h-6 text-brand shrink-0" />
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-                Aprodac Vault
-              </h1>
-              <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-xs font-semibold">
-                Aprodac Developer Module
-              </Badge>
-            </div>
+        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 shrink-0">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold tracking-tight text-foreground">Aprodac vault</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Contracts, specifications and other documents shared between your company and Aprodac.
+              {totalDocs > 0 && ` ${totalDocs} ${totalDocs === 1 ? 'document' : 'documents'} · ${formatBytes(totalStorage)}.`}
+            </p>
           </div>
 
           {/* Action Buttons */}
@@ -374,58 +367,11 @@ export default function AprodacDocumentsPage() {
               className="h-9 gap-1.5 text-xs font-bold bg-brand hover:bg-brand-hover text-white shadow-xs rounded-md px-4"
             >
               <FilePlus className="h-4 w-4" />
-              + Upload Document
+              Upload document
             </Button>
           </div>
         </div>
 
-        {/* Instrument-Panel KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <KpiCard
-            title="Total Documents"
-            label="DEV VAULT COUNT"
-            value={totalDocs}
-            icon={FolderGit2}
-            variant="brand"
-            description="Total documents in developer vault"
-            isActive={typeFilter === 'All'}
-            onClick={() => setTypeFilter('All')}
-          />
-          <KpiCard
-            title="PDF Agreements"
-            label="PDF FORMAT"
-            value={pdfCount}
-            icon={FileText}
-            variant="rose"
-            description="Contracts, SLAs & certifications"
-            isActive={typeFilter === 'PDF'}
-            onClick={() => setTypeFilter(typeFilter === 'PDF' ? 'All' : 'PDF')}
-          />
-          <KpiCard
-            title="Architecture & Media"
-            label="IMAGE FORMAT"
-            value={imageCount}
-            icon={ImageIcon}
-            variant="blue"
-            description="System diagrams & ERD blueprints"
-            isActive={typeFilter === 'Image'}
-            onClick={() => setTypeFilter(typeFilter === 'Image' ? 'All' : 'Image')}
-          />
-          <KpiCard
-            title="Vault Storage Used"
-            label="STORAGE CAPACITY"
-            value={formatBytes(totalStorage)}
-            icon={HardDrive}
-            variant="emerald"
-            description="Encrypted persistent storage"
-            onClick={() => {
-              setTypeFilter('All');
-              setCategoryFilter('All');
-              setStatusFilter('All');
-              setSearchTerm('');
-            }}
-          />
-        </div>
 
         {/* Toolbar & Control Bar */}
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
@@ -804,9 +750,9 @@ export default function AprodacDocumentsPage() {
 
       {/* Upload / Edit Modal */}
       {isUploadOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-strong/60 backdrop-blur-xs animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 w-full max-w-xl rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
+            <div className="px-6 py-4 bg-charcoal text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-lg bg-brand text-white">
                   <Upload size={18} />
@@ -1011,9 +957,9 @@ export default function AprodacDocumentsPage() {
 
       {/* Preview Lightbox Modal */}
       {previewDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-strong/75 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-900 w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
+            <div className="px-6 py-4 bg-charcoal text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-3">
                 <div className={`p-2 rounded-lg ${
                   previewDoc.fileType === 'pdf' ? 'bg-rose-500/20 text-rose-400' : 'bg-blue-500/20 text-blue-400'
@@ -1114,7 +1060,7 @@ export default function AprodacDocumentsPage() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-charcoal-strong/60 backdrop-blur-xs animate-in fade-in duration-150">
           <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-2xl p-6 shadow-xl border border-slate-200 dark:border-slate-800 text-center space-y-4">
             <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center mx-auto">
               <Trash2 size={24} />

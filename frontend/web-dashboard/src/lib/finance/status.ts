@@ -23,46 +23,46 @@ export const FIN_TONE_CLASSES: Record<
   { bg: string; text: string; dot: string; combined: string }
 > = {
   positive: {
-    bg: 'bg-[#ECFDF3] dark:bg-emerald-950/40',
-    text: 'text-[#15803D] dark:text-emerald-400',
-    dot: 'bg-[#15803D] dark:bg-emerald-400',
+    bg: 'bg-emerald-50 dark:bg-emerald-950/30',
+    text: 'text-emerald-700 dark:text-emerald-400',
+    dot: 'bg-emerald-600 dark:bg-emerald-400',
     combined:
-      'bg-[#ECFDF3] text-[#15803D] dark:bg-emerald-950/40 dark:text-emerald-400',
+      'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-400 border',
   },
   negative: {
-    bg: 'bg-[#FEF1EE] dark:bg-orange-950/40',
-    text: 'text-[#C2410C] dark:text-orange-400',
-    dot: 'bg-[#C2410C] dark:bg-orange-400',
+    bg: 'bg-rose-50 dark:bg-rose-950/30',
+    text: 'text-rose-700 dark:text-rose-400',
+    dot: 'bg-rose-600 dark:bg-rose-400',
     combined:
-      'bg-[#FEF1EE] text-[#C2410C] dark:bg-orange-950/40 dark:text-orange-400',
+      'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-400 border',
   },
   info: {
-    bg: 'bg-[#EEF3FF] dark:bg-blue-950/40',
-    text: 'text-[#1D4ED8] dark:text-blue-300',
-    dot: 'bg-[#1D4ED8] dark:bg-blue-300',
+    bg: 'bg-sky-50 dark:bg-sky-950/30',
+    text: 'text-sky-700 dark:text-sky-400',
+    dot: 'bg-sky-600 dark:bg-sky-400',
     combined:
-      'bg-[#EEF3FF] text-[#1D4ED8] dark:bg-blue-950/40 dark:text-blue-300',
+      'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-400 border',
   },
   warning: {
-    bg: 'bg-[#FFF6E5] dark:bg-amber-950/40',
-    text: 'text-[#B45309] dark:text-amber-300',
-    dot: 'bg-[#B45309] dark:bg-amber-300',
+    bg: 'bg-amber-50 dark:bg-amber-950/30',
+    text: 'text-amber-700 dark:text-amber-400',
+    dot: 'bg-amber-600 dark:bg-amber-400',
     combined:
-      'bg-[#FFF6E5] text-[#B45309] dark:bg-amber-950/40 dark:text-amber-300',
+      'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-400 border',
   },
   neutral: {
-    bg: 'bg-[#F1F2F5] dark:bg-slate-800',
-    text: 'text-[#4B4B57] dark:text-slate-300',
-    dot: 'bg-[#4B4B57] dark:bg-slate-300',
+    bg: 'bg-muted',
+    text: 'text-muted-foreground',
+    dot: 'bg-muted-foreground',
     combined:
-      'bg-[#F1F2F5] text-[#4B4B57] dark:bg-slate-800 dark:text-slate-300',
+      'border-border bg-muted text-muted-foreground border',
   },
   muted: {
-    bg: 'bg-[#F4F4F6] dark:bg-slate-800/60',
-    text: 'text-[#6E6E80] dark:text-slate-400',
-    dot: 'bg-[#6E6E80] dark:bg-slate-400',
+    bg: 'bg-muted/60',
+    text: 'text-muted-foreground',
+    dot: 'bg-muted-foreground/60',
     combined:
-      'bg-[#F4F4F6] text-[#6E6E80] dark:bg-slate-800/60 dark:text-slate-400',
+      'border-border/60 bg-muted/60 text-muted-foreground border',
   },
 };
 

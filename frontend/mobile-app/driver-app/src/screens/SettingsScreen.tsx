@@ -218,7 +218,7 @@ function makeStyles(colors: ReturnType<typeof import('@mercon/mobile-shared/lib/
     },
     scroll: {
       padding: 16,
-      paddingBottom: 60,
+      paddingBottom: 140, // clears the floating bottom nav
     },
     groupLabel: {
       fontSize: 11,

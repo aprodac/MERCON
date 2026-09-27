@@ -219,26 +219,26 @@ export const AdvanceApplySheet: React.FC<AdvanceApplySheetProps> = ({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-xl p-0 flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800">
-        <SheetHeader className="p-6 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-          <SheetTitle className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center justify-between">
+      <SheetContent side="right" className="w-full sm:max-w-xl p-0 flex flex-col bg-card border-l border-border dark:border-border">
+        <SheetHeader className="p-6 border-b border-border dark:border-border bg-muted/50">
+          <SheetTitle className="text-xl font-bold text-foreground flex items-center justify-between">
             <span>Apply Credits</span>
-            <span className="text-sm font-mono font-normal text-slate-500">
+            <span className="text-sm font-mono font-normal text-muted-foreground">
               Ref: {advance.ref_id || advance.id.slice(0, 8)}
             </span>
           </SheetTitle>
-          <SheetDescription className="text-xs text-slate-500 dark:text-slate-400">
+          <SheetDescription className="text-xs text-muted-foreground dark:text-muted-foreground">
             Apply held advance credits against open {partyType === 'Customer' ? 'customer invoices' : 'provider bills'}.
           </SheetDescription>
 
           {/* Available meter */}
-          <div className="mt-4 p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-between">
+          <div className="mt-4 p-3 rounded-xl bg-card border border-border dark:border-border flex items-center justify-between">
             <div>
-              <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold block">Available Advance</span>
-              <MoneyText value={remainingAdvance} className="text-lg font-extrabold text-slate-900 dark:text-slate-100" />
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold block">Available Advance</span>
+              <MoneyText value={remainingAdvance} className="text-lg font-extrabold text-foreground" />
             </div>
             <div className="text-right">
-              <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold block">Allocated</span>
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold block">Allocated</span>
               <MoneyText
                 value={totalAllocated}
                 className={`text-lg font-extrabold ${isOverAllocated ? 'text-orange-600 dark:text-orange-400' : 'text-emerald-600 dark:text-emerald-400'}`}
@@ -248,8 +248,8 @@ export const AdvanceApplySheet: React.FC<AdvanceApplySheetProps> = ({
         </SheetHeader>
 
         {/* Action Bar */}
-        <div className="px-6 py-2.5 bg-slate-100/60 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">
+        <div className="px-6 py-2.5 bg-muted/60 border-b border-border dark:border-border flex items-center justify-between">
+          <span className="text-xs text-muted-foreground dark:text-muted-foreground font-medium">
             {rawDocs.length} open document{rawDocs.length === 1 ? '' : 's'} found
           </span>
           <div className="flex items-center gap-2">
@@ -269,7 +269,7 @@ export const AdvanceApplySheet: React.FC<AdvanceApplySheetProps> = ({
               size="sm"
               onClick={handleClear}
               disabled={totalAllocated <= 0}
-              className="h-7 text-xs text-slate-500"
+              className="h-7 text-xs text-muted-foreground"
             >
               Clear
             </Button>
@@ -285,24 +285,24 @@ export const AdvanceApplySheet: React.FC<AdvanceApplySheetProps> = ({
               <Skeleton className="h-16 w-full rounded-xl" />
             </div>
           ) : rawDocs.length === 0 ? (
-            <div className="py-12 text-center text-sm text-slate-500">
+            <div className="py-12 text-center text-sm text-muted-foreground">
               No open {partyType === 'Customer' ? 'invoices' : 'bills'} found for this party.
             </div>
           ) : (
             rawDocs.map((doc) => (
               <div
                 key={doc.id}
-                className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-850 hover:border-slate-300 dark:hover:border-slate-700 transition-colors flex items-center justify-between gap-4"
+                className="p-3.5 rounded-xl border border-border dark:border-border bg-card dark:bg-slate-850 hover:border-border dark:hover:border-border transition-colors flex items-center justify-between gap-4"
               >
                 <div className="space-y-0.5 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-sm text-slate-900 dark:text-slate-100">{doc.ref_id}</span>
-                    <span className="text-[11px] text-slate-500">{formatDate(doc.date)}</span>
+                    <span className="font-mono font-bold text-sm text-foreground">{doc.ref_id}</span>
+                    <span className="text-[11px] text-muted-foreground">{formatDate(doc.date)}</span>
                   </div>
-                  <div className="text-xs text-slate-500 flex items-center gap-2">
+                  <div className="text-xs text-muted-foreground flex items-center gap-2">
                     <span>{dueLabel({ due_date: doc.due_date, balance_due: doc.balance_due })}</span>
                     <span>·</span>
-                    <span>Balance due: <MoneyText value={doc.balance_due} className="font-semibold text-slate-700 dark:text-slate-300" /></span>
+                    <span>Balance due: <MoneyText value={doc.balance_due} className="font-semibold text-foreground" /></span>
                   </div>
                 </div>
 
@@ -322,17 +322,17 @@ export const AdvanceApplySheet: React.FC<AdvanceApplySheetProps> = ({
         </div>
 
         {/* Footer with Will Post preview */}
-        <div className="p-6 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-4">
+        <div className="p-6 border-t border-border dark:border-border bg-muted/50 space-y-4">
           {previewLines.length > 0 && (
             <div>
-              <span className="text-[11px] uppercase tracking-wider text-slate-500 font-semibold block mb-1.5">
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground font-semibold block mb-1.5">
                 Will post (on today's date)
               </span>
               <JournalLinesTable lines={previewLines as any} variant="preview" />
             </div>
           )}
 
-          <p className="text-[11.5px] text-slate-500 dark:text-slate-400">
+          <p className="text-[11.5px] text-muted-foreground dark:text-muted-foreground">
             Note: Application entries post on today's date. An open accounting period must cover today.
           </p>
 

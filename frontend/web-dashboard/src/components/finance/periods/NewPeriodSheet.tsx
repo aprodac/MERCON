@@ -48,7 +48,7 @@ export function NewPeriodSheet({
 
         <div className="space-y-4 py-4">
           <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1.5">
+            <label className="text-xs font-bold text-foreground block mb-1.5">
               Quick Presets
             </label>
             <div className="flex items-center gap-2">
@@ -103,7 +103,7 @@ export function NewPeriodSheet({
           </div>
 
           <div>
-            <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+            <label className="text-xs font-bold text-foreground block mb-1">
               Period Name *
             </label>
             <Input
@@ -116,7 +116,7 @@ export function NewPeriodSheet({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label className="text-xs font-bold text-foreground block mb-1">
                 Start Date *
               </label>
               <Input
@@ -128,7 +128,7 @@ export function NewPeriodSheet({
             </div>
 
             <div>
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-1">
+              <label className="text-xs font-bold text-foreground block mb-1">
                 End Date *
               </label>
               <Input
@@ -157,7 +157,7 @@ export function NewPeriodSheet({
 
             if (isOverlapping) {
               return (
-                <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 text-xs text-amber-800 dark:text-amber-200 p-2.5 rounded-xl flex items-center gap-2">
+                <div className="bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-950/40 border border-amber-200 text-xs text-amber-800 dark:text-amber-200 p-2.5 rounded-xl flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
                   <span>Warning: Selected date range overlaps with an existing period.</span>
                 </div>
@@ -167,7 +167,7 @@ export function NewPeriodSheet({
           })()}
         </div>
 
-        <SheetFooter className="pt-4 border-t border-slate-100 dark:border-slate-800">
+        <SheetFooter className="pt-4 border-t border-border dark:border-border">
           <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>

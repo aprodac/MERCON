@@ -236,7 +236,7 @@ export const TripReviewConfirmModal: React.FC<TripReviewConfirmModalProps> = ({
   }, [contractSlots]);
 
   return (
-    <div className="fixed inset-0 z-[999] bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[999] bg-charcoal-strong/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
       <div className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 border-t-4 border-t-[#FA634E] rounded-2xl max-w-4xl w-full shadow-2xl overflow-hidden text-[#3E3C3D] dark:text-slate-200 animate-scale-in flex flex-col max-h-[90vh]">
         
         {/* MODAL HEADER */}

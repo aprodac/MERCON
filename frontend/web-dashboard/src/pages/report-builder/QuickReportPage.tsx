@@ -767,7 +767,7 @@ export default function QuickReportPage() {
                         }}
                         className={`text-xs px-3 py-1.5 rounded-xl border font-medium transition-colors cursor-pointer ${
                           isSelected
-                            ? 'bg-slate-900 text-white border-slate-900 font-semibold shadow-2xs'
+                            ? 'bg-charcoal text-white border-slate-900 font-semibold shadow-2xs'
                             : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                         }`}
                       >

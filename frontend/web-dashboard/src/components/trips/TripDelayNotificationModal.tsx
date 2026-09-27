@@ -139,7 +139,7 @@ export default function TripDelayNotificationModal({
 
             {/* ── DRIVER UPLOADED VIDEO OR PHOTO EVIDENCE ── */}
             {!mediaError && alert?.videoUrl ? (
-              <div className="relative w-full h-[180px] sm:h-[210px] rounded-xl overflow-hidden bg-black border border-slate-800 shadow-inner flex items-center justify-center group">
+              <div className="relative w-full h-[180px] sm:h-[210px] rounded-xl overflow-hidden bg-charcoal-strong border border-slate-800 shadow-inner flex items-center justify-center group">
                 <video
                   controls
                   playsInline
@@ -152,17 +152,17 @@ export default function TripDelayNotificationModal({
                   <source src={alert.videoUrl} />
                 </video>
                 <div className="absolute top-2 left-2.5 right-2.5 flex items-center justify-between text-white text-[9.5px] font-mono pointer-events-none z-10">
-                  <div className="flex items-center gap-1.5 bg-black/70 backdrop-blur-xs px-2 py-0.5 rounded shadow">
+                  <div className="flex items-center gap-1.5 bg-charcoal-strong/70 backdrop-blur-xs px-2 py-0.5 rounded shadow">
                     <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
                     <span className="font-bold text-rose-300">DRIVER DELAY VIDEO</span>
                   </div>
-                  <div className="bg-black/70 backdrop-blur-xs px-2 py-0.5 rounded text-amber-300 font-bold shadow">
+                  <div className="bg-charcoal-strong/70 backdrop-blur-xs px-2 py-0.5 rounded text-amber-300 font-bold shadow">
                     {locationName}
                   </div>
                 </div>
               </div>
             ) : !mediaError && alert?.imageUrl ? (
-              <div className="relative w-full h-[180px] sm:h-[210px] rounded-xl overflow-hidden bg-slate-950 border border-slate-800 shadow-inner flex items-center justify-center group">
+              <div className="relative w-full h-[180px] sm:h-[210px] rounded-xl overflow-hidden bg-charcoal-strong border border-slate-800 shadow-inner flex items-center justify-center group">
                 <img
                   src={alert.imageUrl}
                   alt="Driver Delay Evidence"
@@ -170,11 +170,11 @@ export default function TripDelayNotificationModal({
                   onError={() => setMediaError(true)}
                 />
                 <div className="absolute top-2 left-2.5 right-2.5 flex items-center justify-between text-white text-[9.5px] font-mono z-10">
-                  <div className="flex items-center gap-1.5 bg-black/70 backdrop-blur-xs px-2 py-0.5 rounded shadow">
+                  <div className="flex items-center gap-1.5 bg-charcoal-strong/70 backdrop-blur-xs px-2 py-0.5 rounded shadow">
                     <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                     <span className="font-bold text-amber-300">DRIVER PHOTO EVIDENCE</span>
                   </div>
-                  <div className="bg-black/70 backdrop-blur-xs px-2 py-0.5 rounded text-slate-200 font-bold shadow">
+                  <div className="bg-charcoal-strong/70 backdrop-blur-xs px-2 py-0.5 rounded text-slate-200 font-bold shadow">
                     {locationName}
                   </div>
                 </div>
@@ -242,7 +242,7 @@ export default function TripDelayNotificationModal({
               {/* Acknowledge / Close Button */}
               <Button
                 onClick={handleAcknowledge}
-                className="flex-1 h-9 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold gap-1 shadow-xs cursor-pointer"
+                className="flex-1 h-9 rounded-xl bg-charcoal hover:bg-slate-800 text-white text-xs font-bold gap-1 shadow-xs cursor-pointer"
               >
                 <CheckCircle2 size={13} className="text-emerald-400" />
                 <span>Acknowledge</span>

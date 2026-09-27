@@ -5,7 +5,9 @@ import {
   Layers, Plus, Save, Truck, FileText, DollarSign
 } from 'lucide-react';
 
-import DashboardLayout from '@/components/layout/DashboardLayout';
+import { Link } from 'react-router-dom';
+import { SettingsPage } from '@/components/settings/SettingsKit';
+import Btn from '@/components/ui/Btn';
 import { settingsService } from '@/services/settingsService';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -105,39 +107,20 @@ export default function TaxonomySettingsPage() {
   };
 
   return (
-    <DashboardLayout active="Account" title="Taxonomy & Master Data">
-      <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-6 max-w-[1350px] mx-auto">
-        
-        {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4 pb-3 border-b border-slate-200 dark:border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50 rounded-xl text-purple-600">
-              <Layers className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-                  Taxonomy & Master Data Registers
-                </h1>
-                <Badge className="bg-purple-100 text-purple-800 border-purple-200 font-bold text-[10px]">
-                  SuperAdmin Only
-                </Badge>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Central vendor configuration for vehicle tonnage classes, route line types, and billing classifications
-              </p>
-            </div>
-          </div>
-
-          <Button
-            onClick={handleSaveAll}
-            disabled={updateMutation.isPending}
-            className="bg-[#FA634E] hover:bg-[#FA634E]/90 text-white font-bold text-xs h-9 px-4 rounded-xl gap-2 shadow-xs cursor-pointer"
-          >
-            <Save className="w-4 h-4" />
-            {updateMutation.isPending ? 'Saving Registers...' : 'Save Taxonomy'}
-          </Button>
-        </div>
+    <SettingsPage
+      wide
+      title="Taxonomy defaults"
+      description="Starting lists of vehicle classes, line types and billing types for a new deployment."
+      actions={<Btn label="Save" isLoading={updateMutation.isPending} onClick={handleSaveAll} />}
+    >
+      <div className="rounded-xl border border-[#D97706]/20 bg-[#FFFBEB] px-4 py-3 text-xs text-[#92400E]">
+        <p className="font-bold">These lists aren’t used by the app yet</p>
+        <p className="mt-0.5">
+          Trips, quotations and rate cards read their options from the{' '}
+          <Link to="/taxonomy" className="font-bold underline">Taxonomy</Link> page. Edit options there.
+        </p>
+      </div>
+      <div className="flex flex-col gap-6">
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
@@ -269,6 +252,6 @@ export default function TaxonomySettingsPage() {
 
         </div>
       </div>
-    </DashboardLayout>
+    </SettingsPage>
   );
 }

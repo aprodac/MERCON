@@ -23,17 +23,17 @@ export function HistoricalPeriodsTable({
 
   return (
     <>
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden">
+      <div className="bg-card rounded-xl border border-border dark:border-border shadow-xs overflow-hidden">
         <button
           type="button"
           onClick={() => setIsAllPeriodsCollapsed(!isAllPeriodsCollapsed)}
-          className="w-full px-6 py-4 flex items-center justify-between text-left bg-slate-50/50 dark:bg-slate-800/40 hover:bg-slate-100/50 transition-colors"
+          className="w-full px-6 py-4 flex items-center justify-between text-left bg-muted/50 hover:bg-muted/50 transition-colors"
         >
           <div className="flex items-center gap-2">
             <span className="font-bold text-sm text-[#3E3C3D] dark:text-white">
               All accounting periods ({periods.length})
             </span>
-            <Badge variant="outline" className="text-[10px] rounded-md font-mono">
+            <Badge variant="outline" className="text-[10px] rounded-md fin-num">
               Historical ledger
             </Badge>
           </div>
@@ -53,7 +53,7 @@ export function HistoricalPeriodsTable({
             </Button>
 
             <ChevronDown
-              className={`w-4 h-4 text-slate-500 transition-transform ${
+              className={`w-4 h-4 text-muted-foreground transition-transform ${
                 isAllPeriodsCollapsed ? 'rotate-180' : ''
               }`}
             />
@@ -61,8 +61,8 @@ export function HistoricalPeriodsTable({
         </button>
 
         {!isAllPeriodsCollapsed && (
-          <div className="divide-y divide-slate-100 dark:divide-slate-800 border-t border-slate-200/80 dark:border-slate-800">
-            <div className="bg-[#FAFAFB] dark:bg-slate-800/40 px-6 py-2.5 grid grid-cols-12 text-[10px] font-bold uppercase tracking-wider text-[#757583]">
+          <div className="divide-y divide-border/60 dark:divide-border/60 border-t border-border dark:border-border">
+            <div className="bg-[#FAFAFB] px-6 py-2.5 grid grid-cols-12 text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">
               <div className="col-span-3">Period Name</div>
               <div className="col-span-3">Date Range</div>
               <div className="col-span-2 text-center">JEs Count</div>
@@ -79,20 +79,20 @@ export function HistoricalPeriodsTable({
                     const year = new Date(p.start_date).getFullYear();
                     onSelectPeriod(p.id, year);
                   }}
-                  className={`px-6 py-3 grid grid-cols-12 items-center text-xs hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors ${
-                    isSel ? 'bg-rose-50/40 dark:bg-rose-950/20 font-semibold' : ''
+                  className={`px-6 py-3 grid grid-cols-12 items-center text-xs hover:bg-muted dark:hover:bg-slate-800/50 cursor-pointer transition-colors ${
+                    isSel ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20/40 dark:bg-rose-950/20 font-semibold' : ''
                   }`}
                 >
-                  <div className="col-span-3 font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <div className="col-span-3 font-bold text-foreground dark:text-white flex items-center gap-2">
                     <span>{p.name}</span>
                     {isSel && <span className="w-1.5 h-1.5 rounded-full bg-[#FA634E]" />}
                   </div>
 
-                  <div className="col-span-3 font-mono text-slate-600 dark:text-slate-400">
+                  <div className="col-span-3 fin-num text-muted-foreground dark:text-muted-foreground">
                     {formatDate(p.start_date)} – {formatDate(p.end_date)}
                   </div>
 
-                  <div className="col-span-2 text-center font-mono font-bold text-slate-800 dark:text-slate-200">
+                  <div className="col-span-2 text-center fin-num font-semibold text-foreground">
                     {p._count?.journalEntries || 0}
                   </div>
 
@@ -100,7 +100,7 @@ export function HistoricalPeriodsTable({
                     <StatusPill kind="period" status={p.status} />
                   </div>
 
-                  <div className="col-span-2 text-right font-mono text-slate-500 text-[11px]">
+                  <div className="col-span-2 text-right fin-num text-muted-foreground text-[11px]">
                     {p.closed_at ? formatDate(p.closed_at) : '—'}
                   </div>
                 </div>

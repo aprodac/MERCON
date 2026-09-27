@@ -20,60 +20,33 @@ export interface StatusTabsProps {
 
 function getStatusBadgeClasses(tabKey: string, isActive: boolean, count: number = 0, customClass?: string): string {
   if (customClass) return customClass;
-
-  const keyLower = tabKey.toLowerCase();
   const isZero = count === 0;
 
   if (isZero && !isActive) {
-    return 'bg-slate-200/50 text-slate-400 dark:bg-slate-800 dark:text-slate-500 font-mono font-semibold';
+    return 'bg-muted/50 text-muted-foreground/60 ring-1 ring-inset ring-border/40';
   }
 
-  if (keyLower === 'open' || keyLower === 'active' || keyLower === 'draft') {
-    return isActive
-      ? 'bg-emerald-600 text-white font-mono font-bold shadow-2xs'
-      : 'bg-emerald-100/80 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300 font-mono font-bold';
-  }
-
-  if (keyLower === 'partiallyapplied' || keyLower === 'partially_applied' || keyLower === 'pending' || keyLower === 'overdue') {
-    return isActive
-      ? 'bg-amber-500 text-white font-mono font-bold shadow-2xs'
-      : 'bg-amber-100/80 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 font-mono font-bold';
-  }
-
-  if (keyLower === 'fullyapplied' || keyLower === 'fully_applied' || keyLower === 'paid' || keyLower === 'posted' || keyLower === 'approved') {
-    return isActive
-      ? 'bg-sky-600 text-white font-mono font-bold shadow-2xs'
-      : 'bg-sky-100/80 text-sky-800 dark:bg-sky-950/70 dark:text-sky-300 font-mono font-bold';
-  }
-
-  if (keyLower === 'void' || keyLower === 'voided' || keyLower === 'rejected' || keyLower === 'cancelled') {
-    return isActive
-      ? 'bg-slate-700 text-white font-mono font-bold shadow-2xs'
-      : 'bg-slate-200/80 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-mono font-bold';
-  }
-
-  // All / Default
   return isActive
-    ? 'bg-[#FA634E] text-white font-mono font-bold shadow-2xs'
-    : 'bg-slate-200/80 text-slate-700 dark:bg-slate-700 dark:text-slate-300 font-mono font-bold';
+    ? 'bg-primary/10 text-primary ring-1 ring-inset ring-primary/20 font-medium'
+    : 'bg-muted text-muted-foreground ring-1 ring-inset ring-border font-medium';
 }
 
 function getDotIndicator(tabKey: string, isActive: boolean) {
   const keyLower = tabKey.toLowerCase();
   if (keyLower === 'all') return null;
 
-  let colorClass = 'bg-slate-400';
+  let colorClass = 'bg-muted-foreground';
   if (keyLower === 'open' || keyLower === 'active' || keyLower === 'draft') {
     colorClass = 'bg-emerald-500';
   } else if (keyLower === 'partiallyapplied' || keyLower === 'partially_applied' || keyLower === 'pending' || keyLower === 'overdue') {
     colorClass = 'bg-amber-500';
-  } else if (keyLower === 'fullyapplied' || keyLower === 'fully_applied' || keyLower === 'paid' || keyLower === 'posted') {
+  } else if (keyLower === 'fullyapplied' || keyLower === 'fully_applied' || keyLower === 'paid' || keyLower === 'posted' || keyLower === 'approved') {
     colorClass = 'bg-sky-500';
   } else if (keyLower === 'void' || keyLower === 'voided' || keyLower === 'cancelled') {
-    colorClass = 'bg-slate-400';
+    colorClass = 'bg-muted-foreground';
   }
 
-  return <span className={cn('w-2 h-2 rounded-full shrink-0 transition-opacity', colorClass, isActive ? 'opacity-100' : 'opacity-70')} />;
+  return <span className={cn('w-1.5 h-1.5 rounded-full shrink-0 transition-opacity', colorClass, isActive ? 'opacity-100' : 'opacity-60')} />;
 }
 
 export function StatusTabs({
@@ -92,7 +65,7 @@ export function StatusTabs({
       role="tablist"
       aria-orientation="horizontal"
       className={cn(
-        'bg-slate-100/90 dark:bg-slate-800/80 p-1.5 rounded-2xl border border-slate-200/70 dark:border-slate-700/70 inline-flex flex-wrap items-center gap-1 shadow-2xs',
+        'bg-muted p-[3px] rounded-lg border border-border/60 inline-flex flex-wrap items-center gap-0.5',
         className
       )}
     >
@@ -111,10 +84,10 @@ export function StatusTabs({
             aria-selected={isActive}
             onClick={() => handleChange?.(tabKey)}
             className={cn(
-              'relative inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs transition-all outline-none cursor-pointer border select-none',
+              'relative inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all outline-none cursor-pointer select-none',
               isActive
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-bold shadow-xs border-slate-200/90 dark:border-slate-700'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 font-semibold border-transparent hover:bg-white/40 dark:hover:bg-slate-700/40'
+                ? 'bg-background text-foreground shadow-xs font-semibold'
+                : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
             )}
           >
             {dot}
@@ -122,7 +95,7 @@ export function StatusTabs({
             {tab.count !== undefined && (
               <span
                 className={cn(
-                  'px-2 py-0.5 text-[11px] rounded-full transition-all shrink-0 font-mono',
+                  'inline-flex items-center rounded-md px-1.5 py-0.2 text-[11px] fin-num shrink-0',
                   badgeStyle
                 )}
               >

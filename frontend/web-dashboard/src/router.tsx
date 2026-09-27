@@ -8,6 +8,7 @@ import RequireRole from '@/components/auth/RequireRole';
 import RequireSuperAdmin from '@/components/auth/RequireSuperAdmin';
 import RequireModule from '@/components/auth/RequireModule';
 import AppShell from '@/components/layout/AppShell';
+import SettingsLayout from '@/components/layout/SettingsLayout';
 import { useApplyBranding } from '@/hooks/useBranding';
 import { lazyWithRetry } from '@/utils/lazyWithRetry';
 
@@ -33,6 +34,7 @@ const NotificationsPage       = lazyWithRetry(() => import('@/pages/notification
 
 // Trips
 const TripListPage            = lazyWithRetry(() => import('@/pages/trips/TripListPage'));
+const LiveMapPage             = lazyWithRetry(() => import('@/pages/live-map/LiveMapPage'));
 const MonthlyTripsPage        = lazyWithRetry(() => import('@/pages/trips/MonthlyTripsPage'));
 const TripDetailsPage         = lazyWithRetry(() => import('@/pages/trips/TripDetailsPage'));
 const CreateTripPage          = lazyWithRetry(() => import('@/pages/trips/CreateTripPage'));
@@ -40,6 +42,7 @@ const EditTripPage            = lazyWithRetry(() => import('@/pages/trips/EditTr
 const TripTrackingPage        = lazyWithRetry(() => import('@/pages/trips/TripTrackingPage'));
 const TripCompletionPage      = lazyWithRetry(() => import('@/pages/trips/TripCompletionPage'));
 const TripEvidencePublicGalleryPage = lazyWithRetry(() => import('@/pages/public/TripEvidencePublicGalleryPage'));
+const SharedUpdatePage = lazyWithRetry(() => import('@/pages/public/SharedUpdatePage'));
 const ThirdPartyListPage      = lazyWithRetry(() => import('@/pages/third-party/ThirdPartyListPage'));
 const ThirdPartyDetailsPage   = lazyWithRetry(() => import('@/pages/third-party/ThirdPartyDetailsPage'));
 
@@ -93,6 +96,7 @@ const JournalEntriesPage      = lazyWithRetry(() => import('@/pages/finance/Jour
 const JournalEntryDetailPage  = lazyWithRetry(() => import('@/pages/finance/JournalEntryDetailPage'));
 const JournalEntryEditorPage  = lazyWithRetry(() => import('@/pages/finance/JournalEntryEditorPage'));
 const InvoicesPage            = lazyWithRetry(() => import('@/pages/finance/InvoicesPage'));
+const InvoiceDetailPage       = lazyWithRetry(() => import('@/pages/finance/InvoiceDetailPage'));
 const InvoiceCreatePage       = lazyWithRetry(() => import('@/pages/finance/InvoiceCreatePage'));
 const BillsPage               = lazyWithRetry(() => import('@/pages/finance/BillsPage'));
 const BillCreatePage          = lazyWithRetry(() => import('@/pages/finance/BillCreatePage'));
@@ -144,6 +148,7 @@ const BrandingSettingsPage    = lazyWithRetry(() => import('@/pages/settings/Bra
 const SystemHealthPage        = lazyWithRetry(() => import('@/pages/settings/SystemHealthPage'));
 const AuditLogPage            = lazyWithRetry(() => import('@/pages/settings/AuditLogPage'));
 const ModuleGovernancePage    = lazyWithRetry(() => import('@/pages/settings/ModuleGovernancePage'));
+const ZatcaSettingsPage       = lazyWithRetry(() => import('@/pages/settings/ZatcaSettingsPage'));
 const ErrorConsolePage        = lazyWithRetry(() => import('@/pages/settings/ErrorConsolePage'));
 const ErrorEventDetailPage    = lazyWithRetry(() => import('@/pages/settings/ErrorEventDetailPage'));
 const RecycleBinPage          = lazyWithRetry(() => import('@/pages/recycle-bin/RecycleBinPage'));
@@ -199,6 +204,30 @@ export default function AppRouter() {
               <Suspense fallback={<FullPageSpinner />}>
                 <TripEvidencePublicGalleryPage />
               </Suspense>
+            }
+          />
+          {/* Public page behind a forwarded driver update (WhatsApp link). */}
+          <Route
+            path="/s/:token"
+            element={
+              <Suspense fallback={<FullPageSpinner />}>
+                <SharedUpdatePage />
+              </Suspense>
+            }
+          />
+
+          {/* Live map — full screen, outside the app shell: no app sidebar or
+              header, the operations panel floats inside the map. */}
+          <Route
+            path="/live-map"
+            element={
+              <ProtectedRoute>
+                <RequireModule moduleKey="trips">
+                  <Suspense fallback={<FullPageSpinner />}>
+                    <LiveMapPage />
+                  </Suspense>
+                </RequireModule>
+              </ProtectedRoute>
             }
           />
 
@@ -260,17 +289,6 @@ export default function AppRouter() {
             <Route path="/customers/:customerId/locations/create" element={<RequireModule moduleKey="customers"><AddLocationPage /></RequireModule>} />
             <Route path="/customers/:customerId/locations/new"    element={<RequireModule moduleKey="customers"><AddLocationPage /></RequireModule>} />
 
-            {/* Locations */}
-            <Route path="/locations"                element={<RequireModule moduleKey="locations"><LocationListPage /></RequireModule>} />
-            <Route path="/locations/create"         element={<RequireModule moduleKey="locations"><AddLocationPage /></RequireModule>} />
-            <Route path="/locations/new"            element={<RequireModule moduleKey="locations"><AddLocationPage /></RequireModule>} />
-            <Route path="/locations/:id"            element={<RequireModule moduleKey="locations"><LocationDetailsPage /></RequireModule>} />
-
-            {/* Master Data Taxonomy & Universal Colors */}
-            <Route path="/taxonomy"                 element={<RequireModule moduleKey="taxonomy"><TaxonomyManagementPage /></RequireModule>} />
-            <Route path="/master-data/taxonomy"     element={<RequireModule moduleKey="taxonomy"><TaxonomyManagementPage /></RequireModule>} />
-            <Route path="/master-data"              element={<Navigate to="/taxonomy" replace />} />
-
             {/* Commercial Agreements Redirect */}
             <Route path="/commercial-agreements" element={<Navigate to="/quotations" replace />} />
 
@@ -302,6 +320,8 @@ export default function AppRouter() {
             <Route path="/finance/journal-entries/:id/edit" element={<RequireModule moduleKey="finance"><WithIdKey Page={JournalEntryEditorPage} /></RequireModule>} />
             <Route path="/finance/invoices/new"      element={<RequireModule moduleKey="finance"><InvoiceCreatePage /></RequireModule>} />
             <Route path="/finance/invoices"          element={<RequireModule moduleKey="finance"><InvoicesPage /></RequireModule>} />
+            <Route path="/finance/invoices/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={InvoiceDetailPage} /></RequireModule>} />
+            <Route path="/finance/invoices/:id/edit" element={<RequireModule moduleKey="finance"><WithIdKey Page={InvoiceCreatePage} /></RequireModule>} />
             <Route path="/finance/bills/new"        element={<RequireModule moduleKey="finance"><BillCreatePage /></RequireModule>} />
             <Route path="/finance/bills"             element={<RequireModule moduleKey="finance"><BillsPage /></RequireModule>} />
             <Route path="/finance/bank-accounts/new"      element={<RequireModule moduleKey="finance"><BankAccountEditorPage /></RequireModule>} />
@@ -331,8 +351,6 @@ export default function AppRouter() {
             <Route path="/docs/:docId"              element={<RequireModule moduleKey="documents"><DocumentDetailPage /></RequireModule>} />
             <Route path="/documents/details/:docId" element={<RequireModule moduleKey="documents"><DocumentDetailPage /></RequireModule>} />
             <Route path="/documents/:ownerType/:ownerId" element={<RequireModule moduleKey="documents"><OwnerFolderPage /></RequireModule>} />
-            <Route path="/aprodac-documents"        element={<RequireModule moduleKey="aprodac-documents"><AprodacDocumentsPage /></RequireModule>} />
-            <Route path="/aprodac"                  element={<Navigate to="/aprodac-documents" replace />} />
 
             {/* Custom Report Builder */}
             <Route path="/custom-report"            element={<RequireModule moduleKey="reports"><CustomReportPage /></RequireModule>} />
@@ -353,19 +371,37 @@ export default function AppRouter() {
             {/* Learning & Academy */}
             <Route path="/learning"                element={<RequireModule moduleKey="learning"><LearningPage /></RequireModule>} />
 
-            {/* Settings & Governance */}
-            <Route path="/settings"                 element={<SettingsPage />} />
-            <Route path="/settings/profile"         element={<Navigate to="/settings" replace />} />
-            <Route path="/settings/users"           element={<RequireRole roles={['Admin']}><UserManagementPage /></RequireRole>} />
-            <Route path="/settings/document-types"  element={<RequireRole roles={['Admin']}><DocumentTypeAdminPage /></RequireRole>} />
-            <Route path="/settings/taxonomy"        element={<RequireRole roles={['SuperAdmin']}><TaxonomySettingsPage /></RequireRole>} />
-            <Route path="/settings/branding"        element={<RequireRole roles={['SuperAdmin']}><BrandingSettingsPage /></RequireRole>} />
-            <Route path="/settings/system-health"   element={<RequireRole roles={['SuperAdmin']}><SystemHealthPage /></RequireRole>} />
-            <Route path="/settings/audit-log"       element={<RequireRole roles={['SuperAdmin']}><AuditLogPage /></RequireRole>} />
-            <Route path="/settings/module-governance" element={<RequireRole roles={['SuperAdmin']}><ModuleGovernancePage /></RequireRole>} />
-            <Route path="/settings/error-console"     element={<RequireRole roles={['Admin']}><ErrorConsolePage /></RequireRole>} />
-            <Route path="/settings/error-console/:id" element={<RequireRole roles={['Admin']}><ErrorEventDetailPage /></RequireRole>} />
-            <Route path="/settings/recycle-bin"     element={<RequireModule moduleKey="recycle-bin"><RecycleBinPage /></RequireModule>} />
+            {/* Settings area — shared inner navigation (SettingsLayout); URLs and guards unchanged */}
+            <Route element={<SettingsLayout />}>
+              {/* Settings & Governance */}
+              <Route path="/settings"                 element={<SettingsPage />} />
+              <Route path="/settings/profile"         element={<Navigate to="/settings" replace />} />
+              <Route path="/settings/users"           element={<RequireRole roles={['Admin']}><UserManagementPage /></RequireRole>} />
+              <Route path="/settings/document-types"  element={<RequireRole roles={['Admin']}><DocumentTypeAdminPage /></RequireRole>} />
+              <Route path="/settings/taxonomy"        element={<RequireRole roles={['SuperAdmin']}><TaxonomySettingsPage /></RequireRole>} />
+              <Route path="/settings/branding"        element={<RequireRole roles={['SuperAdmin']}><BrandingSettingsPage /></RequireRole>} />
+              <Route path="/settings/system-health"   element={<RequireRole roles={['SuperAdmin']}><SystemHealthPage /></RequireRole>} />
+              <Route path="/settings/audit-log"       element={<RequireRole roles={['SuperAdmin']}><AuditLogPage /></RequireRole>} />
+              <Route path="/settings/module-governance" element={<RequireRole roles={['SuperAdmin']}><ModuleGovernancePage /></RequireRole>} />
+              <Route path="/settings/zatca"           element={<RequireRole roles={['Admin']}><RequireModule moduleKey="zatca"><ZatcaSettingsPage /></RequireModule></RequireRole>} />
+              <Route path="/settings/error-console"     element={<RequireRole roles={['Admin']}><ErrorConsolePage /></RequireRole>} />
+              <Route path="/settings/error-console/:id" element={<RequireRole roles={['Admin']}><ErrorEventDetailPage /></RequireRole>} />
+              <Route path="/settings/recycle-bin"     element={<RequireModule moduleKey="recycle-bin"><RecycleBinPage /></RequireModule>} />
+              {/* Locations */}
+              <Route path="/locations"                element={<RequireModule moduleKey="locations"><LocationListPage /></RequireModule>} />
+              <Route path="/locations/create"         element={<RequireModule moduleKey="locations"><AddLocationPage /></RequireModule>} />
+              <Route path="/locations/new"            element={<RequireModule moduleKey="locations"><AddLocationPage /></RequireModule>} />
+              <Route path="/locations/:id"            element={<RequireModule moduleKey="locations"><LocationDetailsPage /></RequireModule>} />
+
+              {/* Master Data Taxonomy & Universal Colors */}
+              <Route path="/taxonomy"                 element={<RequireModule moduleKey="taxonomy"><TaxonomyManagementPage /></RequireModule>} />
+              <Route path="/master-data/taxonomy"     element={<RequireModule moduleKey="taxonomy"><TaxonomyManagementPage /></RequireModule>} />
+              <Route path="/master-data"              element={<Navigate to="/taxonomy" replace />} />
+
+              {/* Shared with Aprodac */}
+              <Route path="/aprodac-documents"        element={<RequireModule moduleKey="aprodac-documents"><AprodacDocumentsPage /></RequireModule>} />
+              <Route path="/aprodac"                  element={<Navigate to="/aprodac-documents" replace />} />
+            </Route>
             <Route path="/recycle-bin font-medium"  element={<Navigate to="/settings/recycle-bin" replace />} />
             <Route path="/recycle-bin"              element={<Navigate to="/settings/recycle-bin" replace />} />
             <Route path="/trash"                    element={<Navigate to="/settings/recycle-bin" replace />} />

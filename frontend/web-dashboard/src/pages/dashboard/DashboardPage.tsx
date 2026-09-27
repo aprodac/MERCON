@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import OperatorCommandCenter from '@/components/dashboard/OperatorCommandCenter';
+import OperatorInbox from '@/components/dashboard/inbox/OperatorInbox';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import StatusBadge from '@/components/ui/StatusBadge';
 import { Badge } from '@/components/ui/badge';
@@ -68,10 +68,8 @@ import {
 import ExportModal, { ExportColumn } from '@/components/ui/ExportModal';
 import { exportToCSV } from '@/utils/exportUtils';
 import { cn } from '@/lib/utils';
-import { SAUDI_MAP_CONTAINER_PROPS } from '@/utils/saudiMapConfig';
+import FleetCommandMap from '@/components/maps/live/FleetCommandMap';
 import { useDeploymentTimezone, formatInDeploymentTz } from '@/lib/datetime';
-import { AutoFitVehiclesMapBounds, HoverScrollZoomListener } from '@/components/maps/MapBoundsController';
-import SaudiRedBorderOverlay from '@/components/maps/SaudiRedBorderOverlay';
 
 const DATE_FILTER_OPTIONS = [
   { label: 'All Dates', value: 'all' },
@@ -127,87 +125,6 @@ const DASHBOARD_EXPORT_COLUMNS: ExportColumn<any>[] = [
   { id: 'eta', label: 'ETA', accessor: (t) => t.eta || '—' },
   { id: 'price', label: 'Rate (SAR)', accessor: (t) => (t.price || t.billing_amount ? `SAR ${Number(t.price || t.billing_amount).toLocaleString('en-US')}` : '—') },
 ];
-
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-
-// ─── Leaflet Map Auto-Resizer when Panels Expand/Collapse ───────────────────
-function MapResizer({ isCollapsed, isMapFullscreen }: { isCollapsed: boolean; isMapFullscreen: boolean }) {
-  const map = useMap();
-  useEffect(() => {
-    const safeInvalidate = () => {
-      try {
-        if (map && (map as any)._container) {
-          map.invalidateSize();
-        }
-      } catch {}
-    };
-
-    safeInvalidate();
-    const t1 = setTimeout(safeInvalidate, 100);
-    const t2 = setTimeout(safeInvalidate, 300);
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, [isCollapsed, isMapFullscreen, map]);
-  return null;
-}
-
-// ─── Leaflet Map Popup Event Listener to Auto-Hide Overlapping Badges ────────
-function MapPopupEventListener({ onPopupOpen, onPopupClose }: { onPopupOpen: () => void; onPopupClose: () => void }) {
-  useMapEvents({
-    popupopen: () => onPopupOpen(),
-    popupclose: () => onPopupClose(),
-  });
-  return null;
-}
-
-// ─── 3D Truck Map Marker Generator ──────────────────────────────────────────
-const STATUS_MARKER_BOX_STYLE: Record<string, { bg: string; text: string; border: string; shadow: string; ping: string; hue: string }> = {
-  'Scheduled':   { bg: '#EEF2FF', text: '#4338CA', border: '#6366F1', shadow: 'rgba(99, 102, 241, 0.4)', ping: 'rgba(99, 102, 241, 0.5)', hue: 'hue-rotate(210deg) saturate(1.8) brightness(0.95)' },
-  'Draft':       { bg: '#EEF2FF', text: '#4338CA', border: '#6366F1', shadow: 'rgba(99, 102, 241, 0.4)', ping: 'rgba(99, 102, 241, 0.5)', hue: 'hue-rotate(210deg) saturate(1.8) brightness(0.95)' },
-  'Dispatched':  { bg: '#EEF2FF', text: '#4338CA', border: '#6366F1', shadow: 'rgba(99, 102, 241, 0.4)', ping: 'rgba(99, 102, 241, 0.5)', hue: 'hue-rotate(210deg) saturate(1.8) brightness(0.95)' },
-  'Loading':     { bg: '#E0F2FE', text: '#0369A1', border: '#0EA5E9', shadow: 'rgba(14, 165, 233, 0.4)', ping: 'rgba(14, 165, 233, 0.5)', hue: 'hue-rotate(180deg) saturate(2.0) brightness(1.05)' },
-  'At Pickup':   { bg: '#E0F2FE', text: '#0369A1', border: '#0EA5E9', shadow: 'rgba(14, 165, 233, 0.4)', ping: 'rgba(14, 165, 233, 0.5)', hue: 'hue-rotate(180deg) saturate(2.0) brightness(1.05)' },
-  'AtPickup':    { bg: '#E0F2FE', text: '#0369A1', border: '#0EA5E9', shadow: 'rgba(14, 165, 233, 0.4)', ping: 'rgba(14, 165, 233, 0.5)', hue: 'hue-rotate(180deg) saturate(2.0) brightness(1.05)' },
-  'To Pickup':   { bg: '#EEF2FF', text: '#4338CA', border: '#6366F1', shadow: 'rgba(99, 102, 241, 0.4)', ping: 'rgba(99, 102, 241, 0.5)', hue: 'hue-rotate(210deg) saturate(1.8) brightness(0.95)' },
-  'In Transit':  { bg: '#FEF3C7', text: '#B45309', border: '#F59E0B', shadow: 'rgba(245, 158, 11, 0.4)', ping: 'rgba(245, 158, 11, 0.5)', hue: 'hue-rotate(15deg) saturate(1.6) brightness(1.0)' },
-  'InTransit':   { bg: '#FEF3C7', text: '#B45309', border: '#F59E0B', shadow: 'rgba(245, 158, 11, 0.4)', ping: 'rgba(245, 158, 11, 0.5)', hue: 'hue-rotate(15deg) saturate(1.6) brightness(1.0)' },
-  'To Delivery': { bg: '#D1FAE5', text: '#047857', border: '#10B981', shadow: 'rgba(16, 185, 129, 0.4)', ping: 'rgba(16, 185, 129, 0.5)', hue: 'hue-rotate(90deg) saturate(2.2) brightness(0.95)' },
-  'AtDelivery':  { bg: '#D1FAE5', text: '#047857', border: '#10B981', shadow: 'rgba(16, 185, 129, 0.4)', ping: 'rgba(16, 185, 129, 0.5)', hue: 'hue-rotate(90deg) saturate(2.2) brightness(0.95)' },
-  'Completed':   { bg: '#D1FAE5', text: '#047857', border: '#10B981', shadow: 'rgba(16, 185, 129, 0.4)', ping: 'rgba(16, 185, 129, 0.5)', hue: 'hue-rotate(90deg) saturate(2.2) brightness(0.95)' },
-  'Delayed':     { bg: '#FFE4E6', text: '#BE123C', border: '#F43F5E', shadow: 'rgba(244, 63, 94, 0.5)', ping: 'rgba(244, 63, 94, 0.6)', hue: 'hue-rotate(320deg) saturate(2.5) brightness(0.9)' },
-};
-
-function createTruckMapIcon(plate: string, status: string, isDelayed?: boolean, heading: number = 0) {
-  const boxStyle = STATUS_MARKER_BOX_STYLE[status] || STATUS_MARKER_BOX_STYLE['In Transit'];
-
-  const delayedBadge = isDelayed
-    ? `<span style="background:#FFE4E6;color:#BE123C;padding:1px 5px;border-radius:4px;font-size:7px;font-weight:900;margin-left:4px;letter-spacing:0.3px;border:1px solid #F43F5E;">DELAYED</span>`
-    : '';
-
-  const adjustedHeading = heading || 0;
-
-  const svgHtml = `
-    <div style="position:relative;width:75px;height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;">
-      <!-- 3D Truck Asset with status color hue and cardinal heading rotation -->
-      <div style="position:relative;z-index:2;transform:translateY(-2px) rotate(${adjustedHeading}deg);transition:transform 0.3s ease;width:44px;height:44px;">
-        <img 
-          src="/truck_3d_orange_transparent.png" 
-          style="width:100%;height:100%;object-fit:contain;filter:${boxStyle.hue} drop-shadow(0 3px 5px rgba(0,0,0,0.25));" 
-        />
-      </div>
-
-      <!-- Distinct Color-Coded Badge Box per Status -->
-      <div style="position:absolute;bottom:0px;background:${boxStyle.bg};color:${boxStyle.text};font-family:monospace;font-size:8px;font-weight:900;padding:2px 7px;border-radius:6px;white-space:nowrap;border:1.5px solid ${boxStyle.border};box-shadow:0 2px 8px ${boxStyle.shadow};z-index:3;letter-spacing:0.3px;display:flex;align-items:center;">
-        <span>${plate}</span>${delayedBadge}
-      </div>
-    </div>
-  `;
-  return L.divIcon({ html: svgHtml, className: '', iconSize: [75, 64], iconAnchor: [37.5, 32] });
-}
 
 // ─── Fallback Coordinates for Saudi Hubs ────────────────────────────────────
 const CITY_COORDS: Record<string, [number, number]> = {
@@ -326,6 +243,8 @@ export default function DashboardPage() {
   const tz = useDeploymentTimezone();
 
   const [dashboardViewMode, setDashboardViewMode] = useState<'kanban' | 'collapsed' | 'ledger'>('ledger');
+  /** Inbox → map: which trip's truck to fly to. The nonce lets the same trip be requested twice. */
+  const [mapFocus, setMapFocus] = useState<{ tripId: string; nonce: number } | null>(null);
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
   const [selectedCompany, setSelectedCompany] = useState<string>('all');
@@ -337,9 +256,6 @@ export default function DashboardPage() {
   const [whatsappSelectedCompany, setWhatsappSelectedCompany] = useState<string>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isRemindersCollapsed, setIsRemindersCollapsed] = useState(false);
-  const [isMapFullscreen, setIsMapFullscreen] = useState(false);
-  const [isMapPopupOpen, setIsMapPopupOpen] = useState(false);
-  const [isMouseOverMap, setIsMouseOverMap] = useState(false);
   const [quickAssignTrip, setQuickAssignTrip] = useState<Trip | null>(null);
 
   const handleOpenWhatsappFleet = () => {
@@ -361,16 +277,6 @@ export default function DashboardPage() {
     setWhatsappSelectedCompany(companyName);
     setIsWhatsappOpen(true);
   };
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isMapFullscreen) {
-        setIsMapFullscreen(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isMapFullscreen]);
 
   const user = authStore.getUser();
   const isAdmin = user?.role === 'Admin';
@@ -749,84 +655,6 @@ export default function DashboardPage() {
     });
   }, [activeTrips, selectedStatusFilter, tripSearch]);
 
-  // Active fleet vehicles to display on the live map (directly connected to the current active view & filters)
-  const mapFleetVehicles = useMemo(() => {
-    // If in Kanban mode, use filteredTripsForKanban
-    // If in Ledger mode, use filteredActiveTrips
-    const sourceTrips = dashboardViewMode === 'kanban' ? filteredTripsForKanban : filteredActiveTrips;
-    const seenCoords: Record<string, number> = {};
-
-    return sourceTrips.map((t: any, idx: number) => {
-      const plate = t.vehicle?.plate_number || t.vehicle?.ref_id || t.plate || (typeof t.vehicle === 'string' ? t.vehicle : 'VEH-PENDING');
-      const tripId = t.ref_id || t.id || t.tripId || `TRP-${idx}`;
-      const rawId = t.rawId || t.id;
-      
-      const driverName = t.driver
-        ? (typeof t.driver === 'string' ? t.driver : `${t.driver.first_name || ''} ${t.driver.last_name || ''}`.trim())
-        : (t.is_third_party ? (t.third_party_driver_name || '3PL Driver') : 'Unassigned Driver');
-
-      const customerName = t.customer?.name || t.customerName || 'MERCON Partner';
-
-      const pickup = t.stops?.[0]?.location_name || t.pickup || (t.route ? t.route.split('→')[0]?.trim() : 'Riyadh Hub');
-      const dropoff = t.stops?.[t.stops.length - 1]?.location_name || t.dropoff || (t.route ? t.route.split('→')[1]?.trim() : 'Jeddah Gateway');
-      const route = t.route || `${pickup} → ${dropoff}`;
-
-      let status = t.status || t.rawStatus || 'In Transit';
-      if (status === 'Dispatched' || status === 'Draft' || status === 'To Pickup') status = 'Scheduled';
-      if (status === 'AtPickup' || status === 'At Pickup') status = 'Loading';
-      if (status === 'InTransit') status = 'In Transit';
-      if (status === 'AtDelivery' || status === 'To Delivery') status = 'Completed';
-
-      let lat = t.lat;
-      let lng = t.lng;
-      if (!lat || !lng) {
-        if (t.stops?.[0]?.location_lat && t.stops?.[0]?.location_lng) {
-          lat = t.stops[0].location_lat;
-          lng = t.stops[0].location_lng;
-        } else {
-          const coords = getApproxCoords(pickup, idx);
-          lat = coords[0];
-          lng = coords[1];
-        }
-      }
-
-      // Prevent overlapping markers (jitter/spiderfy offset for duplicate coordinates)
-      const coordKey = `${lat.toFixed(4)},${lng.toFixed(4)}`;
-      if (seenCoords[coordKey] !== undefined) {
-        seenCoords[coordKey] += 1;
-        const count = seenCoords[coordKey];
-        const angle = count * (Math.PI / 3); // 60 degrees step spread
-        const radius = 0.045 * Math.sqrt(count); // Radial distance separation
-        lat += Math.sin(angle) * radius;
-        lng += Math.cos(angle) * radius;
-      } else {
-        seenCoords[coordKey] = 0;
-      }
-
-      const isDelayed = t.status === 'Delayed' || t.rawStatus === 'Delayed' || t.eta === 'Delayed' || (t.planned_end != null && new Date(t.planned_end).getTime() < Date.now());
-
-      return {
-        id: tripId,
-        rawId,
-        tripId,
-        plate,
-        driver: driverName,
-        customerName,
-        pickup,
-        dropoff,
-        route,
-        status,
-        rawStatus: t.rawStatus || t.status,
-        isDelayed,
-        eta: t.eta || '2h 15m',
-        distance: t.distance ? (typeof t.distance === 'string' ? t.distance : `${t.distance} km`) : (t.planned_distance ? `${t.planned_distance} km` : '1,200 km'),
-        progress: t.progress ?? 65,
-        lat,
-        lng,
-      };
-    });
-  }, [dashboardViewMode, filteredTripsForKanban, filteredActiveTrips]);
-
   // Comprehensive Trip Ledger Columns matching TripListPage + full telemetry
   const tripLedgerColumns = useMemo<Column<any>[]>(() => [
     {
@@ -1084,233 +912,17 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* ── TOP ROW: Unified 2-Column Command Center + Active Fleet Map ─────────── */}
+          {/* ── TOP ROW: live fleet map + the operator's inbox ─────────── */}
           <div className="flex flex-col lg:flex-row gap-4 items-stretch transition-all duration-300 ease-in-out">
 
-            {/* 1. Unified 2-Column Operator Command Center (~58% width) */}
-            <div className={cn("w-full lg:w-[58%] xl:w-[60%] shrink-0 flex flex-col transition-all duration-300 ease-in-out", dashboardViewMode === 'collapsed' ? "h-[calc(100vh-325px)] min-h-[300px] max-h-[365px]" : "h-[390px] max-h-[390px]")}>
-              <OperatorCommandCenter trips={rawTrips} />
+            {/* 1. Live fleet map — every truck and on-trip driver */}
+            <div className={cn("flex-1 min-w-0 rounded-[18px] border border-black/[0.06] shadow-sm overflow-hidden transition-all duration-300 ease-in-out", dashboardViewMode === 'collapsed' ? "h-[calc(100vh-325px)] min-h-[300px] max-h-[365px]" : "h-[390px] max-h-[390px]")}>
+              <FleetCommandMap focusTripId={mapFocus?.tripId} focusNonce={mapFocus?.nonce} />
             </div>
 
-            {/* 2. Active Trips Live Map (~42% width) */}
-            <div className={cn("flex-1 min-w-0 flex flex-col bg-white rounded-[18px] border border-black/[0.06] shadow-sm overflow-hidden transition-all duration-300 ease-in-out", dashboardViewMode === 'collapsed' ? "h-[calc(100vh-325px)] min-h-[300px] max-h-[365px]" : "h-[390px] max-h-[390px]")}>
-
-              {/* Map Canvas with Overlays */}
-              <div 
-                onMouseEnter={() => setIsMouseOverMap(true)}
-                onMouseLeave={() => {
-                  setIsMouseOverMap(false);
-                  setIsMapPopupOpen(false);
-                }}
-                className={isMapFullscreen 
-                  ? "fixed inset-0 z-[9999] w-screen h-screen m-0 p-0 rounded-none border-none bg-[#EAECEF]"
-                  : "relative flex-1 min-h-[310px] w-full z-0 bg-[#EAECEF]"
-                }
-              >
-                {/* Overlay HUD: Small Active Trips Badge & Trips Link (Fades out when track popup is open) */}
-                <div 
-                  className={cn(
-                    "absolute top-3 left-3 z-[10000] flex items-center gap-2 pointer-events-auto transition-all duration-300 ease-in-out",
-                    isMapPopupOpen ? "opacity-0 pointer-events-none -translate-y-2" : "opacity-100 translate-y-0"
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => navigate('/trips')}
-                    title="Click to view Trips Page"
-                    className="px-2.5 py-1 rounded-lg shadow-md border border-slate-900/15 bg-white/95 backdrop-blur-md text-slate-900 flex items-center gap-1.5 hover:bg-slate-900 hover:text-white transition-all cursor-pointer group"
-                  >
-                    <span className="relative flex h-2 w-2 shrink-0">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                    </span>
-                    <span className="text-[10px] sm:text-xs font-extrabold tracking-wide uppercase">
-                      {selectedCompany !== 'all' ? `${selectedCompany.slice(0, 14)}: ` : ''}{mapFleetVehicles.length} FLEET TRIPS
-                    </span>
-                  </button>
-
-                  {isMapFullscreen && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsMapFullscreen(false);
-                        navigate('/trips');
-                      }}
-                      className="px-2.5 py-1 rounded-lg shadow-md border border-slate-900/15 bg-slate-900 text-white text-[10px] sm:text-xs font-bold hover:bg-black flex items-center gap-1 cursor-pointer transition-all active:scale-95"
-                    >
-                      <Navigation className="w-3 h-3 text-brand" /> Go to Trips Page
-                    </button>
-                  )}
-                </div>
-
-                {/* Overlay: Full Map / Close Map Button */}
-                {isMapFullscreen ? (
-                  <button
-                    type="button"
-                    onClick={() => setIsMapFullscreen(false)}
-                    className="absolute top-3 right-3 z-[10000] px-3.5 py-1.5 rounded-xl shadow-2xl border border-red-500/40 bg-red-600 hover:bg-red-700 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
-                  >
-                    <X className="w-4 h-4" /> Close Map
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsMapFullscreen(true)}
-                    className="absolute top-3 right-3 z-[10000] px-2.5 py-1 rounded-lg shadow-md border border-slate-900/15 bg-white/95 backdrop-blur-md text-slate-800 text-[10px] sm:text-xs font-extrabold hover:bg-slate-900 hover:text-white flex items-center gap-1 cursor-pointer transition-all active:scale-95"
-                  >
-                    <Maximize2 className="w-3 h-3" /> Full Map
-                  </button>
-                )}
-
-                <MapContainer
-                  center={SAUDI_MAP_CONTAINER_PROPS.center}
-                  zoom={SAUDI_MAP_CONTAINER_PROPS.zoom}
-                  minZoom={SAUDI_MAP_CONTAINER_PROPS.minZoom}
-                  maxZoom={SAUDI_MAP_CONTAINER_PROPS.maxZoom}
-                  maxBounds={SAUDI_MAP_CONTAINER_PROPS.maxBounds}
-                  maxBoundsViscosity={SAUDI_MAP_CONTAINER_PROPS.maxBoundsViscosity}
-                  scrollWheelZoom={true}
-                  zoomControl={false}
-                  attributionControl={true}
-                  style={{ height: '100%', width: '100%', minHeight: isMapFullscreen ? '100vh' : '310px' }}
-                >
-                  <MapResizer isCollapsed={isRemindersCollapsed} isMapFullscreen={isMapFullscreen} />
-                  <MapPopupEventListener 
-                    onPopupOpen={() => setIsMapPopupOpen(true)} 
-                    onPopupClose={() => setIsMapPopupOpen(false)} 
-                  />
-                  <AutoFitVehiclesMapBounds vehicles={mapFleetVehicles} padding={[50, 50]} maxZoom={12} />
-                  <HoverScrollZoomListener isHovered={isMouseOverMap} />
-                  <SaudiRedBorderOverlay />
-                  <TileLayer
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; Esri'
-                  />
-                  <TileLayer
-                    url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
-                  />
-                  <ZoomControl position="bottomright" />
-
-                  {mapFleetVehicles.map((v: any) => (
-                    <Marker
-                      key={`map-${v.rawId || v.id}-${v.plate}`}
-                      position={[v.lat, v.lng]}
-                      icon={createTruckMapIcon(v.plate, v.status, v.isDelayed, v.heading ?? v.resolved_location?.heading_deg ?? 0)}
-                    >
-                      <Popup maxWidth={260} minWidth={230}>
-                        <div className="font-sans text-[11px] p-1">
-                          <div className="flex items-center justify-between mb-1.5 border-b border-slate-100 dark:border-slate-800 pb-1">
-                            <span className="font-extrabold text-brand font-mono text-xs">{v.tripId}</span>
-                            <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border ${STATUS_STYLE[v.status]?.badge || STATUS_STYLE['In Transit'].badge}`}>
-                              {v.status}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1 text-slate-800 dark:text-slate-200 font-bold text-xs mb-1">
-                            <Building2 className="w-3.5 h-3.5 text-brand shrink-0" />
-                            <span className="truncate">{v.customerName}</span>
-                          </div>
-                          <p className="font-semibold text-slate-600 dark:text-slate-400 text-[10px] mb-2 flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                            <span className="truncate">{v.route}</span>
-                          </p>
-                          <div className="text-[10px] text-slate-600 dark:text-slate-400 space-y-1 mb-2.5 bg-slate-50 dark:bg-slate-800/60 p-2 rounded-lg border border-slate-100 dark:border-slate-800">
-                            <p className="flex justify-between"><span className="text-slate-500 font-medium">Driver:</span> <span className="font-bold text-slate-800 dark:text-slate-200">{v.driver}</span></p>
-                            <p className="flex justify-between"><span className="text-slate-500 font-medium">Plate:</span> <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{v.plate}</span></p>
-                            <p className="flex justify-between"><span className="text-slate-500 font-medium">ETA / Dist:</span> <span className="font-bold text-slate-800 dark:text-slate-200">{v.eta} • {v.distance}</span></p>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <Button
-                              size="sm"
-                              onClick={() => navigate(`/trips/${v.rawId || v.id}`)}
-                              className="flex-1 h-7 text-[10px] bg-brand hover:bg-brand-hover text-white font-bold cursor-pointer"
-                            >
-                              View Trip
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => navigate(`/trips/tracking?tripId=${v.rawId || v.id}`)}
-                              className="h-7 px-2 text-[10px] border-slate-200 font-bold hover:bg-slate-50 text-slate-700 cursor-pointer"
-                              title="Live GPS Tracking"
-                            >
-                              <Navigation className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      </Popup>
-                    </Marker>
-                  ))}
-                </MapContainer>
-              </div>
-
-                            {/* Map Footer Status Bar (Interactive Live Filters) */}
-              <div 
-                className="px-2 py-1.5 border-t border-black/[0.04] dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 flex items-center justify-between gap-1 flex-nowrap overflow-hidden"
-              >
-                <div 
-                  className="flex items-center gap-1 text-[9px] font-bold text-slate-600 dark:text-slate-400 flex-nowrap flex-1 overflow-hidden"
-                >
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStatusFilter('all')}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border transition-all cursor-pointer text-[9px] font-bold ${
-                      selectedStatusFilter === 'all'
-                        ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900 ring-2 ring-slate-400 font-black'
-                        : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700'
-                    }`}
-                    style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
-                    title="View All Statuses All-in-One"
-                  >
-                    <div className="w-1.5 h-1.5 rounded-full bg-brand shrink-0" />
-                    <span>All Statuses</span>
-                  </button>
-
-
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStatusFilter(selectedStatusFilter === 'AtPickup' ? 'all' : 'AtPickup')}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border transition-all cursor-pointer text-[9px] font-bold ${
-                      selectedStatusFilter === 'AtPickup'
-                        ? 'bg-sky-100 text-sky-800 border-sky-400 dark:bg-sky-950 dark:text-sky-200 ring-2 ring-sky-400 font-black'
-                        : 'bg-sky-50/80 text-sky-700 border-sky-200/80 hover:bg-sky-100 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800/60'
-                    }`}
-                    style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
-                    title="Filter Loading trips"
-                  >
-                    <div className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" />
-                    <span>Loading</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStatusFilter(selectedStatusFilter === 'InTransit' ? 'all' : 'InTransit')}
-                    className={`flex items-center gap-1 px-1.5 py-0.5 rounded-full border transition-all cursor-pointer text-[9px] font-bold ${
-                      selectedStatusFilter === 'InTransit'
-                        ? 'bg-amber-100 text-amber-900 border-amber-400 dark:bg-amber-950 dark:text-amber-200 ring-2 ring-amber-400 font-black'
-                        : 'bg-amber-50/80 text-amber-800 border-amber-200/80 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60'
-                    }`}
-                    style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
-                    title="Filter In Transit trips"
-                  >
-                    <div className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0" />
-                    <span>In Transit</span>
-                  </button>
-
-
-                </div>
-
-                {selectedStatusFilter !== 'all' && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedStatusFilter('all')}
-                    className="text-[8px] text-brand hover:underline font-extrabold cursor-pointer flex items-center gap-0.25 shrink-0"
-                    style={{ flexShrink: 0 }}
-                  >
-                    <X className="w-2 h-2" /> Reset
-                  </button>
-                )}
-              </div>
+            {/* 2. Inbox — driver updates to forward, document expiries, alerts */}
+            <div className={cn("w-full lg:w-[40%] xl:w-[38%] shrink-0 transition-all duration-300 ease-in-out", dashboardViewMode === 'collapsed' ? "h-[calc(100vh-325px)] min-h-[300px] max-h-[365px]" : "h-[390px] max-h-[390px]")}>
+              <OperatorInbox trips={rawTrips} onFocusTrip={(tripId) => setMapFocus((f) => ({ tripId, nonce: (f?.nonce ?? 0) + 1 }))} />
             </div>
 
           </div>

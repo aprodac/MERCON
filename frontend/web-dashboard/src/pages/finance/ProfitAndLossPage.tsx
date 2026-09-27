@@ -1,371 +1,314 @@
-import { useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import {
-  ChevronDown,
-  ChevronRight,
-  Download,
-  ExternalLink,
-  RefreshCw,
-  TrendingUp,
-  TrendingDown,
-  DollarSign,
-} from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { useQueries, useQuery } from '@tanstack/react-query';
+import { CalendarRange, Columns2, Download, Printer, SlidersHorizontal, TrendingUp, Truck, Building2, Coins, ReceiptText } from 'lucide-react';
+import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ExportModal, { type ExportColumn } from '@/components/ui/ExportModal';
-
+import { PeriodControl } from '@/components/finance/kit/PeriodControl';
+import { SegmentedControl } from '@/components/finance/kit/SegmentedControl';
+import { ReportViewState } from '@/components/finance/kit/ReportViewState';
+import type { NegativeFormat } from '@/components/finance/kit/StatementTable';
+import { TwoColumnStatement } from '@/components/finance/kit/TwoColumnStatement';
+import { StatementCustomize } from '@/components/finance/kit/StatementCustomize';
+import { AccountLedgerSheet, type LedgerAccount } from '@/components/finance/ledger/AccountLedgerSheet';
+import { ProfitFlow } from '@/components/finance/pnl/ProfitFlow';
+import { MonthlyPnlTable } from '@/components/finance/pnl/MonthlyPnlTable';
 import { financeService, type ReportLineItem } from '@/services/financeService';
+import { settingsService } from '@/services/settingsService';
+import { buildStructuredVerticalPnl, clearPnlStoredOverrides, type PnlAccountItem, type PnlClass } from '@/lib/finance/pnlStructure';
+import { resolveCompareColumns, resolvePeriodPreset, type CompareOption, type PeriodPreset } from '@/lib/finance/pnlPeriodHelpers';
+import { PNL_SECTION_META, pnlTwoColumnParts } from '@/lib/finance/pnlView';
+import { shareOf } from '@/lib/finance/statementModel';
+import { formatDate, formatMoney } from '@/lib/finance/format';
 
-function formatMoney(amount: number): string {
-  return (amount || 0).toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
+type View = 'two_column' | 'monthly';
+type PnlCompare = Extract<CompareOption, 'none' | 'previous_period' | 'same_period_last_year'>;
+
+const OVERRIDES_KEY = 'mercon_pnl_classification_v1';
+const SECTION_ICON = { operating_income: TrendingUp, cost_of_sales: Truck, operating_expense: Building2, other_income: Coins, non_operating_expense: ReceiptText };
+
+function loadOverrides(): Record<string, PnlClass> {
+  try {
+    const raw = localStorage.getItem(OVERRIDES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
 }
 
-interface ExportRow extends ReportLineItem {
-  category: 'Revenue' | 'Expense';
+interface ExportRow {
+  section: string;
+  group: string;
+  code: string;
+  name: string;
+  amount: number;
+  share: number | null;
+  compare: number | null;
 }
 
 export default function ProfitAndLossPage() {
-  const navigate = useNavigate();
-  const currentYearStart = `${new Date().getFullYear()}-01-01`;
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const [params, setParams] = useSearchParams();
+  const set = (updates: Record<string, string | null>) =>
+    setParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        Object.entries(updates).forEach(([k, val]) => (val === null || val === '' ? next.delete(k) : next.set(k, val)));
+        return next;
+      },
+      { replace: true },
+    );
 
-  const [dateFrom, setDateFrom] = useState<string>(currentYearStart);
-  const [dateTo, setDateTo] = useState<string>(todayIso);
-  const [isExportOpen, setIsExportOpen] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const rawView = params.get('view');
+  const view: View = rawView === 'monthly' ? 'monthly' : 'two_column';
+  const preset = (params.get('preset') as PeriodPreset) || 'this_quarter';
+  const presetDates = resolvePeriodPreset(preset === 'custom' ? 'this_quarter' : preset);
+  const dateFrom = params.get('date_from') || presetDates.from;
+  const dateTo = params.get('date_to') || presetDates.to;
+  const rawCompare = params.get('compare');
+  const compareMode: PnlCompare = rawCompare === 'previous_period' || rawCompare === 'same_period_last_year' ? rawCompare : 'none';
+  const showCodes = params.get('codes') === 'true';
+  const keepZero = params.get('zero') === 'true';
+  const negativeFormat: NegativeFormat = params.get('neg') === 'parens' ? 'parens' : 'minus';
 
-  const { data: reportRes, isLoading, isError, refetch } = useQuery({
-    queryKey: ['finance-reports', 'profit-and-loss', dateFrom, dateTo],
-    queryFn: () =>
-      financeService.getProfitAndLoss({
-        date_from: dateFrom || undefined,
-        date_to: dateTo || undefined,
-      }),
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [highlight, setHighlight] = useState<string | null>(null);
+  const [account, setAccount] = useState<LedgerAccount | null>(null);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [overrides, setOverrides] = useState<Record<string, PnlClass>>(loadOverrides);
+
+  // Comparison period (two-column view) and one column per month (month-by-month view)
+  const compareCol = view === 'two_column' && compareMode !== 'none' ? resolveCompareColumns(dateFrom, dateTo, compareMode)[0] ?? null : null;
+  const months = useMemo(() => (view === 'monthly' ? resolveCompareColumns(dateFrom, dateTo, 'monthly') : []), [view, dateFrom, dateTo]);
+
+  const main = useQuery({
+    queryKey: ['finance-reports', 'pnl', dateFrom, dateTo],
+    queryFn: () => financeService.getProfitAndLoss({ date_from: dateFrom, date_to: dateTo }),
   });
+  const extraCols = compareCol ? [compareCol] : months;
+  const extra = useQueries({
+    queries: extraCols.map((c) => ({
+      queryKey: ['finance-reports', 'pnl', c.from, c.to],
+      queryFn: () => financeService.getProfitAndLoss({ date_from: c.from, date_to: c.to }),
+    })),
+  });
+  const { data: company } = useQuery({ queryKey: ['settings', 'public'], queryFn: () => settingsService.getPublic() });
 
-  const report = reportRes?.data;
-  const revenues = report?.revenues || [];
-  const expenses = report?.expenses || [];
-  const netProfit = report?.net_profit || 0;
-  const isProfit = netProfit >= 0;
+  const extraReady = extra.every((q) => q.data?.data);
+  const v = useMemo(() => {
+    const data = main.data?.data;
+    if (!data) return null;
+    const cols: Record<string, { revenues: ReportLineItem[]; expenses: ReportLineItem[] }> = {};
+    if (extraReady) extraCols.forEach((c, i) => (cols[c.key] = { revenues: extra[i].data!.data.revenues, expenses: extra[i].data!.data.expenses }));
+    return buildStructuredVerticalPnl(data.revenues, data.expenses, overrides, Object.keys(cols).length ? cols : undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [main.data, extraReady, extra.map((q) => q.dataUpdatedAt).join(), overrides, compareCol?.key, months.length]);
 
-  const toggleGroup = (groupKey: string) => {
-    setCollapsedGroups((prev) => ({
-      ...prev,
-      [groupKey]: !prev[groupKey],
-    }));
+  const comparing = Boolean(compareCol && extraReady);
+  const compareKey = comparing ? compareCol!.key : null;
+  const compareLabel = compareCol ? `${formatDate(compareCol.from)} – ${formatDate(compareCol.to)}` : undefined;
+
+  const parts = useMemo(() => (v && view === 'two_column' ? pnlTwoColumnParts(v, { compareKey, keepZero }) : []), [v, view, compareKey, keepZero]);
+
+  // Account id → where it sits, for the ledger panel's colour and context
+  const placement = useMemo(() => {
+    const map = new Map<string, { section: PnlClass; group: string }>();
+    if (v) (Object.keys(v.sections) as PnlClass[]).forEach((k) => v.sections[k].groups.forEach((g) => g.items.forEach((i) => map.set(i.id, { section: k, group: g.name }))));
+    return map;
+  }, [v]);
+
+  const openAccount = (item: PnlAccountItem) => {
+    const where = placement.get(item.id);
+    if (!item.account_id || !where) return;
+    const meta = PNL_SECTION_META[where.section];
+    setAccount({
+      id: item.account_id,
+      code: item.code,
+      name: item.name,
+      tone: meta.tone,
+      icon: SECTION_ICON[where.section],
+      context: where.group === item.name ? meta.label : `${meta.label} · ${where.group}`,
+    });
   };
 
-  const exportData = useMemo<ExportRow[]>(() => {
-    const revRows: ExportRow[] = revenues.map((r) => ({ ...r, category: 'Revenue' }));
-    const expRows: ExportRow[] = expenses.map((e) => ({ ...e, category: 'Expense' }));
-    return [...revRows, ...expRows];
-  }, [revenues, expenses]);
+  const toggleGroup = (key: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
+  // Clicking a flow step opens every group in that section, or closes them if all are open
+  const toggleSection = (key: PnlClass) => {
+    if (!v) return;
+    const keys = v.sections[key].groups.filter((g) => g.items.length > 1).map((g) => `${key}/${g.key}`);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      const allOpen = keys.length > 0 && keys.every((k) => next.has(k));
+      keys.forEach((k) => (allOpen ? next.delete(k) : next.add(k)));
+      return next;
+    });
+    setHighlight(key);
+    document.getElementById(`stmt-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    window.setTimeout(() => setHighlight((h) => (h === key ? null : h)), 1400);
+  };
+
+  const exportRows: ExportRow[] = useMemo(() => {
+    if (!v) return [];
+    return (['operating_income', 'cost_of_sales', 'operating_expense', 'other_income', 'non_operating_expense'] as PnlClass[]).flatMap((k) =>
+      v.sections[k].groups.flatMap((g) =>
+        g.items.map((i) => ({
+          section: PNL_SECTION_META[k].label,
+          group: g.name,
+          code: i.code ?? '',
+          name: i.name,
+          amount: i.amount,
+          share: shareOf(i.amount, v.operatingIncomeTotal),
+          compare: compareKey ? i.compareAmounts?.[compareKey] ?? 0 : null,
+        })),
+      ),
+    );
+  }, [v, compareKey]);
   const exportColumns: ExportColumn<ExportRow>[] = [
-    { id: 'category', label: 'Category', accessor: (r) => r.category },
-    { id: 'account_code', label: 'Account Code', accessor: (r) => r.account_code },
-    { id: 'name', label: 'Account Name', accessor: (r) => r.name },
+    { id: 'section', label: 'Section', accessor: (r) => r.section },
+    { id: 'group', label: 'Group', accessor: (r) => r.group },
+    { id: 'code', label: 'Account code', accessor: (r) => r.code },
+    { id: 'name', label: 'Account', accessor: (r) => r.name },
     { id: 'amount', label: 'Amount (SAR)', accessor: (r) => r.amount },
+    { id: 'share', label: '% of revenue', accessor: (r) => (r.share === null ? '' : r.share.toFixed(1)) },
+    ...(compareKey ? [{ id: 'compare', label: `${compareLabel} (SAR)`, accessor: (r: ExportRow) => r.compare ?? 0 }] : []),
   ];
 
   return (
-    <DashboardLayout active="finance" title="Profit & Loss Statement">
-      <div className="p-6 space-y-6 max-w-7xl mx-auto">
-        {/* Sticky Header Bar */}
-        <div className="bg-white rounded-xl border border-slate-200/80 p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 z-10 backdrop-blur-md bg-white/95">
-          <h1 className="text-xl font-bold text-[#3E3C3D]">Profit & Loss Statement</h1>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                From:
-              </label>
-              <Input
-                type="date"
-                className="w-36 h-9 text-xs bg-white border-slate-200"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                To:
-              </label>
-              <Input
-                type="date"
-                className="w-36 h-9 text-xs bg-white border-slate-200"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 px-3 text-xs font-semibold text-slate-700 border-slate-200 gap-1.5"
-              onClick={() => refetch()}
-              title="Refresh Report"
-            >
-              <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
-              <span>Refresh</span>
-            </Button>
-            <Button
-              size="sm"
-              className="h-9 px-3 text-xs font-semibold bg-[#FA634E] hover:bg-[#e05440] text-white shadow-xs gap-1.5 cursor-pointer"
-              onClick={() => setIsExportOpen(true)}
-              disabled={isLoading || exportData.length === 0}
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export</span>
-            </Button>
-          </div>
-        </div>
-
-        {/* Summary KPI Cards */}
-        {report && (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Total Revenue
-                </p>
-                <p className="text-xl font-bold text-emerald-700 mt-1 font-mono">
-                  SAR {formatMoney(report.total_revenue)}
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                <TrendingUp className="w-5 h-5" />
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Total Expenses
-                </p>
-                <p className="text-xl font-bold text-rose-700 mt-1 font-mono">
-                  SAR {formatMoney(report.total_expense)}
-                </p>
-              </div>
-              <div className="w-10 h-10 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-                <TrendingDown className="w-5 h-5" />
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Net {isProfit ? 'Profit' : 'Loss'}
-                </p>
-                <p
-                  className={`text-xl font-bold mt-1 font-mono ${
-                    isProfit ? 'text-emerald-700' : 'text-rose-700'
-                  }`}
-                >
-                  SAR {formatMoney(netProfit)}
-                </p>
-              </div>
-              <div
-                className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                  isProfit ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
-                }`}
-              >
-                <DollarSign className="w-5 h-5" />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Error State */}
-        {isError && (
-          <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-rose-800 text-sm">
-            Failed to load profit & loss statement. Please try again.
-          </div>
-        )}
-
-        {/* Grouped Table Card */}
-        <div className="bg-white rounded-xl border border-slate-200/80 shadow-sm overflow-hidden">
-          {isLoading ? (
-            <div className="p-6 space-y-4">
-              <Skeleton className="h-6 w-full" />
-              <Skeleton className="h-6 w-full" />
-              <Skeleton className="h-6 w-full" />
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="bg-slate-50/90 border-b border-slate-200/80 text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                    <th className="py-3 px-4 w-10"></th>
-                    <th className="py-3 px-4 w-36">Account Code</th>
-                    <th className="py-3 px-4">Account Name</th>
-                    <th className="py-3 px-4 text-right w-44">Amount (SAR)</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {/* Group 1: Revenue */}
-                  <tr
-                    onClick={() => toggleGroup('revenue')}
-                    className="bg-emerald-50/50 hover:bg-emerald-50/80 border-t border-b border-emerald-100 transition-colors cursor-pointer select-none font-semibold text-slate-800"
-                  >
-                    <td className="py-2.5 px-4 text-center">
-                      {collapsedGroups['revenue'] ? (
-                        <ChevronRight className="w-4 h-4 text-emerald-600 inline-block" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4 text-emerald-600 inline-block" />
-                      )}
-                    </td>
-                    <td colSpan={2} className="py-2.5 px-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-emerald-950">Operating Revenue</span>
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded-full"
-                        >
-                          {revenues.length} {revenues.length === 1 ? 'account' : 'accounts'}
-                        </Badge>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-4 text-right font-mono text-xs font-bold text-emerald-800">
-                      SAR {formatMoney(report?.total_revenue || 0)}
-                    </td>
-                  </tr>
-
-                  {!collapsedGroups['revenue'] &&
-                    (revenues.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="py-4 text-center text-slate-400 text-xs italic">
-                          No revenue items recorded for this period.
-                        </td>
-                      </tr>
-                    ) : (
-                      revenues.map((r) => (
-                        <tr
-                          key={r.account_code}
-                          onClick={() =>
-                            r.account_id && navigate(`/finance/general-ledger?account_id=${r.account_id}`)
-                          }
-                          className="hover:bg-orange-50/40 transition-colors group cursor-pointer"
-                        >
-                          <td className="py-2.5 px-4"></td>
-                          <td className="py-2.5 px-4 font-mono text-xs font-semibold text-slate-700 group-hover:text-[#FA634E]">
-                            {r.account_code}
-                          </td>
-                          <td className="py-2.5 px-4 text-slate-900 font-medium group-hover:text-[#FA634E] flex items-center gap-1.5">
-                            <span>{r.name}</span>
-                            <ExternalLink className="w-3 h-3 text-slate-300 group-hover:text-[#FA634E] opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </td>
-                          <td className="py-2.5 px-4 text-right font-mono text-xs font-medium text-slate-900">
-                            {formatMoney(r.amount)}
-                          </td>
-                        </tr>
-                      ))
-                    ))}
-
-                  {/* Group 2: Expenses */}
-                  <tr
-                    onClick={() => toggleGroup('expenses')}
-                    className="bg-rose-50/50 hover:bg-rose-50/80 border-t border-b border-rose-100 transition-colors cursor-pointer select-none font-semibold text-slate-800"
-                  >
-                    <td className="py-2.5 px-4 text-center">
-                      {collapsedGroups['expenses'] ? (
-                        <ChevronRight className="w-4 h-4 text-rose-600 inline-block" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4 text-rose-600 inline-block" />
-                      )}
-                    </td>
-                    <td colSpan={2} className="py-2.5 px-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-rose-950">Operating Expenses</span>
-                        <Badge
-                          variant="secondary"
-                          className="text-[10px] bg-rose-100 text-rose-800 font-semibold px-2 py-0.5 rounded-full"
-                        >
-                          {expenses.length} {expenses.length === 1 ? 'account' : 'accounts'}
-                        </Badge>
-                      </div>
-                    </td>
-                    <td className="py-2.5 px-4 text-right font-mono text-xs font-bold text-rose-800">
-                      SAR {formatMoney(report?.total_expense || 0)}
-                    </td>
-                  </tr>
-
-                  {!collapsedGroups['expenses'] &&
-                    (expenses.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="py-4 text-center text-slate-400 text-xs italic">
-                          No expense items recorded for this period.
-                        </td>
-                      </tr>
-                    ) : (
-                      expenses.map((e) => (
-                        <tr
-                          key={e.account_code}
-                          onClick={() =>
-                            e.account_id && navigate(`/finance/general-ledger?account_id=${e.account_id}`)
-                          }
-                          className="hover:bg-orange-50/40 transition-colors group cursor-pointer"
-                        >
-                          <td className="py-2.5 px-4"></td>
-                          <td className="py-2.5 px-4 font-mono text-xs font-semibold text-slate-700 group-hover:text-[#FA634E]">
-                            {e.account_code}
-                          </td>
-                          <td className="py-2.5 px-4 text-slate-900 font-medium group-hover:text-[#FA634E] flex items-center gap-1.5">
-                            <span>{e.name}</span>
-                            <ExternalLink className="w-3 h-3 text-slate-300 group-hover:text-[#FA634E] opacity-0 group-hover:opacity-100 transition-opacity" />
-                          </td>
-                          <td className="py-2.5 px-4 text-right font-mono text-xs font-medium text-slate-900">
-                            {formatMoney(e.amount)}
-                          </td>
-                        </tr>
-                      ))
-                    ))}
-                </tbody>
-
-                {/* Grand Total Net Profit Footer */}
-                {report && (
-                  <tfoot>
-                    <tr
-                      className={`border-t-2 border-slate-300 font-bold text-sm ${
-                        isProfit
-                          ? 'bg-emerald-50/90 text-emerald-950'
-                          : 'bg-rose-50/90 text-rose-950'
-                      }`}
-                    >
-                      <td colSpan={3} className="py-3 px-4">
-                        Net {isProfit ? 'Profit' : 'Loss'}
-                      </td>
-                      <td className="py-3 px-4 text-right font-mono text-sm font-extrabold">
-                        SAR {formatMoney(netProfit)}
-                      </td>
-                    </tr>
-                  </tfoot>
-                )}
-              </table>
-            </div>
+    <DashboardLayout active="finance" title="Profit & Loss" fixedViewport>
+      <div className="mx-auto flex h-full w-full max-w-[1400px] min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4 max-md:h-auto max-md:overflow-y-auto print:h-auto print:overflow-visible print:p-0">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 print:hidden">
+          <Tabs value={view} onValueChange={(val) => set({ view: val === 'monthly' ? 'monthly' : null })}>
+            <TabsList className="h-8">
+              <TabsTrigger value="two_column" className="gap-1.5 text-xs"><Columns2 className="size-3.5" /> Statement</TabsTrigger>
+              <TabsTrigger value="monthly" className="gap-1.5 text-xs"><CalendarRange className="size-3.5" /> Month by month</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <PeriodControl preset={preset} from={dateFrom} to={dateTo} onChange={(p) => set({ preset: p.preset, date_from: p.from, date_to: p.to })} />
+          {view === 'two_column' && (
+            <SegmentedControl
+              aria-label="Compare with"
+              value={compareMode}
+              onChange={(m) => set({ compare: m === 'none' ? null : m })}
+              options={[
+                { value: 'none', label: 'No comparison' },
+                { value: 'previous_period', label: 'Previous period' },
+                { value: 'same_period_last_year', label: 'Same period last year' },
+              ]}
+            />
           )}
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="outline" size="icon" className="size-8" aria-label="Customize" title="Customize" onClick={() => setCustomizeOpen(true)}>
+              <SlidersHorizontal className="size-3.5" />
+            </Button>
+            <Button variant="outline" size="icon" className="size-8" aria-label="Print" title="Print" onClick={() => window.print()}>
+              <Printer className="size-3.5" />
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" disabled={!v} onClick={() => setExportOpen(true)}>
+              <Download className="size-3.5" /> Export
+            </Button>
+          </div>
         </div>
+
+        <div className="hidden text-center print:block">
+          <p className="text-xs text-muted-foreground">{company?.companyLegalName || company?.appName}</p>
+          <h1 className="text-xl font-semibold">Profit and loss</h1>
+          <p className="text-xs text-muted-foreground">
+            {formatDate(dateFrom)} – {formatDate(dateTo)} · amounts in SAR{compareLabel ? ` · compared with ${compareLabel}` : ''}
+          </p>
+        </div>
+
+        <ReportViewState
+          isLoading={main.isLoading}
+          isError={main.isError}
+          onRetry={() => main.refetch()}
+          isEmpty={Boolean(main.data?.data && main.data.data.revenues.length === 0 && main.data.data.expenses.length === 0)}
+          emptyTitle={`Nothing posted between ${formatDate(dateFrom)} and ${formatDate(dateTo)}`}
+          emptyDescription="Pick another period, or post invoices, bills and expenses to see them here."
+        >
+          {v && (
+            <>
+              <div className="shrink-0 print:hidden">
+                <ProfitFlow v={v} compareKey={compareKey} compareLabel={compareLabel} onSection={toggleSection} />
+              </div>
+
+              {view === 'two_column' && (
+                <TwoColumnStatement
+                  parts={parts.map((p) => ({
+                    key: p.key,
+                    title: p.title,
+                    hint: p.hint,
+                    left: { title: 'Costs', items: p.left, footer: p.total },
+                    right: { title: 'Income', items: p.right, footer: p.total },
+                  }))}
+                  comparing={comparing}
+                  compareLabel={compareLabel}
+                  expanded={expanded}
+                  onToggle={toggleGroup}
+                  onLine={(line) => openAccount(line.ref as PnlAccountItem)}
+                  showCodes={showCodes}
+                  negativeFormat={negativeFormat}
+                  highlight={highlight}
+                  sectionIcons={SECTION_ICON}
+                />
+              )}
+
+              {view === 'monthly' &&
+                (extraReady ? (
+                  <MonthlyPnlTable
+                    v={v}
+                    months={months}
+                    expanded={expanded}
+                    onToggle={toggleGroup}
+                    onAccount={(item) => openAccount(item)}
+                    showCodes={showCodes}
+                    negativeFormat={negativeFormat}
+                  />
+                ) : (
+                  <p className="shrink-0 text-xs text-muted-foreground">Loading {months.length} months…</p>
+                ))}
+            </>
+          )}
+        </ReportViewState>
       </div>
 
-      {/* Export Modal Wiring */}
-      <ExportModal<ExportRow>
-        isOpen={isExportOpen}
-        onClose={() => setIsExportOpen(false)}
-        title="Export Profit & Loss Statement"
-        subtitle={`Period: ${dateFrom} to ${dateTo}`}
-        fileNamePrefix="profit_and_loss"
-        sheetName="Profit & Loss"
-        filteredData={exportData}
+      <AccountLedgerSheet account={account} from={dateFrom} to={dateTo} onClose={() => setAccount(null)} />
+
+      <StatementCustomize
+        open={customizeOpen}
+        onOpenChange={setCustomizeOpen}
+        showCodes={showCodes}
+        onShowCodes={(val) => set({ codes: val ? 'true' : null })}
+        keepZero={keepZero}
+        onKeepZero={(val) => set({ zero: val ? 'true' : null })}
+        negativeFormat={negativeFormat}
+        onNegativeFormat={(val) => set({ neg: val === 'parens' ? 'parens' : null })}
+        overrideCount={Object.keys(overrides).length}
+        onResetOverrides={() => {
+          clearPnlStoredOverrides();
+          setOverrides({});
+          toast.success('Groupings reset');
+        }}
+      />
+
+      <ExportModal
+        isOpen={exportOpen}
+        onClose={() => setExportOpen(false)}
+        title="Export profit and loss"
+        subtitle={`${formatDate(dateFrom)} – ${formatDate(dateTo)} · revenue ${formatMoney(v?.operatingIncomeTotal ?? 0)} · ${(v?.netProfit ?? 0) < 0 ? 'net loss' : 'net profit'} ${formatMoney(Math.abs(v?.netProfit ?? 0))}`}
+        data={exportRows}
         columns={exportColumns}
-        formats={['xlsx', 'csv', 'pdf']}
+        filename={`Profit_Loss_${dateFrom}_${dateTo}`}
       />
     </DashboardLayout>
   );

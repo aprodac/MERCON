@@ -3,18 +3,16 @@ import {
   View, Text, StyleSheet, StatusBar, Image, TouchableOpacity, ScrollView, Share, Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { Check, Share2, Clock, Calendar, User, FileText, MapPin, Home, PackageCheck, CheckCircle2, ArrowLeft } from 'lucide-react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Check, Share2, Clock, Calendar, User, FileText, MapPin, Home, PackageCheck, CheckCircle2, ArrowLeft, ChevronRight } from 'lucide-react-native';
 import { GeotagPhotoModal } from '../components/GeotagPhotoModal';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { useCargoPodPhotos } from '@mercon/mobile-shared/lib/documents';
-import { tripService, isRoundTrip, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
+import { tripService, isRoundTrip, getTripChargeValue, stopLabel, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
+import { useScheduledTrips } from '../hooks/use-scheduled-trips';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const logo = require('@mercon/mobile-shared/assets/images/mercon-logo.png');
 
 const FILE_BASE = API_URL ? API_URL.replace(/\/api\/?$/, '') : '';
 
@@ -39,6 +37,8 @@ const TripCompletedScreen = () => {
   const router = useRouter();
   const { t, language } = useLanguage();
   const { trip, refetch } = useCurrentTrip();
+  const { trips: scheduledTrips } = useScheduledTrips();
+  const { tripId: paramTripId } = useLocalSearchParams<{ tripId?: string }>();
   const { photos: docs } = useCargoPodPhotos();
   const documents = docs || [];
   
@@ -54,14 +54,21 @@ const TripCompletedScreen = () => {
     refetch();
     const loadData = async () => {
       try {
-        const history = await tripService.getHistory(1).catch(() => []);
-        const latestTrip = history[0] ?? null;
-        if (latestTrip) setCompletedTrip(latestTrip);
-
-        const currentOrLatest = trip || latestTrip;
-        const targetId = currentOrLatest?.id;
-        const targetRefId = currentOrLatest?.ref_id;
+        // The trip that was just finished: the id passed in (or saved by the
+        // delivery screen), else the latest history entry. Never the "current"
+        // trip — once a trip completes, that is the driver's NEXT trip, and this
+        // screen used to show it as "Delivered".
         const lastTripId = await SecureStore.getItemAsync('last_completed_trip_id');
+        const wantedId = paramTripId || lastTripId;
+        let finished: MobileTrip | null = wantedId ? await tripService.getTripDetails(wantedId).catch(() => null) : null;
+        if (!finished) {
+          const history = await tripService.getHistory(1).catch(() => []);
+          finished = history[0] ?? null;
+        }
+        if (finished) setCompletedTrip(finished);
+
+        const targetId = finished?.id;
+        const targetRefId = finished?.ref_id;
 
         const pickupKeys = [
           targetId ? `pickup_completed_photos_${targetId}` : null,
@@ -141,13 +148,14 @@ const TripCompletedScreen = () => {
       }
     };
     loadData();
-  }, [trip?.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paramTripId]);
 
-  const activeTrip = trip || completedTrip;
+  const activeTrip = completedTrip;
 
   const tripDocs = activeTrip?.id
     ? documents.filter((d) => d.entity_id === activeTrip.id || d.trip_ref_id === activeTrip.ref_id)
-    : documents;
+    : [];
 
   const apiCargo = tripDocs.filter((d) => d.doc_type === 'Waybill' || d.doc_type === 'CARGO_PHOTO' || d.doc_type === 'CustomsClearance');
   const apiPod = tripDocs.filter((d) => d.doc_type === 'POD');
@@ -161,12 +169,72 @@ const TripCompletedScreen = () => {
 
   const isRound = isRoundTrip(activeTrip);
 
+  const rawRef = activeTrip?.ref_id || (activeTrip?.id ? activeTrip.id.slice(0, 8) : '');
+  const tripIdDisplay = rawRef ? (rawRef.startsWith('TRP-') ? rawRef : `TRP-${rawRef}`) : '—';
+  const tripRefId = `#${tripIdDisplay}`;
+  // Real data only: a missing value hides its row instead of showing a placeholder.
+  const customerName = activeTrip?.customer?.name ? activeTrip.customer.name.toUpperCase() : '';
+
+  const sortedStops = [...(activeTrip?.stops ?? [])].sort((x, y) => x.stop_sequence - y.stop_sequence);
+  const firstStop = sortedStops[0];
+  const lastStop = sortedStops[sortedStops.length - 1];
+  const originName = stopLabel(firstStop) || activeTrip?.origin || null;
+  const destinationName = stopLabel(lastStop) || activeTrip?.destination || null;
+  const routeText = originName && destinationName ? `${originName} → ${destinationName}` : destinationName || originName;
+
+  const fmtDateTime = (v?: string | null) =>
+    v ? new Date(v).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+  const startIso = (activeTrip as any)?.actual_pickup || activeTrip?.actual_start || null;
+  const endIso = activeTrip?.actual_end || null;
+  const formattedLoadingDate = fmtDateTime(startIso);
+  const formattedDeliveryDate = fmtDateTime(endIso);
+  const formattedReturnLoadingDate = fmtDateTime((activeTrip as any)?.actual_return_pickup);
+  const formattedReturnDeliveryDate = fmtDateTime((activeTrip as any)?.actual_return_delivery || endIso);
+
+  const durationText = (() => {
+    if (!startIso || !endIso) return null;
+    const mins = Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000);
+    if (!Number.isFinite(mins) || mins <= 0) return null;
+    return mins >= 60 ? `${Math.floor(mins / 60)} h ${mins % 60} m` : `${mins} m`;
+  })();
+  const distanceKm = activeTrip?.planned_distance ?? (activeTrip as any)?.distance_km ?? null;
+
+  const endDate = endIso ? new Date(endIso) : null;
+  const endTime = endDate ? endDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }) : null;
+  const endIsToday = endDate ? endDate.toDateString() === new Date().toDateString() : false;
+  const dayText = endDate ? endDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+  const completedPill = endTime
+    ? (endIsToday
+      ? (language === 'ur' ? `آج ${endTime} پر مکمل` : `Completed today at ${endTime}`)
+      : (language === 'ur' ? `${dayText} کو مکمل` : `Completed ${dayText} at ${endTime}`))
+    : (language === 'ur' ? 'مکمل' : 'Completed');
+
+  const photoCount = polList.length + podList.length + (isRound ? returnPolList.length + returnPodList.length : 0);
+  const charge = activeTrip ? getTripChargeValue(activeTrip) : 0;
+
+  // After a delivery, the "current" trip is the next one lined up (if any).
+  const nextTrip = [trip, ...scheduledTrips].find(
+    (x) => x && x.id !== activeTrip?.id && x.status !== 'Completed' && x.status !== 'Invoiced' && x.status !== 'Cancelled',
+  ) ?? null;
+  const nextTripText = (() => {
+    if (!nextTrip) return null;
+    const st = [...(nextTrip.stops ?? [])].sort((x, y) => x.stop_sequence - y.stop_sequence);
+    const from = stopLabel(st[0]) || nextTrip.origin;
+    const to = stopLabel(st[st.length - 1]) || nextTrip.destination;
+    const when = nextTrip.planned_start
+      ? new Date(nextTrip.planned_start).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false })
+      : null;
+    return [from && to ? `${from} → ${to}` : from || to, when].filter(Boolean).join(' · ');
+  })();
+
   const handleShare = async () => {
     try {
-      await Share.share({
-        title: `MERCON Trip Summary #${activeTrip?.ref_id ?? 'TRP-0467'}`,
-        message: `Trip #${activeTrip?.ref_id ?? 'TRP-0467'} to ${activeTrip?.customer?.name || 'IMILE DELIVERY SAUDI LOGISTICS'} completed successfully.`,
-      });
+      const lines = [
+        `Trip ${tripIdDisplay} delivered${customerName ? ` to ${activeTrip?.customer?.name}` : ''}.`,
+        routeText ? `Route: ${routeText}` : null,
+        endIso ? `Completed: ${formattedDeliveryDate}` : null,
+      ].filter(Boolean);
+      await Share.share({ title: `MERCON Trip ${tripIdDisplay}`, message: lines.join('\n') });
     } catch {
       // silent
     }
@@ -176,119 +244,110 @@ const TripCompletedScreen = () => {
     router.replace('/');
   };
 
-  const rawRef = activeTrip?.ref_id || activeTrip?.id || 'TRP-0467';
-  const tripIdDisplay = rawRef.startsWith('TRP-') ? rawRef : `TRP-${rawRef.slice(0, 6)}`;
-  const tripRefId = `#${tripIdDisplay}`;
-  const customerName = activeTrip?.customer?.name ? activeTrip.customer.name.toUpperCase() : 'IMILE DELIVERY SAUDI LOGISTICS';
-  
-  // Destination city/address
-  const destinationLocation = (activeTrip as any)?.destination_location?.name
-    || (activeTrip?.stops && activeTrip.stops.length > 0 ? activeTrip.stops[activeTrip.stops.length - 1]?.location?.name : null)
-    || 'Riyadh, Saudi Arabia';
-
-  const formattedLoadingDate = (activeTrip as any)?.actual_pickup || (activeTrip as any)?.actual_start
-    ? new Date((activeTrip as any).actual_pickup || (activeTrip as any).actual_start).toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-    : 'Aug 26, 2026 at 09:45 AM';
-
-  const formattedDeliveryDate = activeTrip?.actual_end
-    ? new Date(activeTrip.actual_end).toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-    : 'Aug 26, 2026 at 12:03 PM';
-
-  const formattedReturnLoadingDate = (activeTrip as any)?.actual_return_pickup
-    ? new Date((activeTrip as any).actual_return_pickup).toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-    : 'Aug 26, 2026 at 02:15 PM';
-
-  const formattedReturnDeliveryDate = (activeTrip as any)?.actual_return_delivery || activeTrip?.actual_end
-    ? new Date((activeTrip as any).actual_return_delivery || activeTrip?.actual_end).toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      })
-    : 'Aug 26, 2026 at 05:30 PM';
-
   // ---------------------------------------------------------------------------
-  // VIEW 1: CLEAN LANDING CARD (MATCHING USER SCREENSHOT EXACTLY)
+  // VIEW 1: LANDING — same look as before, details grouped for quick reading
   // ---------------------------------------------------------------------------
   if (!showDetails) {
     return (
       <SafeAreaView style={styles.cleanContainer}>
         <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <ScrollView contentContainerStyle={styles.cleanScroll} showsVerticalScrollIndicator={false}>
-          {/* Top Checkmark Circle */}
+          {/* Result */}
           <View style={styles.cleanCheckWrapper}>
-            <View style={styles.cleanCheckCircle}>
-              <Check size={48} color="#FFFFFF" strokeWidth={3.8} />
+            <View style={styles.checkRing}>
+              <View style={styles.cleanCheckCircle}>
+                <Check size={40} color="#FFFFFF" strokeWidth={3.8} />
+              </View>
             </View>
           </View>
-
-          {/* Delivered To Subtitle & Bold Customer Name */}
           <View style={styles.cleanHeaderGroup}>
             <Text style={styles.cleanSubtitle}>{t('title_delivered_to', 'Delivered to')}</Text>
-            <Text style={styles.cleanCustomerName}>{customerName}</Text>
-          </View>
-
-          {/* 3 Detail Info Rows */}
-          <View style={styles.cleanInfoList}>
-            {/* Row 1: Destination Location */}
-            <View style={styles.cleanInfoRow}>
-              <MapPin size={20} color="#16A34A" strokeWidth={2.2} />
-              <Text style={styles.cleanInfoText}>{destinationLocation}</Text>
-            </View>
-
-            {/* Row 2: Delivery Date */}
-            <View style={styles.cleanInfoRow}>
-              <Calendar size={20} color="#16A34A" strokeWidth={2.2} />
-              <Text style={styles.cleanInfoText}>{formattedDeliveryDate}</Text>
-            </View>
-
-            {/* Row 3: Trip ID */}
-            <View style={styles.cleanInfoRow}>
-              <FileText size={20} color="#16A34A" strokeWidth={2.2} />
-              <Text style={styles.cleanInfoText}>{language === 'ur' ? `ٹرپ نمبر: ${tripIdDisplay}` : `Trip ID: ${tripIdDisplay}`}</Text>
+            {customerName ? <Text style={styles.cleanCustomerName}>{customerName}</Text> : null}
+            <View style={styles.completedPill}>
+              <View style={styles.completedPillDot} />
+              <Text style={styles.completedPillText}>{completedPill}</Text>
             </View>
           </View>
 
-          {/* MERCON LOGISTICS Branding Logo */}
-          <View style={styles.cleanBrandingGroup}>
-            <Image source={logo} style={styles.cleanLogoImage} resizeMode="contain" />
+          {/* Trip details, grouped: label over value */}
+          <View style={styles.detailCard}>
+            {routeText ? (
+              <View style={styles.detailRow}>
+                <View style={styles.detailIcon}><MapPin size={17} color="#16A34A" strokeWidth={2.2} /></View>
+                <View style={styles.detailCol}>
+                  <Text style={styles.detailLabel}>{language === 'ur' ? 'راستہ' : 'Route'}</Text>
+                  <Text style={styles.detailValue} numberOfLines={1}>{routeText}</Text>
+                </View>
+              </View>
+            ) : null}
+            <View style={styles.detailRow}>
+              <View style={styles.detailIcon}><Calendar size={17} color="#16A34A" strokeWidth={2.2} /></View>
+              <View style={styles.detailCol}>
+                <Text style={styles.detailLabel}>{language === 'ur' ? 'تاریخ' : 'Date'}</Text>
+                <Text style={styles.detailValue}>{dayText ?? '—'}</Text>
+              </View>
+              {durationText ? (
+                <View style={styles.detailColRight}>
+                  <Text style={styles.detailLabel}>{t('label_duration', 'Duration')}</Text>
+                  <Text style={styles.detailValue}>{durationText}</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={[styles.detailRow, styles.detailRowLast]}>
+              <View style={styles.detailIcon}><FileText size={17} color="#16A34A" strokeWidth={2.2} /></View>
+              <View style={styles.detailCol}>
+                <Text style={styles.detailLabel}>{t('label_trip_id', 'Trip ID')}</Text>
+                <Text style={styles.detailValue}>{tripIdDisplay}</Text>
+              </View>
+              <View style={styles.detailColRight}>
+                <Text style={styles.detailLabel}>{language === 'ur' ? 'تصاویر' : 'Photos'}</Text>
+                <Text style={styles.detailValue}>{language === 'ur' ? `${photoCount} محفوظ` : `${photoCount} saved`}</Text>
+              </View>
+            </View>
           </View>
+
+          {/* Earnings */}
+          {charge > 0 ? (
+            <View style={styles.chargeBox}>
+              <View>
+                <Text style={styles.chargeLabel}>{t('label_driver_charge', 'Driver charge')}</Text>
+                <Text style={styles.chargeSub}>{language === 'ur' ? 'آپ کی آمدنی میں شامل' : 'Added to your earnings'}</Text>
+              </View>
+              <Text style={styles.chargeValue}>
+                SAR {charge.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </Text>
+            </View>
+          ) : null}
+
+          {/* What's next */}
+          {nextTrip && nextTripText ? (
+            <TouchableOpacity
+              style={styles.nextTripRow}
+              activeOpacity={0.7}
+              onPress={() => router.replace({ pathname: '/trip/details', params: { tripId: nextTrip.id } } as any)}
+            >
+              <View style={styles.detailCol}>
+                <Text style={styles.detailLabel}>{language === 'ur' ? 'اگلا ٹرپ' : 'Next trip'}</Text>
+                <Text style={styles.nextTripText} numberOfLines={1}>{nextTripText}</Text>
+              </View>
+              <ChevronRight size={18} color="#64748B" strokeWidth={2.2} />
+            </TouchableOpacity>
+          ) : null}
+
         </ScrollView>
 
-        {/* Bottom 3 Action Buttons */}
+        {/* Actions: two secondary side by side, Done full width */}
         <View style={styles.cleanActionBar}>
-          {/* 1. Share screenshot */}
-          <TouchableOpacity style={styles.cleanBtnShare} activeOpacity={0.8} onPress={handleShare}>
-            <Share2 size={15} color="#16A34A" strokeWidth={2.2} />
-            <Text style={styles.cleanBtnShareText} numberOfLines={1}>{t('action_share_screenshot', 'Share screenshot')}</Text>
-          </TouchableOpacity>
-
-          {/* 2. More details */}
-          <TouchableOpacity style={styles.cleanBtnDetails} activeOpacity={0.8} onPress={() => setShowDetails(true)}>
-            <FileText size={16} color="#2563EB" strokeWidth={2.2} />
-            <Text style={styles.cleanBtnDetailsText} numberOfLines={1}>{t('action_more_details', 'More details')}</Text>
-          </TouchableOpacity>
-
-          {/* 3. Done */}
+          <View style={styles.secondaryActionRow}>
+            <TouchableOpacity style={styles.cleanBtnShare} activeOpacity={0.8} onPress={handleShare}>
+              <Share2 size={15} color="#16A34A" strokeWidth={2.2} />
+              <Text style={styles.cleanBtnShareText} numberOfLines={1}>{t('action_share_screenshot', 'Share screenshot')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cleanBtnDetails} activeOpacity={0.8} onPress={() => setShowDetails(true)}>
+              <FileText size={16} color="#2563EB" strokeWidth={2.2} />
+              <Text style={styles.cleanBtnDetailsText} numberOfLines={1}>{t('action_more_details', 'More details')}</Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity style={styles.cleanBtnDone} activeOpacity={0.85} onPress={handleBackHome}>
             <Text style={styles.cleanBtnDoneText}>{t('action_done', 'Done')}</Text>
           </TouchableOpacity>
@@ -333,7 +392,7 @@ const TripCompletedScreen = () => {
                 <View style={styles.cellTextWrapper}>
                   <Text style={styles.cellLabel}>{t('label_customer', 'Customer')}</Text>
                   <Text style={styles.cellValueBold} numberOfLines={2}>
-                    {customerName}
+                    {customerName || '—'}
                   </Text>
                 </View>
               </View>
@@ -344,7 +403,7 @@ const TripCompletedScreen = () => {
                 </View>
                 <View style={styles.cellTextWrapper}>
                   <Text style={styles.cellLabel}>{t('label_duration', 'Duration')}</Text>
-                  <Text style={[styles.cellValueBold, { writingDirection: 'ltr' }]}>2h 18m</Text>
+                  <Text style={[styles.cellValueBold, { writingDirection: 'ltr' }]}>{durationText ?? '—'}</Text>
                 </View>
               </View>
             </View>
@@ -358,7 +417,7 @@ const TripCompletedScreen = () => {
                 <View style={styles.cellTextWrapper}>
                   <Text style={styles.cellLabel}>{t('label_distance', 'Distance')}</Text>
                   <Text style={[styles.cellValueBold, { writingDirection: 'ltr' }]}>
-                    {((activeTrip as any)?.distance_km || 164)} {t('unit_km', 'km')}
+                    {distanceKm != null ? `${distanceKm} ${t('unit_km', 'km')}` : '—'}
                   </Text>
                 </View>
               </View>
@@ -631,18 +690,26 @@ const styles = StyleSheet.create({
   },
   cleanScroll: {
     flexGrow: 1,
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 100,
-    paddingBottom: 20,
+    paddingHorizontal: 20,
+    paddingTop: 44,
+    paddingBottom: 16,
+    gap: 20,
   },
   cleanCheckWrapper: {
-    marginBottom: 16,
+    alignItems: 'center',
+  },
+  checkRing: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cleanCheckCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: '#16A34A',
     alignItems: 'center',
     justifyContent: 'center',
@@ -655,72 +722,140 @@ const styles = StyleSheet.create({
   cleanHeaderGroup: {
     width: '100%',
     alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
+    gap: 6,
   },
   cleanSubtitle: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '500',
     color: '#64748B',
-    marginBottom: 4,
     textAlign: 'center',
-    alignSelf: 'center',
   },
   cleanCustomerName: {
-    fontSize: 17,
+    fontSize: 24,
     fontWeight: '800',
     color: '#0F172A',
     textAlign: 'center',
-    lineHeight: 22,
-    alignSelf: 'center',
+    lineHeight: 30,
     paddingHorizontal: 16,
   },
-  cleanInfoList: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    marginTop: 18,
-    gap: 12,
-    marginBottom: 20,
-  },
-  cleanInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  cleanInfoText: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    color: '#1E293B',
-    textAlign: 'center',
-  },
-  cleanBrandingGroup: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 'auto',
-    marginBottom: 20,
-  },
-  cleanLogoImage: {
-    width: 75,
-    height: 26,
-    alignSelf: 'center',
-  },
-  cleanActionBar: {
+  completedPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    backgroundColor: '#F0FDF4',
+    borderRadius: 999,
     paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginTop: 2,
+  },
+  completedPillDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#16A34A',
+  },
+  completedPillText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  detailCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#EEF2F6',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEF2F6',
+  },
+  detailRowLast: {
+    borderBottomWidth: 0,
+  },
+  detailIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#DCFCE7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  detailCol: {
+    flex: 1,
+    gap: 1,
+  },
+  detailColRight: {
+    alignItems: 'flex-end',
+    gap: 1,
+  },
+  detailLabel: {
+    fontSize: 12,
+    color: '#64748B',
+  },
+  detailValue: {
+    fontSize: 15.5,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  chargeBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+    borderRadius: 18,
+    paddingHorizontal: 16,
     paddingVertical: 14,
+  },
+  chargeLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  chargeSub: {
+    fontSize: 12,
+    color: '#15803D',
+    marginTop: 2,
+  },
+  chargeValue: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#14532D',
+  },
+  nextTripRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 4,
+  },
+  nextTripText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  cleanActionBar: {
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 14,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
   },
+  secondaryActionRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   cleanBtnShare: {
-    flex: 1.1,
-    height: 48,
+    flex: 1,
+    height: 46,
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#16A34A',
@@ -732,13 +867,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   cleanBtnShareText: {
-    fontSize: 10.5,
+    fontSize: 13.5,
     fontWeight: '700',
     color: '#16A34A',
   },
   cleanBtnDetails: {
     flex: 1,
-    height: 48,
+    height: 46,
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#2563EB',
@@ -750,13 +885,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   cleanBtnDetailsText: {
-    fontSize: 10.5,
+    fontSize: 13.5,
     fontWeight: '700',
     color: '#2563EB',
   },
   cleanBtnDone: {
-    flex: 1,
-    height: 48,
+    height: 54,
     borderRadius: 14,
     backgroundColor: '#2563EB',
     alignItems: 'center',
@@ -768,7 +902,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   cleanBtnDoneText: {
-    fontSize: 14,
+    fontSize: 17,
     fontWeight: '800',
     color: '#FFFFFF',
   },

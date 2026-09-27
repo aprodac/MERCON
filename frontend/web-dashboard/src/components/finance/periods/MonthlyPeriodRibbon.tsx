@@ -38,15 +38,15 @@ export function MonthlyPeriodRibbon({
               <div
                 key={mName}
                 onClick={() => isAdmin && onOpenNewPeriodForMonth(mIdx)}
-                className={`w-[88px] h-[96px] rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center p-2 transition-all ${
+                className={`w-[88px] h-[96px] rounded-xl border-2 border-dashed border-border dark:border-border flex flex-col items-center justify-center p-2 transition-all ${
                   isAdmin
-                    ? 'hover:border-[#FA634E] hover:bg-rose-50/30 cursor-pointer group'
+                    ? 'hover:border-[#FA634E] hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20/30 cursor-pointer group'
                     : 'opacity-60 cursor-not-allowed'
                 }`}
               >
-                <span className="text-xs font-bold text-slate-400 group-hover:text-[#FA634E]">{mName}</span>
-                <Plus className="w-4 h-4 my-1 text-slate-300 group-hover:text-[#FA634E]" />
-                <span className="text-[10px] text-slate-400 font-medium">Not created</span>
+                <span className="text-xs font-bold text-muted-foreground group-hover:text-[#FA634E]">{mName}</span>
+                <Plus className="w-4 h-4 my-1 text-muted-foreground group-hover:text-[#FA634E]" />
+                <span className="text-[10px] text-muted-foreground font-medium">Not created</span>
               </div>
             );
           }
@@ -54,11 +54,11 @@ export function MonthlyPeriodRibbon({
           const isSelected = selectedPeriodId === matchingPeriod.id;
           const status = matchingPeriod.status;
 
-          let tileClass = 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100';
+          let tileClass = 'bg-card  border-border dark:border-border text-foreground ';
           if (status === 'Closed') {
-            tileClass = 'bg-amber-50/90 dark:bg-amber-950/40 border-amber-200/90 dark:border-amber-800/80 text-amber-950 dark:text-amber-200';
+            tileClass = 'bg-amber-500/10 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-600/20/90 dark:bg-amber-950/40 border-amber-200/90 dark:border-amber-800/80 text-amber-950 dark:text-amber-200';
           } else if (status === 'Locked') {
-            tileClass = 'bg-[#3E3C3D] text-white border-transparent';
+            tileClass = 'bg-card text-foreground border border-border text-white border-transparent';
           }
 
           const jeCount = matchingPeriod._count?.journalEntries || 0;
@@ -70,21 +70,21 @@ export function MonthlyPeriodRibbon({
               role="button"
               aria-pressed={isSelected}
               onClick={() => onSelectPeriod(matchingPeriod.id)}
-              className={`relative w-[88px] h-[96px] rounded-2xl border p-2 flex flex-col justify-between items-center text-center transition-all select-none focus:outline-none ${tileClass} ${
+              className={`relative w-[88px] h-[96px] rounded-xl border p-2 flex flex-col justify-between items-center text-center transition-all select-none focus:outline-none ${tileClass} ${
                 isCurrentMonth ? 'ring-2 ring-[#FA634E]' : ''
-              } ${isSelected ? 'border-2 border-[#FA634E] shadow-xs' : 'hover:border-slate-300 dark:hover:border-slate-700'}`}
+              } ${isSelected ? 'border-2 border-[#FA634E] shadow-xs' : 'hover:border-border dark:hover:border-border'}`}
             >
               <div className="w-full flex items-center justify-between">
-                <span className={`text-xs font-extrabold ${status === 'Locked' ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+                <span className={`text-xs font-extrabold ${status === 'Locked' ? 'text-white' : 'text-foreground dark:text-white'}`}>
                   {mName}
                 </span>
                 {status === 'Open' && <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />}
                 {status === 'Closed' && <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 shrink-0" />}
-                {status === 'Locked' && <Lock className="w-3.5 h-3.5 text-slate-300 shrink-0" />}
+                {status === 'Locked' && <Lock className="w-3.5 h-3.5 text-muted-foreground shrink-0" />}
               </div>
 
               <div className="text-[11px] font-medium opacity-80">
-                <span className="font-mono font-bold">{jeCount}</span> JEs
+                <span className="fin-num font-semibold">{jeCount}</span> JEs
               </div>
 
               {isCurrentMonth ? (

@@ -5,8 +5,11 @@ import {
   getBalanceSheet,
   getCashFlow,
   getGeneralLedger,
+  getGeneralLedgerSummary,
+  getGeneralLedgerMonthly,
 } from '../controllers/financeReportsController';
 import { getARAgeing, getAPAgeing } from '../controllers/ageingReportsController';
+import { getCustomerStatementLedger } from '../controllers/customerStatementController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 
@@ -21,7 +24,11 @@ router.get('/reports/profit-and-loss', getProfitAndLoss);
 router.get('/reports/balance-sheet', getBalanceSheet);
 router.get('/reports/ar-ageing', getARAgeing);
 router.get('/reports/ap-ageing', getAPAgeing);
+router.get('/reports/customer-statement', getCustomerStatementLedger);
 router.get('/reports/cash-flow', getCashFlow);
+router.get('/reports/general-ledger/summary', getGeneralLedgerSummary);
+router.get('/reports/general-ledger/monthly', getGeneralLedgerMonthly);
 router.get('/reports/general-ledger', getGeneralLedger);
 
 export default router;
+

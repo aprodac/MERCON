@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Image, Text, View, StyleSheet, type ImageSourcePropType, type ViewStyle } from 'react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { SkeletonBlock } from '@mercon/mobile-shared/ui';
+import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { DriverStatusIndicator } from './DriverStatusIndicator';
 import type { DriverDisplayStatus } from '../types';
 
@@ -27,11 +28,8 @@ function resolveAvatarSource(avatarUrl?: string | null, imageUri?: ImageSourcePr
   if (imageUri) return imageUri;
   if (!avatarUrl || typeof avatarUrl !== 'string' || !avatarUrl.trim()) return null;
 
-  const url = avatarUrl.trim();
-  if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image/')) {
-    return { uri: url };
-  }
-  return { uri: url.startsWith('/') ? `https://dev.mercon.tech${url}` : `https://dev.mercon.tech/${url}` };
+  const uri = resolveMediaUrl(avatarUrl);
+  return uri ? { uri } : null;
 }
 
 /** Purely circular driver avatar component with image loading skeleton & status dot indicator. */

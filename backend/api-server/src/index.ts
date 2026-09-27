@@ -74,6 +74,7 @@ import thirdPartyRoutes from './routes/thirdPartyRoutes';
 import geocodingRoutes from './routes/geocodingRoutes';
 import vehicleCompatibilityRoutes from './routes/vehicleCompatibilityRoutes';
 import publicRoutes from './routes/publicRoutes';
+import operatorInboxRoutes from './routes/operatorInboxRoutes';
 import errorEventRoutes from './routes/errorEventRoutes';
 import accountRoutes from './routes/accountRoutes';
 import accountingPeriodRoutes from './routes/accountingPeriodRoutes';
@@ -84,6 +85,9 @@ import bankAccountRoutes from './routes/bankAccountRoutes';
 import advanceRoutes from './routes/advanceRoutes';
 import reconciliationRoutes from './routes/reconciliationRoutes';
 import financeReportsRoutes from './routes/financeReportsRoutes';
+import zatcaRoutes from './routes/zatcaRoutes';
+import { validateDataKeys } from './services/secrets/secretBox';
+import { reencryptStoredSecrets } from './services/secrets/rotation';
 import { reportClientError } from './controllers/clientErrorController';
 import { validate } from './middlewares/validate';
 import { clientErrorBody } from './schemas';
@@ -167,6 +171,7 @@ apiRouter.use('/third-party-providers', thirdPartyRoutes);
 apiRouter.use('/geocoding', geocodingRoutes);
 apiRouter.use('/vehicle-compatibility', vehicleCompatibilityRoutes);
 apiRouter.use('/public', publicRoutes);
+apiRouter.use('/operator-inbox', operatorInboxRoutes);
 apiRouter.use('/error-events', errorEventRoutes);
 apiRouter.use('/accounts', accountRoutes);
 apiRouter.use('/accounting-periods', accountingPeriodRoutes);
@@ -177,6 +182,7 @@ apiRouter.use('/bank-accounts', bankAccountRoutes);
 apiRouter.use('/advances', advanceRoutes);
 apiRouter.use('/reconciliations', reconciliationRoutes);
 apiRouter.use('/finance', financeReportsRoutes);
+apiRouter.use('/zatca', zatcaRoutes);
 apiRouter.post('/client-errors', authenticateJWT, validate({ body: clientErrorBody }), reportClientError);
 
 // Mount router on both /api and root for maximum proxy compatibility
@@ -298,7 +304,33 @@ app.use((err: Error, req: Request, res: Response, next: express.NextFunction) =>
 initFleetTracking();
 initTripDelayMonitor();
 
+/**
+ * Integration secrets key (docs/CLIENT_SECRETS.md). The deploy refuses to run
+ * without one, so here a missing key only means local development. A malformed
+ * key is logged loudly but doesn't take the whole API down: only features that
+ * store secrets (ZATCA) are unavailable, and their settings page says so.
+ */
+function checkDataEncryptionKey() {
+  try {
+    const { currentKeyId, previousKeyIds } = validateDataKeys();
+    if (!currentKeyId) {
+      logger.warn('DATA_ENCRYPTION_KEY is not set — integrations that store secrets (ZATCA) are disabled');
+      return;
+    }
+    logger.info({ keyId: currentKeyId, previousKeyIds }, 'Data encryption key loaded');
+    reencryptStoredSecrets()
+      .then(({ reencrypted, unreadable }) => {
+        if (reencrypted) logger.info({ reencrypted, keyId: currentKeyId }, 'Re-encrypted stored secrets with the current key');
+        if (unreadable) logger.error({ unreadable }, 'Stored secrets encrypted with a key this server no longer has — affected integrations must reconnect');
+      })
+      .catch((err) => logger.error({ err }, 'Re-encrypting stored secrets failed'));
+  } catch (err) {
+    logger.error({ err }, 'DATA_ENCRYPTION_KEY is invalid — integrations that store secrets (ZATCA) are disabled');
+  }
+}
+
 async function startServer() {
+  checkDataEncryptionKey();
   httpServer.listen(port, '0.0.0.0', () => {
     logger.info(`🚀 MERCON API Server (with WebSockets) is running on port ${port}`);
   });

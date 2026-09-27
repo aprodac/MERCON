@@ -9,7 +9,9 @@ import { toast } from 'sonner';
 
 import { exportExcelTable, exportPDFTable } from '@/utils/exportUtils';
 import { matchesSearch } from '@/lib/search';
-import DashboardLayout from '@/components/layout/DashboardLayout';
+import { SettingsPage } from '@/components/settings/SettingsKit';
+import Btn from '@/components/ui/Btn';
+import { cn } from '@/lib/utils';
 import DataTable, { Column } from '@/components/ui/DataTable';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -320,7 +322,7 @@ export default function UserManagementPage() {
   const columns = useMemo(() => {
     const baseCols: Column<UnifiedUser>[] = [
       {
-        header: 'User ↕',
+        header: 'User',
         accessor: (u: UnifiedUser) => {
           const initials = u.name?.substring(0, 2).toUpperCase() || 'U';
           const isInactive = u.status === 'Inactive';
@@ -344,14 +346,14 @@ export default function UserManagementPage() {
                     </span>
                   )}
                 </div>
-                <span className="text-[11px] text-slate-400 font-mono font-medium">@{u.username}</span>
+                <span className="text-[11px] text-muted-foreground">@{u.username}</span>
               </div>
             </div>
           );
         },
       },
       {
-        header: 'Contact Details',
+        header: 'Contact',
         accessor: (u: UnifiedUser) => {
           const isInactive = u.status === 'Inactive';
           return (
@@ -371,37 +373,23 @@ export default function UserManagementPage() {
         },
       },
       {
-        header: 'Role & Access',
-        accessor: (u: UnifiedUser) => {
-          const isInactive = u.status === 'Inactive';
-          let badgeStyle = 'bg-slate-100 text-slate-700 border-slate-200';
-          if (u.role === 'Admin' || u.isSuperAdmin) {
-            badgeStyle = 'bg-rose-50 text-[#FA634E] border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-900';
-          } else if (u.role === 'Operator') {
-            badgeStyle = 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-900';
-          }
-
-          return (
-            <div className={`flex items-center gap-1.5 flex-wrap ${isInactive ? 'opacity-50' : ''}`}>
-              <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border inline-flex items-center gap-1 ${badgeStyle}`}>
-                <Shield size={10} />
-                {u.role}
+        header: 'Role',
+        accessor: (u: UnifiedUser) => (
+          <span className={`inline-flex items-center gap-1.5 text-xs ${u.status === 'Inactive' ? 'opacity-50' : ''}`}>
+            <span className="font-semibold text-foreground">{u.role === 'SuperAdmin' ? 'Admin' : u.role}</span>
+            {u.isSuperAdmin && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-[#FFFBEB] px-1.5 py-0.5 text-[10px] font-bold text-[#92400E]" title="Aprodac platform owner: sees every module and setting">
+                <ShieldCheck size={10} /> Aprodac
               </span>
-              {u.isSuperAdmin && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200 inline-flex items-center gap-1">
-                  <ShieldCheck size={10} />
-                  Superadmin
-                </span>
-              )}
-            </div>
-          );
-        },
+            )}
+          </span>
+        ),
       },
     ];
 
     if (activeTab === 'driver') {
       baseCols.push({
-        header: 'Mobile Password Status',
+        header: 'App password',
         accessor: (u: UnifiedUser) => (
           u.hasAccountPassword ? (
             <button
@@ -412,11 +400,11 @@ export default function UserManagementPage() {
                   handleOpenDriverPasswordModal(u.originalDriver);
                 }
               }}
-              className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-400 dark:hover:bg-emerald-900/60 transition-all cursor-pointer shadow-2xs group"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-foreground hover:text-brand transition-colors cursor-pointer group"
               title="Click to update driver mobile app password"
             >
-              <KeyRound size={11} className="text-emerald-600 shrink-0 group-hover:scale-110 transition-transform" />
-              <span>Password Set</span>
+              <KeyRound size={12} className="text-[#16A34A] shrink-0" />
+              <span>Set · change</span>
             </button>
           ) : (
             <button
@@ -427,11 +415,11 @@ export default function UserManagementPage() {
                   handleOpenDriverPasswordModal(u.originalDriver);
                 }
               }}
-              className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 hover:border-amber-300 dark:bg-amber-950/40 dark:text-amber-300 dark:hover:bg-amber-900/60 transition-all cursor-pointer shadow-2xs group"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-[#D97706] hover:text-brand transition-colors cursor-pointer group"
               title="Click to set driver mobile app password"
             >
-              <KeyRound size={11} className="text-amber-600 shrink-0 group-hover:scale-110 transition-transform" />
-              <span>Pending Setup</span>
+              <KeyRound size={12} className="shrink-0" />
+              <span>Not set · set now</span>
             </button>
           )
         ),
@@ -440,15 +428,15 @@ export default function UserManagementPage() {
 
     baseCols.push(
       {
-        header: 'Last Login ↕',
+        header: 'Last sign-in',
         accessor: (u: UnifiedUser) => (
-          <span className={`text-[11px] font-medium text-slate-500 dark:text-slate-400 font-mono ${u.status === 'Inactive' ? 'opacity-50' : ''}`}>
+          <span className={`text-xs text-muted-foreground whitespace-nowrap ${u.status === 'Inactive' ? 'opacity-50' : ''}`}>
             {u.lastLogin}
           </span>
         ),
       },
       {
-        header: 'Actions',
+        header: '',
         headerClassName: 'text-right',
         className: 'text-right',
         accessor: (u: UnifiedUser) => {
@@ -540,56 +528,41 @@ export default function UserManagementPage() {
   }, [activeTab, navigate]);
 
   return (
-    <DashboardLayout active="Settings" title="User Management">
-      <div className="p-6 max-w-[1600px] mx-auto w-full flex flex-col gap-5 bg-slate-50/50 dark:bg-slate-950">
-
-        {/* ── Page Header & Create Button ── */}
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <h1 className="text-2xl font-black text-[#3E3C3D] dark:text-white tracking-tight">
-            User Management
-          </h1>
-
-          {activeTab === 'web' && (
-            <div className="flex items-center gap-2">
-              <Button
-                onClick={() => { setEditingUser(null); setIsModalOpen(true); }}
-                className="h-9 px-3.5 bg-[#FA634E] hover:bg-[#FA634E]/90 text-white font-bold text-xs rounded-xl shadow-2xs flex items-center gap-1.5 transition-all cursor-pointer border-none"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create User</span>
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* ── Main Navigation Tabs (Left-aligned, No BG Box Overlay) ── */}
-        <div className="pt-1 flex items-center justify-start overflow-x-auto scrollbar-none">
-          <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)}>
-            <TabsList className="h-auto p-0 bg-transparent border-none gap-2 inline-flex justify-start">
-              <TabsTrigger
-                value="web"
-                className="text-xs font-semibold px-3.5 h-8 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 data-[state=active]:border-[#FA634E]/40 data-[state=active]:bg-rose-50/60 dark:data-[state=active]:bg-rose-950/30 data-[state=active]:text-[#FA634E] dark:data-[state=active]:text-rose-400 data-[state=active]:shadow-2xs cursor-pointer gap-1.5 transition-all"
-              >
-                <Monitor className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 data-[state=active]:text-[#FA634E]" />
-                <span>Web Platform Users</span>
-                <span className="ml-1 px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700">
-                  {users.filter(u => isSuperAdmin || (!u.isSuperAdmin && u.role !== 'SuperAdmin')).length}
-                </span>
-              </TabsTrigger>
-
-              <TabsTrigger
-                value="driver"
-                className="text-xs font-semibold px-3.5 h-8 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 data-[state=active]:border-[#FA634E]/40 data-[state=active]:bg-rose-50/60 dark:data-[state=active]:bg-rose-950/30 data-[state=active]:text-[#FA634E] dark:data-[state=active]:text-rose-400 data-[state=active]:shadow-2xs cursor-pointer gap-1.5 transition-all"
-              >
-                <Smartphone className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 data-[state=active]:text-[#FA634E]" />
-                <span>Driver Accounts</span>
-                <span className="ml-1 px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200/80 dark:border-slate-700">
-                  {driversList.length}
-                </span>
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
+    <SettingsPage
+      wide
+      title="Users"
+      description="People who sign in to the dashboard and the operator app. Driver accounts are managed from each driver's page and listed here read-only."
+      actions={
+        activeTab === 'web' ? (
+          <Btn label="Add user" icon={<Plus size={14} />} onClick={() => { setEditingUser(null); setIsModalOpen(true); }} />
+        ) : (
+          <Btn label="Add driver" variant="outline" icon={<Plus size={14} />} onClick={() => navigate('/drivers/new')} />
+        )
+      }
+    >
+      <div className="flex items-center gap-1.5" role="tablist" aria-label="Account type">
+        {([
+          { id: 'web', label: 'Dashboard users', count: users.filter(u => isSuperAdmin || (!u.isSuperAdmin && u.role !== 'SuperAdmin')).length },
+          { id: 'driver', label: 'Drivers', count: driversList.length },
+        ] as const).map((t) => {
+          const active = activeTab === t.id;
+          return (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setActiveTab(t.id)}
+              className={cn(
+                'inline-flex items-center gap-2 h-8 px-3 rounded-full text-xs font-bold transition-colors',
+                active ? 'bg-foreground text-background' : 'bg-card border border-black/[0.08] dark:border-white/10 text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t.label}
+              <span className={cn('tabular-nums', active ? 'opacity-70' : 'text-[#9898A4]')}>{t.count}</span>
+            </button>
+          );
+        })}
+      </div>
 
         {/* ── Table Ledger Workspace ── */}
         <DataTable
@@ -609,7 +582,7 @@ export default function UserManagementPage() {
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <Input
                   type="text"
-                  placeholder="Search users by name, email or phone..."
+                  placeholder="Search name, email or phone"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-full pl-8.5 pr-4 h-9 text-xs bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-800 rounded-xl font-medium shadow-2xs"
@@ -623,7 +596,7 @@ export default function UserManagementPage() {
                     <SelectValue placeholder="Role" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Roles</SelectItem>
+                    <SelectItem value="all">All roles</SelectItem>
                     <SelectItem value="Admin">Admin</SelectItem>
                     <SelectItem value="Operator">Operator</SelectItem>
                     {isSuperAdmin && <SelectItem value="SuperAdmin">SuperAdmin</SelectItem>}
@@ -654,8 +627,6 @@ export default function UserManagementPage() {
           enableSelection={true}
         />
 
-      </div>
-
       <UserModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -675,6 +646,6 @@ export default function UserManagementPage() {
         onSave={handleSaveDriverPassword}
         isLoading={setDriverPasswordMutation.isPending}
       />
-    </DashboardLayout>
+    </SettingsPage>
   );
 }

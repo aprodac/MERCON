@@ -233,7 +233,7 @@ export default function OperatorProfilePage() {
                 size="sm"
                 onClick={() => setIsEditing(true)}
                 disabled={isLoading}
-                className="h-8 gap-1.5 text-xs bg-slate-900 dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-slate-900 font-bold shadow-xs px-4"
+                className="h-8 gap-1.5 text-xs bg-charcoal dark:bg-slate-100 hover:bg-slate-800 dark:hover:bg-white text-white dark:text-slate-900 font-bold shadow-xs px-4"
               >
                 <User className="w-3.5 h-3.5" /> Edit Profile
               </Button>
@@ -263,7 +263,7 @@ export default function OperatorProfilePage() {
             {/* Avatar & User Details */}
             <div className="flex items-center gap-4">
               <div className="relative shrink-0">
-                <div className="w-14 h-14 rounded-xl bg-slate-900 dark:bg-slate-800 flex items-center justify-center text-white text-xl font-bold border border-slate-200 dark:border-slate-700 shadow-2xs">
+                <div className="w-14 h-14 rounded-xl bg-charcoal dark:bg-slate-800 flex items-center justify-center text-white text-xl font-bold border border-slate-200 dark:border-slate-700 shadow-2xs">
                   {initials}
                 </div>
                 <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-slate-900" title="Active"></span>
@@ -585,7 +585,7 @@ export default function OperatorProfilePage() {
                     <Button
                       type="submit"
                       disabled={pwdMutation.isPending}
-                      className="h-8 text-xs bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold px-4 rounded-md focus-visible:ring-brand/20"
+                      className="h-8 text-xs bg-charcoal dark:bg-slate-100 text-white dark:text-slate-900 font-bold px-4 rounded-md focus-visible:ring-brand/20"
                     >
                       {pwdMutation.isPending ? 'Updating...' : 'Update Password'}
                     </Button>
@@ -725,7 +725,7 @@ export default function OperatorProfilePage() {
                     onClick={() => setNotifications((n) => ({ ...n, criticalDelays: !n.criticalDelays }))}
                     className={cn(
                       'h-7 text-[11px] font-semibold min-w-[80px] rounded-md transition-all',
-                      notifications.criticalDelays ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900' : 'text-slate-400'
+                      notifications.criticalDelays ? 'bg-charcoal text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900' : 'text-slate-400'
                     )}
                   >
                     {notifications.criticalDelays ? 'ENABLED' : 'OFF'}
@@ -743,7 +743,7 @@ export default function OperatorProfilePage() {
                     onClick={() => setNotifications((n) => ({ ...n, documentExpiry: !n.documentExpiry }))}
                     className={cn(
                       'h-7 text-[11px] font-semibold min-w-[80px] rounded-md transition-all',
-                      notifications.documentExpiry ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900' : 'text-slate-400'
+                      notifications.documentExpiry ? 'bg-charcoal text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900' : 'text-slate-400'
                     )}
                   >
                     {notifications.documentExpiry ? 'ENABLED' : 'OFF'}
@@ -761,7 +761,7 @@ export default function OperatorProfilePage() {
                     onClick={() => setNotifications((n) => ({ ...n, creditLimits: !n.creditLimits }))}
                     className={cn(
                       'h-7 text-[11px] font-semibold min-w-[80px] rounded-md transition-all',
-                      notifications.creditLimits ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900' : 'text-slate-400'
+                      notifications.creditLimits ? 'bg-charcoal text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900' : 'text-slate-400'
                     )}
                   >
                     {notifications.creditLimits ? 'ENABLED' : 'OFF'}
@@ -779,7 +779,7 @@ export default function OperatorProfilePage() {
                     onClick={() => setNotifications((n) => ({ ...n, dailyDigest: !n.dailyDigest }))}
                     className={cn(
                       'h-7 text-[11px] font-semibold min-w-[80px] rounded-md transition-all',
-                      notifications.dailyDigest ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900' : 'text-slate-400'
+                      notifications.dailyDigest ? 'bg-charcoal text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900' : 'text-slate-400'
                     )}
                   >
                     {notifications.dailyDigest ? 'ENABLED' : 'OFF'}
@@ -905,7 +905,7 @@ export default function OperatorProfilePage() {
                       onClick={() => setPreferences((p) => ({ ...p, compactView: !p.compactView }))}
                       className={cn(
                         'h-7 text-[11px] font-semibold min-w-[80px] rounded-md transition-all',
-                        preferences.compactView ? 'bg-slate-900 text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900' : 'text-slate-400'
+                        preferences.compactView ? 'bg-charcoal text-white border-slate-900 dark:bg-slate-100 dark:text-slate-900' : 'text-slate-400'
                       )}
                     >
                       {preferences.compactView ? 'ENABLED' : 'OFF'}

@@ -5,11 +5,12 @@
 export interface FormatMoneyOptions {
   currency?: string;
   signed?: boolean;
+  negativeFormat?: 'minus' | 'parentheses';
 }
 
 /**
  * Format a numeric/string/null amount with 2 decimal places and en-US thousands separators.
- * Supports optional currency prefix and sign options (+ prefix for positive, U+2212 minus for negative).
+ * Supports optional currency prefix and sign options (+ prefix for positive, minus or parentheses for negative).
  */
 export function formatMoney(
   value: number | string | null | undefined,
@@ -30,6 +31,12 @@ export function formatMoney(
     maximumFractionDigits: 2,
   });
 
+  const currStr = opts?.currency ? `${opts.currency} ` : '';
+
+  if (num < 0 && opts?.negativeFormat === 'parentheses') {
+    return `${currStr}(${absFormatted})`;
+  }
+
   let signStr = '';
   if (opts?.signed) {
     if (num > 0) {
@@ -41,7 +48,6 @@ export function formatMoney(
     signStr = '-';
   }
 
-  const currStr = opts?.currency ? `${opts.currency} ` : '';
   return `${currStr}${signStr}${absFormatted}`;
 }
 

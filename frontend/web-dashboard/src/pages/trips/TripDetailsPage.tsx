@@ -2,11 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
-  ChevronDown, Copy, Check, RefreshCcw,
-  Navigation, CheckCircle2, XCircle, AlertTriangle,
-  User as UserIcon, Truck, UploadCloud, SquarePen,
-  X, Eye, Maximize2, Coins, ListOrdered, Map as MapIcon,
-  MapPin, Repeat, Calendar, Clock, Building2, ArrowRight, FileText
+  Copy, Check, CheckCircle2, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
+  CalendarClock, Repeat, Receipt, FileText, Clock, ChevronDown, Navigation, Image as ImageIcon,
+  User as UserIcon, Truck, UploadCloud, SquarePen, X, Coins, ListOrdered,
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -22,7 +20,6 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useTripWhatsAppShare } from '@/hooks/useTripWhatsAppShare';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import TripLiveMapCard from '@/components/maps/TripLiveMapCard';
 import {
   tripService, TripStatus,
   type TripChargeInput, type Trip,
@@ -33,12 +30,18 @@ import { documentService, type DocType } from '@/services/documentService';
 import { useDeploymentTimezone, formatInDeploymentTz } from '@/lib/datetime';
 import { computeTripFinancials } from '@/utils/financialCalculations';
 
-// Subcomponents for the Image 2 Layout
-import VisualRouteProgress from '@/components/trips/VisualRouteProgress';
-import TripOverviewBarCard from '@/components/trips/TripOverviewBarCard';
-import ModernFinancialsCard from '@/components/trips/ModernFinancialsCard';
-import TripPhotoEvidence, { PhotoPreviewItem } from '@/components/trips/TripPhotoEvidence';
-import GeotagEvidenceCard from '@/components/trips/GeotagEvidenceCard';
+import TripMap from '@/components/maps/live/TripMap';
+import TripStopsPanel from '@/components/trips/details/TripStopsPanel';
+import { Banner, FinancialSummary, PaperworkSection, PreTripChecks, TripSummary, TruckDriverOverlay } from '@/components/trips/details/TripDetailsBits';
+import { statusChip, tripPhaseOf } from '@/components/trips/details/tripStatus';
+import { fleetLiveService } from '@/services/fleetLiveService';
+import { buildEtaShareText, formatDuration, type EtaInfo } from '@/lib/fleetLive';
+import { whatsAppLink } from '@/lib/share';
+import { operatorInboxService, type DriverUpdate } from '@/services/operatorInboxService';
+import { ShareUpdateDialog } from '@/components/dashboard/inbox/ShareUpdateDialog';
+import { updateTitle } from '@/components/dashboard/inbox/inboxText';
+import { cn } from '@/lib/utils';
+import { resolveFileUrl } from '@/lib/documents';
 
 const isUuidVal = (str?: string | null) =>
   str ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim()) : false;
@@ -112,10 +115,8 @@ export default function TripDetailsPage() {
   const [uploadDocType, setUploadDocType] = useState<DocType | undefined>(undefined);
   const [isReassignModalOpen, setIsReassignModalOpen] = useState(false);
   const [reassignMode, setReassignMode] = useState<ReassignMode>('driver');
-  const [isExpandMapOpen, setIsExpandMapOpen] = useState(false);
   const [isActivityLogOpen, setIsActivityLogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [previewImage, setPreviewImage] = useState<PhotoPreviewItem | null>(null);
   const [isLaborModalOpen, setIsLaborModalOpen] = useState(false);
 
   // Central WhatsApp Share Hook
@@ -152,11 +153,28 @@ export default function TripDetailsPage() {
   // Trip documents
   const { data: docsRes, refetch: refetchDocuments } = useQuery({
     queryKey: ['documents', 'Trip', tripEntityId],
-    queryFn: () => documentService.getAll({ entity_type: 'Trip', entity_id: tripEntityId, per_page: 50 }),
+    queryFn: () => documentService.getAll({ entity_type: 'Trip', entity_id: tripEntityId, per_page: 200 }),
     enabled: !!tripEntityId && !!trip,
     refetchInterval: 5000,
   });
   const documents = docsRes?.data || [];
+
+  // Same query (and cache) as the map — phase, pre-trip checks, distance driven.
+  // ETA as the map worked it out, and this trip's driver photo batches — for the Share menu.
+  const [mapEta, setMapEta] = useState<EtaInfo | null>(null);
+  const [sharingUpdate, setSharingUpdate] = useState<DriverUpdate | null>(null);
+  const { data: tripUpdatesRes } = useQuery({
+    queryKey: ['operator-inbox', 'trip-driver-updates', tripEntityId],
+    queryFn: () => operatorInboxService.getTripDriverUpdates(tripEntityId!),
+    enabled: !!tripEntityId && !!trip,
+  });
+  const tripUpdates = tripUpdatesRes?.updates ?? [];
+
+  const { data: overview } = useQuery({
+    queryKey: ['trip-overview', tripEntityId],
+    queryFn: () => fleetLiveService.getTripOverview(tripEntityId!),
+    enabled: !!tripEntityId && !!trip,
+  });
 
   // Mutations
   const updateStatusMutation = useMutation({
@@ -282,11 +300,7 @@ export default function TripDetailsPage() {
     pricingBasis: tAny.quotation?.pricing_basis || tAny.pricing_basis,
   });
 
-  const customerBilling = fin.resolvedBilling;
   const driverPayout = fin.primaryDriverPayout;
-  const coDriverName = tAny.coDriver
-    ? `${tAny.coDriver.first_name || ''} ${tAny.coDriver.last_name || ''}`.trim() || null
-    : null;
   const extraDriverPayment = Number(tAny.extra_driver_payment ?? 0);
   const totalAmount = fin.totalCustomerBilling;
   const paidAmount = Number(tAny.paid_amount ?? 0);
@@ -298,18 +312,6 @@ export default function TripDetailsPage() {
   const tripType = deriveTripType(trip);
 
   const stopsArr = trip.stops || [];
-  const pickup = stopsArr.length > 0 ? stopsArr[0] : undefined;
-  const outboundStops = stopsArr.filter((s: any) => (s.leg_index ?? 0) === 0);
-
-  const dropoff = outboundStops.length > 1
-    ? outboundStops[outboundStops.length - 1]
-    : (stopsArr.length > 1 ? stopsArr[stopsArr.length - 1] : undefined);
-
-  const pickupCityName = pickup ? resolveStopName(pickup, 'Riyadh') : 'Riyadh';
-  const dropoffCityName = dropoff ? resolveStopName(dropoff, 'Al Abha') : 'Al Abha';
-  const routeLabel = tripType === 'Round Trip'
-    ? `${pickupCityName} → ${dropoffCityName} · Round Trip`
-    : `${pickupCityName} → ${dropoffCityName}`;
 
   // Derived Billing & Vehicle details for section-wise tag badges
   const rawBillingType = (trip as any).quotation?.pricing_basis || (trip as any).pricing_basis || (trip as any).billing_type;
@@ -340,66 +342,11 @@ export default function TripDetailsPage() {
     truckDisplayLabel = `Class: ${rawTonClass}`;
   }
 
-  // Status Badge Helper
-  const getStatusBadgeProps = (statusRaw: string) => {
-    const s = (statusRaw || '').trim().toLowerCase();
-    if (s === 'draft' || s === 'scheduled') {
-      return {
-        label: 'SCHEDULED',
-        badgeClass: 'bg-indigo-50 text-indigo-700 border border-indigo-200/80',
-        dotClass: 'bg-indigo-600',
-      };
-    }
-    if (s === 'loading' || s === 'atpickup') {
-      return {
-        label: 'LOADING',
-        badgeClass: 'bg-sky-50 text-sky-700 border border-sky-200/80',
-        dotClass: 'bg-sky-600',
-      };
-    }
-    if (s === 'intransit' || s === 'dispatched') {
-      return {
-        label: 'IN TRANSIT',
-        badgeClass: 'bg-amber-50 text-amber-800 border border-amber-200/80',
-        dotClass: 'bg-amber-600',
-      };
-    }
-    if (s === 'delayed') {
-      return {
-        label: 'DELAYED',
-        badgeClass: 'bg-rose-50 text-rose-700 border border-rose-200/80',
-        dotClass: 'bg-rose-600',
-      };
-    }
-    if (s === 'completed' || s === 'atdelivery') {
-      return {
-        label: 'COMPLETED',
-        badgeClass: 'bg-emerald-50 text-emerald-700 border border-emerald-200/80',
-        dotClass: 'bg-emerald-600',
-      };
-    }
-    if (s === 'invoiced' || s === 'paid') {
-      return {
-        label: 'INVOICED',
-        badgeClass: 'bg-purple-50 text-purple-700 border border-purple-200/80',
-        dotClass: 'bg-purple-600',
-      };
-    }
-    if (s === 'cancelled') {
-      return {
-        label: 'CANCELLED',
-        badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200/80',
-        dotClass: 'bg-slate-500',
-      };
-    }
-    return {
-      label: statusRaw.toUpperCase(),
-      badgeClass: 'bg-slate-100 text-slate-700 border border-slate-200/80',
-      dotClass: 'bg-slate-500',
-    };
-  };
-
-  const statusProps = getStatusBadgeProps(trip.status);
+  const chip = statusChip(trip.status);
+  const phase = overview?.phase ?? tripPhaseOf(trip.status);
+  const formatTime = (iso: string) => formatInDeploymentTz(iso, tz, 'HH:mm');
+  const formatDateTime = (iso: string) => formatInDeploymentTz(iso, tz, 'dd MMM, HH:mm');
+  const formatDate = (iso: string) => formatInDeploymentTz(iso, tz, 'dd MMM yyyy');
 
   // Date metadata: Scheduled vs Created
   const scheduledDateRaw = trip.planned_start || (trip.stops && trip.stops.length > 0 ? trip.stops[0].planned_arrival : null) || trip.createdAt;
@@ -419,10 +366,27 @@ export default function TripDetailsPage() {
     : scheduledDateStr;
 
   const createdDateRaw = trip.createdAt || (trip as any).created_at;
-  const createdDayName = createdDateRaw ? formatInDeploymentTz(createdDateRaw, tz, 'EEE') : '';
   const createdDateStr = createdDateRaw ? formatInDeploymentTz(createdDateRaw, tz, 'MMM dd, yyyy') : '';
-  const createdTimeStr = createdDateRaw ? formatInDeploymentTz(createdDateRaw, tz, 'hh:mm a') : '';
-  const fullCreatedDateText = createdDayName ? `${createdDayName}, ${createdDateStr}` : createdDateStr;
+
+  const shareEta = () => {
+    if (!overview?.unit || !mapEta) return;
+    const text = buildEtaShareText(overview.unit, mapEta, (d) => formatTime(d.toISOString()));
+    window.open(whatsAppLink(null, text), '_blank', 'noopener');
+  };
+
+  // One short phrase beside the status: what matters about the trip right now.
+  const headingTo = stopsArr.find((s: any) => !s.actual_arrival);
+  const delayReason = headingTo?.delay_note || (headingTo?.delay_reason ? String(headingTo.delay_reason).replace(/([a-z])([A-Z])/g, '$1 $2') : null);
+  const statePhrase = (() => {
+    if (phase === 'planned') {
+      if (!trip.planned_start) return null;
+      const ms = new Date(trip.planned_start).getTime() - Date.now();
+      return ms > 0 ? `Starts in ${formatDuration(ms / 1000)}` : 'Start time has passed';
+    }
+    if (phase === 'active') return headingTo ? `Heading to ${resolveStopName(headingTo, 'the next stop')}` : 'At the last stop';
+    if (phase === 'done') return trip.actual_end ? `Finished ${formatDateTime(trip.actual_end)}` : null;
+    return null;
+  })();
 
   // Dynamically build real activity steps from trip metadata and actual stops
   const activitySteps: { label: string; time: string | null; done: boolean }[] = [
@@ -487,247 +451,186 @@ export default function TripDetailsPage() {
 
   return (
     <DashboardLayout active="Trips" title="Trip Details">
-      {/* Page Layout Container — Clean, fully visible, and scrollable when needed */}
-      <div className="flex flex-col gap-3 px-3 sm:px-6 pb-24 pt-0.5 max-w-[1720px] mx-auto w-full bg-[#F8FAFC]">
-
-        {/* ── 1. STANDALONE TRIP HEADER (Directly on page, no card wrapper) ── */}
-        <div className="flex flex-wrap items-center justify-between gap-3 shrink-0 px-1 py-1">
-          {/* Left: ID, Status, Route, Metadata */}
-          <div className="flex flex-col justify-center min-w-0">
-            <div className="flex items-center gap-3">
-              <h1 className="font-mono font-black text-2xl sm:text-3xl md:text-4xl text-slate-900 dark:text-white tracking-tight">
-                {trip.ref_id || trip.id || 'TRP-0235'}
-              </h1>
-              <button
-                type="button"
-                onClick={handleCopyId}
-                aria-label="Copy trip ID"
-                className="text-[#9CA3AF] hover:text-[#2563EB] transition-colors p-0.5 cursor-pointer"
-              >
-                {copied ? <Check size={18} className="text-emerald-600" /> : <Copy size={18} />}
-              </button>
-
-              {/* Status Pill Badge (Dynamic: Indigo for Scheduled, Amber for InTransit, Emerald for Completed) */}
-              <div
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-black tracking-wide ${statusProps.badgeClass}`}
-              >
-                <span className={`w-2 h-2 rounded-full ${statusProps.dotClass}`} />
-                <span>{statusProps.label}</span>
+      <div className="mx-auto flex w-full max-w-[1720px] flex-col gap-4 px-3 pt-1 pb-24 sm:px-6">
+        {/* Header: identity and key facts left; actions and the money right; stop progress along the bottom */}
+        <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-sm dark:border-white/10 dark:bg-slate-900">
+          <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(340px,400px)]">
+            <div className="flex min-w-0 flex-col justify-between gap-4 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start gap-3.5">
+                  <CustomerMark name={trip.customer?.name} logoUrl={trip.customer?.logo_url} />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h1 className="font-mono text-2xl font-semibold tracking-tight text-foreground">{trip.ref_id || trip.id}</h1>
+                      <button type="button" onClick={handleCopyId} aria-label="Copy trip number" className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                        {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                      </button>
+                      <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', chip.className)}>
+                        <span className={cn('size-1.5 rounded-full', chip.dot)} />
+                        {chip.label}
+                      </span>
+                      {statePhrase && <span className="text-sm text-muted-foreground">{statePhrase}</span>}
+                    </div>
+                    <p className="mt-0.5 truncate text-sm font-medium text-foreground">{trip.customer?.name ?? 'No customer'}</p>
+                    <RouteChain names={stopsArr.map((st: any, i: number) => resolveStopName(st, `Stop ${i + 1}`))} />
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button size="sm" className="h-9 gap-1.5 rounded-xl bg-[#25D366] px-3 font-semibold text-white hover:bg-[#1ebe5b]">
+                        <WhatsAppIcon className="size-4" /> Share <ChevronDown className="size-3.5 opacity-80" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-64">
+                      <DropdownMenuItem onClick={() => openWhatsappShare([trip])}>
+                        <FileText size={14} className="mr-2 text-muted-foreground" /> Trip details
+                      </DropdownMenuItem>
+                      {phase === 'active' && (
+                        <DropdownMenuItem onClick={shareEta} disabled={!mapEta?.arrival}>
+                          <Navigation size={14} className="mr-2 text-muted-foreground" /> ETA{mapEta?.arrival ? ` · ${formatTime(mapEta.arrival.toISOString())}` : ' (working it out…)'}
+                        </DropdownMenuItem>
+                      )}
+                      {tripUpdates.length > 0 && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <p className="px-2 pt-1 pb-0.5 text-[11px] font-medium text-muted-foreground">Driver photos and videos</p>
+                          {tripUpdates.map((u) => (
+                            <DropdownMenuItem key={u.key} onClick={() => setSharingUpdate(u)}>
+                              <ImageIcon size={14} className="mr-2 text-muted-foreground" />
+                              <span className="min-w-0 flex-1 truncate">{updateTitle(u).replace(`${trip.ref_id} · `, '')}</span>
+                              {u.unsent_count > 0
+                                ? <span className="ml-2 rounded-full bg-emerald-500/15 px-1.5 text-[10px] font-semibold text-emerald-700">{u.unsent_count} new</span>
+                                : <Check size={12} className="ml-2 text-emerald-600" />}
+                            </DropdownMenuItem>
+                          ))}
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button variant="outline" size="sm" onClick={() => navigate(`/trips/${trip.id}/edit`)} className="h-9 gap-1.5 rounded-xl px-3">
+                    <SquarePen className="size-4" /> Edit
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon" className="size-9 rounded-xl" aria-label="More actions">
+                        <MoreHorizontal className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56">
+                      {getNextStatus(trip.status) && (
+                        <DropdownMenuItem onClick={() => { setNextStatus(nextStatusOption); setIsStatusModalOpen(true); }}>
+                          <CheckCircle2 size={14} className="mr-2 text-emerald-600" /> Advance to {nextStatusOption}
+                        </DropdownMenuItem>
+                      )}
+                      {/* A finished trip keeps its driver and truck — the server refuses a change too. */}
+                      {canCancel && (
+                        <>
+                          <DropdownMenuItem onClick={() => handleOpenReassign('driver')}>
+                            <UserIcon size={14} className="mr-2 text-muted-foreground" /> Reassign driver
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleOpenReassign('truck')}>
+                            <Truck size={14} className="mr-2 text-muted-foreground" /> Reassign truck
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                      <DropdownMenuItem onClick={() => setIsLaborModalOpen(true)}>
+                        <Coins size={14} className="mr-2 text-muted-foreground" /> Additional charges
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => { setUploadDocType(undefined); setIsUploadModalOpen(true); }}>
+                        <UploadCloud size={14} className="mr-2 text-muted-foreground" /> Upload document
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setIsActivityLogOpen(true)}>
+                        <ListOrdered size={14} className="mr-2 text-muted-foreground" /> Activity log
+                      </DropdownMenuItem>
+                      {canCancel && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setIsCancelModalOpen(true)} className="text-rose-600">
+                            <XCircle size={14} className="mr-2" /> Cancel trip
+                          </DropdownMenuItem>
+                        </>
+                      )}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
+
+              <dl className="flex flex-wrap gap-x-5 gap-y-2.5">
+                <Fact icon={CalendarClock} tone="blue" label="Scheduled" value={`${fullScheduledDateText}, ${scheduledTimeStr}`} />
+                <Fact icon={Repeat} tone="violet" label="Line type" value={tripType} />
+                <Fact icon={Receipt} tone="amber" label="Billing" value={billingTypeLabel} />
+                {trip.awb_number && <Fact icon={FileText} tone="slate" label="AWB" value={trip.awb_number} mono />}
+                {createdDateStr && <Fact icon={Clock} tone="slate" label="Created" value={createdDateStr} />}
+              </dl>
             </div>
 
-            {/* 4 Tags under Trip ID Header — Light background colors & bold characters */}
-            <div className="flex flex-col gap-2 pt-2.5">
-              {/* Row 1: 📍 Route & 🔄 Line Type */}
-              <div className="flex flex-wrap items-center gap-2">
-                {/* 1. 📍 Route Tag (Light Coral surface + bold dark text) */}
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-black bg-[#FA634E]/10 dark:bg-[#FA634E]/20 text-[#0F172A] dark:text-white border border-[#FA634E]/30">
-                  <MapPin size={13} className="text-[#FA634E] shrink-0" />
-                  <span>{pickupCityName}</span>
-                  <ArrowRight size={11} className="text-slate-500 dark:text-slate-400" />
-                  <span>{dropoffCityName}</span>
-                </div>
-
-                {/* 2. 🔄 Line Type Tag (Light Purple surface + bold text) */}
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black bg-purple-50 dark:bg-purple-950/60 text-purple-950 dark:text-purple-200 border border-purple-200/90 dark:border-purple-800/90">
-                  <Repeat size={12} className="text-purple-600 dark:text-purple-400 shrink-0 stroke-[2.5]" />
-                  <span>Line Type: {tripType}</span>
-                </div>
-              </div>
-
-              {/* Row 2: 📅 Scheduled & 🕒 Created */}
-              <div className="flex flex-wrap items-center gap-2">
-                {/* 3. 📅 Scheduled Date Tag (Light Blue surface + bold text) */}
-                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black bg-blue-50 dark:bg-blue-950/60 text-blue-950 dark:text-blue-200 border border-blue-200/90 dark:border-blue-800/90">
-                  <Calendar size={12} className="text-blue-600 dark:text-blue-400 shrink-0 stroke-[2.5]" />
-                  <span>Scheduled: {fullScheduledDateText} ({scheduledTimeStr})</span>
-                </div>
-
-                {/* 4. 🕒 Created Date Tag (Light Slate surface + bold text) */}
-                {createdDateRaw && (
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700">
-                    <Clock size={12} className="text-slate-500 dark:text-slate-400 shrink-0 stroke-[2.5]" />
-                    <span>Created: {fullCreatedDateText} {createdTimeStr ? `(${createdTimeStr})` : ''}</span>
-                  </div>
-                )}
-
-                {/* 5. AWB / Ref Tag (Light Amber surface + bold text) */}
-                {trip.awb_number && (
-                  <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-black bg-amber-50 dark:bg-amber-950/60 text-amber-950 dark:text-amber-200 border border-amber-200/90 dark:border-amber-800/90">
-                    <FileText size={12} className="text-amber-600 dark:text-amber-400 shrink-0 stroke-[2.5]" />
-                    <span>AWB: {trip.awb_number}</span>
-                  </div>
-                )}
-              </div>
+            <div className="border-t border-black/[0.06] lg:border-t-0 lg:border-l dark:border-white/10">
+              <FinancialSummary
+                f={{
+                billing: totalAmount,
+                driverPayout,
+                coDriverPayout: coDriverPayoutRaw,
+                charges: chargesTotal,
+                chargesCount: chargesList.length,
+                margin: balanceMargin,
+                marginPercent,
+                paid: paidAmount,
+                balanceDue,
+                is3PL,
+                isMonthly: fin.isMonthly,
+                monthlyRate: fin.monthlyRate,
+                quotationName: (trip as any).quotation?.name || (trip as any).rateCard?.name || tAny.quotation_name || null,
+              }}
+                onCharges={() => setIsLaborModalOpen(true)}
+              />
             </div>
           </div>
-
-          {/* Right Action Buttons */}
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Share via WhatsApp */}
-            <Button
-              size="sm"
-              onClick={() => trip && openWhatsappShare([trip])}
-              className="h-8.5 px-3 rounded-xl bg-[#10B981] hover:bg-[#059669] text-white text-xs font-bold gap-1.5 shadow-xs cursor-pointer border-none"
-            >
-              <WhatsAppIcon className="w-3.5 h-3.5 text-white" />
-              <span>Share via WhatsApp</span>
-            </Button>
-
-            {/* Route Monitor Button */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsExpandMapOpen(true)}
-              className="h-8.5 px-3 rounded-xl border-blue-200 text-blue-600 hover:bg-blue-50 text-xs font-bold gap-1.5 shadow-none cursor-pointer bg-white"
-            >
-              <MapIcon size={14} className="text-blue-600" />
-              <span>Route Monitor</span>
-            </Button>
-
-            {/* Edit Trip Button */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate(`/trips/${trip.id}/edit`)}
-              className="h-8.5 px-3 rounded-xl border-[#E5E7EB] text-[#374151] hover:bg-slate-50 text-xs font-semibold gap-1.5 shadow-none cursor-pointer bg-white"
-            >
-              <SquarePen size={13} className="text-[#6B7280]" />
-              <span>Edit</span>
-            </Button>
-
-            {/* More Actions Dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8.5 px-3 rounded-xl border-[#E5E7EB] text-[#374151] hover:bg-slate-50 text-xs font-semibold gap-1 shadow-none cursor-pointer bg-white"
-                >
-                  <span>More Actions</span>
-                  <ChevronDown size={13} className="text-[#9CA3AF]" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem onClick={() => { setNextStatus(nextStatusOption); setIsStatusModalOpen(true); }}>
-                  <CheckCircle2 size={13} className="mr-2 text-emerald-600" /> Advance to {nextStatusOption}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleOpenReassign('driver')}>
-                  <UserIcon size={13} className="mr-2 text-[#6B7280]" /> Reassign Driver
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleOpenReassign('truck')}>
-                  <Truck size={13} className="mr-2 text-[#6B7280]" /> Reassign Truck
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => setIsActivityLogOpen(true)}>
-                  <ListOrdered size={13} className="mr-2 text-[#6B7280]" /> View Full Activity Log
-                </DropdownMenuItem>
-                {canCancel && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setIsCancelModalOpen(true)} className="text-rose-600">
-                      <XCircle size={13} className="mr-2" /> Cancel Trip
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          <StopProgress stops={stopsArr} phase={phase} names={stopsArr.map((st: any, i: number) => resolveStopName(st, `Stop ${i + 1}`))} />
         </div>
 
-        {/* ── 2. UNIFIED OVERVIEW CARD: TRUCK, DRIVER, COMPANY, ALERTS (ALL IN ONE CARD, SAME 25% SIZE) ── */}
-        <div className="shrink-0">
-          <TripOverviewBarCard
-            trip={trip}
-            documents={documents}
-            onViewAllAlerts={() => setIsActivityLogOpen(true)}
-            onPreviewImage={(img) => setPreviewImage(img)}
-          />
-        </div>
-
-        {/* ── 3. VISUAL ROUTE PROGRESS (Panorama Highway Banner) ── */}
-        <div className="shrink-0">
-          <VisualRouteProgress stops={trip.stops || []} timeline={(trip as any).route_timeline} tz={tz} tripStatus={trip.status} />
-        </div>
-
-        {/* ── 4. BOTTOM ROW: TRIP PHOTO EVIDENCE (LEFT 9 COLS) + FINANCIALS (RIGHT 3 COLS) ── */}
-        <div className="grid grid-cols-12 gap-3 items-stretch">
-          {/* Left Column: Trip Photo Evidence Panel (~75% / 9 Cols) */}
-          <div className="col-span-12 lg:col-span-9 flex flex-col gap-3 h-full">
-            <TripPhotoEvidence
-              documents={documents}
-              stops={trip.stops}
-              trip={trip}
-              onPreview={(img) => setPreviewImage(img)}
-              onUpload={() => {
-                setUploadDocType(undefined);
-                setIsUploadModalOpen(true);
-              }}
-              onEvidenceUpdated={() => {
-                refetch();
-                refetchDocuments();
-              }}
-            />
-          </div>
-
-          {/* Right Column: Financials Card (~25% / 3 Cols) */}
-          <div className="col-span-12 lg:col-span-3 flex flex-col h-full">
-            <ModernFinancialsCard
-              customerBilling={customerBilling}
-              baseRate={customerBilling}
-              driverPayout={driverPayout}
-              coDriverPayout={coDriverPayoutRaw}
-              coDriverName={coDriverName}
-              is3PL={is3PL}
-              additionalCharges={chargesTotal}
-              additionalChargesCount={chargesList.length}
-              balanceMargin={balanceMargin}
-              marginPercent={marginPercent}
-              totalAmount={totalAmount}
-              paidAmount={paidAmount}
-              balanceDue={balanceDue}
-              tripType={tripType}
-              quotationName={(trip as any).quotation?.name || (trip as any).rateCard?.name || tAny.quotation_name || null}
-              quotationId={(trip as any).quotation?.id || (trip as any).rateCard?.id || trip.quotationId || null}
-              isMonthlyContract={fin.isMonthly}
-              monthlyContractRate={fin.monthlyRate}
-              pricingBasis={tAny.quotation?.pricing_basis || tAny.pricing_basis}
-              onAddCharge={() => setIsLaborModalOpen(true)}
-              onViewBreakdown={() => setIsLaborModalOpen(true)}
-            />
-          </div>
-        </div>
-
-        {/* ── 5. BOTTOM STATUS BAR (Ultra-compact footer bar) ── */}
-
-      </div>
-
-      {/* ── ROUTE MONITOR MODAL (Full Radar Live Map) ── */}
-      <Dialog open={isExpandMapOpen} onOpenChange={setIsExpandMapOpen}>
-        <DialogContent className="max-w-5xl w-full p-0 overflow-hidden rounded-2xl border border-[#E5E7EB] shadow-2xl">
-          <DialogHeader className="p-4 border-b border-[#E5E7EB] bg-white flex flex-row items-center justify-between">
-            <DialogTitle className="text-sm font-bold text-[#1F2937] flex items-center gap-2">
-              <MapIcon size={16} className="text-blue-600" />
-              Route Monitor & Live Radar — {trip.ref_id || trip.id} ({routeLabel})
-            </DialogTitle>
-          </DialogHeader>
-          <div className="w-full h-[650px]">
-            <TripLiveMapCard
+        {/* Everything important fits on one screen: map (with truck and driver on it) left;
+            money and stops right. Both change with the trip's state. */}
+        <div className="grid gap-4 lg:h-[calc(100vh-21rem)] lg:min-h-[420px] lg:grid-cols-[minmax(0,1.15fr)_minmax(380px,1fr)]">
+          <div className="h-[460px] overflow-hidden rounded-2xl border border-black/[0.06] shadow-sm lg:h-full dark:border-white/10">
+            <TripMap
               tripId={trip.id}
-              refId={trip.ref_id || trip.id}
-              pickupLat={pickup?.location_lat}
-              pickupLng={pickup?.location_lng}
-              dropoffLat={dropoff?.location_lat}
-              dropoffLng={dropoff?.location_lng}
-              pickupLabel={pickup?.location_name || undefined}
-              dropoffLabel={dropoff?.location_name || undefined}
-              resolvedLocation={trip.vehicle?.resolved_location}
-              showHeader={false}
-              showTelemetryBar={true}
-              mapHeightClassName="h-[650px]"
+              onEta={setMapEta}
+              overlay={<TruckDriverOverlay trip={trip} overview={overview} truckLabel={truckDisplayLabel} onReassign={handleOpenReassign} />}
             />
           </div>
-        </DialogContent>
-      </Dialog>
+          <div className="min-h-0 lg:h-full">
+            <div className="h-[520px] min-h-0 lg:h-full">
+              <TripStopsPanel
+                trip={trip}
+                phase={phase}
+                documents={documents}
+                formatTime={formatTime}
+                formatDateTime={formatDateTime}
+                onEvidenceUpdated={() => {
+                  refetch();
+                  refetchDocuments();
+                  queryClient.invalidateQueries({ queryKey: ['operator-inbox', 'trip-driver-updates', trip.id] });
+                }}
+                top={
+                  phase === 'planned' ? (overview?.checks ? <PreTripChecks checks={overview.checks} formatDate={formatDate} /> : null)
+                  : phase === 'done' ? <TripSummary trip={trip} overview={overview} formatDateTime={formatDateTime} />
+                  : phase === 'cancelled' ? <Banner tone="muted">Cancelled{trip.updatedAt ? ` on ${formatDateTime(trip.updatedAt)}` : ''}. The planned route is shown for reference.</Banner>
+                  : trip.status === 'Delayed' ? <Banner tone="danger"><strong>Delayed.</strong> {delayReason ?? 'No reason reported yet.'}</Banner>
+                  : null
+                }
+                bottom={
+                  <PaperworkSection
+                    documents={documents}
+                    onUpload={() => { setUploadDocType(undefined); setIsUploadModalOpen(true); }}
+                    onActivity={() => setIsActivityLogOpen(true)}
+                  />
+                }
+              />
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* ── Slide-Over Sheet Drawer: Full Activity Log ── */}
       <Sheet open={isActivityLogOpen} onOpenChange={setIsActivityLogOpen}>
@@ -821,7 +724,7 @@ export default function TripDetailsPage() {
 
       {/* ── Additional Charges Modal ── */}
       {isLaborModalOpen && trip && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal-strong/50 backdrop-blur-xs p-4 animate-fade-in">
           <div className="bg-white rounded-2xl border border-[#E5E7EB] shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
             <div className="px-5 py-3.5 border-b border-[#E5E7EB] flex items-center justify-between bg-slate-50/60">
               <div className="flex items-center gap-2">
@@ -877,91 +780,8 @@ export default function TripDetailsPage() {
         </div>
       )}
 
-      {/* ── Lightbox Image Preview Modal with GPS Geotag Evidence ── */}
-      {previewImage && (
-        <div
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fade-in"
-          onClick={() => setPreviewImage(null)}
-        >
-          <div
-            className="relative max-w-3xl w-full bg-white rounded-2xl overflow-hidden shadow-2xl border border-[#E5E7EB] flex flex-col max-h-[92vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-[#E5E7EB] px-5 py-3 shrink-0 bg-white">
-              <div>
-                <h3 className="text-sm font-bold text-[#1F2937]">{previewImage.title}</h3>
-                {previewImage.date && (
-                  <p className="text-xs text-[#6B7280]">{previewImage.date}</p>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                <a
-                  href={previewImage.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-1 text-xs font-semibold rounded-lg border border-[#E5E7EB] text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors"
-                >
-                  {previewImage.isVideo || /\.(mp4|mov|webm|avi|mkv|3gp)(\?.*)?$/i.test(previewImage.url) ? 'Open / Download Video' : 'Open Original'}
-                </a>
-                <button
-                  type="button"
-                  onClick={() => setPreviewImage(null)}
-                  className="p-1 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-            </div>
-
-            {/* Scrollable Container with Photo/Video + Geotag Evidence */}
-            <div className="overflow-y-auto p-4 space-y-3.5">
-              {/* Media Viewport (Video or Image) */}
-              <div className="flex items-center justify-center bg-black/95 rounded-xl overflow-hidden min-h-[260px] max-h-[50vh] p-2">
-                {previewImage.isVideo || /\.(mp4|mov|webm|avi|mkv|3gp)(\?.*)?$/i.test(previewImage.url) ? (
-                  <video
-                    controls
-                    autoPlay
-                    playsInline
-                    className="max-h-[48vh] w-auto max-w-full rounded-lg shadow-2xl bg-black"
-                  >
-                    <source src={previewImage.url} type="video/mp4" />
-                    <source src={previewImage.url} type="video/quicktime" />
-                    <source src={previewImage.url} />
-                    <div className="p-4 text-center text-white space-y-2">
-                      <p className="text-xs text-slate-300">Video format preview not supported directly by this browser engine.</p>
-                      <a
-                        href={previewImage.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-block px-3 py-1.5 bg-[#FA634E] text-white font-bold rounded-lg text-xs"
-                      >
-                        Download / Play in External Player
-                      </a>
-                    </div>
-                  </video>
-                ) : (
-                  <img
-                    src={previewImage.url}
-                    alt={previewImage.title}
-                    className="max-h-[44vh] w-auto max-w-full object-contain rounded-lg"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.opacity = '0.5';
-                    }}
-                  />
-                )}
-              </div>
-
-              {/* GPS Geotag Evidence Card (Location, Time, Coordinates, Map) */}
-              <GeotagEvidenceCard
-                geotag={previewImage.geotag}
-                fallbackTitle={previewImage.title}
-                fallbackLocation={previewImage.location}
-                fallbackDate={previewImage.date}
-              />
-            </div>
-          </div>
-        </div>
+      {sharingUpdate && (
+        <ShareUpdateDialog update={sharingUpdate} apiAvailable={!!tripUpdatesRes?.whatsapp_api_available} onClose={() => setSharingUpdate(null)} />
       )}
 
       {/* WhatsApp Share Dialog */}
@@ -1134,5 +954,86 @@ export default function TripDetailsPage() {
         </DialogContent>
       </Dialog>
     </DashboardLayout>
+  );
+}
+
+/** Customer logo, or their initials, beside the trip number. */
+function CustomerMark({ name, logoUrl }: { name?: string | null; logoUrl?: string | null }) {
+  const initials = (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join('') || '—';
+  return logoUrl ? (
+    <img src={resolveFileUrl(logoUrl)} alt="" className="size-12 shrink-0 rounded-xl border border-black/[0.06] bg-white object-contain p-1 dark:border-white/10" />
+  ) : (
+    <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-brand/10 text-sm font-semibold text-brand">{initials}</span>
+  );
+}
+
+/** "Airport → Medina → Jeddah", shortened to first → +N → last when long. */
+function RouteChain({ names }: { names: string[] }) {
+  if (names.length === 0) return null;
+  const shown = names.length <= 3 ? names : [names[0], `+${names.length - 2} stops`, names[names.length - 1]];
+  return (
+    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1 text-xs text-muted-foreground">
+      <MapPin className="size-3.5 shrink-0 text-brand" />
+      {shown.map((n, i) => (
+        <span key={i} className="flex min-w-0 items-center gap-1">
+          {i > 0 && <ArrowRight className="size-3 shrink-0" />}
+          <span className={cn('truncate', n.startsWith('+') ? 'rounded-md bg-muted px-1.5' : 'text-foreground')}>{n}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+const FACT_TONE = {
+  blue: 'bg-blue-500/10 text-blue-600 dark:text-blue-300',
+  violet: 'bg-violet-500/10 text-violet-600 dark:text-violet-300',
+  amber: 'bg-amber-500/10 text-amber-600 dark:text-amber-300',
+  slate: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
+} as const;
+
+function Fact({ icon: Icon, tone, label, value, mono }: { icon: typeof Clock; tone: keyof typeof FACT_TONE; label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2">
+      <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', FACT_TONE[tone])}>
+        <Icon className="size-4" />
+      </span>
+      <div className="min-w-0">
+        <dt className="text-[11px] leading-tight text-muted-foreground">{label}</dt>
+        <dd className={cn('truncate text-[13px] leading-tight font-medium text-foreground', mono && 'font-mono')}>{value}</dd>
+      </div>
+    </div>
+  );
+}
+
+/** One segment per stop along the header's bottom edge: done, next, still to go. */
+function StopProgress({ stops, phase, names }: { stops: any[]; phase: 'planned' | 'active' | 'done' | 'cancelled'; names: string[] }) {
+  if (stops.length === 0) return null;
+  const nextIdx = phase === 'active' ? stops.findIndex((s) => !s.actual_arrival) : -1;
+  const done = stops.filter((s) => s.actual_arrival).length;
+  const caption =
+    phase === 'planned' ? `${stops.length} stops planned`
+    : phase === 'cancelled' ? 'Cancelled'
+    : phase === 'done' ? `All ${stops.length} stops done`
+    : `${done} of ${stops.length} stops done${nextIdx >= 0 ? ` · next: ${names[nextIdx]}` : ''}`;
+  return (
+    <div className="flex items-center gap-3 border-t border-black/[0.06] px-4 py-2.5 dark:border-white/10">
+      <div className="flex flex-1 gap-1">
+        {stops.map((s, i) => (
+          <span
+            key={s.id ?? i}
+            title={names[i]}
+            className={cn(
+              'h-1.5 flex-1 rounded-full',
+              phase === 'cancelled' ? 'bg-stone-300 dark:bg-stone-700'
+              : phase === 'planned' ? 'bg-violet-200 dark:bg-violet-900'
+              : phase === 'done' || s.actual_arrival ? 'bg-emerald-500'
+              : i === nextIdx ? 'animate-pulse bg-blue-500'
+              : 'bg-slate-200 dark:bg-slate-700',
+            )}
+          />
+        ))}
+      </div>
+      <span className="shrink-0 text-xs text-muted-foreground">{caption}</span>
+    </div>
   );
 }

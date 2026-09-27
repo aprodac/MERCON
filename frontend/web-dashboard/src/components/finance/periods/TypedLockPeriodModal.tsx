@@ -37,18 +37,18 @@ export function TypedLockPeriodModal({
       variant="destructive"
       isLoading={isPending}
     >
-      <div className="space-y-3 text-xs text-slate-600 dark:text-slate-300">
-        <p className="text-rose-600 font-bold bg-rose-50 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200">
+      <div className="space-y-3 text-xs text-muted-foreground">
+        <p className="text-rose-600 font-bold bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 dark:bg-rose-950/40 p-2.5 rounded-xl border border-rose-200">
           Locking is permanent and CANNOT be undone. The period will become permanently read-only.
         </p>
         <p>
-          Type period name <strong className="font-mono text-slate-900 dark:text-white">{selectedPeriod.name}</strong> to confirm:
+          Type period name <strong className="fin-num text-foreground dark:text-white">{selectedPeriod.name}</strong> to confirm:
         </p>
         <Input
           placeholder={selectedPeriod.name}
           value={lockTypedConfirm}
           onChange={(e) => setLockTypedConfirm(e.target.value)}
-          className="h-9 text-xs font-mono"
+          className="h-9 text-xs fin-num"
         />
       </div>
     </ConfirmModal>
