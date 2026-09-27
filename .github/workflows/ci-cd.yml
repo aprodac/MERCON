@@ -18,7 +18,7 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to Self-Hosted Runner
-    runs-on: self-hosted
+    runs-on: [self-hosted, prod]
     # Releases reach main through a reviewed dev → main PR (docs/RELEASE_PROCESS.md);
     # release-check.yml reports on the PR, this workflow deploys the merge.
 

@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  inspect:
-    name: Inspect _prisma_migrations and physical schema
-    runs-on: self-hosted
+  inspect-dev:
+    name: Inspect DEV _prisma_migrations and physical schema
+    runs-on: [self-hosted, dev]
 
     steps:
       - name: Inspect DEV database migration ledger and physical schema
@@ -144,6 +144,13 @@ jobs:
           echo "=== DEV: API CONTAINER STATUS ==="
           docker compose -p mercon-dev ps mercon-api 2>&1 || echo "No dev API container"
 
+  # Production lives on another server since the dev move, so its half runs
+  # on the `prod` runner as a separate job.
+  inspect-prod:
+    name: Inspect PROD _prisma_migrations
+    runs-on: [self-hosted, prod]
+
+    steps:
       - name: Inspect PROD database migration ledger
         env:
           POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'mercon_admin' }}

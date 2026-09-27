@@ -116,8 +116,11 @@ services:
     ports:
       - "${FRONTEND_PORT:-3060}:80" # Exposed for Nginx proxy on a safe port
     healthcheck:
-      # nginx:alpine ships busybox wget, not curl.
-      test: ["CMD", "wget", "-qO-", "http://localhost/healthz"]
+      # nginx:alpine ships busybox wget, not curl. 127.0.0.1, not localhost:
+      # inside the container localhost resolves to ::1 first and nginx only
+      # listens on IPv4, so the check failed and the container showed
+      # "unhealthy" while serving normally.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3
