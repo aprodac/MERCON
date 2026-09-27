@@ -140,7 +140,11 @@ jobs:
           # database on a direct push to main. Mirrors ci-cd-dev.yml, which
           # has done this correctly since it was introduced.
           echo "Building images..."
-          docker compose -p mercon build
+          # One image at a time: building the API and the web dashboard in
+          # parallel peaked above this host's 3.8 GB RAM and the OOM killer took
+          # out docker-buildx and the runner service with it (2026-09-27).
+          docker compose -p mercon build mercon-api
+          docker compose -p mercon build mercon-frontend
 
           # Back up production right before the migration (after the slow
           # build, so the dump is as close as possible to the moment the schema
