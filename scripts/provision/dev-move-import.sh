@@ -66,8 +66,8 @@ case "${1:-}" in
     # migration history does not replay on an empty database). Only ever wipe
     # a database with no users in it — never one holding real data.
     users=0
-    if [[ "$(echo "SELECT to_regclass('public.users') IS NOT NULL;" | psql_here)" == "t" ]]; then
-      users="$(echo "SELECT count(*) FROM users;" | psql_here)"
+    if [[ "$(echo "SELECT to_regclass('public.\"User\"') IS NOT NULL;" | psql_here)" == "t" ]]; then
+      users="$(echo 'SELECT count(*) FROM "User";' | psql_here)"
     fi
     [[ "$users" == "0" ]] || die "dev database here already has $users users — refusing to replace it"
     echo "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" | psql_here
@@ -77,8 +77,8 @@ case "${1:-}" in
       'pg_restore --no-owner --no-privileges -U "$POSTGRES_USER" -d "$POSTGRES_DB" /tmp/dev-db.dump' \
       || echo "   pg_restore reported the errors above — checking what arrived"
     docker exec dev-postgres rm -f /tmp/dev-db.dump
-    users="$(echo 'SELECT count(*) FROM users;' | psql_here)" || die "restore failed: no users table"
-    [[ "$users" -gt 0 ]] || die "restore failed: users table is empty"
+    users="$(echo 'SELECT count(*) FROM "User";' | psql_here)" || die "restore failed: no User table"
+    [[ "$users" -gt 0 ]] || die "restore failed: User table is empty"
     echo "── Restored: $users users, $(echo 'SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL;' | psql_here) migrations applied"
     if ! docker inspect dev-api >/dev/null 2>&1; then
       echo
