@@ -11,7 +11,7 @@ import { tripService, BulkImportTripRow, BulkImportResult, TripStatus, Trip } fr
 import { quotationService, RateCard } from '@/services/quotationService';
 import { estimateTravelTimeByName, calculateArrivalDropoffTime } from '@/services/travelTimeService';
 import { useDeploymentTimezone, localDateTimeToUtcIso } from '@/lib/datetime';
-import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory, quotationMatchesRoute, validateTripDraft, buildMonthlyRoster, resolveSlotDriverPayout, dateInZone, addDaysToDateStr, type TripValidationIssue, type MonthlyCrewMember, type DayAssignmentInput } from '@mercon/shared-types';
+import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory, quotationMatchesRoute, validateTripDraft, buildMonthlyRoster, resolveSlotDriverPayout, DISPATCH_RULES, DRIVER_GROUP_LABELS, type DriverGroup, dateInZone, addDaysToDateStr, type TripValidationIssue, type MonthlyCrewMember, type DayAssignmentInput } from '@mercon/shared-types';
 import { buildStopsFromSlot, routeLegsFromSlot } from '@/utils/tripStopsHelper';
 import { parseSheet, TRIP_COLUMNS } from '@/utils/importUtils';
 import { analyzePastDateRows, applyPastStatusToRows, PastDateAnalysis } from '@/utils/pastDateTripUtils';
@@ -207,22 +207,60 @@ export function useCreateTripForm() {
   const originName = primarySlot.origin || '';
   const destinationName = primarySlot.destination || '';
 
+  // Declared up here: the driver ranking below needs the customer.
+  const [contractCustomer, setContractCustomerRaw] = useState('');
+  const contractCustomerForRec = contractCustomer;
+
+  // The trip's window, route and customer — the ranking checks clashes (1 h gap),
+  // rest (6 h) and lane / customer history against them.
+  const recSlot: any = primarySlot;
+  const recWindow = useMemo(() => {
+    const day = recSlot.date || new Date().toISOString().slice(0, 10);
+    if (!recSlot.pickupTime) return { start: undefined as string | undefined, end: undefined as string | undefined };
+    try {
+      const start = localDateTimeToUtcIso(day, recSlot.pickupTime, tz);
+      const endDay = recSlot.returnDropoffTime ? recSlot.returnDropoffDate || recSlot.dropoffDate || day : recSlot.dropoffDate || day;
+      const endTime = recSlot.returnDropoffTime || recSlot.dropoffTime;
+      const end = endTime ? localDateTimeToUtcIso(endDay, endTime, tz) : undefined;
+      return { start, end };
+    } catch {
+      return { start: undefined, end: undefined };
+    }
+  }, [recSlot.date, recSlot.pickupTime, recSlot.dropoffDate, recSlot.dropoffTime, recSlot.returnDropoffDate, recSlot.returnDropoffTime, tz]);
+
   const { data: recommendedDriversRes } = useQuery({
-    queryKey: ['recommendedDrivers', originName, destinationName, contractVehicleType, masterVehicle],
+    queryKey: [
+      'recommendedDrivers',
+      originName,
+      destinationName,
+      contractVehicleType,
+      recSlot.originLocationId,
+      recSlot.destinationLocationId,
+      contractCustomerForRec,
+      recWindow.start,
+      recWindow.end,
+    ],
     queryFn: () =>
       tripService.getRecommendedDrivers({
         origin: originName,
         destination: destinationName,
         vehicleClass: contractVehicleType,
-        vehicleId: masterVehicle,
+        originLocationId: recSlot.originLocationId || undefined,
+        destinationLocationId: recSlot.destinationLocationId || undefined,
+        customerId: contractCustomerForRec || undefined,
+        plannedStart: recWindow.start,
+        plannedEnd: recWindow.end,
       }),
-    enabled: Boolean(originName || destinationName || contractVehicleType || masterVehicle),
+    enabled: Boolean(originName || destinationName || contractVehicleType),
+    staleTime: 30_000,
   });
 
-  const bestFitGroup = originName && destinationName ? `Best for ${originName} → ${destinationName}` : 'Recommended';
+  const bestFitGroup = originName && destinationName ? `Best for ${originName} → ${destinationName}` : DRIVER_GROUP_LABELS.best;
+  const unavailableGroupLabel = `${DRIVER_GROUP_LABELS.unavailable} · needs ${DISPATCH_RULES.minRestHours} h rest and ${DISPATCH_RULES.bufferHours} h between trips`;
 
   const driverOptions = useMemo<ComboboxOption[]>(() => {
     const recMap = new Map((recommendedDriversRes || []).map((r) => [r.driverId, r]));
+    const recOrder = new Map((recommendedDriversRes || []).map((r, i) => [r.driverId, i]));
 
     const mapped = drivers
       .filter((d) => {
@@ -250,17 +288,37 @@ export function useCreateTripForm() {
           (matchedVeh as any)?.capacityKg;
 
         const capacityLabel = capacityKg != null ? getActualCapacityLabel(capacityKg) : (rec?.vehicleClass || '');
-        const facts = buildDriverFacts(d as any, rec as any, { plate: plateNumber, capacityLabel });
+        // The shared ranking (rankDrivers on the server) decides the group and the "why" chips.
+        const ranked = rec?.group ? rec : null;
+        const blocked = ranked?.group === 'unavailable';
+        const clashText = ranked?.clashStart
+          ? new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ranked.clashStart))
+          : '';
+        const facts = ranked
+          ? {
+              chips: [
+                ...(blocked && ranked.unavailabilityReason
+                  ? [{ text: clashText ? `Booked ${clashText}` : ranked.unavailabilityReason, tone: 'warn' as const }]
+                  : []),
+                ...(ranked.reasons || []).map((r: any) => ({ text: r.text, tone: r.tone })),
+              ],
+              statusLabel: blocked ? (ranked.unavailabilityReason?.startsWith('Only') ? 'Resting' : ranked.unavailabilityReason?.startsWith('Already') ? 'Booked' : 'Unavailable') : 'Free',
+              isFree: !blocked,
+            }
+          : buildDriverFacts(d as any, rec as any, { plate: plateNumber, capacityLabel });
         const isNotAvailable = !facts.isFree && d.id !== masterDriver;
         const detailsStr = formatDriverDetails(d, rec, matchedVeh);
         const firstName = d.first_name || '';
         const lastName = d.last_name || '';
         const fullName = `${firstName} ${lastName}`.trim() || `Driver #${d.id.slice(0, 5)}`;
-        const isBestFit = facts.isFree && rec?.capacityMatch === true;
+        const groupKey = ranked?.group ?? (facts.isFree ? 'other' : 'unavailable');
+        const isBestFit = groupKey === 'best';
 
         return {
           value: d.id,
-          group: isBestFit ? bestFitGroup : facts.isFree ? 'Other drivers' : 'Busy or off duty',
+          group: groupKey === 'best' ? bestFitGroup : groupKey === 'unavailable' ? unavailableGroupLabel : DRIVER_GROUP_LABELS[groupKey as DriverGroup],
+          groupKey,
+          rankIndex: recOrder.get(d.id) ?? 1e6,
           label: React.createElement(DriverPickerRow, { firstName: firstName || fullName, lastName, avatarUrl: d.avatar_url, facts }),
           selectedLabel: React.createElement(DriverSelectedLabel, { firstName: firstName || fullName, lastName, avatarUrl: d.avatar_url }),
           disabled: isNotAvailable,
@@ -282,8 +340,8 @@ export function useCreateTripForm() {
 
     // Best fit first, then other free drivers, then busy ones (disabled) — the
     // dropdown groups by first appearance, so this order is the group order.
-    const rank = (o: any) => (o.isBestFit ? 0 : o.disabled ? 2 : 1);
-    mapped.sort((a, b) => rank(a) - rank(b) || (b.score || 0) - (a.score || 0));
+    // Keep the ranking's order (group, score, rest); drivers it didn't rank go last.
+    mapped.sort((a, b) => (a.rankIndex ?? 1e6) - (b.rankIndex ?? 1e6));
 
     const assignLaterDriverOption: ComboboxOption & Record<string, any> = {
       value: 'unassigned',
@@ -301,7 +359,7 @@ export function useCreateTripForm() {
     };
 
     return [...mapped, assignLaterDriverOption];
-  }, [drivers, vehicles, recommendedDriversRes, masterDriver, bestFitGroup]);
+  }, [drivers, vehicles, recommendedDriversRes, masterDriver, bestFitGroup, tz]);
 
   const urlStepParam = searchParams.get('step');
   const initialStep = (urlStepParam && [1, 2, 3].includes(Number(urlStepParam))) ? (Number(urlStepParam) as 1 | 2 | 3) : 1;
@@ -314,7 +372,6 @@ export function useCreateTripForm() {
   const is3PLUrl = urlAssignment?.toLowerCase() === 'third_party' || urlAssignment?.toLowerCase() === '3pl';
 
   const [contractStep, setContractStep] = useState<1 | 2 | 3>(initialStep);
-  const [contractCustomer, setContractCustomerRaw] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [contractRateCategory, setContractRateCategory] = useState<string>('Single Trip');
   const [contractBillingType, setContractBillingType] = useState<string>(isMonthlyUrl ? 'Monthly' : 'Extra');

@@ -1084,3 +1084,4 @@ export * from './tripRoute';
 
 
 export * from './tripCreation';
+export * from './driverRecommendation';

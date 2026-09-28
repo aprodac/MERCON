@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import DriverAvatar from '@/components/ui/DriverAvatar';
 import { CoDriverPaySplit, type PaySplitValue } from './CoDriverPaySplit';
 import { FactChip, StatusTag, type DriverFacts } from './DriverPickerRow';
+import { DISPATCH_RULES, truckClassOfVehicle, compareTruckClass } from '@mercon/shared-types';
 import { thirdPartyService, ProviderRateCard, Previous3PLDriver } from '@/services/thirdPartyService';
 import VehicleCompatibilityBadge from '@/components/trips/shared/VehicleCompatibilityBadge';
 import { getCompatibilityRuleForClass } from '@/utils/vehicleCompatibilityRegistry';
@@ -276,7 +277,7 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
         </div>
       ) : assignmentType === 'own' ? (
         /* 2-COLUMN ASSIGNMENT WORKSPACE */
-        <div id="field-driver-vehicle" className="grid grid-cols-1 md:grid-cols-12 gap-3 items-start">
+        <div id="field-driver-vehicle" className="grid grid-cols-1 md:grid-cols-12 gap-3 items-stretch">
           {/* LEFT COLUMN: SELECTION DROPDOWNS */}
           <div className="md:col-span-7 space-y-2 border-r-0 md:border-r border-slate-100 dark:border-slate-800 pr-0 md:pr-2.5">
             {fieldErrors?.['driverVehicle'] && (
@@ -463,26 +464,65 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
               </div>
             ) : masterDriver ? (
               (() => {
+                // Crew card: who drives, with which truck, and why — fills the column.
                 const opt = driverOptions.find((d) => d.value === masterDriver) as any;
                 const facts: DriverFacts | undefined = opt?.facts;
+                const name = `${opt?.first_name || ''} ${opt?.last_name || ''}`.trim() || 'Driver';
+                const phone = opt?.raw?.phone_primary as string | undefined;
+                const truck: any = vehicles.find((v: any) => v.id === masterVehicle);
+                const truckClass = truck ? truckClassOfVehicle({ capacity_kg: truck.capacity_kg, asset_type: truck.asset_type }) : '';
+                const fit = truck && contractVehicleType ? compareTruckClass(truckClass, contractVehicleType) : null;
+                const co = coDriver ? (driverOptions.find((d) => d.value === coDriver) as any) : null;
+                // The truck has its own row below, so its chip is left out here.
+                const whyChips = (facts?.chips || []).filter((c) => !/(TON|FEET)|^No truck$/.test(c.text));
                 return (
-                  <div className="flex items-start gap-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 px-3 py-2.5 animate-fade-in">
-                    <DriverAvatar src={opt?.avatar_url} firstName={opt?.first_name || ''} lastName={opt?.last_name || ''} size="md" className="shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={`${opt?.first_name || ''} ${opt?.last_name || ''}`}>
-                        {`${opt?.first_name || ''} ${opt?.last_name || ''}`.trim() || 'Driver'}
-                      </div>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        {facts?.chips.map((c) => <FactChip key={c.text} text={c.text} tone={c.tone} />)}
-                        {facts && <StatusTag label={facts.statusLabel} isFree={facts.isFree} />}
+                  <div className="flex h-full flex-col gap-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-3 animate-fade-in">
+                    <div className="flex items-center gap-3">
+                      <DriverAvatar src={opt?.avatar_url} firstName={opt?.first_name || ''} lastName={opt?.last_name || ''} size="lg" className="shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={name}>{name}</div>
+                        {phone && (
+                          <a href={`tel:${phone}`} className="block text-xs text-slate-500 hover:text-[#c2410c]">
+                            {phone}
+                          </a>
+                        )}
+                        {facts && <div className="mt-1"><StatusTag label={facts.statusLabel} isFree={facts.isFree} /></div>}
                       </div>
                     </div>
+
+                    {whyChips.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {whyChips.map((c) => <FactChip key={c.text} text={c.text} tone={c.tone} />)}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-2">
+                      <Truck className="w-4 h-4 text-slate-400 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-bold text-slate-900 dark:text-slate-100">{truck?.plate_number || (masterVehicle === 'unassigned' ? 'Truck later' : 'No truck yet')}</div>
+                        {truck && <div className="truncate text-[11px] text-slate-500">{[truckClass, truck.asset_type].filter(Boolean).join(' · ')}</div>}
+                      </div>
+                      {fit === 'exact' && <span className="shrink-0 rounded-full bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Fits {contractVehicleType} ✓</span>}
+                      {fit === 'bigger' && <span className="shrink-0 rounded-full bg-sky-50 dark:bg-sky-950/50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">Bigger than needed</span>}
+                      {fit === 'smaller' && <span className="shrink-0 rounded-full bg-rose-50 dark:bg-rose-950/50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300">Too small for {contractVehicleType}</span>}
+                    </div>
+
+                    {co && (
+                      <div className="flex items-center gap-2 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 px-2.5 py-1.5">
+                        <DriverAvatar src={co.avatar_url} firstName={co.first_name || ''} lastName={co.last_name || ''} size="xs" className="shrink-0" />
+                        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700 dark:text-slate-200">Co-driver · {`${co.first_name || ''} ${co.last_name || ''}`.trim()}</span>
+                      </div>
+                    )}
+
+                    <p className="mt-auto text-[11px] leading-snug text-slate-400">
+                      Checked: {DISPATCH_RULES.minRestHours} h rest before pickup · {DISPATCH_RULES.bufferHours} h between trips · licence · truck size
+                    </p>
                   </div>
                 );
               })()
             ) : (
               (() => {
-                const picks = driverOptions.filter((d: any) => d.value !== 'unassigned' && !d.disabled).slice(0, 3) as any[];
+                const picks = driverOptions.filter((d: any) => d.value !== 'unassigned' && !d.disabled && (d.groupKey ? ['best', 'other'].includes(d.groupKey) : true)).slice(0, 3) as any[];
                 if (picks.length === 0) {
                   return <div className="py-4 text-center text-xs text-slate-400">No free drivers right now</div>;
                 }
