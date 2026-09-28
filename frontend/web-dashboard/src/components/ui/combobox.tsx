@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
-import { makeRoomBelow, isRoomScrollInProgress } from '@/lib/dropdownRoom';
+import { makeRoomBelow, isRoomScrollInProgress, alignWithinScreen } from '@/lib/dropdownRoom';
 import { Check, ChevronDown, Plus, Search } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -58,6 +58,9 @@ export function Combobox({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  // Line up with the field's right edge when the list would run off the screen.
+  const [popAlign, setPopAlign] = useState<'start' | 'end'>('start');
+  const listWidth = Number(/min-w-\[(\d+)px\]/.exec(popoverClassName || '')?.[1] || 0);
 
   const focusNextField = () => {
     setTimeout(() => {
@@ -135,7 +138,9 @@ export function Combobox({
   // Always open below the field; slide the page up first if it's near the bottom.
   useEffect(() => {
     if (!open) return;
+    setPopAlign(alignWithinScreen(triggerRef.current, listWidth));
     return makeRoomBelow(triggerRef.current, 320);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const handleTriggerKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -219,7 +224,7 @@ export function Combobox({
         </Button>
       </PopoverTrigger>
       <PopoverContent
-        align="start"
+        align={popAlign}
         side={side}
         sideOffset={4}
         avoidCollisions={false}

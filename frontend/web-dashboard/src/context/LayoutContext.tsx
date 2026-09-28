@@ -71,7 +71,8 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
         prev.pageTitle === m.pageTitle &&
         prev.actions === m.actions &&
         prev.onBackClick === m.onBackClick &&
-        prev.fixedViewport === m.fixedViewport
+        prev.fixedViewport === m.fixedViewport &&
+        prev.compactHeader === m.compactHeader
       ) {
         return prev;
       }
