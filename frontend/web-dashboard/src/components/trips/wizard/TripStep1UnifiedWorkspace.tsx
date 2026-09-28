@@ -218,6 +218,7 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
                 handleUpdateSlotReturnIntermediate={handleUpdateSlotReturnIntermediate}
                 fieldErrors={fieldErrors}
                 isRouteLocked={isRouteLocked}
+                autoFillArrival={!isEditMode}
               />
             ))}
           </div>

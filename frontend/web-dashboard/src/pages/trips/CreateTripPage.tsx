@@ -120,7 +120,7 @@ export default function CreateTripPage() {
       // Ctrl + Enter or Cmd + Enter (Open Review Modal on Last Step)
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         const hasOpenPopover = !!document.querySelector('[data-state="open"]');
-        if (form.contractStep === maxSteps && !hasOpenPopover && form.isStepValid(1) && !form.bulkMutation.isPending) {
+        if (form.contractStep === maxSteps && !hasOpenPopover && form.isStepValid(1) && !form.isSubmitting) {
           e.preventDefault();
           setIsReviewModalOpen(true);
           return;
@@ -134,7 +134,7 @@ export default function CreateTripPage() {
         if (!hasOpenPopover) {
           if (form.contractStep < maxSteps && form.isStepValid(form.contractStep)) {
             form.setContractStep((prev) => (prev + 1) as any);
-          } else if (form.contractStep === maxSteps && form.isStepValid(1) && !form.bulkMutation.isPending) {
+          } else if (form.contractStep === maxSteps && form.isStepValid(1) && !form.isSubmitting) {
             setIsReviewModalOpen(true);
           }
         }
@@ -143,10 +143,10 @@ export default function CreateTripPage() {
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [form.contractStep, form.canNavigateToStep, form.isStepValid, form.bulkMutation.isPending]);
+  }, [form.contractStep, form.canNavigateToStep, form.isStepValid, form.isSubmitting]);
 
   return (
-    <DashboardLayout active="Trips" title="Create New Trip" hideBackButton hideHeader fixedViewport>
+    <DashboardLayout active="Trips" title="Create New Trip" hideBackButton fixedViewport>
       <div className="px-2 sm:px-4 pb-2 sm:pb-3 animate-fade-in w-full h-full flex flex-col min-h-0">
         <div className="w-full flex-1 overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl flex flex-col min-h-0">
 
@@ -166,7 +166,7 @@ export default function CreateTripPage() {
               }
             }}
             handleDialogClose={form.handleDialogClose}
-            isPending={form.bulkMutation.isPending}
+            isPending={form.isSubmitting}
             batchTripRowsCount={form.batchTripRows.length}
             KbdBadge={KbdBadge}
             hasSavedDraft={form.hasSavedDraft}
@@ -298,7 +298,7 @@ export default function CreateTripPage() {
                     drivers={form.drivers}
                     vehicles={form.vehicles}
                     getVehicleTypeFromCapacity={getVehicleTypeFromCapacity}
-                    isPending={form.bulkMutation.isPending}
+                    isPending={form.isSubmitting}
                   />
                 )}
 
@@ -314,7 +314,7 @@ export default function CreateTripPage() {
                     setParsedRows={form.setParsedRows}
                     parseError={form.parseError}
                     handleFileSubmit={form.handleFileSubmit}
-                    isPending={form.bulkMutation.isPending}
+                    isPending={form.isSubmitting}
                   />
                 )}
           </div>
@@ -339,7 +339,7 @@ export default function CreateTripPage() {
         isOpen={form.isCreateCustomerOpen}
         onClose={() => form.setIsCreateCustomerOpen(false)}
         onSuccess={(c) => {
-          form.setContractCustomer(c.name);
+          form.setContractCustomer(c.id);
           form.queryClient.invalidateQueries({ queryKey: ['customers'] });
         }}
       />
@@ -348,7 +348,7 @@ export default function CreateTripPage() {
         onClose={() => form.setPastDateModalOpen(false)}
         onConfirm={form.handlePastDateConfirm}
         analysis={form.pastDateAnalysis}
-        isSubmitting={form.bulkMutation.isPending}
+        isSubmitting={form.isSubmitting}
       />
       <CreateThirdPartyModal
         isOpen={form.isCreateProviderOpen}
@@ -418,7 +418,7 @@ export default function CreateTripPage() {
           setIsReviewModalOpen(false);
           form.handleContractSubmit();
         }}
-        isPending={form.bulkMutation.isPending}
+        isPending={form.isSubmitting}
         contractCustomer={form.contractCustomer}
         customers={form.customers}
         contractSlots={form.contractSlots}
@@ -438,6 +438,7 @@ export default function CreateTripPage() {
         thirdPartyVehiclePlate={form.thirdPartyVehiclePlate}
         thirdPartyCost={form.thirdPartyCost}
         thirdPartyProviders={form.thirdPartyProviders}
+        rows={isReviewModalOpen ? form.buildContractRows() : []}
       />
     </DashboardLayout>
   );

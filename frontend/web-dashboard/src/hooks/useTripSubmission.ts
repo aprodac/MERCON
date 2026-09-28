@@ -1,11 +1,22 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { tripService, BulkImportTripRow, BulkImportResult, TripStatus } from '@/services/tripService';
 import { analyzePastDateRows, applyPastStatusToRows, PastDateAnalysis } from '@/utils/pastDateTripUtils';
 import { localDateTimeToUtcIso, useDeploymentTimezone } from '@/lib/datetime';
-import { buildQuotationFromSlot, buildTripRows } from '@mercon/shared-types';
+import { clearSavedTripDraft } from '@/hooks/useTripDraftStorage';
+import {
+  applyPastTripStatus,
+  buildQuotationFromSlot,
+  buildTripRows,
+  countPastTrips,
+  resolveSlotDriverPayout,
+  type TripImportRow,
+  validateTripDraft,
+} from '@mercon/shared-types';
+
+type PastChoice = 'Completed' | 'Incomplete';
 
 export function useTripSubmission(
   contractCustomer: string,
@@ -38,9 +49,17 @@ export function useTripSubmission(
 
   const [submissionResult, setSubmissionResult] = useState<BulkImportResult | null>(null);
   const [pastDateModalOpen, setPastDateModalOpen] = useState(false);
-  const [pendingRows, setPendingRows] = useState<BulkImportTripRow[] | null>(null);
+  // What the past-date modal confirms: the wizard's own trips, or rows from the grid / file import.
+  const [pendingSubmit, setPendingSubmit] = useState<{ kind: 'contract' } | { kind: 'rows'; rows: BulkImportTripRow[] } | null>(null);
   const [pastDateAnalysis, setPastDateAnalysis] = useState<PastDateAnalysis | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, boolean>>({});
+  // True from the moment the user confirms until the server answers — covers the
+  // quotation / location saves that run before the trips are sent.
+  const [isPreparing, setIsPreparing] = useState(false);
+  const busyRef = useRef(false);
+
+  const toUtcIso = (date: string, time: string) => localDateTimeToUtcIso(date, time, tz);
+  const is3PLAssignment = assignmentType === 'third_party' || assignmentType === '3pl';
 
   const bulkMutation = useMutation({
     mutationFn: (rows: BulkImportTripRow[]) => tripService.bulkImport(rows),
@@ -54,22 +73,28 @@ export function useTripSubmission(
       queryClient.invalidateQueries({ queryKey: ['rate-cards'] });
       queryClient.invalidateQueries({ queryKey: ['rate-cards-summary'] });
       queryClient.invalidateQueries({ queryKey: ['rate-cards-customer-lookup'] });
+      queryClient.invalidateQueries({ queryKey: ['quotations'] });
 
-      if (data.imported >= 1 && (data.failed === 0 || !data.failed)) {
-        toast.success(data.imported === 1 ? 'Trip created successfully' : `${data.imported} Trips created successfully`);
+      const failedRows = (data?.results || []).filter((r: any) => !r.success);
+      const errDetails = failedRows.map((r: any) => `Row #${r.row}: ${r.error || 'Failed'}`).join(' • ');
+
+      if (data.imported >= 1) {
+        // Some trips exist now — leave the form so submitting again can't create them twice.
+        clearSavedTripDraft();
+        if (!data.failed) {
+          toast.success(data.imported === 1 ? 'Trip created successfully' : `${data.imported} Trips created successfully`);
+        } else {
+          toast.error(`${data.imported} created, ${data.failed} failed`, {
+            description: `${errDetails} — create the failed ones again from New Trip.`,
+            duration: 15000,
+          });
+        }
         navigate('/trips');
       } else {
-        const failedRows = (data?.results || []).filter((r: any) => !r.success);
-        const errDetails = failedRows.map((r: any) => `Row #${r.row}: ${r.error || 'Failed'}`).join(' • ');
-        toast.error(
-          data.imported > 0
-            ? `${data.imported} succeeded, ${data.failed} failed`
-            : `Trip creation failed (${data.failed || 1} rows)`,
-          {
-            description: errDetails || 'Check inputs and try again.',
-            duration: 10000,
-          }
-        );
+        toast.error(`Trip creation failed (${data.failed || 1} rows)`, {
+          description: errDetails || 'Check inputs and try again.',
+          duration: 10000,
+        });
       }
     },
     onError: (err: any) => {
@@ -92,25 +117,36 @@ export function useTripSubmission(
     },
   });
 
-  const executeBulkSubmit = (rows: BulkImportTripRow[]) => {
-    const analysis = analyzePastDateRows(rows);
-    setPendingRows(rows);
-    setPastDateAnalysis(analysis);
-    setPastDateModalOpen(true);
-  };
-
-  const handlePastDateConfirm = (selectedStatus: TripStatus | 'Incompleted') => {
-    if (!pendingRows) return;
-    const finalRows = applyPastStatusToRows(pendingRows, selectedStatus as any);
-    setPastDateModalOpen(false);
-    setPendingRows(null);
-    bulkMutation.mutate(finalRows);
-  };
+  /** The rows the wizard will send — also what the review screen totals. */
+  const buildContractRows = (quotationIds: Record<string, string> = {}): TripImportRow[] =>
+    buildTripRows({
+      customerId: contractCustomer,
+      slots: contractSlots.map((s) => (quotationIds[s.id] ? { ...s, rateCardId: quotationIds[s.id] } : s)),
+      vehicleType: contractVehicleType,
+      rateCategory: contractRateCategory,
+      billingType: contractBillingType,
+      assignmentType,
+      masterDriver,
+      masterCoDriver,
+      masterVehicle,
+      thirdPartyProviderId,
+      thirdPartyDriverName,
+      thirdPartyDriverPhone,
+      thirdPartyVehiclePlate,
+      thirdPartyCost,
+      awbNumber,
+      dayAssignments,
+      selectedDates,
+      // Extra charges are entered once (price panel) and added to every trip.
+      charges: contractSlots[0]?.chargeLines || [],
+      toUtcIso,
+    });
 
   const validateAndFocusErrors = (): boolean => {
     const errors: Record<string, boolean> = {};
     let firstErrId: string | null = null;
     let firstErrMsg: string | null = null;
+    const isMonthly = contractBillingType?.toLowerCase() === 'monthly';
 
     if (!contractCustomer) {
       errors['customer'] = true;
@@ -154,8 +190,6 @@ export function useTripSubmission(
         }
       }
 
-      const is3PLAssignment = assignmentType === 'third_party' || assignmentType === '3pl';
-
       if (is3PLAssignment) {
         if (!thirdPartyCost || Number(thirdPartyCost) <= 0) {
           errors['thirdPartyCost'] = true;
@@ -164,19 +198,19 @@ export function useTripSubmission(
             firstErrMsg = '3PL Cost (SAR) is required.';
           }
         }
-      } else {
-        if (slot.driverPayout === undefined || slot.driverPayout === null || slot.driverPayout === '' || Number(slot.driverPayout) <= 0) {
-          errors[`driverPayout-${slot.id}`] = true;
-          errors['driverPayout'] = true;
-          if (!firstErrId) {
-            firstErrId = `field-driver-payout-${slot.id}`;
-            firstErrMsg = `Slot #${i + 1}: Driver Payout Rate is required.`;
-          }
+      } else if (!(resolveSlotDriverPayout(slot) > 0)) {
+        // Same rule the trip rows use: an edited payout, else the quotation's.
+        errors[`driverPayout-${slot.id}`] = true;
+        errors['driverPayout'] = true;
+        if (!firstErrId) {
+          firstErrId = `field-driver-payout-${slot.id}`;
+          firstErrMsg = `Slot #${i + 1}: Driver Payout Rate is required.`;
         }
       }
 
-      const isMissingPickup = !slot.date || !slot.pickupTime;
-      const isMissingDropoff = !slot.dropoffDate || !slot.dropoffTime;
+      // A monthly contract only has times — the dates come from the operating days.
+      const isMissingPickup = !slot.pickupTime || (!isMonthly && !slot.date);
+      const isMissingDropoff = !slot.dropoffTime;
 
       if (isMissingPickup || isMissingDropoff) {
         errors[`schedule-${slot.id}`] = true;
@@ -196,16 +230,14 @@ export function useTripSubmission(
           errors['dropoff'] = true;
           if (!firstErrId) {
             firstErrId = `field-dropoff-${slot.id}`;
-            firstErrMsg = `Slot #${i + 1}: Drop-off time must be after the start time.`;
+            firstErrMsg = `Slot #${i + 1}: Drop-off time is required.`;
           }
         }
-      } else {
+      } else if (!isMonthly) {
         try {
           const dropoffDateVal = slot.dropoffDate || slot.date;
-          const plannedStart = localDateTimeToUtcIso(slot.date, slot.pickupTime, tz);
-          const plannedEnd = localDateTimeToUtcIso(dropoffDateVal, slot.dropoffTime, tz);
-          const startMs = new Date(plannedStart).getTime();
-          const endMs = new Date(plannedEnd).getTime();
+          const startMs = new Date(toUtcIso(slot.date, slot.pickupTime)).getTime();
+          const endMs = new Date(toUtcIso(dropoffDateVal, slot.dropoffTime)).getTime();
           if (isNaN(startMs) || isNaN(endMs) || endMs <= startMs) {
             errors[`schedule-${slot.id}`] = true;
             errors['schedule'] = true;
@@ -249,115 +281,148 @@ export function useTripSubmission(
       return false;
     }
 
-    return true;
-  };
-
-  const handleContractSubmit = async () => {
-    if (!validateAndFocusErrors()) return;
-
-    const slotsToSaveAsQuotation = contractSlots.filter(
-      (slot) => (slot.saveAsQuotation || slot.saveAsRateCard) && Number(slot.billingAmount) > 0
-    );
-    if (slotsToSaveAsQuotation.length > 0) {
-      const { quotationService } = await import('@/services/quotationService');
-      const { locationService } = await import('@/services/locationService');
-
-      await Promise.all(
-        slotsToSaveAsQuotation.map(async (slot) => {
-          let origId = slot.originLocationId;
-          let destId = slot.destinationLocationId;
-
-          if (!origId && slot.origin.trim()) {
-            try {
-              const createdOrig = await locationService.create({
-                customerId: contractCustomer || 'default-customer-id',
-                name: slot.origin.trim(),
-                lat: slot.originLat ?? null,
-                lng: slot.originLng ?? null,
-              });
-              origId = createdOrig.id;
-            } catch (err) {
-              console.error(`Failed to ensure origin location '${slot.origin}':`, err);
-            }
-          }
-
-          if (!destId && slot.destination.trim()) {
-            try {
-              const createdDest = await locationService.create({
-                customerId: contractCustomer || 'default-customer-id',
-                name: slot.destination.trim(),
-                lat: slot.destinationLat ?? null,
-                lng: slot.destinationLng ?? null,
-              });
-              destId = createdDest.id;
-            } catch (err) {
-              console.error(`Failed to ensure destination location '${slot.destination}':`, err);
-            }
-          }
-
-          const is3PLAssignment = assignmentType === 'third_party' || assignmentType === '3pl';
-          return quotationService
-            .create(
-              buildQuotationFromSlot(slot, {
-                customerId: contractCustomer,
-                vehicleType: contractVehicleType,
-                rateCategory: contractRateCategory,
-                billingType: contractBillingType,
-                isThirdParty: is3PLAssignment,
-                originLocationId: origId,
-                destinationLocationId: destId,
-              }) as any,
-            )
-            .then((res: any) => {
-              const createdQuo = res?.data || res;
-              const quoId = createdQuo?.id;
-              if (quoId) {
-                slot.rateCardId = quoId;
-                slot.matchedRateCard = createdQuo;
-              }
-              toast.success(`Quotation '${createdQuo?.name || slot.origin + ' → ' + slot.destination}' saved to Quotations ledger!`);
-              return createdQuo;
-            })
-            .catch((err: any) => {
-              const errMsg = err.response?.data?.error?.message || err.message || 'Unknown error';
-              console.error(`Failed to save quotation for slot ${slot.id}:`, err);
-              toast.error(`Couldn't save quotation for ${slot.origin} → ${slot.destination}: ${errMsg}`);
-            });
-        })
-      );
-
-      queryClient.invalidateQueries({ queryKey: ['quotations'] });
-      queryClient.invalidateQueries({ queryKey: ['quotations-select'] });
-      queryClient.invalidateQueries({ queryKey: ['quotations-select-all'] });
-      queryClient.invalidateQueries({ queryKey: ['quotations-all'] });
-      queryClient.invalidateQueries({ queryKey: ['quotations', 'select-all'] });
-      queryClient.invalidateQueries({ queryKey: ['rate-cards'] });
-      queryClient.invalidateQueries({ queryKey: ['rate-card-lookup'] });
-      queryClient.invalidateQueries({ queryKey: ['locations-list'] });
-    }
-
-    const rows = buildTripRows({
+    // Everything else (operating days, assignment, 3PL partner) — the same checks the
+    // operator app runs, so a monthly trip can't be sent without its days.
+    const issues = validateTripDraft({
       customerId: contractCustomer,
       slots: contractSlots,
-      vehicleType: contractVehicleType,
-      rateCategory: contractRateCategory,
       billingType: contractBillingType,
       assignmentType,
       masterDriver,
-      masterCoDriver,
       masterVehicle,
       thirdPartyProviderId,
       thirdPartyDriverName,
-      thirdPartyDriverPhone,
-      thirdPartyVehiclePlate,
       thirdPartyCost,
-      awbNumber,
-      dayAssignments,
       selectedDates,
-      toUtcIso: (date, time) => localDateTimeToUtcIso(date, time, tz),
-    }) as BulkImportTripRow[];
+      toUtcIso,
+    });
+    if (issues.length > 0) {
+      const first = issues[0];
+      const onStep2 = isMonthly && (first.field === 'selectedDates' || (first.section === 'assignment' && first.field !== 'thirdPartyCost'));
+      setContractStep(onStep2 ? 2 : 1);
+      toast.error(first.message);
+      return false;
+    }
 
-    executeBulkSubmit(rows);
+    return true;
+  };
+
+  /** Saves quotations defined inline; returns slot id → new quotation id. */
+  const saveInlineQuotations = async (): Promise<Record<string, string>> => {
+    const ids: Record<string, string> = {};
+    const slotsToSave = contractSlots.filter(
+      (slot) => (slot.saveAsQuotation || slot.saveAsRateCard) && Number(slot.billingAmount) > 0
+    );
+    if (slotsToSave.length === 0) return ids;
+
+    const { quotationService } = await import('@/services/quotationService');
+    const { locationService } = await import('@/services/locationService');
+
+    await Promise.all(
+      slotsToSave.map(async (slot) => {
+        const ensureLocation = async (name: string, id: string | null | undefined, lat: any, lng: any) => {
+          if (id || !name?.trim()) return id ?? null;
+          try {
+            const created = await locationService.create({ customerId: contractCustomer, name: name.trim(), lat: lat ?? null, lng: lng ?? null });
+            return created.id;
+          } catch (err) {
+            console.error(`Failed to ensure location '${name}':`, err);
+            return null;
+          }
+        };
+        const origId = await ensureLocation(slot.origin, slot.originLocationId, slot.originLat, slot.originLng);
+        const destId = await ensureLocation(slot.destination, slot.destinationLocationId, slot.destinationLat, slot.destinationLng);
+
+        try {
+          const res: any = await quotationService.create(
+            buildQuotationFromSlot(slot, {
+              customerId: contractCustomer,
+              vehicleType: contractVehicleType,
+              rateCategory: contractRateCategory,
+              billingType: contractBillingType,
+              isThirdParty: is3PLAssignment,
+              originLocationId: origId,
+              destinationLocationId: destId,
+            }) as any,
+          );
+          const createdQuo = res?.data || res;
+          if (createdQuo?.id) ids[slot.id] = createdQuo.id;
+          toast.success(`Quotation '${createdQuo?.name || slot.origin + ' → ' + slot.destination}' saved to Quotations ledger!`);
+        } catch (err: any) {
+          // The trip still goes ahead at the typed price.
+          const errMsg = err.response?.data?.error?.message || err.message || 'Unknown error';
+          console.error(`Failed to save quotation for slot ${slot.id}:`, err);
+          toast.error(`Couldn't save quotation for ${slot.origin} → ${slot.destination}: ${errMsg}`);
+        }
+      })
+    );
+
+    queryClient.invalidateQueries({ queryKey: ['quotations'] });
+    queryClient.invalidateQueries({ queryKey: ['quotations-select'] });
+    queryClient.invalidateQueries({ queryKey: ['quotations-select-all'] });
+    queryClient.invalidateQueries({ queryKey: ['quotations-all'] });
+    queryClient.invalidateQueries({ queryKey: ['rate-cards'] });
+    queryClient.invalidateQueries({ queryKey: ['rate-card-lookup'] });
+    queryClient.invalidateQueries({ queryKey: ['locations-list'] });
+    return ids;
+  };
+
+  /** Runs once the user has confirmed: quotations first, then the trips. */
+  const runContractSubmit = async (pastChoice: PastChoice) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setIsPreparing(true);
+    try {
+      const quotationIds = await saveInlineQuotations();
+      let rows = buildContractRows(quotationIds);
+      if (countPastTrips(rows) > 0) rows = applyPastTripStatus(rows, pastChoice, tz);
+      await bulkMutation.mutateAsync(rows as BulkImportTripRow[]).catch(() => undefined); // errors are toasted in onError
+    } finally {
+      busyRef.current = false;
+      setIsPreparing(false);
+    }
+  };
+
+  const openPastDateModal = (rows: BulkImportTripRow[], pastCount: number, pending: NonNullable<typeof pendingSubmit>) => {
+    setPastDateAnalysis({ ...analyzePastDateRows(rows), hasPastTrips: true, pastTripsCount: pastCount });
+    setPendingSubmit(pending);
+    setPastDateModalOpen(true);
+  };
+
+  const handleContractSubmit = () => {
+    if (busyRef.current || bulkMutation.isPending) return;
+    if (!validateAndFocusErrors()) return;
+
+    const preview = buildContractRows();
+    const pastCount = countPastTrips(preview);
+    if (pastCount > 0) {
+      openPastDateModal(preview as BulkImportTripRow[], pastCount, { kind: 'contract' });
+      return;
+    }
+    void runContractSubmit('Incomplete');
+  };
+
+  const executeBulkSubmit = (rows: BulkImportTripRow[]) => {
+    if (busyRef.current || bulkMutation.isPending) return;
+    const analysis = analyzePastDateRows(rows);
+    if (analysis.hasPastTrips) {
+      openPastDateModal(rows, analysis.pastTripsCount, { kind: 'rows', rows });
+      return;
+    }
+    bulkMutation.mutate(rows);
+  };
+
+  const handlePastDateConfirm = (selectedStatus: TripStatus | 'Incompleted') => {
+    const pending = pendingSubmit;
+    if (!pending) return;
+    setPastDateModalOpen(false);
+    setPendingSubmit(null);
+    const choice: PastChoice = selectedStatus === 'Completed' ? 'Completed' : 'Incomplete';
+    if (pending.kind === 'contract') {
+      void runContractSubmit(choice);
+    } else {
+      bulkMutation.mutate(applyPastStatusToRows(pending.rows, selectedStatus as any));
+    }
   };
 
   const handleGridSubmit = (gridRows: any[]) => {
@@ -371,8 +436,8 @@ export function useTripSubmission(
       vehicle_id: r.vehicleId || undefined,
       rate_category: r.rateCategory || undefined,
       vehicle_type: r.vehicleType || undefined,
-      origin: r.origin.trim() || undefined,
-      destination: r.destination.trim() || undefined,
+      origin: (r.origin || '').trim() || undefined,
+      destination: (r.destination || '').trim() || undefined,
       billing_amount: r.amount ? Number(r.amount) : undefined,
       status: 'Scheduled',
     }));
@@ -408,6 +473,8 @@ export function useTripSubmission(
     pastDateAnalysis,
     handlePastDateConfirm,
     bulkMutation,
+    isSubmitting: isPreparing || bulkMutation.isPending,
+    buildContractRows,
     handleContractSubmit,
     handleGridSubmit,
     handleFileSubmit,

@@ -31,6 +31,8 @@ interface RouteWorkspaceProps {
   handleUpdateSlotReturnIntermediate?: (slotId: string, idx: number, val: string) => void;
   fieldErrors?: Record<string, boolean>;
   isRouteLocked?: boolean;
+  /** Fill the arrival from the travel-time estimate (create only — never over a saved trip). */
+  autoFillArrival?: boolean;
 }
 
 export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
@@ -53,6 +55,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
   handleUpdateSlotReturnIntermediate,
   fieldErrors = {},
   isRouteLocked = false,
+  autoFillArrival = true,
 }) => {
   const lineTypeTaxonomyOptions = getAllTaxonomyOptions('LINE_TYPE');
   const selectedTaxonomyOption = resolveTaxonomyOption('LINE_TYPE', contractRateCategory);
@@ -121,6 +124,21 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
     return null;
   }, [isMonthly, slot.date, slot.dropoffDate, slot.pickupTime, slot.dropoffTime, pickupIsoValue, dropoffIsoValue]);
 
+  // "auto" while the arrival follows the travel-time estimate; "set by you" once edited.
+  const arrivalBadge = autoFillArrival && slot.dropoffTime ? (
+    <span
+      className={cn(
+        'ml-1.5 normal-case tracking-normal rounded-full px-1.5 py-px text-[10px] font-semibold',
+        slot.dropoffManual
+          ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+          : 'bg-orange-50 text-[#c2410c] dark:bg-orange-950/40 dark:text-orange-300'
+      )}
+      title={slot.dropoffManual ? 'Clear it to use the travel-time estimate again' : 'From the travel-time estimate — edit to change'}
+    >
+      {slot.dropoffManual ? 'set by you' : 'auto'}
+    </span>
+  ) : null;
+
   return (
     <div className="space-y-3 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-3.5 rounded-2xl shadow-2xs">
       {/* COMPACT INLINE SLOT HEADER: LINE TYPE + OVERNIGHT */}
@@ -169,25 +187,6 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
             </SelectContent>
           </Select>
 
-          {/* COMPACT INLINE TRANSIT TIME BADGE NEXT TO LINE TYPE */}
-          {slot.origin && slot.destination && (
-            <TransitTimeBadge
-              origin={slot.origin}
-              destination={slot.destination}
-              originLat={slot.originLat}
-              originLng={slot.originLng}
-              destinationLat={slot.destinationLat}
-              destinationLng={slot.destinationLng}
-              pickupDate={slot.date || slot.pickupDate}
-              pickupTime={slot.pickupTime || ''}
-              onAutoSetDropoffDateTime={(dDate, dTime, isOvernight) => {
-                if (slot.pickupTime && slot.pickupTime.trim()) {
-                  handleUpdateTripSlot(slot.id, { dropoffDate: dDate, dropoffTime: dTime, isOvernight });
-                }
-              }}
-              compact
-            />
-          )}
         </div>
 
         {/* RIGHT: REMOVE SLOT (IF MULTI-SLOT) */}
@@ -203,12 +202,10 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
         )}
       </div>
 
-      {/* UNIFIED LOCATION & SCHEDULE INPUT FIELDS */}
+      {/* ROUTE: ORIGIN → STOPS → DESTINATION, THEN ONE SCHEDULE ROW */}
       <div className="w-full space-y-2.5">
-          {/* LINE 1: ORIGIN + UNIFIED PICKUP DATETIME */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-start">
             {/* ORIGIN LOCATION (BALANCED 8 COLS) */}
-            <div id={`field-origin-${slot.id}`} className="md:col-span-8 space-y-1">
+            <div id={`field-origin-${slot.id}`} className="space-y-1">
               <label className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between h-4">
                 <span className="flex items-center gap-1.5">
                   <StopRoleDot role="origin" /> ORIGIN LOCATION <span className="text-[#FA634E]">*</span>
@@ -239,17 +236,103 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
               )}
             </div>
 
-            {/* COMBINED PICKUP DATE & TIME (4 COLS) */}
-            <div id={`field-pickup-${slot.id}`} className="md:col-span-4 space-y-1">
+          {/* INTERMEDIATE STOPS (IF ANY) */}
+          {slot.intermediateLocations?.length > 0 && (
+            <div className="pl-3 border-l-2 border-dashed space-y-1.5 py-0.5" style={{ borderColor: stopRoleStyle('stop').soft }}>
+              {slot.intermediateLocations.map((stopVal: string, idx: number) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <StopRoleBadge role="stop">
+                    Stop #{idx + 1}
+                  </StopRoleBadge>
+                  <div className="flex-1">
+                    <LocationCombobox
+                      customerId={contractCustomer}
+                      value={stopVal}
+                      disabled={isRouteLocked}
+                      onChange={(locId, locObj) => {
+                        const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
+                        handleUpdateSlotIntermediate(slot.id, idx, val);
+                      }}
+                      placeholder={`Search intermediate stop #${idx + 1}...`}
+                      triggerClassName={cn(
+                        "h-8 text-xs font-semibold",
+                        isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                      )}
+                    />
+                  </div>
+                  {!isRouteLocked && (
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveSlotIntermediate(slot.id, idx)}
+                      className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!isRouteLocked && (
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => handleAddSlotIntermediate(slot.id)}
+                className="h-6.5 text-[11px] font-bold border-dashed border-slate-300 hover:border-brand hover:bg-orange-50 text-slate-600 hover:text-brand gap-1 cursor-pointer"
+              >
+                <Plus className="w-3 h-3" /> Add Intermediate Stop
+              </Button>
+            </div>
+          )}
+
+            {/* DESTINATION LOCATION (BALANCED 8 COLS) */}
+            <div id={`field-destination-${slot.id}`} className="space-y-1">
+              <label className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between h-4">
+                <span className="flex items-center gap-1.5">
+                  <StopRoleDot role="destination" /> {isRoundTrip ? 'OUTBOUND DESTINATION *' : 'DESTINATION LOCATION *'}
+                </span>
+                {(fieldErrors?.[`destination-${slot.id}`] || fieldErrors?.['destination']) && (
+                  <span className="text-[9px] font-bold text-red-500 animate-pulse">Required</span>
+                )}
+              </label>
+              <LocationCombobox
+                customerId={contractCustomer}
+                value={slot.destination}
+                disabled={isRouteLocked}
+                hasError={Boolean(fieldErrors?.[`destination-${slot.id}`] || fieldErrors?.['destination'])}
+                onChange={(locName, locObj) => handleSlotLocationChange(slot.id, 'destination', locName, locObj)}
+                placeholder="Search delivery destination (e.g. Al Baha Station)..."
+                triggerClassName={cn(
+                  "h-9 border-slate-200 bg-white text-xs font-bold text-[#3E3C3D] dark:text-slate-100 shadow-2xs w-full",
+                  isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                )}
+                precision={slot.destinationPrecision}
+              />
+              {(fieldErrors?.[`destination-${slot.id}`] || fieldErrors?.['destination']) && (
+                <div className="flex items-center gap-1.5 mt-1 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>Please select destination location</span>
+                </div>
+              )}
+            </div>
+
+
+          {/* SCHEDULE ROW: PICKUP → TRAVEL TIME → ARRIVAL */}
+          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2.5 items-end pt-1 border-t border-slate-100 dark:border-slate-800">
+            {/* PICKUP */}
+            <div id={`field-pickup-${slot.id}`} className="space-y-1 min-w-0">
               <label className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between h-4">
                 <span className="flex items-center gap-1 truncate">
                   {isMonthly ? (
                     <>
-                      <Clock className="w-3 h-3 text-emerald-600 shrink-0" /> PICKUP TIME
+                      <Clock className="w-3 h-3 text-emerald-600 shrink-0" /> PICKUP
                     </>
                   ) : (
                     <>
-                      <Calendar className="w-3 h-3 text-emerald-600 shrink-0" /> PICKUP SCHEDULE
+                      <Calendar className="w-3 h-3 text-emerald-600 shrink-0" /> PICKUP
                     </>
                   )}
                 </span>
@@ -310,104 +393,41 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                 </div>
               )}
             </div>
-          </div>
-
-          {/* INTERMEDIATE STOPS (IF ANY) */}
-          {slot.intermediateLocations?.length > 0 && (
-            <div className="pl-3 border-l-2 border-dashed space-y-1.5 py-0.5" style={{ borderColor: stopRoleStyle('stop').soft }}>
-              {slot.intermediateLocations.map((stopVal: string, idx: number) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <StopRoleBadge role="stop">
-                    Stop #{idx + 1}
-                  </StopRoleBadge>
-                  <div className="flex-1">
-                    <LocationCombobox
-                      customerId={contractCustomer}
-                      value={stopVal}
-                      disabled={isRouteLocked}
-                      onChange={(locId, locObj) => {
-                        const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
-                        handleUpdateSlotIntermediate(slot.id, idx, val);
-                      }}
-                      placeholder={`Search intermediate stop #${idx + 1}...`}
-                      triggerClassName={cn(
-                        "h-8 text-xs font-semibold",
-                        isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
-                      )}
-                    />
-                  </div>
-                  {!isRouteLocked && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveSlotIntermediate(slot.id, idx)}
-                      className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {!isRouteLocked && (
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => handleAddSlotIntermediate(slot.id)}
-                className="h-6.5 text-[11px] font-bold border-dashed border-slate-300 hover:border-brand hover:bg-orange-50 text-slate-600 hover:text-brand gap-1 cursor-pointer"
-              >
-                <Plus className="w-3 h-3" /> Add Intermediate Stop
-              </Button>
-            </div>
-          )}
-
-          {/* LINE 2: DESTINATION LOCATION + UNIFIED DROPOFF DATETIME */}
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-start pt-1 border-t border-slate-100 dark:border-slate-800">
-            {/* DESTINATION LOCATION (BALANCED 8 COLS) */}
-            <div id={`field-destination-${slot.id}`} className="md:col-span-8 space-y-1">
-              <label className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between h-4">
-                <span className="flex items-center gap-1.5">
-                  <StopRoleDot role="destination" /> {isRoundTrip ? 'OUTBOUND DESTINATION *' : 'DESTINATION LOCATION *'}
-                </span>
-                {(fieldErrors?.[`destination-${slot.id}`] || fieldErrors?.['destination']) && (
-                  <span className="text-[9px] font-bold text-red-500 animate-pulse">Required</span>
-                )}
-              </label>
-              <LocationCombobox
-                customerId={contractCustomer}
-                value={slot.destination}
-                disabled={isRouteLocked}
-                hasError={Boolean(fieldErrors?.[`destination-${slot.id}`] || fieldErrors?.['destination'])}
-                onChange={(locName, locObj) => handleSlotLocationChange(slot.id, 'destination', locName, locObj)}
-                placeholder="Search delivery destination (e.g. Al Baha Station)..."
-                triggerClassName={cn(
-                  "h-9 border-slate-200 bg-white text-xs font-bold text-[#3E3C3D] dark:text-slate-100 shadow-2xs w-full",
-                  isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
-                )}
-                precision={slot.destinationPrecision}
-              />
-              {(fieldErrors?.[`destination-${slot.id}`] || fieldErrors?.['destination']) && (
-                <div className="flex items-center gap-1.5 mt-1 text-[11px] font-bold text-rose-600 dark:text-rose-400">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>Please select destination location</span>
-                </div>
+            <div className="hidden md:flex items-center justify-center pb-2">
+              {slot.origin && slot.destination ? (
+                <TransitTimeBadge
+                  origin={slot.origin}
+                  destination={slot.destination}
+                  originLat={slot.originLat}
+                  originLng={slot.originLng}
+                  destinationLat={slot.destinationLat}
+                  destinationLng={slot.destinationLng}
+                  pickupDate={slot.date || slot.pickupDate}
+                  pickupTime={slot.pickupTime || ''}
+                  onAutoSetDropoffDateTime={(dDate, dTime, isOvernight) => {
+                    // Never overwrite an arrival the user set by hand, nor a saved trip's.
+                    if (!autoFillArrival || slot.dropoffManual || isRouteLocked) return;
+                    if (slot.pickupTime && slot.pickupTime.trim()) {
+                      handleUpdateTripSlot(slot.id, { dropoffDate: dDate, dropoffTime: dTime, isOvernight });
+                    }
+                  }}
+                  compact
+                />
+              ) : (
+                <span className="text-slate-300 dark:text-slate-600">→</span>
               )}
             </div>
-
-            {/* COMBINED DROPOFF DATE & TIME (4 COLS) */}
-            <div id={`field-dropoff-${slot.id}`} className="md:col-span-4 space-y-1">
+            {/* ARRIVAL — filled from the travel time, editable */}
+            <div id={`field-dropoff-${slot.id}`} className="space-y-1 min-w-0">
               <label className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between h-4">
                 <span className="flex items-center gap-1 truncate">
                   {isMonthly ? (
                     <>
-                      <Clock className="w-3 h-3 text-[#FA634E] shrink-0" /> {isRoundTrip ? 'OUTBOUND ARRIVAL TIME' : 'DROPOFF TIME'}
+                      <Clock className="w-3 h-3 text-[#FA634E] shrink-0" /> {isRoundTrip ? 'OUTBOUND ARRIVAL' : 'ARRIVAL'}{arrivalBadge}
                     </>
                   ) : (
                     <>
-                      <Calendar className="w-3 h-3 text-[#FA634E] shrink-0" /> {isRoundTrip ? 'OUTBOUND ARRIVAL' : 'DROPOFF SCHEDULE'}
+                      <Calendar className="w-3 h-3 text-[#FA634E] shrink-0" /> {isRoundTrip ? 'OUTBOUND ARRIVAL' : 'ARRIVAL'}{arrivalBadge}
                     </>
                   )}
                 </span>
@@ -421,6 +441,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                   onChange={(timeStr) => {
                     handleUpdateTripSlot(slot.id, {
                       dropoffTime: timeStr,
+                      dropoffManual: Boolean(timeStr),
                     });
                   }}
                   placeholder="Select dropoff time..."
@@ -436,12 +457,12 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                   error={Boolean(scheduleError || fieldErrors?.[`dropoff-${slot.id}`] || fieldErrors?.[`schedule-${slot.id}`])}
                   onChange={(isoStr) => {
                     if (!isoStr) {
-                      handleUpdateTripSlot(slot.id, { dropoffDate: '', dropoffTime: '' });
+                      handleUpdateTripSlot(slot.id, { dropoffDate: '', dropoffTime: '', dropoffManual: false });
                       return;
                     }
                     const [dPart, tPart] = isoStr.split('T');
                     const cleanTime = tPart ? tPart.substring(0, 5) : '';
-                    handleUpdateTripSlot(slot.id, { dropoffDate: dPart, dropoffTime: cleanTime });
+                    handleUpdateTripSlot(slot.id, { dropoffDate: dPart, dropoffTime: cleanTime, dropoffManual: true });
                   }}
                   placeholder="Pick date & time..."
                   showPresets={false}
@@ -449,15 +470,15 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                   className="h-9 rounded-xl border-slate-200 bg-white shadow-2xs text-xs font-semibold"
                 />
               )}
-              {!isMonthly && (scheduleError || fieldErrors?.[`dropoff-${slot.id}`] || fieldErrors?.[`schedule-${slot.id}`]) && (
+              {(scheduleError || fieldErrors?.[`dropoff-${slot.id}`] || fieldErrors?.[`schedule-${slot.id}`]) && (
                 <div className="flex items-center gap-1.5 mt-1 text-[11px] font-bold text-rose-600 dark:text-rose-400">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  <span>{scheduleError || 'Drop-off time must be after the start time.'}</span>
+                  <span>{scheduleError || (slot.dropoffTime ? 'Arrival must be after pickup.' : 'Choose an arrival time.')}</span>
                 </div>
               )}
             </div>
           </div>
-        </div>
+      </div>
 
         {/* ROUND TRIP LEG 2: RETURN JOURNEY (ONLY VISIBLE WHEN LINE TYPE IS ROUND TRIP) */}
         {isRoundTrip && (

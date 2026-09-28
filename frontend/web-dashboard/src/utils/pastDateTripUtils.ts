@@ -169,9 +169,10 @@ export function applyPastStatusToRows(
     const timeVal = row.pickup_time || row.pickupTime || row.time;
 
     if (targetStatus === 'Completed') {
+      // Only rows that already started are finished — future rows stay Scheduled.
       return {
         ...row,
-        status: 'Completed',
+        status: dateVal && isDateTimeInPast(dateVal, timeVal) ? 'Completed' : 'Scheduled',
       };
     }
 

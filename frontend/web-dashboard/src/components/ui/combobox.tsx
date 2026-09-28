@@ -204,7 +204,7 @@ export function Combobox({
         >
           <span className="truncate flex items-center gap-2">
             {selected?.icon}
-            <span>{selected ? (selected.selectedLabel ?? selected.label) : placeholder}</span>
+            <span className="min-w-0 truncate">{selected ? (selected.selectedLabel ?? selected.label) : placeholder}</span>
           </span>
           <ChevronDown className="ml-1.5 h-4 w-4 shrink-0 opacity-50 text-slate-400" />
         </Button>
@@ -296,7 +296,7 @@ export function Combobox({
                     >
                       <span className="truncate flex-1 flex items-center gap-2">
                         {option.icon}
-                        <span>{option.label}</span>
+                        <span className="min-w-0 flex-1">{option.label}</span>
                       </span>
                       <Check
                         className={cn(

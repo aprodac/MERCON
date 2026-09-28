@@ -76,8 +76,8 @@ export default function CreateTripScreen() {
       return;
     }
     setReviewOpen(false);
-    setToast({ message: res.message, type: 'success' });
-    setTimeout(() => router.replace('/' as any), 900);
+    setToast({ message: res.message, type: res.partial ? 'error' : 'success' });
+    setTimeout(() => router.replace('/' as any), res.partial ? 3500 : 900);
   };
 
   const { money } = form;
