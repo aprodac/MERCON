@@ -100,6 +100,12 @@ export interface VehicleFilters {
 
 /* ── Vehicle P&L (backend: services/vehicleFinancials) ─────────────────── */
 
+/**
+ * The dashboard and API deploy separately; an API still on the old report
+ * shape would crash the new pages, so the service refuses it with this.
+ */
+export const PNL_API_OUTDATED = 'The server is running an older version of Vehicle P&L than this page. Restart or redeploy the API (with its database migration), then reload.';
+
 /** One truck's (or the fleet's) P&L for a period — see engine.ts for definitions. */
 export interface PnlBreakdown {
   revenue: number;
@@ -365,13 +371,17 @@ export const vehicleService = {
 
   async getFinancials(id: string, range: FinancialsRange = {}): Promise<VehiclePnl> {
     const res = await api.get<ApiResponse<VehiclePnl>>(`/vehicles/${id}/financials`, { params: range });
-    return res.data.data;
+    const data = res.data.data;
+    if (!data?.totals || !data.flags || !data.ledger) throw new Error(PNL_API_OUTDATED);
+    return data;
   },
 
   /** Fleet-wide P&L — one row per truck, for ranking profit and loss. */
   async getFleetFinancials(range: FinancialsRange = {}): Promise<FleetPnl> {
     const res = await api.get<ApiResponse<FleetPnl>>('/vehicles/financials/fleet', { params: range });
-    return res.data.data;
+    const data = res.data.data;
+    if (!data?.summary?.flags || !Array.isArray(data.vehicles) || data.vehicles.some((v) => !v.flags)) throw new Error(PNL_API_OUTDATED);
+    return data;
   },
 
   /** Every truck's ownership costs and every driver's salary, for the Cost setup page. */

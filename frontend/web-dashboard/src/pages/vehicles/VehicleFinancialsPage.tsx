@@ -16,7 +16,7 @@ import { TONE_CLASSES, toneDotVar } from '@/components/finance/kit/tones';
 import { ProfitBridge } from '@/components/fleet/pnl/ProfitBridge';
 import { CostMixBar, CostMixLegend } from '@/components/fleet/pnl/CostMixBar';
 import { VehiclePnlSheet } from '@/components/fleet/pnl/VehiclePnlSheet';
-import { vehicleService, type FleetVehiclePnl } from '@/services/vehicleService';
+import { PNL_API_OUTDATED, vehicleService, type FleetVehiclePnl } from '@/services/vehicleService';
 import { resolvePeriodPreset, type PeriodPreset } from '@/lib/finance/pnlPeriodHelpers';
 import { formatDate } from '@/lib/finance/format';
 import { matchesSearch } from '@/lib/search';
@@ -202,7 +202,7 @@ export default function VehicleFinancialsPage() {
           </div>
         </div>
 
-        <ReportViewState isLoading={report.isLoading} isError={report.isError} onRetry={() => report.refetch()} isEmpty={Boolean(data && data.vehicles.length === 0)} emptyTitle="No trucks yet" emptyDescription="Add trucks under Vehicles to see their profit and loss here.">
+        <ReportViewState isLoading={report.isLoading} isError={report.isError} errorMessage={report.error?.message === PNL_API_OUTDATED ? PNL_API_OUTDATED : undefined} onRetry={() => report.refetch()} isEmpty={Boolean(data && data.vehicles.length === 0)} emptyTitle="No trucks yet" emptyDescription="Add trucks under Vehicles to see their profit and loss here.">
           {data && (
             <>
               <ProfitBridge

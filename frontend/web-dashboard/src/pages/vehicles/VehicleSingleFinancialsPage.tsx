@@ -16,7 +16,7 @@ import { ScrollTableCard } from '@/components/finance/kit/ScrollTableCard';
 import { StatusTabs } from '@/components/finance/kit/StatusTabs';
 import { TONE_CLASSES, toneDotVar } from '@/components/finance/kit/tones';
 import { PnlStatement } from '@/components/fleet/pnl/PnlStatement';
-import { vehicleService, type PnlCostLine, type VehiclePnl } from '@/services/vehicleService';
+import { PNL_API_OUTDATED, vehicleService, type PnlCostLine, type VehiclePnl } from '@/services/vehicleService';
 import { resolvePeriodPreset, type PeriodPreset } from '@/lib/finance/pnlPeriodHelpers';
 import { formatDate } from '@/lib/finance/format';
 import { COST_LINE_LABEL, COST_LINE_TONE, compact, monthShort, previousPeriod, sar0, signed0, truckIssues, type StatementKey } from '@/lib/vehiclePnl';
@@ -201,7 +201,7 @@ export default function VehicleSingleFinancialsPage() {
           </div>
         </div>
 
-        <ReportViewState isLoading={report.isLoading} isError={report.isError} onRetry={() => report.refetch()} isEmpty={false} emptyTitle="" emptyDescription="">
+        <ReportViewState isLoading={report.isLoading} isError={report.isError} errorMessage={report.error?.message === PNL_API_OUTDATED ? PNL_API_OUTDATED : undefined} onRetry={() => report.refetch()} isEmpty={false} emptyTitle="" emptyDescription="">
           {data && (
             <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
               {/* Left: the truck and its statement */}
