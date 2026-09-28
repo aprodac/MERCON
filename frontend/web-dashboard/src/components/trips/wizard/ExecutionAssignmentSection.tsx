@@ -3,6 +3,7 @@ import { Truck, User, Users, ShieldAlert, Plus, Trash2, TrendingUp, Tag, AlertCi
 import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DriverAvatar from '@/components/ui/DriverAvatar';
+import { FactChip, StatusTag, type DriverFacts } from './DriverPickerRow';
 import { thirdPartyService, ProviderRateCard, Previous3PLDriver } from '@/services/thirdPartyService';
 import VehicleCompatibilityBadge from '@/components/trips/shared/VehicleCompatibilityBadge';
 import { getCompatibilityRuleForClass } from '@/utils/vehicleCompatibilityRegistry';
@@ -312,8 +313,9 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 value={masterDriver}
                 onChange={handleDriverChange}
                 disabled={isAssignmentLocked}
-                placeholder="Select primary driver or assign later..."
-                searchPlaceholder="Search driver name, phone..."
+                placeholder="Choose a driver"
+                searchPlaceholder="Name, phone or plate"
+                popoverClassName="min-w-[360px]"
                 triggerClassName={cn(
                   "h-8 rounded-lg border-slate-200 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs",
                   isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
@@ -349,8 +351,9 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 value={masterVehicle}
                 onChange={handleVehicleChange}
                 disabled={isAssignmentLocked}
-                placeholder="Select primary vehicle or assign later..."
-                searchPlaceholder="Search plate, asset code..."
+                placeholder="Choose a truck"
+                searchPlaceholder="Plate or asset code"
+                popoverClassName="min-w-[320px]"
                 triggerClassName={cn(
                   "h-8 rounded-lg border-slate-200 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs",
                   isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
@@ -405,138 +408,83 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
             )}
           </div>
 
-          {/* RIGHT COLUMN: DYNAMIC DRIVER PROFILE SELECTION CARD */}
-          <div className="md:col-span-5 flex flex-col justify-between pl-0 md:pl-0.5 transition-all duration-300 ease-in-out">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                {masterDriver ? (masterDriver === 'unassigned' ? 'ASSIGN LATER' : 'ASSIGNED DRIVER') : 'RECOMMENDED DRIVERS'}
+          {/* RIGHT COLUMN: PICKED DRIVER, OR THE TOP PICKS FOR THIS ROUTE */}
+          <div className="md:col-span-5 min-w-0">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                {masterDriver ? (masterDriver === 'unassigned' ? 'Driver' : 'Assigned driver') : 'Top picks for this route'}
               </span>
-              {masterDriver && (
+              {masterDriver && !isAssignmentLocked && (
                 <button
                   type="button"
                   onClick={() => handleDriverChange('')}
-                  className="text-[9px] font-bold text-[#FA634E] hover:text-[#d13d0d] underline cursor-pointer transition-colors"
+                  className="text-[11px] font-semibold text-[#FA634E] hover:text-[#d13d0d] cursor-pointer"
                 >
-                  Change Driver
+                  Change
                 </button>
               )}
             </div>
 
-            <div className="flex-1 flex flex-col justify-center items-center transition-all duration-300">
-              {masterDriver ? (() => {
-                // REFINED COMPACT DRIVER VIEW
-                const selectedOpt = driverOptions.find((d) => d.value === masterDriver);
-                const firstName = (selectedOpt as any)?.first_name || (selectedOpt as any)?.raw?.first_name || 'Assigned Driver';
-                const lastName = (selectedOpt as any)?.last_name || (selectedOpt as any)?.raw?.last_name || '';
-                const optDetailsStr = (selectedOpt as any)?.detailsStr || (selectedOpt as any)?.raw?.detailsStr || '';
-                const avatarUrl = selectedOpt ? (
-                  (selectedOpt as any).avatar_url ||
-                  (selectedOpt as any).photo_url ||
-                  (selectedOpt as any).profile_picture ||
-                  (selectedOpt as any).avatarUrl ||
-                  (selectedOpt as any).photoUrl ||
-                  (selectedOpt as any).image_url ||
-                  (selectedOpt as any).raw?.avatar_url ||
-                  (selectedOpt as any).raw?.photo_url ||
-                  (selectedOpt as any).raw?.profile_picture ||
-                  (selectedOpt as any).raw?.avatarUrl ||
-                  (selectedOpt as any).raw?.photoUrl ||
-                  (selectedOpt as any).raw?.image_url ||
-                  null
-                ) : null;
-
+            {masterDriver === 'unassigned' ? (
+              <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-3 py-3 text-xs text-slate-500 dark:text-slate-400">
+                ⏳ Assign later — the trip is saved without a driver.
+              </div>
+            ) : masterDriver ? (
+              (() => {
+                const opt = driverOptions.find((d) => d.value === masterDriver) as any;
+                const facts: DriverFacts | undefined = opt?.facts;
                 return (
-                  <div className="w-full h-full min-h-[135px] py-3.5 px-3 rounded-xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 flex flex-col items-center justify-center text-center gap-2 shadow-2xs animate-fade-in transition-all">
-                    <DriverAvatar
-                      src={avatarUrl}
-                      firstName={firstName}
-                      lastName={lastName}
-                      size="lg"
-                      className="border-2 border-white dark:border-slate-800 shadow-xs mx-auto shrink-0"
-                    />
-                    <div className="w-full px-1 min-w-0">
-                      <div className="text-sm font-black text-slate-900 dark:text-slate-100 truncate" title={`${firstName} ${lastName}`}>
-                        {firstName} {lastName}
+                  <div className="flex items-start gap-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/50 px-3 py-2.5 animate-fade-in">
+                    <DriverAvatar src={opt?.avatar_url} firstName={opt?.first_name || ''} lastName={opt?.last_name || ''} size="md" className="shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={`${opt?.first_name || ''} ${opt?.last_name || ''}`}>
+                        {`${opt?.first_name || ''} ${opt?.last_name || ''}`.trim() || 'Driver'}
                       </div>
-                      <div className="text-xs text-slate-500 dark:text-slate-400 font-semibold pt-0.5 leading-tight px-2">
-                        {optDetailsStr || 'Truck: Unassigned'}
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {facts?.chips.map((c) => <FactChip key={c.text} text={c.text} tone={c.tone} />)}
+                        {facts && <StatusTag label={facts.statusLabel} isFree={facts.isFree} />}
                       </div>
                     </div>
                   </div>
                 );
-              })() : (
-                /* UNSELECTED STATE: TODAY MORNING FIRST PUSH DESIGN (CENTERED AVATAR, 2-LINE NAMES, DIVIDER LINE) */
-                <div className="w-full flex-1 flex flex-col justify-between transition-all duration-300 animate-fade-in">
-                  {(() => {
-                    const listToDisplay = driverOptions.filter((d) => d.value !== 'unassigned').slice(0, 2);
-
-                    if (listToDisplay.length === 0) {
+              })()
+            ) : (
+              (() => {
+                const picks = driverOptions.filter((d: any) => d.value !== 'unassigned' && !d.disabled).slice(0, 3) as any[];
+                if (picks.length === 0) {
+                  return <div className="py-4 text-center text-xs text-slate-400">No free drivers right now</div>;
+                }
+                return (
+                  <div className="space-y-1.5">
+                    {picks.map((p) => {
+                      const facts: DriverFacts | undefined = p.facts;
+                      // The most useful reason first: lane history, then truck, then idle time.
+                      const reasons = (facts?.chips || []).slice().sort((a, b) => (a.tone === 'good' ? -1 : 0) - (b.tone === 'good' ? -1 : 0)).slice(0, 2);
+                      const name = `${p.first_name || ''} ${p.last_name || ''}`.trim();
                       return (
-                        <div className="py-4 px-2 text-center text-xs text-slate-400 font-medium">
-                          No drivers available
+                        <div key={p.value} className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-2 py-1.5">
+                          <DriverAvatar src={p.avatar_url} firstName={p.first_name || ''} lastName={p.last_name || ''} size="sm" className="shrink-0" />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100" title={name}>{name}</div>
+                            <div className="mt-0.5 flex flex-wrap gap-1">
+                              {reasons.map((c) => <FactChip key={c.text} text={c.text} tone={c.tone} />)}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={isAssignmentLocked}
+                            onClick={() => handleDriverChange(p.value)}
+                            className="shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:border-[#FA634E] hover:text-[#FA634E] cursor-pointer disabled:opacity-50"
+                          >
+                            Assign
+                          </button>
                         </div>
                       );
-                    }
-
-                    return listToDisplay.map((dOpt, idx) => {
-                      const optLabelStr = typeof dOpt.label === 'string' ? dOpt.label : String(dOpt.label || '');
-                      const rawName = (dOpt as any).first_name
-                        ? `${(dOpt as any).first_name} ${(dOpt as any).last_name || ''}`.trim()
-                        : optLabelStr.split('(')[0].trim() || 'Driver';
-                      const nameParts = rawName.split(' ');
-                      const firstName = (dOpt as any).first_name || nameParts[0] || rawName;
-                      const lastName = (dOpt as any).last_name || nameParts.slice(1).join(' ') || '';
-
-                      const optDetailsStr = (dOpt as any).detailsStr || (optLabelStr.includes('(') ? optLabelStr.split('(')[1].replace(')', '').trim() : '');
-                      const avatarUrl =
-                        (dOpt as any).avatar_url ||
-                        (dOpt as any).photo_url ||
-                        (dOpt as any).profile_picture ||
-                        (dOpt as any).avatarUrl ||
-                        (dOpt as any).photoUrl ||
-                        (dOpt as any).image_url ||
-                        (dOpt as any).raw?.avatar_url ||
-                        (dOpt as any).raw?.photo_url ||
-                        (dOpt as any).raw?.profile_picture ||
-                        (dOpt as any).raw?.avatarUrl ||
-                        (dOpt as any).raw?.photoUrl ||
-                        (dOpt as any).raw?.image_url ||
-                        null;
-                      const isFirst = idx === 0;
-
-                      return (
-                        <button
-                          key={dOpt.value || idx}
-                          type="button"
-                          onClick={() => handleDriverChange(dOpt.value)}
-                          className={`w-full py-2 px-3 text-center transition-all duration-200 flex flex-col items-center justify-center cursor-pointer space-y-1 relative rounded-xl hover:bg-slate-50/70 dark:hover:bg-slate-800/40 text-slate-700 dark:text-slate-300 ${
-                            isFirst ? 'border-b border-slate-200/80 dark:border-slate-800/80 pb-2 mb-1' : 'pt-1'
-                          }`}
-                        >
-                          <DriverAvatar
-                            src={avatarUrl}
-                            firstName={firstName}
-                            lastName={lastName}
-                            size="md"
-                            className="border border-slate-200 dark:border-slate-700 shadow-2xs mx-auto"
-                          />
-
-                          {/* FIRST NAME AND LAST NAME IN 2 SEPARATE LINES */}
-                          <div className="text-xs font-black text-center leading-tight text-slate-900 dark:text-slate-100">
-                            <div className="truncate max-w-full">{firstName}</div>
-                            {lastName && <div className="truncate max-w-full font-medium text-[11px] text-slate-600 dark:text-slate-300">{lastName}</div>}
-                          </div>
-
-                          <div className="text-[10px] text-slate-500 font-medium leading-tight px-1 max-w-full">
-                            {optDetailsStr || 'Truck: Unassigned'}
-                          </div>
-                        </button>
-                      );
-                    });
-                  })()}
-                </div>
-              )}
-            </div>
+                    })}
+                  </div>
+                );
+              })()
+            )}
           </div>
         </div>
       ) : (

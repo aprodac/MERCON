@@ -26,6 +26,7 @@ import { useTripDraftStorage } from '@/hooks/useTripDraftStorage';
 import { useTripSubmission } from '@/hooks/useTripSubmission';
 import { useTripAccelerators } from '@/hooks/useTripAccelerators';
 import { formatDriverDetails } from '@/utils/driverStatusUtils';
+import { buildDriverFacts, DriverPickerRow, DriverSelectedLabel, FactChip, StatusTag, type FactTone } from '@/components/trips/wizard/DriverPickerRow';
 
 export const addDays = (dateStr: string, days: number): string => {
   if (!dateStr) return dateStr;
@@ -218,6 +219,8 @@ export function useCreateTripForm() {
     enabled: Boolean(originName || destinationName || contractVehicleType || masterVehicle),
   });
 
+  const bestFitGroup = originName && destinationName ? `Best for ${originName} → ${destinationName}` : 'Recommended';
+
   const driverOptions = useMemo<ComboboxOption[]>(() => {
     const recMap = new Map((recommendedDriversRes || []).map((r) => [r.driverId, r]));
 
@@ -247,44 +250,28 @@ export function useCreateTripForm() {
           (matchedVeh as any)?.capacityKg;
 
         const capacityLabel = capacityKg != null ? getActualCapacityLabel(capacityKg) : (rec?.vehicleClass || '');
-        const truckInfo = plateNumber
-          ? `Truck: ${plateNumber}${capacityLabel ? ` • ${capacityLabel}` : ''}`
-          : rec?.capacityMatch
-          ? `Truck: Fleet Available${capacityLabel ? ` • ${capacityLabel}` : ''}`
-          : 'Truck: Unassigned';
-
-        const isNotAvailable = Boolean(d.status && d.status !== 'Available' && d.status.toLowerCase() !== 'available' && d.id !== masterDriver);
+        const facts = buildDriverFacts(d as any, rec as any, { plate: plateNumber, capacityLabel });
+        const isNotAvailable = !facts.isFree && d.id !== masterDriver;
         const detailsStr = formatDriverDetails(d, rec, matchedVeh);
-        const fullName = `${d.first_name || ''} ${d.last_name || ''}`.trim() || `Driver #${d.id.slice(0, 5)}`;
-
-        const label = React.createElement(
-          'div',
-          { className: 'flex flex-col text-left leading-tight py-0.5 min-w-0 truncate' },
-          React.createElement(
-            'span',
-            { className: 'font-bold text-slate-900 dark:text-slate-100 text-xs truncate' },
-            fullName
-          ),
-          detailsStr
-            ? React.createElement(
-                'span',
-                { className: 'text-[10px] font-medium text-slate-500 dark:text-slate-400 leading-tight pt-0.5 max-w-full whitespace-normal' },
-                detailsStr
-              )
-            : null
-        );
+        const firstName = d.first_name || '';
+        const lastName = d.last_name || '';
+        const fullName = `${firstName} ${lastName}`.trim() || `Driver #${d.id.slice(0, 5)}`;
+        const isBestFit = facts.isFree && rec?.capacityMatch === true;
 
         return {
           value: d.id,
-          label,
-          selectedLabel: fullName,
+          group: isBestFit ? bestFitGroup : facts.isFree ? 'Other drivers' : 'Busy or off duty',
+          label: React.createElement(DriverPickerRow, { firstName: firstName || fullName, lastName, avatarUrl: d.avatar_url, facts }),
+          selectedLabel: React.createElement(DriverSelectedLabel, { firstName: firstName || fullName, lastName, avatarUrl: d.avatar_url }),
           disabled: isNotAvailable,
-          keywords: `${fullName} ${detailsStr} ${d.phone_primary || ''} ${d.license_number || ''} ${capacityLabel} ${d.status || ''}`,
+          keywords: `${fullName} ${detailsStr} ${d.phone_primary || ''} ${d.license_number || ''} ${plateNumber || ''} ${capacityLabel} ${d.status || ''}`,
           avatar_url: d.avatar_url,
           avatarUrl: d.avatar_url,
           first_name: d.first_name,
           last_name: d.last_name,
           detailsStr,
+          facts,
+          isBestFit,
           vehiclePlate: plateNumber,
           raw: d,
           score: rec?.score ?? 0,
@@ -293,30 +280,28 @@ export function useCreateTripForm() {
         } as ComboboxOption & Record<string, any>;
       });
 
-    mapped.sort((a, b) => {
-      const capA = a.capacityMatch ? 1 : 0;
-      const capB = b.capacityMatch ? 1 : 0;
-      if (capB !== capA) return capB - capA;
-      return (b.score || 0) - (a.score || 0);
-    });
+    // Best fit first, then other free drivers, then busy ones (disabled) — the
+    // dropdown groups by first appearance, so this order is the group order.
+    const rank = (o: any) => (o.isBestFit ? 0 : o.disabled ? 2 : 1);
+    mapped.sort((a, b) => rank(a) - rank(b) || (b.score || 0) - (a.score || 0));
 
     const assignLaterDriverOption: ComboboxOption & Record<string, any> = {
       value: 'unassigned',
+      group: 'Later',
       label: React.createElement(
-        'div',
-        { className: 'flex flex-col text-left leading-tight py-0.5' },
-        React.createElement('span', { className: 'font-bold text-amber-700 dark:text-amber-300 text-xs' }, '⏳ Assign Later'),
-        React.createElement('span', { className: 'text-[10px] text-amber-600 dark:text-amber-400' }, 'Pending fleet assignment')
+        'span',
+        { className: 'flex items-center gap-2 text-slate-600 dark:text-slate-300 font-medium' },
+        '⏳ Assign later'
       ),
-      selectedLabel: 'Assign Later',
+      selectedLabel: 'Assign later',
       first_name: 'Assign',
       last_name: 'Later',
-      detailsStr: 'Truck: Unassigned',
+      detailsStr: 'No driver yet',
       keywords: 'unassigned assign later pending null none',
     };
 
-    return [assignLaterDriverOption, ...mapped];
-  }, [drivers, vehicles, recommendedDriversRes]);
+    return [...mapped, assignLaterDriverOption];
+  }, [drivers, vehicles, recommendedDriversRes, masterDriver, bestFitGroup]);
 
   const urlStepParam = searchParams.get('step');
   const initialStep = (urlStepParam && [1, 2, 3].includes(Number(urlStepParam))) ? (Number(urlStepParam) as 1 | 2 | 3) : 1;
@@ -574,7 +559,7 @@ export function useCreateTripForm() {
     const mapped = filtered.map((v) => {
       const vClass = getVehicleClass(v);
       const actualCapLabel = getActualCapacityLabel(v.capacity_kg ?? 0);
-      const typeLabel = v.asset_type && actualCapLabel ? `${v.asset_type} • ${actualCapLabel}` : (v.asset_type || actualCapLabel || vClass);
+      const typeLabel = v.asset_type && actualCapLabel ? `${actualCapLabel} · ${v.asset_type}` : (v.asset_type || actualCapLabel || vClass);
 
       const isDriverUsual = Boolean(driverVehId && driverVehId === v.id);
       const isPreferred = !isRuleConfigured || preferredCodes.some((c) => c === vClass.toLowerCase());
@@ -601,21 +586,26 @@ export function useCreateTripForm() {
       const statusClean = v.status && v.status !== 'Available' && v.status.toLowerCase() !== 'available' ? v.status : '';
       const vehDetailsStr = [typeLabel, statusClean, hint].filter(Boolean).join(' • ');
 
+      // Plate, then chips: class, status (if not free), why it's suggested.
+      const vehChips: Array<{ text: string; tone: FactTone }> = [
+        ...(typeLabel ? [{ text: typeLabel, tone: 'neutral' as FactTone }] : []),
+        ...(statusClean ? [{ text: statusClean, tone: 'neutral' as FactTone }] : []),
+        ...(hint ? [{ text: hint, tone: (isDriverUsual ? 'good' : 'neutral') as FactTone }] : []),
+      ];
       const label = React.createElement(
         'div',
-        { className: 'flex flex-col text-left leading-tight py-0.5 min-w-0 truncate' },
+        { className: 'flex w-full min-w-0 items-center gap-2.5 py-0.5 font-normal' },
         React.createElement(
-          'span',
-          { className: 'font-bold text-slate-900 dark:text-slate-100 text-xs truncate' },
-          v.plate_number
+          'div',
+          { className: 'min-w-0 flex-1' },
+          React.createElement('div', { className: 'truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100' }, v.plate_number || typeLabel),
+          React.createElement(
+            'div',
+            { className: 'mt-0.5 flex flex-wrap gap-1' },
+            ...vehChips.map((c) => React.createElement(FactChip, { key: c.text, text: c.text, tone: c.tone }))
+          )
         ),
-        vehDetailsStr
-          ? React.createElement(
-              'span',
-              { className: 'text-[10px] font-medium text-slate-500 dark:text-slate-400 truncate pt-0.5' },
-              vehDetailsStr
-            )
-          : null
+        React.createElement(StatusTag, { label: isVehNotAvailable ? 'In use' : 'Free', isFree: !isVehNotAvailable })
       );
 
       return {
@@ -654,7 +644,7 @@ export function useCreateTripForm() {
       keywords: 'unassigned assign later pending null none',
     };
 
-    return [assignLaterVehicleOption, ...sorted];
+    return [...sorted, assignLaterVehicleOption];
   }, [vehicles, masterVehicle, contractVehicleType, masterDriver, drivers]);
 
   useEffect(() => {

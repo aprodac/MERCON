@@ -3,26 +3,17 @@ import { toast } from 'sonner';
 import {
   ChevronLeft,
   ChevronRight,
-  User,
   MapPin,
-  Layers,
   CheckCircle2,
   Loader2,
   X,
-  Compass,
   ChevronDown,
-  Truck,
   CalendarRange,
-  Users,
-  Car,
-  Building2,
-  Wrench,
   History,
   RotateCcw,
   Trash2,
   AlertTriangle,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
@@ -71,8 +62,6 @@ export const TripWizardHeader: React.FC<TripWizardHeaderProps> = ({
   restoreDraft,
   discardDraft,
 }) => {
-  const navigate = useNavigate();
-  const [isNavExpanded, setIsNavExpanded] = React.useState(false);
 
   if (submissionResult) return null;
 
@@ -86,14 +75,6 @@ export const TripWizardHeader: React.FC<TripWizardHeaderProps> = ({
       ]
     : [{ step: 1, label: '1. Configure & Dispatch', icon: MapPin }];
 
-  const quickNavItems = [
-    { label: 'Trips', path: '/trips', icon: Truck, color: 'text-orange-500 bg-orange-50 hover:bg-orange-100 border-orange-200' },
-    { label: 'Monthly Board', path: '/trips/monthly', icon: CalendarRange, color: 'text-purple-600 bg-purple-50 hover:bg-purple-100 border-purple-200' },
-    { label: 'Drivers', path: '/drivers', icon: Users, color: 'text-emerald-600 bg-emerald-50 hover:bg-emerald-100 border-emerald-200' },
-    { label: 'Vehicles', path: '/vehicles', icon: Car, color: 'text-blue-600 bg-blue-50 hover:bg-blue-100 border-blue-200' },
-    { label: 'Customers', path: '/customers', icon: Building2, color: 'text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border-indigo-200' },
-    { label: 'Maintenance', path: '/maintenance', icon: Wrench, color: 'text-rose-500 bg-rose-50 hover:bg-rose-100 border-rose-200' },
-  ];
 
   return (
     <div className="border-b border-black/[0.06] bg-white dark:bg-slate-900 shrink-0 grid grid-cols-3 items-center px-5 py-2.5 gap-3 w-full relative">
@@ -121,77 +102,7 @@ export const TripWizardHeader: React.FC<TripWizardHeaderProps> = ({
           </Button>
         )}
 
-        {/* 3 CHEVRONS MULTI-COLOR INLINE HORIZONTAL NAV LAUNCHER */}
-        {!isNavExpanded ? (
-          <button
-            type="button"
-            onClick={() => setIsNavExpanded(true)}
-            className="h-8 px-3 rounded-xl border border-slate-200/90 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/80 text-slate-800 dark:text-slate-200 text-xs font-extrabold flex items-center gap-2 shadow-2xs cursor-pointer group transition-all"
-            title="Click to expand horizontal module navigation"
-          >
-            <Compass className="w-3.5 h-3.5 text-brand shrink-0" />
-            <span>Navigate Page</span>
-            {/* 3 CHEVRONS IN DIFFERENT VIBRANT COLORS >>> */}
-            <span className="flex items-center -space-x-0.5 font-black text-sm tracking-tighter shrink-0">
-              <span className="text-[#FA634E] group-hover:translate-x-0.5 transition-transform duration-150">›</span>
-              <span className="text-[#F59E0B] group-hover:translate-x-0.5 transition-transform duration-150 delay-75">›</span>
-              <span className="text-[#10B981] group-hover:translate-x-0.5 transition-transform duration-150 delay-150">›</span>
-            </span>
-          </button>
-        ) : null}
       </div>
-
-      {/* INLINE HORIZONTAL EXPANDED NAVIGATION BAR (OVERLAYS TOP BAR ON EXPAND) */}
-      {isNavExpanded && (
-        <div className="absolute inset-x-4 top-1/2 -translate-y-1/2 z-50 bg-white dark:bg-slate-900 border border-brand/40 dark:border-slate-700 rounded-2xl p-1.5 px-3 shadow-lg flex items-center justify-between gap-2 animate-in fade-in zoom-in-95 duration-200">
-          <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar py-0.5">
-            {/* COLLAPSE BUTTON <<< */}
-            <button
-              type="button"
-              onClick={() => setIsNavExpanded(false)}
-              className="h-7 px-2.5 rounded-lg bg-orange-50 dark:bg-orange-950/60 border border-brand/40 text-brand text-xs font-black flex items-center gap-1 shrink-0 cursor-pointer hover:bg-brand hover:text-white transition-colors"
-              title="Collapse navigation bar"
-            >
-              <span className="flex items-center -space-x-0.5 font-black text-sm tracking-tighter">
-                <span>‹</span>
-                <span>‹</span>
-                <span>‹</span>
-              </span>
-              <span>Hide</span>
-            </button>
-
-            <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1 shrink-0" />
-
-            {/* QUICK MODULE NAVIGATION PILLS */}
-            {quickNavItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.path}
-                  type="button"
-                  onClick={() => {
-                    setIsNavExpanded(false);
-                    navigate(item.path);
-                  }}
-                  className={`h-7 px-2.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shrink-0 shadow-2xs ${item.color}`}
-                >
-                  <Icon className="w-3.5 h-3.5 shrink-0" />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setIsNavExpanded(false)}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
-            title="Close"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
 
       {/* Center: Stepper Pills — Mathematically Centered */}
       <div className="flex items-center justify-center gap-2">
