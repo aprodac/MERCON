@@ -2,11 +2,27 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
+import https from 'https'
+import dns from 'dns'
+
+const devAgent = new https.Agent({
+  lookup: (h, o, cb) => {
+    if (typeof o === 'function') {
+      cb = o;
+      o = {};
+    }
+    if (h === 'dev.mercon.tech') {
+      if (o && o.all) return cb(null, [{ address: '82.29.167.128', family: 4 }]);
+      return cb(null, '82.29.167.128', 4);
+    }
+    return dns.lookup(h, o, cb);
+  },
+});
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, '');
-  const proxyTarget = env.VITE_BACKEND_URL || (env.VITE_API_URL && env.VITE_API_URL.startsWith('http') ? env.VITE_API_URL.replace(/\/api\/?$/, '') : 'http://187.127.180.98');
-  const isDevTarget = proxyTarget.includes('187.127.180.98') || proxyTarget.includes('dev.mercon.tech');
+  const proxyTarget = env.VITE_BACKEND_URL || (env.VITE_API_URL && env.VITE_API_URL.startsWith('http') ? env.VITE_API_URL.replace(/\/api\/?$/, '') : 'https://dev.mercon.tech');
+  const isDevTarget = proxyTarget.includes('dev.mercon.tech');
 
   return {
     plugins: [
@@ -28,12 +44,14 @@ export default defineConfig(({ mode }) => {
           target: proxyTarget,
           changeOrigin: true,
           secure: false,
+          agent: isDevTarget ? devAgent : undefined,
           headers: isDevTarget ? { host: 'dev.mercon.tech' } : undefined,
         },
         '/uploads': {
           target: proxyTarget,
           changeOrigin: true,
           secure: false,
+          agent: isDevTarget ? devAgent : undefined,
           headers: isDevTarget ? { host: 'dev.mercon.tech' } : undefined,
         },
         '/socket.io': {
@@ -41,6 +59,7 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
           ws: true,
+          agent: isDevTarget ? devAgent : undefined,
           headers: isDevTarget ? { host: 'dev.mercon.tech' } : undefined,
         },
       },
