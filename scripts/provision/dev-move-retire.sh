@@ -17,6 +17,11 @@ my_ips="$(hostname -I)"
 if [[ -z "$new_ip" || " $my_ips " == *" $new_ip "* ]]; then
   die "dev.mercon.tech still resolves to this server ($new_ip) — switch DNS first"
 fi
+# An AAAA record still pointing here would keep sending IPv6 visitors (and
+# Let's Encrypt, which prefers IPv6) to this server after dev is removed.
+for v6 in $(getent ahostsv6 dev.mercon.tech | awk '$1 ~ /:/ && $1 !~ /^::ffff:/ {print $1}' | sort -u); do
+  ip -6 addr | grep -qi " ${v6}/" && die "dev.mercon.tech still has an AAAA record for this server ($v6) — delete or repoint it first"
+done
 echo "dev.mercon.tech → $new_ip (not this server). Retiring the dev stack here."
 
 for c in dev-api dev-frontend dev-postgres; do

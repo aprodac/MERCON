@@ -42,11 +42,15 @@ e.g. from a local checkout of `ilan`:
 6. **New server: restore the data** — `bash /root/dev-move-import.sh restore-db`
 7. **DNS**: point `dev.mercon.tech`, `www.dev.mercon.tech`,
    `api-dev.mercon.tech` and `dev-api.mercon.tech` (A records) at
-   **82.29.167.128**. Wait until `dig +short dev.mercon.tech` shows the new IP,
-   then open https://dev.mercon.tech and sign in.
+   **82.29.167.128**. Also delete any **AAAA** (IPv6) record on those names:
+   it would still point at the old server, and IPv6 visitors — and Let's
+   Encrypt, which tries IPv6 first — would keep landing there (this broke the
+   first `certbot renew --dry-run`). Wait until `dig +short dev.mercon.tech`
+   shows the new IP and `dig +short AAAA dev.mercon.tech` shows nothing, then
+   open https://dev.mercon.tech and sign in.
 8. **New server: certificate renewal check** — `certbot renew --dry-run`.
 9. **Old server: retire dev** — `bash /root/dev-move-retire.sh`
-   (refuses to run until DNS points elsewhere). It removes the dev containers
+   (refuses to run while the A or AAAA record still points at the old server). It removes the dev containers
    and nginx site and keeps the dev volume, uploads and key for a week,
    printing the command to delete them.
 
