@@ -7,7 +7,6 @@ import { ScheduleServicePanel } from './ScheduleServicePanel';
 import { CommercialSection } from './CommercialSection';
 import { ExecutionAssignmentSection } from './ExecutionAssignmentSection';
 import { TripEconomicsSection } from './TripEconomicsSection';
-import { MonthlyDaysSelector } from './MonthlyDaysSelector';
 import TransitTimeBadge from '@/components/trips/TransitTimeBadge';
 import { ComboboxOption } from '@/components/ui/combobox';
 import { cn } from '@/lib/utils';

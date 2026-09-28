@@ -19,6 +19,7 @@ import PastDateTripConfirmModal from '@/components/trips/PastDateTripConfirmModa
 import TripWizardHeader from '@/components/trips/wizard/TripWizardHeader';
 import TripStep1UnifiedWorkspace from '@/components/trips/wizard/TripStep1UnifiedWorkspace';
 import { MonthlyDaysSelector } from '@/components/trips/wizard/MonthlyDaysSelector';
+import { resolveSlotDriverPayout } from '@mercon/shared-types';
 import { TripReviewConfirmModal } from '@/components/trips/wizard/TripReviewConfirmModal';
 import TripBatchGeneratorTab from '@/components/trips/wizard/TripBatchGeneratorTab';
 import TripBulkImportTab from '@/components/trips/wizard/TripBulkImportTab';
@@ -252,20 +253,20 @@ export default function CreateTripPage() {
                         selectedDates={form.selectedDates}
                         setSelectedDates={form.setSelectedDates}
                         contractSlotsCount={form.contractSlots.length}
-                        masterDriver={form.masterDriver}
-                        masterCoDriver={form.masterCoDriver}
-                        setMasterCoDriver={form.setMasterCoDriver}
-                        masterVehicle={form.masterVehicle}
-                        handleDriverChange={form.handleDriverChange}
-                        handleVehicleChange={form.handleVehicleChange}
+                        crewMode={form.monthlyCrewMode}
+                        setCrewMode={form.setMonthlyCrewMode}
+                        crew={form.monthlyCrew}
+                        setCrew={form.setMonthlyCrew}
+                        dayOverrides={form.monthlyDayOverrides}
+                        setDayOverrides={form.setMonthlyDayOverrides}
+                        dayAssignments={form.dayAssignments}
+                        rows={form.buildContractRows()}
+                        basePayout={resolveSlotDriverPayout(form.contractSlots[0] || ({} as any))}
                         driverOptions={form.driverOptions}
                         vehicleOptions={form.vehicleOptions}
                         drivers={form.drivers}
                         vehicles={form.vehicles}
-                        dayAssignments={form.dayAssignments}
-                        setDayAssignments={form.setDayAssignments}
                         assignmentType={form.assignmentType}
-                        setAssignmentType={form.setAssignmentType}
                         thirdPartyProviderId={form.thirdPartyProviderId}
                         setThirdPartyProviderId={form.setThirdPartyProviderId}
                         thirdPartyProviders={form.thirdPartyProviders}
@@ -278,7 +279,6 @@ export default function CreateTripPage() {
                         thirdPartyCost={form.thirdPartyCost}
                         setThirdPartyCost={form.setThirdPartyCost}
                         contractVehicleType={form.contractVehicleType}
-                        setContractVehicleType={form.setContractVehicleType}
                       />
                     )}
                   </div>

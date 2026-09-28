@@ -696,7 +696,7 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
             <div className="space-y-1">
               <div className="flex items-center justify-between min-h-[16px] mb-1 min-w-0">
                 <label className="text-[10px] font-extrabold text-[#FA634E] uppercase tracking-wider truncate">
-                  3PL COST (SAR) *
+                  3PL COST PER TRIP (SAR) *
                 </label>
                 {!isAssignmentLocked && matchedRate && (
                   <button

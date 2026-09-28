@@ -640,8 +640,12 @@ export function buildTripRows(input: TripRowsInput): TripImportRow[] {
         return;
       }
 
+      // A day set to 'unassigned' ("assign later") has nobody — it must not
+      // fall back to the main driver. An empty day value inherits the main one.
       const pick = (dayValue?: string, master?: string) =>
-        dayValue && dayValue !== 'unassigned'
+        dayValue === 'unassigned'
+          ? undefined
+          : dayValue
           ? dayValue
           : master && master !== 'unassigned'
           ? master
@@ -685,6 +689,56 @@ export function buildTripRows(input: TripRowsInput): TripImportRow[] {
   });
 
   return rows;
+}
+
+/* ─── Monthly roster ────────────────────────────────────────────────────── */
+
+/** One driver (with truck and optional co-driver) of a monthly contract's crew. */
+export interface MonthlyCrewMember {
+  driverId: string;
+  vehicleId: string;
+  coDriverId?: string;
+  /** Per-trip split when there is a co-driver; the default is 50/50 of the lane payout. */
+  driverPayoutOverride?: number;
+  coDriverPayoutOverride?: number;
+}
+
+/**
+ * Who works each operating day. With one crew member every day is theirs; with
+ * several they take turns day by day in date order. Days changed by hand
+ * (`overrides`) win over the rotation, field by field.
+ */
+export function buildMonthlyRoster(input: {
+  dates: string[];
+  crew: MonthlyCrewMember[];
+  overrides?: Record<string, Partial<DayAssignmentInput>>;
+}): Record<string, DayAssignmentInput & { driverId: string; vehicleId: string }> {
+  const crew = input.crew.length > 0 ? input.crew : [{ driverId: '', vehicleId: '' }];
+  const out: Record<string, DayAssignmentInput & { driverId: string; vehicleId: string }> = {};
+  [...input.dates].sort().forEach((date, idx) => {
+    const base = crew[idx % crew.length];
+    const day: DayAssignmentInput & { driverId: string; vehicleId: string } = {
+      driverId: base.driverId,
+      vehicleId: base.vehicleId,
+      ...(base.coDriverId ? { coDriverId: base.coDriverId } : {}),
+      ...(base.driverPayoutOverride !== undefined ? { driverPayoutOverride: base.driverPayoutOverride } : {}),
+      ...(base.coDriverPayoutOverride !== undefined ? { coDriverPayoutOverride: base.coDriverPayoutOverride } : {}),
+    };
+    const o = input.overrides?.[date];
+    if (o) {
+      Object.assign(day, o);
+      day.driverId = day.driverId ?? '';
+      day.vehicleId = day.vehicleId ?? '';
+      // Removing the co-driver on a day also drops that day's split.
+      if (o.coDriverId === '') {
+        delete day.coDriverId;
+        delete day.driverPayoutOverride;
+        delete day.coDriverPayoutOverride;
+      }
+    }
+    out[date] = day;
+  });
+  return out;
 }
 
 /* ─── Validation ────────────────────────────────────────────────────────── */

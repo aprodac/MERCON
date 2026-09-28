@@ -11,7 +11,7 @@ import { tripService, BulkImportTripRow, BulkImportResult, TripStatus, Trip } fr
 import { quotationService, RateCard } from '@/services/quotationService';
 import { estimateTravelTimeByName, calculateArrivalDropoffTime } from '@/services/travelTimeService';
 import { useDeploymentTimezone, localDateTimeToUtcIso } from '@/lib/datetime';
-import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory, quotationMatchesRoute, validateTripDraft, type TripValidationIssue } from '@mercon/shared-types';
+import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory, quotationMatchesRoute, validateTripDraft, buildMonthlyRoster, type TripValidationIssue, type MonthlyCrewMember, type DayAssignmentInput } from '@mercon/shared-types';
 import { buildStopsFromSlot, routeLegsFromSlot } from '@/utils/tripStopsHelper';
 import { parseSheet, TRIP_COLUMNS } from '@/utils/importUtils';
 import { analyzePastDateRows, applyPastStatusToRows, PastDateAnalysis } from '@/utils/pastDateTripUtils';
@@ -819,6 +819,36 @@ export function useCreateTripForm() {
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [dayAssignments, setDayAssignments] = useState<Record<string, { driverId: string; vehicleId: string; coDriverId?: string; driverPayoutOverride?: number; coDriverPayoutOverride?: number }>>({});
 
+  // Monthly crew: one driver for every day, or several taking turns. Days changed
+  // by hand are kept apart so re-picking days or drivers never loses them. The
+  // day-by-day roster (dayAssignments, what gets saved) is always rebuilt from these.
+  const [monthlyCrewMode, setMonthlyCrewMode] = useState<'one' | 'rotate'>('one');
+  const [monthlyCrew, setMonthlyCrew] = useState<MonthlyCrewMember[]>([{ driverId: '', vehicleId: '' }]);
+  const [monthlyDayOverrides, setMonthlyDayOverrides] = useState<Record<string, Partial<DayAssignmentInput>>>({});
+  const isMonthlyBilling = contractBillingType === 'Monthly';
+
+  // Entering Monthly with a driver already picked on step 1: start the crew with them.
+  useEffect(() => {
+    if (!isMonthlyBilling) return;
+    setMonthlyCrew((crew) =>
+      crew[0]?.driverId || !masterDriver || masterDriver === 'unassigned'
+        ? crew
+        : [{ ...crew[0], driverId: masterDriver, vehicleId: crew[0]?.vehicleId || masterVehicle }, ...crew.slice(1)]
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMonthlyBilling]);
+
+  useEffect(() => {
+    if (!isMonthlyBilling) return;
+    const crew = monthlyCrewMode === 'one' ? monthlyCrew.slice(0, 1) : monthlyCrew;
+    setDayAssignments(buildMonthlyRoster({ dates: selectedDates, crew, overrides: monthlyDayOverrides }));
+    // The first crew member is the contract's main driver (checks + summary); the
+    // co-driver lives on each day, so no contract-wide co-driver is carried over.
+    setMasterDriver(crew[0]?.driverId || '');
+    setMasterVehicle(crew[0]?.vehicleId || '');
+    setMasterCoDriver('');
+  }, [isMonthlyBilling, selectedDates, monthlyCrew, monthlyCrewMode, monthlyDayOverrides]);
+
   const [isCreateDriverOpen, setIsCreateDriverOpen] = useState(false);
   const [isCreateVehicleOpen, setIsCreateVehicleOpen] = useState(false);
   const [isCreateCustomerOpen, setIsCreateCustomerOpen] = useState(false);
@@ -1329,6 +1359,12 @@ export function useCreateTripForm() {
     setSelectedDates,
     dayAssignments,
     setDayAssignments,
+    monthlyCrewMode,
+    setMonthlyCrewMode,
+    monthlyCrew,
+    setMonthlyCrew,
+    monthlyDayOverrides,
+    setMonthlyDayOverrides,
     getAvailableRateCardsForLane,
     handleOpenCreateQuotation,
     getCompatibilityRuleForClass,
