@@ -81,6 +81,13 @@ interface TripStep1UnifiedWorkspaceProps {
   status?: string;
   awbNumber?: string;
   setAwbNumber?: (val: string) => void;
+  /** The next section to fill ("when", "driver"…) — it gets highlighted. */
+  nextSection?: string | null;
+  lastCustomerTrip?: any | null;
+  onRepeatTrip?: (trip: any) => void;
+  lastLaneTime?: { date: string; time: string; label: string } | null;
+  handleUpdateSlotIntermediateFee?: (slotId: string, index: number, fee: string) => void;
+  handleUpdateSlotReturnIntermediateFee?: (slotId: string, index: number, fee: string) => void;
 }
 
 export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps> = ({
@@ -152,6 +159,12 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
   status = '',
   awbNumber = '',
   setAwbNumber,
+  nextSection = null,
+  lastCustomerTrip = null,
+  onRepeatTrip,
+  lastLaneTime = null,
+  handleUpdateSlotIntermediateFee,
+  handleUpdateSlotReturnIntermediateFee,
 }) => {
   const primarySlot = contractSlots[0] || {};
   const isRoundTrip = isRoundTripProp ?? isRoundTripCategory(contractRateCategory);
@@ -191,12 +204,49 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
             fieldErrors={fieldErrors}
             assignmentType={assignmentType}
             isEditMode={isEditMode}
+            lastCustomerTrip={lastCustomerTrip}
+            onRepeatTrip={onRepeatTrip}
           />
 
-          {/* ROUTE WORKSPACE (ALWAYS 100% INTERACTIVE UNLESS ROUTE LOCKED) */}
+          {/* WHEN: right under the price — the next thing people fill */}
           <div className="space-y-3">
             {contractSlots.map((slot) => (
               <RouteWorkspace
+                part="schedule"
+                highlightSchedule={nextSection === 'when'}
+                lastLaneTime={lastLaneTime}
+                key={`when-${slot.id}`}
+                slot={slot}
+                contractCustomer={contractCustomer}
+                isRoundTrip={isRoundTrip}
+                canRemoveSlot={contractSlots.length > 1}
+                contractRateCategory={contractRateCategory}
+                contractBillingType={contractBillingType}
+                setContractRateCategory={setContractRateCategory}
+                triggerRateLookupForSlots={triggerRateLookupForSlots}
+                handleAddSlotIntermediate={handleAddSlotIntermediate}
+                handleRemoveTripSlot={handleRemoveTripSlot}
+                handleSlotLocationChange={handleSlotLocationChange}
+                handleUpdateTripSlot={handleUpdateTripSlot}
+                handleRemoveSlotIntermediate={handleRemoveSlotIntermediate}
+                handleUpdateSlotIntermediate={handleUpdateSlotIntermediate}
+                handleAddSlotReturnIntermediate={handleAddSlotReturnIntermediate}
+                handleRemoveSlotReturnIntermediate={handleRemoveSlotReturnIntermediate}
+                handleUpdateSlotReturnIntermediate={handleUpdateSlotReturnIntermediate}
+                fieldErrors={fieldErrors}
+                isRouteLocked={isRouteLocked}
+                autoFillArrival={!isEditMode}
+              />
+            ))}
+          </div>
+
+          {/* ROUTE: folds into one line once a quotation fills it */}
+          <div className="space-y-3">
+            {contractSlots.map((slot) => (
+              <RouteWorkspace
+                part="route"
+                handleUpdateSlotIntermediateFee={handleUpdateSlotIntermediateFee}
+                handleUpdateSlotReturnIntermediateFee={handleUpdateSlotReturnIntermediateFee}
                 key={slot.id}
                 slot={slot}
                 contractCustomer={contractCustomer}
@@ -231,6 +281,7 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
               {(
                 <ExecutionAssignmentSection
                   waitingForPrice={!isEditMode && !isQuotationDefinedOrSelected}
+                  highlight={nextSection === 'driver'}
                   assignmentType={assignmentType}
                   setAssignmentType={setAssignmentType}
                   masterVehicle={masterVehicle}
@@ -275,6 +326,7 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
                 handleUpdateTripSlot={handleUpdateTripSlot}
                 isBaseBillingLocked={isBaseBillingLocked}
                 isFinancialsLocked={isFinancialsLocked}
+                fieldErrors={fieldErrors}
               />
               </div>
             </div>

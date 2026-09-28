@@ -39,6 +39,8 @@ interface ExecutionAssignmentSectionProps {
   isAssignmentLocked?: boolean;
   /** No price yet: the Own fleet / 3PL switch works, the fields below wait. */
   waitingForPrice?: boolean;
+  /** The driver / partner is the next thing to fill. */
+  highlight?: boolean;
   status?: string;
   awbNumber?: string;
   setAwbNumber?: (val: string) => void;
@@ -72,6 +74,7 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
   vehicles = [],
   isAssignmentLocked = false,
   waitingForPrice = false,
+  highlight = false,
   status = '',
   awbNumber = '',
   setAwbNumber,
@@ -178,7 +181,18 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
   const selectedVehicleObj = vehicleOptions.find((v) => v.value === masterVehicle);
 
   return (
-    <div className="p-3.5 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs space-y-2.5">
+    <div
+      id="section-driver"
+      className={cn(
+        'p-3.5 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs space-y-2.5 transition-shadow',
+        highlight && 'ring-2 ring-amber-400/70 border-amber-300'
+      )}
+    >
+      {highlight && (
+        <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+          ↓ Next: {assignmentType === 'third_party' || assignmentType === '3pl' ? 'choose the 3PL partner and cost' : 'who drives?'}
+        </p>
+      )}
       <div className="flex items-center justify-between pb-1.5 border-b border-slate-100 dark:border-slate-800">
         <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
           <Truck className="w-3.5 h-3.5 text-[#FA634E] shrink-0" /> ASSIGNMENT
@@ -226,24 +240,12 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
       <div className={cn('transition-opacity duration-200', waitingForPrice && 'opacity-50 pointer-events-none select-none')} inert={waitingForPrice}>
       {isMonthly ? (
         <div className="space-y-2">
-          {/* VEHICLE CLASS */}
-          {setContractVehicleType && (
-            <div className="space-y-1">
-              <label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                VEHICLE CLASS
-              </label>
-              <Select value={contractVehicleType} onValueChange={setContractVehicleType}>
-                <SelectTrigger className="h-8 rounded-lg border-slate-200 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs">
-                  <SelectValue placeholder="Select Vehicle Class..." />
-                </SelectTrigger>
-                <SelectContent className="z-[9999]">
-                  {['10 TON', '20 TON', '40 FEET', '3-4 TON', '5 TON'].map((vClass) => (
-                    <SelectItem key={vClass} value={vClass} className="text-xs font-bold py-1.5 cursor-pointer">
-                      {vClass}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {/* TRUCK CLASS — set by the quotation, shown here for reference */}
+          {contractVehicleType && (
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+              <span>Truck class</span>
+              <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 font-semibold text-slate-700 dark:text-slate-200">{contractVehicleType}</span>
+              <span>· from the price</span>
             </div>
           )}
 
@@ -267,51 +269,6 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 <span>Please select an assignment choice: Driver & Vehicle or Assign Later.</span>
               </div>
             )}
-            {/* AWB / REFERENCE NUMBER */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                  AWB / REFERENCE NUMBER
-                </label>
-                <span className="text-[9px] font-bold text-slate-400">Optional</span>
-              </div>
-              <input
-                type="text"
-                disabled={isAssignmentLocked}
-                value={awbNumber}
-                onChange={(e) => setAwbNumber?.(e.target.value)}
-                placeholder="Vehicle no. or client waybill no."
-                className={cn(
-                  "h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100",
-                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
-                )}
-              />
-            </div>
-
-            {/* VEHICLE CLASS */}
-            {setContractVehicleType && (
-              <div className="space-y-1">
-                <label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                  VEHICLE CLASS
-                </label>
-                <Select disabled={isAssignmentLocked} value={contractVehicleType} onValueChange={setContractVehicleType}>
-                  <SelectTrigger className={cn(
-                    "h-8 rounded-lg border-slate-200 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs",
-                    isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
-                  )}>
-                    <SelectValue placeholder="Select Vehicle Class..." />
-                  </SelectTrigger>
-                  <SelectContent className="z-[9999]">
-                    {['10 TON', '20 TON', '40 FEET', '3-4 TON', '5 TON'].map((vClass) => (
-                      <SelectItem key={vClass} value={vClass} className="text-xs font-bold py-1.5 cursor-pointer">
-                        {vClass}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-
             {/* PRIMARY DRIVER SELECTION */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
@@ -432,6 +389,36 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                   <Plus className="w-3 h-3" /> Add Co-Driver / Reliever
                 </button>
               )
+            )}
+
+            {/* AWB / REFERENCE NUMBER */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                  AWB / REFERENCE NUMBER
+                </label>
+                <span className="text-[9px] font-bold text-slate-400">Optional</span>
+              </div>
+              <input
+                type="text"
+                disabled={isAssignmentLocked}
+                value={awbNumber}
+                onChange={(e) => setAwbNumber?.(e.target.value)}
+                placeholder="Vehicle no. or client waybill no."
+                className={cn(
+                  "h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100",
+                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                )}
+              />
+            </div>
+
+            {/* TRUCK CLASS — set by the quotation, shown here for reference */}
+            {contractVehicleType && (
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                <span>Truck class</span>
+                <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 font-semibold text-slate-700 dark:text-slate-200">{contractVehicleType}</span>
+                <span>· from the price</span>
+              </div>
             )}
           </div>
 

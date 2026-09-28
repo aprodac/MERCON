@@ -11,7 +11,7 @@ import { tripService, BulkImportTripRow, BulkImportResult, TripStatus, Trip } fr
 import { quotationService, RateCard } from '@/services/quotationService';
 import { estimateTravelTimeByName, calculateArrivalDropoffTime } from '@/services/travelTimeService';
 import { useDeploymentTimezone, localDateTimeToUtcIso } from '@/lib/datetime';
-import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory, quotationMatchesRoute, validateTripDraft, buildMonthlyRoster, type TripValidationIssue, type MonthlyCrewMember, type DayAssignmentInput } from '@mercon/shared-types';
+import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory, quotationMatchesRoute, validateTripDraft, buildMonthlyRoster, resolveSlotDriverPayout, dateInZone, addDaysToDateStr, type TripValidationIssue, type MonthlyCrewMember, type DayAssignmentInput } from '@mercon/shared-types';
 import { buildStopsFromSlot, routeLegsFromSlot } from '@/utils/tripStopsHelper';
 import { parseSheet, TRIP_COLUMNS } from '@/utils/importUtils';
 import { analyzePastDateRows, applyPastStatusToRows, PastDateAnalysis } from '@/utils/pastDateTripUtils';
@@ -1091,27 +1091,117 @@ export function useCreateTripForm() {
     };
   }, [contractSlots, assignmentType, thirdPartyCost]);
 
-  useFormKeyboardShortcuts({
-    onSave: () => {
-      if (contractStep < 4) {
-        if (isStepValid(contractStep)) {
-          setContractStep((prev) => (prev + 1) as any);
-        }
-      } else {
-        if (batchTripRows.length > 0 && isStepValid(3) && !isSubmitting) {
-          handleContractSubmit();
-        }
-      }
-    },
-    onCancel: () => {
-      if (contractStep > 1) {
-        setContractStep((prev) => (prev - 1) as any);
-      } else {
-        handleDialogClose();
-      }
-    },
-    isSubmitting,
-  });
+  // Enter moves to the next field. Ctrl+S / Ctrl+Enter are handled by the page (same as
+  // the main button); Esc only closes dropdowns — it never leaves the page.
+  useFormKeyboardShortcuts({ isSubmitting });
+
+  /** Anything typed that leaving the page would lose. */
+  const isDirty = Boolean(
+    contractCustomer ||
+      contractSlots.some((s: any) => s.origin || s.destination || s.pickupTime) ||
+      selectedDates.length > 0 ||
+      masterDriver
+  );
+
+  /** This customer's latest trip — offered as "Repeat last trip". */
+  const lastCustomerTrip = useMemo(
+    () => (contractCustomer ? (recentTrips || []).find((t: any) => (t.customer_id || t.customer?.id) === contractCustomer) || null : null),
+    [recentTrips, contractCustomer]
+  );
+
+  /* ── Guidance: what's done on step 1, and what to fill next ── */
+  const is3plAssignment = assignmentType === 'third_party';
+  const guideSlot: any = contractSlots[0] || {};
+  const progress = useMemo(() => {
+    const hasRoute = Boolean(guideSlot.origin?.trim() && guideSlot.destination?.trim());
+    const hasBilling = Number(guideSlot.billingAmount) > 0;
+    const hasPayout = is3plAssignment || resolveSlotDriverPayout(guideSlot) > 0;
+    const hasPrice = hasBilling && hasPayout;
+    const hasWhen = isMonthlyBilling
+      ? Boolean(guideSlot.pickupTime && guideSlot.dropoffTime)
+      : Boolean(guideSlot.date && guideSlot.pickupTime && guideSlot.dropoffTime);
+    const hasDriver = is3plAssignment
+      ? Boolean((thirdPartyProviderId || thirdPartyDriverName) && Number(thirdPartyCost) > 0)
+      : Boolean(masterDriver);
+    const items: Array<{ key: 'customer' | 'price' | 'when' | 'driver'; label: string; done: boolean; onlyPayoutMissing?: boolean }> = [
+      { key: 'customer', label: 'Customer', done: Boolean(contractCustomer) },
+      { key: 'price', label: 'Price', done: hasRoute && hasPrice, onlyPayoutMissing: hasRoute && hasBilling && !hasPayout },
+      { key: 'when', label: 'When', done: hasWhen },
+    ];
+    // Monthly: drivers are chosen per day on step 2.
+    if (!isMonthlyBilling) items.push({ key: 'driver', label: is3plAssignment ? 'Partner' : 'Driver', done: hasDriver });
+    return items;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractCustomer, contractSlots, isMonthlyBilling, is3plAssignment, masterDriver, thirdPartyProviderId, thirdPartyDriverName, thirdPartyCost]);
+  const nextSection = progress.find((p) => !p.done)?.key ?? null;
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
+  const nextActionLabel =
+    nextSection === 'customer'
+      ? 'Next: choose a customer'
+      : nextSection === 'price'
+      ? progress.find((p) => p.key === 'price')?.onlyPayoutMissing
+        ? 'Next: enter driver payout'
+        : 'Next: choose a price'
+      : nextSection === 'when'
+      ? 'Next: set pickup time'
+      : nextSection === 'driver'
+      ? is3plAssignment
+        ? 'Next: choose a partner'
+        : 'Next: choose a driver'
+      : null;
+
+  /** Scroll to a section and open its first picker, so the next thing to fill is in front of you. */
+  const focusSection = useCallback((key: string) => {
+    const slotId = (contractSlotsRef.current[0] as any)?.id;
+    const hasRoute = Boolean((contractSlotsRef.current[0] as any)?.origin && (contractSlotsRef.current[0] as any)?.destination);
+    const payoutOnly = Boolean(progressRef.current.find((p) => p.key === 'price')?.onlyPayoutMissing);
+    const target =
+      key === 'customer'
+        ? { box: 'field-customer', open: 'button[role="combobox"]' }
+        : key === 'price' && payoutOnly
+        ? { box: `field-driver-payout-${slotId}-summary`, open: 'input' }
+        : key === 'price'
+        ? { box: hasRoute ? 'section-price' : 'section-route', open: null }
+        : key === 'when'
+        ? { box: 'section-when', open: slotId ? `#field-pickup-${slotId} button` : 'button' }
+        : { box: 'section-driver', open: is3plAssignment ? '#field-3pl-partner button' : '#field-driver-vehicle button[role="combobox"]' };
+    const box = document.getElementById(target.box);
+    if (!box) return;
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (target.open) {
+      const el = box.querySelector<HTMLElement>(target.open) || (box.matches(target.open) ? box : null);
+      window.setTimeout(() => {
+        el?.focus();
+        el?.click();
+      }, 350);
+    }
+  }, [is3plAssignment]);
+
+  /** "Last time for this lane": the pickup time of this customer's latest trip on the same lane. */
+  const lastLaneTime = useMemo(() => {
+    const slot: any = guideSlot;
+    if (!contractCustomer || !slot.origin || !slot.destination) return null;
+    const norm = (v?: string | null) => (v || '').trim().toLowerCase();
+    const trip = (recentTrips || []).find((t: any) => {
+      if ((t.customer_id || t.customer?.id) !== contractCustomer || !t.planned_start) return false;
+      const qid = t.quotationId || t.quotation_id || t.financials?.quotationId;
+      if (slot.rateCardId && qid && qid === slot.rateCardId) return true;
+      const stops = t.stops || [];
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      const fromName = norm(first?.source_label || first?.location?.name || first?.location_name);
+      const toName = norm(last?.source_label || last?.location?.name || last?.location_name);
+      return Boolean(fromName && toName && fromName === norm(slot.origin) && toName === norm(slot.destination));
+    });
+    if (!trip) return null;
+    const time = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(trip.planned_start as string));
+    const nowTime = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
+    const today = dateInZone(Date.now(), tz);
+    const later = time > nowTime;
+    return { date: later ? today : addDaysToDateStr(today, 1), time, label: `${later ? 'Today' : 'Tomorrow'} · ${time}` };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentTrips, contractCustomer, contractSlots, tz]);
 
   const handleRepeatTrip = useCallback(
     (historicalTrip: Trip) => {
@@ -1203,7 +1293,8 @@ export function useCreateTripForm() {
         setMasterVehicle(histVehicle.id);
       }
 
-      setContractStep(2);
+      // Same route, same crew — the date and times are the next thing to set.
+      setContractStep(1);
 
       const formattedDate = historicalTrip.createdAt
         ? new Date(historicalTrip.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -1294,6 +1385,7 @@ export function useCreateTripForm() {
     editDriver,
     setEditDriver,
     handleRepeatTrip,
+    lastCustomerTrip,
     recentRoutesList,
     recentDriversList,
     handleApplyRecentRoute,
@@ -1365,6 +1457,12 @@ export function useCreateTripForm() {
     setMonthlyCrew,
     monthlyDayOverrides,
     setMonthlyDayOverrides,
+    isDirty,
+    progress,
+    nextSection,
+    nextActionLabel,
+    focusSection,
+    lastLaneTime,
     getAvailableRateCardsForLane,
     handleOpenCreateQuotation,
     getCompatibilityRuleForClass,
