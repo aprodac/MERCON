@@ -87,7 +87,7 @@ export const TripWizardHeader: React.FC<TripWizardHeaderProps> = ({
 
 
   return (
-    <div className="border-b border-black/[0.06] bg-white dark:bg-slate-900 shrink-0 flex items-center px-4 py-2.5 gap-3 w-full relative">
+    <div className="border-b border-black/[0.06] bg-white dark:bg-slate-900 shrink-0 flex items-center px-3 py-1.5 gap-3 w-full relative">
       {/* Top Left: Cancel / Back Actions & Multi-Color >>> Horizontal Navigation Launcher */}
       <div className="flex items-center gap-2 justify-start shrink-0">
         {contractStep > 1 ? (

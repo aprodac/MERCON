@@ -55,6 +55,8 @@ export function truckClassOfVehicle(v: { capacity_kg?: number | null; asset_type
     const tons = kg / 1000;
     if (tons <= 4) return '3-4 TON';
     if (tons <= 5) return '5 TON';
+    // An 8-ton truck is its own class — it used to round up to "10 TON" and look like a fit.
+    if (tons <= 8) return '8 TON';
     if (tons <= 10) return '10 TON';
     if (tons <= 20) return '20 TON';
     return '40 FEET';

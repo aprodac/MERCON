@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Truck, User, Users, ShieldAlert, Plus, Trash2, TrendingUp, Tag, AlertCircle, X } from 'lucide-react';
+import { Truck, User, Users, Plus, TrendingUp, Tag, AlertCircle, X } from 'lucide-react';
 import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DriverAvatar from '@/components/ui/DriverAvatar';
@@ -7,9 +7,6 @@ import { CoDriverPaySplit, type PaySplitValue } from './CoDriverPaySplit';
 import { FactChip, StatusTag, type DriverFacts } from './DriverPickerRow';
 import { DISPATCH_RULES, truckClassOfVehicle, compareTruckClass } from '@mercon/shared-types';
 import { thirdPartyService, ProviderRateCard, Previous3PLDriver } from '@/services/thirdPartyService';
-import VehicleCompatibilityBadge from '@/components/trips/shared/VehicleCompatibilityBadge';
-import { getCompatibilityRuleForClass } from '@/utils/vehicleCompatibilityRegistry';
-import { getVehicleTypeFromCapacity } from '@/hooks/useCreateTripForm';
 import { cn } from '@/lib/utils';
 
 interface ExecutionAssignmentSectionProps {
@@ -276,77 +273,32 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
           </div>
         </div>
       ) : assignmentType === 'own' ? (
-        /* 2-COLUMN ASSIGNMENT WORKSPACE */
-        <div id="field-driver-vehicle" className="grid grid-cols-1 md:grid-cols-12 gap-3 items-stretch">
-          {/* LEFT COLUMN: SELECTION DROPDOWNS */}
-          <div className="md:col-span-7 space-y-2 border-r-0 md:border-r border-slate-100 dark:border-slate-800 pr-0 md:pr-2.5">
-            {fieldErrors?.['driverVehicle'] && (
-              <div className="flex items-center gap-1.5 p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-950/40 dark:border-rose-900 dark:text-rose-300 text-xs font-bold animate-fade-in">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>Please select an assignment choice: Driver & Vehicle or Assign Later.</span>
-              </div>
-            )}
-            {/* PRIMARY DRIVER SELECTION */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1">
-                  <User className="w-3 h-3 text-emerald-600" /> PRIMARY DRIVER
-                </label>
-                {!isAssignmentLocked && (
-                  (!masterDriver || masterDriver === 'unassigned') ? (
-                    <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-900">
-                      Assign Later
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleDriverChange('unassigned')}
-                      className="text-[9px] font-bold text-slate-400 hover:text-amber-600 underline cursor-pointer"
-                      title="Mark driver as assign later"
-                    >
-                      Assign Later
-                    </button>
-                  )
-                )}
-              </div>
+        /* OWN FLEET — one column: top picks → pickers, or once chosen, the crew card */
+        <div id="field-driver-vehicle" className="space-y-2.5">
+          {fieldErrors?.['driverVehicle'] && (
+            <div className="flex items-center gap-1.5 p-2 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 dark:bg-rose-950/40 dark:border-rose-900 dark:text-rose-300 text-xs font-bold animate-fade-in">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>Choose a driver, or "Assign later".</span>
+            </div>
+          )}
+
+          {(() => {
+            const driverPicker = (
               <Combobox
                 options={driverOptions}
                 value={masterDriver}
                 onChange={handleDriverChange}
                 disabled={isAssignmentLocked}
-                placeholder="Choose a driver"
+                placeholder="Search all drivers"
                 searchPlaceholder="Name, phone or plate"
-                popoverClassName="min-w-[360px]"
+                popoverClassName="min-w-[380px]"
                 triggerClassName={cn(
-                  "h-8 rounded-lg border-slate-200 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs",
-                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                  'h-9 rounded-lg border-slate-200 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-2xs',
+                  isAssignmentLocked && 'bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none'
                 )}
               />
-            </div>
-
-            {/* VEHICLE */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1">
-                  <Truck className="w-3 h-3 text-indigo-600" /> PRIMARY VEHICLE
-                </label>
-                {!isAssignmentLocked && (
-                  (!masterVehicle || masterVehicle === 'unassigned') ? (
-                    <span className="text-[9px] font-bold text-amber-700 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.2 rounded border border-amber-200 dark:border-amber-900">
-                      Assign Later
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleVehicleChange('unassigned')}
-                      className="text-[9px] font-bold text-slate-400 hover:text-amber-600 underline cursor-pointer"
-                      title="Mark vehicle as assign later"
-                    >
-                      Assign Later
-                    </button>
-                  )
-                )}
-              </div>
+            );
+            const truckPicker = (
               <Combobox
                 options={vehicleOptions}
                 value={masterVehicle}
@@ -354,211 +306,209 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 disabled={isAssignmentLocked}
                 placeholder="Choose a truck"
                 searchPlaceholder="Plate or asset code"
-                popoverClassName="min-w-[320px]"
+                popoverClassName="min-w-[340px]"
                 triggerClassName={cn(
-                  "h-8 rounded-lg border-slate-200 text-xs font-bold text-slate-800 dark:text-slate-100 shadow-2xs",
-                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                  'h-9 rounded-lg border-slate-200 text-xs font-semibold text-slate-800 dark:text-slate-100 shadow-2xs',
+                  isAssignmentLocked && 'bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none'
                 )}
               />
-              <VehicleCompatibilityBadge
-                contractVehicleType={contractVehicleType}
-                masterVehicle={masterVehicle}
-                vehicles={vehicles}
-                activeCompatibilityRule={getCompatibilityRuleForClass(contractVehicleType)}
-                getVehicleTypeFromCapacity={getVehicleTypeFromCapacity}
-              />
-            </div>
+            );
+            const truck: any = vehicles.find((v: any) => v.id === masterVehicle);
+            const truckClass = truck ? truckClassOfVehicle({ capacity_kg: truck.capacity_kg, asset_type: truck.asset_type }) : '';
+            const fit = truck && contractVehicleType ? compareTruckClass(truckClass, contractVehicleType) : null;
+            const fitBadge =
+              fit === 'exact' ? (
+                <span className="shrink-0 rounded-full bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Fits {contractVehicleType} ✓</span>
+              ) : fit === 'bigger' ? (
+                <span className="shrink-0 rounded-full bg-sky-50 dark:bg-sky-950/50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">Bigger than {contractVehicleType}</span>
+              ) : fit === 'smaller' ? (
+                <span className="shrink-0 rounded-full bg-rose-50 dark:bg-rose-950/50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300">Too small for {contractVehicleType}</span>
+              ) : null;
 
-            {/* OPTIONAL CO-DRIVER / RELIEVER */}
-            {!isAssignmentLocked && (
-              showCoDriver ? (
-                <div className="space-y-2 rounded-xl border border-slate-200/80 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Co-driver / reliever</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCoDriver('');
-                        setShowCoDriver(false);
-                      }}
-                      className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-rose-600 cursor-pointer"
-                    >
-                      <X className="w-3 h-3" /> Remove
-                    </button>
+            /* ── No driver yet: the best picks first, then search all ── */
+            if (!masterDriver) {
+              const picks = driverOptions
+                .filter((d: any) => d.value !== 'unassigned' && !d.disabled && (d.groupKey ? ['best', 'other'].includes(d.groupKey) : true))
+                .slice(0, 3) as any[];
+              return (
+                <>
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Top picks for this route</span>
+                    {picks.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 py-3 text-center text-xs text-slate-400">No free drivers for this trip — search below</div>
+                    ) : (
+                      picks.map((p) => {
+                        const reasons = ((p.facts as DriverFacts | undefined)?.chips || [])
+                          .slice()
+                          .sort((a, b) => (a.tone === 'good' ? -1 : 0) - (b.tone === 'good' ? -1 : 0))
+                          .slice(0, 3);
+                        const name = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+                        return (
+                          <button
+                            key={p.value}
+                            type="button"
+                            disabled={isAssignmentLocked}
+                            onClick={() => handleDriverChange(p.value)}
+                            title={`Assign ${name}`}
+                            className="group flex w-full items-center gap-2.5 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-2 text-left transition-colors hover:border-[#FA634E]/60 hover:bg-orange-50/40 dark:hover:bg-orange-950/20 cursor-pointer disabled:opacity-50"
+                          >
+                            <DriverAvatar src={p.avatar_url} firstName={p.first_name || ''} lastName={p.last_name || ''} size="md" className="shrink-0" />
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100">{name}</div>
+                              <div className="mt-0.5 flex flex-wrap gap-1">
+                                {reasons.map((c) => <FactChip key={c.text} text={c.text} tone={c.tone} />)}
+                              </div>
+                            </div>
+                            <span className="shrink-0 text-[11px] font-semibold text-slate-400 group-hover:text-[#FA634E]">Assign ›</span>
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
-                  <Combobox
-                    options={driverOptions.filter((d) => d.value !== masterDriver && d.value !== 'unassigned')}
-                    value={coDriver}
-                    onChange={setCoDriver}
-                    placeholder="Choose a co-driver"
-                    searchPlaceholder="Name, phone or plate"
-                    triggerClassName="h-8 rounded-lg border-slate-200 text-xs font-semibold shadow-2xs"
-                    popoverClassName="min-w-[360px]"
-                  />
-                  {coDriver && setCoDriverSplit && (
-                    <CoDriverPaySplit total={basePayout} value={coDriverSplit} onChange={(v) => setCoDriverSplit?.(v)} />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400"><User className="w-3 h-3" /> Or any driver</span>
+                      {driverPicker}
+                    </div>
+                    <div className="space-y-1">
+                      <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400"><Truck className="w-3 h-3" /> Truck</span>
+                      {truckPicker}
+                    </div>
+                  </div>
+                </>
+              );
+            }
+
+            /* ── Assign later ── */
+            if (masterDriver === 'unassigned') {
+              return (
+                <div className="flex items-center justify-between gap-2 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-3 py-3">
+                  <span className="text-xs text-slate-600 dark:text-slate-300">⏳ Assign later — the trip is saved without a driver.</span>
+                  {!isAssignmentLocked && (
+                    <button type="button" onClick={() => handleDriverChange('')} className="text-xs font-semibold text-[#FA634E] hover:text-[#d13d0d] cursor-pointer">
+                      Choose a driver
+                    </button>
                   )}
                 </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setShowCoDriver(true)}
-                  className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 flex items-center gap-1 cursor-pointer pt-0.5"
-                >
-                  <Plus className="w-3 h-3" /> Add Co-Driver / Reliever
-                </button>
-              )
-            )}
+              );
+            }
 
-            {/* AWB / REFERENCE NUMBER */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <label className="text-[10px] font-extrabold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                  AWB / REFERENCE NUMBER
-                </label>
-                <span className="text-[9px] font-bold text-slate-400">Optional</span>
-              </div>
-              <input
-                type="text"
-                disabled={isAssignmentLocked}
-                value={awbNumber}
-                onChange={(e) => setAwbNumber?.(e.target.value)}
-                placeholder="Vehicle no. or client waybill no."
-                className={cn(
-                  "h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100",
-                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+            /* ── Driver chosen: the crew card, full width ── */
+            const opt = driverOptions.find((d) => d.value === masterDriver) as any;
+            const facts: DriverFacts | undefined = opt?.facts;
+            const name = `${opt?.first_name || ''} ${opt?.last_name || ''}`.trim() || 'Driver';
+            const phone = opt?.raw?.phone_primary as string | undefined;
+            // The chosen truck has its own row, so the driver's usual-truck chip is left out.
+            const whyChips = (facts?.chips || []).filter((c) => !/(TON|FEET)|^No truck$/.test(c.text));
+            return (
+              <div className="space-y-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/40 p-3 animate-fade-in">
+                <div className="flex items-start gap-3">
+                  <DriverAvatar src={opt?.avatar_url} firstName={opt?.first_name || ''} lastName={opt?.last_name || ''} size="lg" className="shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-bold leading-snug text-slate-900 dark:text-slate-100">{name}</div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      {phone && (
+                        <a href={`tel:${phone}`} className="text-xs text-slate-500 hover:text-[#c2410c]">
+                          {phone}
+                        </a>
+                      )}
+                      {facts && <StatusTag label={facts.statusLabel} isFree={facts.isFree} />}
+                    </div>
+                  </div>
+                  {!isAssignmentLocked && (
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <button type="button" onClick={() => handleDriverChange('')} className="text-xs font-semibold text-[#FA634E] hover:text-[#d13d0d] cursor-pointer">
+                        Change
+                      </button>
+                      <button type="button" onClick={() => handleDriverChange('unassigned')} className="text-[11px] text-slate-400 hover:text-amber-600 cursor-pointer">
+                        Assign later
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {whyChips.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {whyChips.map((c) => <FactChip key={c.text} text={c.text} tone={c.tone} />)}
+                  </div>
                 )}
-              />
-            </div>
 
-            {/* TRUCK CLASS — set by the quotation, shown here for reference */}
-            {contractVehicleType && (
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-                <span>Truck class</span>
-                <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 font-semibold text-slate-700 dark:text-slate-200">{contractVehicleType}</span>
-                <span>· from the price</span>
-              </div>
-            )}
-          </div>
-
-          {/* RIGHT COLUMN: PICKED DRIVER, OR THE TOP PICKS FOR THIS ROUTE */}
-          <div className="md:col-span-5 min-w-0">
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                {masterDriver ? (masterDriver === 'unassigned' ? 'Driver' : 'Assigned driver') : 'Top picks for this route'}
-              </span>
-              {masterDriver && !isAssignmentLocked && (
-                <button
-                  type="button"
-                  onClick={() => handleDriverChange('')}
-                  className="text-[11px] font-semibold text-[#FA634E] hover:text-[#d13d0d] cursor-pointer"
-                >
-                  Change
-                </button>
-              )}
-            </div>
-
-            {masterDriver === 'unassigned' ? (
-              <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-3 py-3 text-xs text-slate-500 dark:text-slate-400">
-                ⏳ Assign later — the trip is saved without a driver.
-              </div>
-            ) : masterDriver ? (
-              (() => {
-                // Crew card: who drives, with which truck, and why — fills the column.
-                const opt = driverOptions.find((d) => d.value === masterDriver) as any;
-                const facts: DriverFacts | undefined = opt?.facts;
-                const name = `${opt?.first_name || ''} ${opt?.last_name || ''}`.trim() || 'Driver';
-                const phone = opt?.raw?.phone_primary as string | undefined;
-                const truck: any = vehicles.find((v: any) => v.id === masterVehicle);
-                const truckClass = truck ? truckClassOfVehicle({ capacity_kg: truck.capacity_kg, asset_type: truck.asset_type }) : '';
-                const fit = truck && contractVehicleType ? compareTruckClass(truckClass, contractVehicleType) : null;
-                const co = coDriver ? (driverOptions.find((d) => d.value === coDriver) as any) : null;
-                // The truck has its own row below, so its chip is left out here.
-                const whyChips = (facts?.chips || []).filter((c) => !/(TON|FEET)|^No truck$/.test(c.text));
-                return (
-                  <div className="flex h-full flex-col gap-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-3 animate-fade-in">
-                    <div className="flex items-center gap-3">
-                      <DriverAvatar src={opt?.avatar_url} firstName={opt?.first_name || ''} lastName={opt?.last_name || ''} size="lg" className="shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={name}>{name}</div>
-                        {phone && (
-                          <a href={`tel:${phone}`} className="block text-xs text-slate-500 hover:text-[#c2410c]">
-                            {phone}
-                          </a>
-                        )}
-                        {facts && <div className="mt-1"><StatusTag label={facts.statusLabel} isFree={facts.isFree} /></div>}
-                      </div>
-                    </div>
-
-                    {whyChips.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {whyChips.map((c) => <FactChip key={c.text} text={c.text} tone={c.tone} />)}
-                      </div>
-                    )}
-
-                    <div className="flex items-center gap-2.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2.5 py-2">
-                      <Truck className="w-4 h-4 text-slate-400 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-bold text-slate-900 dark:text-slate-100">{truck?.plate_number || (masterVehicle === 'unassigned' ? 'Truck later' : 'No truck yet')}</div>
-                        {truck && <div className="truncate text-[11px] text-slate-500">{[truckClass, truck.asset_type].filter(Boolean).join(' · ')}</div>}
-                      </div>
-                      {fit === 'exact' && <span className="shrink-0 rounded-full bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">Fits {contractVehicleType} ✓</span>}
-                      {fit === 'bigger' && <span className="shrink-0 rounded-full bg-sky-50 dark:bg-sky-950/50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300">Bigger than needed</span>}
-                      {fit === 'smaller' && <span className="shrink-0 rounded-full bg-rose-50 dark:bg-rose-950/50 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300">Too small for {contractVehicleType}</span>}
-                    </div>
-
-                    {co && (
-                      <div className="flex items-center gap-2 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 px-2.5 py-1.5">
-                        <DriverAvatar src={co.avatar_url} firstName={co.first_name || ''} lastName={co.last_name || ''} size="xs" className="shrink-0" />
-                        <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-700 dark:text-slate-200">Co-driver · {`${co.first_name || ''} ${co.last_name || ''}`.trim()}</span>
-                      </div>
-                    )}
-
-                    <p className="mt-auto text-[11px] leading-snug text-slate-400">
-                      Checked: {DISPATCH_RULES.minRestHours} h rest before pickup · {DISPATCH_RULES.bufferHours} h between trips · licence · truck size
-                    </p>
+                <div className="space-y-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                      <Truck className="w-3.5 h-3.5" /> Truck
+                      {truck && <span className="font-normal">· {[truckClass, truck.asset_type].filter(Boolean).join(' · ')}</span>}
+                    </span>
+                    {fitBadge}
                   </div>
-                );
-              })()
-            ) : (
-              (() => {
-                const picks = driverOptions.filter((d: any) => d.value !== 'unassigned' && !d.disabled && (d.groupKey ? ['best', 'other'].includes(d.groupKey) : true)).slice(0, 3) as any[];
-                if (picks.length === 0) {
-                  return <div className="py-4 text-center text-xs text-slate-400">No free drivers right now</div>;
-                }
-                return (
-                  <div className="space-y-1.5">
-                    {picks.map((p) => {
-                      const facts: DriverFacts | undefined = p.facts;
-                      // The most useful reason first: lane history, then truck, then idle time.
-                      const reasons = (facts?.chips || []).slice().sort((a, b) => (a.tone === 'good' ? -1 : 0) - (b.tone === 'good' ? -1 : 0)).slice(0, 2);
-                      const name = `${p.first_name || ''} ${p.last_name || ''}`.trim();
-                      return (
+                  {truckPicker}
+                </div>
+
+                {/* CO-DRIVER */}
+                {!isAssignmentLocked && (
+                  showCoDriver ? (
+                    <div className="space-y-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Co-driver / reliever</span>
                         <button
-                          key={p.value}
                           type="button"
-                          disabled={isAssignmentLocked}
-                          onClick={() => handleDriverChange(p.value)}
-                          title={`Assign ${name}`}
-                          className="group flex w-full items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-left transition-colors hover:border-[#FA634E]/60 hover:bg-orange-50/40 dark:hover:bg-orange-950/20 cursor-pointer disabled:opacity-50"
+                          onClick={() => {
+                            setCoDriver('');
+                            setShowCoDriver(false);
+                          }}
+                          className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-rose-600 cursor-pointer"
                         >
-                          <DriverAvatar src={p.avatar_url} firstName={p.first_name || ''} lastName={p.last_name || ''} size="sm" className="shrink-0" />
-                          <div className="min-w-0 flex-1">
-                            {/* First two names keep long 4-part names readable; the full name is in the tooltip. */}
-                            <div className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100">{name.split(/\s+/).slice(0, 2).join(' ')}</div>
-                            <div className="mt-0.5 flex flex-wrap gap-1">
-                              {reasons.map((c) => <FactChip key={c.text} text={c.text} tone={c.tone} />)}
-                            </div>
-                          </div>
-                          <span className="shrink-0 text-[11px] font-semibold text-slate-400 group-hover:text-[#FA634E]">Assign ›</span>
+                          <X className="w-3 h-3" /> Remove
                         </button>
-                      );
-                    })}
-                  </div>
-                );
-              })()
-            )}
-          </div>
+                      </div>
+                      <Combobox
+                        options={driverOptions.filter((d) => d.value !== masterDriver && d.value !== 'unassigned')}
+                        value={coDriver}
+                        onChange={setCoDriver}
+                        placeholder="Choose a co-driver"
+                        searchPlaceholder="Name, phone or plate"
+                        triggerClassName="h-9 rounded-lg border-slate-200 text-xs font-semibold shadow-2xs"
+                        popoverClassName="min-w-[380px]"
+                      />
+                      {coDriver && setCoDriverSplit && (
+                        <CoDriverPaySplit total={basePayout} value={coDriverSplit} onChange={(v) => setCoDriverSplit?.(v)} />
+                      )}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowCoDriver(true)}
+                      className="flex items-center gap-1 text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:text-emerald-800 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add co-driver / reliever
+                    </button>
+                  )
+                )}
+
+                <p className="text-[11px] leading-snug text-slate-400">
+                  Checked: {DISPATCH_RULES.minRestHours} h rest before pickup · {DISPATCH_RULES.bufferHours} h between trips · licence · truck size
+                </p>
+              </div>
+            );
+          })()}
+
+          {/* AWB / REFERENCE NUMBER */}
+          <label className="block space-y-1">
+            <span className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              AWB / reference number <span className="font-normal text-slate-400">Optional</span>
+            </span>
+            <input
+              type="text"
+              disabled={isAssignmentLocked}
+              value={awbNumber}
+              onChange={(e) => setAwbNumber?.(e.target.value)}
+              placeholder="Client waybill or reference"
+              className={cn(
+                'h-9 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-[#FA634E]/30',
+                isAssignmentLocked && 'bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none'
+              )}
+            />
+          </label>
         </div>
       ) : (
         /* 3PL PARTNER ASSIGNMENT WORKSPACE WITH PROFITABILITY CARD */

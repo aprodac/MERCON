@@ -154,7 +154,7 @@ export default function CreateTripPage() {
   }, [form.isDirty, form.submissionResult]);
 
   return (
-    <DashboardLayout active="Trips" title="Create New Trip" hideBackButton fixedViewport>
+    <DashboardLayout active="Trips" title="Create New Trip" hideBackButton fixedViewport compactHeader>
       <div className="px-2 sm:px-4 pb-2 sm:pb-3 animate-fade-in w-full h-full flex flex-col min-h-0">
         <div className="w-full flex-1 overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl flex flex-col min-h-0">
 

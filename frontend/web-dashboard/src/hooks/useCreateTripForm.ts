@@ -54,6 +54,7 @@ export const getVehicleTypeFromCapacity = (capacityKg?: number | null): string =
   const tons = capacityKg / 1000;
   if (tons <= 4) return '3-4 TON';
   if (tons <= 5) return '5 TON';
+  if (tons <= 8) return '8 TON';
   if (tons <= 10) return '10 TON';
   if (tons <= 20) return '20 TON';
   return '40 FEET';
