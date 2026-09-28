@@ -9,6 +9,7 @@ import { FinanceEmptyState } from './FinanceEmptyState';
 export function ReportViewState({
   isLoading,
   isError,
+  errorMessage,
   onRetry,
   isEmpty,
   emptyTitle,
@@ -17,6 +18,8 @@ export function ReportViewState({
 }: {
   isLoading: boolean;
   isError: boolean;
+  /** Shown instead of the generic message, when the cause is known. */
+  errorMessage?: string;
   onRetry: () => void;
   isEmpty: boolean;
   emptyTitle: string;
@@ -33,7 +36,7 @@ export function ReportViewState({
   if (isError) {
     return (
       <Card className="flex-row items-center justify-between gap-3 rounded-xl border-chip-negative-border bg-chip-negative-bg p-4 text-xs text-chip-negative-fg shadow-xs">
-        <span className="flex items-center gap-2"><AlertTriangle className="size-4" /> The report could not be loaded.</span>
+        <span className="flex items-center gap-2"><AlertTriangle className="size-4 shrink-0" /> {errorMessage ?? 'The report could not be loaded.'}</span>
         <Button variant="outline" size="sm" onClick={onRetry}>Retry</Button>
       </Card>
     );

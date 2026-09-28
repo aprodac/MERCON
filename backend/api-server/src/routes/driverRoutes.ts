@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { getDrivers, getDriverById, createDriver, updateDriver, deleteDriver , bulkDeleteDrivers, bulkUpdateDriverStatus, bulkImportDrivers, getDriverUsage, getDriverStats, setDriverPassword, exportDrivers, getDriverPayouts } from '../controllers/driverController';
 import { upsertDriverVehiclePreference } from '../controllers/fleetDispatchController';
+import { getDriverSalaries, createDriverSalary, updateDriverSalary, deleteDriverSalary } from '../controllers/vehicleCostController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
-import { createDriverBody, updateDriverBody, listQuery, bulkImportDriversBody, setDriverPasswordBody, idParam } from '../schemas';
+import { createDriverBody, updateDriverBody, listQuery, bulkImportDriversBody, setDriverPasswordBody, idParam, driverSalaryBody, updateDriverSalaryBody, nestedIdParams } from '../schemas';
 
 const router = Router();
 
@@ -27,6 +28,10 @@ router.post('/', validate({ body: createDriverBody }), createDriver);
 router.get('/:id', getDriverById);
 router.get('/:id/usage', getDriverUsage);
 router.post('/:id/assignments', upsertDriverVehiclePreference);
+router.get('/:id/salaries', validate({ params: idParam }), getDriverSalaries);
+router.post('/:id/salaries', validate({ params: idParam, body: driverSalaryBody }), createDriverSalary);
+router.patch('/:id/salaries/:itemId', validate({ params: nestedIdParams, body: updateDriverSalaryBody }), updateDriverSalary);
+router.delete('/:id/salaries/:itemId', validate({ params: nestedIdParams }), deleteDriverSalary);
 router.post('/:id/set-password', validate({ params: idParam, body: setDriverPasswordBody }), setDriverPassword);
 router.patch('/:id', validate({ body: updateDriverBody }), updateDriver);
 router.delete('/:id', deleteDriver);

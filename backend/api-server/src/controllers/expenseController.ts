@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../db';
 import { generateRefId } from '../utils/refId';
 import { logger } from '../utils/logger';
+import { VEHICLE_REQUIRED_EXPENSE_CATEGORIES } from '@mercon/shared-types';
 import { buildSearchAnd } from '../utils/search';
 
 /** Fields the expenses ledger search bar looks at. */
@@ -178,6 +179,14 @@ export const getExpenseById = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * Truck-only categories must name the truck, or Vehicle P&L can't count them.
+ * Not enforced while Pending — a placeholder only knows its category yet.
+ */
+const needsVehicle = (category: string | null | undefined) =>
+  VEHICLE_REQUIRED_EXPENSE_CATEGORIES.includes((category || '').trim());
+const vehicleRequiredMessage = (category: string) => `Choose the vehicle this ${category.toLowerCase()} expense is for.`;
+
 const expenseSchema = z.object({
   category: z.string().min(1, 'Category is required'),
   status: z.enum(['Paid', 'Pending']).default('Paid'),
@@ -217,6 +226,10 @@ export const createExpense = async (req: Request, res: Response) => {
         success: false,
         error: { code: 'VALIDATION_ERROR', message: 'Amount must be a positive number.' },
       });
+    }
+
+    if (status !== 'Pending' && needsVehicle(category) && !vehicle_id) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: vehicleRequiredMessage(category) } });
     }
 
     if (driver_id) {
@@ -311,6 +324,14 @@ export const updateExpense = async (req: Request, res: Response) => {
     }
 
     const data: any = { ...parseResult.data };
+
+    // Check the expense as it will be after the update, not just the fields sent
+    const nextCategory = data.category ?? existing.category;
+    const nextVehicle = 'vehicle_id' in data ? data.vehicle_id : existing.vehicleId;
+    const nextStatus = data.status ?? existing.status;
+    if (nextStatus !== 'Pending' && needsVehicle(nextCategory) && !nextVehicle) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: vehicleRequiredMessage(nextCategory) } });
+    }
 
     if ('amount' in data && (!Number.isFinite(data.amount) || data.amount <= 0)) {
       return res.status(400).json({

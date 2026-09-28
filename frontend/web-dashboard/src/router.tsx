@@ -61,6 +61,7 @@ const EditVehiclePage         = lazyWithRetry(() => import('@/pages/vehicles/Edi
 const VehicleDocumentsPage    = lazyWithRetry(() => import('@/pages/vehicles/VehicleDocumentsPage'));
 const VehicleFinancialsPage   = lazyWithRetry(() => import('@/pages/vehicles/VehicleFinancialsPage'));
 const VehicleSingleFinancialsPage = lazyWithRetry(() => import('@/pages/vehicles/VehicleSingleFinancialsPage'));
+const VehicleCostSetupPage    = lazyWithRetry(() => import('@/pages/vehicles/VehicleCostSetupPage'));
 const MaintenanceListPage     = lazyWithRetry(() => import('@/pages/maintenance/MaintenanceListPage'));
 const MaintenanceDetailsPage  = lazyWithRetry(() => import('@/pages/maintenance/MaintenanceDetailsPage'));
 const AddMaintenancePage      = lazyWithRetry(() => import('@/pages/maintenance/AddMaintenancePage'));
@@ -271,6 +272,7 @@ export default function AppRouter() {
             {/* Vehicles */}
             <Route path="/vehicles"                 element={<RequireModule moduleKey="vehicles"><VehicleListPage /></RequireModule>} />
             <Route path="/vehicles/financials"      element={<RequireModule moduleKey="vehicles"><VehicleFinancialsPage /></RequireModule>} />
+            <Route path="/vehicles/financials/setup" element={<RequireModule moduleKey="vehicles"><VehicleCostSetupPage /></RequireModule>} />
             <Route path="/vehicles/new"             element={<RequireModule moduleKey="vehicles"><AddVehiclePage /></RequireModule>} />
             <Route path="/vehicles/:id"             element={<RequireModule moduleKey="vehicles"><VehicleDetailsPage /></RequireModule>} />
             <Route path="/vehicles/:id/edit"        element={<RequireModule moduleKey="vehicles"><EditVehiclePage /></RequireModule>} />

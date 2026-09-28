@@ -92,6 +92,8 @@ export interface BillLineDTO {
   source_type?: string;
   source_id?: string | null;
   accountId?: string | null;
+  /** Truck the line is for, so it counts in Vehicle P&L (manual lines only). */
+  vehicleId?: string | null;
   description: string;
   amount: number;
 }

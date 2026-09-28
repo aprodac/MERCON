@@ -252,6 +252,7 @@ model Driver {
   notifications      Notification[]
   devices            DriverDevice[]
   expenses           Expense[]
+  salaries           DriverSalary[]
   executedTripStops  TripStop[]                @relation("TripStopExecutorDriver")
   executedDocuments  Document[]                @relation("DocumentExecutorDriver")
 
@@ -287,6 +288,68 @@ model DriverVehicleAssignment {
   @@index([vehicleId, isActive])
 }
 
+enum CostFrequency {
+  Monthly
+  Yearly
+}
+
+/// A recurring cost of owning a truck — insurance, Istimara, operating card,
+/// tracking subscription. Vehicle P&L spreads it evenly across the months it
+/// is active (a Yearly amount counts 1/12 per month). One-off payments belong
+/// in Expenses instead; recording the same cost in both would count it twice.
+model VehicleFixedCost {
+  id        String  @id @default(uuid()) @db.Uuid
+  vehicleId String  @db.Uuid
+  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  // Free text like Expense.category: the list evolves with the business.
+  category  String
+  label     String?
+  amount    Decimal       @db.Decimal(12, 2)
+  frequency CostFrequency @default(Monthly)
+
+  start_date DateTime  @db.Timestamptz
+  end_date   DateTime? @db.Timestamptz
+  notes      String?   @db.Text
+
+  created_by String?   @db.Uuid
+  updated_by String?   @db.Uuid
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+  updatedAt  DateTime  @default(now()) @updatedAt @db.Timestamptz
+  deletedAt  DateTime? @db.Timestamptz
+
+  @@index([vehicleId, deletedAt])
+}
+
+/// A driver's monthly pay package from `effective_from` (until
+/// `effective_to`, or the next package). Drivers are paid this salary plus a
+/// per-trip payout (Trip.driver_payout); Vehicle P&L charges the salary to the
+/// trucks the driver drove each month, split by trip count. Kept as history
+/// rows so a raise doesn't rewrite past months.
+model DriverSalary {
+  id       String @id @default(uuid()) @db.Uuid
+  driverId String @db.Uuid
+  driver   Driver @relation(fields: [driverId], references: [id], onDelete: Cascade)
+
+  base_salary    Decimal @db.Decimal(12, 2)
+  // Housing, food, transport and similar monthly allowances.
+  allowances     Decimal @default(0.0) @db.Decimal(12, 2)
+  // Employer-side costs per month: GOSI, iqama, medical insurance.
+  employer_costs Decimal @default(0.0) @db.Decimal(12, 2)
+
+  effective_from DateTime  @db.Timestamptz
+  effective_to   DateTime? @db.Timestamptz
+  notes          String?   @db.Text
+
+  created_by String?   @db.Uuid
+  updated_by String?   @db.Uuid
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+  updatedAt  DateTime  @default(now()) @updatedAt @db.Timestamptz
+  deletedAt  DateTime? @db.Timestamptz
+
+  @@index([driverId, deletedAt])
+}
+
 model Vehicle {
   id                  String      @id @default(uuid()) @db.Uuid
   ref_id              String?     @unique
@@ -309,6 +372,16 @@ model Vehicle {
 
   // Third-Party Tracking
   icces_device_id String? @unique
+
+  // Ownership — the trucks are owned outright, so the cost of holding one is
+  // straight-line depreciation: (purchase_price - residual_value) spread
+  // evenly over useful_life_years from purchase_date. All nullable: a truck
+  // with no purchase price carries no depreciation in Vehicle P&L (flagged
+  // there as "no cost profile") rather than a made-up figure.
+  purchase_price    Decimal?  @db.Decimal(12, 2)
+  purchase_date     DateTime? @db.Timestamptz
+  useful_life_years Int?
+  residual_value    Decimal?  @db.Decimal(12, 2)
 
   // Latest known telemetry, overwritten by the ICCES poller. Only the current
   // position is kept — there is no history table, so this answers "where is it
@@ -343,6 +416,8 @@ model Vehicle {
   expenses           Expense[]
   assignedDriver     Driver?                   @relation("DriverAssignedVehicle")
   driverAssignments  DriverVehicleAssignment[]
+  fixedCosts         VehicleFixedCost[]
+  billLines          BillLine[]
 
   @@index([status, deletedAt])
   @@index([deletedAt])
@@ -1529,9 +1604,16 @@ model BillLine {
   description String
   amount      Decimal @db.Decimal(12, 2)
 
+  // Optional truck the line is for (e.g. a workshop bill), so Vehicle P&L can
+  // count it. Only Manual lines use it — Expense-sourced lines already carry
+  // their vehicle on the Expense, and counting both would double it.
+  vehicleId String?  @db.Uuid
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id])
+
   createdAt DateTime @default(now()) @db.Timestamptz
 
   @@index([billId])
+  @@index([vehicleId])
   @@index([source_type, source_id])
   @@index([accountId])
 }
