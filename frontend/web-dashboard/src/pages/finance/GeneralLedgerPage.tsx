@@ -11,12 +11,9 @@ import {
   ChevronRight,
   ChevronDown,
   Search,
-  ArrowLeftRight,
   ChevronLeft,
   Building2,
   ExternalLink,
-  RefreshCw,
-  Calendar as CalendarIcon,
   ChevronsUpDown,
   Check,
 } from 'lucide-react';
@@ -24,7 +21,6 @@ import {
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Chip } from '@/components/ui/chip';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -32,7 +28,6 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import ExportModal, { type ExportColumn } from '@/components/ui/ExportModal';
@@ -41,31 +36,36 @@ import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  LineChart,
-  Line,
-  AreaChart,
-  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip as RechartsTooltip,
-  Cell,
 } from 'recharts';
 
 import {
   financeService,
-  type GeneralLedgerData,
-  type GeneralLedgerLineItem,
-  type GeneralLedgerSummaryData,
-  type GeneralLedgerSummaryItem,
-  type GeneralLedgerMonthlyData,
-  type GeneralLedgerMonthlyItem,
 } from '@/services/financeService';
 import type { Account, JournalEntry } from '@mercon/shared-types';
 import { formatMoney, formatDate } from '@/lib/finance/format';
 import { resolvePeriodPreset, type PeriodPreset } from '@/lib/finance/pnlPeriodHelpers';
-import { SOURCE_CONFIG, renderSourceBadge } from '@/lib/finance/sourceConfig';
+import { renderSourceBadge } from '@/lib/finance/sourceConfig';
 import { JournalLinesTable, StatusPill } from '@/components/finance/kit';
+import { PeriodControl } from '@/components/finance/kit/PeriodControl';
+import { ReportViewState } from '@/components/finance/kit/ReportViewState';
+import { AccountLedgerSheet, type LedgerAccount } from '@/components/finance/ledger/AccountLedgerSheet';
+import { LedgerSummaryHeadline } from '@/components/finance/ledger/LedgerSummaryHeadline';
+import { LedgerSummaryTable, type LedgerSummaryFormat } from '@/components/finance/ledger/LedgerSummaryTable';
+import { settingsService } from '@/services/settingsService';
+import {
+  GL_TYPE_META,
+  buildGlSummary,
+  isGlType,
+  parentKeys,
+  typeTotals,
+  type GlAccountRow,
+  type GlParentGroup,
+  type GlSort,
+} from '@/lib/finance/glSummary';
 
 const CUSTOMIZE_STORAGE_KEY = 'mercon_gl_customize_v1';
 
@@ -116,7 +116,8 @@ export default function GeneralLedgerPage() {
   // URL state
   const accountId = searchParams.get('account_id') || '';
   const viewParam = (searchParams.get('view') as 'summary' | 'account' | 'monthly') || (accountId ? 'account' : 'summary');
-  const periodPreset = (searchParams.get('preset') as PeriodPreset) || 'this_quarter';
+  // A link that carries dates but no preset (e.g. "Open full ledger" from a statement) is a custom range
+  const periodPreset = (searchParams.get('preset') as PeriodPreset) || (searchParams.get('date_from') ? 'custom' : 'this_quarter');
 
   const defaultDates = useMemo(() => resolvePeriodPreset(periodPreset), [periodPreset]);
   const dateFrom = searchParams.get('date_from') || defaultDates.from;
@@ -129,13 +130,22 @@ export default function GeneralLedgerPage() {
   const maxAmtFilter = searchParams.get('max_amount') || '';
   const pageParam = parseInt(searchParams.get('page') || '1', 10);
 
+  // Ledger summary filters
+  const summaryTypeParam = searchParams.get('type');
+  const summaryType = isGlType(summaryTypeParam) ? summaryTypeParam : null;
+  const summaryActiveOnly = searchParams.get('active') === 'true';
+  const summarySortParam = searchParams.get('sort');
+  const summarySort: GlSort = summarySortParam === 'activity' || summarySortParam === 'balance' ? summarySortParam : 'code';
+
   // Local customize & UI states
   const [customize, setCustomize] = useState<CustomizeSettings>(loadCustomizeSettings);
   const [isCustomizeOpen, setIsCustomizeOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isAccountPickerOpen, setIsAccountPickerOpen] = useState(false);
   const [expandedDetails, setExpandedDetails] = useState<Record<string, boolean>>({});
-  const [collapsedSummaryGroups, setCollapsedSummaryGroups] = useState<Record<string, boolean>>({});
+  const [collapsedSummaryGroups, setCollapsedSummaryGroups] = useState<Set<string>>(new Set());
+  const [summarySearch, setSummarySearch] = useState('');
+  const [peekAccount, setPeekAccount] = useState<LedgerAccount | null>(null);
 
   // Keyboard navigation & voucher preview sheet state
   const [selectedIndex, setSelectedIndex] = useState<number>(-1);
@@ -173,12 +183,9 @@ export default function GeneralLedgerPage() {
     return allAccounts.findIndex((a) => a.id === accountId);
   }, [allAccounts, accountId]);
 
-  // Fetch Public Settings for Legal Name
-  const { data: publicSettingsRes } = useQuery({
-    queryKey: ['settings', 'public'],
-    queryFn: () => financeService.getAccounts().then(() => null).catch(() => null),
-  });
-  const companyLegalName = (publicSettingsRes as any)?.data?.companyLegalName || 'MERCON Logistics';
+  // Company name for the printed report header (same query as the statements)
+  const { data: company } = useQuery({ queryKey: ['settings', 'public'], queryFn: () => settingsService.getPublic() });
+  const companyLegalName = company?.companyLegalName || company?.appName || '';
 
   // 1. Fetch Ledger Summary Data (when view === 'summary')
   const {
@@ -234,12 +241,7 @@ export default function GeneralLedgerPage() {
   });
 
   // 3. Fetch Monthly Summary Data (when view === 'monthly' or for sparkline)
-  const {
-    data: monthlyRes,
-    isLoading: isMonthlyLoading,
-    isError: isMonthlyError,
-    refetch: refetchMonthly,
-  } = useQuery({
+  const { data: monthlyRes } = useQuery({
     queryKey: ['finance-reports', 'general-ledger-monthly', accountId, dateFrom, dateTo],
     queryFn: () =>
       financeService.getGeneralLedgerMonthly({
@@ -291,71 +293,13 @@ export default function GeneralLedgerPage() {
   });
   const bankAccount = (bankAccountsRes?.data || []).find((b) => b.accountId === accountId);
 
-  // Grouping of Summary items by Account Type and Parent Group
-  const summaryGrouped = useMemo(() => {
-    const items = summaryRes?.data?.items || [];
-    type TypeGroup = {
-      type: string;
-      totalOpening: number;
-      totalDebit: number;
-      totalCredit: number;
-      totalClosing: number;
-      parents: Map<string, { parentCode?: string; parentName: string; items: GeneralLedgerSummaryItem[]; subtotalDebit: number; subtotalCredit: number }>;
-    };
-
-    const typeOrder = ['Asset', 'Liability', 'Equity', 'Revenue', 'Expense'];
-    const map = new Map<string, TypeGroup>();
-
-    typeOrder.forEach((t) => {
-      map.set(t, {
-        type: t,
-        totalOpening: 0,
-        totalDebit: 0,
-        totalCredit: 0,
-        totalClosing: 0,
-        parents: new Map(),
-      });
-    });
-
-    items.forEach((item) => {
-      const typeKey = item.type;
-      let tg = map.get(typeKey);
-      if (!tg) {
-        tg = {
-          type: typeKey,
-          totalOpening: 0,
-          totalDebit: 0,
-          totalCredit: 0,
-          totalClosing: 0,
-          parents: new Map(),
-        };
-        map.set(typeKey, tg);
-      }
-
-      tg.totalDebit += item.period_debit;
-      tg.totalCredit += item.period_credit;
-      tg.totalOpening += item.opening.signed * (item.opening.side === 'Dr' ? 1 : -1);
-      tg.totalClosing += item.closing.signed * (item.closing.side === 'Dr' ? 1 : -1);
-
-      const parentKey = item.parent_id || item.parent_name || 'Unassigned';
-      let pg = tg.parents.get(parentKey);
-      if (!pg) {
-        pg = {
-          parentCode: item.parent_code || undefined,
-          parentName: item.parent_name || 'Direct Accounts',
-          items: [],
-          subtotalDebit: 0,
-          subtotalCredit: 0,
-        };
-        tg.parents.set(parentKey, pg);
-      }
-      pg.items.push(item);
-      pg.subtotalDebit += item.period_debit;
-      pg.subtotalCredit += item.period_credit;
-    });
-
-    return Array.from(map.values()).filter((g) => g.parents.size > 0);
-  }, [summaryRes]);
+  // Ledger summary: accounts grouped by type and parent, filtered and sorted
+  const summaryItems = useMemo(() => summaryRes?.data?.items ?? [], [summaryRes]);
+  const summaryTypeTotals = useMemo(() => typeTotals(summaryItems), [summaryItems]);
+  const summaryModel = useMemo(
+    () => buildGlSummary(summaryItems, { search: summarySearch, type: summaryType, activeOnly: summaryActiveOnly, sort: summarySort }),
+    [summaryItems, summarySearch, summaryType, summaryActiveOnly, summarySort],
+  );
 
   // Stepping previous / next account by code order
   const stepAccount = (direction: -1 | 1) => {
@@ -385,7 +329,8 @@ export default function GeneralLedgerPage() {
   // Keyboard navigation listener (Alt+Left/Right to step account, Up/Down to pick line, Enter to view JE)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Stepping accounts with Alt+Left / Alt+Right
+      // Stepping accounts with Alt+Left / Alt+Right (account-based views only)
+      if (viewParam === 'summary') return;
       if (e.altKey && e.key === 'ArrowLeft') {
         e.preventDefault();
         stepAccount(-1);
@@ -437,25 +382,37 @@ export default function GeneralLedgerPage() {
     return `${fmtVal(signed)} ${side}`;
   };
 
-  const handlePeriodPresetChange = (preset: PeriodPreset) => {
-    if (preset === 'custom') {
-      updateParams({ preset: 'custom' });
-    } else {
-      const { from, to } = resolvePeriodPreset(preset);
-      updateParams({ preset, date_from: from, date_to: to });
-    }
-  };
-
-  const handleCustomRangeChange = (from: string, to: string) => {
-    updateParams({ preset: 'custom', date_from: from, date_to: to });
-  };
-
   const toggleDetailExpansion = (id: string) => {
     setExpandedDetails((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
   const toggleSummaryGroup = (key: string) => {
-    setCollapsedSummaryGroups((prev) => ({ ...prev, [key]: !prev[key] }));
+    setCollapsedSummaryGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const summaryFmt: LedgerSummaryFormat = {
+    money: (n) => fmtVal(n),
+    balance: (net) =>
+      customize.balanceStyle === 'signed'
+        ? { amount: fmtVal(net), side: null }
+        : { amount: fmtVal(Math.abs(net)), side: net >= 0 ? 'Dr' : 'Cr' },
+    showCodes: customize.showAccountCodes,
+  };
+
+  const peekSummaryAccount = (row: GlAccountRow, parent: GlParentGroup | null) => {
+    const meta = GL_TYPE_META[row.type];
+    setPeekAccount({
+      id: row.item.account_id,
+      code: row.item.code,
+      name: row.item.name,
+      tone: meta.tone,
+      context: parent ? `${meta.label} · ${parent.name}` : meta.label,
+    });
   };
 
   // Preparation for Export Modal
@@ -463,21 +420,24 @@ export default function GeneralLedgerPage() {
     const rows: Record<string, any>[] = [];
 
     if (viewParam === 'summary') {
-      summaryGrouped.forEach((tg) => {
-        tg.parents.forEach((pg) => {
-          pg.items.forEach((item) => {
-            rows.push({
-              view: 'Ledger Summary',
-              type: item.type,
-              account_code: item.code,
-              account_name: item.name,
-              opening: `${fmtVal(item.opening.signed)} ${item.opening.side}`,
-              debit: item.period_debit,
-              credit: item.period_credit,
-              closing: `${fmtVal(item.closing.signed)} ${item.closing.side}`,
-            });
+      summaryModel.groups.forEach((g) => {
+        const push = (r: GlAccountRow, parentName: string) =>
+          rows.push({
+            type: g.meta.label,
+            group: parentName,
+            account_code: r.item.code,
+            account_name: r.item.name,
+            opening: Math.abs(r.opening),
+            opening_side: r.opening >= 0 ? 'Dr' : 'Cr',
+            debit: r.debit,
+            credit: r.credit,
+            net_change: r.movement,
+            closing: Math.abs(r.closing),
+            closing_side: r.closing >= 0 ? 'Dr' : 'Cr',
+            lines: r.lines,
           });
-        });
+        g.direct.forEach((r) => push(r, ''));
+        g.parents.forEach((p) => p.accounts.forEach((r) => push(r, p.name)));
       });
     } else if (viewParam === 'account') {
       rows.push({
@@ -540,18 +500,23 @@ export default function GeneralLedgerPage() {
     }
 
     return rows;
-  }, [viewParam, summaryGrouped, lines, glData, currentTotalDebit, currentTotalCredit, closingBalance, closingSide, monthlyRes, customize]);
+  }, [viewParam, summaryModel, lines, glData, currentTotalDebit, currentTotalCredit, closingBalance, closingSide, monthlyRes, customize]);
 
   const exportColumns: ExportColumn<any>[] = useMemo(() => {
     if (viewParam === 'summary') {
       return [
         { id: 'type', label: 'Type', accessor: (r) => r.type },
-        { id: 'account_code', label: 'Account Code', accessor: (r) => r.account_code },
-        { id: 'account_name', label: 'Account Name', accessor: (r) => r.account_name },
-        { id: 'opening', label: 'Opening Balance', accessor: (r) => r.opening },
+        { id: 'group', label: 'Group', accessor: (r) => r.group },
+        { id: 'account_code', label: 'Account code', accessor: (r) => r.account_code },
+        { id: 'account_name', label: 'Account', accessor: (r) => r.account_name },
+        { id: 'opening', label: 'Opening (SAR)', accessor: (r) => r.opening },
+        { id: 'opening_side', label: 'Opening Dr/Cr', accessor: (r) => r.opening_side },
         { id: 'debit', label: 'Debit (SAR)', accessor: (r) => r.debit },
         { id: 'credit', label: 'Credit (SAR)', accessor: (r) => r.credit },
-        { id: 'closing', label: 'Closing Balance', accessor: (r) => r.closing },
+        { id: 'net_change', label: 'Net change Dr − Cr (SAR)', accessor: (r) => r.net_change },
+        { id: 'closing', label: 'Closing (SAR)', accessor: (r) => r.closing },
+        { id: 'closing_side', label: 'Closing Dr/Cr', accessor: (r) => r.closing_side },
+        { id: 'lines', label: 'Lines', accessor: (r) => r.lines },
       ];
     } else if (viewParam === 'account') {
       return [
@@ -600,80 +565,33 @@ export default function GeneralLedgerPage() {
             >
               <ToggleGroupItem
                 value="summary"
-                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs"
+                className="h-7 text-xs font-medium px-3 rounded-md data-pressed:bg-background data-pressed:text-foreground data-pressed:shadow-xs"
               >
                 <LayoutList className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
                 <span>Ledger summary</span>
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="account"
-                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs"
+                className="h-7 text-xs font-medium px-3 rounded-md data-pressed:bg-background data-pressed:text-foreground data-pressed:shadow-xs"
               >
                 <BookOpenText className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
                 <span>Account ledger</span>
               </ToggleGroupItem>
               <ToggleGroupItem
                 value="monthly"
-                className="h-7 text-xs font-medium px-3 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs"
+                className="h-7 text-xs font-medium px-3 rounded-md data-pressed:bg-background data-pressed:text-foreground data-pressed:shadow-xs"
               >
                 <CalendarRange className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
                 <span>Monthly summary</span>
               </ToggleGroupItem>
             </ToggleGroup>
 
-            {/* Period Preset Select */}
-            <Select value={periodPreset} onValueChange={(val) => handlePeriodPresetChange(val as PeriodPreset)}>
-              <SelectTrigger className="h-8 text-xs w-[140px] rounded-md bg-background border-border font-medium text-foreground">
-                <SelectValue placeholder="Period" />
-              </SelectTrigger>
-              <SelectContent className="text-xs font-medium">
-                <SelectItem value="this_month">This Month</SelectItem>
-                <SelectItem value="last_month">Last Month</SelectItem>
-                <SelectItem value="this_quarter">This Quarter</SelectItem>
-                <SelectItem value="last_quarter">Last Quarter</SelectItem>
-                <SelectItem value="this_year">This Year</SelectItem>
-                <SelectItem value="last_year">Last Year</SelectItem>
-                <SelectItem value="ytd">Year to Date</SelectItem>
-                <SelectItem value="custom">Custom Range</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Custom Date Range Popover */}
-            {periodPreset === 'custom' && (
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8 text-xs rounded-md bg-background border-border gap-1.5 font-medium">
-                    <CalendarIcon className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span>Select Dates</span>
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-3 bg-card border-border" align="start">
-                  <div className="space-y-3">
-                    <div className="text-xs font-semibold text-foreground">Custom Date Range</div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="date"
-                        value={dateFrom}
-                        onChange={(e) => handleCustomRangeChange(e.target.value, dateTo)}
-                        className="h-8 text-xs p-1.5 border rounded-md bg-background border-border text-foreground"
-                      />
-                      <span className="text-xs text-muted-foreground">to</span>
-                      <input
-                        type="date"
-                        value={dateTo}
-                        onChange={(e) => handleCustomRangeChange(dateFrom, e.target.value)}
-                        className="h-8 text-xs p-1.5 border rounded-md bg-background border-border text-foreground"
-                      />
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            )}
-
-            {/* Resolved Date Range Chip */}
-            <div className="bg-muted px-2.5 py-1 rounded-md text-xs font-medium text-muted-foreground flex items-center gap-1.5 fin-num">
-              <span>{formatDate(dateFrom)} – {formatDate(dateTo)}</span>
-            </div>
+            <PeriodControl
+              preset={periodPreset}
+              from={dateFrom}
+              to={dateTo}
+              onChange={({ preset, from, to }) => updateParams({ preset, date_from: from, date_to: to, page: 1 })}
+            />
           </div>
 
           {/* Right Action Buttons */}
@@ -710,196 +628,55 @@ export default function GeneralLedgerPage() {
           </div>
         </div>
 
-        {/* ── VIEW 1: LEDGER SUMMARY (Zoho GL) ─────────────────────────────────── */}
+        {/* ── VIEW 1: LEDGER SUMMARY ───────────────────────────────────────────── */}
         {viewParam === 'summary' && (
-          <div className="space-y-4 max-w-[1240px] mx-auto">
-            {/* Header / Activity Toggle Card */}
-            <div className="flex items-center justify-between p-3.5 bg-card rounded-xl border border-border shadow-xs">
-              <div className="flex items-center gap-2 text-xs font-medium text-foreground">
-                <span>Summary of all accounts</span>
-                <span className="text-muted-foreground">·</span>
-                <span className="text-muted-foreground">{summaryRes?.data?.items.length || 0} active accounts</span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Switch
-                  id="show-zero-accs"
-                  checked={customize.showZeroBalance}
-                  onCheckedChange={(checked) => setCustomize((prev) => ({ ...prev, showZeroBalance: checked }))}
-                />
-                <label htmlFor="show-zero-accs" className="text-xs font-medium text-foreground cursor-pointer select-none">
-                  Show accounts with no activity
-                </label>
-              </div>
+          <>
+            <div className="hidden text-center print:block">
+              {companyLegalName && <p className="text-xs text-muted-foreground">{companyLegalName}</p>}
+              <h1 className="text-xl font-semibold">General ledger summary</h1>
+              <p className="text-xs text-muted-foreground">
+                {formatDate(dateFrom)} – {formatDate(dateTo)} · amounts in SAR
+              </p>
             </div>
-
-            {/* Error State */}
-            {isSummaryError && (
-              <div className="bg-rose-500/10 border border-rose-600/20 rounded-xl p-4 text-rose-700 dark:text-rose-300 text-xs font-medium flex items-center justify-between">
-                <span>Failed to load General Ledger Summary</span>
-                <Button size="sm" variant="outline" onClick={() => refetchSummary()} className="h-7 text-xs gap-1.5">
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Retry</span>
-                </Button>
+            <ReportViewState
+              isLoading={isSummaryLoading}
+              isError={isSummaryError}
+              onRetry={() => refetchSummary()}
+              isEmpty={summaryItems.length === 0}
+              emptyTitle="No ledger activity"
+              emptyDescription="No account has a balance or postings up to the end of this period. Try a different period, or turn on accounts with no activity in Customize."
+            >
+              <div className="shrink-0 print:hidden">
+                <LedgerSummaryHeadline
+                  totals={summaryTypeTotals}
+                  model={summaryModel}
+                  openingLabel={formatDate(dateFrom)}
+                  active={summaryType}
+                  onType={(t) => updateParams({ type: t })}
+                />
               </div>
-            )}
-
-            {/* Skeleton Loading */}
-            {isSummaryLoading && (
-              <div className="bg-card rounded-xl p-8 border border-border space-y-4 shadow-xs">
-                <Skeleton className="h-6 w-64" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
-              </div>
-            )}
-
-            {/* General Ledger Summary Paper Table */}
-            {!isSummaryLoading && !isSummaryError && (
-              <div className="bg-card rounded-xl border border-border shadow-xs p-6 md:p-8">
-                {/* Paper Header */}
-                <div className="text-center pb-6 border-b border-border space-y-1">
-                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                    {companyLegalName}
-                  </div>
-                  <h1 className="text-2xl font-bold tracking-tight text-foreground">
-                    General Ledger Summary
-                  </h1>
-                  <div className="text-xs text-muted-foreground fin-num">
-                    {formatDate(dateFrom)} to {formatDate(dateTo)} · Amounts in SAR
-                  </div>
-                </div>
-
-                {/* Accounts Table by Type */}
-                <div className="table-container overflow-x-auto pt-4">
-                  <table className="w-full text-left text-xs border-collapse min-w-[720px]">
-                    <thead>
-                      <tr className="border-b border-border text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                        <th className="py-2.5 px-3">Account</th>
-                        <th className="py-2.5 px-3 text-right w-36">Opening balance</th>
-                        <th className="py-2.5 px-3 text-right w-36">Debit (SAR)</th>
-                        <th className="py-2.5 px-3 text-right w-36">Credit (SAR)</th>
-                        <th className="py-2.5 px-3 text-right w-40">Closing balance</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border/60">
-                      {summaryGrouped.map((typeGroup) => (
-                        <React.Fragment key={typeGroup.type}>
-                          {/* Type Section Header */}
-                          <tr className="bg-muted/40">
-                            <td colSpan={5} className="py-2.5 px-3 font-semibold text-foreground text-xs">
-                              {typeGroup.type}s
-                            </td>
-                          </tr>
-
-                          {/* Parent Group Rows & Items */}
-                          {Array.from(typeGroup.parents.entries()).map(([parentKey, pg]) => {
-                            const isCollapsed = collapsedSummaryGroups[`${typeGroup.type}-${parentKey}`];
-
-                            return (
-                              <React.Fragment key={parentKey}>
-                                {/* Parent Group Sub-Header */}
-                                <tr
-                                  onClick={() => toggleSummaryGroup(`${typeGroup.type}-${parentKey}`)}
-                                  className="hover:bg-muted/50 cursor-pointer select-none font-medium text-foreground"
-                                >
-                                  <td className="py-2 px-3 flex items-center gap-1.5">
-                                    {isCollapsed ? (
-                                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                                    ) : (
-                                      <ChevronDown className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                                    )}
-                                    {pg.parentCode && customize.showAccountCodes && (
-                                      <span className="fin-num text-muted-foreground mr-1.5">{pg.parentCode}</span>
-                                    )}
-                                    <span>{pg.parentName}</span>
-                                    <span className="text-[11px] font-normal text-muted-foreground ml-2">({pg.items.length})</span>
-                                  </td>
-                                  <td className="py-2 px-3 text-right fin-num text-muted-foreground">—</td>
-                                  <td className="py-2 px-3 text-right fin-num text-foreground">
-                                    {fmtVal(pg.subtotalDebit)}
-                                  </td>
-                                  <td className="py-2 px-3 text-right fin-num text-foreground">
-                                    {fmtVal(pg.subtotalCredit)}
-                                  </td>
-                                  <td className="py-2 px-3 text-right fin-num text-muted-foreground">—</td>
-                                </tr>
-
-                                {/* Child Account Rows */}
-                                {!isCollapsed &&
-                                  pg.items.map((accItem) => (
-                                    <tr
-                                      key={accItem.account_id}
-                                      onClick={() => {
-                                        updateParams({ account_id: accItem.account_id, view: 'account', page: 1 });
-                                      }}
-                                      className="hover:bg-muted/50 cursor-pointer transition-colors group"
-                                    >
-                                      <td className="py-2 px-3 pl-8">
-                                        <div className="flex items-center gap-2">
-                                          {customize.showAccountCodes && (
-                                            <span className="w-12 text-muted-foreground fin-num text-xs">
-                                              {accItem.code}
-                                            </span>
-                                          )}
-                                          <span className="font-normal text-foreground group-hover:text-[#FA634E] transition-colors">
-                                            {accItem.name}
-                                          </span>
-                                        </div>
-                                      </td>
-                                      <td className="py-2 px-3 text-right fin-num text-muted-foreground">
-                                        {fmtBalance(accItem.opening.signed, accItem.opening.side)}
-                                      </td>
-                                      <td className="py-2 px-3 text-right fin-num text-foreground">
-                                        {accItem.period_debit > 0 ? fmtVal(accItem.period_debit) : '—'}
-                                      </td>
-                                      <td className="py-2 px-3 text-right fin-num text-foreground">
-                                        {accItem.period_credit > 0 ? fmtVal(accItem.period_credit) : '—'}
-                                      </td>
-                                      <td className="py-2 px-3 text-right fin-num font-medium text-foreground">
-                                        {fmtBalance(accItem.closing.signed, accItem.closing.side)}
-                                      </td>
-                                    </tr>
-                                  ))}
-                              </React.Fragment>
-                            );
-                          })}
-                        </React.Fragment>
-                      ))}
-                    </tbody>
-
-                    {/* Summary Footer Row */}
-                    <tfoot>
-                      <tr className="border-t border-foreground/70 border-b-[3px] border-double font-semibold text-foreground text-sm">
-                        <td className="py-3.5 px-3">
-                          <div className="flex items-center gap-3">
-                            <span>Grand total</span>
-                            {summaryRes?.data?.is_balanced ? (
-                              <Chip tone="positive" size="sm">
-                                ✓ balanced
-                              </Chip>
-                            ) : (
-                              <Chip tone="negative" size="sm">
-                                Out by {fmtVal(Math.abs((summaryRes?.data?.total_debit || 0) - (summaryRes?.data?.total_credit || 0)))}
-                              </Chip>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-3 text-right fin-num text-muted-foreground">—</td>
-                        <td className="py-3.5 px-3 text-right fin-num text-foreground">
-                          {fmtVal(summaryRes?.data?.total_debit || 0)}
-                        </td>
-                        <td className="py-3.5 px-3 text-right fin-num text-foreground">
-                          {fmtVal(summaryRes?.data?.total_credit || 0)}
-                        </td>
-                        <td className="py-3.5 px-3 text-right fin-num text-muted-foreground">—</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-            )}
-          </div>
+              <LedgerSummaryTable
+                model={summaryModel}
+                fmt={summaryFmt}
+                search={summarySearch}
+                onSearch={setSummarySearch}
+                type={summaryType}
+                onType={(t) => updateParams({ type: t })}
+                activeOnly={summaryActiveOnly}
+                onActiveOnly={(v) => updateParams({ active: v ? 'true' : null })}
+                sort={summarySort}
+                onSort={(v) => updateParams({ sort: v === 'code' ? null : v })}
+                collapsed={collapsedSummaryGroups}
+                onToggleParent={toggleSummaryGroup}
+                onCollapseAll={(collapse) => setCollapsedSummaryGroups(collapse ? new Set(parentKeys(summaryModel)) : new Set())}
+                onPeek={peekSummaryAccount}
+                onOpenLedger={(row) => updateParams({ view: 'account', account_id: row.item.account_id, page: 1 })}
+                onOpenMonthly={(row) => updateParams({ view: 'monthly', account_id: row.item.account_id })}
+                selectedId={peekAccount?.id ?? null}
+              />
+            </ReportViewState>
+            <AccountLedgerSheet account={peekAccount} from={dateFrom} to={dateTo} onClose={() => setPeekAccount(null)} />
+          </>
         )}
 
         {/* ── VIEW 2: ACCOUNT LEDGER (Tally Ledger Vouchers) ───────────────────── */}
@@ -1040,13 +817,13 @@ export default function GeneralLedgerPage() {
                       onValueChange={(val: string[]) => val[0] && updateParams({ side: val[0], page: 1 })}
                       className="bg-muted p-[3px] rounded-lg border border-border/60"
                     >
-                      <ToggleGroupItem value="all" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs">
+                      <ToggleGroupItem value="all" className="h-7 text-xs font-medium px-2.5 rounded-md data-pressed:bg-background data-pressed:text-foreground data-pressed:shadow-xs">
                         All
                       </ToggleGroupItem>
-                      <ToggleGroupItem value="debit" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs">
+                      <ToggleGroupItem value="debit" className="h-7 text-xs font-medium px-2.5 rounded-md data-pressed:bg-background data-pressed:text-foreground data-pressed:shadow-xs">
                         Debit
                       </ToggleGroupItem>
-                      <ToggleGroupItem value="credit" className="h-7 text-xs font-medium px-2.5 rounded-md data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs">
+                      <ToggleGroupItem value="credit" className="h-7 text-xs font-medium px-2.5 rounded-md data-pressed:bg-background data-pressed:text-foreground data-pressed:shadow-xs">
                         Credit
                       </ToggleGroupItem>
                     </ToggleGroup>
@@ -1419,6 +1196,17 @@ export default function GeneralLedgerPage() {
                 <Switch
                   checked={customize.showAccountCodes}
                   onCheckedChange={(val) => setCustomize((prev) => ({ ...prev, showAccountCodes: val }))}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-foreground">Show Zero-Balance Accounts</div>
+                  <div className="text-[11px] text-muted-foreground">Ledger summary: include accounts with no balance and no postings</div>
+                </div>
+                <Switch
+                  checked={customize.showZeroBalance}
+                  onCheckedChange={(val) => setCustomize((prev) => ({ ...prev, showZeroBalance: val }))}
                 />
               </div>
 

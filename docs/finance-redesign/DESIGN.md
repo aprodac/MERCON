@@ -328,6 +328,33 @@ ReportTable: Account | Current | Previous | Change | %   (group rows collapsible
 - Ageing reports: stacked bucket bar per customer/vendor row + bucket totals as tiles; clicking a bucket cell opens the filtered list (`/finance/invoices?customer_id=…&tab=overdue`).
 - Print uses a clean print stylesheet (no sidebar, no toolbar, black text, 12pt).
 
+### 4.4b General Ledger — Ledger summary (built 2026-09-28)
+
+Reference implementation for a "all accounts over a period" report. Files:
+`lib/finance/glSummary.ts` (model + tests), `components/finance/ledger/LedgerSummaryHeadline.tsx`,
+`components/finance/ledger/LedgerSummaryTable.tsx`, wired in `pages/finance/GeneralLedgerPage.tsx`.
+
+```
+Toolbar row: [Ledger summary | Account ledger | Monthly summary]  [PeriodControl]   ····  Customize · Print · Export
+Headline card: 5 HeadlineTerm tiles (Assets · Liabilities · Equity · Revenue · Expenses)  |  Trial check (Dr = Cr) · Period activity ▾
+ScrollTableCard
+  toolbar: [search, "/" to focus] [type chip ×] (●) With postings only  ····  [Sort ▾] [Collapse all]
+  table:   Account | Opening | Debit | Credit | Net change | Closing | Lines | (row actions on hover)
+           type row (tone dot, count, "normally Dr/Cr", subtotals) → parent rows (collapsible, subtotals) → account rows
+  sticky tfoot: Grand total + Balanced chip (or "Total of shown accounts · n of N" when filtered)
+```
+
+- Tiles: balance-sheet types show the closing balance with "from <opening> · ▲/▼ change"; revenue and expenses show
+  what was earned / spent in the period. Amounts read in the type's normal direction (credit-normal types flip sign).
+  Tones: Assets `info`, Liabilities `orange`, Equity `violet` (same as the Balance Sheet), Revenue `positive`, Expenses `warning`.
+- Clicking a tile filters the table to that type (click again to clear); the filter is in the URL (`type`, `active`, `sort`).
+- Clicking an account row (or Enter on a focused row) opens `AccountLedgerSheet` for the period. Row buttons open the
+  full Account ledger or the Monthly summary for that account.
+- Balances are `amount` + a small `Dr`/`Cr` tag, or signed when Customize → Balance style = signed. Debits use the
+  positive tone, credits the negative tone, both as text colour only.
+- Sticky table footers must use `border-separate border-spacing-0` with row lines on the cells (`[&>td]:border-b`):
+  with `border-collapse`, Chrome lets scrolled rows show through a sticky `tfoot`.
+
 ### 4.5 Banking pages
 
 - Bank Accounts: grid of account cards (bank name, masked number, GL account code, current balance in `fin-num`, "Reconciled to <date>" line) + "Transfer funds" action in header.
