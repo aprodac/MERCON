@@ -83,6 +83,11 @@ interface TripStep1UnifiedWorkspaceProps {
   setAwbNumber?: (val: string) => void;
   /** The next section to fill ("when", "driver"…) — it gets highlighted. */
   nextSection?: string | null;
+  masterCoDriver?: string;
+  setMasterCoDriver?: (id: string) => void;
+  coDriverSplit?: { driverPayoutOverride?: number; coDriverPayoutOverride?: number };
+  setCoDriverSplit?: (v: { driverPayoutOverride?: number; coDriverPayoutOverride?: number }) => void;
+  basePayout?: number;
   lastCustomerTrip?: any | null;
   onRepeatTrip?: (trip: any) => void;
   lastLaneTime?: { date: string; time: string; label: string } | null;
@@ -160,6 +165,11 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
   awbNumber = '',
   setAwbNumber,
   nextSection = null,
+  masterCoDriver = '',
+  setMasterCoDriver,
+  coDriverSplit = {},
+  setCoDriverSplit,
+  basePayout = 0,
   lastCustomerTrip = null,
   onRepeatTrip,
   lastLaneTime = null,
@@ -282,6 +292,11 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
                 <ExecutionAssignmentSection
                   waitingForPrice={!isEditMode && !isQuotationDefinedOrSelected}
                   highlight={nextSection === 'driver'}
+                  masterCoDriver={masterCoDriver}
+                  setMasterCoDriver={setMasterCoDriver}
+                  coDriverSplit={coDriverSplit}
+                  setCoDriverSplit={setCoDriverSplit}
+                  basePayout={basePayout}
                   assignmentType={assignmentType}
                   setAssignmentType={setAssignmentType}
                   masterVehicle={masterVehicle}

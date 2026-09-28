@@ -578,6 +578,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const allIssues = useMemo(
     () =>
       validateTripDraft({
+        rateCategory: rateCategory,
         customerId,
         slots: [slot],
         billingType,
@@ -591,7 +592,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
         selectedDates,
         toUtcIso,
       }),
-    [customerId, slot, billingType, assignmentType, driverId, vehicleId, thirdPartyProviderId, thirdPartyDriverName, thirdPartyCost, selectedDates, toUtcIso, rotationActive, rotationDrivers],
+    [customerId, slot, billingType, rateCategory, assignmentType, driverId, vehicleId, thirdPartyProviderId, thirdPartyDriverName, thirdPartyCost, selectedDates, toUtcIso, rotationActive, rotationDrivers],
   );
 
   const stepIssues = useCallback(

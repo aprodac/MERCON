@@ -5,6 +5,7 @@ import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DriverAvatar from '@/components/ui/DriverAvatar';
+import { CoDriverPaySplit } from './CoDriverPaySplit';
 import { shiftMonth, monthLabel } from '@/components/trips/monthly/monthlyBoardUtils';
 import { tripService } from '@/services/tripService';
 import { useDeploymentTimezone } from '@/lib/datetime';
@@ -108,7 +109,6 @@ function CoDriverEditor({
   basePayout: number;
 }) {
   const has = Boolean(value.coDriverId);
-  const half = Math.round((basePayout / 2) * 100) / 100;
   if (!has) {
     return (
       <button
@@ -121,49 +121,31 @@ function CoDriverEditor({
     );
   }
   return (
-    <div className="space-y-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 p-2">
-      <div className="flex items-center gap-1.5">
-        <span className="text-[11px] font-semibold text-slate-500 shrink-0">Co-driver</span>
-        <div className="min-w-0 flex-1">
-          <Combobox
-            options={driverOptions.filter((o) => o.value !== value.driverId && o.value !== 'unassigned')}
-            value={value.coDriverId === 'unassigned' ? '' : value.coDriverId || ''}
-            onChange={(v) => onChange({ coDriverId: v })}
-            placeholder="Choose a co-driver"
-            searchPlaceholder="Name, phone or plate"
-            triggerClassName={PICKER_CLASS}
-            popoverClassName="min-w-[340px]"
-          />
-        </div>
+    <div className="space-y-2 rounded-xl border border-slate-200/80 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-2.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Co-driver</span>
         <button
           type="button"
-          aria-label="Remove co-driver"
           onClick={() => onChange({ coDriverId: '', driverPayoutOverride: undefined, coDriverPayoutOverride: undefined })}
-          className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+          className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-rose-600 cursor-pointer"
         >
-          <X className="w-3.5 h-3.5" />
+          <X className="w-3 h-3" /> Remove
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-1.5">
-        {([
-          ['driverPayoutOverride', 'Driver pay'],
-          ['coDriverPayoutOverride', 'Co-driver pay'],
-        ] as const).map(([key, label]) => (
-          <label key={key} className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2 h-8">
-            <span className="text-[11px] text-slate-500 shrink-0">{label}</span>
-            <input
-              type="number"
-              min="0"
-              inputMode="decimal"
-              value={value[key] ?? ''}
-              placeholder={String(half)}
-              onChange={(e) => onChange({ [key]: e.target.value === '' ? undefined : Number(e.target.value) } as DayOverride)}
-              className="min-w-0 flex-1 bg-transparent text-right text-xs font-semibold tabular-nums text-slate-900 dark:text-slate-100 outline-none"
-            />
-          </label>
-        ))}
-      </div>
-      <p className="text-[11px] text-slate-400">Per trip. Empty = half each of SAR {basePayout.toLocaleString()}.</p>
+      <Combobox
+        options={driverOptions.filter((o) => o.value !== value.driverId && o.value !== 'unassigned')}
+        value={value.coDriverId === 'unassigned' ? '' : value.coDriverId || ''}
+        onChange={(v) => onChange({ coDriverId: v })}
+        placeholder="Choose a co-driver"
+        searchPlaceholder="Name, phone or plate"
+        triggerClassName={PICKER_CLASS}
+        popoverClassName="min-w-[340px]"
+      />
+      <CoDriverPaySplit
+        total={basePayout}
+        value={{ driverPayoutOverride: value.driverPayoutOverride, coDriverPayoutOverride: value.coDriverPayoutOverride }}
+        onChange={(split) => onChange(split)}
+      />
     </div>
   );
 }

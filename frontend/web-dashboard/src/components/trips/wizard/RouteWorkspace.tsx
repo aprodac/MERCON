@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { getAllTaxonomyOptions, resolveTaxonomyOption } from '@/utils/taxonomyRegistry';
 import { isDateTimeInPast } from '@/utils/pastDateTripUtils';
 import { cn, isUuid } from '@/lib/utils';
+import { STOP_ROLE_COLORS } from '@mercon/shared-types';
 
 interface RouteWorkspaceProps {
   slot: any;
@@ -85,9 +86,23 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
   const outStops = (slot.intermediateLocations || []).filter(Boolean);
   const retStops = (slot.returnIntermediateLocations || []).filter(Boolean);
   const stopCount = outStops.length + (isRoundTrip ? retStops.length : 0);
-  const routeSummary = [slot.origin, ...outStops, slot.destination, ...(isRoundTrip ? [...retStops, slot.returnDestination || slot.origin] : [])]
-    .filter(Boolean)
-    .join(' → ');
+  const hhmm = (t?: string) => (t ? t.slice(0, 5) : '');
+  const retLoad = (slot.returnOrigin || '').trim();
+  const retEnd = (!slot.returnDestination || isUuid(slot.returnDestination) ? slot.origin : slot.returnDestination) || '';
+  const routePoints: Array<{ name: string; role: 'origin' | 'stop' | 'destination'; label: string; time?: string; returning?: boolean }> = [
+    { name: slot.origin, role: 'origin', label: 'Pickup', time: hhmm(slot.pickupTime) },
+    ...outStops.map((n: string) => ({ name: n, role: 'stop' as const, label: 'Stop' })),
+    { name: slot.destination, role: 'destination', label: isRoundTrip ? 'Drop' : 'Delivery', time: hhmm(slot.dropoffTime) },
+    ...(isRoundTrip
+      ? [
+          ...(retLoad && retLoad.toLowerCase() !== String(slot.destination || '').toLowerCase()
+            ? [{ name: retLoad, role: 'origin' as const, label: 'Return loading', time: hhmm(slot.returnPickupTime), returning: true }]
+            : []),
+          ...retStops.map((n: string) => ({ name: n, role: 'stop' as const, label: 'Stop', returning: true })),
+          { name: retEnd, role: 'destination' as const, label: 'Back', time: hhmm(slot.returnDropoffTime), returning: true },
+        ]
+      : []),
+  ].filter((p) => p.name);
   const lineTypeTaxonomyOptions = getAllTaxonomyOptions('LINE_TYPE');
   const selectedTaxonomyOption = resolveTaxonomyOption('LINE_TYPE', contractRateCategory);
   const isMonthly = contractBillingType?.toLowerCase() === 'monthly';
@@ -107,6 +122,14 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
     if (!cleanTime) return null;
     return `${slot.dropoffDate}T${cleanTime.length === 4 ? '0' + cleanTime : cleanTime}`;
   }, [slot.dropoffDate, slot.dropoffTime]);
+
+  const toIso = (d?: string, t?: string) => (d && t ? `${d}T${t.length === 4 ? '0' + t : t}` : null);
+  const returnPickupIso = toIso(slot.returnPickupDate, slot.returnPickupTime);
+  const returnDropoffIso = toIso(slot.returnDropoffDate, slot.returnDropoffTime);
+  const dropoffDateObj = dropoffIsoValue ? new Date(dropoffIsoValue) : undefined;
+  const returnPickupDateObj = returnPickupIso ? new Date(returnPickupIso) : undefined;
+  const returnFrom = (slot.returnOrigin || slot.destination || '').trim();
+  const returnTo = ((!slot.returnDestination || isUuid(slot.returnDestination)) ? slot.origin : slot.returnDestination || '').trim();
 
   const pickupDateObj = React.useMemo(() => {
     if (!pickupIsoValue) return undefined;
@@ -180,25 +203,75 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
     >
       {showRoute && (
         routeCollapsed ? (
-          <div className="flex items-center justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                <RouteIcon className="w-3.5 h-3.5" /> Route
-                {slot.matchedRateCard?.quotation_number != null && <span>· from QT-{slot.matchedRateCard.quotation_number}</span>}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                <RouteIcon className="w-4 h-4 text-slate-400 shrink-0" />
+                <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Route</span>
+                {selectedTaxonomyOption ? (
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                      selectedTaxonomyOption.colorTheme.bg,
+                      selectedTaxonomyOption.colorTheme.text,
+                      selectedTaxonomyOption.colorTheme.border
+                    )}
+                  >
+                    {isRoundTrip && <RotateCcw className="w-3 h-3" />}
+                    {selectedTaxonomyOption.label}
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{contractRateCategory}</span>
+                )}
+                {slot.matchedRateCard?.quotation_number != null && (
+                  <span className="rounded-full bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 text-[11px] font-semibold text-[#c2410c] dark:text-orange-300">
+                    QT-{slot.matchedRateCard.quotation_number}
+                  </span>
+                )}
+                {stopCount > 0 && (
+                  <span className="text-[11px] text-slate-500">{stopCount} {stopCount === 1 ? 'stop' : 'stops'} on the way</span>
+                )}
               </div>
-              <div className="truncate text-sm font-bold text-slate-900 dark:text-slate-100" title={routeSummary}>{routeSummary}</div>
-              <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                {contractRateCategory}
-                {stopCount > 0 && ` · ${stopCount} ${stopCount === 1 ? 'stop' : 'stops'}`}
-              </div>
+              <button
+                type="button"
+                onClick={() => setRouteOpen(true)}
+                className="shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-[#FA634E]/60 hover:text-[#c2410c] cursor-pointer"
+              >
+                Edit route
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setRouteOpen(true)}
-              className="shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-[#FA634E]/60 hover:text-[#c2410c] cursor-pointer"
-            >
-              Edit route
-            </button>
+
+            {/* Timeline: every stop in order, with its planned time. The way back is dashed. */}
+            <ol className="flex items-start" aria-label="Route">
+              {routePoints.map((pt, i) => (
+                <li key={`${pt.name}-${i}`} className="flex min-w-0 flex-1 items-start last:flex-none">
+                  <div className="flex min-w-0 flex-col items-center text-center" style={{ maxWidth: 140 }}>
+                    <span
+                      className="flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white dark:ring-slate-900"
+                      style={{ backgroundColor: STOP_ROLE_COLORS[pt.role].soft }}
+                    >
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: STOP_ROLE_COLORS[pt.role].main }} />
+                    </span>
+                    <span className="mt-1 w-full truncate text-xs font-bold capitalize text-slate-900 dark:text-slate-100" title={pt.name}>
+                      {pt.name}
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {pt.label}
+                      {pt.time && <span className="font-semibold text-slate-700 dark:text-slate-200"> · {pt.time}</span>}
+                    </span>
+                  </div>
+                  {i < routePoints.length - 1 && (
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'mt-3 h-0 flex-1 border-t-2 mx-1 min-w-[16px]',
+                        routePoints[i + 1].returning ? 'border-dashed border-amber-400' : 'border-slate-300 dark:border-slate-600'
+                      )}
+                    />
+                  )}
+                </li>
+              ))}
+            </ol>
           </div>
         ) : (
           <>
@@ -696,6 +769,111 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
               )}
             </div>
           </div>
+          {/* ROUND TRIP: RETURN LOADING → TRAVEL TIME → ARRIVAL HOME */}
+          {isRoundTrip && (
+            <div className="space-y-1.5 border-t border-dashed border-slate-200 dark:border-slate-700 pt-2.5">
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+                <RotateCcw className="w-3.5 h-3.5" /> Return · {returnFrom || 'destination'} → {returnTo || 'origin'}
+              </span>
+              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2.5 items-end">
+                <div className="space-y-1 min-w-0">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">Return loading</span>
+                  {isMonthly ? (
+                    <TimePicker
+                      value={slot.returnPickupTime || ''}
+                      onChange={(t) => handleUpdateTripSlot(slot.id, { returnPickupTime: t, ...(!t ? { returnDropoffTime: '', returnDropoffManual: false } : {}) })}
+                      placeholder="Loading time"
+                      buttonClassName="h-9 rounded-xl border-slate-200 bg-white shadow-2xs font-semibold text-xs text-slate-800 px-3 w-full"
+                    />
+                  ) : (
+                    <DateTimePicker
+                      value={returnPickupIso}
+                      minDate={dropoffDateObj}
+                      onChange={(iso) => {
+                        if (!iso) {
+                          handleUpdateTripSlot(slot.id, { returnPickupDate: '', returnPickupTime: '', returnDropoffDate: '', returnDropoffTime: '', returnDropoffManual: false });
+                          return;
+                        }
+                        const [d, t] = iso.split('T');
+                        handleUpdateTripSlot(slot.id, { returnPickupDate: d, returnPickupTime: (t || '').slice(0, 5) });
+                      }}
+                      placeholder="Loading date and time"
+                      showPresets={false}
+                      showRelativeBadge={false}
+                      className="h-9 rounded-xl border-slate-200 bg-white shadow-2xs text-xs font-semibold"
+                    />
+                  )}
+                </div>
+                <div className="hidden md:flex items-center justify-center pb-2">
+                  {returnFrom && returnTo ? (
+                    <TransitTimeBadge
+                      origin={returnFrom}
+                      destination={returnTo}
+                      pickupDate={slot.returnPickupDate || slot.dropoffDate || slot.date}
+                      pickupTime={slot.returnPickupTime || ''}
+                      onAutoSetDropoffDateTime={(dDate, dTime) => {
+                        if (!autoFillArrival || slot.returnDropoffManual || isRouteLocked || !slot.returnPickupTime) return;
+                        handleUpdateTripSlot(slot.id, { returnDropoffDate: dDate, returnDropoffTime: dTime });
+                      }}
+                      compact
+                    />
+                  ) : (
+                    <span className="text-slate-300 dark:text-slate-600">→</span>
+                  )}
+                </div>
+                <div className="space-y-1 min-w-0">
+                  <span className="flex items-center text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Arrival home
+                    {autoFillArrival && slot.returnDropoffTime && (
+                      <span
+                        className={cn(
+                          'ml-1.5 normal-case tracking-normal rounded-full px-1.5 py-px text-[10px] font-semibold',
+                          slot.returnDropoffManual ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' : 'bg-orange-50 text-[#c2410c] dark:bg-orange-950/40 dark:text-orange-300'
+                        )}
+                      >
+                        {slot.returnDropoffManual ? 'set by you' : 'auto'}
+                      </span>
+                    )}
+                  </span>
+                  {isMonthly ? (
+                    <TimePicker
+                      value={slot.returnDropoffTime || ''}
+                      onChange={(t) => handleUpdateTripSlot(slot.id, { returnDropoffTime: t, returnDropoffManual: Boolean(t) })}
+                      placeholder="Arrival time"
+                      buttonClassName="h-9 rounded-xl border-slate-200 bg-white shadow-2xs font-semibold text-xs text-slate-800 px-3 w-full"
+                    />
+                  ) : (
+                    <DateTimePicker
+                      value={returnDropoffIso}
+                      minDate={returnPickupDateObj}
+                      onChange={(iso) => {
+                        if (!iso) {
+                          handleUpdateTripSlot(slot.id, { returnDropoffDate: '', returnDropoffTime: '', returnDropoffManual: false });
+                          return;
+                        }
+                        const [d, t] = iso.split('T');
+                        handleUpdateTripSlot(slot.id, { returnDropoffDate: d, returnDropoffTime: (t || '').slice(0, 5), returnDropoffManual: true });
+                      }}
+                      placeholder="Arrival date and time"
+                      showPresets={false}
+                      showRelativeBadge={false}
+                      className="h-9 rounded-xl border-slate-200 bg-white shadow-2xs text-xs font-semibold"
+                    />
+                  )}
+                </div>
+              </div>
+              {(fieldErrors?.[`returnPickup-${slot.id}`] || fieldErrors?.[`returnDropoff-${slot.id}`]) && (
+                <p className="flex items-center gap-1.5 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  {fieldErrors?.[`returnPickup-${slot.id}`] ? 'Return loading must be after the outbound arrival.' : 'Arrival home must be after return loading.'}
+                </p>
+              )}
+              {!slot.returnPickupTime && (
+                <p className="text-[11px] text-slate-400">Optional — set it to plan the way back and when the truck is free again.</p>
+              )}
+            </div>
+          )}
+
           {lastLaneTime && !slot.pickupTime && (
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Last time for this lane:{' '}

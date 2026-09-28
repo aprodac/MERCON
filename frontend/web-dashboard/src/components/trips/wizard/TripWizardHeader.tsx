@@ -87,7 +87,7 @@ export const TripWizardHeader: React.FC<TripWizardHeaderProps> = ({
 
 
   return (
-    <div className="border-b border-black/[0.06] bg-white dark:bg-slate-900 shrink-0 grid grid-cols-3 items-center px-5 py-2.5 gap-3 w-full relative">
+    <div className="border-b border-black/[0.06] bg-white dark:bg-slate-900 shrink-0 flex items-center px-4 py-2.5 gap-3 w-full relative">
       {/* Top Left: Cancel / Back Actions & Multi-Color >>> Horizontal Navigation Launcher */}
       <div className="flex items-center gap-2 justify-start shrink-0">
         {contractStep > 1 ? (
@@ -115,12 +115,16 @@ export const TripWizardHeader: React.FC<TripWizardHeaderProps> = ({
       </div>
 
       {/* Center: on step 1, what's filled and what's next; on step 2 (monthly), the steps */}
-      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+      <div className="flex min-w-0 flex-1 items-center justify-center overflow-x-auto">
         {contractStep === 1 && progress ? (
-          <>
+          <ol className="flex items-center" aria-label="Progress">
             {progress.map((p, i) => {
               const isNext = p.key === nextSection;
               return (
+                <li key={p.key} className="flex items-center">
+                  {i > 0 && (
+                    <span aria-hidden="true" className={cn('h-px w-4 sm:w-6', progress[i - 1].done ? 'bg-emerald-300 dark:bg-emerald-800' : 'bg-slate-200 dark:bg-slate-700')} />
+                  )}
                 <button
                   key={p.key}
                   type="button"
@@ -137,11 +141,12 @@ export const TripWizardHeader: React.FC<TripWizardHeaderProps> = ({
                   {p.done ? <CheckCircle2 className="w-3.5 h-3.5" /> : <span className="tabular-nums">{i + 1}</span>}
                   {p.label}
                 </button>
+                </li>
               );
             })}
             {isMonthly && (
-              <>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-300" />
+              <li className="flex items-center">
+                <span aria-hidden="true" className="h-px w-4 sm:w-6 bg-slate-200 dark:bg-slate-700" />
                 <button
                   type="button"
                   disabled={!canNavigateToStep(2)}
@@ -150,9 +155,9 @@ export const TripWizardHeader: React.FC<TripWizardHeaderProps> = ({
                 >
                   <CalendarRange className="w-3.5 h-3.5" /> Days and roster
                 </button>
-              </>
+              </li>
             )}
-          </>
+          </ol>
         ) : (
           steps.map((s) => {
             const IconComp = s.icon;
@@ -190,11 +195,12 @@ export const TripWizardHeader: React.FC<TripWizardHeaderProps> = ({
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-8 text-xs font-bold border-amber-300/80 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 hover:bg-amber-100/80 rounded-xl px-2.5 gap-1.5 shadow-2xs cursor-pointer shrink-0"
+                title="A trip you started earlier is saved"
+                className="h-8 text-xs font-semibold border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-amber-300 rounded-xl px-2 gap-1 shadow-none cursor-pointer shrink-0"
               >
                 <History className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                <span>Saved Draft</span>
-                <ChevronDown className="w-3 h-3 text-amber-500 shrink-0" />
+                <span>Draft</span>
+                <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48 z-[9999]">

@@ -254,6 +254,11 @@ export default function CreateTripPage() {
                         setDayAssignments={form.setDayAssignments}
                         fieldErrors={form.fieldErrors}
                         nextSection={form.nextSection}
+                        masterCoDriver={form.masterCoDriver}
+                        setMasterCoDriver={form.setMasterCoDriver}
+                        coDriverSplit={form.coDriverSplit}
+                        setCoDriverSplit={form.setCoDriverSplit}
+                        basePayout={resolveSlotDriverPayout(form.contractSlots[0] || ({} as any))}
                         lastCustomerTrip={form.lastCustomerTrip}
                         onRepeatTrip={form.handleRepeatTrip}
                         lastLaneTime={form.lastLaneTime}

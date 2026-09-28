@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, Plus, Tag, Trash2, Loader2, Check } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { QuotationPriceHistory } from './QuotationPriceHistory';
 import { cn, isUuid } from '@/lib/utils';
 import { surchargeRuleService, SurchargeRule } from '@/services/quotationService';
 import { TripChargeInput } from '@/services/tripService';
@@ -319,6 +320,15 @@ export const TripEconomicsSection: React.FC<TripEconomicsSectionProps> = ({
             </div>
           </div>
         </div>
+
+        {/* PRICE HISTORY of the selected quotation + other rates on this lane */}
+        <QuotationPriceHistory
+          quotationId={rateCardId}
+          origin={primarySlot.origin}
+          destination={primarySlot.destination}
+          vehicleClass={matchedRateCard?.vehicle_type || matchedRateCard?.vehicle_class}
+          customerId={customerId}
+        />
       </div>
 
       {/* PERFECTLY ALIGNED MERCON UI MODAL DIALOG */}

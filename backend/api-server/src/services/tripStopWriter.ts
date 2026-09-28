@@ -191,6 +191,11 @@ export async function writeTripStops(
   }
 
   // 4. Build database create records
+  let endStopIndex = resolvedStops.length - 1;
+  if (hasReturnLeg) {
+    const lastOutbound = resolvedStops.map((st: any, i: number) => ({ st, i })).filter(({ st }) => Number(st.leg_index ?? 0) === 0).pop();
+    if (lastOutbound) endStopIndex = lastOutbound.i;
+  }
   const stopsToCreate = resolvedStops.map((stop: any, index: number) => {
     let rawLat = parseOptionalFloat(stop.lat);
     let rawLng = parseOptionalFloat(stop.lng);
@@ -219,7 +224,9 @@ export async function writeTripStops(
       stopPlannedArrival = new Date(stop.planned_arrival);
     } else if (index === 0 && plannedStart) {
       stopPlannedArrival = plannedStart;
-    } else if (index === resolvedStops.length - 1 && plannedEnd) {
+    } else if (index === endStopIndex && plannedEnd) {
+      // A stop without its own time: the trip's end goes on the outbound drop of
+      // a round trip (the return stops keep their own times), else on the last stop.
       stopPlannedArrival = plannedEnd;
     }
 

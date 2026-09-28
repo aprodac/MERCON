@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Truck, User, Users, ShieldAlert, Plus, Trash2, TrendingUp, Tag, AlertCircle } from 'lucide-react';
+import { Truck, User, Users, ShieldAlert, Plus, Trash2, TrendingUp, Tag, AlertCircle, X } from 'lucide-react';
 import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DriverAvatar from '@/components/ui/DriverAvatar';
+import { CoDriverPaySplit, type PaySplitValue } from './CoDriverPaySplit';
 import { FactChip, StatusTag, type DriverFacts } from './DriverPickerRow';
 import { thirdPartyService, ProviderRateCard, Previous3PLDriver } from '@/services/thirdPartyService';
 import VehicleCompatibilityBadge from '@/components/trips/shared/VehicleCompatibilityBadge';
@@ -41,6 +42,12 @@ interface ExecutionAssignmentSectionProps {
   waitingForPrice?: boolean;
   /** The driver / partner is the next thing to fill. */
   highlight?: boolean;
+  masterCoDriver?: string;
+  setMasterCoDriver?: (id: string) => void;
+  coDriverSplit?: PaySplitValue;
+  setCoDriverSplit?: (split: PaySplitValue) => void;
+  /** Lane driver payout per trip — shared 50/50 with a co-driver by default. */
+  basePayout?: number;
   status?: string;
   awbNumber?: string;
   setAwbNumber?: (val: string) => void;
@@ -75,12 +82,21 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
   isAssignmentLocked = false,
   waitingForPrice = false,
   highlight = false,
+  masterCoDriver = '',
+  setMasterCoDriver,
+  coDriverSplit = {},
+  setCoDriverSplit,
+  basePayout = 0,
   status = '',
   awbNumber = '',
   setAwbNumber,
 }) => {
-  const [coDriver, setCoDriver] = useState('');
-  const [showCoDriver, setShowCoDriver] = useState(false);
+  // The co-driver lives in the form (it was local here and never reached the saved trip).
+  const [localCoDriver, setLocalCoDriver] = useState('');
+  const coDriver = setMasterCoDriver ? masterCoDriver : localCoDriver;
+  const setCoDriver = (id: string) => (setMasterCoDriver ? setMasterCoDriver(id) : setLocalCoDriver(id));
+  const [showCoDriverRaw, setShowCoDriver] = useState(false);
+  const showCoDriver = showCoDriverRaw || Boolean(coDriver);
   const [matchedRate, setMatchedRate] = useState<ProviderRateCard | null>(null);
 
   const [previousDrivers, setPreviousDrivers] = useState<Previous3PLDriver[]>([]);
@@ -355,30 +371,32 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
             {/* OPTIONAL CO-DRIVER / RELIEVER */}
             {!isAssignmentLocked && (
               showCoDriver ? (
-                <div className="space-y-1 p-2 rounded-lg bg-slate-50 border border-slate-200 dark:bg-slate-800 dark:border-slate-700">
+                <div className="space-y-2 rounded-xl border border-slate-200/80 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                      CO-DRIVER / RELIEVER
-                    </span>
+                    <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Co-driver / reliever</span>
                     <button
                       type="button"
                       onClick={() => {
                         setCoDriver('');
                         setShowCoDriver(false);
                       }}
-                      className="text-slate-400 hover:text-rose-600 cursor-pointer"
+                      className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-rose-600 cursor-pointer"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <X className="w-3 h-3" /> Remove
                     </button>
                   </div>
                   <Combobox
-                    options={driverOptions.filter((d) => d.value !== masterDriver)}
+                    options={driverOptions.filter((d) => d.value !== masterDriver && d.value !== 'unassigned')}
                     value={coDriver}
                     onChange={setCoDriver}
-                    placeholder="Select co-driver..."
-                    searchPlaceholder="Search co-driver name..."
+                    placeholder="Choose a co-driver"
+                    searchPlaceholder="Name, phone or plate"
                     triggerClassName="h-8 rounded-lg border-slate-200 text-xs font-semibold shadow-2xs"
+                    popoverClassName="min-w-[360px]"
                   />
+                  {coDriver && setCoDriverSplit && (
+                    <CoDriverPaySplit total={basePayout} value={coDriverSplit} onChange={(v) => setCoDriverSplit?.(v)} />
+                  )}
                 </div>
               ) : (
                 <button

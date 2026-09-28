@@ -827,6 +827,20 @@ export function useCreateTripForm() {
   const [monthlyDayOverrides, setMonthlyDayOverrides] = useState<Record<string, Partial<DayAssignmentInput>>>({});
   const isMonthlyBilling = contractBillingType === 'Monthly';
 
+  // Single trip: how the payout is shared with the co-driver (empty = 50/50). It
+  // reaches the saved row through the slot's day assignment.
+  const [coDriverSplit, setCoDriverSplit] = useState<{ driverPayoutOverride?: number; coDriverPayoutOverride?: number }>({});
+  const firstSlotId = (contractSlots[0] as any)?.id as string | undefined;
+  useEffect(() => {
+    if (isMonthlyBilling || !firstSlotId) return;
+    const hasCo = Boolean(masterCoDriver && masterCoDriver !== 'unassigned');
+    const hasSplit = coDriverSplit.driverPayoutOverride !== undefined || coDriverSplit.coDriverPayoutOverride !== undefined;
+    setDayAssignments(hasCo && hasSplit ? { [firstSlotId]: { driverId: '', vehicleId: '', ...coDriverSplit } } : {});
+  }, [isMonthlyBilling, firstSlotId, masterCoDriver, coDriverSplit]);
+  useEffect(() => {
+    if (!masterCoDriver) setCoDriverSplit({});
+  }, [masterCoDriver]);
+
   // Entering Monthly with a driver already picked on step 1: start the crew with them.
   useEffect(() => {
     if (!isMonthlyBilling) return;
@@ -866,6 +880,7 @@ export function useCreateTripForm() {
   const getStepValidationErrors = (step: number): string[] => {
     const isMonthly = contractBillingType?.toLowerCase() === 'monthly';
     const issues = validateTripDraft({
+      rateCategory: contractRateCategory,
       customerId: contractCustomer,
       slots: contractSlots,
       billingType: contractBillingType,
@@ -1451,6 +1466,8 @@ export function useCreateTripForm() {
     setSelectedDates,
     dayAssignments,
     setDayAssignments,
+    coDriverSplit,
+    setCoDriverSplit,
     monthlyCrewMode,
     setMonthlyCrewMode,
     monthlyCrew,

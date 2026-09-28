@@ -256,6 +256,30 @@ export function useTripSubmission(
       }
     }
 
+    // Round trip: the return leg's times (same check as the saved rows).
+    validateTripDraft({
+      customerId: contractCustomer,
+      rateCategory: contractRateCategory,
+      slots: contractSlots || [],
+      billingType: contractBillingType,
+      assignmentType,
+      masterDriver,
+      masterVehicle,
+      thirdPartyProviderId,
+      thirdPartyDriverName,
+      thirdPartyCost,
+      selectedDates,
+      toUtcIso,
+    })
+      .filter((i) => i.field.startsWith('returnPickup') || i.field.startsWith('returnDropoff'))
+      .forEach((i) => {
+        errors[i.field] = true;
+        if (!firstErrId) {
+          firstErrId = 'section-when';
+          firstErrMsg = i.message;
+        }
+      });
+
     return { errors, firstErrId, firstErrMsg };
   };
 
@@ -290,6 +314,7 @@ export function useTripSubmission(
     // Everything else (operating days, assignment, 3PL partner) — the same checks the
     // operator app runs, so a monthly trip can't be sent without its days.
     const issues = validateTripDraft({
+      rateCategory: contractRateCategory,
       customerId: contractCustomer,
       slots: contractSlots,
       billingType: contractBillingType,
