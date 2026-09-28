@@ -947,6 +947,8 @@ export function useCreateTripForm() {
     pastDateAnalysis,
     handlePastDateConfirm,
     bulkMutation,
+    isSubmitting,
+    buildContractRows,
     handleContractSubmit,
     fieldErrors,
     setFieldErrors,
@@ -1075,7 +1077,7 @@ export function useCreateTripForm() {
           setContractStep((prev) => (prev + 1) as any);
         }
       } else {
-        if (batchTripRows.length > 0 && isStepValid(3) && !bulkMutation.isPending) {
+        if (batchTripRows.length > 0 && isStepValid(3) && !isSubmitting) {
           handleContractSubmit();
         }
       }
@@ -1087,7 +1089,7 @@ export function useCreateTripForm() {
         handleDialogClose();
       }
     },
-    isSubmitting: bulkMutation.isPending,
+    isSubmitting,
   });
 
   const handleRepeatTrip = useCallback(
@@ -1314,6 +1316,8 @@ export function useCreateTripForm() {
     pastDateAnalysis,
     handlePastDateConfirm,
     bulkMutation,
+    isSubmitting,
+    buildContractRows,
     handleContractSubmit,
     fieldErrors,
     setFieldErrors,

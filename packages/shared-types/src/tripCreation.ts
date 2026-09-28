@@ -511,6 +511,62 @@ export function perTripBilling(slot: Pick<TripSlotDraft, 'billingAmount' | 'pric
 }
 
 /**
+ * Days between pickup and drop-off. An explicit later drop-off date wins (a
+ * trip can run several nights); otherwise a drop-off at or before the pickup
+ * time — or a slot marked overnight — lands on the next day. For a monthly
+ * contract the same offset is applied to every operating date.
+ */
+export function dropoffDayOffset(slot: Pick<TripSlotDraft, 'date' | 'pickupTime' | 'dropoffDate' | 'dropoffTime' | 'isOvernight'>): number {
+  if (slot.date && slot.dropoffDate && slot.dropoffDate > slot.date) {
+    const [y1, m1, d1] = slot.date.split('-').map(Number);
+    const [y2, m2, d2] = slot.dropoffDate.split('-').map(Number);
+    const days = Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
+    if (days > 0) return days;
+  }
+  if (slot.isOvernight || (slot.pickupTime && slot.dropoffTime && slot.dropoffTime <= slot.pickupTime)) return 1;
+  return 0;
+}
+
+/**
+ * The driver payout for one trip of this slot: the first value actually
+ * entered — an edited payout, then the lane's trip charge, then the matched
+ * quotation's payout. Blank strings are skipped (a cleared field is not 0).
+ */
+export function resolveSlotDriverPayout(slot: Pick<TripSlotDraft, 'driverPayout' | 'tripCharges' | 'matchedRateCard'>): number {
+  const candidates = [
+    slot.driverPayout,
+    slot.tripCharges,
+    slot.matchedRateCard?.driver_payout,
+    slot.matchedRateCard?.default_trip_charge,
+    (slot as any).quotation?.driver_payout,
+  ];
+  for (const v of candidates) {
+    if (v === undefined || v === null || v === '') continue;
+    const n = Number(v);
+    if (!Number.isNaN(n)) return n;
+  }
+  return 0;
+}
+
+/** Totals over built rows — what the review screen shows is exactly what is saved. */
+export function summarizeTripRows(rows: TripImportRow[]): {
+  trips: number;
+  billing: number;
+  charges: number;
+  payout: number;
+  thirdPartyCost: number;
+} {
+  const sum = (f: (r: TripImportRow) => number) => rows.reduce((a, r) => a + (f(r) || 0), 0);
+  return {
+    trips: rows.length,
+    billing: sum((r) => Number(r.billing_amount)),
+    charges: sum((r) => (r.charges || []).reduce((a, c) => a + (Number(c.amount) || 0), 0)),
+    payout: sum((r) => (r.is_third_party ? 0 : Number(r.driver_payout) + Number(r.co_driver_payout || 0))),
+    thirdPartyCost: sum((r) => (r.is_third_party ? Number(r.third_party_cost) : 0)),
+  };
+}
+
+/**
  * The bulk-import rows for the form: one per slot, or one per slot per
  * operating date for a monthly contract.
  */
@@ -548,13 +604,7 @@ export function buildTripRows(input: TripRowsInput): TripImportRow[] {
 
       let plannedEnd: string | undefined;
       if (slot.dropoffTime) {
-        const isOvernightOrEarlier = slot.isOvernight || (slot.pickupTime && slot.dropoffTime <= slot.pickupTime);
-        const targetDropoffDate = isOvernightOrEarlier
-          ? addDaysToDateStr(date, 1)
-          : slot.dropoffDate && slot.dropoffDate >= date
-          ? slot.dropoffDate
-          : date;
-        plannedEnd = toUtcIso(targetDropoffDate, slot.dropoffTime);
+        plannedEnd = toUtcIso(addDaysToDateStr(date, dropoffDayOffset(slot)), slot.dropoffTime);
       }
 
       const common = {
@@ -600,9 +650,7 @@ export function buildTripRows(input: TripRowsInput): TripImportRow[] {
       const vehicleId = pick(assignment.vehicleId, masterVehicle);
       const coDriverId = pick(assignment.coDriverId, masterCoDriver);
 
-      const baseRateCardPayout = Number(
-        slot.driverPayout ?? slot.tripCharges ?? slot.matchedRateCard?.driver_payout ?? (slot as any).quotation?.driver_payout ?? 0,
-      );
+      const baseRateCardPayout = resolveSlotDriverPayout(slot);
       const shouldUpdateQuotation = Boolean(slot.updateQuotationPayout || slot.driverPayoutModified);
 
       let finalDriverPayout = baseRateCardPayout;
@@ -695,12 +743,7 @@ export function validateTripDraft(input: TripValidationInput): TripValidationIss
       issues.push({ section: 'price', field: key('billingAmount'), message: `${label}: Select a Commercial Quotation card or enter Customer Billing Rate` });
     }
     if (!is3PL) {
-      const hasPayout =
-        hasValue(slot.tripCharges) ||
-        hasValue(slot.driverPayout) ||
-        slot.matchedRateCard?.driver_payout != null ||
-        slot.matchedRateCard?.default_trip_charge != null;
-      if (!hasPayout) issues.push({ section: 'price', field: key('driverPayout'), message: `${label}: Enter Driver Payout / Charge` });
+      if (!(resolveSlotDriverPayout(slot) > 0)) issues.push({ section: 'price', field: key('driverPayout'), message: `${label}: Enter Driver Payout / Charge` });
     }
 
     if (!isMonthly && !slot.date) issues.push({ section: 'schedule', field: key('date'), message: `${label}: Select a trip date` });

@@ -639,7 +639,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
 
   /** Saves a newly defined quotation (if any), then creates the trip(s). Returns an error message or null. */
   const submit = useCallback(
-    async (pastChoice: 'Completed' | 'Incomplete' = 'Incomplete'): Promise<{ ok: boolean; message: string; step?: CreateTripStep }> => {
+    async (pastChoice: 'Completed' | 'Incomplete' = 'Incomplete'): Promise<{ ok: boolean; partial?: boolean; message: string; step?: CreateTripStep }> => {
       if (allIssues.length > 0) {
         const first = allIssues[0];
         return { ok: false, message: first.message, step: STEP_OF[first.section] };
@@ -680,13 +680,18 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
         if (countPastTrips(rows) > 0) rows = applyPastTripStatus(rows, pastChoice, tz);
 
         const res = await operatorService.bulkImportTrips(rows);
-        if (!res || res.failed > 0) {
+        if (!res || !res.imported) {
           const firstError = res?.results?.find((r) => !r.success)?.error;
+          return { ok: false, message: `Trip not created: ${firstError || 'unknown error'}` };
+        }
+        if (res.failed > 0) {
+          // Some trips exist now — leave the form so submitting again can't create them twice.
+          const firstError = res.results?.find((r) => !r.success)?.error;
+          invalidateOperatorTrips();
           return {
-            ok: false,
-            message: res?.imported
-              ? `${res.imported} created, ${res.failed} failed: ${firstError || 'unknown error'}`
-              : `Trip not created: ${firstError || 'unknown error'}`,
+            ok: true,
+            partial: true,
+            message: `${res.imported} created, ${res.failed} failed: ${firstError || 'unknown error'}. Create the failed ones again.`,
           };
         }
         invalidateOperatorTrips();
