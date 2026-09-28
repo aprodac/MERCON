@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { makeRoomBelow } from '@/lib/dropdownRoom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronDown, MapPin, Plus, Loader2, Building2, AlertTriangle, Sparkles, Globe, Search } from 'lucide-react';
 import { toast } from 'sonner';
@@ -50,7 +51,7 @@ export default function LocationCombobox({
   excludeLocationId,
   triggerClassName,
   customerId,
-  side = 'top',
+  side = 'bottom',
   hasError = false,
   precision,
   onEditPrecision,
@@ -287,6 +288,12 @@ export default function LocationCombobox({
     setActiveIndex(0);
   }, [search, open]);
 
+  // Always open below the field; slide the page up first if it's near the bottom.
+  useEffect(() => {
+    if (!open) return;
+    return makeRoomBelow(triggerRef.current, 340);
+  }, [open]);
+
   // Focus search input when popover opens
   useEffect(() => {
     if (open) {
@@ -402,8 +409,7 @@ export default function LocationCombobox({
         align="start"
         side={side}
         sideOffset={4}
-        avoidCollisions={true}
-        collisionPadding={8}
+        avoidCollisions={false}
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           inputRef.current?.focus();

@@ -227,10 +227,11 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
         {/* RIGHT WORKSPACE (lg:col-span-5): EXECUTION ASSIGNMENT (TOP) & FINANCIAL SUMMARY (BELOW) */}
         <div className="lg:col-span-5">
           <div className="sticky top-4 space-y-3">
-            <div className={cn("transition-opacity duration-200 space-y-3", !isEditMode && !isQuotationDefinedOrSelected && "opacity-50 pointer-events-none select-none")}>
-              {/* REQUIREMENT 3: For Monthly trips, DO NOT show Assignment on Page 1 */}
-              {contractBillingType?.toLowerCase() !== 'monthly' && (
+            <div className="space-y-3">
+              {/* Monthly: the card keeps the Own fleet / 3PL switch; drivers are set per day on step 2 */}
+              {(
                 <ExecutionAssignmentSection
+                  waitingForPrice={!isEditMode && !isQuotationDefinedOrSelected}
                   assignmentType={assignmentType}
                   setAssignmentType={setAssignmentType}
                   masterVehicle={masterVehicle}
@@ -263,6 +264,7 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
                 />
               )}
 
+              <div className={cn('transition-opacity duration-200', !isEditMode && !isQuotationDefinedOrSelected && 'opacity-50 pointer-events-none select-none')} inert={!isEditMode && !isQuotationDefinedOrSelected}>
               <TripEconomicsSection
                 contractSlots={contractSlots}
                 masterDriver={masterDriver}
@@ -275,6 +277,7 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
                 isBaseBillingLocked={isBaseBillingLocked}
                 isFinancialsLocked={isFinancialsLocked}
               />
+              </div>
             </div>
           </div>
         </div>

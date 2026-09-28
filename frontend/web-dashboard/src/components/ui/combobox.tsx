@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { makeRoomBelow, isRoomScrollInProgress } from '@/lib/dropdownRoom';
 import { Check, ChevronDown, Plus, Search } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -48,7 +49,7 @@ export function Combobox({
   disabled,
   onAddNew,
   addNewLabel,
-  side = 'top',
+  side = 'bottom',
   hasError = false,
 }: ComboboxProps) {
   const [open, setOpen] = useState(false);
@@ -120,6 +121,8 @@ export function Combobox({
       if (listRef.current && listRef.current.contains(e.target as Node)) {
         return;
       }
+      // The page sliding up to make room for this dropdown is not a reason to close it.
+      if (isRoomScrollInProgress()) return;
       setOpen(false);
     };
 
@@ -127,6 +130,12 @@ export function Combobox({
     return () => {
       window.removeEventListener('scroll', handleScroll, true);
     };
+  }, [open]);
+
+  // Always open below the field; slide the page up first if it's near the bottom.
+  useEffect(() => {
+    if (!open) return;
+    return makeRoomBelow(triggerRef.current, 320);
   }, [open]);
 
   const handleTriggerKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
@@ -213,8 +222,7 @@ export function Combobox({
         align="start"
         side={side}
         sideOffset={4}
-        avoidCollisions={true}
-        collisionPadding={8}
+        avoidCollisions={false}
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           inputRef.current?.focus();

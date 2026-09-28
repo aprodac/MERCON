@@ -330,7 +330,8 @@ export function useCreateTripForm() {
     }
   }, [urlBillingType, urlMode, urlMonth, urlAssignment]);
 
-  const explicitBillingType = urlBillingType || (isMonthlyUrl ? 'Monthly' : null);
+  // The billing tabs on the quotation card filter by billing type, so the lookup keeps every quotation.
+  const explicitBillingType = null;
 
   const {
     customerRateCards,

@@ -37,6 +37,8 @@ interface ExecutionAssignmentSectionProps {
   fieldErrors?: Record<string, boolean>;
   vehicles?: any[];
   isAssignmentLocked?: boolean;
+  /** No price yet: the Own fleet / 3PL switch works, the fields below wait. */
+  waitingForPrice?: boolean;
   status?: string;
   awbNumber?: string;
   setAwbNumber?: (val: string) => void;
@@ -69,6 +71,7 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
   fieldErrors = {},
   vehicles = [],
   isAssignmentLocked = false,
+  waitingForPrice = false,
   status = '',
   awbNumber = '',
   setAwbNumber,
@@ -180,18 +183,47 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
         <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider flex items-center gap-1.5">
           <Truck className="w-3.5 h-3.5 text-[#FA634E] shrink-0" /> ASSIGNMENT
         </h4>
-        {/* ASSIGNMENT CONTEXT BADGE */}
-        <span
-          className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
-            assignmentType === 'third_party' || assignmentType === '3pl'
-              ? 'bg-indigo-50 text-indigo-700 border border-indigo-200 dark:bg-indigo-950/60 dark:text-indigo-300 dark:border-indigo-800'
-              : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-800'
-          }`}
-        >
-          {assignmentType === 'third_party' || assignmentType === '3pl' ? '3PL Partner' : 'Own Fleet'}
-        </span>
+        {/* WHO RUNS THE TRIP: OWN FLEET OR A 3PL PARTNER */}
+        {(() => {
+          const is3pl = assignmentType === 'third_party' || assignmentType === '3pl';
+          if (isAssignmentLocked) {
+            return (
+              <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                {is3pl ? '3PL partner' : 'Own fleet'}
+              </span>
+            );
+          }
+          return (
+            <div role="radiogroup" aria-label="Run by" className="inline-flex rounded-full bg-slate-100 dark:bg-slate-800 p-0.5">
+              {([['own', 'Own fleet'], ['third_party', '3PL']] as const).map(([val, text]) => {
+                const on = val === 'third_party' ? is3pl : !is3pl;
+                return (
+                  <button
+                    key={val}
+                    type="button"
+                    role="radio"
+                    aria-checked={on}
+                    onClick={() => !on && setAssignmentType(val)}
+                    className={cn(
+                      'rounded-full px-3 py-0.5 text-[11px] font-semibold transition-colors cursor-pointer',
+                      on
+                        ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs ring-1 ring-slate-200 dark:ring-slate-700'
+                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                    )}
+                  >
+                    {text}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
 
+      {waitingForPrice && (
+        <p className="text-[11px] text-slate-500 dark:text-slate-400">Pick or define a quotation first to choose the driver and truck.</p>
+      )}
+      <div className={cn('transition-opacity duration-200', waitingForPrice && 'opacity-50 pointer-events-none select-none')} inert={waitingForPrice}>
       {isMonthly ? (
         <div className="space-y-2">
           {/* VEHICLE CLASS */}
@@ -215,18 +247,13 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
             </div>
           )}
 
-          <div className="p-3 rounded-xl bg-purple-50/80 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/60 flex items-start gap-2.5">
-            <div className="p-1.5 rounded-lg bg-purple-100 dark:bg-purple-900/60 text-purple-700 dark:text-purple-300 shrink-0">
-              <Users className="w-4 h-4" />
-            </div>
-            <div className="space-y-0.5">
-              <span className="text-xs font-bold text-purple-950 dark:text-purple-200 block">
-                Driver & Fleet Roster Assigned in Step 2
-              </span>
-              <span className="text-[11px] text-purple-700 dark:text-purple-300 font-medium block leading-snug">
-                For monthly contract duty, driver rotation models, truck pairs, and operating calendar dates are configured in <strong>Step 2 (Operating Month & Days)</strong> after clicking Next.
-              </span>
-            </div>
+          <div className="flex items-center gap-2.5 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-3 py-2.5">
+            <Users className="w-4 h-4 text-slate-400 shrink-0" />
+            <span className="text-xs text-slate-600 dark:text-slate-300">
+              {assignmentType === 'third_party' || assignmentType === '3pl'
+                ? 'Partner, plate and cost are set with the days on step 2.'
+                : 'Drivers and trucks are set per day on step 2.'}
+            </span>
           </div>
         </div>
       ) : assignmentType === 'own' ? (
@@ -462,23 +489,24 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                       const reasons = (facts?.chips || []).slice().sort((a, b) => (a.tone === 'good' ? -1 : 0) - (b.tone === 'good' ? -1 : 0)).slice(0, 2);
                       const name = `${p.first_name || ''} ${p.last_name || ''}`.trim();
                       return (
-                        <div key={p.value} className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-2 py-1.5">
+                        <button
+                          key={p.value}
+                          type="button"
+                          disabled={isAssignmentLocked}
+                          onClick={() => handleDriverChange(p.value)}
+                          title={`Assign ${name}`}
+                          className="group flex w-full items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 px-2 py-1.5 text-left transition-colors hover:border-[#FA634E]/60 hover:bg-orange-50/40 dark:hover:bg-orange-950/20 cursor-pointer disabled:opacity-50"
+                        >
                           <DriverAvatar src={p.avatar_url} firstName={p.first_name || ''} lastName={p.last_name || ''} size="sm" className="shrink-0" />
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100" title={name}>{name}</div>
+                            {/* First two names keep long 4-part names readable; the full name is in the tooltip. */}
+                            <div className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100">{name.split(/\s+/).slice(0, 2).join(' ')}</div>
                             <div className="mt-0.5 flex flex-wrap gap-1">
                               {reasons.map((c) => <FactChip key={c.text} text={c.text} tone={c.tone} />)}
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            disabled={isAssignmentLocked}
-                            onClick={() => handleDriverChange(p.value)}
-                            className="shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 hover:border-[#FA634E] hover:text-[#FA634E] cursor-pointer disabled:opacity-50"
-                          >
-                            Assign
-                          </button>
-                        </div>
+                          <span className="shrink-0 text-[11px] font-semibold text-slate-400 group-hover:text-[#FA634E]">Assign ›</span>
+                        </button>
                       );
                     })}
                   </div>
@@ -775,6 +803,7 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
           })()}
         </div>
       )}
+      </div>
     </div>
   );
 };

@@ -68,7 +68,7 @@ SelectScrollDownButton.displayName =
 const SelectContent = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(({ className, children, position = "popper", ...props }, forwardedRef) => {
+>(({ className, children, position = "popper", side = "bottom", avoidCollisions = false, ...props }, forwardedRef) => {
   const innerRef = React.useRef<HTMLDivElement | null>(null);
 
   const setRefs = React.useCallback(
@@ -111,6 +111,8 @@ const SelectContent = React.forwardRef<
           className
         )}
         position={position}
+        side={side}
+        avoidCollisions={avoidCollisions}
         {...props}
       >
         <SelectScrollUpButton />
