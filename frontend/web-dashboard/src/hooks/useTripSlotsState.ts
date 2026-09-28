@@ -38,8 +38,12 @@ export interface TripSlot {
   returnDestination?: string;
   returnOriginLocationId?: string | null;
   returnDestinationLocationId?: string | null;
+  returnPickupDate?: string;
   returnPickupTime?: string;
+  returnDropoffDate?: string;
   returnDropoffTime?: string;
+  /** Return arrival set by hand — the travel-time estimate stops overwriting it. */
+  returnDropoffManual?: boolean;
   returnIsOvernight?: boolean;
   returnIntermediateLocations?: string[];
   returnIntermediateLocationIds?: (string | null)[];

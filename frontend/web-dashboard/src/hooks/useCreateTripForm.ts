@@ -11,7 +11,7 @@ import { tripService, BulkImportTripRow, BulkImportResult, TripStatus, Trip } fr
 import { quotationService, RateCard } from '@/services/quotationService';
 import { estimateTravelTimeByName, calculateArrivalDropoffTime } from '@/services/travelTimeService';
 import { useDeploymentTimezone, localDateTimeToUtcIso } from '@/lib/datetime';
-import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory, quotationMatchesRoute, validateTripDraft, type TripValidationIssue } from '@mercon/shared-types';
+import { VEHICLE_TYPES, RATE_CATEGORIES, isRoundTripCategory, quotationMatchesRoute, validateTripDraft, buildMonthlyRoster, resolveSlotDriverPayout, DISPATCH_RULES, DRIVER_GROUP_LABELS, type DriverGroup, dateInZone, addDaysToDateStr, type TripValidationIssue, type MonthlyCrewMember, type DayAssignmentInput } from '@mercon/shared-types';
 import { buildStopsFromSlot, routeLegsFromSlot } from '@/utils/tripStopsHelper';
 import { parseSheet, TRIP_COLUMNS } from '@/utils/importUtils';
 import { analyzePastDateRows, applyPastStatusToRows, PastDateAnalysis } from '@/utils/pastDateTripUtils';
@@ -54,6 +54,7 @@ export const getVehicleTypeFromCapacity = (capacityKg?: number | null): string =
   const tons = capacityKg / 1000;
   if (tons <= 4) return '3-4 TON';
   if (tons <= 5) return '5 TON';
+  if (tons <= 8) return '8 TON';
   if (tons <= 10) return '10 TON';
   if (tons <= 20) return '20 TON';
   return '40 FEET';
@@ -207,22 +208,60 @@ export function useCreateTripForm() {
   const originName = primarySlot.origin || '';
   const destinationName = primarySlot.destination || '';
 
+  // Declared up here: the driver ranking below needs the customer.
+  const [contractCustomer, setContractCustomerRaw] = useState('');
+  const contractCustomerForRec = contractCustomer;
+
+  // The trip's window, route and customer — the ranking checks clashes (1 h gap),
+  // rest (6 h) and lane / customer history against them.
+  const recSlot: any = primarySlot;
+  const recWindow = useMemo(() => {
+    const day = recSlot.date || new Date().toISOString().slice(0, 10);
+    if (!recSlot.pickupTime) return { start: undefined as string | undefined, end: undefined as string | undefined };
+    try {
+      const start = localDateTimeToUtcIso(day, recSlot.pickupTime, tz);
+      const endDay = recSlot.returnDropoffTime ? recSlot.returnDropoffDate || recSlot.dropoffDate || day : recSlot.dropoffDate || day;
+      const endTime = recSlot.returnDropoffTime || recSlot.dropoffTime;
+      const end = endTime ? localDateTimeToUtcIso(endDay, endTime, tz) : undefined;
+      return { start, end };
+    } catch {
+      return { start: undefined, end: undefined };
+    }
+  }, [recSlot.date, recSlot.pickupTime, recSlot.dropoffDate, recSlot.dropoffTime, recSlot.returnDropoffDate, recSlot.returnDropoffTime, tz]);
+
   const { data: recommendedDriversRes } = useQuery({
-    queryKey: ['recommendedDrivers', originName, destinationName, contractVehicleType, masterVehicle],
+    queryKey: [
+      'recommendedDrivers',
+      originName,
+      destinationName,
+      contractVehicleType,
+      recSlot.originLocationId,
+      recSlot.destinationLocationId,
+      contractCustomerForRec,
+      recWindow.start,
+      recWindow.end,
+    ],
     queryFn: () =>
       tripService.getRecommendedDrivers({
         origin: originName,
         destination: destinationName,
         vehicleClass: contractVehicleType,
-        vehicleId: masterVehicle,
+        originLocationId: recSlot.originLocationId || undefined,
+        destinationLocationId: recSlot.destinationLocationId || undefined,
+        customerId: contractCustomerForRec || undefined,
+        plannedStart: recWindow.start,
+        plannedEnd: recWindow.end,
       }),
-    enabled: Boolean(originName || destinationName || contractVehicleType || masterVehicle),
+    enabled: Boolean(originName || destinationName || contractVehicleType),
+    staleTime: 30_000,
   });
 
-  const bestFitGroup = originName && destinationName ? `Best for ${originName} → ${destinationName}` : 'Recommended';
+  const bestFitGroup = originName && destinationName ? `Best for ${originName} → ${destinationName}` : DRIVER_GROUP_LABELS.best;
+  const unavailableGroupLabel = `${DRIVER_GROUP_LABELS.unavailable} · needs ${DISPATCH_RULES.minRestHours} h rest and ${DISPATCH_RULES.bufferHours} h between trips`;
 
   const driverOptions = useMemo<ComboboxOption[]>(() => {
     const recMap = new Map((recommendedDriversRes || []).map((r) => [r.driverId, r]));
+    const recOrder = new Map((recommendedDriversRes || []).map((r, i) => [r.driverId, i]));
 
     const mapped = drivers
       .filter((d) => {
@@ -250,17 +289,37 @@ export function useCreateTripForm() {
           (matchedVeh as any)?.capacityKg;
 
         const capacityLabel = capacityKg != null ? getActualCapacityLabel(capacityKg) : (rec?.vehicleClass || '');
-        const facts = buildDriverFacts(d as any, rec as any, { plate: plateNumber, capacityLabel });
+        // The shared ranking (rankDrivers on the server) decides the group and the "why" chips.
+        const ranked = rec?.group ? rec : null;
+        const blocked = ranked?.group === 'unavailable';
+        const clashText = ranked?.clashStart
+          ? new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ranked.clashStart))
+          : '';
+        const facts = ranked
+          ? {
+              chips: [
+                ...(blocked && ranked.unavailabilityReason
+                  ? [{ text: clashText ? `Booked ${clashText}` : ranked.unavailabilityReason, tone: 'warn' as const }]
+                  : []),
+                ...(ranked.reasons || []).map((r: any) => ({ text: r.text, tone: r.tone })),
+              ],
+              statusLabel: blocked ? (ranked.unavailabilityReason?.startsWith('Only') ? 'Resting' : ranked.unavailabilityReason?.startsWith('Already') ? 'Booked' : 'Unavailable') : 'Free',
+              isFree: !blocked,
+            }
+          : buildDriverFacts(d as any, rec as any, { plate: plateNumber, capacityLabel });
         const isNotAvailable = !facts.isFree && d.id !== masterDriver;
         const detailsStr = formatDriverDetails(d, rec, matchedVeh);
         const firstName = d.first_name || '';
         const lastName = d.last_name || '';
         const fullName = `${firstName} ${lastName}`.trim() || `Driver #${d.id.slice(0, 5)}`;
-        const isBestFit = facts.isFree && rec?.capacityMatch === true;
+        const groupKey = ranked?.group ?? (facts.isFree ? 'other' : 'unavailable');
+        const isBestFit = groupKey === 'best';
 
         return {
           value: d.id,
-          group: isBestFit ? bestFitGroup : facts.isFree ? 'Other drivers' : 'Busy or off duty',
+          group: groupKey === 'best' ? bestFitGroup : groupKey === 'unavailable' ? unavailableGroupLabel : DRIVER_GROUP_LABELS[groupKey as DriverGroup],
+          groupKey,
+          rankIndex: recOrder.get(d.id) ?? 1e6,
           label: React.createElement(DriverPickerRow, { firstName: firstName || fullName, lastName, avatarUrl: d.avatar_url, facts }),
           selectedLabel: React.createElement(DriverSelectedLabel, { firstName: firstName || fullName, lastName, avatarUrl: d.avatar_url }),
           disabled: isNotAvailable,
@@ -282,8 +341,8 @@ export function useCreateTripForm() {
 
     // Best fit first, then other free drivers, then busy ones (disabled) — the
     // dropdown groups by first appearance, so this order is the group order.
-    const rank = (o: any) => (o.isBestFit ? 0 : o.disabled ? 2 : 1);
-    mapped.sort((a, b) => rank(a) - rank(b) || (b.score || 0) - (a.score || 0));
+    // Keep the ranking's order (group, score, rest); drivers it didn't rank go last.
+    mapped.sort((a, b) => (a.rankIndex ?? 1e6) - (b.rankIndex ?? 1e6));
 
     const assignLaterDriverOption: ComboboxOption & Record<string, any> = {
       value: 'unassigned',
@@ -301,7 +360,7 @@ export function useCreateTripForm() {
     };
 
     return [...mapped, assignLaterDriverOption];
-  }, [drivers, vehicles, recommendedDriversRes, masterDriver, bestFitGroup]);
+  }, [drivers, vehicles, recommendedDriversRes, masterDriver, bestFitGroup, tz]);
 
   const urlStepParam = searchParams.get('step');
   const initialStep = (urlStepParam && [1, 2, 3].includes(Number(urlStepParam))) ? (Number(urlStepParam) as 1 | 2 | 3) : 1;
@@ -314,7 +373,6 @@ export function useCreateTripForm() {
   const is3PLUrl = urlAssignment?.toLowerCase() === 'third_party' || urlAssignment?.toLowerCase() === '3pl';
 
   const [contractStep, setContractStep] = useState<1 | 2 | 3>(initialStep);
-  const [contractCustomer, setContractCustomerRaw] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [contractRateCategory, setContractRateCategory] = useState<string>('Single Trip');
   const [contractBillingType, setContractBillingType] = useState<string>(isMonthlyUrl ? 'Monthly' : 'Extra');
@@ -819,6 +877,50 @@ export function useCreateTripForm() {
   const [selectedDates, setSelectedDates] = useState<string[]>([]);
   const [dayAssignments, setDayAssignments] = useState<Record<string, { driverId: string; vehicleId: string; coDriverId?: string; driverPayoutOverride?: number; coDriverPayoutOverride?: number }>>({});
 
+  // Monthly crew: one driver for every day, or several taking turns. Days changed
+  // by hand are kept apart so re-picking days or drivers never loses them. The
+  // day-by-day roster (dayAssignments, what gets saved) is always rebuilt from these.
+  const [monthlyCrewMode, setMonthlyCrewMode] = useState<'one' | 'rotate'>('one');
+  const [monthlyCrew, setMonthlyCrew] = useState<MonthlyCrewMember[]>([{ driverId: '', vehicleId: '' }]);
+  const [monthlyDayOverrides, setMonthlyDayOverrides] = useState<Record<string, Partial<DayAssignmentInput>>>({});
+  const isMonthlyBilling = contractBillingType === 'Monthly';
+
+  // Single trip: how the payout is shared with the co-driver (empty = 50/50). It
+  // reaches the saved row through the slot's day assignment.
+  const [coDriverSplit, setCoDriverSplit] = useState<{ driverPayoutOverride?: number; coDriverPayoutOverride?: number }>({});
+  const firstSlotId = (contractSlots[0] as any)?.id as string | undefined;
+  useEffect(() => {
+    if (isMonthlyBilling || !firstSlotId) return;
+    const hasCo = Boolean(masterCoDriver && masterCoDriver !== 'unassigned');
+    const hasSplit = coDriverSplit.driverPayoutOverride !== undefined || coDriverSplit.coDriverPayoutOverride !== undefined;
+    setDayAssignments(hasCo && hasSplit ? { [firstSlotId]: { driverId: '', vehicleId: '', ...coDriverSplit } } : {});
+  }, [isMonthlyBilling, firstSlotId, masterCoDriver, coDriverSplit]);
+  useEffect(() => {
+    if (!masterCoDriver) setCoDriverSplit({});
+  }, [masterCoDriver]);
+
+  // Entering Monthly with a driver already picked on step 1: start the crew with them.
+  useEffect(() => {
+    if (!isMonthlyBilling) return;
+    setMonthlyCrew((crew) =>
+      crew[0]?.driverId || !masterDriver || masterDriver === 'unassigned'
+        ? crew
+        : [{ ...crew[0], driverId: masterDriver, vehicleId: crew[0]?.vehicleId || masterVehicle }, ...crew.slice(1)]
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMonthlyBilling]);
+
+  useEffect(() => {
+    if (!isMonthlyBilling) return;
+    const crew = monthlyCrewMode === 'one' ? monthlyCrew.slice(0, 1) : monthlyCrew;
+    setDayAssignments(buildMonthlyRoster({ dates: selectedDates, crew, overrides: monthlyDayOverrides }));
+    // The first crew member is the contract's main driver (checks + summary); the
+    // co-driver lives on each day, so no contract-wide co-driver is carried over.
+    setMasterDriver(crew[0]?.driverId || '');
+    setMasterVehicle(crew[0]?.vehicleId || '');
+    setMasterCoDriver('');
+  }, [isMonthlyBilling, selectedDates, monthlyCrew, monthlyCrewMode, monthlyDayOverrides]);
+
   const [isCreateDriverOpen, setIsCreateDriverOpen] = useState(false);
   const [isCreateVehicleOpen, setIsCreateVehicleOpen] = useState(false);
   const [isCreateCustomerOpen, setIsCreateCustomerOpen] = useState(false);
@@ -836,6 +938,7 @@ export function useCreateTripForm() {
   const getStepValidationErrors = (step: number): string[] => {
     const isMonthly = contractBillingType?.toLowerCase() === 'monthly';
     const issues = validateTripDraft({
+      rateCategory: contractRateCategory,
       customerId: contractCustomer,
       slots: contractSlots,
       billingType: contractBillingType,
@@ -1061,27 +1164,117 @@ export function useCreateTripForm() {
     };
   }, [contractSlots, assignmentType, thirdPartyCost]);
 
-  useFormKeyboardShortcuts({
-    onSave: () => {
-      if (contractStep < 4) {
-        if (isStepValid(contractStep)) {
-          setContractStep((prev) => (prev + 1) as any);
-        }
-      } else {
-        if (batchTripRows.length > 0 && isStepValid(3) && !isSubmitting) {
-          handleContractSubmit();
-        }
-      }
-    },
-    onCancel: () => {
-      if (contractStep > 1) {
-        setContractStep((prev) => (prev - 1) as any);
-      } else {
-        handleDialogClose();
-      }
-    },
-    isSubmitting,
-  });
+  // Enter moves to the next field. Ctrl+S / Ctrl+Enter are handled by the page (same as
+  // the main button); Esc only closes dropdowns — it never leaves the page.
+  useFormKeyboardShortcuts({ isSubmitting });
+
+  /** Anything typed that leaving the page would lose. */
+  const isDirty = Boolean(
+    contractCustomer ||
+      contractSlots.some((s: any) => s.origin || s.destination || s.pickupTime) ||
+      selectedDates.length > 0 ||
+      masterDriver
+  );
+
+  /** This customer's latest trip — offered as "Repeat last trip". */
+  const lastCustomerTrip = useMemo(
+    () => (contractCustomer ? (recentTrips || []).find((t: any) => (t.customer_id || t.customer?.id) === contractCustomer) || null : null),
+    [recentTrips, contractCustomer]
+  );
+
+  /* ── Guidance: what's done on step 1, and what to fill next ── */
+  const is3plAssignment = assignmentType === 'third_party';
+  const guideSlot: any = contractSlots[0] || {};
+  const progress = useMemo(() => {
+    const hasRoute = Boolean(guideSlot.origin?.trim() && guideSlot.destination?.trim());
+    const hasBilling = Number(guideSlot.billingAmount) > 0;
+    const hasPayout = is3plAssignment || resolveSlotDriverPayout(guideSlot) > 0;
+    const hasPrice = hasBilling && hasPayout;
+    const hasWhen = isMonthlyBilling
+      ? Boolean(guideSlot.pickupTime && guideSlot.dropoffTime)
+      : Boolean(guideSlot.date && guideSlot.pickupTime && guideSlot.dropoffTime);
+    const hasDriver = is3plAssignment
+      ? Boolean((thirdPartyProviderId || thirdPartyDriverName) && Number(thirdPartyCost) > 0)
+      : Boolean(masterDriver);
+    const items: Array<{ key: 'customer' | 'price' | 'when' | 'driver'; label: string; done: boolean; onlyPayoutMissing?: boolean }> = [
+      { key: 'customer', label: 'Customer', done: Boolean(contractCustomer) },
+      { key: 'price', label: 'Price', done: hasRoute && hasPrice, onlyPayoutMissing: hasRoute && hasBilling && !hasPayout },
+      { key: 'when', label: 'When', done: hasWhen },
+    ];
+    // Monthly: drivers are chosen per day on step 2.
+    if (!isMonthlyBilling) items.push({ key: 'driver', label: is3plAssignment ? 'Partner' : 'Driver', done: hasDriver });
+    return items;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractCustomer, contractSlots, isMonthlyBilling, is3plAssignment, masterDriver, thirdPartyProviderId, thirdPartyDriverName, thirdPartyCost]);
+  const nextSection = progress.find((p) => !p.done)?.key ?? null;
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
+  const nextActionLabel =
+    nextSection === 'customer'
+      ? 'Next: choose a customer'
+      : nextSection === 'price'
+      ? progress.find((p) => p.key === 'price')?.onlyPayoutMissing
+        ? 'Next: enter driver payout'
+        : 'Next: choose a price'
+      : nextSection === 'when'
+      ? 'Next: set pickup time'
+      : nextSection === 'driver'
+      ? is3plAssignment
+        ? 'Next: choose a partner'
+        : 'Next: choose a driver'
+      : null;
+
+  /** Scroll to a section and open its first picker, so the next thing to fill is in front of you. */
+  const focusSection = useCallback((key: string) => {
+    const slotId = (contractSlotsRef.current[0] as any)?.id;
+    const hasRoute = Boolean((contractSlotsRef.current[0] as any)?.origin && (contractSlotsRef.current[0] as any)?.destination);
+    const payoutOnly = Boolean(progressRef.current.find((p) => p.key === 'price')?.onlyPayoutMissing);
+    const target =
+      key === 'customer'
+        ? { box: 'field-customer', open: 'button[role="combobox"]' }
+        : key === 'price' && payoutOnly
+        ? { box: `field-driver-payout-${slotId}-summary`, open: 'input' }
+        : key === 'price'
+        ? { box: hasRoute ? 'section-price' : 'section-route', open: null }
+        : key === 'when'
+        ? { box: 'section-when', open: slotId ? `#field-pickup-${slotId} button` : 'button' }
+        : { box: 'section-driver', open: is3plAssignment ? '#field-3pl-partner button' : '#field-driver-vehicle button[role="combobox"]' };
+    const box = document.getElementById(target.box);
+    if (!box) return;
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (target.open) {
+      const el = box.querySelector<HTMLElement>(target.open) || (box.matches(target.open) ? box : null);
+      window.setTimeout(() => {
+        el?.focus();
+        el?.click();
+      }, 350);
+    }
+  }, [is3plAssignment]);
+
+  /** "Last time for this lane": the pickup time of this customer's latest trip on the same lane. */
+  const lastLaneTime = useMemo(() => {
+    const slot: any = guideSlot;
+    if (!contractCustomer || !slot.origin || !slot.destination) return null;
+    const norm = (v?: string | null) => (v || '').trim().toLowerCase();
+    const trip = (recentTrips || []).find((t: any) => {
+      if ((t.customer_id || t.customer?.id) !== contractCustomer || !t.planned_start) return false;
+      const qid = t.quotationId || t.quotation_id || t.financials?.quotationId;
+      if (slot.rateCardId && qid && qid === slot.rateCardId) return true;
+      const stops = t.stops || [];
+      const first = stops[0];
+      const last = stops[stops.length - 1];
+      const fromName = norm(first?.source_label || first?.location?.name || first?.location_name);
+      const toName = norm(last?.source_label || last?.location?.name || last?.location_name);
+      return Boolean(fromName && toName && fromName === norm(slot.origin) && toName === norm(slot.destination));
+    });
+    if (!trip) return null;
+    const time = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(trip.planned_start as string));
+    const nowTime = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date());
+    const today = dateInZone(Date.now(), tz);
+    const later = time > nowTime;
+    return { date: later ? today : addDaysToDateStr(today, 1), time, label: `${later ? 'Today' : 'Tomorrow'} · ${time}` };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentTrips, contractCustomer, contractSlots, tz]);
 
   const handleRepeatTrip = useCallback(
     (historicalTrip: Trip) => {
@@ -1173,7 +1366,8 @@ export function useCreateTripForm() {
         setMasterVehicle(histVehicle.id);
       }
 
-      setContractStep(2);
+      // Same route, same crew — the date and times are the next thing to set.
+      setContractStep(1);
 
       const formattedDate = historicalTrip.createdAt
         ? new Date(historicalTrip.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -1264,6 +1458,7 @@ export function useCreateTripForm() {
     editDriver,
     setEditDriver,
     handleRepeatTrip,
+    lastCustomerTrip,
     recentRoutesList,
     recentDriversList,
     handleApplyRecentRoute,
@@ -1329,6 +1524,20 @@ export function useCreateTripForm() {
     setSelectedDates,
     dayAssignments,
     setDayAssignments,
+    coDriverSplit,
+    setCoDriverSplit,
+    monthlyCrewMode,
+    setMonthlyCrewMode,
+    monthlyCrew,
+    setMonthlyCrew,
+    monthlyDayOverrides,
+    setMonthlyDayOverrides,
+    isDirty,
+    progress,
+    nextSection,
+    nextActionLabel,
+    focusSection,
+    lastLaneTime,
     getAvailableRateCardsForLane,
     handleOpenCreateQuotation,
     getCompatibilityRuleForClass,

@@ -1,6 +1,6 @@
 import React from 'react';
 import { StopRoleDot, StopRoleBadge, stopRoleStyle } from '@/components/trips/StopRole';
-import { Plus, Trash2, Calendar, Clock, RotateCcw, AlertCircle, Lock } from 'lucide-react';
+import { Plus, Trash2, Calendar, Clock, RotateCcw, AlertCircle, Lock, ArrowDown, Route as RouteIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import LocationCombobox from '@/components/quotations/LocationCombobox';
 import { DateTimePicker } from '@/components/ui/date-time-picker';
@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { getAllTaxonomyOptions, resolveTaxonomyOption } from '@/utils/taxonomyRegistry';
 import { isDateTimeInPast } from '@/utils/pastDateTripUtils';
 import { cn, isUuid } from '@/lib/utils';
+import { STOP_ROLE_COLORS } from '@mercon/shared-types';
 
 interface RouteWorkspaceProps {
   slot: any;
@@ -33,6 +34,14 @@ interface RouteWorkspaceProps {
   isRouteLocked?: boolean;
   /** Fill the arrival from the travel-time estimate (create only — never over a saved trip). */
   autoFillArrival?: boolean;
+  handleUpdateSlotIntermediateFee?: (slotId: string, idx: number, val: string) => void;
+  handleUpdateSlotReturnIntermediateFee?: (slotId: string, idx: number, val: string) => void;
+  /** Which part to render: the route (locations, stops, return leg), the schedule ("When"), or both. */
+  part?: 'all' | 'route' | 'schedule';
+  /** Draw attention to the schedule — it's the next thing to fill. */
+  highlightSchedule?: boolean;
+  /** The pickup time used last time on this lane, offered as a one-click fill. */
+  lastLaneTime?: { date: string; time: string; label: string } | null;
 }
 
 export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
@@ -56,7 +65,44 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
   fieldErrors = {},
   isRouteLocked = false,
   autoFillArrival = true,
+  handleUpdateSlotIntermediateFee,
+  handleUpdateSlotReturnIntermediateFee,
+  part = 'all',
+  highlightSchedule = false,
+  lastLaneTime = null,
 }) => {
+  const showRoute = part !== 'schedule';
+  const showSchedule = part !== 'route';
+  // A route filled by a quotation folds into one line; "Edit route" opens it.
+  const [routeOpen, setRouteOpen] = React.useState(false);
+  const matchedId = slot.matchedRateCard?.id;
+  React.useEffect(() => {
+    setRouteOpen(false);
+  }, [matchedId]);
+  const hasRouteError = Boolean(
+    fieldErrors?.[`origin-${slot.id}`] || fieldErrors?.['origin'] || fieldErrors?.[`destination-${slot.id}`] || fieldErrors?.['destination']
+  );
+  const routeCollapsed = !routeOpen && !hasRouteError && Boolean(slot.rateMatched && slot.matchedRateCard && slot.origin && slot.destination);
+  const outStops = (slot.intermediateLocations || []).filter(Boolean);
+  const retStops = (slot.returnIntermediateLocations || []).filter(Boolean);
+  const stopCount = outStops.length + (isRoundTrip ? retStops.length : 0);
+  const hhmm = (t?: string) => (t ? t.slice(0, 5) : '');
+  const retLoad = (slot.returnOrigin || '').trim();
+  const retEnd = (!slot.returnDestination || isUuid(slot.returnDestination) ? slot.origin : slot.returnDestination) || '';
+  const routePoints: Array<{ name: string; role: 'origin' | 'stop' | 'destination'; label: string; time?: string; returning?: boolean }> = [
+    { name: slot.origin, role: 'origin', label: 'Pickup', time: hhmm(slot.pickupTime) },
+    ...outStops.map((n: string) => ({ name: n, role: 'stop' as const, label: 'Stop' })),
+    { name: slot.destination, role: 'destination', label: isRoundTrip ? 'Drop' : 'Delivery', time: hhmm(slot.dropoffTime) },
+    ...(isRoundTrip
+      ? [
+          ...(retLoad && retLoad.toLowerCase() !== String(slot.destination || '').toLowerCase()
+            ? [{ name: retLoad, role: 'origin' as const, label: 'Return loading', time: hhmm(slot.returnPickupTime), returning: true }]
+            : []),
+          ...retStops.map((n: string) => ({ name: n, role: 'stop' as const, label: 'Stop', returning: true })),
+          { name: retEnd, role: 'destination' as const, label: 'Back', time: hhmm(slot.returnDropoffTime), returning: true },
+        ]
+      : []),
+  ].filter((p) => p.name);
   const lineTypeTaxonomyOptions = getAllTaxonomyOptions('LINE_TYPE');
   const selectedTaxonomyOption = resolveTaxonomyOption('LINE_TYPE', contractRateCategory);
   const isMonthly = contractBillingType?.toLowerCase() === 'monthly';
@@ -76,6 +122,14 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
     if (!cleanTime) return null;
     return `${slot.dropoffDate}T${cleanTime.length === 4 ? '0' + cleanTime : cleanTime}`;
   }, [slot.dropoffDate, slot.dropoffTime]);
+
+  const toIso = (d?: string, t?: string) => (d && t ? `${d}T${t.length === 4 ? '0' + t : t}` : null);
+  const returnPickupIso = toIso(slot.returnPickupDate, slot.returnPickupTime);
+  const returnDropoffIso = toIso(slot.returnDropoffDate, slot.returnDropoffTime);
+  const dropoffDateObj = dropoffIsoValue ? new Date(dropoffIsoValue) : undefined;
+  const returnPickupDateObj = returnPickupIso ? new Date(returnPickupIso) : undefined;
+  const returnFrom = (slot.returnOrigin || slot.destination || '').trim();
+  const returnTo = ((!slot.returnDestination || isUuid(slot.returnDestination)) ? slot.origin : slot.returnDestination || '').trim();
 
   const pickupDateObj = React.useMemo(() => {
     if (!pickupIsoValue) return undefined;
@@ -140,7 +194,87 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
   ) : null;
 
   return (
-    <div className="space-y-3 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-3.5 rounded-2xl shadow-2xs">
+    <div
+      id={part === 'schedule' ? 'section-when' : part === 'route' ? 'section-route' : undefined}
+      className={cn(
+        'space-y-3 bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 p-3.5 rounded-2xl shadow-2xs transition-shadow',
+        highlightSchedule && showSchedule && 'ring-2 ring-amber-400/70 border-amber-300'
+      )}
+    >
+      {showRoute && (
+        routeCollapsed ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
+                <RouteIcon className="w-4 h-4 text-slate-400 shrink-0" />
+                <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Route</span>
+                {selectedTaxonomyOption ? (
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                      selectedTaxonomyOption.colorTheme.bg,
+                      selectedTaxonomyOption.colorTheme.text,
+                      selectedTaxonomyOption.colorTheme.border
+                    )}
+                  >
+                    {isRoundTrip && <RotateCcw className="w-3 h-3" />}
+                    {selectedTaxonomyOption.label}
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{contractRateCategory}</span>
+                )}
+                {slot.matchedRateCard?.quotation_number != null && (
+                  <span className="rounded-full bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 text-[11px] font-semibold text-[#c2410c] dark:text-orange-300">
+                    QT-{slot.matchedRateCard.quotation_number}
+                  </span>
+                )}
+                {stopCount > 0 && (
+                  <span className="text-[11px] text-slate-500">{stopCount} {stopCount === 1 ? 'stop' : 'stops'} on the way</span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setRouteOpen(true)}
+                className="shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-[#FA634E]/60 hover:text-[#c2410c] cursor-pointer"
+              >
+                Edit route
+              </button>
+            </div>
+
+            {/* Timeline: every stop in order, with its planned time. The way back is dashed. */}
+            <ol className="flex items-start" aria-label="Route">
+              {routePoints.map((pt, i) => (
+                <li key={`${pt.name}-${i}`} className="flex min-w-0 flex-1 items-start last:flex-none">
+                  <div className="flex min-w-0 flex-col items-center text-center" style={{ maxWidth: 140 }}>
+                    <span
+                      className="flex h-6 w-6 items-center justify-center rounded-full ring-4 ring-white dark:ring-slate-900"
+                      style={{ backgroundColor: STOP_ROLE_COLORS[pt.role].soft }}
+                    >
+                      <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: STOP_ROLE_COLORS[pt.role].main }} />
+                    </span>
+                    <span className="mt-1 w-full truncate text-xs font-bold capitalize text-slate-900 dark:text-slate-100" title={pt.name}>
+                      {pt.name}
+                    </span>
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                      {pt.label}
+                      {pt.time && <span className="font-semibold text-slate-700 dark:text-slate-200"> · {pt.time}</span>}
+                    </span>
+                  </div>
+                  {i < routePoints.length - 1 && (
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'mt-3 h-0 flex-1 border-t-2 mx-1 min-w-[16px]',
+                        routePoints[i + 1].returning ? 'border-dashed border-amber-400' : 'border-slate-300 dark:border-slate-600'
+                      )}
+                    />
+                  )}
+                </li>
+              ))}
+            </ol>
+          </div>
+        ) : (
+          <>
       {/* COMPACT INLINE SLOT HEADER: LINE TYPE + OVERNIGHT */}
       <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
@@ -260,9 +394,24 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                       )}
                     />
                   </div>
+                  <label className="flex items-center gap-1 h-8 w-[92px] shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2" title="Fee billed for this stop">
+                    <span className="text-[10px] font-semibold text-slate-400">SAR</span>
+                    <input
+                      type="number"
+                      min="0"
+                      inputMode="decimal"
+                      aria-label="Stop fee"
+                      disabled={isRouteLocked || !handleUpdateSlotIntermediateFee}
+                      value={slot.intermediateStopFees?.[idx] ?? ''}
+                      onChange={(e) => handleUpdateSlotIntermediateFee?.(slot.id, idx, e.target.value)}
+                      placeholder="Fee"
+                      className="min-w-0 flex-1 bg-transparent text-right text-xs font-semibold tabular-nums outline-none"
+                    />
+                  </label>
                   {!isRouteLocked && (
                     <button
                       type="button"
+                      aria-label="Remove stop"
                       onClick={() => handleRemoveSlotIntermediate(slot.id, idx)}
                       className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
                     >
@@ -320,8 +469,150 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
             </div>
 
 
+      </div>
+
+        {/* ROUND TRIP LEG 2: RETURN JOURNEY (ONLY VISIBLE WHEN LINE TYPE IS ROUND TRIP) */}
+        {isRoundTrip && (
+          <div className="p-3 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 space-y-2 pt-2.5 animate-fade-in">
+            <div className="flex items-center justify-between pb-1 border-b border-amber-200/80 dark:border-amber-900/80">
+              <span className="text-[11px] font-extrabold text-amber-900 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                <RotateCcw className="w-3.5 h-3.5 text-amber-600 shrink-0" /> LEG 2: RETURN JOURNEY ({slot.returnOrigin || slot.destination || 'Destination'} → {(!slot.returnDestination || isUuid(slot.returnDestination)) ? (slot.origin || 'Origin') : slot.returnDestination})
+              </span>
+              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 flex items-center gap-1">
+                <RotateCcw className="w-3 h-3" /> Round Trip Active
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+              {/* RETURN LOADING LOCATION */}
+              <div className="md:col-span-6 space-y-1">
+                <label className="text-[10px] font-extrabold text-amber-800 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <StopRoleDot role="origin" /> RETURN LOADING LOCATION *
+                </label>
+                <LocationCombobox
+                  customerId={contractCustomer}
+                  value={slot.returnOrigin || slot.destination}
+                  disabled={isRouteLocked}
+                  onChange={(locId, locObj) => {
+                    const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
+                    handleUpdateTripSlot(slot.id, { returnOrigin: val, returnOriginLocationId: locObj?.id || (isUuid(locId) ? locId : null) });
+                  }}
+                  placeholder="Return loading (defaults to Outbound Destination)..."
+                  triggerClassName={cn(
+                    "h-9 border-slate-200 bg-[#FFFFFF] text-xs font-bold text-[#3E3C3D] dark:text-slate-100 shadow-2xs w-full",
+                    isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                  )}
+                />
+              </div>
+
+              {/* RETURN DESTINATION LOCATION */}
+              <div className="md:col-span-6 space-y-1">
+                <label className="text-[10px] font-extrabold text-amber-800 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <StopRoleDot role="destination" /> RETURN DESTINATION LOCATION *
+                </label>
+                <LocationCombobox
+                  customerId={contractCustomer}
+                  value={slot.returnDestination || slot.origin}
+                  disabled={isRouteLocked}
+                  onChange={(locId, locObj) => {
+                    const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
+                    handleUpdateTripSlot(slot.id, { returnDestination: val, returnDestinationLocationId: locObj?.id || (isUuid(locId) ? locId : null) });
+                  }}
+                  placeholder="Return destination (defaults to Origin)..."
+                  triggerClassName={cn(
+                    "h-9 border-slate-200 bg-[#FFFFFF] text-xs font-bold text-[#3E3C3D] dark:text-slate-100 shadow-2xs w-full",
+                    isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 pt-1">
+              {handleAddSlotReturnIntermediate && !isRouteLocked && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleAddSlotReturnIntermediate(slot.id)}
+                  className="h-7 text-[11px] font-bold border-dashed border-amber-300 hover:border-amber-500 bg-white text-amber-800 gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" /> Add Return Intermediate Stop
+                </Button>
+              )}
+            </div>
+
+            {/* RETURN INTERMEDIATE STOPS */}
+            {slot.returnIntermediateLocations?.length > 0 && (
+              <div className="pl-3 border-l-2 border-dashed space-y-1.5 py-1" style={{ borderColor: stopRoleStyle('stop').soft }}>
+                {slot.returnIntermediateLocations.map((rStop: string, rIdx: number) => (
+                  <div key={rIdx} className="flex items-center gap-2">
+                    <StopRoleBadge role="stop">
+                      Return Stop #{rIdx + 1}
+                    </StopRoleBadge>
+                    <div className="flex-1">
+                      <LocationCombobox
+                        customerId={contractCustomer}
+                        value={rStop}
+                        disabled={isRouteLocked}
+                        onChange={(locId, locObj) => {
+                          const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
+                          handleUpdateSlotReturnIntermediate && handleUpdateSlotReturnIntermediate(slot.id, rIdx, val);
+                        }}
+                        placeholder={`Search return stop #${rIdx + 1}...`}
+                        triggerClassName={cn(
+                          "h-8 text-xs font-semibold",
+                          isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                        )}
+                      />
+                    </div>
+                  <label className="flex items-center gap-1 h-8 w-[92px] shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-2" title="Fee billed for this stop">
+                    <span className="text-[10px] font-semibold text-slate-400">SAR</span>
+                    <input
+                      type="number"
+                      min="0"
+                      inputMode="decimal"
+                      aria-label="Stop fee"
+                      disabled={isRouteLocked || !handleUpdateSlotReturnIntermediateFee}
+                      value={slot.returnIntermediateStopFees?.[rIdx] ?? ''}
+                      onChange={(e) => handleUpdateSlotReturnIntermediateFee?.(slot.id, rIdx, e.target.value)}
+                      placeholder="Fee"
+                      className="min-w-0 flex-1 bg-transparent text-right text-xs font-semibold tabular-nums outline-none"
+                    />
+                  </label>
+                    {handleRemoveSlotReturnIntermediate && !isRouteLocked && (
+                      <button
+                        type="button"
+                        aria-label="Remove return stop"
+                        onClick={() => handleRemoveSlotReturnIntermediate(slot.id, rIdx)}
+                        className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+          </>
+        )
+      )}
+
+      {showSchedule && (
+        <div className="space-y-2">
+          {highlightSchedule && (
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300">
+              <ArrowDown className="w-3.5 h-3.5" /> Next: when does it pick up?
+            </p>
+          )}
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex items-center gap-1.5 text-sm font-bold text-slate-800 dark:text-slate-100">
+              <Clock className="w-4 h-4 text-slate-400" /> When
+            </span>
+          </div>
           {/* SCHEDULE ROW: PICKUP → TRAVEL TIME → ARRIVAL */}
-          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2.5 items-end pt-1 border-t border-slate-100 dark:border-slate-800">
+          <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2.5 items-end">
             {/* PICKUP */}
             <div id={`field-pickup-${slot.id}`} className="space-y-1 min-w-0">
               <label className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between h-4">
@@ -478,117 +769,125 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
               )}
             </div>
           </div>
-      </div>
-
-        {/* ROUND TRIP LEG 2: RETURN JOURNEY (ONLY VISIBLE WHEN LINE TYPE IS ROUND TRIP) */}
-        {isRoundTrip && (
-          <div className="p-3 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 space-y-2 pt-2.5 animate-fade-in">
-            <div className="flex items-center justify-between pb-1 border-b border-amber-200/80 dark:border-amber-900/80">
-              <span className="text-[11px] font-extrabold text-amber-900 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                <RotateCcw className="w-3.5 h-3.5 text-amber-600 shrink-0" /> LEG 2: RETURN JOURNEY ({slot.returnOrigin || slot.destination || 'Destination'} → {(!slot.returnDestination || isUuid(slot.returnDestination)) ? (slot.origin || 'Origin') : slot.returnDestination})
+          {/* ROUND TRIP: RETURN LOADING → TRAVEL TIME → ARRIVAL HOME */}
+          {isRoundTrip && (
+            <div className="space-y-1.5 border-t border-dashed border-slate-200 dark:border-slate-700 pt-2.5">
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+                <RotateCcw className="w-3.5 h-3.5" /> Return · {returnFrom || 'destination'} → {returnTo || 'origin'}
               </span>
-              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 flex items-center gap-1">
-                <RotateCcw className="w-3 h-3" /> Round Trip Active
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
-              {/* RETURN LOADING LOCATION */}
-              <div className="md:col-span-6 space-y-1">
-                <label className="text-[10px] font-extrabold text-amber-800 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                  <StopRoleDot role="origin" /> RETURN LOADING LOCATION *
-                </label>
-                <LocationCombobox
-                  customerId={contractCustomer}
-                  value={slot.returnOrigin || slot.destination}
-                  disabled={isRouteLocked}
-                  onChange={(locId, locObj) => {
-                    const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
-                    handleUpdateTripSlot(slot.id, { returnOrigin: val, returnOriginLocationId: locObj?.id || (isUuid(locId) ? locId : null) });
-                  }}
-                  placeholder="Return loading (defaults to Outbound Destination)..."
-                  triggerClassName={cn(
-                    "h-9 border-slate-200 bg-[#FFFFFF] text-xs font-bold text-[#3E3C3D] dark:text-slate-100 shadow-2xs w-full",
-                    isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+              <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-2.5 items-end">
+                <div className="space-y-1 min-w-0">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">Return loading</span>
+                  {isMonthly ? (
+                    <TimePicker
+                      value={slot.returnPickupTime || ''}
+                      onChange={(t) => handleUpdateTripSlot(slot.id, { returnPickupTime: t, ...(!t ? { returnDropoffTime: '', returnDropoffManual: false } : {}) })}
+                      placeholder="Loading time"
+                      buttonClassName="h-9 rounded-xl border-slate-200 bg-white shadow-2xs font-semibold text-xs text-slate-800 px-3 w-full"
+                    />
+                  ) : (
+                    <DateTimePicker
+                      value={returnPickupIso}
+                      minDate={dropoffDateObj}
+                      onChange={(iso) => {
+                        if (!iso) {
+                          handleUpdateTripSlot(slot.id, { returnPickupDate: '', returnPickupTime: '', returnDropoffDate: '', returnDropoffTime: '', returnDropoffManual: false });
+                          return;
+                        }
+                        const [d, t] = iso.split('T');
+                        handleUpdateTripSlot(slot.id, { returnPickupDate: d, returnPickupTime: (t || '').slice(0, 5) });
+                      }}
+                      placeholder="Loading date and time"
+                      showPresets={false}
+                      showRelativeBadge={false}
+                      className="h-9 rounded-xl border-slate-200 bg-white shadow-2xs text-xs font-semibold"
+                    />
                   )}
-                />
-              </div>
-
-              {/* RETURN DESTINATION LOCATION */}
-              <div className="md:col-span-6 space-y-1">
-                <label className="text-[10px] font-extrabold text-amber-800 dark:text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
-                  <StopRoleDot role="destination" /> RETURN DESTINATION LOCATION *
-                </label>
-                <LocationCombobox
-                  customerId={contractCustomer}
-                  value={slot.returnDestination || slot.origin}
-                  disabled={isRouteLocked}
-                  onChange={(locId, locObj) => {
-                    const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
-                    handleUpdateTripSlot(slot.id, { returnDestination: val, returnDestinationLocationId: locObj?.id || (isUuid(locId) ? locId : null) });
-                  }}
-                  placeholder="Return destination (defaults to Origin)..."
-                  triggerClassName={cn(
-                    "h-9 border-slate-200 bg-[#FFFFFF] text-xs font-bold text-[#3E3C3D] dark:text-slate-100 shadow-2xs w-full",
-                    isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                </div>
+                <div className="hidden md:flex items-center justify-center pb-2">
+                  {returnFrom && returnTo ? (
+                    <TransitTimeBadge
+                      origin={returnFrom}
+                      destination={returnTo}
+                      pickupDate={slot.returnPickupDate || slot.dropoffDate || slot.date}
+                      pickupTime={slot.returnPickupTime || ''}
+                      onAutoSetDropoffDateTime={(dDate, dTime) => {
+                        if (!autoFillArrival || slot.returnDropoffManual || isRouteLocked || !slot.returnPickupTime) return;
+                        handleUpdateTripSlot(slot.id, { returnDropoffDate: dDate, returnDropoffTime: dTime });
+                      }}
+                      compact
+                    />
+                  ) : (
+                    <span className="text-slate-300 dark:text-slate-600">→</span>
                   )}
-                />
+                </div>
+                <div className="space-y-1 min-w-0">
+                  <span className="flex items-center text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Arrival home
+                    {autoFillArrival && slot.returnDropoffTime && (
+                      <span
+                        className={cn(
+                          'ml-1.5 normal-case tracking-normal rounded-full px-1.5 py-px text-[10px] font-semibold',
+                          slot.returnDropoffManual ? 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' : 'bg-orange-50 text-[#c2410c] dark:bg-orange-950/40 dark:text-orange-300'
+                        )}
+                      >
+                        {slot.returnDropoffManual ? 'set by you' : 'auto'}
+                      </span>
+                    )}
+                  </span>
+                  {isMonthly ? (
+                    <TimePicker
+                      value={slot.returnDropoffTime || ''}
+                      onChange={(t) => handleUpdateTripSlot(slot.id, { returnDropoffTime: t, returnDropoffManual: Boolean(t) })}
+                      placeholder="Arrival time"
+                      buttonClassName="h-9 rounded-xl border-slate-200 bg-white shadow-2xs font-semibold text-xs text-slate-800 px-3 w-full"
+                    />
+                  ) : (
+                    <DateTimePicker
+                      value={returnDropoffIso}
+                      minDate={returnPickupDateObj}
+                      onChange={(iso) => {
+                        if (!iso) {
+                          handleUpdateTripSlot(slot.id, { returnDropoffDate: '', returnDropoffTime: '', returnDropoffManual: false });
+                          return;
+                        }
+                        const [d, t] = iso.split('T');
+                        handleUpdateTripSlot(slot.id, { returnDropoffDate: d, returnDropoffTime: (t || '').slice(0, 5), returnDropoffManual: true });
+                      }}
+                      placeholder="Arrival date and time"
+                      showPresets={false}
+                      showRelativeBadge={false}
+                      className="h-9 rounded-xl border-slate-200 bg-white shadow-2xs text-xs font-semibold"
+                    />
+                  )}
+                </div>
               </div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-1">
-              {handleAddSlotReturnIntermediate && !isRouteLocked && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAddSlotReturnIntermediate(slot.id)}
-                  className="h-7 text-[11px] font-bold border-dashed border-amber-300 hover:border-amber-500 bg-white text-amber-800 gap-1 cursor-pointer"
-                >
-                  <Plus className="w-3 h-3" /> Add Return Intermediate Stop
-                </Button>
+              {(fieldErrors?.[`returnPickup-${slot.id}`] || fieldErrors?.[`returnDropoff-${slot.id}`]) && (
+                <p className="flex items-center gap-1.5 text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  {fieldErrors?.[`returnPickup-${slot.id}`] ? 'Return loading must be after the outbound arrival.' : 'Arrival home must be after return loading.'}
+                </p>
+              )}
+              {!slot.returnPickupTime && (
+                <p className="text-[11px] text-slate-400">Optional — set it to plan the way back and when the truck is free again.</p>
               )}
             </div>
+          )}
 
-            {/* RETURN INTERMEDIATE STOPS */}
-            {slot.returnIntermediateLocations?.length > 0 && (
-              <div className="pl-3 border-l-2 border-dashed space-y-1.5 py-1" style={{ borderColor: stopRoleStyle('stop').soft }}>
-                {slot.returnIntermediateLocations.map((rStop: string, rIdx: number) => (
-                  <div key={rIdx} className="flex items-center gap-2">
-                    <StopRoleBadge role="stop">
-                      Return Stop #{rIdx + 1}
-                    </StopRoleBadge>
-                    <div className="flex-1">
-                      <LocationCombobox
-                        customerId={contractCustomer}
-                        value={rStop}
-                        disabled={isRouteLocked}
-                        onChange={(locId, locObj) => {
-                          const val = locObj?.name || locObj?.address || (isUuid(locId) ? '' : locId);
-                          handleUpdateSlotReturnIntermediate && handleUpdateSlotReturnIntermediate(slot.id, rIdx, val);
-                        }}
-                        placeholder={`Search return stop #${rIdx + 1}...`}
-                        triggerClassName={cn(
-                          "h-8 text-xs font-semibold",
-                          isRouteLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
-                        )}
-                      />
-                    </div>
-                    {handleRemoveSlotReturnIntermediate && !isRouteLocked && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveSlotReturnIntermediate(slot.id, rIdx)}
-                        className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+          {lastLaneTime && !slot.pickupTime && (
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Last time for this lane:{' '}
+              <button
+                type="button"
+                onClick={() => handleUpdateTripSlot(slot.id, { date: lastLaneTime.date, pickupTime: lastLaneTime.time })}
+                className="font-semibold text-[#c2410c] hover:underline cursor-pointer"
+              >
+                {lastLaneTime.label} — use
+              </button>
+            </p>
+          )}
+        </div>
+      )}
       </div>
     );
   };

@@ -47,3 +47,15 @@ export function makeRoomBelow(trigger: HTMLElement | null, neededPx: number): ()
     if (added) scroller.style.paddingBottom = previousPadding;
   };
 }
+
+/**
+ * Which edge a dropdown should line up with so it stays on screen: its left
+ * edge with the field's left (default), or — near the right of the screen —
+ * its right edge with the field's right.
+ */
+export function alignWithinScreen(trigger: HTMLElement | null, contentWidthPx: number): 'start' | 'end' {
+  if (!trigger) return 'start';
+  const rect = trigger.getBoundingClientRect();
+  const width = Math.max(contentWidthPx, rect.width);
+  return rect.left + width > window.innerWidth - 8 ? 'end' : 'start';
+}

@@ -99,6 +99,9 @@ interface CommercialSectionProps {
   fieldErrors?: Record<string, boolean>;
   assignmentType?: string;
   isEditMode?: boolean;
+  /** The customer's latest trip, offered as a one-click repeat. */
+  lastCustomerTrip?: any | null;
+  onRepeatTrip?: (trip: any) => void;
 }
 
 export const CommercialSection: React.FC<CommercialSectionProps> = ({
@@ -121,6 +124,8 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
   fieldErrors = {},
   assignmentType = 'own',
   isEditMode = false,
+  lastCustomerTrip = null,
+  onRepeatTrip,
 }) => {
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
@@ -387,7 +392,7 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
   const selectedCust = customers.find((c) => c.id === contractCustomer);
 
   return (
-    <div className="p-3.5 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs space-y-2.5 text-[#3E3C3D]">
+    <div id="section-price" className="p-3.5 rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs space-y-2.5 text-[#3E3C3D]">
       {/* UNIFIED SINGLE HEADER: CUSTOMER ACCOUNT */}
       <div className="flex items-center justify-between gap-3 pb-2 border-b border-slate-100 dark:border-slate-800 flex-wrap">
         {/* LEFT: LOGO + CUSTOMER DISPLAY + MATCHED RATE BADGE */}
@@ -443,8 +448,26 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
           ) : null}
         </div>
 
-        {/* RIGHT: CREATE / EDIT QUOTATION BUTTON TOGGLE */}
+        {/* RIGHT: REPEAT LAST TRIP + CREATE / EDIT QUOTATION BUTTON TOGGLE */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {!isEditMode && contractCustomer && lastCustomerTrip && onRepeatTrip && !isSelectedQuotation && (() => {
+            const stops = lastCustomerTrip.stops || [];
+            const from = stops[0]?.source_label || stops[0]?.location?.name || '';
+            const to = stops[stops.length - 1]?.source_label || stops[stops.length - 1]?.location?.name || '';
+            const when = lastCustomerTrip.planned_start
+              ? new Date(lastCustomerTrip.planned_start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+              : '';
+            return (
+              <button
+                type="button"
+                onClick={() => onRepeatTrip(lastCustomerTrip)}
+                title={`Same route and crew as ${from} → ${to}${when ? ` on ${when}` : ''} — you set the new date and time`}
+                className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-[#FA634E]/60 hover:text-[#c2410c] cursor-pointer"
+              >
+                Repeat last trip{from && to ? ` · ${from} → ${to}` : ''}
+              </button>
+            );
+          })()}
           {!isEditMode && contractCustomer && (
             <Button
               type="button"

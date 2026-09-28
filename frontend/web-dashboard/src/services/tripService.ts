@@ -1,4 +1,5 @@
 import { api, ApiResponse } from '@/lib/api';
+import type { DriverGroup, DriverReason } from '@mercon/shared-types';
 import type { ResolvedLocation } from './vehicleService';
 
 export type TripStatus = 'Draft' | 'Scheduled' | 'Loading' | 'Dispatched' | 'AtPickup' | 'InTransit' | 'AtDelivery' | 'Completed' | 'Invoiced' | 'Cancelled' | 'Delayed' | 'Emergency' | (string & {});
@@ -456,6 +457,12 @@ export const tripService = {
     vehicleClass?: string;
     origin?: string;
     destination?: string;
+    originLocationId?: string;
+    destinationLocationId?: string;
+    customerId?: string;
+    plannedStart?: string;
+    plannedEnd?: string;
+    excludeTripId?: string;
   }): Promise<Array<{
     driverId: string;
     driverName: string;
@@ -470,6 +477,11 @@ export const tripService = {
     vehiclePlate?: string | null;
     vehicleClass?: string | null;
     rest_hours?: number | null;
+    /** From the shared ranking (rankDrivers). */
+    group?: DriverGroup;
+    reasons?: DriverReason[];
+    truckFit?: 'exact' | 'bigger' | 'smaller' | 'none';
+    clashStart?: string;
   }>> {
     try {
       const res = await api.get<ApiResponse<any[]>>('/trips/recommendations/drivers', { params });

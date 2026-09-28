@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -142,7 +142,8 @@ export function useTripSubmission(
       toUtcIso,
     });
 
-  const validateAndFocusErrors = (): boolean => {
+  /** Which fields are wrong right now — no side effects. */
+  const collectFieldErrors = () => {
     const errors: Record<string, boolean> = {};
     let firstErrId: string | null = null;
     let firstErrMsg: string | null = null;
@@ -154,13 +155,7 @@ export function useTripSubmission(
       firstErrMsg = 'Please select a customer account.';
     }
 
-    if (!contractSlots || contractSlots.length === 0) {
-      toast.error('Please configure at least one route slot.');
-      setContractStep(1);
-      return false;
-    }
-
-    for (let i = 0; i < contractSlots.length; i++) {
+    for (let i = 0; i < (contractSlots || []).length; i++) {
       const slot = contractSlots[i];
 
       if (!slot.origin || !slot.origin.trim()) {
@@ -261,6 +256,41 @@ export function useTripSubmission(
       }
     }
 
+    // Round trip: the return leg's times (same check as the saved rows).
+    validateTripDraft({
+      customerId: contractCustomer,
+      rateCategory: contractRateCategory,
+      slots: contractSlots || [],
+      billingType: contractBillingType,
+      assignmentType,
+      masterDriver,
+      masterVehicle,
+      thirdPartyProviderId,
+      thirdPartyDriverName,
+      thirdPartyCost,
+      selectedDates,
+      toUtcIso,
+    })
+      .filter((i) => i.field.startsWith('returnPickup') || i.field.startsWith('returnDropoff'))
+      .forEach((i) => {
+        errors[i.field] = true;
+        if (!firstErrId) {
+          firstErrId = 'section-when';
+          firstErrMsg = i.message;
+        }
+      });
+
+    return { errors, firstErrId, firstErrMsg };
+  };
+
+  const validateAndFocusErrors = (): boolean => {
+    if (!contractSlots || contractSlots.length === 0) {
+      toast.error('Please configure at least one route slot.');
+      setContractStep(1);
+      return false;
+    }
+    const { errors, firstErrId, firstErrMsg } = collectFieldErrors();
+    const isMonthly = contractBillingType?.toLowerCase() === 'monthly';
     setFieldErrors(errors);
 
     if (Object.keys(errors).length > 0) {
@@ -269,7 +299,7 @@ export function useTripSubmission(
 
       setTimeout(() => {
         if (firstErrId) {
-          const el = document.getElementById(firstErrId);
+          const el = document.getElementById(firstErrId) || document.getElementById(`${firstErrId}-summary`);
           if (el) {
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
             const input = el.querySelector('input, select, button') as HTMLElement;
@@ -284,6 +314,7 @@ export function useTripSubmission(
     // Everything else (operating days, assignment, 3PL partner) — the same checks the
     // operator app runs, so a monthly trip can't be sent without its days.
     const issues = validateTripDraft({
+      rateCategory: contractRateCategory,
       customerId: contractCustomer,
       slots: contractSlots,
       billingType: contractBillingType,
@@ -306,6 +337,17 @@ export function useTripSubmission(
 
     return true;
   };
+
+  // A red mark goes away as soon as its field is fixed (new marks only appear on submit).
+  useEffect(() => {
+    if (Object.keys(fieldErrors).length === 0) return;
+    const { errors } = collectFieldErrors();
+    setFieldErrors((prev) => {
+      const next = Object.fromEntries(Object.entries(prev).filter(([k]) => errors[k]));
+      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contractCustomer, contractSlots, thirdPartyCost, assignmentType, contractBillingType]);
 
   /** Saves quotations defined inline; returns slot id → new quotation id. */
   const saveInlineQuotations = async (): Promise<Record<string, string>> => {

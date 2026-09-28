@@ -55,6 +55,8 @@ export function truckClassOfVehicle(v: { capacity_kg?: number | null; asset_type
     const tons = kg / 1000;
     if (tons <= 4) return '3-4 TON';
     if (tons <= 5) return '5 TON';
+    // An 8-ton truck is its own class — it used to round up to "10 TON" and look like a fit.
+    if (tons <= 8) return '8 TON';
     if (tons <= 10) return '10 TON';
     if (tons <= 20) return '20 TON';
     return '40 FEET';
@@ -430,6 +432,11 @@ export interface TripSlotDraft extends QuotationSlotInput {
   intermediateLocations: string[];
   intermediateStopFees?: string[];
   returnIntermediateStopFees?: string[];
+  /** Round trip: when the truck loads for the way back, and arrives home. */
+  returnPickupDate?: string;
+  returnPickupTime?: string;
+  returnDropoffDate?: string;
+  returnDropoffTime?: string;
 }
 
 export interface DayAssignmentInput {
@@ -508,6 +515,42 @@ const isMonthlyBilling = (slot: TripSlotDraft, billingType: string) =>
 export function perTripBilling(slot: Pick<TripSlotDraft, 'billingAmount' | 'pricingBasis'>, billingType: string): number {
   const base = Number(slot.billingAmount) || 0;
   return isMonthlyBilling(slot as TripSlotDraft, billingType) && base > 0 ? base / 30 : base;
+}
+
+/** Whole days from one YYYY-MM-DD to another (negative if earlier). */
+export function daysBetween(from: string, to: string): number {
+  const [y1, m1, d1] = from.split('-').map(Number);
+  const [y2, m2, d2] = to.split('-').map(Number);
+  if (!y1 || !y2) return 0;
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
+}
+
+/**
+ * The return leg's times for one trip date, as UTC ISO strings. Dates are
+ * stored relative to the slot's date, so a monthly contract shifts them to
+ * every operating day. Without a date, a time at or before the previous
+ * event rolls to the next day.
+ */
+export function returnLegTimes(
+  slot: Pick<TripSlotDraft, 'date' | 'pickupTime' | 'dropoffDate' | 'dropoffTime' | 'isOvernight' | 'returnPickupDate' | 'returnPickupTime' | 'returnDropoffDate' | 'returnDropoffTime'>,
+  tripDate: string,
+  toUtcIso: (date: string, time: string) => string,
+): { pickup?: string; arrival?: string } {
+  if (!slot.returnPickupTime) return {};
+  const outboundDay = addDaysToDateStr(tripDate, dropoffDayOffset(slot));
+  const pickupDay = slot.returnPickupDate && slot.date
+    ? addDaysToDateStr(tripDate, Math.max(0, daysBetween(slot.date, slot.returnPickupDate)))
+    : slot.dropoffTime && slot.returnPickupTime < slot.dropoffTime
+    ? addDaysToDateStr(outboundDay, 1)
+    : outboundDay;
+  const pickup = toUtcIso(pickupDay, slot.returnPickupTime);
+  if (!slot.returnDropoffTime) return { pickup };
+  const arrivalDay = slot.returnDropoffDate && slot.date
+    ? addDaysToDateStr(tripDate, Math.max(0, daysBetween(slot.date, slot.returnDropoffDate)))
+    : slot.returnDropoffTime <= slot.returnPickupTime
+    ? addDaysToDateStr(pickupDay, 1)
+    : pickupDay;
+  return { pickup, arrival: toUtcIso(arrivalDay, slot.returnDropoffTime) };
 }
 
 /**
@@ -602,21 +645,34 @@ export function buildTripRows(input: TripRowsInput): TripImportRow[] {
       const destination = (slot.destination || '').trim();
       const structuredStops = buildStopsFromSlot(slot, isRound);
 
-      let plannedEnd: string | undefined;
+      let outboundArrival: string | undefined;
       if (slot.dropoffTime) {
-        plannedEnd = toUtcIso(addDaysToDateStr(date, dropoffDayOffset(slot)), slot.dropoffTime);
+        outboundArrival = toUtcIso(addDaysToDateStr(date, dropoffDayOffset(slot)), slot.dropoffTime);
       }
+      const plannedStart = toUtcIso(date, slot.pickupTime);
+      const ret = isRound ? returnLegTimes(slot, date, toUtcIso) : {};
+      // A round trip ends when the truck is back; otherwise at the outbound drop.
+      const plannedEnd = ret.arrival || outboundArrival;
+
+      // Planned time on each stop: pickup, outbound drop, return loading, final drop.
+      const stopsWithTimes = structuredStops.map((st) => ({ ...st }));
+      const leg0 = stopsWithTimes.filter((st) => st.leg_index === 0);
+      const leg1 = stopsWithTimes.filter((st) => st.leg_index === 1);
+      if (leg0[0] && slot.pickupTime) leg0[0].planned_arrival = plannedStart;
+      if (leg0.length > 1 && outboundArrival) leg0[leg0.length - 1].planned_arrival = outboundArrival;
+      if (leg1[0] && ret.pickup) leg1[0].planned_arrival = ret.pickup;
+      if (leg1.length > 1 && ret.arrival) leg1[leg1.length - 1].planned_arrival = ret.arrival;
 
       const common = {
         customer_id: customerId,
-        planned_start: toUtcIso(date, slot.pickupTime),
+        planned_start: plannedStart,
         planned_end: plannedEnd,
         rate_category: rateCategory || undefined,
         billing_type: billingType || undefined,
         vehicle_type: vehicleType || undefined,
         origin: origin || undefined,
         destination: destination || undefined,
-        stops: structuredStops,
+        stops: stopsWithTimes,
         billing_amount: totalAmount > 0 ? totalAmount : undefined,
         awb_number: awbNumber?.trim() || undefined,
         status: 'Scheduled' as const,
@@ -640,8 +696,12 @@ export function buildTripRows(input: TripRowsInput): TripImportRow[] {
         return;
       }
 
+      // A day set to 'unassigned' ("assign later") has nobody — it must not
+      // fall back to the main driver. An empty day value inherits the main one.
       const pick = (dayValue?: string, master?: string) =>
-        dayValue && dayValue !== 'unassigned'
+        dayValue === 'unassigned'
+          ? undefined
+          : dayValue
           ? dayValue
           : master && master !== 'unassigned'
           ? master
@@ -687,10 +747,62 @@ export function buildTripRows(input: TripRowsInput): TripImportRow[] {
   return rows;
 }
 
+/* ─── Monthly roster ────────────────────────────────────────────────────── */
+
+/** One driver (with truck and optional co-driver) of a monthly contract's crew. */
+export interface MonthlyCrewMember {
+  driverId: string;
+  vehicleId: string;
+  coDriverId?: string;
+  /** Per-trip split when there is a co-driver; the default is 50/50 of the lane payout. */
+  driverPayoutOverride?: number;
+  coDriverPayoutOverride?: number;
+}
+
+/**
+ * Who works each operating day. With one crew member every day is theirs; with
+ * several they take turns day by day in date order. Days changed by hand
+ * (`overrides`) win over the rotation, field by field.
+ */
+export function buildMonthlyRoster(input: {
+  dates: string[];
+  crew: MonthlyCrewMember[];
+  overrides?: Record<string, Partial<DayAssignmentInput>>;
+}): Record<string, DayAssignmentInput & { driverId: string; vehicleId: string }> {
+  const crew = input.crew.length > 0 ? input.crew : [{ driverId: '', vehicleId: '' }];
+  const out: Record<string, DayAssignmentInput & { driverId: string; vehicleId: string }> = {};
+  [...input.dates].sort().forEach((date, idx) => {
+    const base = crew[idx % crew.length];
+    const day: DayAssignmentInput & { driverId: string; vehicleId: string } = {
+      driverId: base.driverId,
+      vehicleId: base.vehicleId,
+      ...(base.coDriverId ? { coDriverId: base.coDriverId } : {}),
+      ...(base.driverPayoutOverride !== undefined ? { driverPayoutOverride: base.driverPayoutOverride } : {}),
+      ...(base.coDriverPayoutOverride !== undefined ? { coDriverPayoutOverride: base.coDriverPayoutOverride } : {}),
+    };
+    const o = input.overrides?.[date];
+    if (o) {
+      Object.assign(day, o);
+      day.driverId = day.driverId ?? '';
+      day.vehicleId = day.vehicleId ?? '';
+      // Removing the co-driver on a day also drops that day's split.
+      if (o.coDriverId === '') {
+        delete day.coDriverId;
+        delete day.driverPayoutOverride;
+        delete day.coDriverPayoutOverride;
+      }
+    }
+    out[date] = day;
+  });
+  return out;
+}
+
 /* ─── Validation ────────────────────────────────────────────────────────── */
 
 export interface TripValidationInput {
   customerId: string;
+  /** Needed to check round-trip return times. */
+  rateCategory?: string;
   slots: TripSlotDraft[];
   billingType: string;
   assignmentType: string;
@@ -749,6 +861,22 @@ export function validateTripDraft(input: TripValidationInput): TripValidationIss
     if (!isMonthly && !slot.date) issues.push({ section: 'schedule', field: key('date'), message: `${label}: Select a trip date` });
     if (!slot.pickupTime) issues.push({ section: 'schedule', field: key('pickup'), message: `${label}: Select pickup time` });
     if (!slot.dropoffTime) issues.push({ section: 'schedule', field: key('dropoff'), message: `${label}: Select drop-off time` });
+
+    if (isRoundTripCategory(input.rateCategory || '') && slot.returnPickupTime && slot.date) {
+      try {
+        const out = slot.dropoffTime ? new Date(input.toUtcIso(addDaysToDateStr(slot.date, dropoffDayOffset(slot)), slot.dropoffTime)).getTime() : NaN;
+        const ret = returnLegTimes(slot, slot.date, input.toUtcIso);
+        const rp = ret.pickup ? new Date(ret.pickup).getTime() : NaN;
+        const ra = ret.arrival ? new Date(ret.arrival).getTime() : NaN;
+        if (!isNaN(out) && !isNaN(rp) && rp < out) {
+          issues.push({ section: 'schedule', field: key('returnPickup'), message: `${label}: Return loading must be after the outbound arrival` });
+        } else if (!isNaN(rp) && !isNaN(ra) && ra <= rp) {
+          issues.push({ section: 'schedule', field: key('returnDropoff'), message: `${label}: Return arrival must be after return loading` });
+        }
+      } catch {
+        /* times are validated above */
+      }
+    }
 
     if (!isMonthly && slot.date && slot.pickupTime && slot.dropoffTime) {
       const dropoffDate = slot.dropoffDate || slot.date;
