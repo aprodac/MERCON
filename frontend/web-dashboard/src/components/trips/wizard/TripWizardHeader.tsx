@@ -70,10 +70,10 @@ export const TripWizardHeader: React.FC<TripWizardHeaderProps> = ({
 
   const steps = isMonthly
     ? [
-        { step: 1, label: '1. Configure & Dispatch', icon: MapPin },
-        { step: 2, label: '2. Operating Month & Days', icon: CalendarRange },
+        { step: 1, label: '1 · Route and price', icon: MapPin },
+        { step: 2, label: '2 · Days and roster', icon: CalendarRange },
       ]
-    : [{ step: 1, label: '1. Configure & Dispatch', icon: MapPin }];
+    : [{ step: 1, label: 'Configure and dispatch', icon: MapPin }];
 
 
   return (

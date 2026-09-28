@@ -169,17 +169,48 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
     (primarySlot.rateMatched || primarySlot.matchedRateCard) && (primarySlot.matchedRateCard || primarySlot.rateCardId)
   );
 
-  // Return all rate cards for the customer
+  // Billing tabs: a quotation is either per trip (Extra) or a monthly contract.
+  const activeBilling = normalizeBillingType(contractBillingType) === 'Monthly' ? 'Monthly' : 'Extra';
+  const billingOfCard = (rc: any) =>
+    normalizeBillingType(rc.operation_type || rc.quotation_operation_type || rc.billing_type) === 'Monthly' ? 'Monthly' : 'Extra';
+  const billingCounts = React.useMemo(() => {
+    const counts = { Extra: 0, Monthly: 0 };
+    (effectiveRateCards || []).forEach((rc: any) => {
+      counts[billingOfCard(rc)] += 1;
+    });
+    return counts;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveRateCards]);
+
+  const switchBilling = (next: 'Extra' | 'Monthly') => {
+    if (next === activeBilling || !setContractBillingType) return;
+    // A selected quotation of the other kind no longer applies.
+    if (primarySlot.matchedRateCard && billingOfCard(primarySlot.matchedRateCard) !== next) {
+      handleUpdateTripSlot(primarySlot.id, {
+        matchedRateCard: null,
+        rateCardId: undefined,
+        rateMatched: false,
+        billingAmount: '',
+        driverPayout: '',
+        saveAsQuotation: false,
+        saveAsRateCard: false,
+      });
+    }
+    setContractBillingType(next);
+  };
+
+  // The customer's quotations for the active billing tab
   const matchingCardsForSpec = React.useMemo(() => {
     if (!effectiveRateCards || effectiveRateCards.length === 0) return [];
 
-    return [...effectiveRateCards].sort((a, b) => {
+    return [...effectiveRateCards].filter((rc: any) => billingOfCard(rc) === activeBilling).sort((a, b) => {
       const aNum = (a as any).quotation_number != null ? Number((a as any).quotation_number) : Infinity;
       const bNum = (b as any).quotation_number != null ? Number((b as any).quotation_number) : Infinity;
       if (aNum !== bNum) return aNum - bNum;
       return String(a.name || a.id).localeCompare(String(b.name || b.id));
     });
-  }, [effectiveRateCards]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveRateCards, activeBilling]);
 
   // Check if locations are entered and whether any quotation matches the lane
   const hasOrigin = Boolean(primarySlot.origin && String(primarySlot.origin).trim());
@@ -471,16 +502,42 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
         />
       ) : (
         <div className="space-y-2.5">
-          {/* SEARCH INPUT TOOLBAR */}
+          {/* BILLING TABS (= the trip's billing type) + QUOTATION SEARCH */}
+          <div className="flex items-end justify-between gap-3 flex-wrap border-b border-slate-100 dark:border-slate-800">
+            <div role="tablist" aria-label="Billing" className="flex items-end gap-5">
+              {(['Extra', 'Monthly'] as const).map((b) => {
+                const active = activeBilling === b;
+                return (
+                  <button
+                    key={b}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => switchBilling(b)}
+                    className={cn(
+                      '-mb-px flex items-center gap-1.5 border-b-2 pb-2 pt-0.5 text-xs transition-colors cursor-pointer',
+                      active
+                        ? 'border-[#FA634E] font-bold text-slate-900 dark:text-slate-100'
+                        : 'border-transparent font-semibold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                    )}
+                  >
+                    {b === 'Extra' ? 'Per trip' : 'Monthly contract'}
+                    <span
+                      className={cn(
+                        'rounded-full px-1.5 py-px text-[10px] font-bold',
+                        active ? 'bg-orange-50 text-[#c2410c] dark:bg-orange-950/50 dark:text-orange-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+                      )}
+                    >
+                      {billingCounts[b]}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           {!showInlineForm && (
-            <div className="flex items-center gap-2.5 flex-wrap flex-1 min-w-0">
-              {/* STANDALONE SEARCH ICON BOX (MATCHES LOGO BOX ALIGNMENT) */}
-              <div className="w-8.5 h-8.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 font-bold text-xs grid place-items-center shrink-0 border border-slate-200 dark:border-slate-700 shadow-2xs">
-                <Search className="w-4 h-4 text-slate-400" />
-              </div>
-
-              {/* SEARCH INPUT FIELD (ALIGNING WITH CUSTOMER COMBOBOX) */}
-              <div className="relative w-full sm:w-[320px] shrink-0 flex items-center">
+            <div className="flex items-center gap-2 pb-1.5 min-w-0">
+              <div className="relative w-[240px] max-w-full shrink-0 flex items-center">
+                <Search className="absolute left-2.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                 <input
                   ref={searchInputRef}
                   type="text"
@@ -492,8 +549,8 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
                       (e.target as HTMLInputElement).blur();
                     }
                   }}
-                  placeholder="Search route, city code, rate... (Press /)"
-                  className="h-8.5 w-full px-3 pr-16 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand shadow-2xs transition-all"
+                  placeholder="Search route or rate (/)"
+                  className="h-8 w-full pl-8 pr-16 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand focus:border-brand shadow-2xs transition-all"
                 />
                 {quotationSearchQuery && (
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -513,6 +570,7 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
               </div>
             </div>
           )}
+          </div>
 
           {showInlineForm ? (
             <DefineQuotationInlineForm
@@ -641,7 +699,7 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
               ) : (
                 <>
                   <p className="text-xs text-slate-600 dark:text-slate-300 font-medium">
-                    No active commercial quotation rates found for <span className="font-bold text-slate-800 dark:text-slate-100">{selectedCust?.name || 'this customer'}</span>.
+                    No {activeBilling === 'Monthly' ? 'monthly contract' : 'per-trip'} quotations for <span className="font-bold text-slate-800 dark:text-slate-100">{selectedCust?.name || 'this customer'}</span> yet.
                   </p>
                   <Button
                     type="button"

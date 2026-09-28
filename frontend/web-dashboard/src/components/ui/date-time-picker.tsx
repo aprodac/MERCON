@@ -5,6 +5,7 @@ import { Calendar as CalendarIcon, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { makeRoomBelow } from '@/lib/dropdownRoom';
 
 export interface DateTimePickerProps {
   value?: string | Date | null; // Supports "YYYY-MM-DDTHH:mm" format or Date object
@@ -67,6 +68,13 @@ export function DateTimePicker({
   label,
 }: DateTimePickerProps) {
   const [open, setOpen] = React.useState(false);
+  const triggerRef = React.useRef<HTMLButtonElement>(null);
+
+  // Always open below the field; slide the page up first if it's near the bottom.
+  React.useEffect(() => {
+    if (!open) return;
+    return makeRoomBelow(triggerRef.current, 400);
+  }, [open]);
   // What the user has chosen since opening: the popup closes once both are set.
   const pickedRef = React.useRef({ day: false, time: false });
   const [typed, setTyped] = React.useState('');
@@ -155,6 +163,7 @@ export function DateTimePicker({
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
+            ref={triggerRef}
             id={id}
             type="button"
             disabled={disabled}
@@ -198,7 +207,7 @@ export function DateTimePicker({
           </button>
         </PopoverTrigger>
 
-        <PopoverContent className="w-auto p-0 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl z-[9999] overflow-hidden" align="start">
+        <PopoverContent className="w-auto p-0 rounded-2xl border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-xl z-[9999] overflow-hidden" align="start" side="bottom" avoidCollisions={false}>
           <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 border-b border-slate-100 dark:border-slate-800">
             <span className="text-sm font-bold text-slate-900 dark:text-slate-100">{summary ?? 'Choose a day, then a time'}</span>
             {relative && <span className="text-xs font-semibold text-[#FA634E]">{relative}</span>}
