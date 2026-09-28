@@ -61,12 +61,32 @@ case "${1:-}" in
     unpack
     [[ "$(docker inspect -f '{{.State.Running}}' dev-postgres 2>/dev/null)" == "true" ]] \
       || die "dev-postgres is not running here — run the dev deploy on this server first"
+    psql_here() { docker exec -i dev-postgres sh -c 'psql -v ON_ERROR_STOP=1 -qtA -U "$POSTGRES_USER" -d "$POSTGRES_DB"'; }
+    # The first deploy here left a fresh database, possibly half-migrated (the
+    # migration history does not replay on an empty database). Only ever wipe
+    # a database with no users in it — never one holding real data.
+    users=0
+    if [[ "$(echo "SELECT to_regclass('public.\"User\"') IS NOT NULL;" | psql_here)" == "t" ]]; then
+      users="$(echo 'SELECT count(*) FROM "User";' | psql_here)"
+    fi
+    [[ "$users" == "0" ]] || die "dev database here already has $users users — refusing to replace it"
+    echo "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" | psql_here
     docker cp "$WORK/dev-db.dump" dev-postgres:/tmp/dev-db.dump
-    # Replaces the empty database the first deploy created with dev's real one.
     # Same app version on both sides, so the schema and migration ledger match.
     docker exec dev-postgres sh -c \
-      'pg_restore --clean --if-exists --no-owner --no-privileges -U "$POSTGRES_USER" -d "$POSTGRES_DB" /tmp/dev-db.dump'
+      'pg_restore --no-owner --no-privileges -U "$POSTGRES_USER" -d "$POSTGRES_DB" /tmp/dev-db.dump' \
+      || echo "   pg_restore reported the errors above — checking what arrived"
     docker exec dev-postgres rm -f /tmp/dev-db.dump
+    users="$(echo 'SELECT count(*) FROM "User";' | psql_here)" || die "restore failed: no User table"
+    [[ "$users" -gt 0 ]] || die "restore failed: User table is empty"
+    echo "── Restored: $users users, $(echo 'SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL;' | psql_here) migrations applied"
+    if ! docker inspect dev-api >/dev/null 2>&1; then
+      echo
+      echo "Database restored. The API container does not exist yet: re-run the dev deploy"
+      echo "(Actions → CI/CD Pipeline (Dev) → Run workflow on dev); it applies any newer"
+      echo "migrations and starts the API. Then point DNS here (docs/SERVER_MOVE_DEV.md)."
+      exit 0
+    fi
     docker restart dev-api dev-frontend >/dev/null
     for _ in $(seq 1 30); do
       curl -fsS http://127.0.0.1:3051/health >/dev/null 2>&1 && break
