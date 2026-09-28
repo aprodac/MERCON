@@ -140,10 +140,17 @@ export const EXPENSE_CATEGORIES = [
   'Office Supplies',
   'Insurance',
   'Vehicle Maintenance',
+  'Tyres',
   'Government Fees',
   'Other',
 ] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+/**
+ * Categories that are only ever a truck's cost — an expense in one of these
+ * must name the vehicle, or Vehicle P&L can't count it. Enforced by the API.
+ */
+export const VEHICLE_REQUIRED_EXPENSE_CATEGORIES: readonly string[] = ['Fuel', 'Vehicle Maintenance', 'Tyres'];
 
 /** Suggested Expense.payment_method values (free-text column, same reasoning as above). */
 export const EXPENSE_PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'Cheque', 'Card'] as const;

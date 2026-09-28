@@ -94,6 +94,7 @@ describe('navigation config', () => {
     expect(active('/vehicles/abc')).toBe('vehicles');
     expect(active('/vehicles/financials')).toBe('vehicle-pnl');
     expect(active('/vehicles/abc/financials')).toBe('vehicle-pnl');
+    expect(active('/vehicles/financials/setup')).toBe('vehicle-pnl');
     expect(active('/finance/invoices/new')).toBe('invoices');
     expect(active('/rate-cards/5/edit')).toBe('quotations');
     expect(active('/settings/error-console/99')).toBe('error-console');

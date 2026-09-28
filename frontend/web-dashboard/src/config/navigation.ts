@@ -134,7 +134,7 @@ export const SETTINGS_GROUPS: { id: SettingsGroupId; label: string }[] = [
   { id: 'aprodac', label: 'Shared with Aprodac' },
 ];
 
-const isVehicleFinancials = (p: string) => p === '/vehicles/financials' || /^\/vehicles\/[^/]+\/financials$/.test(p);
+const isVehicleFinancials = (p: string) => p === '/vehicles/financials' || p.startsWith('/vehicles/financials/') || /^\/vehicles\/[^/]+\/financials$/.test(p);
 
 export const NAV_PAGES: NavPage[] = [
   { id: 'home', label: 'Home', path: '/', icon: Home, section: 'home', moduleKey: 'dashboard', keywords: ['dashboard', 'overview'], match: (p) => p === '/' },

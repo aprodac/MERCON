@@ -98,102 +98,216 @@ export interface VehicleFilters {
   mode?: 'lookup' | 'kpi';
 }
 
-export interface VehicleFinancials {
-  vehicle_id: string;
-  plate_number: string;
-  ref_id: string | null;
-  asset_type: AssetType;
-  summary: {
-    total_income: number;
-    total_expenses: number;
-    driver_charges: number;
-    fuel_expenses: number;
-    maintenance_expenses: number;
-    renewal_expenses: number;
-    salary_expenses: number;
-    other_expenses: number;
-    net_profit: number;
-    margin_percent: number;
-    completed_trips_count: number;
-    total_maintenance_count: number;
-    total_distance_km: number;
-  };
-  monthly: MonthlyPoint[];
-  income_sources: Array<{
-    id: string;
-    ref_id: string | null;
-    status: string;
-    customer_name: string;
-    date: string;
-    income: number;
-    trip_charges: number;
-  }>;
-  expense_records: import('./maintenanceService').MaintenanceRecord[];
-  operating_expenses: Array<{
-    id: string;
-    ref_id: string | null;
-    category: string;
-    amount: number;
-    date: string;
-    description: string | null;
-  }>;
+/* ── Vehicle P&L (backend: services/vehicleFinancials) ─────────────────── */
+
+/** One truck's (or the fleet's) P&L for a period — see engine.ts for definitions. */
+export interface PnlBreakdown {
+  revenue: number;
+  driver_pay: number;
+  fuel: number;
+  maintenance: number;
+  tolls: number;
+  other: number;
+  direct_costs: number;
+  contribution: number;
+  salary: number;
+  depreciation: number;
+  fixed_costs: number;
+  overhead: number;
+  total_costs: number;
+  net_profit: number;
+  /** null when there is no revenue */
+  margin_percent: number | null;
+  contribution_percent: number | null;
 }
 
-/** One `YYYY-MM` bucket of the income/expense trend series. */
-export interface MonthlyPoint {
+export interface PnlMonth {
   month: string;
-  income: number;
-  expenses: number;
-  profit: number;
+  revenue: number;
+  direct_costs: number;
+  overhead: number;
+  net_profit: number;
 }
 
-/** A single vehicle's P&L row inside the fleet-wide report. */
-export interface FleetVehicleFinancials {
+export interface PnlRange {
+  from: string;
+  to: string;
+  /** Salary, depreciation and fixed costs are counted up to this day (today at most). */
+  accrued_to: string;
+  timezone: string;
+  open_start: boolean;
+}
+
+export interface PnlFlags {
+  missing_billing: number;
+  missing_driver_pay: number;
+  no_fuel: boolean;
+  no_cost_profile: boolean;
+  drivers_without_salary: { id: string; name: string }[];
+}
+
+export interface FleetVehiclePnl extends PnlBreakdown {
   vehicle_id: string;
   plate_number: string;
   ref_id: string | null;
   asset_type: AssetType;
   status: AssetStatus;
-  capacity_kg: number;
-  total_income: number;
-  total_expenses: number;
-  maintenance_expenses: number;
-  renewal_expenses: number;
-  driver_charges: number;
-  fuel_expenses: number;
-  salary_expenses: number;
-  other_expenses: number;
-  net_profit: number;
-  margin_percent: number;
+  driver: { id: string; name: string } | null;
   trips_count: number;
-  maintenance_count: number;
-  income_per_trip: number;
+  distance_km: number;
+  revenue_per_trip: number | null;
+  cost_per_km: number | null;
+  /** Had trips or direct costs in the period. */
+  active: boolean;
+  /** Net profit per month of the range, oldest first. */
+  monthly: number[];
+  flags: PnlFlags;
 }
 
-export interface FleetFinancials {
-  range: { from: string | null; to: string | null };
-  fleet_summary: {
-    total_income: number;
-    total_expenses: number;
-    maintenance_expenses: number;
-    renewal_expenses: number;
-    net_profit: number;
-    margin_percent: number;
+export interface FleetPnl {
+  range: PnlRange;
+  summary: PnlBreakdown & {
     vehicles_count: number;
+    active_count: number;
     profitable_count: number;
-    loss_making_count: number;
+    loss_count: number;
     idle_count: number;
-    total_trips: number;
-    total_maintenance: number;
+    trips_count: number;
+    distance_km: number;
+    unallocated_salary: number;
+    flags: {
+      missing_billing_trips: number;
+      missing_driver_pay_trips: number;
+      trucks_without_fuel: number;
+      trucks_without_cost_profile: number;
+      drivers_without_salary: number;
+    };
   };
-  vehicles: FleetVehicleFinancials[];
-  monthly: MonthlyPoint[];
+  vehicles: FleetVehiclePnl[];
+  monthly: PnlMonth[];
+  unallocated_salary: { driver_id: string; driver_name: string; month: string; amount: number }[];
 }
 
-/** Optional ISO date bounds shared by both financial reports. */
+export type CostFrequency = 'Monthly' | 'Yearly';
+
+export interface VehicleFixedCost {
+  id: string;
+  category: string;
+  label: string | null;
+  amount: number;
+  frequency: CostFrequency;
+  start_date: string;
+  end_date: string | null;
+  notes: string | null;
+}
+
+export type PnlCostLine = 'fuel' | 'maintenance' | 'tolls' | 'other';
+
+export interface VehiclePnl {
+  range: PnlRange;
+  vehicle: {
+    id: string;
+    plate_number: string;
+    ref_id: string | null;
+    asset_type: AssetType;
+    status: AssetStatus;
+    capacity_kg: number;
+    driver: { id: string; name: string } | null;
+    purchase_price: number | null;
+    purchase_date: string | null;
+    useful_life_years: number | null;
+    residual_value: number | null;
+    fixed_costs: VehicleFixedCost[];
+  };
+  totals: PnlBreakdown;
+  trips_count: number;
+  distance_km: number;
+  revenue_per_trip: number | null;
+  cost_per_km: number | null;
+  flags: PnlFlags;
+  monthly: PnlMonth[];
+  ledger: {
+    trips: { id: string; ref_id: string | null; day: string; customer: string; status: string; drivers: string[]; revenue: number; driver_pay: number; distance_km: number }[];
+    costs: { id: string; ref_id: string | null; source: 'expense' | 'maintenance' | 'bill'; line: PnlCostLine; category: string; description: string | null; day: string; amount: number }[];
+    salary: { driverId: string; driver_name: string; month: string; amount: number; basis: 'trips' | 'assigned'; vehicleTrips: number; driverTrips: number }[];
+    fixed_costs: { id: string; category: string; label: string | null; monthly: number; amount: number }[];
+    depreciation: { monthly: number; amount: number };
+  };
+}
+
+/** Company-local dates ("YYYY-MM-DD"); both optional = all time. */
 export interface FinancialsRange {
   from?: string;
   to?: string;
+}
+
+export interface DriverSalary {
+  id: string;
+  base_salary: number;
+  allowances: number;
+  employer_costs: number;
+  monthly_total: number;
+  effective_from: string;
+  effective_to: string | null;
+  notes: string | null;
+}
+
+export interface DriverSalaryPayload {
+  base_salary: number;
+  allowances?: number;
+  employer_costs?: number;
+  effective_from: string;
+  effective_to?: string | null;
+  notes?: string | null;
+}
+
+export interface CostSetupVehicle {
+  id: string;
+  plate_number: string;
+  ref_id: string | null;
+  asset_type: AssetType;
+  status: AssetStatus;
+  driver: { id: string; name: string } | null;
+  purchase_price: number | null;
+  purchase_date: string | null;
+  useful_life_years: number | null;
+  residual_value: number | null;
+  fixed_costs: (VehicleFixedCost & { active: boolean })[];
+  /** Recurring costs active today, per month. */
+  fixed_monthly: number;
+}
+
+export interface CostSetupDriver {
+  id: string;
+  ref_id: string | null;
+  name: string;
+  status: string;
+  vehicle: { id: string; plate_number: string } | null;
+  current: DriverSalary | null;
+  history: DriverSalary[];
+}
+
+export interface CostSetup {
+  today: string;
+  vehicles: CostSetupVehicle[];
+  drivers: CostSetupDriver[];
+}
+
+export interface VehicleOwnershipPayload {
+  purchase_price?: number | null;
+  purchase_date?: string | null;
+  useful_life_years?: number | null;
+  residual_value?: number | null;
+}
+
+export interface VehicleFixedCostPayload {
+  category: string;
+  label?: string | null;
+  amount: number;
+  frequency: CostFrequency;
+  start_date: string;
+  end_date?: string | null;
+  notes?: string | null;
 }
 
 /** Fleet KPI counts, computed in the database — see `getVehicleStats`. */
@@ -249,15 +363,49 @@ export const vehicleService = {
     return res.data.data;
   },
 
-  async getFinancials(id: string, range: FinancialsRange = {}): Promise<VehicleFinancials> {
-    const res = await api.get<ApiResponse<VehicleFinancials>>(`/vehicles/${id}/financials`, { params: range });
+  async getFinancials(id: string, range: FinancialsRange = {}): Promise<VehiclePnl> {
+    const res = await api.get<ApiResponse<VehiclePnl>>(`/vehicles/${id}/financials`, { params: range });
     return res.data.data;
   },
 
-  /** Fleet-wide P&L — one row per vehicle, for ranking profit/loss across trucks. */
-  async getFleetFinancials(range: FinancialsRange = {}): Promise<FleetFinancials> {
-    const res = await api.get<ApiResponse<FleetFinancials>>('/vehicles/financials/fleet', { params: range });
+  /** Fleet-wide P&L — one row per truck, for ranking profit and loss. */
+  async getFleetFinancials(range: FinancialsRange = {}): Promise<FleetPnl> {
+    const res = await api.get<ApiResponse<FleetPnl>>('/vehicles/financials/fleet', { params: range });
     return res.data.data;
+  },
+
+  /** Every truck's ownership costs and every driver's salary, for the Cost setup page. */
+  async getCostSetup(): Promise<CostSetup> {
+    const res = await api.get<ApiResponse<CostSetup>>('/vehicles/financials/cost-setup');
+    return res.data.data;
+  },
+
+  async updateOwnership(id: string, payload: VehicleOwnershipPayload): Promise<void> {
+    await api.patch(`/vehicles/${id}`, payload);
+  },
+
+  async addFixedCost(vehicleId: string, payload: VehicleFixedCostPayload): Promise<void> {
+    await api.post(`/vehicles/${vehicleId}/fixed-costs`, payload);
+  },
+
+  async updateFixedCost(vehicleId: string, costId: string, payload: Partial<VehicleFixedCostPayload>): Promise<void> {
+    await api.patch(`/vehicles/${vehicleId}/fixed-costs/${costId}`, payload);
+  },
+
+  async deleteFixedCost(vehicleId: string, costId: string): Promise<void> {
+    await api.delete(`/vehicles/${vehicleId}/fixed-costs/${costId}`);
+  },
+
+  async addDriverSalary(driverId: string, payload: DriverSalaryPayload): Promise<void> {
+    await api.post(`/drivers/${driverId}/salaries`, payload);
+  },
+
+  async updateDriverSalary(driverId: string, salaryId: string, payload: Partial<DriverSalaryPayload>): Promise<void> {
+    await api.patch(`/drivers/${driverId}/salaries/${salaryId}`, payload);
+  },
+
+  async deleteDriverSalary(driverId: string, salaryId: string): Promise<void> {
+    await api.delete(`/drivers/${driverId}/salaries/${salaryId}`);
   },
 
   async create(payload: CreateVehiclePayload): Promise<Vehicle> {

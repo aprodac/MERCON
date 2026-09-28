@@ -17,6 +17,7 @@
     "test:tracking": "node -r ts-node/register --test src/services/tracking/locationUpdate.test.ts",
     "test:routing": "node -r ts-node/register --test src/services/routing/routeProvider.test.ts",
     "test:trip-financials": "node -r ts-node/register --test src/services/tripFinancials.test.ts",
+    "test:vehicle-pnl": "node -r ts-node/register --test src/services/vehicleFinancials/engine.test.ts",
     "test:trip-board": "node -r ts-node/register --test src/services/tripBoard.test.ts",
     "test:invoice-query": "node -r ts-node/register --test src/tests/invoiceQuery.test.ts",
     "test:fleet-live-map": "node -r ts-node/register --test src/tests/fleetLiveMap.test.ts",

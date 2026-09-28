@@ -12,7 +12,7 @@ import {
   Plus,
   X,
 } from 'lucide-react';
-import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS } from '@mercon/shared-types';
+import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, VEHICLE_REQUIRED_EXPENSE_CATEGORIES } from '@mercon/shared-types';
 import { getCategoryTheme } from '@/utils/expenseCategoryColors';
 
 import { Button } from '@/components/ui/button';
@@ -86,7 +86,6 @@ export default function ExpenseModal({
   const [formData, setFormData] = useState<CreateExpensePayload>(EMPTY_FORM);
   const [formError, setFormError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [showVehicleLink, setShowVehicleLink] = useState(false);
   const [showDriverLink, setShowDriverLink] = useState(false);
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
@@ -96,7 +95,6 @@ export default function ExpenseModal({
     setFormError('');
 
     if (editingExpense) {
-      const hasVehicle = Boolean(editingExpense.vehicleId);
       const hasDriver = Boolean(editingExpense.driverId);
       setFormData({
         category: editingExpense.category,
@@ -118,7 +116,6 @@ export default function ExpenseModal({
           ? editingExpense.bill_paid_date.split('T')[0]
           : '',
       });
-      setShowVehicleLink(hasVehicle);
       setShowDriverLink(hasDriver);
 
       const isKnownCategory = (EXPENSE_CATEGORIES as readonly string[]).includes(
@@ -128,7 +125,6 @@ export default function ExpenseModal({
       setCustomCategory(isKnownCategory ? '' : editingExpense.category || '');
     } else {
       setFormData(EMPTY_FORM);
-      setShowVehicleLink(false);
       setShowDriverLink(false);
       setIsAddingCategory(false);
       setCustomCategory('');
@@ -138,6 +134,8 @@ export default function ExpenseModal({
   // A Pending expense is a placeholder — only Classification is known yet.
   // Everything else gets filled in once it's actually paid.
   const isPending = formData.status === 'Pending';
+  // Truck-only categories must name the truck once the expense is paid
+  const vehicleRequired = !isPending && VEHICLE_REQUIRED_EXPENSE_CATEGORIES.includes(formData.category);
 
   const set = <K extends keyof CreateExpensePayload>(key: K, value: CreateExpensePayload[K]) =>
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -151,10 +149,6 @@ export default function ExpenseModal({
     }
     setIsAddingCategory(false);
     set('category', val);
-    const vehicleCategories = ['Fuel', 'Vehicle Maintenance', 'Toll & Parking'];
-    if (vehicleCategories.includes(val)) {
-      setShowVehicleLink(true);
-    }
     const driverCategories = ['Salary', 'Salary Advance'];
     if (driverCategories.includes(val)) {
       setShowDriverLink(true);
@@ -164,13 +158,6 @@ export default function ExpenseModal({
   const handleCustomCategoryChange = (val: string) => {
     setCustomCategory(val);
     set('category', val);
-  };
-
-  const handleToggleVehicleLink = (enable: boolean) => {
-    setShowVehicleLink(enable);
-    if (!enable) {
-      set('vehicle_id', null);
-    }
   };
 
   const handleFormSubmit = async (e: React.FormEvent) => {
@@ -185,13 +172,17 @@ export default function ExpenseModal({
       setFormError('Amount must be greater than zero.');
       return;
     }
+    if (vehicleRequired && !formData.vehicle_id) {
+      setFormError(`Choose the vehicle this ${formData.category.toLowerCase()} expense is for — it counts in that truck's P&L.`);
+      return;
+    }
 
     setIsSaving(true);
     try {
       const payload: CreateExpensePayload = {
         ...formData,
         driver_id: formData.driver_id || null,
-        vehicle_id: showVehicleLink ? formData.vehicle_id || null : null,
+        vehicle_id: formData.vehicle_id || null,
       };
 
       if (editingExpense) {
@@ -481,6 +472,7 @@ export default function ExpenseModal({
                   <Label className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
                     <span className="inline-flex items-center gap-1.5">
                       <Truck className="w-3 h-3 text-brand" /> Vehicle / Asset
+                      {vehicleRequired && <span className="text-rose-500">*</span>}
                     </span>
                   </Label>
                   <div className="flex items-center gap-1.5">
