@@ -2,16 +2,18 @@
  * Operator home, in three blocks:
  *   1. HomeStatus     — one card: how many things need you now, and the fleet
  *                       at a glance (on the road · delayed · today).
- *   2. NeedsActionList — filter chips by problem type, then the most urgent
- *                       items as one grouped list (title, context, when, and
- *                       the one action that handles it). Shows 5, "Show all".
+ *   2. NeedsActionList — urgent items only, one row per kind of problem:
+ *                       a lone item shows its action; several of one kind
+ *                       fold into "9 trips delayed · worst …" that opens a
+ *                       sheet, worst first. Lower-priority items under Later.
  *   3. UpNext         — the next few trips today; the full list is on Trips.
  * Each fact appears once; nothing is folded behind tabs.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import {
-  AlarmClock, ChevronDown, ChevronRight, CircleCheckBig, Clock3, FileClock, Images, Phone, Play, Receipt, SignalLow, Siren, Split, UserX,
+  AlarmClock, ChevronDown, ChevronRight, CircleCheckBig, Clock3, FileClock, Images, Phone, Play, Receipt, MapPinOff, Siren, Split, UserX,
   type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -35,7 +37,7 @@ const KIND: Record<ActionKind, { icon: LucideIcon; fg: string }> = {
   delayed: { icon: Clock3, fg: SEV.red },
   'late-start': { icon: AlarmClock, fg: SEV.red },
   unassigned: { icon: UserX, fg: SEV.red },
-  'gps-quiet': { icon: SignalLow, fg: SEV.amber },
+  'gps-quiet': { icon: MapPinOff, fg: SEV.amber },
   'gps-mismatch': { icon: Split, fg: SEV.amber },
   photos: { icon: Images, fg: SEV.gray },
   'time-check': { icon: Clock3, fg: SEV.amber },
@@ -43,15 +45,38 @@ const KIND: Record<ActionKind, { icon: LucideIcon; fg: string }> = {
   'overdue-invoice': { icon: Receipt, fg: SEV.gray },
 };
 
-/** The problem types the operator filters by (several kinds share one chip). */
-const GROUPS: { id: string; label: string; kinds: ActionKind[] }[] = [
-  { id: 'late', label: 'Delayed', kinds: ['emergency', 'delayed', 'late-start'] },
-  { id: 'gps', label: 'No GPS', kinds: ['gps-quiet', 'gps-mismatch'] },
-  { id: 'assign', label: 'Unassigned', kinds: ['unassigned'] },
-  { id: 'send', label: 'To send', kinds: ['photos', 'time-check'] },
-  { id: 'docs', label: 'Documents', kinds: ['expiry'] },
-  { id: 'money', label: 'Invoices', kinds: ['overdue-invoice'] },
-];
+/** How a group of one kind reads: "9 trips delayed". */
+const GROUP_NOUN: Record<ActionKind, [string, string]> = {
+  emergency: ['emergency', 'emergencies'],
+  delayed: ['trip delayed', 'trips delayed'],
+  'late-start': ['trip not started', 'trips not started'],
+  unassigned: ['trip without driver or truck', 'trips without driver or truck'],
+  'gps-quiet': ['truck with no GPS', 'trucks with no GPS'],
+  'gps-mismatch': ['GPS mismatch', 'GPS mismatches'],
+  photos: ['photo update to send', 'photo updates to send'],
+  'time-check': ['screenshot to check', 'screenshots to check'],
+  expiry: ['document expiring', 'documents expiring'],
+  'overdue-invoice': ['overdue invoice', 'overdue invoices'],
+};
+
+/** Oldest first = the one that's been wrong longest ("most late"); undated last. */
+const worstFirst = (a: ActionItem, b: ActionItem) =>
+  (a.at ? new Date(a.at).getTime() : Infinity) - (b.at ? new Date(b.at).getTime() : Infinity);
+
+/** One entry per kind, keeping the list's urgency order: a single item stays a row, several become a group. */
+function groupByKind(items: ActionItem[]): ({ type: 'item'; item: ActionItem } | { type: 'group'; kind: ActionKind; items: ActionItem[] })[] {
+  const order: ActionKind[] = [];
+  const byKind = new Map<ActionKind, ActionItem[]>();
+  for (const i of items) {
+    if (!byKind.has(i.kind)) { byKind.set(i.kind, []); order.push(i.kind); }
+    byKind.get(i.kind)!.push(i);
+  }
+  return order.map((k) => {
+    const list = byKind.get(k)!;
+    return list.length === 1 ? { type: 'item' as const, item: list[0] } : { type: 'group' as const, kind: k, items: [...list].sort(worstFirst) };
+  });
+}
+
 
 /** Row context, tidied: ALL-CAPS words get normal case, and "heading to …" is dropped (the route is one tap away). */
 function tidy(text: string): string {
@@ -63,7 +88,6 @@ function tidy(text: string): string {
     .trim();
 }
 
-const SHOWN = 5;
 
 // ── 1 · Status ────────────────────────────────────────────────────────────────
 
@@ -134,24 +158,29 @@ export function NeedsActionList({ items, loading, onIntent, onOpenTrip, now }: {
   onOpenTrip: (tripId: string) => void;
   now: number;
 }) {
-  const [group, setGroup] = useState<string | null>(null);
-  const [all, setAll] = useState(false);
   const [laterOpen, setLaterOpen] = useState(false);
+  const [sheet, setSheet] = useState<ActionKind | null>(null);
+  const { height } = useWindowDimensions();
 
   // Only urgent items make the list (the same count the status card shows);
   // everything lower-priority waits, folded, under "Later".
   const urgent = useMemo(() => items.filter((i) => i.urgency === 'now'), [items]);
   const later = useMemo(() => items.filter((i) => i.urgency !== 'now'), [items]);
+  const urgentRows = useMemo(() => groupByKind(urgent), [urgent]);
+  const laterRows = useMemo(() => groupByKind(later), [later]);
 
-  const chips = useMemo(
-    () => GROUPS.map((g) => ({ ...g, count: urgent.filter((i) => g.kinds.includes(i.kind)).length })).filter((g) => g.count > 0),
-    [urgent],
-  );
-  // A chip that has emptied since it was picked falls back to "All".
-  const active = chips.find((c) => c.id === group) ?? null;
-  const list = active ? urgent.filter((i) => active.kinds.includes(i.kind)) : urgent;
-  const visible = all ? list : list.slice(0, SHOWN);
+  const sheetItems = sheet ? items.filter((i) => i.kind === sheet).sort(worstFirst) : [];
+  // Actions inside the sheet close it first, so the next screen isn't hidden behind it.
+  const fromSheet = <T,>(fn: (x: T) => void) => (x: T) => { setSheet(null); setTimeout(() => fn(x), 250); };
 
+  const render = (rows: ReturnType<typeof groupByKind>, firstBorder: boolean) =>
+    rows.map((r, i) =>
+      r.type === 'item' ? (
+        <ActionRow key={r.item.key} item={r.item} first={!firstBorder && i === 0} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} />
+      ) : (
+        <GroupRow key={r.kind} kind={r.kind} items={r.items} first={!firstBorder && i === 0} now={now} onPress={() => { tap(); setSheet(r.kind); }} />
+      ),
+    );
 
   return (
     <View style={{ gap: 12 }}>
@@ -160,33 +189,13 @@ export function NeedsActionList({ items, loading, onIntent, onOpenTrip, now }: {
         {loading ? <ActivityIndicator size="small" color={MUTED} /> : <Text style={s.headCount}>{urgent.length}</Text>}
       </View>
 
-      {chips.length > 1 ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips} style={{ marginHorizontal: -16 }}>
-          <Chip label="All" count={urgent.length} on={!active} onPress={() => { tap(); setGroup(null); setAll(false); }} />
-          {chips.map((c) => (
-            <Chip key={c.id} label={c.label} count={c.count} on={active?.id === c.id} onPress={() => { tap(); setGroup(c.id); setAll(false); }} />
-          ))}
-        </ScrollView>
-      ) : null}
-
-      {visible.length ? (
-        <View style={s.group}>
-          {visible.map((item, i) => (
-            <ActionRow key={item.key} item={item} first={i === 0} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} />
-          ))}
-        </View>
+      {urgentRows.length ? (
+        <View style={s.group}>{render(urgentRows, false)}</View>
       ) : !loading ? (
         <View style={s.clearRow}>
           <CircleCheckBig size={18} color="#16A34A" strokeWidth={2.2} />
           <Text style={s.clearText}>Nothing urgent right now</Text>
         </View>
-      ) : null}
-
-      {list.length > SHOWN ? (
-        <TouchableOpacity style={s.showAll} onPress={() => { tap(); setAll((v) => !v); }} activeOpacity={0.7}>
-          <Text style={s.showAllText}>{all ? 'Show less' : `Show all ${list.length}`}</Text>
-          <ChevronDown size={16} color={INK} style={all ? { transform: [{ rotate: '180deg' }] } : undefined} />
-        </TouchableOpacity>
       ) : null}
 
       {later.length ? (
@@ -199,25 +208,50 @@ export function NeedsActionList({ items, loading, onIntent, onOpenTrip, now }: {
             <Text style={s.laterCount}>{later.length}</Text>
             <ChevronDown size={18} color={MUTED} style={laterOpen ? { transform: [{ rotate: '180deg' }] } : undefined} />
           </TouchableOpacity>
-          {laterOpen ? later.map((item) => (
-            <ActionRow key={item.key} item={item} first={false} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} />
-          )) : null}
+          {laterOpen ? render(laterRows, true) : null}
         </View>
       ) : null}
+
+      <AppModal
+        visible={sheet != null}
+        onClose={() => setSheet(null)}
+        type="bottom-sheet"
+        title={sheet ? `${sheetItems.length} ${GROUP_NOUN[sheet][1]}` : ''}
+      >
+        <ScrollView style={{ maxHeight: height * 0.65 }} showsVerticalScrollIndicator={false}>
+          {sheetItems.map((item, i) => (
+            <ActionRow key={item.key} item={item} first={i === 0} now={now} flat onIntent={fromSheet(onIntent)} onOpenTrip={fromSheet(onOpenTrip)} />
+          ))}
+        </ScrollView>
+      </AppModal>
     </View>
   );
 }
 
-function Chip({ label, count, on, onPress }: { label: string; count: number; on: boolean; onPress: () => void }) {
+/** Several items of one kind as a single row: "9 trips delayed · worst TRP-0267, 3d late". */
+function GroupRow({ kind, items, first, now, onPress }: { kind: ActionKind; items: ActionItem[]; first: boolean; now: number; onPress: () => void }) {
+  const k = KIND[kind];
+  const Icon = k.icon;
+  const worst = items[0];
+  const when = whenLabel(worst, now);
+  const ref = worst.title.split(' ')[0];
   return (
-    <TouchableOpacity style={[s.chip, on && s.chipOn]} onPress={onPress} activeOpacity={0.8}>
-      <Text style={[s.chipText, on && s.chipTextOn]}>{label}</Text>
-      <Text style={[s.chipCount, on && s.chipCountOn]}>{count}</Text>
+    <TouchableOpacity style={[s.row, !first && s.rowBorder]} onPress={onPress} activeOpacity={0.6} accessibilityRole="button">
+      <View style={s.icon}><Icon size={18} color={k.fg} strokeWidth={2.2} /></View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={s.title}>{items.length} {GROUP_NOUN[kind][1]}</Text>
+        {when ? (
+          <Text style={s.detail}>
+            Worst: {ref} · <Text style={when.hot ? { color: RED, fontWeight: '600' } : undefined}>{when.text}</Text>
+          </Text>
+        ) : <Text style={s.detail}>Tap to see all</Text>}
+      </View>
+      <ChevronRight size={18} color="#A1A1AA" style={{ alignSelf: 'center' }} />
     </TouchableOpacity>
   );
 }
 
-function ActionRow({ item, first, now, onIntent, onOpenTrip }: { item: ActionItem; first: boolean; now: number; onIntent: (i: ActionIntent) => void; onOpenTrip: (id: string) => void }) {
+function ActionRow({ item, first, now, flat, onIntent, onOpenTrip }: { item: ActionItem; first: boolean; now: number; flat?: boolean; onIntent: (i: ActionIntent) => void; onOpenTrip: (id: string) => void }) {
   const k = KIND[item.kind];
   const Icon = k.icon;
   const when = whenLabel(item, now);
@@ -226,7 +260,7 @@ function ActionRow({ item, first, now, onIntent, onOpenTrip }: { item: ActionIte
   const openRow = () => (item.tripId ? onOpenTrip(item.tripId) : onIntent(item.primary.intent));
 
   return (
-    <TouchableOpacity style={[s.row, !first && s.rowBorder]} onPress={openRow} activeOpacity={0.6}>
+    <TouchableOpacity style={[s.row, !first && s.rowBorder, flat && { paddingHorizontal: 0 }]} onPress={openRow} activeOpacity={0.6}>
       <View style={s.icon}><Icon size={18} color={k.fg} strokeWidth={2.2} /></View>
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={s.title}>{item.title}</Text>
@@ -329,6 +363,8 @@ const s = StyleSheet.create({
   skel: { backgroundColor: '#EDEDF0', borderRadius: 6 },
   clearRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: LINE, padding: 16 },
   clearText: { fontSize: 14, fontWeight: '600', color: '#15803D' },
+  countPill: { minWidth: 26, height: 22, borderRadius: 11, backgroundColor: '#FEE4E2', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7, alignSelf: 'center' },
+  countPillText: { fontSize: 12, fontWeight: '700', color: RED },
   laterHead: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 14 },
   laterTitle: { fontSize: 15, fontWeight: '600', color: INK },
   laterSub: { fontSize: 12, color: MUTED, marginTop: 1 },
