@@ -11,7 +11,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Bell, Menu, type LucideIcon } from 'lucide-react-native';
+import { ArrowLeft, Bell, Menu, type LucideIcon } from 'lucide-react-native';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
 import { OperatorSidebarDrawer } from './OperatorSidebarDrawer';
 
@@ -32,9 +32,11 @@ interface AppTopBarProps {
   actions?: TopBarAction[];
   /** Hide the bell (on the notifications page itself). */
   hideBell?: boolean;
+  /** Show a back arrow instead of the menu (pages opened from another page). */
+  onBack?: () => void;
 }
 
-export function AppTopBar({ title, actions = [], hideBell }: AppTopBarProps) {
+export function AppTopBar({ title, actions = [], hideBell, onBack }: AppTopBarProps) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const notifications = useNotifications();
@@ -43,7 +45,7 @@ export function AppTopBar({ title, actions = [], hideBell }: AppTopBarProps) {
   return (
     <>
       <View style={s.bar}>
-        <IconBtn icon={Menu} label="Open menu" onPress={() => setMenuOpen(true)} />
+        {onBack ? <IconBtn icon={ArrowLeft} label="Back" onPress={onBack} /> : <IconBtn icon={Menu} label="Open menu" onPress={() => setMenuOpen(true)} />}
 
         {title ? (
           <Text style={s.title} numberOfLines={1}>{title}</Text>

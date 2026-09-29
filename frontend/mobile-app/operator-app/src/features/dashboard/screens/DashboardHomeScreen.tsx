@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useDashboardRefresh } from '../hooks';
 import { useMarkNotificationsRead, useNotifications } from '@/features/notifications/hooks/useNotifications';
 import { AppTopBar } from '@/components/AppTopBar';
+import { FleetMapCard } from '@/features/fleet/FleetMapCard';
 import { Search } from 'lucide-react-native';
 import { ErrorState } from '@mercon/mobile-shared/ui';
 import { useActionInbox } from '../actions/useActionInbox';
@@ -105,6 +106,8 @@ export default function DashboardHomeScreen() {
           onOpenTrip={(id) => openTrip(id)}
           now={now}
         />
+
+        <FleetMapCard units={inbox.units} onOpen={() => router.push('/fleet-map')} />
 
         <UpNext rows={inbox.today} tz={inbox.tz} onOpenTrip={(id) => openTrip(id)} onAll={() => router.push('/trips')} />
       </ScrollView>

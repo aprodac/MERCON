@@ -77,6 +77,7 @@ function RootNavigator() {
         <Stack.Screen name="expenses" options={{ animation: 'none' }} />
         <Stack.Screen name="documents" options={{ animation: 'none' }} />
         <Stack.Screen name="notifications" options={{ animation: 'none' }} />
+        <Stack.Screen name="fleet-map" />
         <Stack.Screen name="driver-details" />
         <Stack.Screen name="driver-edit" />
         <Stack.Screen name="vehicle-details" />
