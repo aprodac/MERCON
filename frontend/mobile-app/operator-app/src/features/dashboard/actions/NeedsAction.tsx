@@ -3,8 +3,8 @@
  *   1. HomeStatus     — one card: how many things need you now, and the fleet
  *                       at a glance (on the road · delayed · today).
  *   2. NeedsActionList — filter chips by problem type, then the most urgent
- *                       items as cards (title, one line of context, when, and
- *                       the one action that handles it). Shows 4, "Show all".
+ *                       items as one grouped list (title, context, when, and
+ *                       the one action that handles it). Shows 5, "Show all".
  *   3. UpNext         — the next few trips today; the full list is on Trips.
  * Each fact appears once; nothing is folded behind tabs.
  */
@@ -22,23 +22,25 @@ import { niceName } from '../../trips/create/components/ui';
 import { whenLabel, type ActionIntent, type ActionItem, type ActionKind } from './actionModel';
 
 const INK = '#18181B';
-const MUTED = '#71717A';
-const LINE = '#ECECEF';
-const CORAL = '#FA634E';
+const MUTED = '#6B6B76';
+const LINE = '#E9E9EC';
+const RED = '#D92D20';
 
 const tap = () => Haptics.selectionAsync().catch(() => {});
 
-const KIND: Record<ActionKind, { icon: LucideIcon; bg: string; fg: string }> = {
-  emergency: { icon: Siren, bg: '#FDE3E0', fg: '#B42318' },
-  delayed: { icon: Clock3, bg: '#FDEDEB', fg: '#912018' },
-  'late-start': { icon: AlarmClock, bg: '#FFF1E0', fg: '#8A4B00' },
-  unassigned: { icon: UserX, bg: '#FDEDEB', fg: '#912018' },
-  'gps-quiet': { icon: SignalLow, bg: '#FFF4D6', fg: '#7A4F00' },
-  'gps-mismatch': { icon: Split, bg: '#FFF4D6', fg: '#7A4F00' },
-  photos: { icon: Images, bg: '#E3F7EA', fg: '#0F6B37' },
-  'time-check': { icon: Clock3, bg: '#FFF4D6', fg: '#7A4F00' },
-  expiry: { icon: FileClock, bg: '#F0EBFC', fg: '#4A2A93' },
-  'overdue-invoice': { icon: Receipt, bg: '#EEF0F4', fg: '#3E3C3D' },
+const NEUTRAL = '#F4F4F5';
+const SEV = { red: '#D92D20', amber: '#B54708', gray: '#52525B' };
+const KIND: Record<ActionKind, { icon: LucideIcon; fg: string }> = {
+  emergency: { icon: Siren, fg: SEV.red },
+  delayed: { icon: Clock3, fg: SEV.red },
+  'late-start': { icon: AlarmClock, fg: SEV.red },
+  unassigned: { icon: UserX, fg: SEV.red },
+  'gps-quiet': { icon: SignalLow, fg: SEV.amber },
+  'gps-mismatch': { icon: Split, fg: SEV.amber },
+  photos: { icon: Images, fg: SEV.gray },
+  'time-check': { icon: Clock3, fg: SEV.amber },
+  expiry: { icon: FileClock, fg: SEV.amber },
+  'overdue-invoice': { icon: Receipt, fg: SEV.gray },
 };
 
 /** The problem types the operator filters by (several kinds share one chip). */
@@ -51,15 +53,17 @@ const GROUPS: { id: string; label: string; kinds: ActionKind[] }[] = [
   { id: 'money', label: 'Invoices', kinds: ['overdue-invoice'] },
 ];
 
-/** "IMILE DELIVERY SAUDI" → "Imile Delivery Saudi"; "heading to khamis mushayt" → "…Khamis Mushayt". */
+/** Row context, tidied: ALL-CAPS words get normal case, and "heading to …" is dropped (the route is one tap away). */
 function tidy(text: string): string {
   return text
+    .split(' · ')
+    .filter((part) => !/^heading to /i.test(part.trim()))
+    .join(' · ')
     .replace(/\b[A-Z]{4,}\b/g, (w) => w[0] + w.slice(1).toLowerCase())
-    .replace(/(heading to )([^·]+)/, (_m, a: string, b: string) => `${a}${niceName(b.trim())} `)
     .trim();
 }
 
-const SHOWN = 4;
+const SHOWN = 5;
 
 // ── 1 · Status ────────────────────────────────────────────────────────────────
 
@@ -71,16 +75,14 @@ export function HomeStatus({ needNow, running, delayed, today, loading, onRunnin
   const cells = [
     { key: 'run', label: 'On the road', value: running, onPress: onRunning },
     { key: 'late', label: 'Delayed', value: delayed, onPress: onDelayed, hot: delayed > 0 },
-    { key: 'today', label: 'Today', value: today, onPress: onToday },
+    { key: 'today', label: 'Trips today', value: today, onPress: onToday },
   ];
   return (
-    <View style={[s.hero, clear && { backgroundColor: '#16A34A' }]}>
-      <View style={s.ringA} pointerEvents="none" />
-      <View style={s.ringB} pointerEvents="none" />
+    <View style={s.hero}>
       <View style={s.heroTop}>
         {clear ? (
           <>
-            <View style={[s.heroIcon, { backgroundColor: 'rgba(255,255,255,0.22)' }]}><CircleCheckBig size={24} color="#FFFFFF" strokeWidth={2.4} /></View>
+            <CircleCheckBig size={28} color="#16A34A" strokeWidth={2.2} />
             <View style={{ flex: 1 }}>
               <Text style={s.heroBig}>All clear</Text>
               <Text style={s.heroSub}>Nothing needs you right now</Text>
@@ -90,16 +92,16 @@ export function HomeStatus({ needNow, running, delayed, today, loading, onRunnin
           <>
             <Text style={s.heroNumber}>{loading ? '–' : needNow}</Text>
             <View style={{ flex: 1 }}>
-              <Text style={s.heroBig}>{needNow === 1 ? 'thing needs' : 'things need'} you now</Text>
-              <Text style={s.heroSub}>Most urgent first, below</Text>
+              <Text style={s.heroBig}>{needNow === 1 ? 'thing needs' : 'things need'} your attention</Text>
+              <Text style={s.heroSub}>Urgent first</Text>
             </View>
           </>
         )}
       </View>
       <View style={s.heroStats}>
         {cells.map((c, i) => (
-          <TouchableOpacity key={c.key} style={[s.stat, i > 0 && s.statBorder]} onPress={() => { tap(); c.onPress(); }} activeOpacity={0.7}>
-            <Text style={s.statValue}>{c.value}</Text>
+          <TouchableOpacity key={c.key} style={[s.stat, i > 0 && s.statBorder]} onPress={() => { tap(); c.onPress(); }} activeOpacity={0.6}>
+            <Text style={[s.statValue, c.hot && { color: RED }]}>{c.value}</Text>
             <Text style={s.statLabel}>{c.label}</Text>
           </TouchableOpacity>
         ))}
@@ -135,7 +137,7 @@ export function NeedsActionList({ items, loading, onIntent, onOpenTrip, now }: {
     <View style={{ gap: 12 }}>
       <View style={s.headRow}>
         <Text style={s.h2}>Needs action</Text>
-        {loading ? <ActivityIndicator size="small" color={CORAL} /> : <Text style={s.headCount}>{list.length}</Text>}
+        {loading ? <ActivityIndicator size="small" color={MUTED} /> : <Text style={s.headCount}>{list.length}</Text>}
       </View>
 
       {chips.length > 1 ? (
@@ -147,16 +149,16 @@ export function NeedsActionList({ items, loading, onIntent, onOpenTrip, now }: {
         </ScrollView>
       ) : null}
 
-      <View style={{ gap: 10 }}>
-        {visible.map((item) => (
-          <ActionCard key={item.key} item={item} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} />
+      <View style={s.group}>
+        {visible.map((item, i) => (
+          <ActionRow key={item.key} item={item} first={i === 0} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} />
         ))}
       </View>
 
       {list.length > SHOWN ? (
         <TouchableOpacity style={s.showAll} onPress={() => { tap(); setAll((v) => !v); }} activeOpacity={0.7}>
           <Text style={s.showAllText}>{all ? 'Show less' : `Show all ${list.length}`}</Text>
-          <ChevronDown size={16} color="#D94E38" style={all ? { transform: [{ rotate: '180deg' }] } : undefined} />
+          <ChevronDown size={16} color={INK} style={all ? { transform: [{ rotate: '180deg' }] } : undefined} />
         </TouchableOpacity>
       ) : null}
     </View>
@@ -172,62 +174,50 @@ function Chip({ label, count, on, onPress }: { label: string; count: number; on:
   );
 }
 
-function ActionCard({ item, now, onIntent, onOpenTrip }: { item: ActionItem; now: number; onIntent: (i: ActionIntent) => void; onOpenTrip: (id: string) => void }) {
+function ActionRow({ item, first, now, onIntent, onOpenTrip }: { item: ActionItem; first: boolean; now: number; onIntent: (i: ActionIntent) => void; onOpenTrip: (id: string) => void }) {
   const k = KIND[item.kind];
   const Icon = k.icon;
   const when = whenLabel(item, now);
   const call = item.secondary?.intent.type === 'call' ? item.secondary : null;
   const other = item.secondary && !call ? item.secondary : null;
-  const go = item.kind === 'photos';
-  const openCard = () => (item.tripId ? onOpenTrip(item.tripId) : onIntent(item.primary.intent));
+  const openRow = () => (item.tripId ? onOpenTrip(item.tripId) : onIntent(item.primary.intent));
 
   return (
-    <TouchableOpacity style={[s.card, { borderColor: k.bg }]} onPress={openCard} activeOpacity={0.88}>
-      <View style={[s.edge, { backgroundColor: k.fg }]} />
-      <View style={s.cardTop}>
-        <View style={[s.icon, { backgroundColor: k.bg }]}><Icon size={21} color={k.fg} strokeWidth={2.3} /></View>
-        <View style={{ flex: 1, gap: 3 }}>
-          <Text style={s.title}>{item.title}</Text>
-          {item.detail ? <Text style={s.detail} numberOfLines={2}>{tidy(item.detail)}</Text> : null}
-        </View>
-      </View>
-
-      {item.media?.length ? (
-        <View style={s.thumbs}>
-          {item.media.map((m) => {
-            const uri = resolveMediaUrl(m.url);
-            return (
-              <View key={m.id} style={s.thumb}>
-                {m.kind === 'video' || !uri ? (
-                  <View style={[s.thumbFill, { backgroundColor: INK, alignItems: 'center', justifyContent: 'center' }]}><Play size={11} color={Colors.white} fill={Colors.white} /></View>
-                ) : <Image source={{ uri }} style={s.thumbFill} />}
-              </View>
-            );
-          })}
-        </View>
-      ) : null}
-
-      <View style={s.cardFoot}>
-        {when ? (
-          <View style={[s.when, when.hot && s.whenHot]}>
-            <Text style={[s.whenText, when.hot && { color: '#B42318' }]}>{when.text}</Text>
+    <TouchableOpacity style={[s.row, !first && s.rowBorder]} onPress={openRow} activeOpacity={0.6}>
+      <View style={s.icon}><Icon size={18} color={k.fg} strokeWidth={2.2} /></View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={s.title}>{item.title}</Text>
+        {item.detail ? <Text style={s.detail}>{tidy(item.detail)}</Text> : null}
+        {when ? <Text style={[s.when, when.hot && { color: RED }]}>{when.text}</Text> : null}
+        {item.media?.length ? (
+          <View style={s.thumbs}>
+            {item.media.map((m) => {
+              const uri = resolveMediaUrl(m.url);
+              return (
+                <View key={m.id} style={s.thumb}>
+                  {m.kind === 'video' || !uri ? (
+                    <View style={[s.thumbFill, { backgroundColor: INK, alignItems: 'center', justifyContent: 'center' }]}><Play size={11} color={Colors.white} fill={Colors.white} /></View>
+                  ) : <Image source={{ uri }} style={s.thumbFill} />}
+                </View>
+              );
+            })}
           </View>
-        ) : <View />}
-        <View style={s.actions}>
-          {other ? (
-            <TouchableOpacity style={s.ghost} onPress={() => { tap(); onIntent(other.intent); }} hitSlop={4}>
-              <Text style={s.ghostText}>{other.label}</Text>
-            </TouchableOpacity>
-          ) : null}
-          {call ? (
-            <TouchableOpacity style={s.callBtn} onPress={() => { tap(); onIntent(call.intent); }} hitSlop={6} accessibilityLabel="Call driver">
-              <Phone size={17} color="#15803D" strokeWidth={2.4} />
-            </TouchableOpacity>
-          ) : null}
-          <TouchableOpacity style={[s.primary, go && { backgroundColor: '#16A34A' }]} onPress={() => { tap(); onIntent(item.primary.intent); }} hitSlop={4}>
-            <Text style={s.primaryText}>{item.primary.label}</Text>
+        ) : null}
+      </View>
+      <View style={s.actions}>
+        {other ? (
+          <TouchableOpacity style={s.ghost} onPress={() => { tap(); onIntent(other.intent); }} hitSlop={4}>
+            <Text style={s.ghostText}>{other.label}</Text>
           </TouchableOpacity>
-        </View>
+        ) : null}
+        {call ? (
+          <TouchableOpacity style={s.callBtn} onPress={() => { tap(); onIntent(call.intent); }} hitSlop={6} accessibilityLabel="Call driver">
+            <Phone size={16} color="#3F3F46" strokeWidth={2.2} />
+          </TouchableOpacity>
+        ) : null}
+        <TouchableOpacity style={s.primary} onPress={() => { tap(); onIntent(item.primary.intent); }} hitSlop={4}>
+          <Text style={s.primaryText}>{item.primary.label}</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -257,11 +247,11 @@ export function UpNext({ rows, tz, onOpenTrip, onAll }: {
         <Text style={s.h2}>Up next today</Text>
         <TouchableOpacity onPress={onAll} hitSlop={8} style={s.link}>
           <Text style={s.linkText}>All trips</Text>
-          <ChevronRight size={15} color="#D94E38" />
+          <ChevronRight size={15} color={MUTED} />
         </TouchableOpacity>
       </View>
       {next.length === 0 ? (
-        <View style={s.emptyNext}><Text style={s.detail}>No more trips starting today.</Text></View>
+        <View style={s.emptyNext}><Text style={s.detailSm}>No more trips starting today.</Text></View>
       ) : (
         <View style={s.nextCard}>
           {next.map(({ trip: t, unit }, i) => (
@@ -269,9 +259,9 @@ export function UpNext({ rows, tz, onOpenTrip, onAll }: {
               <Text style={s.nextTime}>{time(t.planned_start)}</Text>
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={s.nextName} numberOfLines={2}>{niceName(t.customer_name) || '—'}</Text>
-                <Text style={s.detail} numberOfLines={1}>{[t.ref_id, unit.vehicle?.plate_number ?? 'No truck'].filter(Boolean).join(' · ')}</Text>
+                <Text style={s.detailSm} numberOfLines={1}>{[t.ref_id, unit.vehicle?.plate_number ?? 'No truck'].filter(Boolean).join(' · ')}</Text>
               </View>
-              <ChevronRight size={18} color="#FA634E" />
+              <ChevronRight size={18} color="#C4C4CC" />
             </TouchableOpacity>
           ))}
         </View>
@@ -282,67 +272,59 @@ export function UpNext({ rows, tz, onOpenTrip, onAll }: {
 
 const s = StyleSheet.create({
   // status card
-  hero: { backgroundColor: CORAL, borderRadius: 24, padding: 18, gap: 16, overflow: 'hidden' },
-  ringA: { position: 'absolute', top: -50, right: -30, width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(255,255,255,0.13)' },
-  ringB: { position: 'absolute', bottom: -60, left: -40, width: 130, height: 130, borderRadius: 65, backgroundColor: 'rgba(255,255,255,0.09)' },
-  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  heroNumber: { fontSize: 46, fontWeight: '800', color: Colors.white, letterSpacing: -1.5, fontVariant: ['tabular-nums'], minWidth: 44 },
-  heroIcon: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  heroBig: { fontSize: 18, fontWeight: '700', color: Colors.white, lineHeight: 23 },
-  heroSub: { fontSize: 13, fontWeight: '600', color: 'rgba(255,255,255,0.85)', marginTop: 1 },
-  heroStats: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 16, paddingVertical: 12 },
-  stat: { flex: 1, alignItems: 'center', gap: 1 },
-  statBorder: { borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.3)' },
-  statValue: { fontSize: 22, fontWeight: '800', color: Colors.white, fontVariant: ['tabular-nums'] },
-  statLabel: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.9)' },
+  hero: { backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: LINE, paddingTop: 16 },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingBottom: 14 },
+  heroNumber: { fontSize: 44, fontWeight: '700', color: INK, letterSpacing: -1.5, fontVariant: ['tabular-nums'], minWidth: 46 },
+  heroBig: { fontSize: 17, fontWeight: '600', color: INK, lineHeight: 22 },
+  heroSub: { fontSize: 13, color: MUTED, marginTop: 1 },
+  heroStats: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: LINE },
+  stat: { flex: 1, paddingVertical: 12, alignItems: 'center', gap: 1 },
+  statBorder: { borderLeftWidth: 1, borderLeftColor: LINE },
+  statValue: { fontSize: 20, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
+  statLabel: { fontSize: 12, color: MUTED },
 
   // section heads
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  h2: { fontSize: 18, fontWeight: '800', color: INK, letterSpacing: -0.3 },
-  headCount: { fontSize: 13, fontWeight: '800', color: '#D94E38', backgroundColor: '#FFF0EC', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10, overflow: 'hidden' },
+  h2: { fontSize: 17, fontWeight: '700', color: INK, letterSpacing: -0.2 },
+  headCount: { fontSize: 14, fontWeight: '600', color: MUTED, fontVariant: ['tabular-nums'] },
   link: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  linkText: { fontSize: 13, fontWeight: '700', color: '#D94E38' },
+  linkText: { fontSize: 14, fontWeight: '500', color: MUTED },
 
-  // chips
-  chips: { paddingHorizontal: 16, gap: 8 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 36, paddingHorizontal: 14, borderRadius: 18, backgroundColor: Colors.white, borderWidth: 1, borderColor: '#F3D9D3' },
-  chipOn: { backgroundColor: CORAL, borderColor: CORAL },
-  chipText: { fontSize: 13, fontWeight: '700', color: '#3F3F46' },
+  // filter chips
+  chips: { paddingHorizontal: 16, gap: 6 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 34, paddingHorizontal: 13, borderRadius: 17, backgroundColor: Colors.white, borderWidth: 1, borderColor: LINE },
+  chipOn: { backgroundColor: INK, borderColor: INK },
+  chipText: { fontSize: 13, fontWeight: '600', color: '#3F3F46' },
   chipTextOn: { color: Colors.white },
-  chipCount: { fontSize: 12, fontWeight: '800', color: CORAL },
-  chipCountOn: { color: 'rgba(255,255,255,0.85)' },
+  chipCount: { fontSize: 13, fontWeight: '500', color: MUTED, fontVariant: ['tabular-nums'] },
+  chipCountOn: { color: 'rgba(255,255,255,0.65)' },
 
-  // action card
-  card: {
-    backgroundColor: Colors.white, borderRadius: 20, padding: 14, paddingLeft: 18, gap: 12, borderWidth: 1.5, borderColor: LINE, overflow: 'hidden',
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1,
-  },
-  edge: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 5 },
-  cardTop: { flexDirection: 'row', gap: 12 },
-  icon: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 15, fontWeight: '700', color: INK, lineHeight: 20 },
-  detail: { fontSize: 13, color: '#52525B', lineHeight: 18 },
-  thumbs: { flexDirection: 'row', gap: 6, marginLeft: 54 },
-  thumb: { width: 44, height: 44, borderRadius: 10, overflow: 'hidden', backgroundColor: '#E4E7EE' },
+  // grouped list
+  group: { backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: LINE, overflow: 'hidden' },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingHorizontal: 14, paddingVertical: 14 },
+  rowBorder: { borderTopWidth: 1, borderTopColor: '#F1F1F3' },
+  icon: { width: 36, height: 36, borderRadius: 10, backgroundColor: NEUTRAL, alignItems: 'center', justifyContent: 'center' },
+  title: { fontSize: 15, fontWeight: '600', color: INK, lineHeight: 20 },
+  detail: { fontSize: 13, color: MUTED, lineHeight: 18 },
+  when: { fontSize: 12, fontWeight: '600', color: MUTED, marginTop: 1 },
+  thumbs: { flexDirection: 'row', gap: 6, marginTop: 6 },
+  thumb: { width: 40, height: 40, borderRadius: 8, overflow: 'hidden', backgroundColor: '#E4E7EE' },
   thumbFill: { width: '100%', height: '100%' },
-  cardFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F4F4F5' },
-  when: { borderRadius: 999, paddingHorizontal: 11, paddingVertical: 6, backgroundColor: '#EEF2FF' },
-  whenHot: { backgroundColor: '#FEE4E2' },
-  whenText: { fontSize: 12, fontWeight: '800', color: '#3730A3' },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  primary: { height: 38, borderRadius: 12, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: CORAL },
-  primaryText: { fontSize: 13, fontWeight: '700', color: Colors.white },
-  ghost: { height: 36, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
-  ghostText: { fontSize: 13, fontWeight: '600', color: MUTED },
-  callBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: '#DCFCE7', alignItems: 'center', justifyContent: 'center' },
-  showAll: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 46, borderRadius: 16, backgroundColor: '#FFF0EC', borderWidth: 1.5, borderColor: '#FBD3CB' },
-  showAllText: { fontSize: 14, fontWeight: '800', color: '#D94E38' },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'center' },
+  primary: { height: 34, borderRadius: 10, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: INK },
+  primaryText: { fontSize: 13, fontWeight: '600', color: Colors.white },
+  ghost: { height: 34, paddingHorizontal: 4, alignItems: 'center', justifyContent: 'center' },
+  ghostText: { fontSize: 13, fontWeight: '500', color: MUTED },
+  callBtn: { width: 34, height: 34, borderRadius: 10, backgroundColor: NEUTRAL, alignItems: 'center', justifyContent: 'center' },
+  showAll: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44 },
+  showAllText: { fontSize: 14, fontWeight: '600', color: INK },
 
   // up next
-  nextCard: { backgroundColor: Colors.white, borderRadius: 20, borderWidth: 1.5, borderColor: '#F3D9D3', overflow: 'hidden' },
-  nextRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 14, paddingVertical: 13 },
-  nextBorder: { borderTopWidth: 1, borderTopColor: '#F4F4F5' },
-  nextTime: { width: 60, textAlign: 'center', fontSize: 15, fontWeight: '800', color: '#D94E38', backgroundColor: '#FFF0EC', paddingVertical: 8, borderRadius: 12, overflow: 'hidden', fontVariant: ['tabular-nums'] },
-  nextName: { fontSize: 14, fontWeight: '700', color: INK, lineHeight: 19 },
-  emptyNext: { backgroundColor: Colors.white, borderRadius: 18, borderWidth: 1, borderColor: LINE, padding: 16 },
+  nextCard: { backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: LINE, overflow: 'hidden' },
+  nextRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 14, paddingVertical: 14 },
+  nextBorder: { borderTopWidth: 1, borderTopColor: '#F1F1F3' },
+  nextTime: { width: 48, fontSize: 15, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
+  nextName: { fontSize: 15, fontWeight: '600', color: INK, lineHeight: 20 },
+  detailSm: { fontSize: 13, color: MUTED },
+  emptyNext: { backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: LINE, padding: 16 },
 });

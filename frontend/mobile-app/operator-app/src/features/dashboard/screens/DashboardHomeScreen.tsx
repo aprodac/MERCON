@@ -76,12 +76,12 @@ export default function DashboardHomeScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFF8F5' }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
       <View style={st.topBar}>
         <HomeTopBar unread={unreadCount} onMenu={() => setMenuOpen(true)} onSearch={() => router.push('/trips')} onNotifications={() => router.push('/notifications')} />
       </View>
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 120, gap: 22 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 120, gap: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#FA634E" />}
       >
         <HomeStatus
@@ -115,5 +115,5 @@ export default function DashboardHomeScreen() {
 }
 
 const st = StyleSheet.create({
-  topBar: { paddingHorizontal: 16, paddingBottom: 6, backgroundColor: '#FFF8F5' },
+  topBar: { paddingHorizontal: 16, paddingBottom: 6, backgroundColor: '#F6F6F7' },
 });
