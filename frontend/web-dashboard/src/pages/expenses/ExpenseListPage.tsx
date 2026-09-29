@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, ChevronLeft, ChevronRight, Copy, Download, MoreHorizontal, Pencil, Plus, Search, Trash2, Truck, User, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -20,7 +20,6 @@ import { ScrollTableCard } from '@/components/finance/kit/ScrollTableCard';
 import { SegmentedControl } from '@/components/finance/kit/SegmentedControl';
 import { TONE_CLASSES } from '@/components/finance/kit/tones';
 import { ExpenseInsights } from '@/components/expenses/ExpenseInsights';
-import { ExpenseFormSheet } from '@/components/expenses/ExpenseFormSheet';
 import { ExpenseQuickView } from '@/components/expenses/ExpenseQuickView';
 import { expenseService, type Expense, type ExpenseFilters, type ExpenseLink, type ExpenseSort } from '@/services/expenseService';
 import { resolvePeriodPreset, type PeriodPreset } from '@/lib/finance/pnlPeriodHelpers';
@@ -74,6 +73,7 @@ function FilterSelect({ label, value, onChange, options }: { label: string; valu
 
 export default function ExpenseListPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const set = (updates: Record<string, string | null>) =>
     setParams(
@@ -149,7 +149,21 @@ export default function ExpenseListPage() {
   const allOnPage = rows.length > 0 && rows.every((r) => selected.has(r.id));
 
   const [viewing, setViewing] = useState<Expense | null>(null);
-  const [form, setForm] = useState<{ open: boolean; expense: Expense | null; duplicate: boolean }>({ open: false, expense: null, duplicate: false });
+  // New, edit and duplicate open the expense page; it comes back here
+  const openNew = () => navigate('/expenses/new');
+  const openEdit = (e: Expense) => navigate(`/expenses/${e.id}/edit?back=${encodeURIComponent('/expenses')}`);
+  const openDuplicate = (e: Expense) => navigate(`/expenses/new?from=${e.id}`);
+  // After saving a new expense the page returns with ?view=<id>: show it
+  const viewId = params.get('view');
+  useEffect(() => {
+    if (!viewId) return;
+    expenseService
+      .getById(viewId)
+      .then(setViewing)
+      .catch(() => undefined)
+      .finally(() => set({ view: null }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewId]);
   const [toDelete, setToDelete] = useState<Expense[] | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
 
@@ -176,7 +190,7 @@ export default function ExpenseListPage() {
       if (failed.length > 0) {
         const first = failed[0];
         toast.error(`${expenseRef(first.e)}: ${first.msg ?? 'could not be marked as paid'}${failed.length > 1 ? ` (and ${failed.length - 1} more)` : ''}`, {
-          action: { label: 'Edit', onClick: () => setForm({ open: true, expense: first.e, duplicate: false }) },
+          action: { label: 'Edit', onClick: () => openEdit(first.e) },
         });
       }
       setViewing((v) => (v && !failed.some((f) => f.e.id === v.id) ? null : v));
@@ -246,7 +260,7 @@ export default function ExpenseListPage() {
             <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setExportOpen(true)}>
               <Download className="size-3.5" /> Export
             </Button>
-            <Button size="sm" className="h-8 gap-1.5 bg-brand text-xs text-white hover:bg-brand-hover" onClick={() => setForm({ open: true, expense: null, duplicate: false })}>
+            <Button size="sm" className="h-8 gap-1.5 bg-brand text-xs text-white hover:bg-brand-hover" onClick={() => openNew()}>
               <Plus className="size-3.5" /> New expense
             </Button>
           </div>
@@ -427,7 +441,7 @@ export default function ExpenseListPage() {
                   <td colSpan={9} className="px-3 py-14 text-center text-xs text-muted-foreground">
                     <p className="text-sm font-medium text-foreground">{filtered ? 'No expenses match' : `No expenses for ${periodText}`}</p>
                     <p className="mt-1">{filtered ? 'Try another search or clear the filters.' : 'Record one, or pick another period.'}</p>
-                    <Button size="sm" className="mt-3 h-8 gap-1.5 bg-brand text-xs text-white hover:bg-brand-hover" onClick={() => setForm({ open: true, expense: null, duplicate: false })}>
+                    <Button size="sm" className="mt-3 h-8 gap-1.5 bg-brand text-xs text-white hover:bg-brand-hover" onClick={() => openNew()}>
                       <Plus className="size-3.5" /> New expense
                     </Button>
                   </td>
@@ -518,10 +532,10 @@ export default function ExpenseListPage() {
                                 <CheckCircle2 className="size-3.5" /> Mark as paid
                               </DropdownMenuItem>
                             )}
-                            <DropdownMenuItem className="gap-2 text-xs" onSelect={() => setForm({ open: true, expense: r, duplicate: false })}>
+                            <DropdownMenuItem className="gap-2 text-xs" onSelect={() => openEdit(r)}>
                               <Pencil className="size-3.5" /> Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="gap-2 text-xs" onSelect={() => setForm({ open: true, expense: r, duplicate: true })}>
+                            <DropdownMenuItem className="gap-2 text-xs" onSelect={() => openDuplicate(r)}>
                               <Copy className="size-3.5" /> Duplicate
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
@@ -543,20 +557,13 @@ export default function ExpenseListPage() {
       <ExpenseQuickView
         expense={viewing}
         onClose={() => setViewing(null)}
-        onEdit={(e) => setForm({ open: true, expense: e, duplicate: false })}
-        onDuplicate={(e) => setForm({ open: true, expense: e, duplicate: true })}
+        onEdit={openEdit}
+        onDuplicate={openDuplicate}
         onDelete={(e) => setToDelete([e])}
         onMarkPaid={(e) => markPaid.mutate([e])}
         markingPaid={markPaid.isPending}
       />
 
-      <ExpenseFormSheet
-        open={form.open}
-        onOpenChange={(open) => setForm((f) => ({ ...f, open }))}
-        expense={form.expense}
-        duplicate={form.duplicate}
-        onSaved={(saved) => setViewing((v) => (v && saved && v.id === saved.id ? { ...v, ...saved } : v))}
-      />
 
       <ConfirmModal
         isOpen={toDelete !== null}

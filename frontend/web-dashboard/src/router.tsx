@@ -89,6 +89,7 @@ const QuotationAiImportPage    = lazyWithRetry(() => import('@/pages/quotations/
 // Expenses
 const ExpenseListPage         = lazyWithRetry(() => import('@/pages/expenses/ExpenseListPage'));
 const ExpenseDetailsPage      = lazyWithRetry(() => import('@/pages/expenses/ExpenseDetailsPage'));
+const ExpenseEditorPage       = lazyWithRetry(() => import('@/pages/expenses/ExpenseEditorPage'));
 
 // Accounting & Finance Foundation
 const ChartOfAccountsPage     = lazyWithRetry(() => import('@/pages/finance/ChartOfAccountsPage'));
@@ -311,6 +312,9 @@ export default function AppRouter() {
 
             {/* Expenses */}
             <Route path="/expenses"                 element={<RequireModule moduleKey="expenses"><ExpenseListPage /></RequireModule>} />
+            {/* Literal path before /expenses/:id, which would otherwise match it. */}
+            <Route path="/expenses/new"             element={<RequireModule moduleKey="expenses"><ExpenseEditorPage /></RequireModule>} />
+            <Route path="/expenses/:id/edit"        element={<RequireModule moduleKey="expenses"><WithIdKey Page={ExpenseEditorPage} /></RequireModule>} />
             <Route path="/expenses/:id"             element={<RequireModule moduleKey="expenses"><ExpenseDetailsPage /></RequireModule>} />
 
             {/* Finance & General Ledger */}

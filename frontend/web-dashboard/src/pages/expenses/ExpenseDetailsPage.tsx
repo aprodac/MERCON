@@ -50,7 +50,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-import { ExpenseFormSheet } from '@/components/expenses/ExpenseFormSheet';
 import ExpenseCategoryBadge from '@/components/expenses/ExpenseCategoryBadge';
 import { expenseService, Expense, ExpenseStatus } from '@/services/expenseService';
 import { exportExcelTable } from '@/utils/exportUtils';
@@ -121,7 +120,6 @@ export default function ExpenseDetailsPage() {
   const queryClient = useQueryClient();
   const tz = useDeploymentTimezone();
 
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   const { data: record, isLoading, error, refetch } = useQuery({
@@ -280,7 +278,7 @@ export default function ExpenseDetailsPage() {
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={() => setIsEditModalOpen(true)}
+                  onClick={() => navigate(`/expenses/${record?.id ?? id}/edit`)}
                   className="h-9 px-3 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-brand hover:bg-orange-50 dark:hover:bg-orange-950/30 gap-1.5"
                   title="Edit Expense"
                 >
@@ -563,13 +561,6 @@ export default function ExpenseDetailsPage() {
         </div>
       </div>
 
-      {/* ── Edit Expense Modal ────────────────────────────────────────────── */}
-      <ExpenseFormSheet
-        open={isEditModalOpen}
-        onOpenChange={setIsEditModalOpen}
-        expense={record ?? null}
-        onSaved={() => refetch()}
-      />
 
       {/* ── Delete Confirmation Dialog ─────────────────────────────────────── */}
       <Dialog open={isDeleteModalOpen} onOpenChange={(open) => !open && setIsDeleteModalOpen(false)}>
