@@ -10,6 +10,8 @@ import {
 } from '../controllers/financeReportsController';
 import { getARAgeing, getAPAgeing } from '../controllers/ageingReportsController';
 import { getCustomerStatementLedger } from '../controllers/customerStatementController';
+import { getTripProfitability } from '../controllers/tripProfitabilityController';
+import { getVatReturn } from '../controllers/vatReturnController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 
@@ -26,6 +28,8 @@ router.get('/reports/ar-ageing', getARAgeing);
 router.get('/reports/ap-ageing', getAPAgeing);
 router.get('/reports/customer-statement', getCustomerStatementLedger);
 router.get('/reports/cash-flow', getCashFlow);
+router.get('/reports/trip-profitability', getTripProfitability);
+router.get('/reports/vat-return', getVatReturn);
 router.get('/reports/general-ledger/summary', getGeneralLedgerSummary);
 router.get('/reports/general-ledger/monthly', getGeneralLedgerMonthly);
 router.get('/reports/general-ledger', getGeneralLedger);

@@ -104,6 +104,9 @@ const BillsPage               = lazyWithRetry(() => import('@/pages/finance/Bill
 const BillCreatePage          = lazyWithRetry(() => import('@/pages/finance/BillCreatePage'));
 const BankAccountsPage        = lazyWithRetry(() => import('@/pages/finance/BankAccountsPage'));
 const ContraEntriesPage       = lazyWithRetry(() => import('@/pages/finance/ContraEntriesPage'));
+const TripProfitabilityPage   = lazyWithRetry(() => import('@/pages/finance/TripProfitabilityPage'));
+const DriverPayPage           = lazyWithRetry(() => import('@/pages/finance/DriverPayPage'));
+const VatReturnPage           = lazyWithRetry(() => import('@/pages/finance/VatReturnPage'));
 const BankAccountDetailPage   = lazyWithRetry(() => import('@/pages/finance/BankAccountDetailPage'));
 const BankAccountEditorPage   = lazyWithRetry(() => import('@/pages/finance/BankAccountEditorPage'));
 const AdvancesPage            = lazyWithRetry(() => import('@/pages/finance/AdvancesPage'));
@@ -336,6 +339,9 @@ export default function AppRouter() {
             <Route path="/finance/bank-accounts/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={BankAccountDetailPage} /></RequireModule>} />
             <Route path="/finance/bank-accounts"          element={<RequireModule moduleKey="finance"><BankAccountsPage /></RequireModule>} />
             <Route path="/finance/contra"                 element={<RequireModule moduleKey="finance"><ContraEntriesPage /></RequireModule>} />
+            <Route path="/finance/trip-profitability"     element={<RequireModule moduleKey="finance"><TripProfitabilityPage /></RequireModule>} />
+            <Route path="/finance/driver-pay"             element={<RequireModule moduleKey="finance"><DriverPayPage /></RequireModule>} />
+            <Route path="/finance/vat-return"             element={<RequireModule moduleKey="finance"><VatReturnPage /></RequireModule>} />
             <Route path="/finance/advances"          element={<RequireModule moduleKey="finance"><AdvancesPage /></RequireModule>} />
             <Route path="/finance/advances/new"      element={<RequireModule moduleKey="finance"><AdvanceEditorPage /></RequireModule>} />
             <Route path="/finance/advances/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={AdvanceDetailPage} /></RequireModule>} />

@@ -303,7 +303,8 @@ export async function applyAdvance(
       ];
 
       const newPaid = new Prisma.Decimal(invoice.paid_amount).plus(applyAmount);
-      const newBalance = new Prisma.Decimal(invoice.total_amount).minus(newPaid);
+      // From the current balance, so credit notes already taken off stay off
+      const newBalance = balanceDue.minus(applyAmount);
       const newStatus = newBalance.equals(0) ? 'Paid' : 'PartiallyPaid';
 
       updatedInvoice = await tx.invoice.update({

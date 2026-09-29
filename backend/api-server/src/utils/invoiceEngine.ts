@@ -429,6 +429,14 @@ export async function voidInvoice(invoiceId: string, userId: string) {
       );
     }
 
+    if (new Prisma.Decimal(invoice.credited_amount).gt(0)) {
+      throw new AccountingError(
+        `Cannot void invoice ${invoice.ref_id || invoice.id} while it has credit notes. Void its credit notes first.`,
+        'INVOICE_HAS_CREDIT_NOTES',
+        400,
+      );
+    }
+
     const creatorUuid = toUuidOrNull(userId);
 
     // Void the linked journal entry if present within the same transaction context

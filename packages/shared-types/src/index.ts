@@ -724,6 +724,8 @@ export interface Invoice {
   tax_amount: number | string;
   total_amount: number | string;
   paid_amount: number | string;
+  /** Taken off by credit notes; balance_due = total − paid − credited. */
+  credited_amount?: number | string;
   balance_due: number | string;
   currency: string;
   lines?: InvoiceLine[];
