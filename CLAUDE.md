@@ -11,7 +11,14 @@ are not already in the codebase or explicitly requested by the owner.
 
 ## Rule 0.1: Strict target branch is `hysam`
 
-ALL commits, code updates, and git pushes initiated by AI agents or IDE tools MUST strictly target the **`hysam`** branch (`origin/hysam` / local `HYSAM`). Never push directly to `main` or `dev`. Always verify active branch (`git branch`) and push explicitly via `git push origin HYSAM:hysam`.
+ALL commits, code updates, and git pushes initiated by AI agents or IDE tools MUST strictly target the **`hysam`** branch (`origin/hysam` / local `HYSAM`). Never push directly to `main`. Always verify active branch (`git branch`) and push explicitly via `git push origin HYSAM:hysam`.
+
+**Merging into `dev` is allowed** when the owner asks, in this order:
+
+1. Stash local uncommitted changes (`git stash`).
+2. `git fetch origin` and merge `origin/dev` into `HYSAM`; resolve any conflicts locally, keeping both sides' work.
+3. Restore the stash (`git stash pop`) and push `HYSAM` to `hysam` first.
+4. Only if `HYSAM` now contains all of `origin/dev` and the merge had no unresolved conflicts, update `dev` with `git push origin HYSAM:dev` (a fast-forward — never force-push `dev`).
 
 
 ## Rule 0.5: Keep PROGRESS.md in sync
