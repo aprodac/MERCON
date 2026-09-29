@@ -1,51 +1,60 @@
-import { useState, useMemo, useEffect } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  FileText,
-  Plus,
-  Trash2,
-  Truck,
-  Building2,
-  Calendar,
-  Calculator,
-  ReceiptText,
-  Search,
-  CheckSquare,
-  Square,
-  Percent,
-  MessageSquare,
-  ShieldCheck,
-  Globe,
-  Filter,
-  ArrowUpDown,
-  User,
-  CheckCircle2,
-  MapPin,
-} from 'lucide-react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Chip } from '@/components/ui/chip';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
-import { Chip } from '@/components/ui/chip';
-import { StatPill } from '@/components/ui/stat-pill';
+import { Skeleton } from '@/components/ui/skeleton';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { CustomerPicker } from '@/components/finance/invoices/editor/CustomerPicker';
+import { InvoiceLinesTable } from '@/components/finance/invoices/editor/InvoiceLinesTable';
+import { TripPickerSheet } from '@/components/finance/invoices/editor/TripPickerSheet';
+import { InvoiceEditorRail, type CustomerPosition } from '@/components/finance/invoices/editor/InvoiceEditorRail';
 
-import { financeService, CreateInvoiceDTO, InvoiceLineDTO } from '@/services/financeService';
+import { financeService, type CreateInvoiceDTO } from '@/services/financeService';
 import { customerService } from '@/services/customerService';
 import { tripService } from '@/services/tripService';
+import { settingsService } from '@/services/settingsService';
 import { asOfPresetDate } from '@/components/finance/kit/AsOfControl';
 import { addDays, toDateOnly } from '@/lib/finance/ageing';
 import { termsToDays } from '@/lib/finance/invoices';
-import type { Invoice } from '@mercon/shared-types';
+import { formatMoney } from '@/lib/finance/format';
+import {
+  buildInvoicePayload,
+  daysBetween,
+  draftIssues,
+  draftTotals,
+  linesFromInvoice,
+  newManualLine,
+  type DraftHeader,
+  type DraftLine,
+} from '@/lib/finance/invoiceDraft';
+import { tripAmount, tripLineDescription } from '@/lib/finance/tripBilling';
+import type { Account, Invoice } from '@mercon/shared-types';
 
 /** Days per payment-terms option; "custom" means a date picked by hand. */
-const TERM_DAYS: Record<string, number> = { due_on_receipt: 0, net15: 15, net30: 30, net60: 60 };
+const TERM_DAYS: Record<string, number> = { due_on_receipt: 0, net15: 15, net30: 30, net45: 45, net60: 60, net90: 90 };
+const TERM_LABEL: Record<string, string> = {
+  due_on_receipt: 'Due on receipt',
+  net15: 'Net 15',
+  net30: 'Net 30',
+  net45: 'Net 45',
+  net60: 'Net 60',
+  net90: 'Net 90',
+  custom: 'Custom date',
+};
+
+const DEFAULT_NOTES = 'Thank you for your business!';
+const DEFAULT_TERMS = 'Payment is due within agreed credit terms. Late payments subject to standard service terms.';
 
 /** The option matching a customer's terms text ("Net 30", "Due on receipt"), if there is one. */
 function termsOption(terms: string | null | undefined): string | null {
@@ -54,94 +63,32 @@ function termsOption(terms: string | null | undefined): string | null {
   return hit ? hit[0] : null;
 }
 
+const fieldLabel = 'text-[11px] font-medium text-muted-foreground';
+
 export default function InvoiceCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [params] = useSearchParams();
   // Present on /finance/invoices/:id/edit — the page then edits that draft
   const { id: editId } = useParams<{ id: string }>();
   const editing = Boolean(editId);
+  const today = asOfPresetDate('today');
 
-  // Header state (dates as local calendar days; due date follows the default Net 30 terms)
-  const [customerId, setCustomerId] = useState('');
-  const [invoiceDate, setInvoiceDate] = useState<string>(() => asOfPresetDate('today'));
-  const [dueDate, setDueDate] = useState<string>(() => addDays(asOfPresetDate('today'), 30));
-  const [taxRate, setTaxRate] = useState<number>(15); // Default 15% VAT
-  const [paymentTerms, setPaymentTerms] = useState<string>('net30');
+  const [customerId, setCustomerId] = useState(() => (editing ? '' : params.get('customer') || ''));
+  const [invoiceDate, setInvoiceDate] = useState(today);
+  const [dueDate, setDueDate] = useState(() => addDays(today, 30));
+  const [paymentTerms, setPaymentTerms] = useState('net30');
+  const [taxRate, setTaxRate] = useState(15);
+  const [notes, setNotes] = useState(DEFAULT_NOTES);
+  const [terms, setTerms] = useState(DEFAULT_TERMS);
+  const [lines, setLines] = useState<DraftLine[]>([]);
+  const [dirty, setDirty] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [confirmIssue, setConfirmIssue] = useState(false);
 
-  // Customer Notes & Terms
-  const [customerNotes, setCustomerNotes] = useState('Thank you for your business!');
-  const [termsConditions, setTermsConditions] = useState('Payment is due within agreed credit terms. Late payments subject to standard service terms.');
+  const touch = () => setDirty(true);
 
-  // Trip filter & selection state
-  const [tripSearch, setTripSearch] = useState('');
-  const [vehicleFilter, setVehicleFilter] = useState<string>('all');
-  const [lineTypeFilter, setLineTypeFilter] = useState<string>('all');
-  const [operationTypeFilter, setOperationTypeFilter] = useState<string>('all');
-  const [selectedTripIds, setSelectedTripIds] = useState<string[]>([]);
-  const [manualLines, setManualLines] = useState<InvoiceLineDTO[]>([]);
-
-  // Helper for location resolution
-  const isUuidVal = (str?: string | null) => (str ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim()) : false);
-  const cleanLocName = (name?: string | null) => {
-    if (!name || isUuidVal(name)) return null;
-    const cleaned = name.replace(/🔁\s*/g, '').trim();
-    return cleaned.length > 0 && cleaned !== 'Origin' && cleaned !== 'Destination' ? cleaned : null;
-  };
-
-  const resolveTripOrigin = (t: any): string => {
-    const pickupStop = t.stops?.find((s: any) => s.stop_type === 'Pickup') || t.stops?.[0];
-    const stopLoc = pickupStop ? (
-      pickupStop.location?.city ||
-      pickupStop.location?.codes?.[0] ||
-      (!isUuidVal(pickupStop.location_name) ? pickupStop.location_name : null) ||
-      pickupStop.location?.name ||
-      pickupStop.location_address ||
-      pickupStop.source_label
-    ) : null;
-
-    const candidate = (
-      cleanLocName(t.origin_city) ||
-      cleanLocName(t.origin_location?.name) ||
-      cleanLocName(t.origin_location_name) ||
-      cleanLocName(t.pickup_city) ||
-      cleanLocName(t.pickup_location_name) ||
-      cleanLocName(t.pickup) ||
-      cleanLocName(stopLoc) ||
-      cleanLocName(t.rateCard?.route_origin) ||
-      (t.route ? cleanLocName(t.route.split(/[→➔\-]/)[0]) : null)
-    );
-
-    return candidate || '—';
-  };
-
-  const resolveTripDestination = (t: any): string => {
-    const dropoffStop = t.stops?.find((s: any) => s.stop_type === 'Dropoff') || 
-      (t.stops && t.stops.length > 1 ? t.stops[t.stops.length - 1] : undefined);
-    const stopLoc = dropoffStop ? (
-      dropoffStop.location?.city ||
-      dropoffStop.location?.codes?.[0] ||
-      (!isUuidVal(dropoffStop.location_name) ? dropoffStop.location_name : null) ||
-      dropoffStop.location?.name ||
-      dropoffStop.location_address ||
-      dropoffStop.source_label
-    ) : null;
-
-    const candidate = (
-      cleanLocName(t.destination_city) ||
-      cleanLocName(t.destination_location?.name) ||
-      cleanLocName(t.destination_location_name) ||
-      cleanLocName(t.dropoff_city) ||
-      cleanLocName(t.dropoff_location_name) ||
-      cleanLocName(t.dropoff) ||
-      cleanLocName(stopLoc) ||
-      cleanLocName(t.rateCard?.route_destination) ||
-      (t.route ? cleanLocName(t.route.split(/[→➔\-]/)[1]) : null)
-    );
-
-    return candidate || '—';
-  };
-
-  // The draft being edited
+  // ── Data ────────────────────────────────────────────────────────────────
   const { data: editRes, isLoading: isLoadingEdit } = useQuery({
     queryKey: ['invoices', 'detail', editId],
     queryFn: () => financeService.getInvoiceById(editId as string),
@@ -150,44 +97,71 @@ export default function InvoiceCreatePage() {
   const editInvoice: Invoice | undefined = editRes?.data;
   const draftTripIds = useMemo(() => (editInvoice?.lines ?? []).filter((l) => l.tripId).map((l) => l.tripId as string), [editInvoice]);
 
+  // Load the draft being edited once
+  const loadedDraft = useRef<string | null>(null);
   useEffect(() => {
-    if (!editInvoice || editInvoice.status !== 'Draft') return;
+    if (!editInvoice || editInvoice.status !== 'Draft' || loadedDraft.current === editInvoice.id) return;
+    loadedDraft.current = editInvoice.id;
     setCustomerId(editInvoice.customerId);
     setInvoiceDate(toDateOnly(editInvoice.invoice_date));
     setDueDate(editInvoice.due_date ? toDateOnly(editInvoice.due_date) : '');
     setPaymentTerms('custom');
     setTaxRate(Number(editInvoice.tax_rate) || 0);
-    setSelectedTripIds(draftTripIds);
-    setManualLines(
-      (editInvoice.lines ?? [])
-        .filter((l) => !l.tripId)
-        .map((l) => ({ description: l.description, quantity: Number(l.quantity) || 1, rate: Number(l.rate), amount: Number(l.amount) })),
-    );
-  }, [editInvoice, draftTripIds]);
+    setNotes(editInvoice.notes ?? '');
+    setTerms(editInvoice.terms ?? '');
+    setLines(linesFromInvoice(editInvoice));
+    setDirty(false);
+  }, [editInvoice]);
 
-  // Trips not on any other invoice yet (issued or draft) — the server's "ready to bill" list
   const { data: unbilledRes } = useQuery({ queryKey: ['invoices', 'unbilled'], queryFn: () => financeService.getUnbilledTrips() });
-
-  // Fetch customers
   const { data: customersRes, isLoading: isLoadingCustomers } = useQuery({
     queryKey: ['customers', 'all'],
     queryFn: () => customerService.getAll({ per_page: 500 } as any),
   });
-
-  // Fetch completed, unbilled trips for selected customer
-  const { data: unbilledTripsRes, isLoading: isLoadingTrips } = useQuery({
+  const { data: tripsRes, isLoading: isLoadingTrips } = useQuery({
     queryKey: ['trips', 'completed-unbilled', customerId],
     queryFn: () => tripService.getAll({ customer_id: customerId, status: 'Completed', per_page: 200 }),
-    enabled: !!customerId,
+    enabled: Boolean(customerId),
   });
+  const { data: summaryRes, isLoading: isLoadingSummary } = useQuery({
+    queryKey: ['invoices', 'summary', { customer_id: customerId }],
+    queryFn: () => financeService.getInvoiceSummary({ customer_id: customerId }),
+    enabled: Boolean(customerId),
+  });
+  const { data: advancesRes } = useQuery({
+    queryKey: ['advances', 'customer', customerId],
+    queryFn: () => financeService.getAdvances({ party_type: 'Customer', party_id: customerId, direction: 'Received' }),
+    enabled: Boolean(customerId),
+  });
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: settingsService.get, staleTime: 60000 });
+  const { data: accountsRes } = useQuery({ queryKey: ['accounts', 'postable'], queryFn: () => financeService.getAccounts({ include_inactive: false }) });
 
-  const customers = customersRes?.data || [];
-  const selectedCustomer = useMemo(() => customers.find((c: any) => c.id === customerId), [customers, customerId]);
+  const customers = useMemo(() => (customersRes?.data || []) as any[], [customersRes]);
+  const selectedCustomer = useMemo(() => customers.find((c) => c.id === customerId), [customers, customerId]);
 
+  const unbilledByCustomer = useMemo(() => {
+    const m = new Map<string, { count: number; amount: number }>();
+    (unbilledRes?.data?.customers ?? []).forEach((c) => m.set(c.customer_id, { count: c.trip_ids.length, amount: c.amount }));
+    return m;
+  }, [unbilledRes]);
+
+  // Billable: not invoiced and not on another draft; trips already on this draft stay selectable
+  const customerTrips = useMemo(() => {
+    const allowed = new Set([...(unbilledRes?.data?.customers ?? []).flatMap((c) => c.trip_ids), ...draftTripIds]);
+    // Trips without a billing amount aren't in the server's list; they are shown (greyed out) so the gap is visible
+    return ((tripsRes?.data || []) as any[]).filter((t) => (!t.invoiceId || t.invoiceId === editId) && (!unbilledRes || allowed.has(t.id) || tripAmount(t) <= 0));
+  }, [tripsRes, unbilledRes, draftTripIds, editId]);
+  const tripsById = useMemo(() => new Map(customerTrips.map((t) => [t.id, t])), [customerTrips]);
+
+  const onInvoice = useMemo(() => new Set(lines.filter((l) => l.tripId).map((l) => l.tripId as string)), [lines]);
+  const remainingTrips = customerTrips.filter((t) => tripAmount(t) > 0 && !onInvoice.has(t.id));
+  const remaining = { count: remainingTrips.length, amount: remainingTrips.reduce((s, t) => s + tripAmount(t), 0) };
+
+  // ── Header behaviour ────────────────────────────────────────────────────
   // A new invoice takes the customer's own payment terms when they match an option
   useEffect(() => {
     if (editing || !selectedCustomer) return;
-    const option = termsOption((selectedCustomer as any).payment_terms);
+    const option = termsOption(selectedCustomer.payment_terms);
     if (option) setPaymentTerms(option);
   }, [selectedCustomer, editing]);
 
@@ -196,723 +170,378 @@ export default function InvoiceCreatePage() {
     if (paymentTerms in TERM_DAYS && invoiceDate) setDueDate(addDays(invoiceDate, TERM_DAYS[paymentTerms]));
   }, [invoiceDate, paymentTerms]);
 
-  // Billable: not invoiced and not on another draft; trips already on this draft stay selectable
-  const unbilledTrips = useMemo(() => {
-    const allowed = new Set([...(unbilledRes?.data?.customers ?? []).flatMap((c) => c.trip_ids), ...draftTripIds]);
-    return (unbilledTripsRes?.data || []).filter((t: any) => !t.invoiceId && (!unbilledRes || allowed.has(t.id)));
-  }, [unbilledTripsRes, unbilledRes, draftTripIds]);
+  const changeCustomer = (id: string) => {
+    if (id === customerId) return;
+    const tripLines = lines.filter((l) => l.kind === 'trip').length;
+    if (tripLines > 0) toast.info(`${tripLines} trip ${tripLines === 1 ? 'line was' : 'lines were'} removed: they belong to the previous customer.`);
+    setLines((prev) => prev.filter((l) => l.kind !== 'trip'));
+    setCustomerId(id);
+    touch();
+  };
 
-  // Extract unique filter options
-  const availableVehicles = useMemo(() => {
-    const set = new Set<string>();
-    unbilledTrips.forEach((t: any) => {
-      if (t.vehicle_type) set.add(t.vehicle_type);
+  // ── Lines ───────────────────────────────────────────────────────────────
+  const setTripSelection = (ids: string[]) => {
+    setLines((prev) => {
+      const keep = prev.filter((l) => l.kind === 'manual' || (l.tripId && ids.includes(l.tripId)));
+      const have = new Set(keep.filter((l) => l.tripId).map((l) => l.tripId));
+      const added: DraftLine[] = ids
+        .filter((id) => !have.has(id))
+        .map((id) => {
+          const t = tripsById.get(id);
+          return { key: id, kind: 'trip', tripId: id, description: t ? tripLineDescription(t) : 'Trip', quantity: 1, rate: t ? tripAmount(t) : 0, discount_pct: 0, tax_rate: null };
+        });
+      return [...keep, ...added];
     });
-    return Array.from(set);
-  }, [unbilledTrips]);
+    touch();
+  };
+  const addAllTrips = () => {
+    setTripSelection([...onInvoice, ...remainingTrips.map((t) => t.id)]);
+    toast.success(`${remainingTrips.length} ${remainingTrips.length === 1 ? 'trip' : 'trips'} added`);
+  };
+  const changeLine = (key: string, patch: Partial<DraftLine>) => {
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+    touch();
+  };
+  const removeLine = (key: string) => {
+    setLines((prev) => prev.filter((l) => l.key !== key));
+    touch();
+  };
+  const addLine = (description = '') => {
+    setLines((prev) => [...prev, newManualLine(description)]);
+    touch();
+  };
 
-  const availableLineTypes = useMemo(() => {
-    const set = new Set<string>();
-    unbilledTrips.forEach((t: any) => {
-      const lt = t.rate_category || t.line_type?.name || t.quotation_line_type || t.financials?.quotation_line_type || t.rateCard?.rate_category;
-      if (lt) set.add(lt);
-    });
-    return Array.from(set);
-  }, [unbilledTrips]);
+  // ── Derived figures ─────────────────────────────────────────────────────
+  const header: DraftHeader = { customerId, invoiceDate, dueDate, taxRate, notes, terms };
+  const totals = useMemo(() => draftTotals(lines, taxRate), [lines, taxRate]);
+  const issues = draftIssues(header, lines);
+  const blocking = issues.filter((i) => i.level === 'error');
 
-  const availableOperationTypes = useMemo(() => {
-    const set = new Set<string>();
-    unbilledTrips.forEach((t: any) => {
-      const op = t.operation_type || t.billing_type || t.quotation_billing_type || t.financials?.quotation_billing_type || t.rateCard?.billing_type;
-      if (op) set.add(op);
-    });
-    return Array.from(set);
-  }, [unbilledTrips]);
+  const summary = summaryRes?.data;
+  const advancesAvailable = ((advancesRes?.data ?? []) as any[])
+    .filter((a) => a.status === 'Open' || a.status === 'PartiallyApplied')
+    .reduce((s, a) => s + (Number(a.remaining_amount) || 0), 0);
+  const position: CustomerPosition | null = selectedCustomer
+    ? {
+        name: selectedCustomer.name,
+        terms: selectedCustomer.payment_terms ?? null,
+        unpaid: summary?.unpaid_balance ?? 0,
+        overdue: summary?.overdue_balance ?? 0,
+        unpaidCount: summary?.counts?.unpaid ?? 0,
+        advances: advancesAvailable,
+        loading: isLoadingSummary,
+      }
+    : null;
 
-  // Filtered unbilled trips
-  const filteredTrips = useMemo(() => {
-    let result = [...unbilledTrips];
+  const accountName = (id: string | null | undefined, fallback: string) => {
+    const a = ((accountsRes?.data ?? []) as Account[]).find((x) => x.id === id);
+    return a ? `${a.account_code} ${a.name}` : fallback;
+  };
+  const postingAccounts = {
+    receivable: accountName(settings?.defaultReceivableAccountId, 'Accounts receivable'),
+    revenue: accountName(settings?.defaultRevenueAccountId, 'Revenue'),
+    vat: accountName(settings?.defaultVatOutputAccountId, 'VAT output'),
+  };
 
-    // Vehicle filter
-    if (vehicleFilter !== 'all') {
-      result = result.filter((t: any) => t.vehicle_type === vehicleFilter);
-    }
-
-    // Line Type filter
-    if (lineTypeFilter !== 'all') {
-      result = result.filter((t: any) => {
-        const lt = t.rate_category || t.line_type?.name || t.quotation_line_type || t.financials?.quotation_line_type || t.rateCard?.rate_category;
-        return lt === lineTypeFilter;
-      });
-    }
-
-    // Operation Type filter
-    if (operationTypeFilter !== 'all') {
-      result = result.filter((t: any) => {
-        const op = t.operation_type || t.billing_type || t.quotation_billing_type || t.financials?.quotation_billing_type || t.rateCard?.billing_type;
-        return op === operationTypeFilter;
-      });
-    }
-
-    // Search filter
-    if (tripSearch.trim()) {
-      const q = tripSearch.toLowerCase();
-      result = result.filter((t: any) => {
-        const ref = (t.ref_id || `TRIP-${t.id}`).toLowerCase();
-        const origin = resolveTripOrigin(t).toLowerCase();
-        const dest = resolveTripDestination(t).toLowerCase();
-        const vehicle = (t.vehicle_type || '').toLowerCase();
-        const driver = (t.driver?.name || t.driver_name || `${t.driver?.first_name || ''} ${t.driver?.last_name || ''}`).toLowerCase();
-        const lineType = (t.rate_category || t.line_type?.name || '').toLowerCase();
-        const opType = (t.operation_type || t.billing_type || '').toLowerCase();
-        return ref.includes(q) || origin.includes(q) || dest.includes(q) || vehicle.includes(q) || driver.includes(q) || lineType.includes(q) || opType.includes(q);
-      });
-    }
-
-    return result;
-  }, [unbilledTrips, tripSearch, vehicleFilter, lineTypeFilter, operationTypeFilter]);
-
-  // Mutation
-  const createMutation = useMutation({
-    mutationFn: (payload: CreateInvoiceDTO) => {
-      if (!editing) return financeService.createDraftInvoice(payload);
-      // The customer of a draft can't change; lines are rebuilt from the trips plus the manual lines
-      const { customerId: _customer, ...changes } = payload;
-      return financeService.updateDraftInvoice(editId as string, changes);
+  // ── Save / issue ────────────────────────────────────────────────────────
+  const saveMutation = useMutation({
+    mutationFn: async ({ issue }: { issue: boolean }) => {
+      const payload: CreateInvoiceDTO = buildInvoicePayload(header, lines);
+      let id = editId as string | undefined;
+      let ref: string | undefined = editInvoice?.ref_id ?? undefined;
+      if (!editing) {
+        const res: any = await financeService.createDraftInvoice(payload);
+        id = res?.data?.id;
+        ref = res?.data?.ref_id;
+      } else {
+        // The customer of a draft can't change; lines are rebuilt from the trips plus the manual lines
+        const { customerId: _customer, ...changes } = payload;
+        await financeService.updateDraftInvoice(id as string, changes);
+      }
+      if (!issue || !id) return { id, ref, issued: false as const, issueError: null as string | null };
+      try {
+        await financeService.issueInvoice(id);
+        return { id, ref, issued: true as const, issueError: null };
+      } catch (err: any) {
+        return { id, ref, issued: false as const, issueError: err?.response?.data?.error?.message || 'The invoice could not be issued' };
+      }
     },
-    onSuccess: (res: any) => {
-      toast.success(editing ? 'Draft saved' : `Draft ${res?.data?.ref_id ?? 'invoice'} created`);
+    onSuccess: ({ id, ref, issued, issueError }, { issue }) => {
+      setDirty(false);
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['trips'] });
-      navigate(`/finance/invoices?invoice=${res?.data?.id ?? editId}`);
+      if (issued) {
+        queryClient.invalidateQueries({ queryKey: ['finance-reports'] });
+        toast.success(`${ref ?? 'Invoice'} issued`);
+      } else if (issue && issueError) toast.error(`Saved as draft ${ref ?? ''}, but not issued: ${issueError}`);
+      else toast.success(editing ? 'Draft saved' : `Draft ${ref ?? 'invoice'} created`);
+      navigate(`/finance/invoices?invoice=${id ?? editId}`);
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.error?.message || (editing ? 'Could not save the draft' : 'Failed to create invoice'));
+      toast.error(err?.response?.data?.error?.message || (editing ? 'Could not save the draft' : 'Could not create the invoice'));
     },
   });
+  const saving = saveMutation.isPending;
 
-  // Payment terms change handler
-  // Date arithmetic on date-only strings, so the due date never shifts a day across time zones
-  const handleTermsChange = (term: string) => {
-    setPaymentTerms(term);
-    if (term in TERM_DAYS) setDueDate(addDays(invoiceDate || asOfPresetDate('today'), TERM_DAYS[term]));
-  };
+  const save = useCallback(
+    (issue: boolean) => {
+      if (saving) return;
+      if (blocking.length > 0) {
+        toast.error(blocking[0].message);
+        return;
+      }
+      if (issue) setConfirmIssue(true);
+      else saveMutation.mutate({ issue: false });
+    },
+    [saving, blocking, saveMutation],
+  );
 
-  // Trip selection helpers
-  const toggleTrip = (tripId: string) => {
-    setSelectedTripIds((prev) =>
-      prev.includes(tripId) ? prev.filter((id) => id !== tripId) : [...prev, tripId]
-    );
-  };
-
-  const selectAllTrips = () => {
-    if (selectedTripIds.length === filteredTrips.length) {
-      setSelectedTripIds([]);
-    } else {
-      setSelectedTripIds(filteredTrips.map((t: any) => t.id));
-    }
-  };
-
-  // Manual line helpers
-  const handleAddManualLine = () => {
-    setManualLines([
-      ...manualLines,
-      { description: '', rate: 0, amount: 0, quantity: 1 },
-    ]);
-  };
-
-  const handleManualLineChange = (index: number, field: keyof InvoiceLineDTO, value: any) => {
-    const updated = [...manualLines];
-    updated[index] = { ...updated[index], [field]: value };
-
-    if (field === 'rate' || field === 'quantity') {
-      const qty = field === 'quantity' ? Number(value) : Number(updated[index].quantity || 1);
-      const rate = field === 'rate' ? Number(value) : Number(updated[index].rate || 0);
-      updated[index].amount = qty * rate;
-    }
-    setManualLines(updated);
-  };
-
-  const handleRemoveManualLine = (index: number) => {
-    setManualLines(manualLines.filter((_, i) => i !== index));
-  };
-
-  // Subtotal and tax calculation
-  const tripsSubtotal = useMemo(() => {
-    return unbilledTrips
-      .filter((t: any) => selectedTripIds.includes(t.id))
-      .reduce((sum: number, t: any) => sum + (Number(t.billing_amount) || 0), 0);
-  }, [unbilledTrips, selectedTripIds]);
-
-  const manualLinesSubtotal = useMemo(() => {
-    return manualLines.reduce((sum, l) => sum + (Number(l.amount) || 0), 0);
-  }, [manualLines]);
-
-  const estimatedSubtotal = tripsSubtotal + manualLinesSubtotal;
-  const estimatedTaxAmount = (estimatedSubtotal * (Number(taxRate) || 0)) / 100;
-  const estimatedGrandTotal = estimatedSubtotal + estimatedTaxAmount;
-
-  // Submit handler
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customerId) {
-      toast.error('Please select a customer account');
-      return;
-    }
-    if (selectedTripIds.length === 0 && manualLines.length === 0) {
-      toast.error('Select at least one trip or add a custom line item');
-      return;
-    }
-
-    const payload: CreateInvoiceDTO = {
-      customerId,
-      invoice_date: invoiceDate,
-      due_date: dueDate || null,
-      tax_rate: Number(taxRate) || 0,
-      tripIds: selectedTripIds,
-      lines: manualLines.filter((l) => l.description.trim() && l.amount >= 0),
+  // Ctrl/⌘+S saves the draft, Ctrl/⌘+Enter issues
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        save(false);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        save(true);
+      }
     };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [save]);
 
-    createMutation.mutate(payload);
-  };
+  // Warn before leaving with unsaved changes
+  useEffect(() => {
+    if (!dirty || saving) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [dirty, saving]);
 
-  return (
-    <DashboardLayout active="finance" title={editing ? `Edit draft ${editInvoice?.ref_id ?? ''}` : 'New Draft Invoice'}>
-      {editing && !isLoadingEdit && editInvoice && editInvoice.status !== 'Draft' ? (
+  const cancel = () => navigate(editing ? `/finance/invoices?invoice=${editId}` : '/finance/invoices');
+  const dueInDays = daysBetween(invoiceDate, dueDate);
+  const vatOptions = [...new Set([15, 0, taxRate])].sort((a, b) => b - a);
+
+  if (editing && !isLoadingEdit && editInvoice && editInvoice.status !== 'Draft') {
+    return (
+      <DashboardLayout active="finance" title={`Invoice ${editInvoice.ref_id ?? ''}`}>
         <div className="mx-auto max-w-md space-y-3 p-10 text-center text-sm">
           <p>{editInvoice.ref_id} has been issued, so it can no longer be edited. Void it and create a new invoice if it needs to change.</p>
-          <Link to={`/finance/invoices?invoice=${editInvoice.id}`} className="font-medium underline">Back to the invoice</Link>
+          <Link to={`/finance/invoices?invoice=${editInvoice.id}`} className="font-medium underline">
+            Back to the invoice
+          </Link>
         </div>
-      ) : (
-      <div className="bg-[#F8FAFC] px-4 sm:px-6 py-4 space-y-4 max-w-[1400px] mx-auto pb-16 min-h-full">
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          
-          {/* Main Form Content (8 Cols) */}
-          <div className="lg:col-span-8 space-y-4">
-            
-            {/* 1. Customer & Billing Card (Zoho Books Design) */}
-            <Card className="py-0 gap-0 border border-border dark:border-border bg-card rounded-xl shadow-xs hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="py-3 px-4 border-b border-border dark:border-border bg-muted/50 flex flex-row items-center justify-between">
-                <CardTitle className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-[#FA634E]" />
-                  Customer & Billing Context
-                </CardTitle>
+      </DashboardLayout>
+    );
+  }
 
-                {selectedCustomer && (
-                  <div className="flex items-center gap-2">
-                    <Chip tone="positive" size="sm" icon={Globe}>
-                      Currency: SAR
-                    </Chip>
-                  </div>
-                )}
-              </CardHeader>
-              
-              <CardContent className="p-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5">
-                {/* Customer Select */}
-                <div className="sm:col-span-2 lg:col-span-3 space-y-1">
-                  <Label className="text-xs font-semibold text-foreground">
-                    Customer Account *
-                  </Label>
-                  <Select
+  return (
+    <DashboardLayout active="finance" title={editing ? `Edit draft ${editInvoice?.ref_id ?? ''}` : 'New Draft Invoice'} fixedViewport>
+      <div className="mx-auto flex h-full w-full max-w-[1400px] min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4 max-md:h-auto max-md:overflow-y-auto">
+        {/* Toolbar */}
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b pb-2.5">
+          <Chip tone="neutral" size="sm">Draft</Chip>
+          <span className="text-sm font-medium text-foreground">{editing ? editInvoice?.ref_id ?? 'Draft invoice' : 'New invoice'}</span>
+          {selectedCustomer && <span className="truncate text-sm text-muted-foreground">· {selectedCustomer.name}</span>}
+          {dirty && <span className="text-[11px] text-muted-foreground">· Unsaved changes</span>}
+          <div className="ml-auto flex items-center gap-2">
+            <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" onClick={cancel} disabled={saving}>
+              Cancel
+            </Button>
+            <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => save(false)} disabled={saving} title="Save draft (Ctrl+S)">
+              {saving && !confirmIssue && saveMutation.variables?.issue === false && <Loader2 className="size-3.5 animate-spin" />}
+              {editing ? 'Save draft' : 'Save as draft'}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 gap-1.5 bg-brand text-xs text-white hover:bg-brand-hover"
+              onClick={() => save(true)}
+              disabled={saving}
+              title="Save and issue (Ctrl+Enter)"
+            >
+              {saving && saveMutation.variables?.issue ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+              Save and issue
+            </Button>
+          </div>
+        </div>
+
+        {editing && isLoadingEdit ? (
+          <Card className="space-y-3 rounded-xl p-6 shadow-xs">
+            {Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+          </Card>
+        ) : (
+          <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+            {/* The invoice document */}
+            <Card className="flex min-h-0 flex-col gap-0 overflow-hidden rounded-xl py-0 shadow-xs max-lg:min-h-[480px]">
+              <div className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-2.5 border-b px-4 py-3 md:grid-cols-4 xl:grid-cols-[minmax(0,2fr)_repeat(4,minmax(0,1fr))]">
+                <div className="col-span-2 space-y-1 md:col-span-4 xl:col-span-1">
+                  <Label className={fieldLabel}>Customer</Label>
+                  <CustomerPicker
+                    customers={customers}
                     value={customerId}
+                    onChange={changeCustomer}
+                    unbilled={unbilledByCustomer}
                     disabled={editing}
-                    onValueChange={(v) => {
-                      setCustomerId(v);
-                      setSelectedTripIds([]);
-                    }}
-                  >
-                    <SelectTrigger className="h-9 text-xs bg-muted/30 border-border">
-                      <SelectValue placeholder="Select billing customer account..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {isLoadingCustomers ? (
-                        <SelectItem value="loading" disabled>Loading customers...</SelectItem>
-                      ) : (
-                        customers.map((c: any) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                    isLoading={isLoadingCustomers}
+                  />
                 </div>
-
-                {/* Terms Selector */}
-                <div className="sm:col-span-1 lg:col-span-3 space-y-1">
-                  <Label className="text-xs font-semibold text-foreground">
-                    Payment Terms
-                  </Label>
-                  <Select value={paymentTerms} onValueChange={handleTermsChange}>
-                    <SelectTrigger className="h-9 text-xs bg-muted/30 border-border">
-                      <SelectValue placeholder="Terms..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="due_on_receipt">Due on Receipt</SelectItem>
-                      <SelectItem value="net15">Net 15 Days</SelectItem>
-                      <SelectItem value="net30">Net 30 Days</SelectItem>
-                      <SelectItem value="net60">Net 60 Days</SelectItem>
-                      <SelectItem value="custom">Custom Date</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Dates & VAT */}
-                <div className="sm:col-span-1 lg:col-span-2 space-y-1">
-                  <Label className="text-xs font-semibold text-foreground">
-                    Invoice Date *
-                  </Label>
+                <div className="space-y-1">
+                  <Label htmlFor="inv-date" className={fieldLabel}>Invoice date</Label>
                   <Input
+                    id="inv-date"
                     type="date"
                     value={invoiceDate}
-                    onChange={(e) => setInvoiceDate(e.target.value)}
-                    className="h-9 text-xs"
+                    onChange={(e) => {
+                      setInvoiceDate(e.target.value);
+                      touch();
+                    }}
+                    className="h-10 text-sm"
                   />
                 </div>
-
-                <div className="sm:col-span-1 lg:col-span-2 space-y-1">
-                  <Label className="text-xs font-semibold text-foreground">
-                    Payment Due Date
+                <div className="space-y-1">
+                  <Label className={fieldLabel}>
+                    Terms
+                    {selectedCustomer?.payment_terms && <span className="font-normal text-muted-foreground/80"> · customer: {selectedCustomer.payment_terms}</span>}
                   </Label>
+                  <Select
+                    value={paymentTerms}
+                    onValueChange={(v) => {
+                      setPaymentTerms(v);
+                      touch();
+                    }}
+                  >
+                    <SelectTrigger className="h-10 text-sm" aria-label="Payment terms">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(TERM_LABEL).map(([k, label]) => (
+                        <SelectItem key={k} value={k} className="text-xs">
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="inv-due" className={fieldLabel}>Due date</Label>
                   <Input
+                    id="inv-due"
                     type="date"
                     value={dueDate}
-                    onChange={(e) => { setDueDate(e.target.value); setPaymentTerms('custom'); }}
-                    className="h-9 text-xs"
+                    min={invoiceDate || undefined}
+                    onChange={(e) => {
+                      setDueDate(e.target.value);
+                      setPaymentTerms('custom');
+                      touch();
+                    }}
+                    className="h-10 text-sm"
                   />
                 </div>
-
-                <div className="sm:col-span-1 lg:col-span-2 space-y-1">
-                  <Label className="text-xs font-semibold text-foreground flex items-center gap-1">
-                    <Percent className="w-3 h-3 text-muted-foreground" /> VAT Rate (%)
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="100"
-                      value={taxRate}
-                      onChange={(e) => setTaxRate(parseFloat(e.target.value) || 0)}
-                      className="h-9 text-xs font-mono pr-7"
-                      placeholder="15"
-                    />
-                    <span className="absolute right-2.5 top-2 text-xs font-semibold text-muted-foreground pointer-events-none">%</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* 2. Unbilled Operational Trips Card (Upgraded Operational Component) */}
-            <Card className="py-0 gap-0 border border-border dark:border-border bg-card rounded-xl shadow-xs hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="py-2.5 px-4 border-b border-border dark:border-border bg-muted/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <CardTitle className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                    <Truck className="w-3.5 h-3.5 text-[#FA634E]" />
-                    Unbilled Trips
-                  </CardTitle>
-                  {customerId && unbilledTrips.length > 0 && (
-                    <div className="flex items-center gap-1.5">
-                      <Chip tone="neutral" size="sm">
-                        {unbilledTrips.length} Available
-                      </Chip>
-                      <StatPill
-                        count={selectedTripIds.length}
-                        label="Selected"
-                        value={`SAR ${tripsSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}`}
-                        tone="warning"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {customerId && unbilledTrips.length > 0 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={selectAllTrips}
-                    className="h-7 text-xs font-bold text-[#FA634E] hover:bg-muted px-2"
+                <div className="space-y-1">
+                  <Label className={fieldLabel}>Default VAT</Label>
+                  <Select
+                    value={String(taxRate)}
+                    onValueChange={(v) => {
+                      setTaxRate(Number(v));
+                      touch();
+                    }}
                   >
-                    {selectedTripIds.length === filteredTrips.length && filteredTrips.length > 0
-                      ? 'Deselect All'
-                      : 'Select All'}
-                  </Button>
-                )}
-              </CardHeader>
+                    <SelectTrigger className="h-10 text-sm" aria-label="Default VAT rate">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {vatOptions.map((r) => (
+                        <SelectItem key={r} value={String(r)} className="text-xs">
+                          {r}%{r === 15 ? ' · standard' : r === 0 ? ' · zero-rated' : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-              <CardContent className="p-0">
-                {!customerId ? (
-                  <div className="py-12 px-4 text-center">
-                    <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs font-medium text-muted-foreground">Select a customer account to view unbilled trips</p>
-                  </div>
-                ) : isLoadingTrips ? (
-                  <div className="py-12 px-4 text-center">
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#FA634E] mx-auto mb-2" />
-                    <p className="text-xs font-medium text-muted-foreground">Loading completed unbilled trips...</p>
-                  </div>
-                ) : unbilledTrips.length === 0 ? (
-                  <div className="py-12 px-4 text-center">
-                    <CheckSquare className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs font-medium text-muted-foreground">No completed unbilled trips for this customer</p>
-                  </div>
-                ) : (
-                  <div>
-                    {/* Advanced Multi-Filter Bar */}
-                    <div className="p-2.5 border-b border-border dark:border-border bg-muted/40 grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
-                      <div className="sm:col-span-3 relative">
-                        <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
-                        <Input
-                          placeholder="Search trip..."
-                          value={tripSearch}
-                          onChange={(e) => setTripSearch(e.target.value)}
-                          className="h-8 text-xs pl-8 bg-card"
-                        />
-                      </div>
+              <InvoiceLinesTable
+                lines={lines}
+                tripsById={tripsById}
+                defaultTaxRate={taxRate}
+                onChange={changeLine}
+                onRemove={removeLine}
+                onAddLine={addLine}
+                onPickTrips={() => setPickerOpen(true)}
+                onAddAllTrips={addAllTrips}
+                customerChosen={Boolean(customerId)}
+                unbilled={remaining}
+              />
 
-                      <div className="sm:col-span-3">
-                        <Select value={vehicleFilter} onValueChange={setVehicleFilter}>
-                          <SelectTrigger className="h-8 text-xs bg-card">
-                            <Filter className="w-3 h-3 mr-1 text-muted-foreground inline" />
-                            <SelectValue placeholder="Vehicle Class" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Vehicles ({unbilledTrips.length})</SelectItem>
-                            {availableVehicles.map((v) => (
-                              <SelectItem key={v} value={v}>
-                                {v}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="sm:col-span-3">
-                        <Select value={lineTypeFilter} onValueChange={setLineTypeFilter}>
-                          <SelectTrigger className="h-8 text-xs bg-card">
-                            <Filter className="w-3 h-3 mr-1 text-muted-foreground inline" />
-                            <SelectValue placeholder="Line Type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Line Types ({availableLineTypes.length})</SelectItem>
-                            {availableLineTypes.map((lt) => (
-                              <SelectItem key={lt} value={lt}>
-                                {lt}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="sm:col-span-3">
-                        <Select value={operationTypeFilter} onValueChange={setOperationTypeFilter}>
-                          <SelectTrigger className="h-8 text-xs bg-card">
-                            <Filter className="w-3 h-3 mr-1 text-muted-foreground inline" />
-                            <SelectValue placeholder="Operation Type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">All Operation Types ({availableOperationTypes.length})</SelectItem>
-                            {availableOperationTypes.map((op) => (
-                              <SelectItem key={op} value={op}>
-                                {op}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    {/* Trips list */}
-                    <div className="divide-y divide-border/60 dark:divide-border/60 max-h-[360px] overflow-y-auto">
-                      {filteredTrips.length === 0 ? (
-                        <div className="py-8 text-center text-xs text-muted-foreground">
-                          No trips match current filters
-                        </div>
-                      ) : (
-                        filteredTrips.map((t: any) => {
-                          const isSelected = selectedTripIds.includes(t.id);
-                          const originName = resolveTripOrigin(t);
-                          const destName = resolveTripDestination(t);
-                          const driverName = t.driver ? `${t.driver.first_name || ''} ${t.driver.last_name || ''}`.trim() : (t.driver_name || null);
-                          const lineTypeVal = t.rate_category || t.line_type?.name || t.quotation_line_type || t.financials?.quotation_line_type || t.rateCard?.rate_category;
-                          const opTypeVal = t.operation_type || t.billing_type || t.quotation_billing_type || t.financials?.quotation_billing_type || t.rateCard?.billing_type;
-
-                          return (
-                            <div
-                              key={t.id}
-                              onClick={() => toggleTrip(t.id)}
-                              className={`p-3 flex items-center justify-between gap-3 text-xs cursor-pointer transition-colors ${
-                                isSelected
-                                  ? 'bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20/60 dark:bg-rose-950/20 border-l-3 border-l-[#FA634E]'
-                                  : 'hover:bg-muted/80 dark:hover:bg-slate-800/40'
-                              }`}
-                            >
-                              <div className="flex items-center gap-3 min-w-0">
-                                <div className="shrink-0 text-muted-foreground hover:text-[#FA634E]">
-                                  {isSelected ? (
-                                    <CheckSquare className="w-4 h-4 text-[#FA634E]" />
-                                  ) : (
-                                    <Square className="w-4 h-4 text-slate-300" />
-                                  )}
-                                </div>
-                                <div className="min-w-0 space-y-0.5">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="font-mono font-bold text-foreground">
-                                      {t.ref_id || `TRIP-${t.id.slice(0, 6)}`}
-                                    </span>
-                                    {t.vehicle_type && (
-                                      <Badge variant="outline" className="text-[10px] font-semibold text-muted-foreground dark:text-muted-foreground px-1.5 py-0">
-                                        {t.vehicle_type}
-                                      </Badge>
-                                    )}
-                                    {lineTypeVal && (
-                                      <Chip tone="violet" size="sm">
-                                        {lineTypeVal}
-                                      </Chip>
-                                    )}
-                                    {opTypeVal && (
-                                      <Chip tone="positive" size="sm">
-                                        {opTypeVal}
-                                      </Chip>
-                                    )}
-                                    {driverName && (
-                                      <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                                        <User className="w-2.5 h-2.5 text-muted-foreground" /> {driverName}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-[11px] text-muted-foreground truncate flex items-center gap-1">
-                                    <MapPin className="w-3 h-3 text-[#FA634E] shrink-0" />
-                                    <span className="font-medium text-foreground">{originName}</span>
-                                    <span className="text-muted-foreground font-bold">➔</span>
-                                    <span className="font-medium text-foreground">{destName}</span>
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="text-right shrink-0">
-                                <span className="font-mono font-bold text-foreground text-xs block">
-                                  SAR {(Number(t.billing_amount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                                <span className="text-[10px] text-muted-foreground flex items-center justify-end gap-1 mt-0.5">
-                                  <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
-                                  {t.updated_at ? new Date(t.updated_at).toLocaleDateString() : 'Completed'}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })
-                      )}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
+              <div className="grid shrink-0 gap-3 border-t bg-muted/20 px-4 py-3 md:grid-cols-2">
+                <div className="space-y-1">
+                  <Label htmlFor="inv-notes" className={fieldLabel}>Notes to the customer</Label>
+                  <Textarea
+                    id="inv-notes"
+                    rows={2}
+                    value={notes}
+                    onChange={(e) => {
+                      setNotes(e.target.value);
+                      touch();
+                    }}
+                    placeholder="Shown on the invoice"
+                    className="min-h-0 resize-none bg-background text-xs"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="inv-terms" className={fieldLabel}>Terms and conditions</Label>
+                  <Textarea
+                    id="inv-terms"
+                    rows={2}
+                    value={terms}
+                    onChange={(e) => {
+                      setTerms(e.target.value);
+                      touch();
+                    }}
+                    placeholder="Shown on the invoice"
+                    className="min-h-0 resize-none bg-background text-xs"
+                  />
+                </div>
+              </div>
             </Card>
 
-            {/* 3. Custom Charges Card */}
-            <Card className="py-0 gap-0 border border-border dark:border-border bg-card rounded-xl shadow-xs hover:shadow-md transition-shadow duration-200">
-              <CardHeader className="py-2.5 px-4 border-b border-border dark:border-border bg-muted/50 flex flex-row items-center justify-between">
-                <CardTitle className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                  <ReceiptText className="w-3.5 h-3.5 text-[#FA634E]" />
-                  Custom Charges
-                </CardTitle>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleAddManualLine}
-                  className="h-7 text-xs font-semibold text-[#FA634E] hover:bg-muted px-2"
-                >
-                  <Plus className="w-3.5 h-3.5 mr-1" /> Add Charge Line
-                </Button>
-              </CardHeader>
-              <CardContent className="p-3 sm:p-4">
-                {manualLines.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-muted-foreground">
-                    No custom charge lines added. Click "Add Charge Line" for detention fees, labor, or extra services.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="hidden sm:grid grid-cols-12 gap-2 px-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                      <div className="col-span-5">Description</div>
-                      <div className="col-span-2 text-center">Qty</div>
-                      <div className="col-span-2 text-right">Rate (SAR)</div>
-                      <div className="col-span-2 text-right">Total (SAR)</div>
-                      <div className="col-span-1 text-center">Action</div>
-                    </div>
-
-                    {manualLines.map((line, idx) => (
-                      <div
-                        key={idx}
-                        className="grid grid-cols-1 sm:grid-cols-12 gap-2 p-2.5 sm:p-1.5 bg-muted/70 rounded-lg border border-border dark:border-border items-center"
-                      >
-                        <div className="sm:col-span-5">
-                          <Label className="sm:hidden text-[10px] text-muted-foreground mb-1 block">Description</Label>
-                          <Input
-                            placeholder="e.g. Detention fee / Offloading charge"
-                            value={line.description}
-                            onChange={(e) => handleManualLineChange(idx, 'description', e.target.value)}
-                            className="h-8 text-xs bg-card"
-                          />
-                        </div>
-                        <div className="sm:col-span-2">
-                          <Label className="sm:hidden text-[10px] text-muted-foreground mb-1 block">Qty</Label>
-                          <Input
-                            type="number"
-                            min="1"
-                            value={line.quantity || 1}
-                            onChange={(e) => handleManualLineChange(idx, 'quantity', parseInt(e.target.value) || 1)}
-                            className="h-8 text-xs font-mono text-center bg-card"
-                          />
-                        </div>
-                        <div className="sm:col-span-2">
-                          <Label className="sm:hidden text-[10px] text-muted-foreground mb-1 block">Rate (SAR)</Label>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="0.00"
-                            value={line.rate || ''}
-                            onChange={(e) => handleManualLineChange(idx, 'rate', parseFloat(e.target.value) || 0)}
-                            className="h-8 text-xs font-mono text-right bg-card"
-                          />
-                        </div>
-                        <div className="sm:col-span-2 flex sm:block justify-between items-center text-right py-1 sm:py-0">
-                          <span className="sm:hidden text-[10px] text-muted-foreground">Total:</span>
-                          <span className="font-mono font-bold text-foreground text-xs">
-                            {(Number(line.amount) || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        <div className="sm:col-span-1 text-right sm:text-center pt-1 sm:pt-0">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveManualLine(idx)}
-                            className="h-7 w-7 p-0 text-muted-foreground hover:text-rose-600 hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 ring-1 ring-inset ring-rose-600/20 dark:hover:bg-rose-950/30"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* 4. Customer Notes & Terms (Zoho Books Footer Style) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Card className="py-0 gap-0 border border-border dark:border-border bg-card rounded-xl shadow-xs">
-                <CardHeader className="py-2 px-3.5 border-b border-border dark:border-border bg-muted/50">
-                  <CardTitle className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                    <MessageSquare className="w-3 h-3 text-[#FA634E]" /> Customer Notes
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-3">
-                  <Textarea
-                    rows={2}
-                    value={customerNotes}
-                    onChange={(e) => setCustomerNotes(e.target.value)}
-                    placeholder="Notes visible to customer on invoice..."
-                    className="text-xs resize-none border-border focus:border-[#FA634E]"
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="py-0 gap-0 border border-border dark:border-border bg-card rounded-xl shadow-xs">
-                <CardHeader className="py-2 px-3.5 border-b border-border dark:border-border bg-muted/50">
-                  <CardTitle className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                    <ShieldCheck className="w-3 h-3 text-[#FA634E]" /> Terms & Conditions
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="p-3">
-                  <Textarea
-                    rows={2}
-                    value={termsConditions}
-                    onChange={(e) => setTermsConditions(e.target.value)}
-                    placeholder="Terms and payment rules..."
-                    className="text-xs resize-none border-border focus:border-[#FA634E]"
-                  />
-                </CardContent>
-              </Card>
+            <div className="min-h-0 overflow-y-auto max-lg:overflow-visible">
+              <InvoiceEditorRail totals={totals} dueDate={dueDate} dueInDays={dueInDays} customer={position} accounts={postingAccounts} issues={issues} />
             </div>
-
           </div>
-
-          {/* Right Summary Sidebar (4 Cols) */}
-          <div className="lg:col-span-4 space-y-4">
-            <Card className="py-0 gap-0 border border-border dark:border-border bg-card rounded-xl shadow-xs sticky top-4">
-              <CardHeader className="py-2.5 px-4 border-b border-border dark:border-border bg-muted/50">
-                <CardTitle className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                  <Calculator className="w-3.5 h-3.5 text-[#FA634E]" />
-                  Summary
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-4 space-y-3.5">
-                <div className="space-y-2 text-xs">
-                  <div className="flex justify-between items-center text-muted-foreground dark:text-muted-foreground">
-                    <span>Selected Trips ({selectedTripIds.length})</span>
-                    <span className="font-mono font-semibold text-foreground">
-                      SAR {tripsSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-muted-foreground dark:text-muted-foreground">
-                    <span>Custom Charges ({manualLines.length})</span>
-                    <span className="font-mono font-semibold text-foreground">
-                      SAR {manualLinesSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-
-                  <div className="pt-2 border-t border-border dark:border-border flex justify-between items-center font-semibold text-foreground">
-                    <span>Subtotal (excl. VAT)</span>
-                    <span className="font-mono font-bold text-foreground">
-                      SAR {estimatedSubtotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-muted-foreground dark:text-muted-foreground">
-                    <span>VAT ({taxRate}%)</span>
-                    <span className="font-mono font-semibold text-foreground">
-                      SAR {estimatedTaxAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-
-                  <div className="pt-3 border-t-2 border-border dark:border-border flex justify-between items-center text-sm font-black">
-                    <span className="text-[#3E3C3D]">Grand Total</span>
-                    <span className="font-mono text-base text-[#FA634E]">
-                      SAR {estimatedGrandTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="pt-3 space-y-2">
-                  <Button
-                    type="button"
-                    onClick={handleSubmit}
-                    disabled={createMutation.isPending}
-                    className="w-full bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-xs font-bold h-9 text-xs"
-                  >
-                    {createMutation.isPending ? 'Saving...' : editing ? 'Save changes' : 'Save Draft Invoice'}
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => navigate(editing ? `/finance/invoices?invoice=${editId}` : '/finance/invoices')}
-                    className="w-full h-8 text-xs font-medium"
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-        </form>
+        )}
       </div>
-      )}
+
+      <TripPickerSheet
+        open={pickerOpen}
+        onOpenChange={setPickerOpen}
+        trips={customerTrips}
+        isLoading={isLoadingTrips}
+        customerName={selectedCustomer?.name ?? ''}
+        selected={[...onInvoice]}
+        onApply={setTripSelection}
+      />
+
+      <ConfirmModal
+        isOpen={confirmIssue}
+        onClose={() => setConfirmIssue(false)}
+        onConfirm={() => {
+          setConfirmIssue(false);
+          saveMutation.mutate({ issue: true });
+        }}
+        title={`Issue this invoice for SAR ${formatMoney(totals.total)}?`}
+        description={`It posts ${postingAccounts.receivable} Dr ${formatMoney(totals.total)} against ${postingAccounts.revenue} Cr ${formatMoney(totals.subtotal)}${
+          totals.tax > 0.005 ? ` and ${postingAccounts.vat} Cr ${formatMoney(totals.tax)}` : ''
+        }, and marks ${totals.tripCount} ${totals.tripCount === 1 ? 'trip' : 'trips'} as invoiced. An issued invoice can't be edited, only voided.`}
+        confirmLabel="Issue invoice"
+        isLoading={saving}
+      />
     </DashboardLayout>
   );
 }

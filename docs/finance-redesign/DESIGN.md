@@ -313,6 +313,30 @@ DocStatusBar  Draft ✓ — Issued ✓ — Partially paid ● — Paid
 - Sticky footer bar (white, top border): totals summary on the left, `[Cancel] [Save draft] [Save & issue]` on the right.
 - Journal entry create: live **Balanced / Out of balance by X** indicator in the footer (green/orange pill); Post disabled until balanced.
 
+### 4.3b Invoice editor (built 2026-09-29) — reference for Bill and Journal Entry editors
+
+Files: `pages/finance/InvoiceCreatePage.tsx`, `components/finance/invoices/editor/*`
+(`CustomerPicker`, `InvoiceLinesTable`, `TripPickerSheet`, `InvoiceEditorRail`), model in
+`lib/finance/invoiceDraft.ts` (mirrors the server's `invoiceMath.ts`; tested), trip readers in `lib/finance/tripBilling.ts`.
+
+```
+Toolbar: [Draft] New invoice · Customer · Unsaved changes        Cancel · Save as draft · [Save and issue]
+┌ Document card ───────────────────────────────────────────┐  ┌ Rail (one card, divided) ─┐
+│ Customer ▾ | Invoice date | Terms | Due date | Default VAT│  │ Invoice total + due       │
+│ # | Item | Qty | Rate | Disc % | VAT | Amount | ×   (scroll)│  │ gross · discount · VAT by │
+│ [Add trips (n)] [Add charge ▾]     Add the other n trips   │  │ rate · total              │
+│ Notes to the customer | Terms and conditions               │  │ Customer position         │
+└────────────────────────────────────────────────────────────┘  │ Posts when issued (Dr/Cr) │
+                                                                  │ Checks                    │
+                                                                  └───────────────────────────┘
+```
+
+- One document card, not a card per section; only the line grid scrolls (viewport-fit).
+- Cells read as text until hovered/focused (spreadsheet feel). Trip lines: rate fixed by the trip's billing amount.
+- Per-line discount % and VAT (`null` = follow the invoice default); sent as `tripOptions` for trips, per line for charges.
+- Empty state offers "Add all n" ready-to-bill trips; the picker sheet greys out trips with no billing amount.
+- "Save and issue" confirms with the Dr/Cr it will post (principle 4). Ctrl+S saves, Ctrl+Enter issues.
+
 ### 4.4 Report page (P&L, Balance Sheet, Trial Balance, Cash Flow, Ageing, General Ledger)
 
 ```

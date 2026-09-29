@@ -392,6 +392,7 @@ export interface Settings {
   defaultCountryDialCode?: string;
   defaultReceivableAccountId?: string | null;
   defaultRevenueAccountId?: string | null;
+  defaultVatOutputAccountId?: string | null;
   defaultPayableAccountId?: string | null;
   defaultCustomerAdvanceAccountId?: string | null;
   defaultProviderAdvanceAccountId?: string | null;
@@ -654,6 +655,9 @@ export interface Invoice {
   trips?: any[];
   journalEntryId?: string | null;
   journalEntry?: JournalEntry | null;
+  /** Shown on the printed invoice. */
+  notes?: string | null;
+  terms?: string | null;
   created_by?: string | null;
   updated_by?: string | null;
   createdAt: string;
@@ -669,7 +673,12 @@ export interface InvoiceLine {
   description: string;
   quantity: number;
   rate: number | string;
+  /** Percent; `amount` is net of it. */
+  discount_pct?: number | string;
   amount: number | string;
+  /** VAT on this line, percent (e.g. 15, or 0 for zero-rated). */
+  tax_rate?: number | string;
+  tax_amount?: number | string;
   createdAt: string;
 }
 

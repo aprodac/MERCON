@@ -68,6 +68,10 @@ export interface InvoiceLineDTO {
   quantity?: number;
   rate: number;
   amount: number;
+  /** Percent, 0–100; `amount` is net of it. */
+  discount_pct?: number;
+  /** Percent; defaults to the invoice's VAT rate. */
+  tax_rate?: number;
 }
 
 export interface CreateInvoiceDTO {
@@ -77,7 +81,12 @@ export interface CreateInvoiceDTO {
   tax_rate?: number;
   currency?: string;
   tripIds?: string[];
+  /** Per-trip VAT / discount overrides, keyed by trip id. */
+  tripOptions?: Record<string, { tax_rate?: number; discount_pct?: number }>;
   lines?: InvoiceLineDTO[];
+  /** Shown on the printed invoice. */
+  notes?: string | null;
+  terms?: string | null;
 }
 
 export interface RecordInvoicePaymentDTO {
