@@ -18,6 +18,7 @@ import { settingsService } from '@/services/settingsService';
 import { dueDateFor, duplicableLines } from '@/lib/finance/invoices';
 import { formatMoney } from '@/lib/finance/format';
 import { SendInvoiceSheet, type InvoiceContact } from './SendInvoiceSheet';
+import { IssueInvoiceDialog } from './InvoiceLedgerSetup';
 
 export type InvoiceCommand = 'issue' | 'record_payment' | 'remind' | 'send' | 'print' | 'edit' | 'duplicate' | 'void' | 'delete';
 
@@ -164,7 +165,18 @@ export function useInvoiceWorkflow(opts: { onDeleted?: (id: string) => void } = 
 
   const sheets = (
     <>
-      <AlertDialog open={confirm !== null} onOpenChange={(o) => !o && !confirmMutation.isPending && setConfirm(null)}>
+      <IssueInvoiceDialog
+        open={confirm?.kind === 'issue'}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        title={CONFIRM_COPY.issue.title}
+        description={confirm ? CONFIRM_COPY.issue.body(confirm.invoice.ref_id ?? 'This invoice', formatMoney(confirm.invoice.total_amount)) : ''}
+        hasVat={Number(confirm?.invoice.tax_amount) > 0.005}
+        pending={confirmMutation.isPending}
+        onConfirm={() => confirm && confirmMutation.mutate(confirm)}
+        confirmLabel={CONFIRM_COPY.issue.action}
+      />
+
+      <AlertDialog open={confirm !== null && confirm.kind !== 'issue'} onOpenChange={(o) => !o && !confirmMutation.isPending && setConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{copy?.title}</AlertDialogTitle>

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
+import { postedExpenseIds } from '../utils/expenseLedger';
 import { nextBillRefId } from '../utils/refId';
 import { logger } from '../utils/logger';
 import { approveBill, recordBillPayment, voidBill } from '../utils/billEngine';
@@ -274,6 +275,19 @@ export const createDraftBill = async (req: Request, res: Response) => {
         error: 'PROVIDER_OR_PAYEE_REQUIRED',
         message: 'A bill must specify either a providerId or a payee_name',
       });
+    }
+
+    // An expense already posted to the ledger would be counted twice if a bill posted it again
+    if (validated.expenseIds && validated.expenseIds.length > 0) {
+      const posted = await postedExpenseIds(validated.expenseIds);
+      if (posted.size > 0) {
+        const refs = (await prisma.expense.findMany({ where: { id: { in: [...posted] } }, select: { ref_id: true } })).map((e) => e.ref_id).join(', ');
+        return res.status(400).json({
+          success: false,
+          error: 'EXPENSE_ALREADY_POSTED',
+          message: `${refs} ${posted.size === 1 ? 'is' : 'are'} already in the ledger from Expenses, so ${posted.size === 1 ? 'it' : 'they'} can't go on a bill as well.`,
+        });
+      }
     }
 
     // Auto-populate lines from selected source IDs if provided

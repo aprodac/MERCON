@@ -691,3 +691,64 @@ export const voidInvoiceHandler = async (req: Request, res: Response) => {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
 };
+
+/** GET /invoices/ledger/setup: the accounts issuing an invoice posts to (receivable Dr, revenue and VAT Cr). */
+export const getInvoiceLedgerSetup = async (_req: Request, res: Response) => {
+  try {
+    const s = await prisma.settings.findUnique({ where: { id: 'singleton' } });
+    res.json({
+      success: true,
+      data: {
+        receivable_account_id: s?.defaultReceivableAccountId ?? null,
+        revenue_account_id: s?.defaultRevenueAccountId ?? null,
+        vat_output_account_id: s?.defaultVatOutputAccountId ?? null,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};
+
+const ledgerSetupSchema = z.object({
+  receivable_account_id: z.string().uuid().nullable().optional(),
+  revenue_account_id: z.string().uuid().nullable().optional(),
+  vat_output_account_id: z.string().uuid().nullable().optional(),
+});
+
+// Each slot takes one kind of account: what the invoice engine posts it as
+const SLOT_TYPE = { receivable_account_id: 'Asset', revenue_account_id: 'Revenue', vat_output_account_id: 'Liability' } as const;
+const SLOT_NAME = { receivable_account_id: 'Accounts receivable', revenue_account_id: 'Revenue', vat_output_account_id: 'VAT output' } as const;
+
+/** PUT /invoices/ledger/setup (Admin): set any of the three; a field left out is kept. */
+export const updateInvoiceLedgerSetup = async (req: Request, res: Response) => {
+  try {
+    const parsed = ledgerSetupSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message } });
+    const slots = Object.keys(SLOT_TYPE) as (keyof typeof SLOT_TYPE)[];
+    for (const slot of slots) {
+      const id = parsed.data[slot];
+      if (!id) continue;
+      const a = await prisma.account.findUnique({ where: { id } });
+      if (!a || a.account_type !== SLOT_TYPE[slot] || !a.is_postable || !a.isActive || a.deletedAt) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: `${SLOT_NAME[slot]} must be an active, postable ${SLOT_TYPE[slot]} account.` },
+        });
+      }
+    }
+    const { receivable_account_id, revenue_account_id, vat_output_account_id } = parsed.data;
+    await prisma.settings.update({
+      where: { id: 'singleton' },
+      data: {
+        ...(receivable_account_id !== undefined ? { defaultReceivableAccountId: receivable_account_id } : {}),
+        ...(revenue_account_id !== undefined ? { defaultRevenueAccountId: revenue_account_id } : {}),
+        ...(vat_output_account_id !== undefined ? { defaultVatOutputAccountId: vat_output_account_id } : {}),
+        updated_by: (req as any).user?.id,
+      },
+    });
+    res.json({ success: true });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to save invoice ledger setup');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};

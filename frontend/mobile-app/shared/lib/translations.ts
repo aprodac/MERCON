@@ -150,6 +150,11 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
 
   // Pickup & Loading Verification
   title_loading_header: { en: 'Loading', ur: 'لوڈنگ' },
+  sub_stage_loading: { en: 'Load the cargo, then take 3 photos', ur: 'سامان لوڈ کریں، پھر 3 تصاویر لیں' },
+  sub_stage_delivery: { en: 'Unload the cargo, then take 3 photos', ur: 'سامان اتاریں، پھر 3 تصاویر لیں' },
+  sub_stage_stop: { en: 'Take 3 photos at this stop', ur: 'اس اسٹاپ پر 3 تصاویر لیں' },
+  sub_stage_screenshot: { en: "Add a screenshot of the customer's app", ur: 'کسٹمر ایپ کا اسکرین شاٹ لگائیں' },
+  label_return: { en: 'Return', ur: 'واپسی' },
   title_return_loading_header: { en: 'Return Loading', ur: 'واپسی لوڈنگ' },
   label_pickup_point: { en: 'Pickup Point', ur: 'پک اپ پوائنٹ' },
   label_return_pickup_point: { en: 'Return Loading Point', ur: 'واپسی لوڈنگ پوائنٹ' },

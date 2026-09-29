@@ -1,7 +1,10 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db';
+import { Prisma } from '@prisma/client';
 import { transferFunds } from '../utils/cashBankEngine';
 import { AccountingError } from '../utils/accountingEngine';
+import { CONTRA_TYPES, readContra, type BankLookup, type ContraType } from '../utils/contraEntries';
+import { logger } from '../utils/logger';
 
 /**
  * Enriches bank account records with:
@@ -502,7 +505,7 @@ export const updateBankAccount = async (req: Request, res: Response) => {
 
 export const transferFundsHandler = async (req: Request, res: Response) => {
   try {
-    const { fromAccountId, toAccountId, amount, date, memo } = req.body;
+    const { fromAccountId, toAccountId, amount, date, memo, reference, charges_amount, charges_account_id } = req.body;
     const userId = (req as any).user?.id;
 
     if (!fromAccountId || !toAccountId || !amount || !date) {
@@ -512,13 +515,101 @@ export const transferFundsHandler = async (req: Request, res: Response) => {
       });
     }
 
-    const result = await transferFunds(fromAccountId, toAccountId, amount, date, memo, userId);
+    const result = await transferFunds(fromAccountId, toAccountId, amount, date, memo, userId, {
+      reference: typeof reference === 'string' ? reference.slice(0, 80) : null,
+      chargesAmount: charges_amount ?? null,
+      chargesAccountId: charges_account_id ?? null,
+    });
     res.json({ success: true, data: result });
   } catch (error: any) {
     if (error instanceof AccountingError) {
       return res.status(error.statusCode).json({ success: false, error: error.message, code: error.code });
     }
     res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+const CONTRA_LIMIT = 3000;
+
+/**
+ * GET /bank-accounts/transfers: the contra register. Filters: type, bank_account_id, date_from,
+ * date_to, status (posted | voided | all), search (entry number, memo, reference); page/per_page.
+ * The summary covers the date range and account (not the type/search), posted entries only.
+ */
+export const listContraEntries = async (req: Request, res: Response) => {
+  try {
+    const q = req.query as Record<string, string | undefined>;
+    const page = Math.max(1, parseInt(q.page || '1', 10) || 1);
+    const perPage = Math.min(200, Math.max(1, parseInt(q.per_page || '50', 10) || 50));
+    const status = q.status === 'voided' ? 'voided' : q.status === 'all' ? 'all' : 'posted';
+    const entryDate: Prisma.DateTimeFilter = {};
+    if (q.date_from) entryDate.gte = new Date(`${q.date_from}T00:00:00.000Z`);
+    if (q.date_to) entryDate.lte = new Date(`${q.date_to}T23:59:59.999Z`);
+
+    const [entries, bankAccounts] = await Promise.all([
+      prisma.journalEntry.findMany({
+        // Reversals of voided transfers carry the same source type: they aren't transfers of their own
+        where: {
+          source_type: 'BankTransfer',
+          reversalOfId: null,
+          status: { in: ['Posted', 'Voided'] },
+          ...(q.date_from || q.date_to ? { entry_date: entryDate } : {}),
+        },
+        include: {
+          lines: { include: { account: { select: { account_code: true, name: true } } } },
+          reversedBy: { select: { id: true, ref_id: true, entry_date: true } },
+        },
+        orderBy: [{ entry_date: 'desc' }, { createdAt: 'desc' }],
+        take: CONTRA_LIMIT,
+      }),
+      prisma.bankAccount.findMany({ select: { id: true, accountId: true, is_cash: true, bank_name: true } }),
+    ]);
+    const banks = new Map<string, BankLookup>(bankAccounts.map((b) => [b.accountId, b]));
+
+    const rows = entries.map((e) => ({
+      id: e.id,
+      ref_id: e.ref_id,
+      entry_date: e.entry_date,
+      memo: e.memo,
+      reference: e.reference,
+      status: e.status,
+      voided_by: e.reversedBy,
+      ...readContra(e.lines, banks),
+    }));
+
+    const onAccount = (r: (typeof rows)[number]) =>
+      !q.bank_account_id || r.from?.bank_account_id === q.bank_account_id || r.to?.bank_account_id === q.bank_account_id;
+    const summary = Object.fromEntries(CONTRA_TYPES.map((t) => [t, { count: 0, amount: 0 }])) as Record<ContraType, { count: number; amount: number }>;
+    let charges = 0;
+    for (const r of rows) {
+      if (r.status !== 'Posted' || !onAccount(r) || !r.type) continue;
+      summary[r.type].count += 1;
+      summary[r.type].amount = Math.round((summary[r.type].amount + r.amount) * 100) / 100;
+      charges += r.charges;
+    }
+
+    const search = (q.search || '').trim().toLowerCase();
+    const filtered = rows.filter((r) => {
+      if (status === 'posted' && r.status !== 'Posted') return false;
+      if (status === 'voided' && r.status !== 'Voided') return false;
+      if (q.type && q.type !== 'all' && r.type !== q.type) return false;
+      if (!onAccount(r)) return false;
+      if (search) {
+        const hay = [r.ref_id, r.memo, r.reference, r.from?.name, r.to?.name].filter(Boolean).join(' ').toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      return true;
+    });
+
+    res.json({
+      success: true,
+      data: filtered.slice((page - 1) * perPage, page * perPage),
+      summary: { ...summary, charges: Math.round(charges * 100) / 100 },
+      meta: { total: filtered.length, page, per_page: perPage, truncated: entries.length === CONTRA_LIMIT },
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to list contra entries');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
 };
 

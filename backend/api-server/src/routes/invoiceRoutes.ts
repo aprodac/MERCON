@@ -12,6 +12,8 @@ import {
   getUnbilledTrips,
   getInvoiceActivity,
   logInvoiceActivity,
+  getInvoiceLedgerSetup,
+  updateInvoiceLedgerSetup,
 } from '../controllers/invoiceController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
@@ -26,6 +28,9 @@ router.get('/', getInvoices);
 // Before '/:id' so these aren't read as ids
 router.get('/summary', getInvoiceSummary);
 router.get('/unbilled-trips', getUnbilledTrips);
+router.get('/ledger/setup', getInvoiceLedgerSetup);
+// Changing where every invoice posts is an Admin decision
+router.put('/ledger/setup', authorizeRoles('Admin'), updateInvoiceLedgerSetup);
 router.post('/', createDraftInvoice);
 router.get('/:id', getInvoiceById);
 router.patch('/:id', updateDraftInvoice);

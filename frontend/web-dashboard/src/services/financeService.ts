@@ -68,6 +68,10 @@ export interface InvoiceLineDTO {
   quantity?: number;
   rate: number;
   amount: number;
+  /** Percent, 0–100; `amount` is net of it. */
+  discount_pct?: number;
+  /** Percent; defaults to the invoice's VAT rate. */
+  tax_rate?: number;
 }
 
 export interface CreateInvoiceDTO {
@@ -77,7 +81,12 @@ export interface CreateInvoiceDTO {
   tax_rate?: number;
   currency?: string;
   tripIds?: string[];
+  /** Per-trip VAT / discount overrides, keyed by trip id. */
+  tripOptions?: Record<string, { tax_rate?: number; discount_pct?: number }>;
   lines?: InvoiceLineDTO[];
+  /** Shown on the printed invoice. */
+  notes?: string | null;
+  terms?: string | null;
 }
 
 export interface RecordInvoicePaymentDTO {
@@ -148,6 +157,51 @@ export interface TransferFundsDTO {
   amount: number;
   date: string;
   memo?: string | null;
+  /** Deposit slip, cheque or transfer (UTR) number. */
+  reference?: string | null;
+  /** Bank charges, posted to `charges_account_id` (an Expense account). */
+  charges_amount?: number | null;
+  charges_account_id?: string | null;
+}
+
+/** Cash → bank, bank → cash, bank → bank (cash → cash between two tills). */
+export type ContraType = 'deposit' | 'withdrawal' | 'bank_to_bank' | 'cash_to_cash';
+
+export interface ContraSide {
+  account_id: string;
+  bank_account_id: string | null;
+  name: string;
+  code: string;
+  is_cash: boolean;
+}
+
+/** One contra entry: a BankTransfer journal entry read as a transfer. */
+export interface ContraEntry {
+  id: string;
+  ref_id: string | null;
+  entry_date: string;
+  memo: string | null;
+  reference: string | null;
+  status: 'Posted' | 'Voided';
+  voided_by: { id: string; ref_id: string | null; entry_date: string } | null;
+  from: ContraSide | null;
+  to: ContraSide | null;
+  amount: number;
+  charges: number;
+  type: ContraType | null;
+}
+
+export type ContraSummary = Record<ContraType, { count: number; amount: number }> & { charges: number };
+
+export interface ContraListParams {
+  type?: ContraType | 'all';
+  bank_account_id?: string;
+  date_from?: string;
+  date_to?: string;
+  status?: 'posted' | 'voided' | 'all';
+  search?: string;
+  page?: number;
+  per_page?: number;
 }
 
 export interface GetAdvancesParams {
@@ -179,6 +233,13 @@ export interface CreateReconciliationDTO {
   statement_date: string;
   statement_closing_balance: number;
   journalLineIds: string[];
+}
+
+/** The accounts an issued invoice posts to (null = not set). */
+export interface InvoiceLedgerSetup {
+  receivable_account_id: string | null;
+  revenue_account_id: string | null;
+  vat_output_account_id: string | null;
 }
 
 export const financeService = {
@@ -342,6 +403,18 @@ export const financeService = {
 
   deleteDraftInvoice: async (id: string) => {
     const response = await api.delete(`/invoices/${id}`);
+    return response.data;
+  },
+
+  /** Where issuing an invoice posts: receivable (Dr), revenue and VAT output (Cr). */
+  getInvoiceLedgerSetup: async (): Promise<InvoiceLedgerSetup> => {
+    const response = await api.get('/invoices/ledger/setup');
+    return response.data.data;
+  },
+
+  /** Admin: set any of the three accounts; a field left out is kept. */
+  updateInvoiceLedgerSetup: async (body: Partial<InvoiceLedgerSetup>) => {
+    const response = await api.put('/invoices/ledger/setup', body);
     return response.data;
   },
 
@@ -529,6 +602,11 @@ export const financeService = {
     return response.data;
   },
 
+  /** The contra register (cash/bank transfers) with per-type totals for the period. */
+  getContraEntries: async (params: ContraListParams = {}): Promise<{ data: ContraEntry[]; summary: ContraSummary; meta: { total: number; page: number; per_page: number; truncated: boolean } }> => {
+    const response = await api.get('/bank-accounts/transfers', { params });
+    return response.data;
+  },
   // Advances
   getAdvances: async (params?: GetAdvancesParams): Promise<ApiResponse<Advance[]>> => {
     const response = await api.get('/advances', { params });

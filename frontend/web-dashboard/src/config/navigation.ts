@@ -5,6 +5,7 @@ import {
   FolderTree, CalendarCheck, BarChart3, FileBarChart, Coins, TrendingUp, FileSpreadsheet,
   SlidersHorizontal, Files, GraduationCap, Bell, Settings, Palette, UserCog, ShieldCheck,
   Map as MapIcon, MapPin, Layers, Tags, FileType, Trash2, ScrollText, AlertTriangle, Activity, FolderArchive, FileCheck2,
+  ArrowLeftRight,
 } from 'lucide-react';
 import type { ModuleKey } from '@mercon/shared-types';
 
@@ -174,6 +175,7 @@ export const NAV_PAGES: NavPage[] = [
   { id: 'payables', label: 'Payables', path: '/finance/ap-ageing', icon: Clock, section: 'finance', group: 'purchases', moduleKey: 'finance', keywords: ['ap ageing', 'aging', 'pay bills'] },
   // Finance — Banking
   { id: 'bank-accounts', label: 'Bank accounts', path: '/finance/bank-accounts', icon: Landmark, section: 'finance', group: 'banking', moduleKey: 'finance', keywords: ['cash', 'transfer'] },
+  { id: 'contra-entries', label: 'Contra entries', path: '/finance/contra', icon: ArrowLeftRight, section: 'finance', group: 'banking', moduleKey: 'finance', keywords: ['transfer', 'cash deposit', 'withdrawal', 'bank to bank'] },
   { id: 'reconciliation', label: 'Reconciliation', path: '/finance/reconciliation', icon: Scale, section: 'finance', group: 'banking', moduleKey: 'finance', keywords: ['bank statement'] },
   { id: 'advances', label: 'Advances', path: '/finance/advances', icon: HandCoins, section: 'finance', group: 'banking', moduleKey: 'finance', keywords: ['prepayments', 'driver advance', 'customer advance'] },
   // Finance — Accounting
@@ -213,6 +215,7 @@ export const NAV_ACTIONS: NavAction[] = [
   { id: 'new-bill', label: 'New bill', path: '/finance/bills/new', icon: CreditCard, section: 'finance', moduleKey: 'finance' },
   { id: 'new-journal-entry', label: 'New journal entry', path: '/finance/journal-entries/new', icon: BookOpen, section: 'finance', moduleKey: 'finance' },
   { id: 'new-advance', label: 'New advance', path: '/finance/advances/new', icon: HandCoins, section: 'finance', moduleKey: 'finance' },
+  { id: 'new-contra', label: 'New contra entry', path: '/finance/contra?new=1', icon: ArrowLeftRight, section: 'finance', moduleKey: 'finance' },
   { id: 'new-bank-account', label: 'New bank account', path: '/finance/bank-accounts/new', icon: Landmark, section: 'finance', moduleKey: 'finance' },
   { id: 'new-location', label: 'New location', path: '/locations/create', icon: MapPin, section: 'settings', moduleKey: 'locations', permissionKey: 'settings.view' },
 ];

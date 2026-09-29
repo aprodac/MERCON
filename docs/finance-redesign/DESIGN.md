@@ -313,6 +313,88 @@ DocStatusBar  Draft ✓ — Issued ✓ — Partially paid ● — Paid
 - Sticky footer bar (white, top border): totals summary on the left, `[Cancel] [Save draft] [Save & issue]` on the right.
 - Journal entry create: live **Balanced / Out of balance by X** indicator in the footer (green/orange pill); Post disabled until balanced.
 
+### 4.3b Invoice editor (built 2026-09-29) — reference for Bill and Journal Entry editors
+
+Files: `pages/finance/InvoiceCreatePage.tsx`, `components/finance/invoices/editor/*`
+(`CustomerPicker`, `InvoiceLinesTable`, `TripPickerSheet`, `InvoiceEditorRail`), model in
+`lib/finance/invoiceDraft.ts` (mirrors the server's `invoiceMath.ts`; tested), trip readers in `lib/finance/tripBilling.ts`.
+
+```
+Toolbar: [Draft] New invoice · Customer · Unsaved changes        Cancel · Save as draft · [Save and issue]
+┌ Document card ───────────────────────────────────────────┐  ┌ Rail (one card, divided) ─┐
+│ Customer ▾ | Invoice date | Terms | Due date | Default VAT│  │ Invoice total + due       │
+│ # | Item | Qty | Rate | Disc % | VAT | Amount | ×   (scroll)│  │ gross · discount · VAT by │
+│ [Add trips (n)] [Add charge ▾]     Add the other n trips   │  │ rate · total              │
+│ Notes to the customer | Terms and conditions               │  │ Customer position         │
+└────────────────────────────────────────────────────────────┘  │ Posts when issued (Dr/Cr) │
+                                                                  │ Checks                    │
+                                                                  └───────────────────────────┘
+```
+
+- One document card, not a card per section; only the line grid scrolls (viewport-fit).
+- Cells read as text until hovered/focused (spreadsheet feel). Trip lines: rate fixed by the trip's billing amount.
+- Per-line discount % and VAT (`null` = follow the invoice default); sent as `tripOptions` for trips, per line for charges.
+- Empty state offers "Add all n" ready-to-bill trips; the picker sheet greys out trips with no billing amount.
+- "Save and issue" confirms with the Dr/Cr it will post (principle 4). Ctrl+S saves, Ctrl+Enter issues.
+
+### 4.3c Expenses (built 2026-09-29)
+
+Files: `pages/expenses/ExpenseListPage.tsx`, `components/expenses/{ExpenseInsights,ExpenseQuickView,ExpenseFormSheet}.tsx`,
+`lib/expenses/expenseMeta.ts` (category tones, helpers; tested). API: `GET /expenses/summary` (same filters as the list;
+maths in `backend/api-server/src/utils/expenseSummary.ts`, tested).
+
+- Toolbar: status tabs (All / To pay / Paid, with counts) · `PeriodControl` (default year to date, "Any date" allowed) · Export · New expense.
+- One insights card, three columns: spend + monthly bars (click a bar = that month) + change vs the previous equal period
+  (up is shown as bad); still to pay (click = To pay tab) + trucks / drivers / overhead split (click = filter); top categories (click = filter).
+- Table: month header rows with the month's filtered total, category chip with a colour dot (token tones from `CATEGORY_TONE`),
+  charged-to column, To pay / Paid chips, row menu (mark as paid, edit, duplicate, delete). Selection turns the card toolbar into a bulk bar.
+- Row click opens the quick view. New / edit / duplicate open a full page (`pages/expenses/ExpenseEditorPage.tsx`,
+  form model in `lib/expenses/expenseForm.ts`): a daily-use form, so it is dense: one card, 4-column grid, every choice a
+  dropdown, labels only (no descriptions; explanations live in a Help popover), fits one screen without scrolling.
+  A small rail shows a live summary, where the cost counts, checks and a possible-duplicate warning
+  (same amount + category or payee within 3 days). Filters, period, sort and page live in the URL.
+
+#### What an expense is charged to (owner-approved 2026-09-29)
+
+Trip → Truck → Driver → Company. A trip brings its truck and driver (copied onto the expense); a truck's costs count in
+its P&L; a driver link records who it was for; none of them means company overhead. Rules live in
+`@mercon/shared-types` (`EXPENSE_CATEGORY_RULES`, `expenseLinkProblem`) and are enforced by the API and the form.
+
+| Category | Can be charged to |
+|---|---|
+| Fuel | Trip or truck (required once paid) |
+| Toll & Parking | Trip, truck or company |
+| Vehicle Maintenance, Tyres | Truck (required once paid) |
+| Insurance | Truck or company; not a truck that has insurance as a recurring fixed cost |
+| Government Fees | Truck, driver or company; same fixed-cost check |
+| Salary | Driver or company (not the truck P&L: salaries accrue from the salary package) |
+| Rent, Utilities, Office Supplies | Company |
+| Other / custom | Anything |
+| Any, on a subcontracted trip | Not allowed (the subcontract bill carries its cost) |
+
+Salary advances are employee advances (Finance → Advances), not expenses. Trip margin on the trip page = billing − driver
+pay − the trip's expenses (`net_margin`).
+
+#### Expenses in the general ledger (owner-approved 2026-09-29)
+
+Engine: `backend/api-server/src/utils/expenseLedger.ts` (tested in `tests/expenseLedger.test.ts`). Entries carry
+`source_type` `Expense` (the cost) or `ExpensePayment` (paying a to-pay expense).
+
+| Expense | Entry |
+|---|---|
+| Paid | Dr category account / Cr "Paid from" (bank or cash), on the expense date |
+| To pay | Dr category account / Cr payables, on the expense date |
+| To pay, later paid | keeps the above, adds Dr payables / Cr "Paid from" on the bill-paid date |
+| Deleted, or put on a supplier bill | its entries are reversed (the bill posts it instead) |
+
+- Category account: `Settings.expenseAccountMap[category]`, else `Settings.defaultExpenseAccountId`. Posting is off until
+  the default is set. Admin sets both, and payables, in Expenses → **Ledger setup** (`ExpenseLedgerSetupSheet`).
+- Saving syncs: only entries that differ are voided and reposted. A problem (no paid-from, no open period, set-up
+  missing) never blocks the save; it shows as a toast, a "Not in ledger" marker, and the reason plus planned Dr/Cr lines
+  in the quick view with **Post now**.
+- Older expenses post only when an Admin clicks **Post them now** (optionally filling in a paid-from account where missing).
+- Form: **Paid from** next to Method, suggested from the method and remembered per method in this browser.
+
 ### 4.4 Report page (P&L, Balance Sheet, Trial Balance, Cash Flow, Ageing, General Ledger)
 
 ```

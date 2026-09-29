@@ -139,6 +139,10 @@ test('Real Phase 4 Finance Engine Integration Test Suite', async (t) => {
         currency: 'SAR',
       },
     });
+    // Transfers only move money between bank/cash accounts: account 2 is the petty cash
+    await prisma.bankAccount.create({
+      data: { accountId: bankGLAccount2.id, bank_name: 'Petty cash', is_cash: true, currency: 'SAR' },
+    });
 
     // Find or create Open Accounting Period
     const now = new Date();

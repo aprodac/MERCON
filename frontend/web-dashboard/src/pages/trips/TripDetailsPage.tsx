@@ -305,8 +305,11 @@ export default function TripDetailsPage() {
   const totalAmount = fin.totalCustomerBilling;
   const paidAmount = Number(tAny.paid_amount ?? 0);
   const balanceDue = Number(tAny.balance_due ?? (totalAmount - paidAmount));
-  const balanceMargin = fin.balanceMargin;
-  const marginPercent = `${fin.marginPercent.toFixed(1)}`;
+  // Fuel, tolls and other costs recorded against this trip in Expenses come off the margin
+  const tripExpensesTotal = Number(tAny.trip_expenses_total ?? 0);
+  const tripExpensesCount = Array.isArray(tAny.trip_expenses) ? tAny.trip_expenses.length : 0;
+  const balanceMargin = fin.balanceMargin - tripExpensesTotal;
+  const marginPercent = `${(totalAmountForMargin(fin.totalCustomerBilling, balanceMargin)).toFixed(1)}`;
 
   // Trip Type (pure derivation — preserves invariant 22 hook count across all renders)
   const tripType = deriveTripType(trip);
@@ -575,6 +578,8 @@ export default function TripDetailsPage() {
                 chargesCount: chargesList.length,
                 margin: balanceMargin,
                 marginPercent,
+                tripCosts: tripExpensesTotal,
+                tripCostsCount: tripExpensesCount,
                 paid: paidAmount,
                 balanceDue,
                 is3PL,
@@ -583,6 +588,8 @@ export default function TripDetailsPage() {
                 quotationName: (trip as any).quotation?.name || (trip as any).rateCard?.name || tAny.quotation_name || null,
               }}
                 onCharges={() => setIsLaborModalOpen(true)}
+                onTripCosts={() => navigate(tripExpensesCount > 0 ? `/expenses?trip=${trip.id}&preset=any` : `/expenses/new?trip=${trip.id}&back=${encodeURIComponent(`/trips/${trip.id}`)}`)}
+                addTripCostHref={is3PL ? undefined : `/expenses/new?trip=${trip.id}&back=${encodeURIComponent(`/trips/${trip.id}`)}`}
               />
             </div>
           </div>
@@ -1036,4 +1043,9 @@ function StopProgress({ stops, phase, names }: { stops: any[]; phase: 'planned' 
       <span className="shrink-0 text-xs text-muted-foreground">{caption}</span>
     </div>
   );
+}
+
+/** Margin as a percent of billing (0 without billing). */
+function totalAmountForMargin(billing: number, margin: number): number {
+  return billing > 0 ? (margin / billing) * 100 : 0;
 }

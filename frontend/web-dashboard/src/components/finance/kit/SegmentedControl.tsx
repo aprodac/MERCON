@@ -32,7 +32,7 @@ export function SegmentedControl<T extends string>({
         <ToggleGroupItem
           key={o.value}
           value={o.value}
-          className="h-7 rounded-md px-2.5 text-xs font-medium data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-xs"
+          className="h-7 whitespace-nowrap rounded-md px-2.5 text-xs font-medium text-muted-foreground data-pressed:bg-background data-pressed:text-foreground data-pressed:shadow-xs dark:data-pressed:bg-background dark:data-pressed:text-foreground"
         >
           {o.label}
         </ToggleGroupItem>
