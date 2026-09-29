@@ -272,7 +272,7 @@ export default function TripsScreen() {
 
 // ── Pieces ─────────────────────────────────────────────────────────────────────
 
-const Gap = () => <View style={{ height: 10 }} />;
+const Gap = () => <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: '#E4E4E7' }} />;
 const Loading = () => <ActivityIndicator color={Colors.primary} style={{ marginVertical: 30 }} />;
 
 function Empty({ icon: Icon, title, text, good }: { icon: LucideIcon; title: string; text: string; good?: boolean }) {
