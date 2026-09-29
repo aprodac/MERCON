@@ -4,6 +4,7 @@ import { getFleetLiveMap, getFleetLiveRoute, getFleetLiveTripMedia, getFleetLive
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
+import { storeInlineImages } from '../middlewares/inlineImages';
 import { getFleetFinancials, getVehicleFinancials, getCostSetup, createVehicleFixedCost, updateVehicleFixedCost, deleteVehicleFixedCost } from '../controllers/vehicleCostController';
 import { createVehicleBody, updateVehicleBody, listQuery, idParam, bulkImportVehiclesBody, vehicleFixedCostBody, updateVehicleFixedCostBody, nestedIdParams } from '../schemas';
 
@@ -24,7 +25,7 @@ router.get('/live-map/route', getFleetLiveRoute);
 router.get('/live-map/trips/:id/media', validate({ params: idParam }), getFleetLiveTripMedia);
 router.get('/live-map/trips/:id/overview', validate({ params: idParam }), getFleetLiveTripOverview);
 router.get('/', validate({ query: listQuery }), getVehicles);
-router.post('/', validate({ body: createVehicleBody }), createVehicle);
+router.post('/', validate({ body: createVehicleBody }), storeInlineImages('image_url'), createVehicle);
 // Must be registered before `/:id` so the literal path isn't captured as an id.
 router.get('/financials/fleet', getFleetFinancials);
 router.get('/financials/cost-setup', getCostSetup);
@@ -34,8 +35,8 @@ router.patch('/:id/fixed-costs/:itemId', validate({ params: nestedIdParams, body
 router.delete('/:id/fixed-costs/:itemId', validate({ params: nestedIdParams }), deleteVehicleFixedCost);
 router.get('/:id', validate({ params: idParam }), getVehicleById);
 router.get('/:id/usage', validate({ params: idParam }), getVehicleUsage);
-router.patch('/:id', validate({ params: idParam, body: updateVehicleBody }), updateVehicle);
-router.put('/:id', validate({ params: idParam, body: updateVehicleBody }), updateVehicle);
+router.patch('/:id', validate({ params: idParam, body: updateVehicleBody }), storeInlineImages('image_url'), updateVehicle);
+router.put('/:id', validate({ params: idParam, body: updateVehicleBody }), storeInlineImages('image_url'), updateVehicle);
 router.delete('/:id', validate({ params: idParam }), deleteVehicle);
 
 export default router;
