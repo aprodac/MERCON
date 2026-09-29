@@ -373,7 +373,27 @@ its P&L; a driver link records who it was for; none of them means company overhe
 | Any, on a subcontracted trip | Not allowed (the subcontract bill carries its cost) |
 
 Salary advances are employee advances (Finance → Advances), not expenses. Trip margin on the trip page = billing − driver
-pay − the trip's expenses (`net_margin`). Next: paid expenses post to the general ledger.
+pay − the trip's expenses (`net_margin`).
+
+#### Expenses in the general ledger (owner-approved 2026-09-29)
+
+Engine: `backend/api-server/src/utils/expenseLedger.ts` (tested in `tests/expenseLedger.test.ts`). Entries carry
+`source_type` `Expense` (the cost) or `ExpensePayment` (paying a to-pay expense).
+
+| Expense | Entry |
+|---|---|
+| Paid | Dr category account / Cr "Paid from" (bank or cash), on the expense date |
+| To pay | Dr category account / Cr payables, on the expense date |
+| To pay, later paid | keeps the above, adds Dr payables / Cr "Paid from" on the bill-paid date |
+| Deleted, or put on a supplier bill | its entries are reversed (the bill posts it instead) |
+
+- Category account: `Settings.expenseAccountMap[category]`, else `Settings.defaultExpenseAccountId`. Posting is off until
+  the default is set. Admin sets both, and payables, in Expenses → **Ledger setup** (`ExpenseLedgerSetupSheet`).
+- Saving syncs: only entries that differ are voided and reposted. A problem (no paid-from, no open period, set-up
+  missing) never blocks the save; it shows as a toast, a "Not in ledger" marker, and the reason plus planned Dr/Cr lines
+  in the quick view with **Post now**.
+- Older expenses post only when an Admin clicks **Post them now** (optionally filling in a paid-from account where missing).
+- Form: **Paid from** next to Method, suggested from the method and remembered per method in this browser.
 
 ### 4.4 Report page (P&L, Balance Sheet, Trial Balance, Cash Flow, Ageing, General Ledger)
 

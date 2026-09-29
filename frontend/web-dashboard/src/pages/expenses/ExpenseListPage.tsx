@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, ChevronLeft, ChevronRight, Copy, Download, MoreHorizontal, Pencil, Plus, Route, Search, Trash2, Truck, User, X } from 'lucide-react';
+import { financeService } from '@/services/financeService';
+import { lastPayFrom, payFromOptions, suggestPayFrom } from '@/lib/expenses/expenseForm';
+import { BookOpenCheck, CheckCircle2, ChevronLeft, ChevronRight, Copy, Download, MoreHorizontal, Pencil, Plus, Route, Search, Trash2, Truck, User, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS } from '@mercon/shared-types';
 
@@ -21,6 +23,8 @@ import { SegmentedControl } from '@/components/finance/kit/SegmentedControl';
 import { TONE_CLASSES } from '@/components/finance/kit/tones';
 import { ExpenseInsights } from '@/components/expenses/ExpenseInsights';
 import { ExpenseQuickView } from '@/components/expenses/ExpenseQuickView';
+import { ExpenseLedgerSetupSheet } from '@/components/expenses/ExpenseLedgerSetupSheet';
+import { authStore } from '@/store/authStore';
 import { expenseService, type Expense, type ExpenseFilters, type ExpenseLink, type ExpenseSort } from '@/services/expenseService';
 import { resolvePeriodPreset, type PeriodPreset } from '@/lib/finance/pnlPeriodHelpers';
 import { formatDate, formatMoney } from '@/lib/finance/format';
@@ -169,6 +173,12 @@ export default function ExpenseListPage() {
   }, [viewId]);
   const [toDelete, setToDelete] = useState<Expense[] | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const role = authStore.getUser()?.role as string | undefined;
+  const isAdmin = role === 'Admin' || role === 'SuperAdmin';
+  // Whether expenses post to the ledger, and how many aren't there yet
+  const ledgerSetup = useQuery({ queryKey: ['expenses', 'ledger-setup'], queryFn: expenseService.getLedgerSetup, staleTime: 60_000 });
+  const ledgerOn = Boolean(ledgerSetup.data?.enabled);
 
   const allFiltered = useQuery({
     queryKey: ['expenses', 'export', filters, sort],
@@ -178,18 +188,34 @@ export default function ExpenseListPage() {
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['expenses'] });
 
+  const { data: bankRes } = useQuery({ queryKey: ['bank-accounts'], queryFn: () => financeService.getBankAccounts() });
+  const payFrom = useMemo(() => payFromOptions((bankRes?.data ?? []) as any[]), [bankRes]);
   const markPaid = useMutation({
     mutationFn: async (items: Expense[]) => {
-      const results = await Promise.allSettled(items.map((e) => expenseService.update(e.id, { status: 'Paid', bill_paid_date: e.bill_paid_date?.slice(0, 10) || todayIso() })));
+      // Paid from the account last used for the method (as the form suggests); the toast names it.
+      const remembered = lastPayFrom();
+      const results = await Promise.allSettled(
+        items.map((e) =>
+          expenseService.update(e.id, {
+            status: 'Paid',
+            bill_paid_date: e.bill_paid_date?.slice(0, 10) || todayIso(),
+            payment_account_id: e.paymentAccountId || suggestPayFrom(e.payment_method ?? '', payFrom, remembered) || null,
+          }),
+        ),
+      );
+      const saved = results.flatMap((r) => (r.status === 'fulfilled' ? [r.value] : []));
+      const account = payFrom.find((a) => a.accountId === saved[0]?.paymentAccountId)?.name;
+      const ledgerProblem = saved.find((x) => x.ledger?.problem)?.ledger?.problem ?? null;
       const failed = results
         .map((r, i) => (r.status === 'rejected' ? { e: items[i], msg: (r.reason as any)?.response?.data?.error?.message as string | undefined } : null))
         .filter((x): x is { e: Expense; msg: string | undefined } => x !== null);
-      return { done: items.length - failed.length, failed };
+      return { done: items.length - failed.length, failed, account, ledgerProblem };
     },
-    onSuccess: ({ done, failed }) => {
+    onSuccess: ({ done, failed, account, ledgerProblem }) => {
       refresh();
       setSelected(new Set());
-      if (done > 0) toast.success(`${done} ${done === 1 ? 'expense' : 'expenses'} marked as paid`);
+      if (done > 0) toast.success(`${done} ${done === 1 ? 'expense' : 'expenses'} marked as paid${account ? ` from ${account}` : ''}`);
+      if (ledgerProblem) toast.warning(`Not in the ledger: ${ledgerProblem}`);
       if (failed.length > 0) {
         const first = failed[0];
         toast.error(`${expenseRef(first.e)}: ${first.msg ?? 'could not be marked as paid'}${failed.length > 1 ? ` (and ${failed.length - 1} more)` : ''}`, {
@@ -260,6 +286,11 @@ export default function ExpenseListPage() {
             }
           />
           <div className="ml-auto flex items-center gap-2">
+            {isAdmin && (
+              <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-xs text-muted-foreground" onClick={() => setSetupOpen(true)} title="Which accounts expenses post to">
+                <BookOpenCheck className="size-3.5" /> Ledger setup
+              </Button>
+            )}
             <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setExportOpen(true)}>
               <Download className="size-3.5" /> Export
             </Button>
@@ -268,6 +299,19 @@ export default function ExpenseListPage() {
             </Button>
           </div>
         </div>
+
+        {isAdmin && ledgerSetup.data && (!ledgerOn || ledgerSetup.data.unposted_count > 0) && (
+          <div className={cn('flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2 text-xs', TONE_CLASSES.warning.bg, TONE_CLASSES.warning.border, TONE_CLASSES.warning.fg)}>
+            <span>
+              {!ledgerOn
+                ? "Expenses don't post to the general ledger yet, so the finance reports leave them out."
+                : `${ledgerSetup.data.unposted_count} ${ledgerSetup.data.unposted_count === 1 ? 'expense is' : 'expenses are'} not in the general ledger.`}
+            </span>
+            <Button size="sm" variant="outline" className="h-7 bg-background text-xs" onClick={() => setSetupOpen(true)}>
+              {!ledgerOn ? 'Set up accounts' : 'Review and post'}
+            </Button>
+          </div>
+        )}
 
         <ExpenseInsights
           summary={shownSummary}
@@ -533,6 +577,11 @@ export default function ExpenseListPage() {
                         <Chip tone={pending ? 'warning' : 'positive'} size="sm">
                           {pending ? 'To pay' : 'Paid'}
                         </Chip>
+                        {ledgerOn && !r.ledger_posted && (
+                          <span className="mt-0.5 block text-[10px] text-muted-foreground" title="No entry in the general ledger yet; open it to see why">
+                            Not in ledger
+                          </span>
+                        )}
                       </td>
                       <td className={cn(td, 'fin-num whitespace-nowrap text-right font-semibold text-foreground')}>{formatMoney(r.amount)}</td>
                       <td className={cn(td, 'pr-2')} onClick={(e) => e.stopPropagation()}>
@@ -569,6 +618,12 @@ export default function ExpenseListPage() {
           </table>
         </ScrollTableCard>
       </div>
+
+      <ExpenseLedgerSetupSheet
+        open={setupOpen}
+        onOpenChange={setSetupOpen}
+        extraCategories={(summary.data?.by_category ?? []).map((c) => c.category).filter((c) => !(EXPENSE_CATEGORIES as readonly string[]).includes(c))}
+      />
 
       <ExpenseQuickView
         expense={viewing}

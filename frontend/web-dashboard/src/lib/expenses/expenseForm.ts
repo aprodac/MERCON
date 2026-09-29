@@ -16,6 +16,8 @@ export interface ExpenseForm {
   expense_date: string;
   payee: string;
   payment_method: string;
+  /** Bank or cash GL account a paid expense came out of. */
+  payment_account_id: string;
   trip_id: string;
   vehicle_id: string;
   driver_id: string;
@@ -42,6 +44,7 @@ export const emptyExpenseForm = (): ExpenseForm => ({
   expense_date: todayIso(),
   payee: '',
   payment_method: 'Bank Transfer',
+  payment_account_id: '',
   trip_id: '',
   vehicle_id: '',
   driver_id: '',
@@ -61,6 +64,7 @@ export function expenseFormFrom(e: Expense, duplicate: boolean): ExpenseForm {
     expense_date: duplicate ? todayIso() : dateOnly(e.expense_date) || todayIso(),
     payee: e.payee ?? '',
     payment_method: e.payment_method ?? '',
+    payment_account_id: e.paymentAccountId ?? '',
     // A trip is billed once; a duplicate keeps the truck but not the trip
     trip_id: duplicate ? '' : e.tripId ?? '',
     vehicle_id: e.vehicleId ?? '',
@@ -124,4 +128,54 @@ export function likelyDuplicates(f: ExpenseForm, recorded: Expense[], windowDays
       return Math.abs(d - when) <= windowDays * DAY;
     })
     .slice(0, 3);
+}
+
+/** A bank or cash account the form can offer as "paid from". */
+export interface PayFromAccount {
+  accountId: string;
+  is_cash: boolean;
+}
+
+/** A bank or cash account an expense can be paid from, as the pickers show it. */
+export interface PayFromOption extends PayFromAccount {
+  name: string;
+  code: string;
+}
+
+/** The active bank and cash accounts from `GET /finance/bank-accounts`. */
+export function payFromOptions(rows: any[]): PayFromOption[] {
+  return rows
+    .filter((b) => !b.deletedAt && b.isActive !== false)
+    .map((b) => ({ accountId: b.accountId as string, is_cash: Boolean(b.is_cash), name: (b.account?.name ?? b.bank_name ?? 'Account') as string, code: (b.account?.account_code ?? '') as string }));
+}
+
+const PAY_FROM_KEY = 'mercon.expense.payFrom';
+
+/** The "paid from" account last used per payment method, remembered in this browser. */
+export function lastPayFrom(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(PAY_FROM_KEY) || '{}');
+  } catch {
+    return {}; // private mode: no memory
+  }
+}
+
+export function rememberPayFrom(method: string, accountId: string) {
+  try {
+    localStorage.setItem(PAY_FROM_KEY, JSON.stringify({ ...lastPayFrom(), [method]: accountId }));
+  } catch {
+    /* private mode */
+  }
+}
+
+/**
+ * The "paid from" account to suggest: the last one used for this method, else cash for cash
+ * payments and the first bank account for the rest.
+ */
+export function suggestPayFrom(method: string, accounts: PayFromAccount[], lastUsed: Record<string, string>): string {
+  if (accounts.length === 0) return '';
+  const remembered = lastUsed[method];
+  if (remembered && accounts.some((a) => a.accountId === remembered)) return remembered;
+  const wantCash = method === 'Cash';
+  return (accounts.find((a) => a.is_cash === wantCash) ?? accounts[0]).accountId;
 }

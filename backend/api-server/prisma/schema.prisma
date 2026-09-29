@@ -1069,6 +1069,12 @@ model Expense {
   tripId    String?  @db.Uuid
   trip      Trip?    @relation(fields: [tripId], references: [id], onDelete: SetNull)
 
+  // The bank or cash GL account a paid expense came out of (credited when it
+  // posts to the ledger). The postings themselves are JournalEntry rows with
+  // source_type 'Expense' / source_id = this id.
+  paymentAccountId String?  @db.Uuid
+  paymentAccount   Account? @relation("ExpensePaymentAccount", fields: [paymentAccountId], references: [id], onDelete: SetNull)
+
   payee          String?
   amount         Decimal  @db.Decimal(12, 2)
   currency       String   @default("SAR")
@@ -1338,6 +1344,7 @@ model Account {
   invoicePayments InvoicePayment[]
   billPayments BillPayment[]
   billLines BillLine[]
+  expensesPaidFrom Expense[] @relation("ExpensePaymentAccount")
   bankAccount BankAccount?
   advances Advance[]
   accountClosingBalances AccountClosingBalance[]
@@ -1872,6 +1879,10 @@ model Settings {
   defaultRetainedEarningsAccountId String? @db.Uuid
   // Liability account that invoice VAT is credited to (output VAT payable)
   defaultVatOutputAccountId String? @db.Uuid
+  // Expenses: which expense account each category posts to ({ "Fuel": "<account id>", … }),
+  // and the account for categories not in the map. Without a default, expenses don't post.
+  expenseAccountMap         Json?
+  defaultExpenseAccountId   String? @db.Uuid
 
   // Invoice numbering: "INV-0001", or "INV-2026-0001" with the yearly option
   invoicePrefix        String  @default("INV")

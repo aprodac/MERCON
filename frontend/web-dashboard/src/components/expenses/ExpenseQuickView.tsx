@@ -1,12 +1,14 @@
 import type { ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Copy, Pencil, Route, Trash2, Truck, User } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BookOpenCheck, CheckCircle2, Copy, Pencil, Route, Trash2, Truck, User } from 'lucide-react';
 
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/ui/chip';
 import { TONE_CLASSES } from '@/components/finance/kit/tones';
-import type { Expense } from '@/services/expenseService';
+import { expenseService, type Expense } from '@/services/expenseService';
 import { categoryTone, driverName, expenseRef } from '@/lib/expenses/expenseMeta';
 import { formatDate, formatMoney } from '@/lib/finance/format';
 import { cn } from '@/lib/utils';
@@ -39,6 +41,23 @@ export function ExpenseQuickView({
   markingPaid: boolean;
 }) {
   const e = expense;
+  const queryClient = useQueryClient();
+  const ledger = useQuery({ queryKey: ['expenses', 'ledger', e?.id, e?.updatedAt], queryFn: () => expenseService.getLedger(e!.id), enabled: Boolean(e) });
+  const postNow = async () => {
+    if (!e) return;
+    try {
+      const r = await expenseService.postLedger(e.id);
+      if (r.problem) toast.error(r.problem);
+      else toast.success('Posted to the ledger');
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'Could not post.');
+    }
+  };
+  const accountName = (id: string) => {
+    const a = ledger.data?.accounts.find((x) => x.id === id);
+    return a ? `${a.account_code} ${a.name}` : 'Account';
+  };
   const tone = TONE_CLASSES[categoryTone(e?.category)];
   const pending = e?.status === 'Pending';
   const driver = e ? driverName(e) : null;
@@ -123,6 +142,47 @@ export function ExpenseQuickView({
                     </span>
                     <ArrowRight className="size-3.5 text-muted-foreground" />
                   </Link>
+                )}
+              </section>
+
+              <section className="space-y-2">
+                <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">General ledger</h3>
+                {ledger.isLoading && <p className="text-xs text-muted-foreground">Checking…</p>}
+                {ledger.data?.viaBill && <p className="text-sm text-foreground">Posted through supplier bill {ledger.data.viaBill}.</p>}
+                {ledger.data && !ledger.data.viaBill && (
+                  <>
+                    {ledger.data.entries.map((j) => (
+                      <Link key={j.id} to={`/finance/journal-entries/${j.id}`} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm hover:bg-muted/40">
+                        <span className="flex items-center gap-2">
+                          <BookOpenCheck className={cn('size-4', TONE_CLASSES.positive.fg)} /> {j.ref_id ?? 'Journal entry'}
+                          <span className="text-[11px] text-muted-foreground">{j.source === 'ExpensePayment' ? 'payment' : 'cost'} · {formatDate(j.day)}</span>
+                        </span>
+                        <span className="fin-num text-xs">{formatMoney(j.amount)}</span>
+                      </Link>
+                    ))}
+                    {ledger.data.problem ? (
+                      <div className={cn('space-y-2 rounded-lg border p-3 text-xs', TONE_CLASSES.warning.bg, TONE_CLASSES.warning.border, TONE_CLASSES.warning.fg)}>
+                        <p className="flex items-start gap-1.5">
+                          <AlertTriangle className="mt-px size-3.5 shrink-0" /> {ledger.data.problem}
+                        </p>
+                        {ledger.data.planned.length > 0 && (
+                          <ul className="space-y-0.5 text-foreground">
+                            {ledger.data.planned.flatMap((p) => p.lines).map((l, i) => (
+                              <li key={i} className="flex justify-between gap-2">
+                                <span className="truncate">{l.debit > 0 ? 'Dr' : 'Cr'} {accountName(l.accountId)}</span>
+                                <span className="fin-num">{formatMoney(l.debit || l.credit)}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <Button size="sm" variant="outline" className="h-7 bg-background text-xs" onClick={postNow}>
+                          Post now
+                        </Button>
+                      </div>
+                    ) : (
+                      ledger.data.entries.length === 0 && <p className="text-sm text-muted-foreground">Nothing to post.</p>
+                    )}
+                  </>
                 )}
               </section>
 

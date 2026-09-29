@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EXPENSE_CATEGORIES, expenseLinkProblem } from '@mercon/shared-types';
 import type { Expense } from '@/services/expenseService';
-import { allowedLinks, emptyExpenseForm, expenseFormFrom, expenseFormProblems, fitLinksToCategory, likelyDuplicates } from './expenseForm';
+import { allowedLinks, emptyExpenseForm, expenseFormFrom, expenseFormProblems, fitLinksToCategory, likelyDuplicates, suggestPayFrom } from './expenseForm';
 
 const exp = (p: Partial<Expense>): Expense =>
   ({ id: 'e1', ref_id: 'EXP-001', category: 'Fuel', status: 'Paid', amount: 250, currency: 'SAR', expense_date: '2026-09-20T00:00:00.000Z', createdAt: '', updatedAt: '', ...p }) as Expense;
@@ -73,5 +73,19 @@ describe('expense form', () => {
     const f = { ...emptyExpenseForm(), category: 'Fuel', amount: '250', expense_date: '2026-09-20', payee: 'sasco ' };
     expect(likelyDuplicates(f, recorded).map((e) => e.id)).toEqual(['a', 'd']);
     expect(likelyDuplicates({ ...f, amount: '' }, recorded)).toEqual([]);
+  });
+});
+
+describe('paid from', () => {
+  const accounts = [
+    { accountId: 'bank1', is_cash: false },
+    { accountId: 'cash1', is_cash: true },
+  ];
+  it('suggests cash for cash payments, the bank otherwise, and remembers the last choice', () => {
+    expect(suggestPayFrom('Cash', accounts, {})).toBe('cash1');
+    expect(suggestPayFrom('Card', accounts, {})).toBe('bank1');
+    expect(suggestPayFrom('Card', accounts, { Card: 'cash1' })).toBe('cash1');
+    expect(suggestPayFrom('Card', accounts, { Card: 'gone' })).toBe('bank1');
+    expect(suggestPayFrom('Card', [], {})).toBe('');
   });
 });

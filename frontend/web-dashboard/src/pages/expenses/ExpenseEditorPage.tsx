@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, AlertTriangle, CheckCircle2, CircleHelp, Loader2, Route, Truck, User, Building2, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, BookOpenCheck, CheckCircle2, CircleHelp, Loader2, Route, Truck, User, Building2, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, expenseCategoryRule } from '@mercon/shared-types';
 
@@ -20,7 +20,8 @@ import { expenseService, type CreateExpensePayload, type Expense } from '@/servi
 import { vehicleService } from '@/services/vehicleService';
 import { driverService, type Driver } from '@/services/driverService';
 import { categoryTone, expenseRef, todayIso } from '@/lib/expenses/expenseMeta';
-import { allowedLinks, emptyExpenseForm, expenseFormFrom, expenseFormProblems, fitLinksToCategory, likelyDuplicates, type ExpenseForm } from '@/lib/expenses/expenseForm';
+import { allowedLinks, emptyExpenseForm, expenseFormFrom, expenseFormProblems, fitLinksToCategory, likelyDuplicates, suggestPayFrom, payFromOptions, lastPayFrom, rememberPayFrom, type ExpenseForm } from '@/lib/expenses/expenseForm';
+import { financeService } from '@/services/financeService';
 import { TripPicker } from '@/components/expenses/TripPicker';
 import { toPickedTrip, type PickedTrip } from '@/lib/expenses/pickedTrip';
 import { tripService } from '@/services/tripService';
@@ -80,6 +81,12 @@ export default function ExpenseEditorPage() {
   const { data: driversRes } = useQuery({ queryKey: ['drivers-select'], queryFn: () => driverService.getAll({ per_page: 500, mode: 'lookup' } as any) });
   // Recent expenses: payee suggestions, "last time" hints and the duplicate check
   const { data: recentRes } = useQuery({ queryKey: ['expenses', 'recent-for-editor'], queryFn: () => expenseService.getAll({ sort: 'date_desc', per_page: 300 }) });
+  const { data: bankRes } = useQuery({ queryKey: ['bank-accounts'], queryFn: () => financeService.getBankAccounts() });
+  const payFrom = useMemo(
+    () => payFromOptions((bankRes?.data ?? []) as any[]),
+    [bankRes],
+  );
+  const ledgerSetup = useQuery({ queryKey: ['expenses', 'ledger-setup'], queryFn: expenseService.getLedgerSetup, staleTime: 60_000 });
   const vehicles = (vehiclesRes?.data ?? []) as { id: string; plate_number: string; asset_type?: string }[];
   const drivers = (driversRes?.data ?? []) as Driver[];
   const recent = useMemo(() => (recentRes?.data ?? []).filter((e) => e.id !== editId), [recentRes, editId]);
@@ -91,6 +98,12 @@ export default function ExpenseEditorPage() {
   };
 
   const paid = form.status === 'Paid';
+  // Suggest where a paid expense came out of; the choice is remembered per payment method
+  useEffect(() => {
+    if (!paid || form.payment_account_id || payFrom.length === 0) return;
+    const pick = suggestPayFrom(form.payment_method, payFrom, lastPayFrom());
+    if (pick) setForm((f) => ({ ...f, payment_account_id: pick }));
+  }, [paid, form.payment_account_id, form.payment_method, payFrom]);
   const amount = Number(form.amount);
   const rule = expenseCategoryRule(form.category);
   const links = allowedLinks(form.category);
@@ -130,6 +143,7 @@ export default function ExpenseEditorPage() {
         payee: form.payee.trim() || undefined,
         payment_method: form.payment_method || undefined,
         trip_id: form.trip_id || null,
+        payment_account_id: paid ? form.payment_account_id || null : null,
         vehicle_id: form.trip_id ? null : form.vehicle_id || null,
         driver_id: form.trip_id ? null : form.driver_id || null,
         description: form.description.trim() || undefined,
@@ -140,7 +154,9 @@ export default function ExpenseEditorPage() {
         const saved = editing ? await expenseService.update(editId as string, payload) : await expenseService.create(payload);
         queryClient.invalidateQueries({ queryKey: ['expenses'] });
         setDirty(false);
-        toast.success(`${saved?.ref_id ?? 'Expense'} ${editing ? 'saved' : 'recorded'}`);
+        if (paid && form.payment_account_id && form.payment_method) rememberPayFrom(form.payment_method, form.payment_account_id);
+        if (saved?.ledger?.problem) toast.warning(`${saved.ref_id ?? 'Expense'} saved, but not in the ledger: ${saved.ledger.problem}`);
+        else toast.success(`${saved?.ref_id ?? 'Expense'} ${editing ? 'saved' : 'recorded'}${saved?.ledger?.entries?.length ? ' and posted' : ''}`);
         if (again) {
           // Keep the kind of expense for the next one
           // Same trip too: several costs of one trip are usually entered together
@@ -368,7 +384,7 @@ export default function ExpenseEditorPage() {
                 </div>
                 <div className="space-y-1">
                   <Label className={label}>Method</Label>
-                  <Select value={form.payment_method || NONE} onValueChange={(v) => v && set('payment_method', v === NONE ? '' : v)}>
+                  <Select value={form.payment_method || NONE} onValueChange={(v) => v && setForm((f) => ({ ...f, payment_method: v === NONE ? '' : v, payment_account_id: '' })) }>
                     <SelectTrigger className="h-9 text-sm" aria-label="Payment method">
                       <SelectValue />
                     </SelectTrigger>
@@ -381,8 +397,21 @@ export default function ExpenseEditorPage() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="exp-billed" className={label}>Bill date</Label>
-                  <Input id="exp-billed" type="date" value={form.bill_issued_date} onChange={(e) => set('bill_issued_date', e.target.value)} className="h-9 text-sm" />
+                  <Label className={label}>Paid from</Label>
+                  <Select value={paid ? form.payment_account_id || NONE : NONE} onValueChange={(v) => v && set('payment_account_id', v === NONE ? '' : v)} disabled={!paid}>
+                    <SelectTrigger className="h-9 text-sm" aria-label="Paid from">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE} className="text-xs text-muted-foreground">{paid ? (payFrom.length ? 'Not set' : 'No bank or cash accounts yet') : 'Not paid yet'}</SelectItem>
+                      {payFrom.map((a) => (
+                        <SelectItem key={a.accountId} value={a.accountId} className="text-xs">
+                          {a.name}
+                          <span className="text-muted-foreground"> · {a.is_cash ? 'cash' : 'bank'}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-1">
@@ -412,9 +441,13 @@ export default function ExpenseEditorPage() {
                   <Input id="exp-billpaid" type="date" value={form.bill_paid_date} onChange={(e) => set('bill_paid_date', e.target.value)} disabled={!paid} className="h-9 text-sm" />
                 </div>
 
-                <div className="col-span-2 space-y-1 md:col-span-4">
+                <div className="space-y-1">
+                  <Label htmlFor="exp-billed" className={label}>Bill date</Label>
+                  <Input id="exp-billed" type="date" value={form.bill_issued_date} onChange={(e) => set('bill_issued_date', e.target.value)} className="h-9 text-sm" />
+                </div>
+                <div className="col-span-2 space-y-1 md:col-span-3">
                   <Label htmlFor="exp-notes" className={label}>Notes</Label>
-                  <Textarea id="exp-notes" rows={2} value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="Optional" className="min-h-0 resize-none text-sm" />
+                  <Textarea id="exp-notes" rows={1} value={form.description} onChange={(e) => set('description', e.target.value)} placeholder="Optional" className="min-h-0 resize-none text-sm" />
                 </div>
 
                 {error && (
@@ -447,6 +480,18 @@ export default function ExpenseEditorPage() {
                 <p className="flex items-center gap-1.5 text-muted-foreground" title="Where this cost counts">
                   <WhereIcon className="size-3.5" /> {where}
                 </p>
+                {ledgerSetup.data && (
+                  <p className="flex items-center gap-1.5 text-muted-foreground" title="General ledger">
+                    <BookOpenCheck className="size-3.5" />
+                    {!ledgerSetup.data.enabled
+                      ? 'Ledger posting is off'
+                      : paid
+                        ? form.payment_account_id
+                          ? `Posts to the ledger: paid from ${payFrom.find((a) => a.accountId === form.payment_account_id)?.name ?? 'the chosen account'}`
+                          : 'Choose Paid from to post it to the ledger'
+                        : 'Posts to payables until paid'}
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5 p-4">
                 {form.category === 'Salary Advance' && (

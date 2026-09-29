@@ -12,6 +12,12 @@ export interface Expense {
   vehicleId?: string | null;
   /** A cost of one trip; its truck and driver are copied onto vehicleId / driverId. */
   tripId?: string | null;
+  /** Bank or cash GL account a paid expense came out of. */
+  paymentAccountId?: string | null;
+  /** It has a posted ledger entry (list, create and update responses). */
+  ledger_posted?: boolean;
+  /** Returned by create / update: what happened in the ledger. */
+  ledger?: ExpenseLedgerResult;
   payee?: string | null;
   amount: number;
   currency: string;
@@ -54,6 +60,7 @@ export interface CreateExpensePayload {
   driver_id?: string | null;
   vehicle_id?: string | null;
   trip_id?: string | null;
+  payment_account_id?: string | null;
   payee?: string;
   amount: number;
   currency?: string;
@@ -101,6 +108,43 @@ export interface ExpenseSummary {
   previous_total: number | null;
 }
 
+export interface ExpenseLedgerEntry {
+  id: string;
+  ref_id: string | null;
+  /** 'Expense' (the cost) or 'ExpensePayment' (paying a to-pay expense). */
+  source: string;
+  day: string;
+  amount: number;
+}
+
+export interface ExpenseLedgerResult {
+  entries: ExpenseLedgerEntry[];
+  /** Why it isn't (fully) in the ledger. */
+  problem: string | null;
+  /** Posted through this supplier bill instead. */
+  viaBill: string | null;
+}
+
+export interface ExpenseLedgerStatus extends ExpenseLedgerResult {
+  planned: { source: string; day: string; memo: string; lines: { accountId: string; debit: number; credit: number; description: string }[] }[];
+  accounts: { id: string; account_code: string; name: string }[];
+}
+
+export interface ExpenseLedgerSetup {
+  enabled: boolean;
+  default_expense_account_id: string | null;
+  category_accounts: Record<string, string>;
+  payable_account_id: string | null;
+  unposted_count: number;
+}
+
+export interface PostUnpostedResult {
+  considered: number;
+  posted: number;
+  remaining: number;
+  problems: { message: string; count: number; example: string }[];
+}
+
 export interface ExpenseKpis {
   total_amount: number;
   paid_amount: number;
@@ -138,12 +182,39 @@ export const expenseService = {
   },
 
   async create(payload: CreateExpensePayload): Promise<Expense> {
-    const res = await api.post<ApiResponse<Expense>>('/expenses', payload);
-    return res.data.data;
+    const res = await api.post<ApiResponse<Expense> & { ledger?: ExpenseLedgerResult }>('/expenses', payload);
+    return { ...res.data.data, ledger: res.data.ledger };
   },
 
   async update(id: string, payload: UpdateExpensePayload): Promise<Expense> {
-    const res = await api.patch<ApiResponse<Expense>>(`/expenses/${id}`, payload);
+    const res = await api.patch<ApiResponse<Expense> & { ledger?: ExpenseLedgerResult }>(`/expenses/${id}`, payload);
+    return { ...res.data.data, ledger: res.data.ledger };
+  },
+
+  async getLedger(id: string): Promise<ExpenseLedgerStatus> {
+    const res = await api.get<ApiResponse<ExpenseLedgerStatus>>(`/expenses/${id}/ledger`);
+    return res.data.data;
+  },
+
+  /** Post or repost now. */
+  async postLedger(id: string): Promise<ExpenseLedgerResult> {
+    const res = await api.post<ApiResponse<ExpenseLedgerResult>>(`/expenses/${id}/ledger`);
+    return res.data.data;
+  },
+
+  async getLedgerSetup(): Promise<ExpenseLedgerSetup> {
+    const res = await api.get<ApiResponse<ExpenseLedgerSetup>>('/expenses/ledger/setup');
+    return res.data.data;
+  },
+
+  async updateLedgerSetup(body: { default_expense_account_id: string | null; category_accounts: Record<string, string>; payable_account_id?: string | null }): Promise<void> {
+    await api.put('/expenses/ledger/setup', body);
+  },
+
+  /** Post expenses (matching the filters) that aren't in the ledger yet; up to 500 per call. */
+  /** `fallback_payment_account_id` fills in "paid from" on paid expenses saved without one. */
+  async postUnposted(filters: Omit<ExpenseFilters, 'page' | 'per_page' | 'sort'> & { fallback_payment_account_id?: string } = {}): Promise<PostUnpostedResult> {
+    const res = await api.post<ApiResponse<PostUnpostedResult>>('/expenses/ledger/post-unposted', filters);
     return res.data.data;
   },
 
