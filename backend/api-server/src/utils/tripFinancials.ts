@@ -211,6 +211,19 @@ export function computeTripBalance(
   return totalAmt - driverCost;
 }
 
+/**
+ * What each driver on an own-fleet trip is owed: the driver gets their payout (× operating days)
+ * plus any extra allowance, the co-driver theirs. Adds up to totalDriverPayout. Third-party trips
+ * owe the subcontractor, not a driver: both are 0.
+ */
+export function tripPayShares(trip: BackendTripFinancialInputs): { driver: number; coDriver: number } {
+  if (trip.is_third_party) return { driver: 0, coDriver: 0 };
+  const fin = calculateBackendTripFinancials(trip);
+  const days = asNumber(trip.selected_operating_days) > 0 ? asNumber(trip.selected_operating_days) : 1;
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  return { driver: r2(fin.primaryDriverPayout * days + fin.extraDriverPayment), coDriver: r2(fin.coDriverPayout * days) };
+}
+
 /** Comprehensive financial calculation for trip controllers and reports. */
 export function calculateBackendTripFinancials(trip: BackendTripFinancialInputs): ComputedBackendFinancials {
   const pb = String(trip.pricing_basis || trip.quotation?.pricing_basis || '').toUpperCase();

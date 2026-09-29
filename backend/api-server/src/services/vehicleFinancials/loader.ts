@@ -43,7 +43,7 @@ export interface FinancialsQuery {
   to?: string;
 }
 
-interface Range {
+export interface Range {
   tz: string;
   /** Requested bounds; undefined = open ("all time"). */
   from?: string;
@@ -71,7 +71,7 @@ function toDay(value: string | undefined, tz: string): string | undefined {
   return Number.isNaN(d.getTime()) ? undefined : localDay(d, tz);
 }
 
-async function resolveRange(db: Db, q: FinancialsQuery): Promise<Range> {
+export async function resolveRange(db: Db, q: FinancialsQuery): Promise<Range> {
   const tz = await companyTimezone(db);
   return { tz, from: toDay(q.from, tz), to: toDay(q.to, tz), today: localDay(new Date(), tz) };
 }
@@ -89,7 +89,7 @@ function instantFilter(r: Range): Prisma.DateTimeFilter | undefined {
  * A trip is dated by when it finished (else started, else was created) — the
  * same date its revenue is shown under — not by when it was booked.
  */
-function tripDateWhere(r: Range): Prisma.TripWhereInput {
+export function tripDateWhere(r: Range): Prisma.TripWhereInput {
   const f = instantFilter(r);
   if (!f) return {};
   return {

@@ -5,7 +5,7 @@ import {
   FolderTree, CalendarCheck, BarChart3, FileBarChart, Coins, TrendingUp, FileSpreadsheet,
   SlidersHorizontal, Files, GraduationCap, Bell, Settings, Palette, UserCog, ShieldCheck,
   Map as MapIcon, MapPin, Layers, Tags, FileType, Trash2, ScrollText, AlertTriangle, Activity, FolderArchive, FileCheck2,
-  ArrowLeftRight,
+  ArrowLeftRight, Percent, Banknote,
 } from 'lucide-react';
 import type { ModuleKey } from '@mercon/shared-types';
 
@@ -172,6 +172,7 @@ export const NAV_PAGES: NavPage[] = [
   // Finance — Purchases
   { id: 'bills', label: 'Bills', path: '/finance/bills', icon: CreditCard, section: 'finance', group: 'purchases', moduleKey: 'finance', keywords: ['vendor bills', 'ap'] },
   { id: 'expenses', label: 'Expenses', path: '/expenses', icon: Wallet, section: 'finance', group: 'purchases', moduleKey: 'expenses', permissionKey: 'reports.view', keywords: ['operating expenses', 'fuel', 'costs'] },
+  { id: 'driver-pay', label: 'Driver pay', path: '/finance/driver-pay', icon: Banknote, section: 'finance', group: 'purchases', moduleKey: 'finance', keywords: ['driver settlement', 'trip pay', 'payout', 'pay drivers'] },
   { id: 'payables', label: 'Payables', path: '/finance/ap-ageing', icon: Clock, section: 'finance', group: 'purchases', moduleKey: 'finance', keywords: ['ap ageing', 'aging', 'pay bills'] },
   // Finance — Banking
   { id: 'bank-accounts', label: 'Bank accounts', path: '/finance/bank-accounts', icon: Landmark, section: 'finance', group: 'banking', moduleKey: 'finance', keywords: ['cash', 'transfer'] },
@@ -187,6 +188,8 @@ export const NAV_PAGES: NavPage[] = [
   { id: 'profit-and-loss', label: 'Profit & loss', path: '/finance/profit-and-loss', icon: BarChart3, section: 'finance', group: 'reports', moduleKey: 'finance', keywords: ['p&l', 'income statement'] },
   { id: 'balance-sheet', label: 'Balance sheet', path: '/finance/balance-sheet', icon: FileBarChart, section: 'finance', group: 'reports', moduleKey: 'finance' },
   { id: 'trial-balance', label: 'Trial balance', path: '/finance/trial-balance', icon: Scale, section: 'finance', group: 'reports', moduleKey: 'finance', keywords: ['tb'] },
+  { id: 'trip-profitability', label: 'Trip profitability', path: '/finance/trip-profitability', icon: Percent, section: 'finance', group: 'reports', moduleKey: 'finance', keywords: ['margin', 'customer profitability', 'lane', 'route profit', 'losing trips'] },
+  { id: 'vat-return', label: 'VAT return', path: '/finance/vat-return', icon: Landmark, section: 'finance', group: 'reports', moduleKey: 'finance', keywords: ['vat', 'zatca return', 'tax return', 'output vat', 'input vat'] },
   { id: 'cash-flow', label: 'Cash flow', path: '/finance/cash-flow', icon: Coins, section: 'finance', group: 'reports', moduleKey: 'finance' },
   {
     id: 'vehicle-pnl', label: 'Vehicle P&L', path: '/vehicles/financials', icon: TrendingUp, section: 'finance', group: 'reports', moduleKey: 'vehicles', permissionKey: 'fleet.financials',

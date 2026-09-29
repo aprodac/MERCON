@@ -4,6 +4,7 @@ import { prisma } from '../db';
 import { generateRefId } from '../utils/refId';
 import { logger } from '../utils/logger';
 import { issueInvoice, recordInvoicePayment, voidInvoice } from '../utils/invoiceEngine';
+import { issueCreditNote, voidCreditNote } from '../utils/creditNoteEngine';
 import { AccountingError } from '../utils/accountingEngine';
 import { logAuditEvent } from '../services/auditService';
 import { baseInvoiceWhere, invoiceOrderBy, invoiceWhere, statusWhere } from '../utils/invoiceQuery';
@@ -749,6 +750,76 @@ export const updateInvoiceLedgerSetup = async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     logger.error({ err: error }, 'Failed to save invoice ledger setup');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};
+
+const creditNoteSchema = z.object({
+  credit_date: z.string().min(8),
+  reason: z.string().trim().min(1, 'Say why the credit note is issued').max(500),
+  lines: z
+    .array(z.object({ description: z.string().trim().min(1).max(300), amount: z.number().positive(), tax_rate: z.number().min(0).max(100) }))
+    .min(1, 'Add at least one line'),
+});
+
+const creditNoteOut = (n: any) => ({
+  id: n.id,
+  ref_id: n.ref_id,
+  invoice_id: n.invoiceId,
+  invoice_ref: n.invoice?.ref_id ?? null,
+  customer_name: n.invoice?.customer?.name ?? null,
+  credit_date: n.credit_date,
+  reason: n.reason,
+  status: n.status,
+  subtotal: Number(n.subtotal),
+  tax_amount: Number(n.tax_amount),
+  total_amount: Number(n.total_amount),
+  journal_entry_id: n.journalEntryId,
+  voided_at: n.voidedAt,
+  lines: (n.lines ?? []).map((l: any) => ({ description: l.description, amount: Number(l.amount), tax_rate: Number(l.tax_rate), tax_amount: Number(l.tax_amount) })),
+});
+
+/** GET /invoices/credit-notes — every credit note (?invoice_id=, ?customer_id=), newest first. */
+export const listCreditNotes = async (req: Request, res: Response) => {
+  try {
+    const q = req.query as Record<string, string | undefined>;
+    const rows = await prisma.creditNote.findMany({
+      where: { ...(q.invoice_id ? { invoiceId: q.invoice_id } : {}), ...(q.customer_id ? { customerId: q.customer_id } : {}) },
+      include: { lines: true, invoice: { select: { ref_id: true, customer: { select: { name: true } } } } },
+      orderBy: [{ credit_date: 'desc' }, { createdAt: 'desc' }],
+      take: 500,
+    });
+    res.json({ success: true, data: rows.map(creditNoteOut) });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to list credit notes');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};
+
+/** POST /invoices/:id/credit-notes — issue a credit note against an issued invoice (posts to the ledger). */
+export const createCreditNote = async (req: Request, res: Response) => {
+  try {
+    const parsed = creditNoteSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message } });
+    const note = await issueCreditNote({ invoiceId: String(req.params.id), creditDate: parsed.data.credit_date, reason: parsed.data.reason, lines: parsed.data.lines, userId: (req as any).user?.id });
+    await logAuditEvent({ req, action: 'CREDIT_NOTE_ISSUED', entityType: 'CreditNote', entityId: note.id, metadata: { ref_id: note.ref_id, invoiceId: note.invoiceId, total: Number(note.total_amount) } });
+    res.status(201).json({ success: true, data: creditNoteOut(note) });
+  } catch (error: any) {
+    if (error instanceof AccountingError) return res.status(error.statusCode).json({ success: false, error: { code: error.code, message: error.message } });
+    logger.error({ err: error }, 'Failed to issue credit note');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
+};
+
+/** POST /invoices/credit-notes/:noteId/void */
+export const voidCreditNoteHandler = async (req: Request, res: Response) => {
+  try {
+    const note = await voidCreditNote(String(req.params.noteId), (req as any).user?.id);
+    await logAuditEvent({ req, action: 'CREDIT_NOTE_VOIDED', entityType: 'CreditNote', entityId: note.id, metadata: { ref_id: note.ref_id } });
+    res.json({ success: true, data: { id: note.id, status: note.status } });
+  } catch (error: any) {
+    if (error instanceof AccountingError) return res.status(error.statusCode).json({ success: false, error: { code: error.code, message: error.message } });
+    logger.error({ err: error }, 'Failed to void credit note');
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
   }
 };

@@ -253,6 +253,7 @@ model Driver {
   devices            DriverDevice[]
   expenses           Expense[]
   salaries           DriverSalary[]
+  settlements        DriverSettlement[]
   executedTripStops  TripStop[]                @relation("TripStopExecutorDriver")
   executedDocuments  Document[]                @relation("DocumentExecutorDriver")
 
@@ -497,6 +498,8 @@ model Trip {
   invoiceLines InvoiceLine[]
   // Costs of this trip recorded in Expenses (fuel, tolls)
   expenses     Expense[]
+  // Driver / co-driver trip pay settled for this trip (one line per role)
+  settlementLines DriverSettlementLine[]
 
   created_by String?   @db.Uuid
   updated_by String?   @db.Uuid
@@ -1487,6 +1490,8 @@ model Invoice {
   tax_amount   Decimal @default(0.0) @db.Decimal(12, 2)
   total_amount Decimal @default(0.0) @db.Decimal(12, 2)
   paid_amount  Decimal @default(0.0) @db.Decimal(12, 2)
+  // Taken off by credit notes. balance_due = total_amount − paid_amount − credited_amount
+  credited_amount Decimal @default(0.0) @db.Decimal(12, 2)
   balance_due  Decimal @default(0.0) @db.Decimal(12, 2)
   currency     String  @default("SAR")
 
@@ -1496,6 +1501,7 @@ model Invoice {
 
   lines    InvoiceLine[]
   payments InvoicePayment[]
+  creditNotes CreditNote[]
   advanceApplications AdvanceApplication[]
   trips    Trip[]
 
@@ -1535,6 +1541,48 @@ model InvoiceLine {
 
   @@index([invoiceId])
   @@index([tripId])
+}
+
+/// Takes part (or all) of an issued invoice back: a price correction, a cancelled trip, a
+/// discount after the fact. Issuing posts Dr revenue / Dr VAT output / Cr receivable and lowers
+/// the invoice's balance. Only what's still owed can be credited (a paid invoice needs a refund).
+model CreditNote {
+  id           String   @id @default(uuid()) @db.Uuid
+  ref_id       String?  @unique
+  invoiceId    String   @db.Uuid
+  invoice      Invoice  @relation(fields: [invoiceId], references: [id])
+  customerId   String   @db.Uuid
+  credit_date  DateTime @db.Timestamptz
+  reason       String
+  // Issued · Void
+  status       String   @default("Issued")
+  subtotal     Decimal  @db.Decimal(12, 2)
+  tax_amount   Decimal  @default(0.0) @db.Decimal(12, 2)
+  total_amount Decimal  @db.Decimal(12, 2)
+  journalEntryId String? @db.Uuid
+  voidedAt     DateTime? @db.Timestamptz
+
+  lines CreditNoteLine[]
+
+  created_by String?  @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  @@index([invoiceId])
+  @@index([customerId])
+}
+
+model CreditNoteLine {
+  id           String     @id @default(uuid()) @db.Uuid
+  creditNoteId String     @db.Uuid
+  creditNote   CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  description  String
+  // Before VAT
+  amount       Decimal    @db.Decimal(12, 2)
+  tax_rate     Decimal    @default(0) @db.Decimal(5, 2)
+  tax_amount   Decimal    @default(0) @db.Decimal(12, 2)
+
+  @@index([creditNoteId])
 }
 
 model InvoicePayment {
@@ -1766,6 +1814,9 @@ model AdvanceApplication {
   invoice    Invoice? @relation(fields: [invoiceId], references: [id])
   billId     String?  @db.Uuid
   bill       Bill?    @relation(fields: [billId], references: [id])
+  // An employee advance recovered from a driver's trip-pay settlement
+  driverSettlementId String?           @db.Uuid
+  driverSettlement   DriverSettlement? @relation(fields: [driverSettlementId], references: [id])
 
   amount         Decimal       @db.Decimal(12, 2)
   applied_date   DateTime      @db.Timestamptz
@@ -1778,6 +1829,58 @@ model AdvanceApplication {
   @@index([advanceId])
   @@index([invoiceId])
   @@index([billId])
+  @@index([driverSettlementId])
+}
+
+/// Paying a driver the trip pay they earned (Trip.driver_payout / co_driver_payout), less any
+/// employee advances recovered. Paying posts Dr driver pay expense / Cr advances / Cr bank.
+/// Salaries are not here: they are recorded as Salary expenses.
+model DriverSettlement {
+  id       String @id @default(uuid()) @db.Uuid
+  ref_id   String? @unique
+  driverId String @db.Uuid
+  driver   Driver @relation(fields: [driverId], references: [id])
+
+  period_from DateTime? @db.Timestamptz
+  period_to   DateTime? @db.Timestamptz
+  // Paid · Voided
+  status      String   @default("Paid")
+  gross_amount    Decimal @db.Decimal(12, 2)
+  advance_deducted Decimal @default(0.0) @db.Decimal(12, 2)
+  net_amount      Decimal @db.Decimal(12, 2)
+  paid_date   DateTime  @db.Timestamptz
+  // Bank or cash GL account the net was paid from (none when advances covered it all)
+  paymentAccountId String? @db.Uuid
+  reference   String?
+  notes       String?  @db.Text
+  journalEntryId String? @db.Uuid
+  voidedAt    DateTime? @db.Timestamptz
+
+  lines        DriverSettlementLine[]
+  advanceApplications AdvanceApplication[]
+
+  created_by String?  @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  @@index([driverId])
+  @@index([status])
+}
+
+/// One trip's pay in a settlement. Unique per trip and role, so a trip is never paid twice;
+/// voiding the settlement deletes its lines and the trips become payable again.
+model DriverSettlementLine {
+  id           String           @id @default(uuid()) @db.Uuid
+  settlementId String           @db.Uuid
+  settlement   DriverSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  tripId       String           @db.Uuid
+  trip         Trip             @relation(fields: [tripId], references: [id])
+  // driver · co_driver
+  role         String
+  amount       Decimal          @db.Decimal(12, 2)
+
+  @@unique([tripId, role])
+  @@index([settlementId])
 }
 
 model AccountClosingBalance {
@@ -1881,6 +1984,8 @@ model Settings {
   defaultRetainedEarningsAccountId String? @db.Uuid
   // Liability account that invoice VAT is credited to (output VAT payable)
   defaultVatOutputAccountId String? @db.Uuid
+  // Expense account driver trip pay posts to when a driver settlement is paid
+  defaultDriverPayAccountId String? @db.Uuid
   // Expenses: which expense account each category posts to ({ "Fuel": "<account id>", … }),
   // and the account for categories not in the map. Without a default, expenses don't post.
   expenseAccountMap         Json?
