@@ -10,6 +10,11 @@ export interface TripProgressStepperProps {
   trip: MobileTrip | null;
   /** The route node the driver is at / heading to. */
   target: TimelineTarget;
+  /**
+   * Draw white-on-colour for use inside a coloured StageHeader band; the
+   * colour is the band's, used for the icons inside the white nodes.
+   */
+  onColor?: string;
 }
 
 // Above this many nodes the row scrolls horizontally instead of squeezing.
@@ -20,7 +25,7 @@ const iconFor = (node: TimelineStop) =>
   node.iconType === 'House' ? Truck : node.iconType === 'Route' ? Package : MapPin;
 
 /** Route progress bar: one node per location on the trip, in route order. */
-export const TripProgressStepper: React.FC<TripProgressStepperProps> = ({ trip, target }) => {
+export const TripProgressStepper: React.FC<TripProgressStepperProps> = ({ trip, target, onColor }) => {
   const { t } = useLanguage();
   const scrollRef = useRef<ScrollView>(null);
 
@@ -41,13 +46,23 @@ export const TripProgressStepper: React.FC<TripProgressStepperProps> = ({ trip, 
     // Origin/loading = blue, destination/delivery = green, stops in between = red
     // (same palette as the web create-trip form and trip details).
     const role = STOP_ROLE_COLORS[timelineStopRole(node)];
-    const nodeColorStyle = isActive
+    let nodeColorStyle = isActive
       ? { backgroundColor: role.main, borderColor: role.main }
       : isCompleted
       ? { backgroundColor: allDone ? role.main : role.soft, borderColor: role.main }
       : { backgroundColor: '#FFFFFF', borderColor: role.soft };
-    const iconColor = isActive || allDone ? '#FFFFFF' : role.main;
-    const labelColor = isUpcoming ? '#94A3B8' : role.text;
+    let iconColor = isActive || allDone ? '#FFFFFF' : role.main;
+    let labelColor = isUpcoming ? '#94A3B8' : role.text;
+    let activeIconColor = '#FFFFFF';
+    if (onColor) {
+      // Inside a coloured band: done/current nodes are white, upcoming ones outlined.
+      nodeColorStyle = isUpcoming
+        ? { backgroundColor: 'transparent', borderColor: 'rgba(255,255,255,0.6)' }
+        : { backgroundColor: '#FFFFFF', borderColor: '#FFFFFF' };
+      iconColor = isUpcoming ? 'rgba(255,255,255,0.85)' : onColor;
+      activeIconColor = onColor;
+      labelColor = isUpcoming ? 'rgba(255,255,255,0.75)' : '#FFFFFF';
+    }
 
     return (
       <React.Fragment key={`${node.id}-${index}`}>
@@ -60,15 +75,15 @@ export const TripProgressStepper: React.FC<TripProgressStepperProps> = ({ trip, 
               isActive && styles.nodeActive,
               isUpcoming && styles.nodeUpcoming,
               nodeColorStyle,
-              isActive && { shadowColor: role.main },
+              isActive && { shadowColor: onColor ? '#000000' : role.main },
             ]}
           >
             {allDone ? (
-              <Check size={14} color="#FFFFFF" strokeWidth={3} />
+              <Check size={14} color={onColor ?? '#FFFFFF'} strokeWidth={3} />
             ) : isCompleted ? (
               <Check size={13} color={iconColor} strokeWidth={2.8} />
             ) : isActive ? (
-              <IconComp size={14} color="#FFFFFF" strokeWidth={2.4} />
+              <IconComp size={14} color={activeIconColor} strokeWidth={2.4} />
             ) : (
               <IconComp size={14} color={iconColor} strokeWidth={2} />
             )}
@@ -89,7 +104,7 @@ export const TripProgressStepper: React.FC<TripProgressStepperProps> = ({ trip, 
             {isReturn ? `↩ ${node.name}` : node.name}
           </Text>
           {allDone && isLast && (
-            <Text style={styles.subtextCompleted}>{t('status_completed', 'Completed')}</Text>
+            <Text style={[styles.subtextCompleted, onColor && { color: '#FFFFFF' }]}>{t('status_completed', 'Completed')}</Text>
           )}
         </View>
 
@@ -99,6 +114,7 @@ export const TripProgressStepper: React.FC<TripProgressStepperProps> = ({ trip, 
               styles.connectorLine,
               scrollable && styles.connectorScrollable,
               isCompleted ? styles.connectorCompleted : styles.connectorInactive,
+              onColor && { backgroundColor: isCompleted ? '#FFFFFF' : 'rgba(255,255,255,0.35)' },
             ]}
           />
         )}
@@ -107,7 +123,7 @@ export const TripProgressStepper: React.FC<TripProgressStepperProps> = ({ trip, 
   });
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, onColor && styles.containerOnColor]}>
       {scrollable ? (
         <ScrollView
           ref={scrollRef}
@@ -134,6 +150,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 8,
     width: '100%',
+  },
+  containerOnColor: {
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 14,
   },
   stepperRow: {
     flexDirection: 'row',
