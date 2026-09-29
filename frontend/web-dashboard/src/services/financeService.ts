@@ -277,6 +277,39 @@ export interface DriverSettlementDetail extends Omit<DriverSettlementRow, 'trips
   advances: { advance_id: string; ref_id: string | null; amount: number }[];
 }
 
+export interface PayoutMonth {
+  month: string;
+  earned: number;
+  paid: number;
+  owed: number;
+  trips: number;
+  drivers: number;
+}
+
+export interface DriverPayoutMonth {
+  driverId: string;
+  driver_name: string;
+  driver_ref: string | null;
+  month: string;
+  trips: number;
+  earned: number;
+  paid: number;
+  owed: number;
+}
+
+export interface PayoutTrip {
+  month: string;
+  driverId: string;
+  tripId: string;
+  tripRef: string | null;
+  day: string;
+  customer: string;
+  lane: string;
+  role: 'driver' | 'co_driver';
+  amount: number;
+  settlement: { id: string; ref: string | null; paidDate: string } | null;
+}
+
 export interface CreateDriverSettlementDTO {
   driver_id: string;
   lines: { trip_id: string; role: 'driver' | 'co_driver' }[];
@@ -796,6 +829,11 @@ export const financeService = {
   getDriverSettlement: async (id: string): Promise<DriverSettlementDetail> => (await api.get(`/driver-settlements/${id}`)).data.data,
   /** Pays the chosen trips and posts the entry. */
   createDriverSettlement: async (body: CreateDriverSettlementDTO): Promise<{ id: string; ref_id: string; net: number }> => (await api.post('/driver-settlements', body)).data.data,
+  /** Trip pay earned vs marked paid, per month (from–to, YYYY-MM) and per driver. */
+  getMonthlyPayouts: async (from: string, to: string): Promise<{ months: PayoutMonth[]; drivers: DriverPayoutMonth[] }> =>
+    (await api.get('/driver-settlements/monthly', { params: { from, to } })).data.data,
+  getMonthlyPayoutTrips: async (month: string, driverId: string): Promise<PayoutTrip[]> =>
+    (await api.get('/driver-settlements/monthly/trips', { params: { month, driver_id: driverId } })).data.data,
   voidDriverSettlement: async (id: string) => (await api.post(`/driver-settlements/${id}/void`)).data,
 
   /** Earned trips' margins after driver pay, subcontract and trip expenses; by trip, customer, lane or truck. */

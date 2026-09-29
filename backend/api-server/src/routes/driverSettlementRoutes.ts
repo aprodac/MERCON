@@ -4,6 +4,8 @@ import {
   getPayable,
   getSettlement,
   getSettlementQueue,
+  getMonthlyPayouts,
+  getMonthlyPayoutTrips,
   listSettlements,
   voidSettlementHandler,
 } from '../controllers/driverSettlementController';
@@ -19,6 +21,8 @@ router.use(requireModuleEnabled('finance'));
 // Before '/:id' so these aren't read as ids
 router.get('/queue', getSettlementQueue);
 router.get('/payable', getPayable);
+router.get('/monthly', getMonthlyPayouts);
+router.get('/monthly/trips', getMonthlyPayoutTrips);
 router.get('/', listSettlements);
 router.post('/', createSettlement);
 router.get('/:id', getSettlement);

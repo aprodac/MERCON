@@ -172,7 +172,7 @@ export const NAV_PAGES: NavPage[] = [
   // Finance — Purchases
   { id: 'bills', label: 'Bills', path: '/finance/bills', icon: CreditCard, section: 'finance', group: 'purchases', moduleKey: 'finance', keywords: ['vendor bills', 'ap'] },
   { id: 'expenses', label: 'Expenses', path: '/expenses', icon: Wallet, section: 'finance', group: 'purchases', moduleKey: 'expenses', permissionKey: 'reports.view', keywords: ['operating expenses', 'fuel', 'costs'] },
-  { id: 'driver-pay', label: 'Driver pay', path: '/finance/driver-pay', icon: Banknote, section: 'finance', group: 'purchases', moduleKey: 'finance', keywords: ['driver settlement', 'trip pay', 'payout', 'pay drivers'] },
+  { id: 'driver-pay', label: 'Driver pay', path: '/finance/driver-pay', icon: Banknote, section: 'finance', group: 'purchases', moduleKey: 'finance', keywords: ['driver settlement', 'trip pay', 'payout', 'pay drivers', 'driver payouts by month', 'monthly payouts'] },
   { id: 'payables', label: 'Payables', path: '/finance/ap-ageing', icon: Clock, section: 'finance', group: 'purchases', moduleKey: 'finance', keywords: ['ap ageing', 'aging', 'pay bills'] },
   // Finance — Banking
   { id: 'bank-accounts', label: 'Bank accounts', path: '/finance/bank-accounts', icon: Landmark, section: 'finance', group: 'banking', moduleKey: 'finance', keywords: ['cash', 'transfer'] },
