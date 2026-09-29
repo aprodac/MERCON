@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowUpRight, BellRing, ChevronLeft, ChevronRight, Download, FileCheck2, Plus, Search, Truck, X } from 'lucide-react';
+import { ArrowUpRight, BellRing, BookOpenCheck, ChevronLeft, ChevronRight, Download, FileCheck2, Plus, Search, Truck, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Invoice } from '@mercon/shared-types';
 
@@ -12,10 +12,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import ExportModal, { type ExportColumn } from '@/components/ui/ExportModal';
 import { ScrollTableCard } from '@/components/finance/kit/ScrollTableCard';
 import { PeriodControl } from '@/components/finance/kit/PeriodControl';
@@ -26,6 +22,8 @@ import { InvoiceActions, InvoiceStateChip } from '@/components/finance/invoices/
 import { InvoiceRecord } from '@/components/finance/invoices/InvoiceRecord';
 import { ReadyToBillSheet } from '@/components/finance/invoices/ReadyToBillSheet';
 import { useInvoiceWorkflow } from '@/components/finance/invoices/useInvoiceWorkflow';
+import { InvoiceLedgerSetupSheet, IssueInvoiceDialog } from '@/components/finance/invoices/InvoiceLedgerSetup';
+import { authStore } from '@/store/authStore';
 import { customerService } from '@/services/customerService';
 import { financeService, type InvoiceListStatus, type InvoiceSort } from '@/services/financeService';
 import type { PeriodPreset } from '@/lib/finance/pnlPeriodHelpers';
@@ -140,6 +138,7 @@ export default function InvoicesPage() {
   const selectedCustomers = new Set(selectedRows.map((i) => i.customerId));
   const selectedOpen = selectedRows.filter((i) => ['unpaid', 'part_paid', 'overdue'].includes(invoiceState(i, today)));
   const [bulkIssue, setBulkIssue] = useState(false);
+  const [ledgerOpen, setLedgerOpen] = useState(false);
   const [bulkRunning, setBulkRunning] = useState(false);
 
   const issueSelected = async () => {
@@ -203,8 +202,12 @@ export default function InvoicesPage() {
     </button>
   );
 
+  const role = authStore.getUser()?.role as string | undefined;
+  const isAdmin = role === 'Admin' || role === 'SuperAdmin';
+
   return (
     <DashboardLayout active="finance" title="Invoices" fixedViewport>
+      <InvoiceLedgerSetupSheet open={ledgerOpen} onOpenChange={setLedgerOpen} />
       <div className="mx-auto flex h-full w-full max-w-7xl min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4 max-md:h-auto max-md:overflow-y-auto">
         <div className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center">
           <Card className="flex flex-1 flex-row flex-wrap items-center gap-2 rounded-xl p-2 shadow-xs">
@@ -213,6 +216,11 @@ export default function InvoicesPage() {
             {figure('Received this month', formatMoney(s?.paid_this_month ?? 0), s?.payments_this_month, TONE_CLASSES.positive.fg, () => set({ tab: 'Paid' }))}
             {figure('Drafts', String(counts?.Draft ?? 0), undefined, null, () => set({ tab: 'Draft' }))}
           </Card>
+          {isAdmin && (
+            <Button variant="ghost" size="sm" className="h-9 shrink-0 gap-1.5 text-xs text-muted-foreground" onClick={() => setLedgerOpen(true)} title="Which accounts invoices post to">
+              <BookOpenCheck className="size-3.5" /> Ledger setup
+            </Button>
+          )}
           <Button onClick={() => navigate('/finance/invoices/new')} className="h-9 shrink-0 gap-1.5 bg-brand text-white hover:bg-brand-hover">
             <Plus className="size-4" /> New invoice
           </Button>
@@ -476,29 +484,16 @@ export default function InvoicesPage() {
         </SheetContent>
       </Sheet>
 
-      <AlertDialog open={bulkIssue} onOpenChange={(o) => !bulkRunning && setBulkIssue(o)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Issue {selectedDrafts.length} draft{selectedDrafts.length === 1 ? '' : 's'}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              They're posted to the ledger for SAR {formatMoney(selectedDrafts.reduce((t, i) => t + Number(i.total_amount), 0))} in total and can no longer be
-              edited. Their trips are marked invoiced.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={bulkRunning}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={bulkRunning}
-              onClick={(e) => {
-                e.preventDefault();
-                issueSelected();
-              }}
-            >
-              {bulkRunning ? 'Issuing…' : 'Issue invoices'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <IssueInvoiceDialog
+        open={bulkIssue}
+        onOpenChange={setBulkIssue}
+        title={`Issue ${selectedDrafts.length} draft${selectedDrafts.length === 1 ? '' : 's'}?`}
+        description={`They're posted to the ledger for SAR ${formatMoney(selectedDrafts.reduce((t, i) => t + Number(i.total_amount), 0))} in total and can no longer be edited. Their trips are marked invoiced.`}
+        hasVat={selectedDrafts.some((i) => Number(i.tax_amount) > 0.005)}
+        pending={bulkRunning}
+        onConfirm={issueSelected}
+        confirmLabel="Issue invoices"
+      />
 
       <ReadyToBillSheet open={readyOpen} onOpenChange={setReadyOpen} unbilled={ub} today={today} onDone={() => set({ tab: 'Draft' })} />
 

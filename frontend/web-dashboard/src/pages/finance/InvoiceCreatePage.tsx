@@ -19,6 +19,8 @@ import { CustomerPicker } from '@/components/finance/invoices/editor/CustomerPic
 import { InvoiceLinesTable } from '@/components/finance/invoices/editor/InvoiceLinesTable';
 import { TripPickerSheet } from '@/components/finance/invoices/editor/TripPickerSheet';
 import { InvoiceEditorRail, type CustomerPosition } from '@/components/finance/invoices/editor/InvoiceEditorRail';
+import { IssueInvoiceDialog, useInvoiceLedger } from '@/components/finance/invoices/InvoiceLedgerSetup';
+import { ledgerGaps, SLOT_META } from '@/lib/finance/invoiceLedger';
 
 import { financeService, type CreateInvoiceDTO } from '@/services/financeService';
 import { customerService } from '@/services/customerService';
@@ -214,7 +216,14 @@ export default function InvoiceCreatePage() {
   // ── Derived figures ─────────────────────────────────────────────────────
   const header: DraftHeader = { customerId, invoiceDate, dueDate, taxRate, notes, terms };
   const totals = useMemo(() => draftTotals(lines, taxRate), [lines, taxRate]);
-  const issues = draftIssues(header, lines);
+  const ledger = useInvoiceLedger();
+  const ledgerMissing = ledgerGaps(ledger.setup, totals.tax > 0.005);
+  const issues = [
+    ...draftIssues(header, lines),
+    ...(ledgerMissing.length && lines.length
+      ? [{ level: 'warning' as const, message: `Issuing needs the ${ledgerMissing.map((g) => SLOT_META[g].label).join(' and ')} account; you'll be asked to choose it.` }]
+      : []),
+  ];
   const blocking = issues.filter((i) => i.level === 'error');
 
   const summary = summaryRes?.data;
@@ -528,9 +537,11 @@ export default function InvoiceCreatePage() {
         onApply={setTripSelection}
       />
 
-      <ConfirmModal
-        isOpen={confirmIssue}
-        onClose={() => setConfirmIssue(false)}
+      <IssueInvoiceDialog
+        open={confirmIssue}
+        onOpenChange={setConfirmIssue}
+        hasVat={totals.tax > 0.005}
+        pending={saving}
         onConfirm={() => {
           setConfirmIssue(false);
           saveMutation.mutate({ issue: true });
@@ -540,7 +551,6 @@ export default function InvoiceCreatePage() {
           totals.tax > 0.005 ? ` and ${postingAccounts.vat} Cr ${formatMoney(totals.tax)}` : ''
         }, and marks ${totals.tripCount} ${totals.tripCount === 1 ? 'trip' : 'trips'} as invoiced. An issued invoice can't be edited, only voided.`}
         confirmLabel="Issue invoice"
-        isLoading={saving}
       />
     </DashboardLayout>
   );
