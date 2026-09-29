@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { logger } from '../utils/logger';
 import { prisma } from '../db';
-import { TRIP_REPORT_FIELDS, type TemplateLayout } from '@mercon/shared-types';
+import { LINE_TYPES, TRIP_REPORT_FIELDS, type TemplateLayout } from '@mercon/shared-types';
 import { inspectTemplate } from '../services/reports/xlsxTemplate/inspect';
 import { generateFromTemplate } from '../services/reports/xlsxTemplate/splice';
 import { fetchTripRows, TripReportFilters } from '../services/reports/xlsxTemplate/tripReportData';
@@ -46,19 +46,22 @@ const jsonLayout = z.preprocess((v) => {
   }
 }, layoutSchema);
 
-// '' / 'all' from a picker mean "no value".
-const optionalText = z.preprocess((v) => (v === '' || v === 'all' ? null : v), z.string().trim().min(1).nullable().optional());
+// The format's line-type filter (stored in the legacy rate_category column); '' / 'all' = every trip.
+const optionalLineType = z.preprocess(
+  (v) => (v === '' || v === 'all' ? null : v),
+  z.enum(LINE_TYPES, { message: 'Unknown line type' }).nullable().optional()
+);
 
 const createBody = z.object({
   name: z.string().trim().min(1, 'Give the format a name'),
   customerId: z.string().uuid('Pick the customer this format belongs to'),
-  rate_category: optionalText,
+  rate_category: optionalLineType,
   layout: jsonLayout,
 });
 
 const updateBody = z.object({
   name: z.string().trim().min(1).optional(),
-  rate_category: optionalText,
+  rate_category: optionalLineType,
   layout: jsonLayout.optional(),
 });
 
@@ -251,7 +254,8 @@ async function resolveRun(template: TemplateRow, body: unknown) {
 
   const settings = await prisma.settings.findUnique({ where: { id: 'singleton' }, select: { timezone: true } });
   const tz = settings?.timezone || 'Asia/Riyadh';
-  const rateCategory = template.rate_category ?? undefined;
+  // rate_category is the legacy column name for the trip's line type.
+  const lineType = template.rate_category ?? undefined;
   const tokens: Record<string, string> = { generated_on: dateText(new Date(), tz) };
 
   let filters: TripReportFilters;
@@ -276,7 +280,7 @@ async function resolveRun(template: TemplateRow, body: unknown) {
     const tripIds = [...new Set([...invoice.lines.map((l) => l.tripId), ...invoice.trips.map((t) => t.id)].filter((x): x is string => !!x))];
     if (tripIds.length === 0) throw new RunError(400, 'NO_TRIPS', 'This invoice has no trip lines to put in a trip sheet');
 
-    filters = { tripIds, rateCategory };
+    filters = { tripIds, lineType };
     customerName = invoice.customer.name;
     fileLabel = invoice.ref_id || invoice.id.slice(0, 8);
     Object.assign(tokens, {
@@ -289,7 +293,7 @@ async function resolveRun(template: TemplateRow, body: unknown) {
     if (!template.customerId) throw new RunError(400, 'NO_CUSTOMER', 'A shared format can only be filled from an invoice');
     const { startDate, endDate, status } = parsed.data;
     const customer = await prisma.customer.findUnique({ where: { id: template.customerId }, select: { name: true } });
-    filters = { customerId: template.customerId, startDate, endDate, status, rateCategory };
+    filters = { customerId: template.customerId, startDate, endDate, status, lineType };
     customerName = customer?.name ?? '';
     fileLabel = `${startDate}_to_${endDate}`;
   }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { FileSpreadsheet, RefreshCw, Upload } from 'lucide-react';
-import { RATE_CATEGORIES, TRIP_SHEET_TOKENS, type TemplateLayout } from '@mercon/shared-types';
+import { LINE_TYPES, TRIP_SHEET_TOKENS, lineTypeLabel, type TemplateLayout } from '@mercon/shared-types';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -76,7 +76,8 @@ export default function TripSheetFormatDialog({
   const isEdit = !!template;
 
   const [name, setName] = useState('');
-  const [rateCategory, setRateCategory] = useState<string>(ALL_TRIPS);
+  // The API field is `rate_category`, the legacy name for the trip's line type.
+  const [lineType, setLineType] = useState<string>(ALL_TRIPS);
   const [file, setFile] = useState<File | null>(null);
   const [inspection, setInspection] = useState<TemplateInspection | null>(null);
   const [layout, setLayout] = useState<TemplateLayout | null>(null);
@@ -87,7 +88,7 @@ export default function TripSheetFormatDialog({
     if (!open) return;
     setFile(null);
     setName(template?.name ?? '');
-    setRateCategory(template?.rate_category ?? ALL_TRIPS);
+    setLineType(template?.rate_category ?? ALL_TRIPS);
     if (template) {
       const copy: TemplateLayout = JSON.parse(JSON.stringify(template.layout));
       setLayout(copy);
@@ -128,7 +129,7 @@ export default function TripSheetFormatDialog({
       toast.error('Give the format a name');
       return;
     }
-    const rate_category = rateCategory === ALL_TRIPS ? null : rateCategory;
+    const rate_category = lineType === ALL_TRIPS ? null : lineType;
     setIsSaving(true);
     try {
       if (template) {
@@ -176,15 +177,15 @@ export default function TripSheetFormatDialog({
               />
             </label>
             <div className="space-y-1">
-              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Trips included</span>
-              <Select value={rateCategory} onValueChange={setRateCategory}>
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">Line type</span>
+              <Select value={lineType} onValueChange={setLineType}>
                 <SelectTrigger className="h-8 rounded-lg border-slate-200 bg-slate-50 text-xs font-semibold dark:border-slate-700 dark:bg-slate-800">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value={ALL_TRIPS}>All trips</SelectItem>
-                  {RATE_CATEGORIES.map((rc) => (
-                    <SelectItem key={rc} value={rc}>Only “{rc}” trips</SelectItem>
+                  <SelectItem value={ALL_TRIPS}>All line types</SelectItem>
+                  {LINE_TYPES.map((lt) => (
+                    <SelectItem key={lt} value={lt}>{lineTypeLabel(lt)} only</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

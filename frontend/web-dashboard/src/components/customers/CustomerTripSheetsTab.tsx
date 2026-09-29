@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { Download, FileSpreadsheet, Pencil, Plus, ReceiptText, RefreshCw, Trash2 } from 'lucide-react';
 
+import { lineTypeLabel } from '@mercon/shared-types';
 import { Button } from '@/components/ui/button';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -146,7 +147,7 @@ export default function CustomerTripSheetsTab({ customerId, customerName }: { cu
                         {' · '}
                         <span className={cn(mapped < total && 'text-amber-600 dark:text-amber-400')}>{mapped} of {total} columns filled</span>
                         {' · '}
-                        {t.rate_category ? `only “${t.rate_category}” trips` : 'all trips'}
+                        {t.rate_category ? `${lineTypeLabel(t.rate_category)} only` : 'all line types'}
                       </p>
                     </div>
                   </div>
