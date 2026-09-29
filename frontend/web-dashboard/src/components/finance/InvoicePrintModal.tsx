@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Printer, X, FileText, CheckCircle2 } from 'lucide-react';
 import { settingsService } from '@/services/settingsService';
 import type { Invoice } from '@mercon/shared-types';
+import { printedLineVat, printedVatByRate } from '@/lib/finance/invoices';
 
 interface InvoicePrintModalProps {
   isOpen: boolean;
@@ -49,8 +50,14 @@ export function InvoicePrintModal({
   const totalAmount = Number(invoice.total_amount) || 0;
   const balanceDue = Number(invoice.balance_due) || 0;
   const taxAmount = Number(invoice.tax_amount) || 0;
-  const taxRate = Number(invoice.tax_rate) || 15;
-  const subtotal = Number((invoice as any).subtotal_amount) || (totalAmount - taxAmount);
+  // 0 is a real rate (zero-rated), so only a missing rate falls back to the standard 15%
+  const taxRate = invoice.tax_rate !== undefined && invoice.tax_rate !== null && invoice.tax_rate !== '' ? Number(invoice.tax_rate) : 15;
+  const subtotal = Number(invoice.subtotal) || (totalAmount - taxAmount);
+  // Lines can carry different VAT rates (e.g. 15% and 0% zero-rated); the summary then shows one row per rate
+  const vatByRate = printedVatByRate(lines, taxRate);
+  const mixedVat = vatByRate.length > 1;
+  const notes = invoice.notes?.trim() || '';
+  const terms = invoice.terms?.trim() || '';
 
   const isPaid = balanceDue <= 0 && totalAmount > 0;
 
@@ -237,7 +244,7 @@ export function InvoicePrintModal({
                     QTY<br /><span className="font-arabic font-normal">كمية</span>
                   </th>
                   <th className="p-1 border-r border-border text-center font-bold w-14">
-                    VAT {taxRate}%<br /><span className="font-arabic font-normal">القيمة الضريبية</span>
+                    VAT {mixedVat ? '%' : `${vatByRate[0]?.rate ?? taxRate}%`}<br /><span className="font-arabic font-normal">القيمة الضريبية</span>
                   </th>
                   <th className="p-1 border-r border-border text-center font-bold w-16">
                     VAT<br /><span className="font-arabic font-normal">مجموع الضريبة</span>
@@ -257,10 +264,9 @@ export function InvoicePrintModal({
                 ) : (
                   lines.map((line: any, idx: number) => {
                     const qty = Number(line.quantity) || 1;
-                    const lineAmt = Number(line.amount) || 0;
+                    const { amount: lineAmt, rate: lineRate, vat: lineVat, total: lineTotal } = printedLineVat(line, taxRate);
                     const rate = Number(line.rate) || (qty > 0 ? lineAmt / qty : 0);
-                    const lineVat = lineAmt * (taxRate / 100);
-                    const lineTotal = lineAmt + lineVat;
+                    const discountPct = Number(line.discount_pct) || 0;
 
                     const tripDateStr = line.tripId && line.trip?.actual_start
                       ? new Date(line.trip.actual_start).toLocaleDateString('en-GB')
@@ -275,9 +281,12 @@ export function InvoicePrintModal({
                         <td className="p-1 border-r border-border text-center font-mono text-[10px] text-foreground">{tripDateStr}</td>
                         <td className="p-1.5 border-r border-border font-semibold text-foreground leading-snug">{line.description}</td>
                         <td className="p-1 border-r border-border text-center font-mono text-[10px] font-bold text-foreground">{awbNoStr}</td>
-                        <td className="p-1 border-r border-border text-right font-mono">{rate.toFixed(2)}</td>
+                        <td className="p-1 border-r border-border text-right font-mono">
+                          {rate.toFixed(2)}
+                          {discountPct > 0 && <span className="block text-[9px] text-muted-foreground">less {discountPct}%</span>}
+                        </td>
                         <td className="p-1 border-r border-border text-center font-mono">{qty}</td>
-                        <td className="p-1 border-r border-border text-center font-mono text-muted-foreground">{taxRate}%</td>
+                        <td className="p-1 border-r border-border text-center font-mono text-muted-foreground">{lineRate}%</td>
                         <td className="p-1 border-r border-border text-right font-mono text-foreground">{lineVat.toFixed(2)}</td>
                         <td className="p-1 text-right font-mono font-bold text-foreground">{lineTotal.toFixed(2)}</td>
                       </tr>
@@ -301,18 +310,57 @@ export function InvoicePrintModal({
                   <span className="text-foreground">Total Excluding VAT / <span className="font-arabic">المبلغ قبل الضريبة</span>:</span>
                   <span className="font-mono text-foreground">{subtotal.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between p-1.5 bg-card font-bold">
-                  <span className="text-foreground">Total VAT / {taxRate}% / <span className="font-arabic">مجموع الضريبة</span>:</span>
-                  <span className="font-mono text-foreground">{taxAmount.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between p-2 bg-card text-foreground border border-border text-white font-black">
+                {mixedVat ? (
+                  <>
+                    {vatByRate.map((v) => (
+                      <div key={v.rate} className="flex justify-between p-1.5 bg-card font-medium text-[11px]">
+                        <span className="text-foreground">
+                          VAT {v.rate}%{v.rate === 0 ? ' (zero-rated)' : ''} on <span className="font-mono">{v.taxable.toFixed(2)}</span>
+                        </span>
+                        <span className="font-mono text-foreground">{v.vat.toFixed(2)}</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between p-1.5 bg-card font-bold">
+                      <span className="text-foreground">Total VAT / <span className="font-arabic">مجموع الضريبة</span>:</span>
+                      <span className="font-mono text-foreground">{taxAmount.toFixed(2)}</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex justify-between p-1.5 bg-card font-bold">
+                    <span className="text-foreground">Total VAT / {vatByRate[0]?.rate ?? taxRate}% / <span className="font-arabic">مجموع الضريبة</span>:</span>
+                    <span className="font-mono text-foreground">{taxAmount.toFixed(2)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between p-2 bg-card text-foreground border border-border font-black">
                   <span>Total Amount including VAT / <span className="font-arabic">اجمالي المبلغ المـ</span>:</span>
                   <span className="font-mono text-sm text-[#FA634E]">SAR {totalAmount.toFixed(2)}</span>
                 </div>
               </div>
             </div>
 
-            {/* 5. BANK DETAILS & OFFICIAL STAMPS FOOTER */}
+            {/* 5. NOTES & TERMS (only what the invoice carries) */}
+            {(notes || terms) && (
+              <div className={`grid gap-2 text-[10px] ${notes && terms ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                {notes && (
+                  <div className="border border-border rounded p-2 space-y-0.5">
+                    <h3 className="font-black text-foreground uppercase text-[11px]">
+                      Notes <span className="font-arabic font-bold normal-case">ملاحظات</span>
+                    </h3>
+                    <p className="whitespace-pre-line text-foreground leading-snug">{notes}</p>
+                  </div>
+                )}
+                {terms && (
+                  <div className="border border-border rounded p-2 space-y-0.5">
+                    <h3 className="font-black text-foreground uppercase text-[11px]">
+                      Terms &amp; Conditions <span className="font-arabic font-bold normal-case">الشروط والأحكام</span>
+                    </h3>
+                    <p className="whitespace-pre-line text-foreground leading-snug">{terms}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 6. BANK DETAILS & OFFICIAL STAMPS FOOTER */}
             <div className="pt-2">
               <div className="border border-border rounded p-2.5 grid grid-cols-12 gap-2 text-[10px]">
                 {/* Left: Bank Details */}

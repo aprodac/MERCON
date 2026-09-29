@@ -10,6 +10,7 @@ test('Real Bill / Accounts Payable Engine Integration Test Suite', async (t) => 
   let provider: any;
   let payableAccount: any;
   let expenseAccount: any;
+  let vatInputAccount: any;
   let bankAccount: any;
   let openPeriod: any;
   let expenseItem: any;
@@ -42,6 +43,15 @@ test('Real Bill / Accounts Payable Engine Integration Test Suite', async (t) => 
         account_code: `TEST-5000-${timestamp}`,
         name: 'Subcontractor Expense',
         account_type: 'Expense',
+        is_postable: true,
+      },
+    });
+
+    vatInputAccount = await prisma.account.create({
+      data: {
+        account_code: `TEST-1400-${timestamp}`,
+        name: 'VAT Input Recoverable',
+        account_type: 'Asset',
         is_postable: true,
       },
     });
@@ -89,10 +99,12 @@ test('Real Bill / Accounts Payable Engine Integration Test Suite', async (t) => 
       where: { id: 'singleton' },
       update: {
         defaultPayableAccountId: payableAccount.id,
+        defaultVatInputAccountId: vatInputAccount.id,
       },
       create: {
         id: 'singleton',
         defaultPayableAccountId: payableAccount.id,
+        defaultVatInputAccountId: vatInputAccount.id,
       },
     });
   });
@@ -137,13 +149,17 @@ test('Real Bill / Accounts Payable Engine Integration Test Suite', async (t) => 
 
     assert.ok(je);
     assert.equal(je.status, 'Posted');
-    assert.equal(je.lines.length, 2);
+    assert.equal(je.lines.length, 3);
 
     const drLine = je.lines.find((l) => l.accountId === expenseAccount.id);
+    const vatLine = je.lines.find((l) => l.accountId === vatInputAccount.id);
     const crLine = je.lines.find((l) => l.accountId === payableAccount.id);
 
+    // The cost is the net amount; the VAT is reclaimable input VAT
     assert.ok(drLine);
-    assert.equal(Number(drLine.debit), 2650.0);
+    assert.equal(Number(drLine.debit), 2500.0);
+    assert.ok(vatLine);
+    assert.equal(Number(vatLine.debit), 150.0);
     assert.equal(Number(drLine.credit), 0.0);
 
     assert.ok(crLine);

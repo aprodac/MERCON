@@ -577,6 +577,16 @@ export const getTripById = async (req: Request, res: Response) => {
 
     const fin = calculateBackendTripFinancials(trip as any);
 
+    // Costs recorded against this trip in Expenses (fuel, tolls) come off its margin
+    const tripExpenses = await prisma.expense.findMany({
+      where: { tripId: trip.id, deletedAt: null },
+      select: { id: true, ref_id: true, category: true, amount: true, vat_amount: true, status: true, expense_date: true, payee: true },
+      orderBy: { expense_date: 'asc' },
+    });
+    // The cost is net of reclaimable VAT
+    const tripExpensesTotal = Math.round(tripExpenses.reduce((sum, e) => sum + Number(e.amount) - Number(e.vat_amount), 0) * 100) / 100;
+    const netMargin = Math.round((fin.balanceMargin - tripExpensesTotal) * 100) / 100;
+
     const stopIds = (trip.stops || []).map((s: any) => s.id).filter(isUuid);
     const validUuidEntityIds = Array.from(new Set([trip.id, ...stopIds].filter(isUuid)));
 
@@ -606,6 +616,11 @@ export const getTripById = async (req: Request, res: Response) => {
       driver_charge: fin.primaryDriverPayout,
       balance_margin: fin.balanceMargin,
       margin_percent: fin.marginPercent,
+      trip_expenses: tripExpenses,
+      trip_expenses_total: tripExpensesTotal,
+      // Margin after driver pay and the trip's own expenses
+      net_margin: netMargin,
+      net_margin_percent: fin.totalCustomerBilling > 0 ? Number(((netMargin / fin.totalCustomerBilling) * 100).toFixed(1)) : 0,
       vehicle: trip.vehicle
         ? {
             ...trip.vehicle,

@@ -132,7 +132,6 @@ export const SUGGESTED_CHARGE_UNITS = [
  */
 export const EXPENSE_CATEGORIES = [
   'Salary',
-  'Salary Advance',
   'Fuel',
   'Toll & Parking',
   'Rent',
@@ -151,6 +150,83 @@ export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
  * must name the vehicle, or Vehicle P&L can't count it. Enforced by the API.
  */
 export const VEHICLE_REQUIRED_EXPENSE_CATEGORIES: readonly string[] = ['Fuel', 'Vehicle Maintenance', 'Tyres'];
+
+/**
+ * Categories no longer offered for new expenses but still found on old records. A salary advance
+ * is money the driver owes back, not a cost: it is recorded as an employee advance (Finance →
+ * Advances) instead.
+ */
+export const LEGACY_EXPENSE_CATEGORIES: readonly string[] = ['Salary Advance'];
+
+/**
+ * What an expense can be charged to. A trip implies its truck and driver; a truck's costs count in
+ * its P&L; a driver link records who it was for; none of them means company overhead.
+ */
+export type ExpenseLinkKind = 'trip' | 'vehicle' | 'driver' | 'company';
+
+export interface ExpenseCategoryRule {
+  /** Links this category may carry. */
+  allowed: readonly ExpenseLinkKind[];
+  /** Once paid, it must be charged to a trip or a truck (it counts in that truck's P&L). */
+  needsTruckWhenPaid?: boolean;
+}
+
+const ANY: readonly ExpenseLinkKind[] = ['trip', 'vehicle', 'driver', 'company'];
+
+/** Per-category linking rules; categories not listed (custom ones, "Other") may link to anything. */
+export const EXPENSE_CATEGORY_RULES: Record<string, ExpenseCategoryRule> = {
+  Fuel: { allowed: ['trip', 'vehicle'], needsTruckWhenPaid: true },
+  'Toll & Parking': { allowed: ['trip', 'vehicle', 'company'] },
+  'Vehicle Maintenance': { allowed: ['vehicle'], needsTruckWhenPaid: true },
+  Tyres: { allowed: ['vehicle'], needsTruckWhenPaid: true },
+  Insurance: { allowed: ['vehicle', 'company'] },
+  'Government Fees': { allowed: ['vehicle', 'driver', 'company'] },
+  Salary: { allowed: ['driver', 'company'] },
+  'Salary Advance': { allowed: ['driver', 'company'] },
+  Rent: { allowed: ['company'] },
+  Utilities: { allowed: ['company'] },
+  'Office Supplies': { allowed: ['company'] },
+  Other: { allowed: ANY },
+};
+
+export const expenseCategoryRule = (category: string | null | undefined): ExpenseCategoryRule =>
+  EXPENSE_CATEGORY_RULES[(category || '').trim()] ?? { allowed: ANY };
+
+/**
+ * Categories whose truck cost may already be set up as a recurring fixed cost (Vehicle cost setup).
+ * Recording the same cost as an expense on that truck would count it twice in the truck's P&L.
+ */
+export const FIXED_COST_EXPENSE_CATEGORIES: readonly string[] = ['Insurance', 'Government Fees'];
+
+export interface ExpenseLinkInput {
+  category: string;
+  status: 'Paid' | 'Pending' | string;
+  tripId?: string | null;
+  vehicleId?: string | null;
+  driverId?: string | null;
+  /** The linked trip is done by a subcontractor. */
+  tripIsThirdParty?: boolean;
+}
+
+/** The first rule the links break, as a message for the user; null when they are fine. */
+export function expenseLinkProblem(e: ExpenseLinkInput): string | null {
+  const category = (e.category || '').trim();
+  const rule = expenseCategoryRule(category);
+  const name = category.toLowerCase() || 'this';
+  if (e.tripId) {
+    if (e.tripIsThirdParty) return "This trip is done by a subcontractor; its costs come through the subcontract bill, so it can't carry expenses.";
+    if (!rule.allowed.includes('trip')) return `A ${name} expense can't be charged to a trip.`;
+  } else {
+    if (e.vehicleId && !rule.allowed.includes('vehicle')) return `A ${name} expense can't be charged to a truck.`;
+    if (e.driverId && !rule.allowed.includes('driver')) return `A ${name} expense can't be charged to a driver.`;
+    // No link means company overhead; truck-only categories are handled below (a pending one may wait)
+    if (!e.vehicleId && !e.driverId && !rule.allowed.includes('company') && !rule.needsTruckWhenPaid) return `Choose what this ${name} expense is for.`;
+  }
+  if (e.status === 'Paid' && rule.needsTruckWhenPaid && !e.tripId && !e.vehicleId) {
+    return rule.allowed.includes('trip') ? `Choose the trip or truck this ${name} cost is for; it counts in that truck's P&L.` : `Choose the truck this ${name} cost is for; it counts in that truck's P&L.`;
+  }
+  return null;
+}
 
 /** Suggested Expense.payment_method values (free-text column, same reasoning as above). */
 export const EXPENSE_PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'Cheque', 'Card'] as const;
@@ -392,6 +468,7 @@ export interface Settings {
   defaultCountryDialCode?: string;
   defaultReceivableAccountId?: string | null;
   defaultRevenueAccountId?: string | null;
+  defaultVatOutputAccountId?: string | null;
   defaultPayableAccountId?: string | null;
   defaultCustomerAdvanceAccountId?: string | null;
   defaultProviderAdvanceAccountId?: string | null;
@@ -647,6 +724,8 @@ export interface Invoice {
   tax_amount: number | string;
   total_amount: number | string;
   paid_amount: number | string;
+  /** Taken off by credit notes; balance_due = total − paid − credited. */
+  credited_amount?: number | string;
   balance_due: number | string;
   currency: string;
   lines?: InvoiceLine[];
@@ -654,6 +733,9 @@ export interface Invoice {
   trips?: any[];
   journalEntryId?: string | null;
   journalEntry?: JournalEntry | null;
+  /** Shown on the printed invoice. */
+  notes?: string | null;
+  terms?: string | null;
   created_by?: string | null;
   updated_by?: string | null;
   createdAt: string;
@@ -669,7 +751,12 @@ export interface InvoiceLine {
   description: string;
   quantity: number;
   rate: number | string;
+  /** Percent; `amount` is net of it. */
+  discount_pct?: number | string;
   amount: number | string;
+  /** VAT on this line, percent (e.g. 15, or 0 for zero-rated). */
+  tax_rate?: number | string;
+  tax_amount?: number | string;
   createdAt: string;
 }
 

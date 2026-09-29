@@ -43,7 +43,7 @@ export interface FinancialsQuery {
   to?: string;
 }
 
-interface Range {
+export interface Range {
   tz: string;
   /** Requested bounds; undefined = open ("all time"). */
   from?: string;
@@ -71,7 +71,7 @@ function toDay(value: string | undefined, tz: string): string | undefined {
   return Number.isNaN(d.getTime()) ? undefined : localDay(d, tz);
 }
 
-async function resolveRange(db: Db, q: FinancialsQuery): Promise<Range> {
+export async function resolveRange(db: Db, q: FinancialsQuery): Promise<Range> {
   const tz = await companyTimezone(db);
   return { tz, from: toDay(q.from, tz), to: toDay(q.to, tz), today: localDay(new Date(), tz) };
 }
@@ -89,7 +89,7 @@ function instantFilter(r: Range): Prisma.DateTimeFilter | undefined {
  * A trip is dated by when it finished (else started, else was created) — the
  * same date its revenue is shown under — not by when it was booked.
  */
-function tripDateWhere(r: Range): Prisma.TripWhereInput {
+export function tripDateWhere(r: Range): Prisma.TripWhereInput {
   const f = instantFilter(r);
   if (!f) return {};
   return {
@@ -191,9 +191,11 @@ async function load(db: Db, range: Range, scope: Scope) {
     db.expense.findMany({
       where: {
         deletedAt: null,
-        vehicleId: scope.vehicleId ?? { not: null },
+        // A trip expense belongs to the trip's truck, even if the trip was reassigned after it was recorded
+        OR: [{ vehicleId: scope.vehicleId ?? { not: null } }, { trip: { vehicleId: scope.vehicleId ?? { not: null } } }],
         ...(dateF ? { expense_date: dateF } : {}),
       },
+      include: { trip: { select: { vehicleId: true } } },
       orderBy: { expense_date: 'desc' },
     }),
     db.maintenanceRecord.findMany({
@@ -225,8 +227,10 @@ async function load(db: Db, range: Range, scope: Scope) {
     // (Filtered here, not in SQL: NOT startsWith would also drop null ref_ids.)
     if (e.ref_id?.startsWith(MAINTENANCE_MIRROR_PREFIX)) continue;
     const line = classifyExpense(e.category);
-    if (!line || !e.vehicleId) continue;
-    costs.push({ id: e.id, refId: e.ref_id, source: 'expense', vehicleId: e.vehicleId, day: localDay(e.expense_date, tz), amount: num(e.amount), line, category: e.category, description: e.description });
+    const vehicleId = e.trip?.vehicleId ?? e.vehicleId;
+    if (!line || !vehicleId) continue;
+    if (scope.vehicleId && vehicleId !== scope.vehicleId) continue;
+    costs.push({ id: e.id, refId: e.ref_id, source: 'expense', vehicleId, day: localDay(e.expense_date, tz), amount: num(e.amount) - num(e.vat_amount), line, category: e.category, description: e.description });
   }
   for (const m of maintenance) {
     costs.push({

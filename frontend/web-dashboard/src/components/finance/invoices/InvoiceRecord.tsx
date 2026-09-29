@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
 import { FileCheck2, FilePlus2, HandCoins, Pencil, Send, Trash2, Truck, XCircle, type LucideIcon } from 'lucide-react';
 import type { Invoice } from '@mercon/shared-types';
 
@@ -8,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
 import { JournalLinesTable } from '@/components/finance/kit/JournalLinesTable';
 import { TONE_CLASSES } from '@/components/finance/kit/tones';
-import { financeService, type InvoiceActivity } from '@/services/financeService';
+import { financeService, type CreditNote, type InvoiceActivity } from '@/services/financeService';
 import { dueText, invoiceState, paidShare } from '@/lib/finance/invoices';
 import { formatDate, formatMoney } from '@/lib/finance/format';
 import { cn } from '@/lib/utils';
@@ -69,6 +70,62 @@ function ActivityList({ id }: { id: string }) {
         );
       })}
     </ol>
+  );
+}
+
+/** The invoice's credit notes, each with its reason and a two-step Void. */
+function CreditNotes({ invoiceId }: { invoiceId: string }) {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({ queryKey: ['credit-notes', invoiceId], queryFn: () => financeService.getCreditNotes({ invoice_id: invoiceId }) });
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const notes: CreditNote[] = data ?? [];
+  if (!notes.length) return null;
+  const doVoid = async (n: CreditNote) => {
+    setBusyId(n.id);
+    try {
+      await financeService.voidCreditNote(n.id);
+      toast.success(`${n.ref_id} voided; the invoice balance is back`);
+      ['invoices', 'credit-notes', 'finance-reports'].forEach((k) => queryClient.invalidateQueries({ queryKey: [k] }));
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error?.message || 'Could not void the credit note.');
+    } finally {
+      setBusyId(null);
+      setConfirmId(null);
+    }
+  };
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11px] font-medium text-muted-foreground">Credit notes</p>
+      <ul className="divide-y rounded-lg border">
+        {notes.map((n) => {
+          const voided = n.status === 'Void';
+          return (
+            <li key={n.id} className={cn('flex items-center justify-between gap-3 px-3 py-2 text-xs', voided && 'text-muted-foreground')}>
+              <div className="min-w-0">
+                <p className="font-medium text-foreground">
+                  {n.ref_id} <span className="font-normal text-muted-foreground">· {formatDate(n.credit_date)}{voided ? ' · voided' : ''}</span>
+                </p>
+                <p className="truncate text-[11px] text-muted-foreground" title={n.lines.map((l) => l.description).join(', ')}>{n.reason}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className={cn('fin-num font-semibold', voided ? 'line-through' : TONE_CLASSES.warning.fg)}>−{formatMoney(n.total_amount)}</span>
+                {!voided &&
+                  (confirmId === n.id ? (
+                    <button type="button" disabled={busyId === n.id} onClick={() => doVoid(n)} className={cn('rounded px-1.5 py-0.5 text-[11px] font-medium', TONE_CLASSES.negative.bg, TONE_CLASSES.negative.fg)}>
+                      {busyId === n.id ? 'Voiding…' : 'Confirm void'}
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => setConfirmId(n.id)} className="text-[11px] text-muted-foreground hover:text-foreground">
+                      Void
+                    </button>
+                  ))}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
@@ -139,7 +196,7 @@ export function InvoiceRecord({
       <Tabs defaultValue="details" className="flex min-h-0 flex-1 flex-col gap-0">
         <TabsList className="mx-5 mt-3 h-8 w-fit">
           <TabsTrigger value="details" className="text-xs">Details</TabsTrigger>
-          <TabsTrigger value="payments" className="text-xs">Payments {payments.length > 0 && <span className="ml-1 text-muted-foreground">{payments.length}</span>}</TabsTrigger>
+          <TabsTrigger value="payments" className="text-xs">Payments{n(inv.credited_amount) > 0 ? ' & credits' : ''} {payments.length > 0 && <span className="ml-1 text-muted-foreground">{payments.length}</span>}</TabsTrigger>
           <TabsTrigger value="activity" className="text-xs">Activity</TabsTrigger>
           <TabsTrigger value="accounting" className="text-xs">Accounting</TabsTrigger>
         </TabsList>
@@ -189,13 +246,17 @@ export function InvoiceRecord({
               {n(inv.paid_amount) > 0 && (
                 <div className={cn('flex justify-between', TONE_CLASSES.positive.fg)}><dt>Paid</dt><dd className="fin-num">−{formatMoney(inv.paid_amount)}</dd></div>
               )}
+              {n(inv.credited_amount) > 0 && (
+                <div className={cn('flex justify-between', TONE_CLASSES.warning.fg)}><dt>Credited</dt><dd className="fin-num">−{formatMoney(inv.credited_amount)}</dd></div>
+              )}
               {state !== 'draft' && state !== 'void' && (
                 <div className={cn('flex justify-between font-semibold', overdue && TONE_CLASSES.negative.fg)}><dt>Balance due</dt><dd className="fin-num">{formatMoney(inv.balance_due)}</dd></div>
               )}
             </dl>
           </TabsContent>
 
-          <TabsContent value="payments" className="mt-0">
+          <TabsContent value="payments" className="mt-0 space-y-3">
+            <CreditNotes invoiceId={inv.id} />
             {payments.length === 0 ? (
               <p className="py-6 text-center text-xs text-muted-foreground">
                 {state === 'draft' ? 'Issue the invoice before recording payments.' : 'No payments recorded yet.'}

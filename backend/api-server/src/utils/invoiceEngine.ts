@@ -58,7 +58,7 @@ export async function issueInvoice(invoiceId: string, userId: string) {
     const settings = await getSettingsSingleton(tx);
     if (!settings || !settings.defaultReceivableAccountId || !settings.defaultRevenueAccountId) {
       throw new AccountingError(
-        'Default Accounts Receivable or Revenue account is not configured in Settings. Please configure default accounts before issuing invoices.',
+        'The receivable or revenue account for invoices is not set. An Admin can choose them in Invoices → Ledger setup.',
         'SETTINGS_NOT_CONFIGURED',
         400,
       );
@@ -106,7 +106,7 @@ export async function issueInvoice(invoiceId: string, userId: string) {
     // VAT is a liability owed to the tax authority, not revenue: it needs its own account
     if (taxAmount.gt(0) && !settings.defaultVatOutputAccountId) {
       throw new AccountingError(
-        'The VAT output account is not set. Choose it in Settings → Accounting before issuing invoices with VAT.',
+        'The VAT output account is not set. An Admin can choose it in Invoices → Ledger setup.',
         'SETTINGS_NOT_CONFIGURED',
         400,
       );
@@ -425,6 +425,14 @@ export async function voidInvoice(invoiceId: string, userId: string) {
       throw new AccountingError(
         `Cannot void invoice ${invoice.ref_id || invoice.id} because it has ${invoice.payments.length} recorded payment(s).`,
         'INVOICE_HAS_PAYMENTS',
+        400,
+      );
+    }
+
+    if (new Prisma.Decimal(invoice.credited_amount).gt(0)) {
+      throw new AccountingError(
+        `Cannot void invoice ${invoice.ref_id || invoice.id} while it has credit notes. Void its credit notes first.`,
+        'INVOICE_HAS_CREDIT_NOTES',
         400,
       );
     }

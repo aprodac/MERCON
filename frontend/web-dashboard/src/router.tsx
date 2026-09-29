@@ -89,6 +89,7 @@ const QuotationAiImportPage    = lazyWithRetry(() => import('@/pages/quotations/
 // Expenses
 const ExpenseListPage         = lazyWithRetry(() => import('@/pages/expenses/ExpenseListPage'));
 const ExpenseDetailsPage      = lazyWithRetry(() => import('@/pages/expenses/ExpenseDetailsPage'));
+const ExpenseEditorPage       = lazyWithRetry(() => import('@/pages/expenses/ExpenseEditorPage'));
 
 // Accounting & Finance Foundation
 const ChartOfAccountsPage     = lazyWithRetry(() => import('@/pages/finance/ChartOfAccountsPage'));
@@ -102,6 +103,10 @@ const InvoiceCreatePage       = lazyWithRetry(() => import('@/pages/finance/Invo
 const BillsPage               = lazyWithRetry(() => import('@/pages/finance/BillsPage'));
 const BillCreatePage          = lazyWithRetry(() => import('@/pages/finance/BillCreatePage'));
 const BankAccountsPage        = lazyWithRetry(() => import('@/pages/finance/BankAccountsPage'));
+const ContraEntriesPage       = lazyWithRetry(() => import('@/pages/finance/ContraEntriesPage'));
+const TripProfitabilityPage   = lazyWithRetry(() => import('@/pages/finance/TripProfitabilityPage'));
+const DriverPayPage           = lazyWithRetry(() => import('@/pages/finance/DriverPayPage'));
+const VatReturnPage           = lazyWithRetry(() => import('@/pages/finance/VatReturnPage'));
 const BankAccountDetailPage   = lazyWithRetry(() => import('@/pages/finance/BankAccountDetailPage'));
 const BankAccountEditorPage   = lazyWithRetry(() => import('@/pages/finance/BankAccountEditorPage'));
 const AdvancesPage            = lazyWithRetry(() => import('@/pages/finance/AdvancesPage'));
@@ -311,6 +316,9 @@ export default function AppRouter() {
 
             {/* Expenses */}
             <Route path="/expenses"                 element={<RequireModule moduleKey="expenses"><ExpenseListPage /></RequireModule>} />
+            {/* Literal path before /expenses/:id, which would otherwise match it. */}
+            <Route path="/expenses/new"             element={<RequireModule moduleKey="expenses"><ExpenseEditorPage /></RequireModule>} />
+            <Route path="/expenses/:id/edit"        element={<RequireModule moduleKey="expenses"><WithIdKey Page={ExpenseEditorPage} /></RequireModule>} />
             <Route path="/expenses/:id"             element={<RequireModule moduleKey="expenses"><ExpenseDetailsPage /></RequireModule>} />
 
             {/* Finance & General Ledger */}
@@ -330,6 +338,10 @@ export default function AppRouter() {
             <Route path="/finance/bank-accounts/:id/edit" element={<RequireModule moduleKey="finance"><WithIdKey Page={BankAccountEditorPage} /></RequireModule>} />
             <Route path="/finance/bank-accounts/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={BankAccountDetailPage} /></RequireModule>} />
             <Route path="/finance/bank-accounts"          element={<RequireModule moduleKey="finance"><BankAccountsPage /></RequireModule>} />
+            <Route path="/finance/contra"                 element={<RequireModule moduleKey="finance"><ContraEntriesPage /></RequireModule>} />
+            <Route path="/finance/trip-profitability"     element={<RequireModule moduleKey="finance"><TripProfitabilityPage /></RequireModule>} />
+            <Route path="/finance/driver-pay"             element={<RequireModule moduleKey="finance"><DriverPayPage /></RequireModule>} />
+            <Route path="/finance/vat-return"             element={<RequireModule moduleKey="finance"><VatReturnPage /></RequireModule>} />
             <Route path="/finance/advances"          element={<RequireModule moduleKey="finance"><AdvancesPage /></RequireModule>} />
             <Route path="/finance/advances/new"      element={<RequireModule moduleKey="finance"><AdvanceEditorPage /></RequireModule>} />
             <Route path="/finance/advances/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={AdvanceDetailPage} /></RequireModule>} />
