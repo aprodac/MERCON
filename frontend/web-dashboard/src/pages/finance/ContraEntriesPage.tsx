@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollTableCard } from '@/components/finance/kit/ScrollTableCard';
 import { PeriodControl } from '@/components/finance/kit/PeriodControl';
 import { TONE_CLASSES } from '@/components/finance/kit/tones';
+import { Figure, FigureStrip } from '@/components/finance/kit/FigureStrip';
 import { BankAvatar, TransferSheet } from '@/components/finance/banking/TransferSheet';
 import { financeService, type ContraEntry, type ContraSide, type ContraType } from '@/services/financeService';
 import { resolvePeriodPreset, type PeriodPreset } from '@/lib/finance/pnlPeriodHelpers';
@@ -141,44 +142,29 @@ export default function ContraEntriesPage() {
   return (
     <DashboardLayout active="finance" title="Contra entries" fixedViewport>
       <div className="mx-auto flex h-full w-full max-w-7xl min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4 max-md:h-auto max-md:overflow-y-auto">
-        {/* Totals per kind for the period; a tile filters the register */}
-        <div className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-stretch">
-          <div className={cn('grid flex-1 gap-2', tiles.length === 4 ? 'grid-cols-2 md:grid-cols-5' : 'grid-cols-2 md:grid-cols-4')}>
-            {tiles.map((t) => {
-              const Icon = TYPE_ICON[t];
-              const tone = TONE_CLASSES[CONTRA_META[t].tone];
-              const on = type === t;
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => set({ type: on ? null : t })}
-                  aria-pressed={on}
-                  className={cn(
-                    'min-w-0 rounded-xl border border-t-2 bg-card px-3 py-2 text-left shadow-xs outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring',
-                    on && cn(tone.bg, tone.border),
-                  )}
-                  style={{ borderTopColor: `var(--chip-${CONTRA_META[t].tone}-dot)` }}
-                >
-                  <span className={cn('flex items-center gap-1.5 text-[11px] font-medium', tone.fg)}>
-                    <Icon className="size-3.5" /> {CONTRA_META[t].label}
-                    {summary && <span className="text-muted-foreground">· {summary[t].count}</span>}
-                  </span>
-                  <span className="fin-num block text-lg font-semibold leading-tight text-foreground">
-                    {summary ? formatMoney(summary[t].amount) : <Skeleton className="mt-1 h-5 w-20" />}
-                  </span>
-                </button>
-              );
-            })}
-            <div className="min-w-0 rounded-xl border bg-card px-3 py-2 shadow-xs">
-              <span className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                <Wallet className="size-3.5" /> Cash in hand now
-              </span>
-              <span className={cn('fin-num block text-lg font-semibold leading-tight', cashInHand < -0.005 ? TONE_CLASSES.negative.fg : 'text-foreground')}>{formatMoney(cashInHand)}</span>
-              {summary && summary.charges > 0.005 && <span className="fin-num block text-[11px] text-muted-foreground">Bank charges {formatMoney(summary.charges)}</span>}
-            </div>
-          </div>
-          <Button onClick={() => setSheetOpen(true)} className="h-9 shrink-0 gap-1.5 self-start bg-brand text-white hover:bg-brand-hover">
+        {/* Totals per kind for the period; a figure filters the register */}
+        <div className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center">
+          <FigureStrip>
+            {tiles.map((t) => (
+              <Figure
+                key={t}
+                label={CONTRA_META[t].label}
+                count={summary?.[t].count}
+                dot={TONE_CLASSES[CONTRA_META[t].tone].dot}
+                value={formatMoney(summary?.[t].amount ?? 0)}
+                loading={!summary}
+                onClick={() => set({ type: type === t ? null : t })}
+                active={type === t}
+              />
+            ))}
+            <Figure
+              label="Cash in hand now"
+              value={formatMoney(cashInHand)}
+              tone={cashInHand < -0.005 ? TONE_CLASSES.negative.fg : null}
+              sub={summary && summary.charges > 0.005 ? `Bank charges ${formatMoney(summary.charges)}` : undefined}
+            />
+          </FigureStrip>
+          <Button onClick={() => setSheetOpen(true)} className="h-9 shrink-0 gap-1.5 bg-brand text-white hover:bg-brand-hover">
             <Plus className="size-4" /> New contra
           </Button>
         </div>

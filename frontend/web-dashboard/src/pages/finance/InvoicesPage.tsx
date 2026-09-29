@@ -17,6 +17,7 @@ import { ScrollTableCard } from '@/components/finance/kit/ScrollTableCard';
 import { PeriodControl } from '@/components/finance/kit/PeriodControl';
 import { asOfPresetDate } from '@/components/finance/kit/AsOfControl';
 import { TONE_CLASSES } from '@/components/finance/kit/tones';
+import { Figure, FigureStrip } from '@/components/finance/kit/FigureStrip';
 import { PartyAvatar } from '@/components/finance/ageing/PartyAvatar';
 import { InvoiceActions, InvoiceStateChip } from '@/components/finance/invoices/InvoiceActions';
 import { InvoiceRecord } from '@/components/finance/invoices/InvoiceRecord';
@@ -192,15 +193,6 @@ export default function InvoicesPage() {
   const billableCustomers = ub?.customers.filter((c) => c.trip_ids.length > 0).length ?? 0;
 
   const allChecked = invoices.length > 0 && invoices.every((i) => selected.has(i.id));
-  const figure = (label: string, value: string, count: number | undefined, tone: string | null, onClick: () => void) => (
-    <button type="button" onClick={onClick} className="min-w-0 rounded-md px-2 py-1 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
-      <span className="block text-[11px] text-muted-foreground">
-        {label}
-        {count !== undefined && ` · ${count}`}
-      </span>
-      <span className={cn('fin-num block text-base font-semibold leading-tight', tone ?? 'text-foreground')}>{value}</span>
-    </button>
-  );
 
   const role = authStore.getUser()?.role as string | undefined;
   const isAdmin = role === 'Admin' || role === 'SuperAdmin';
@@ -210,12 +202,12 @@ export default function InvoicesPage() {
       <InvoiceLedgerSetupSheet open={ledgerOpen} onOpenChange={setLedgerOpen} />
       <div className="mx-auto flex h-full w-full max-w-7xl min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4 max-md:h-auto max-md:overflow-y-auto">
         <div className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center">
-          <Card className="flex flex-1 flex-row flex-wrap items-center gap-2 rounded-xl p-2 shadow-xs">
-            {figure('Unpaid', formatMoney(s?.unpaid_balance ?? 0), counts?.unpaid, null, () => set({ tab: 'unpaid' }))}
-            {figure('Overdue', formatMoney(s?.overdue_balance ?? 0), counts?.overdue, (s?.overdue_balance ?? 0) > 0 ? TONE_CLASSES.negative.fg : null, () => set({ tab: 'overdue' }))}
-            {figure('Received this month', formatMoney(s?.paid_this_month ?? 0), s?.payments_this_month, TONE_CLASSES.positive.fg, () => set({ tab: 'Paid' }))}
-            {figure('Drafts', String(counts?.Draft ?? 0), undefined, null, () => set({ tab: 'Draft' }))}
-          </Card>
+          <FigureStrip>
+            <Figure label="Unpaid" value={formatMoney(s?.unpaid_balance ?? 0)} count={counts?.unpaid} onClick={() => set({ tab: 'unpaid' })} />
+            <Figure label="Overdue" value={formatMoney(s?.overdue_balance ?? 0)} count={counts?.overdue} tone={(s?.overdue_balance ?? 0) > 0 ? TONE_CLASSES.negative.fg : null} onClick={() => set({ tab: 'overdue' })} />
+            <Figure label="Received this month" value={formatMoney(s?.paid_this_month ?? 0)} count={s?.payments_this_month} tone={TONE_CLASSES.positive.fg} onClick={() => set({ tab: 'Paid' })} />
+            <Figure label="Drafts" value={String(counts?.Draft ?? 0)} onClick={() => set({ tab: 'Draft' })} />
+          </FigureStrip>
           {isAdmin && (
             <Button variant="ghost" size="sm" className="h-9 shrink-0 gap-1.5 text-xs text-muted-foreground" onClick={() => setLedgerOpen(true)} title="Which accounts invoices post to">
               <BookOpenCheck className="size-3.5" /> Ledger setup
