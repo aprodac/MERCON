@@ -328,6 +328,26 @@ export interface TemplateLayout {
   tokens?: Record<string, string>;
 }
 
+/**
+ * Placeholders a customer's trip-sheet template can hold in any text cell
+ * (e.g. "Invoice: {{invoice_no}}"); filled on export by
+ * reportTemplateController's resolveRun. Invoice ones stay blank on a
+ * date-range export.
+ */
+export const TRIP_SHEET_TOKENS = [
+  { token: 'customer', label: 'Customer name' },
+  { token: 'period', label: 'First – last trip date (or the picked range)' },
+  { token: 'period_from', label: 'Period start' },
+  { token: 'period_to', label: 'Period end' },
+  { token: 'trip_count', label: 'Number of trips' },
+  { token: 'total', label: 'Sum of the trips’ total amount' },
+  { token: 'invoice_no', label: 'Invoice number' },
+  { token: 'invoice_date', label: 'Invoice date' },
+  { token: 'due_date', label: 'Invoice due date' },
+  { token: 'invoice_total', label: 'Invoice total incl. VAT' },
+  { token: 'generated_on', label: 'Export date' },
+] as const;
+
 // ─── Domain entities ─────────────────────────────────────────────
 export interface User {
   id: string;

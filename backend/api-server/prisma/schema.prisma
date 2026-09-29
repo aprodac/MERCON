@@ -2213,6 +2213,10 @@ model ReportTemplate {
   customerId String?   @db.Uuid // null = shared/global template
   customer   Customer? @relation(fields: [customerId], references: [id])
 
+  // Only trips of this Trip.rate_category go into the sheet (e.g. a customer's
+  // "Extra trips" workbook vs its "Monthly" one); null = every trip.
+  rate_category String?
+
   original_filename String
   file_data         Bytes // the uploaded .xlsx, unmodified
   file_size         Int

@@ -44,15 +44,19 @@ const MAPPING_OPTIONS: ComboboxOption[] = [
 
   { value: 'field:billing_amount', label: 'Billing Amount (Base Rate)', group: 'Billing & Financials', keywords: 'billing amount rate price base' },
   { value: 'field:total_amount', label: 'Total Amount (Grand Total)', group: 'Billing & Financials', keywords: 'total amount sum grand' },
-  { value: 'field:trip_charges', label: 'Driver Charge', group: 'Billing & Financials', keywords: 'driver charge payout trip charge fee' },
   { value: 'field:total_charges', label: 'Extra Surcharges (Waiting, Stops)', group: 'Billing & Financials', keywords: 'extra surcharge waiting detention stop' },
-  { value: 'field:balance_amount', label: 'Balance Amount', group: 'Billing & Financials', keywords: 'balance margin net' },
+
+  // What MERCON pays and keeps — the sheet goes to the customer, so these are rarely wanted.
+  { value: 'field:driver_payout', label: 'Driver Payout', group: 'Internal (MERCON only)', keywords: 'driver charge payout trip charge fee' },
+  { value: 'field:balance_amount', label: 'Balance (Total − Extras − Payout)', group: 'Internal (MERCON only)', keywords: 'balance margin net' },
 ];
 
 interface TemplateMappingEditorProps {
   inspection: TemplateInspection;
   layout: TemplateLayout;
   onChange: (layout: TemplateLayout) => void;
+  /** Off when editing a saved format: there's no fresh upload whose detection to fall back to. */
+  canAutoMap?: boolean;
 }
 
 const colLetter = (n: number): string => {
@@ -66,50 +70,7 @@ const colLetter = (n: number): string => {
   return s;
 };
 
-function autoSuggestField(headerText: string): TripReportFieldKey | null {
-  if (!headerText) return null;
-  const h = headerText.toLowerCase().trim();
-  
-  // 1. Trip Ref ID / UUID / Job No / Departure ID
-  if (h.includes('uuid') || h.includes('departure') || h.includes('waybill') || h.includes('job') || h.includes('ref') || h.includes('serial') || h.includes('tracking') || h.includes('id')) return 'ref_id';
-  
-  // 2. Date
-  if (h.includes('date') || h.includes('time')) return 'date';
-  
-  // 3. Customer / Vendor / Sender / Carrier
-  if (h.includes('customer') || h.includes('client') || h.includes('sender') || h.includes('company')) return 'customer_name';
-  if (h.includes('vendor') || h.includes('carrier') || h.includes('subcontractor') || h.includes('3rd') || h.includes('provider') || h.includes('supplier')) return 'carrier_name';
-
-  // 4. Driver
-  if (h.includes('driver') || h.includes('captain')) return 'driver_name';
-  if (h.includes('phone') || h.includes('mobile') || h.includes('contact')) return 'driver_phone';
-
-  // 5. Vehicle Plate / Vehicle Type (Catching typos like "Vehcile Number" / "Vehcile Type")
-  if (h.includes('plate') || h.includes('reg') || (h.includes('veh') && (h.includes('num') || h.includes('no')))) return 'vehicle_plate';
-  if (h.includes('type') || h.includes('class') || h.includes('capacity') || h.includes('ton') || h.includes('fit') || (h.includes('veh') && h.includes('type'))) return 'vehicle_type';
-
-  // 6. Rental Method / Category
-  if (h.includes('rental') || h.includes('method') || h.includes('category') || h.includes('contract') || h.includes('duty')) return 'rate_category';
-
-  // 7. Pickup / Origin / From
-  if (h.includes('pickup') || h.includes('origin') || h.includes('from') || h.includes('start') || h.includes('source')) return 'origin';
-
-  // 8. Dropoff / Destination / To / Consignee
-  if (h.includes('drop') || h.includes('destination') || h.includes('to') || h.includes('end') || h.includes('target')) return 'destination';
-  if (h.includes('consignee') || h.includes('receiver')) return 'receiver';
-
-  // 9. Charges / Billing Amount / VAT / Inc VAT / Total
-  if (h.includes('inc vat') || h.includes('total') || h.includes('sum') || h.includes('gross') || h.includes('net') || h.includes('final')) return 'total_amount';
-  if (h.includes('vat') || h.includes('tax') || h.includes('surcharge') || h.includes('extra')) return 'total_charges';
-  if (h.includes('charge') || h.includes('bill') || h.includes('rate') || h.includes('amount') || h.includes('price') || h.includes('cost') || h.includes('fare')) return 'billing_amount';
-
-  // 10. Status
-  if (h.includes('status') || h.includes('state')) return 'status';
-
-  return null;
-}
-
-export default function TemplateMappingEditor({ inspection, layout, onChange }: TemplateMappingEditorProps) {
+export default function TemplateMappingEditor({ inspection, layout, onChange, canAutoMap = true }: TemplateMappingEditorProps) {
   const sheet = inspection.bestSheet;
 
   if (!sheet) {
@@ -131,15 +92,13 @@ export default function TemplateMappingEditor({ inspection, layout, onChange }: 
     onChange({ ...layout, columns });
   };
 
+  // The server's header matching (xlsxTemplate/aliases.ts) — one matcher, not a second guess here.
   const handleAutoMapAll = () => {
-    const newCols = sheet.columns.map((col) => {
-      const suggested = autoSuggestField(col.headerText);
-      return {
-        colIndex: col.colIndex,
-        headerText: col.headerText,
-        source: suggested ? ({ kind: 'field' as const, key: suggested }) : ({ kind: 'blank' as const })
-      };
-    });
+    const newCols = sheet.columns.map((col) => ({
+      colIndex: col.colIndex,
+      headerText: col.headerText,
+      source: col.suggestedField ? ({ kind: 'field' as const, key: col.suggestedField }) : ({ kind: 'blank' as const }),
+    }));
     onChange({ ...layout, columns: newCols });
   };
 
@@ -170,7 +129,7 @@ export default function TemplateMappingEditor({ inspection, layout, onChange }: 
           </div>
 
           <div className="flex items-center gap-2">
-            <Button
+            {canAutoMap && <Button
               type="button"
               variant="outline"
               size="sm"
@@ -179,7 +138,7 @@ export default function TemplateMappingEditor({ inspection, layout, onChange }: 
               title="Automatically match Excel headers to MERCON database fields"
             >
               <Sparkles className="w-3.5 h-3.5 text-emerald-500" /> Smart Auto-Map
-            </Button>
+            </Button>}
             <Button
               type="button"
               variant="ghost"
