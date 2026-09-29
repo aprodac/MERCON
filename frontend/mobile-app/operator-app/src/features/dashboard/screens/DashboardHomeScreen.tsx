@@ -85,6 +85,7 @@ export default function DashboardHomeScreen() {
           running={inbox.counts.running}
           delayed={inbox.counts.delayed}
           today={inbox.today.length}
+          day={inbox.day}
           loading={inbox.loading}
           updatedAt={inbox.updatedAt}
           now={now}

@@ -91,15 +91,16 @@ function tidy(text: string): string {
 
 // ── 1 · Status ────────────────────────────────────────────────────────────────
 
-export function HomeStatus({ needNow, running, delayed, today, loading, updatedAt, now, onRunning, onDelayed, onToday }: {
+export function HomeStatus({ needNow, running, delayed, today, day, loading, updatedAt, now, onRunning, onDelayed, onToday }: {
   needNow: number; running: number; delayed: number; today: number; loading: boolean; updatedAt: number | null; now: number;
+  day: { total: number; done: number; running: number; toStart: number } | null;
   onRunning: () => void; onDelayed: () => void; onToday: () => void;
 }) {
   const clear = !loading && needNow === 0;
   const cells = [
     { key: 'run', label: 'On the road', value: running, onPress: onRunning },
     { key: 'late', label: 'Delayed', value: delayed, onPress: onDelayed, hot: delayed > 0 },
-    { key: 'today', label: 'Trips today', value: today, onPress: onToday },
+    { key: 'today', label: 'Trips today', value: day?.total ?? today, onPress: onToday },
   ];
   return (
     <View style={s.hero}>
@@ -137,6 +138,31 @@ export function HomeStatus({ needNow, running, delayed, today, loading, updatedA
             {loading ? <View style={[s.skel, { width: 28, height: 20, marginBottom: 3 }]} /> : <Text style={[s.statValue, c.hot && { color: RED }]}>{c.value}</Text>}
             <Text style={s.statLabel}>{c.label}</Text>
           </TouchableOpacity>
+        ))}
+      </View>
+      {day && day.total > 0 ? <DayBar day={day} /> : null}
+    </View>
+  );
+}
+
+/** How today is going: one bar split done / running / to start. */
+function DayBar({ day }: { day: { total: number; done: number; running: number; toStart: number } }) {
+  const parts = [
+    { key: 'done', n: day.done, color: '#16A34A', label: 'done' },
+    { key: 'run', n: day.running, color: '#18181B', label: 'running' },
+    { key: 'next', n: day.toStart, color: '#D4D4D8', label: 'to start' },
+  ];
+  return (
+    <View style={s.day}>
+      <View style={s.dayTrack}>
+        {parts.filter((p) => p.n > 0).map((p) => <View key={p.key} style={{ flex: p.n, backgroundColor: p.color }} />)}
+      </View>
+      <View style={s.dayLegend}>
+        {parts.map((p) => (
+          <View key={p.key} style={s.dayItem}>
+            <View style={[s.dayDot, { backgroundColor: p.color }]} />
+            <Text style={s.dayText}><Text style={s.dayNum}>{p.n}</Text> {p.label}</Text>
+          </View>
         ))}
       </View>
     </View>
@@ -318,6 +344,13 @@ export function UpNext({ rows, tz, onOpenTrip, onAll }: {
   };
   // Soonest first, not-yet-started before running ones already covered above.
   const next = rows.filter((r) => r.trip.phase === 'upcoming').slice(0, 3);
+  const nowMs = Date.now();
+  const startsIn = (iso: string | null) => {
+    if (!iso) return null;
+    const min = Math.round((new Date(iso).getTime() - nowMs) / 60000);
+    if (min <= 0) return 'now';
+    return min < 60 ? `in ${min} min` : `in ${Math.floor(min / 60)} h${min % 60 && min < 600 ? ` ${min % 60} min` : ''}`;
+  };
   return (
     <View style={{ gap: 10 }}>
       <View style={s.headRow}>
@@ -333,10 +366,19 @@ export function UpNext({ rows, tz, onOpenTrip, onAll }: {
         <View style={s.nextCard}>
           {next.map(({ trip: t, unit }, i) => (
             <TouchableOpacity key={t.id} style={[s.nextRow, i > 0 && s.nextBorder]} onPress={() => onOpenTrip(t.id)} activeOpacity={0.7}>
-              <Text style={s.nextTime}>{time(t.planned_start)}</Text>
+              <View style={{ width: 58 }}>
+                <Text style={s.nextTime}>{time(t.planned_start)}</Text>
+                {startsIn(t.planned_start) ? <Text style={s.nextIn}>{startsIn(t.planned_start)}</Text> : null}
+              </View>
               <View style={{ flex: 1, gap: 2 }}>
                 <Text style={s.nextName} numberOfLines={2}>{niceName(t.customer_name) || '—'}</Text>
-                <Text style={s.detailSm} numberOfLines={1}>{[t.ref_id, unit.vehicle?.plate_number ?? 'No truck'].filter(Boolean).join(' · ')}</Text>
+                <Text style={s.detailSm} numberOfLines={1}>
+                  {t.ref_id}
+                  {' · '}
+                  {unit.vehicle ? unit.vehicle.plate_number : <Text style={{ color: RED, fontWeight: '600' }}>No truck</Text>}
+                  {' · '}
+                  {unit.driver ? niceName(unit.driver.name) : <Text style={{ color: RED, fontWeight: '600' }}>No driver</Text>}
+                </Text>
               </View>
               <ChevronRight size={18} color="#C4C4CC" />
             </TouchableOpacity>
@@ -369,6 +411,14 @@ const s = StyleSheet.create({
   laterTitle: { fontSize: 15, fontWeight: '600', color: INK },
   laterSub: { fontSize: 12, color: MUTED, marginTop: 1 },
   laterCount: { fontSize: 14, fontWeight: '600', color: MUTED, fontVariant: ['tabular-nums'] },
+
+  day: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 14, gap: 8, borderTopWidth: 1, borderTopColor: LINE },
+  dayTrack: { flexDirection: 'row', height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: '#F1F1F3', gap: 2 },
+  dayLegend: { flexDirection: 'row', gap: 14 },
+  dayItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  dayDot: { width: 7, height: 7, borderRadius: 4 },
+  dayText: { fontSize: 12, color: MUTED },
+  dayNum: { fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
 
   // section heads
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -410,7 +460,8 @@ const s = StyleSheet.create({
   nextCard: { backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: LINE, overflow: 'hidden' },
   nextRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 14, paddingVertical: 14 },
   nextBorder: { borderTopWidth: 1, borderTopColor: '#F1F1F3' },
-  nextTime: { width: 48, fontSize: 15, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
+  nextTime: { fontSize: 15, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
+  nextIn: { fontSize: 11, fontWeight: '600', color: MUTED, marginTop: 1 },
   nextName: { fontSize: 15, fontWeight: '600', color: INK, lineHeight: 20 },
   detailSm: { fontSize: 13, color: MUTED },
   emptyNext: { backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: LINE, padding: 16 },
