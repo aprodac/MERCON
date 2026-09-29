@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EXPENSE_CATEGORIES, expenseLinkProblem } from '@mercon/shared-types';
 import type { Expense } from '@/services/expenseService';
-import { allowedLinks, emptyExpenseForm, expenseFormFrom, expenseFormProblems, fitLinksToCategory, likelyDuplicates, suggestPayFrom } from './expenseForm';
+import { allowedLinks, defaultFor, emptyExpenseForm, expenseFormFrom, expenseFormProblems, fitLinksToCategory, forOf, forOptions, likelyDuplicates, linksFor, suggestPayFrom } from './expenseForm';
 
 const exp = (p: Partial<Expense>): Expense =>
   ({ id: 'e1', ref_id: 'EXP-001', category: 'Fuel', status: 'Paid', amount: 250, currency: 'SAR', expense_date: '2026-09-20T00:00:00.000Z', createdAt: '', updatedAt: '', ...p }) as Expense;
@@ -87,5 +87,34 @@ describe('paid from', () => {
     expect(suggestPayFrom('Card', accounts, { Card: 'cash1' })).toBe('cash1');
     expect(suggestPayFrom('Card', accounts, { Card: 'gone' })).toBe('bank1');
     expect(suggestPayFrom('Card', [], {})).toBe('');
+  });
+});
+
+describe('what the expense is for', () => {
+  it('offers only what the category allows', () => {
+    expect(forOptions('Fuel')).toEqual(['trip', 'vehicle']);
+    expect(forOptions('Rent')).toEqual(['company']);
+    expect(forOptions('Salary')).toEqual(['driver', 'company']);
+    expect(forOptions('Other')).toEqual(['trip', 'vehicle', 'driver', 'company']);
+  });
+
+  it('starts each category on its usual choice', () => {
+    expect(defaultFor('Fuel')).toBe('trip');
+    expect(defaultFor('Tyres')).toBe('vehicle');
+    expect(defaultFor('Salary')).toBe('driver');
+    expect(defaultFor('Toll & Parking')).toBe('trip');
+    expect(defaultFor('Utilities')).toBe('company');
+    expect(defaultFor('Other')).toBe('company');
+    expect(defaultFor('Custom thing')).toBe('company');
+  });
+
+  it('switching clears links that no longer apply', () => {
+    const f = { trip_id: 't', vehicle_id: '', driver_id: '' };
+    expect(linksFor(f, 'vehicle')).toEqual({ trip_id: '', vehicle_id: '', driver_id: '' });
+    expect(linksFor({ trip_id: '', vehicle_id: 'v', driver_id: 'd' }, 'vehicle')).toEqual({ trip_id: '', vehicle_id: 'v', driver_id: 'd' });
+    expect(linksFor({ trip_id: '', vehicle_id: 'v', driver_id: 'd' }, 'driver')).toEqual({ trip_id: '', vehicle_id: '', driver_id: 'd' });
+    expect(linksFor({ trip_id: 't', vehicle_id: 'v', driver_id: 'd' }, 'company')).toEqual({ trip_id: '', vehicle_id: '', driver_id: '' });
+    expect(forOf({ trip_id: '', vehicle_id: 'v', driver_id: 'd' })).toBe('vehicle');
+    expect(forOf({ trip_id: '', vehicle_id: '', driver_id: '' })).toBeNull();
   });
 });

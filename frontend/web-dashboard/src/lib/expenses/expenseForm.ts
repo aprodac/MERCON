@@ -179,3 +179,38 @@ export function suggestPayFrom(method: string, accounts: PayFromAccount[], lastU
   const wantCash = method === 'Cash';
   return (accounts.find((a) => a.is_cash === wantCash) ?? accounts[0]).accountId;
 }
+
+/** What the expense is charged to, as the "What it's for" choice shows it. */
+export type ExpenseFor = ExpenseLinkKind;
+const FOR_ORDER: ExpenseFor[] = ['trip', 'vehicle', 'driver', 'company'];
+
+/** The choices a category offers, in display order. */
+export const forOptions = (category: string): ExpenseFor[] => {
+  const a = allowedLinks(category);
+  return FOR_ORDER.filter((k) => a[k]);
+};
+
+/** The choice a newly picked category starts on: pay goes to a driver, truck costs to a trip or truck. */
+export function defaultFor(category: string): ExpenseFor {
+  const options = forOptions(category);
+  const rule = expenseCategoryRule(category);
+  if (['Salary', 'Salary Advance'].includes(category.trim()) && options.includes('driver')) return 'driver';
+  if (rule.needsTruckWhenPaid) return options.includes('trip') ? 'trip' : 'vehicle';
+  if (options.length === FOR_ORDER.length) return 'company'; // Other / custom: overhead unless said otherwise
+  return options[0] ?? 'company';
+}
+
+/** The choice a saved form is on. */
+export const forOf = (f: Pick<ExpenseForm, 'trip_id' | 'vehicle_id' | 'driver_id'>): ExpenseFor | null =>
+  f.trip_id ? 'trip' : f.vehicle_id ? 'vehicle' : f.driver_id ? 'driver' : null;
+
+/**
+ * Links kept when switching what the expense is for: a truck may keep its driver (e.g. a
+ * government fee for both), everything else starts empty.
+ */
+export function linksFor(f: Pick<ExpenseForm, 'trip_id' | 'vehicle_id' | 'driver_id'>, kind: ExpenseFor): Pick<ExpenseForm, 'trip_id' | 'vehicle_id' | 'driver_id'> {
+  if (kind === 'trip') return { trip_id: f.trip_id, vehicle_id: '', driver_id: '' };
+  if (kind === 'vehicle') return { trip_id: '', vehicle_id: f.vehicle_id, driver_id: f.trip_id ? '' : f.driver_id };
+  if (kind === 'driver') return { trip_id: '', vehicle_id: '', driver_id: f.trip_id ? '' : f.driver_id };
+  return { trip_id: '', vehicle_id: '', driver_id: '' };
+}
