@@ -16,11 +16,12 @@ import { ScrollTableCard } from '@/components/finance/kit/ScrollTableCard';
 import { SegmentedControl } from '@/components/finance/kit/SegmentedControl';
 import { TONE_CLASSES } from '@/components/finance/kit/tones';
 import { SettleDriverSheet } from '@/components/finance/driverPay/SettleDriverSheet';
+import { MonthlyPayouts } from '@/components/finance/driverPay/MonthlyPayouts';
 import { financeService } from '@/services/financeService';
 import { formatDate, formatMoney } from '@/lib/finance/format';
 import { cn } from '@/lib/utils';
 
-type Tab = 'owed' | 'paid';
+type Tab = 'owed' | 'monthly' | 'paid';
 
 /** Days since a date, for "oldest unpaid trip" ageing. */
 const daysSince = (iso: string) => Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
@@ -99,12 +100,15 @@ export default function DriverPayPage() {
               })}
               options={[
                 { value: 'owed', label: 'To pay' },
+                { value: 'monthly', label: 'By month' },
                 { value: 'paid', label: 'Paid' },
               ]}
             />
           }
         >
-          {tab === 'owed' ? (
+          {tab === 'monthly' ? (
+            <MonthlyPayouts onPay={setSettling} />
+          ) : tab === 'owed' ? (
             <table className="w-full min-w-[720px] text-xs">
               <thead className="sticky top-0 z-10 bg-card text-[11px] text-muted-foreground">
                 <tr className="border-b text-left">

@@ -4,6 +4,7 @@ import { prisma } from '../db';
 import { AccountingError } from '../utils/accountingEngine';
 import { payableTrips, settleDriver, unpaidByDriver, voidSettlement } from '../utils/driverSettlementEngine';
 import { logAuditEvent } from '../services/auditService';
+import { loadPayoutItems, monthRange, summarisePayouts } from '../services/driverPayouts';
 import { logger } from '../utils/logger';
 
 const fail = (res: Response, error: any, what: string) => {
@@ -205,5 +206,48 @@ export const voidSettlementHandler = async (req: Request, res: Response) => {
     res.json({ success: true, data: { id: s.id, status: s.status } });
   } catch (error) {
     fail(res, error, 'void the settlement');
+  }
+};
+
+const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** GET /driver-settlements/monthly?from=YYYY-MM&to=YYYY-MM — trip pay earned vs marked paid, per month and per driver. */
+export const getMonthlyPayouts = async (req: Request, res: Response) => {
+  try {
+    const from = String(req.query.from || '');
+    const to = String(req.query.to || '');
+    if (!MONTH.test(from) || !MONTH.test(to) || from > to) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'from and to must be months (YYYY-MM), from on or before to' } });
+    }
+    const months = monthRange(from, to);
+    if (months.length > 24) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Choose 24 months or fewer' } });
+    const items = await loadPayoutItems(from, to);
+    const summary = summarisePayouts(items, months);
+    const ids = [...new Set(summary.drivers.map((d) => d.driverId))];
+    const drivers = await prisma.driver.findMany({ where: { id: { in: ids } }, select: { id: true, ref_id: true, first_name: true, last_name: true } });
+    const byId = new Map(drivers.map((d) => [d.id, d]));
+    res.json({
+      success: true,
+      data: {
+        months: summary.months,
+        drivers: summary.drivers.map((d) => ({ ...d, driver_ref: byId.get(d.driverId)?.ref_id ?? null, driver_name: driverName(byId.get(d.driverId) ?? null) })),
+      },
+    });
+  } catch (error) {
+    fail(res, error, 'load monthly driver payouts');
+  }
+};
+
+/** GET /driver-settlements/monthly/trips?month=YYYY-MM&driver_id= — one driver's trips that month and whether each is paid. */
+export const getMonthlyPayoutTrips = async (req: Request, res: Response) => {
+  try {
+    const month = String(req.query.month || '');
+    const driverId = String(req.query.driver_id || '');
+    if (!MONTH.test(month) || !driverId) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'month (YYYY-MM) and driver_id are required' } });
+    }
+    res.json({ success: true, data: await loadPayoutItems(month, month, { driverId }) });
+  } catch (error) {
+    fail(res, error, 'load the driver’s trips');
   }
 };
