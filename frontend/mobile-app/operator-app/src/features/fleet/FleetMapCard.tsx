@@ -6,7 +6,8 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
 import type { LiveUnit } from '../../lib/operator';
-import { FleetMap, isDelayed, isSilent } from './FleetMap';
+import { FleetMap } from './FleetMap';
+import { isDelayed, isSilent } from './fleetModel';
 
 export function FleetMapCard({ units, onOpen }: { units: LiveUnit[]; onOpen: () => void }) {
   const onRoad = units.filter((u) => u.trip && u.trip.phase !== 'upcoming');

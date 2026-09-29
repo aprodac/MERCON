@@ -258,6 +258,9 @@ export interface LiveUnit {
   driver_gps: LiveGpsFix | null;
   position: (LiveGpsFix & { source: 'vehicle' | 'driver' }) | null;
   feeds_gap_m?: number | null;
+  /** Which GPS feeds are live, and whether the truck is moving (same as the web live map). */
+  feed?: 'both' | 'vehicle' | 'driver' | 'none';
+  motion?: 'moving' | 'idle' | 'stale' | 'no_signal';
 }
 
 /** A document or licence that has expired or expires soon (backend services/operatorInbox.ts). */
