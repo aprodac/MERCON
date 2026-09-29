@@ -103,6 +103,7 @@ const InvoiceCreatePage       = lazyWithRetry(() => import('@/pages/finance/Invo
 const BillsPage               = lazyWithRetry(() => import('@/pages/finance/BillsPage'));
 const BillCreatePage          = lazyWithRetry(() => import('@/pages/finance/BillCreatePage'));
 const BankAccountsPage        = lazyWithRetry(() => import('@/pages/finance/BankAccountsPage'));
+const ContraEntriesPage       = lazyWithRetry(() => import('@/pages/finance/ContraEntriesPage'));
 const BankAccountDetailPage   = lazyWithRetry(() => import('@/pages/finance/BankAccountDetailPage'));
 const BankAccountEditorPage   = lazyWithRetry(() => import('@/pages/finance/BankAccountEditorPage'));
 const AdvancesPage            = lazyWithRetry(() => import('@/pages/finance/AdvancesPage'));
@@ -334,6 +335,7 @@ export default function AppRouter() {
             <Route path="/finance/bank-accounts/:id/edit" element={<RequireModule moduleKey="finance"><WithIdKey Page={BankAccountEditorPage} /></RequireModule>} />
             <Route path="/finance/bank-accounts/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={BankAccountDetailPage} /></RequireModule>} />
             <Route path="/finance/bank-accounts"          element={<RequireModule moduleKey="finance"><BankAccountsPage /></RequireModule>} />
+            <Route path="/finance/contra"                 element={<RequireModule moduleKey="finance"><ContraEntriesPage /></RequireModule>} />
             <Route path="/finance/advances"          element={<RequireModule moduleKey="finance"><AdvancesPage /></RequireModule>} />
             <Route path="/finance/advances/new"      element={<RequireModule moduleKey="finance"><AdvanceEditorPage /></RequireModule>} />
             <Route path="/finance/advances/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={AdvanceDetailPage} /></RequireModule>} />

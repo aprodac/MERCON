@@ -22,6 +22,7 @@
     "test:invoice-query": "node -r ts-node/register --test src/tests/invoiceQuery.test.ts",
     "test:expense-summary": "node -r ts-node/register --test src/tests/expenseSummary.test.ts",
     "test:expense-ledger": "node -r ts-node/register --test src/tests/expenseLedger.test.ts",
+    "test:contra": "node -r ts-node/register --test src/tests/contraEntries.test.ts",
     "test:fleet-live-map": "node -r ts-node/register --test src/tests/fleetLiveMap.test.ts",
     "test:operator-inbox": "node -r ts-node/register --test src/tests/operatorInbox.test.ts",
     "test:trip-overview": "node -r ts-node/register --test src/tests/tripOverview.test.ts",

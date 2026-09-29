@@ -5,6 +5,7 @@ import {
   createBankAccount,
   updateBankAccount,
   transferFundsHandler,
+  listContraEntries,
   getBankAccountTransactions,
   getBankAccountBalanceHistory,
 } from '../controllers/bankAccountController';
@@ -20,6 +21,8 @@ router.use(requireModuleEnabled('finance'));
 router.get('/', listBankAccounts);
 router.post('/', createBankAccount);
 router.post('/transfer', transferFundsHandler);
+// Contra register; before '/:id' so it isn't read as an id
+router.get('/transfers', listContraEntries);
 router.get('/:id', getBankAccountById);
 router.get('/:id/transactions', getBankAccountTransactions);
 router.get('/:id/balance-history', getBankAccountBalanceHistory);

@@ -1409,6 +1409,8 @@ model JournalEntry {
 
   source_type String  @default("Manual")
   source_id   String? @db.Uuid
+  // The bank's own number for it: deposit slip, cheque, transfer (UTR) number. Set on contra entries.
+  reference   String?
 
   reversalOfId String?       @unique @db.Uuid
   reversalOf   JournalEntry? @relation("JournalReversal", fields: [reversalOfId], references: [id])
