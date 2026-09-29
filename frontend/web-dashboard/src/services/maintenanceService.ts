@@ -23,7 +23,15 @@ export interface MaintenanceRecord {
   service_date: string;
   work_done?: string | null;
   odometer_reading: number;
+  /** Total paid, VAT included. */
   cost: number;
+  /** Reclaimable VAT inside `cost`. */
+  vat_amount?: number | string;
+  payment_status?: 'Paid' | 'Pending';
+  paymentAccountId?: string | null;
+  /** When the truck should be back on the road. */
+  expected_end_date?: string | null;
+  items?: MaintenanceItem[];
   invoice_number?: string | null;
   invoice_url?: string | null;
   next_service_due?: string | null;
@@ -44,6 +52,20 @@ export interface MaintenanceRecord {
   documents?: MerconDocument[];
 }
 
+export type MaintenanceItemKind = 'part' | 'labour' | 'other';
+
+/** One cost line of a service order, before VAT. */
+export interface MaintenanceItem {
+  id?: string;
+  kind: MaintenanceItemKind;
+  description: string;
+  quantity: number | string;
+  unit_price: number | string;
+  amount?: number | string;
+  servicePlanId?: string | null;
+  servicePlan?: { id: string; task: string } | null;
+}
+
 export interface CreateMaintenancePayload {
   vehicle_id: string;
   workshop_name: string;
@@ -56,7 +78,13 @@ export interface CreateMaintenancePayload {
   service_date?: string;
   work_done?: string;
   odometer_reading: number;
+  /** Older single-cost entry; the lines (`items`) replace it. */
   cost?: number;
+  items?: { kind: MaintenanceItemKind; description: string; quantity: number; unit_price: number; service_plan_id?: string | null }[];
+  vat_amount?: number;
+  payment_status?: 'Paid' | 'Pending';
+  payment_account_id?: string | null;
+  expected_end_date?: string | null;
   invoice_number?: string;
   invoice_url?: string;
   next_service_due?: string;
@@ -106,6 +134,51 @@ export interface Workshop {
   last_used?: string;
 }
 
+export type DueStatus = 'overdue' | 'due_soon' | 'ok' | 'never' | 'booked';
+
+export interface DueService {
+  vehicleId: string;
+  plate: string;
+  asset_type: string;
+  odometer: number;
+  odometer_updated_at: string | null;
+  planId: string;
+  task: string;
+  interval_km: number | null;
+  interval_days: number | null;
+  scope: 'truck' | 'type' | 'all';
+  last: { date: string; km: number; recordId: string; ref: string | null } | null;
+  status: DueStatus;
+  dueKm: number | null;
+  dueDate: string | null;
+  remainingKm: number | null;
+  remainingDays: number | null;
+}
+
+export interface MaintenanceOverview {
+  in_workshop: { count: number; long: number; longest: { plate: string; days: number } | null; overdue_return: number };
+  due: { overdue: number; due_soon: number; never: number; plans: number };
+  scheduled: { count: number; week: number[]; next: { plate: string; date: string; ref: string | null } | null };
+  cost: { month: string; this_month: number; last_month: number; trend: { month: string; amount: number }[]; downtime_days: number };
+}
+
+export interface ServicePlan {
+  id: string;
+  task: string;
+  asset_type: 'Flatbed' | 'Reefer' | 'Box' | 'Tanker' | null;
+  vehicle_id: string | null;
+  vehicle_plate: string | null;
+  interval_km: number | null;
+  interval_days: number | null;
+  warn_km: number;
+  warn_days: number;
+  notes: string | null;
+  is_active: boolean;
+  scope: 'truck' | 'type' | 'all';
+}
+
+export type ServicePlanInput = Omit<ServicePlan, 'id' | 'vehicle_plate' | 'scope'>;
+
 export interface SavedWorkItem {
   id: string;
   title: string;
@@ -152,6 +225,29 @@ export const maintenanceService = {
 
   async deleteWorkItem(id: string): Promise<void> {
     await api.delete(`/maintenance/work-items/${id}`);
+  },
+
+  /** The hub's four figures. */
+  async getOverview(): Promise<MaintenanceOverview> {
+    return (await api.get<ApiResponse<MaintenanceOverview>>('/maintenance/overview')).data.data;
+  },
+
+  /** Planned services per truck, most urgent first. */
+  async getDue(vehicleId?: string): Promise<DueService[]> {
+    return (await api.get<ApiResponse<DueService[]>>('/maintenance/due', { params: vehicleId ? { vehicle_id: vehicleId } : {} })).data.data;
+  },
+
+  async getPlans(): Promise<ServicePlan[]> {
+    return (await api.get<ApiResponse<ServicePlan[]>>('/maintenance/plans')).data.data;
+  },
+  async createPlan(body: ServicePlanInput): Promise<ServicePlan> {
+    return (await api.post<ApiResponse<ServicePlan>>('/maintenance/plans', body)).data.data;
+  },
+  async updatePlan(id: string, body: ServicePlanInput): Promise<ServicePlan> {
+    return (await api.put<ApiResponse<ServicePlan>>(`/maintenance/plans/${id}`, body)).data.data;
+  },
+  async deletePlan(id: string): Promise<void> {
+    await api.delete(`/maintenance/plans/${id}`);
   },
 
   async getById(id: string): Promise<MaintenanceRecord> {

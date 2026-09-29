@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import { syncVehicleMaintenanceStatus, ACTIVE_MAINTENANCE_STATUSES } from '../utils/vehicleMaintenanceStatus';
 import { syncSingleMaintenanceExpense } from '../utils/syncMaintenanceExpense';
 import { buildSearchAnd } from '../utils/search';
+import { itemsProblem, orderTotals, type ItemInput } from '../services/maintenance/engine';
 
 /** Fields the maintenance ledger search bar looks at. */
 const MAINTENANCE_SEARCH_FIELDS = [
@@ -99,6 +100,7 @@ export const getMaintenanceRecords = async (req: Request, res: Response) => {
               current_odometer: true,
             },
           },
+          items: { select: { kind: true, description: true, amount: true }, orderBy: { sort_order: 'asc' } },
         },
       }),
       prisma.maintenanceRecord.count({ where: whereClause }),
@@ -389,6 +391,7 @@ const findMaintenanceRecordByIdOrRef = async (idOrRef: string) => {
     },
     include: {
       vehicle: true,
+      items: { orderBy: { sort_order: 'asc' }, include: { servicePlan: { select: { id: true, task: true } } } },
     },
   });
 };
@@ -442,7 +445,35 @@ const maintenanceSchema = z.object({
   invoice_url: z.string().optional().nullable(),
   next_service_due: z.string().or(z.date()).optional().nullable(),
   remarks: z.string().optional().nullable(),
+  /** Cost lines before VAT; when sent, `cost` is worked out from them (+ vat_amount). */
+  items: z
+    .array(
+      z.object({
+        kind: z.enum(['part', 'labour', 'other']).default('other'),
+        description: z.string().trim().min(1).max(300),
+        quantity: z.union([z.string(), z.number()]).transform((v) => parseFloat(v as string)),
+        unit_price: z.union([z.string(), z.number()]).transform((v) => parseFloat(v as string)),
+        service_plan_id: z.string().uuid().optional().nullable(),
+      }),
+    )
+    .max(100)
+    .optional(),
+  vat_amount: z.union([z.string(), z.number()]).optional().nullable().transform((v) => (v === '' || v == null ? 0 : parseFloat(v as string))),
+  payment_status: z.enum(['Paid', 'Pending']).optional(),
+  payment_account_id: z.string().uuid().optional().nullable(),
+  expected_end_date: z.string().or(z.date()).optional().nullable(),
 });
+
+type ItemsIn = NonNullable<z.infer<typeof maintenanceSchema>['items']>;
+const toItemInputs = (items: ItemsIn): ItemInput[] =>
+  items.map((i) => ({ kind: i.kind, description: i.description, quantity: i.quantity, unit_price: i.unit_price, servicePlanId: i.service_plan_id ?? null }));
+
+/** A "paid from" account must be an active bank or cash account. */
+async function paymentAccountProblem(accountId?: string | null): Promise<string | null> {
+  if (!accountId) return null;
+  const bank = await prisma.bankAccount.findFirst({ where: { accountId, deletedAt: null, isActive: true } });
+  return bank ? null : 'Paid from must be an active bank or cash account.';
+}
 
 /**
  * Shared date rules for a service order. Returns an error message, or null when the
@@ -514,7 +545,25 @@ export const createMaintenanceRecord = async (req: Request, res: Response) => {
       invoice_url,
       next_service_due,
       remarks,
+      items,
+      vat_amount,
+      payment_status,
+      payment_account_id,
+      expected_end_date,
     } = parseResult.data;
+
+    // Cost lines: from the request, or the single cost as one line (older clients send only cost)
+    const itemInputs: ItemInput[] = items
+      ? toItemInputs(items)
+      : Number(cost) > 0
+        ? [{ kind: 'other', description: work_done?.trim() || maintenance_type, quantity: 1, unit_price: Number(cost) }]
+        : [];
+    const vatVal = items ? Number(vat_amount) || 0 : 0;
+    const linesProblem = itemsProblem(itemInputs, vatVal) ?? (await paymentAccountProblem(payment_account_id));
+    if (linesProblem) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: linesProblem } });
+    }
+    const totals = orderTotals(itemInputs, vatVal);
 
     const startDateVal = toDate(start_date) ?? toDate(service_date) ?? new Date();
     const serviceDateVal = toDate(service_date) ?? startDateVal;
@@ -525,9 +574,9 @@ export const createMaintenanceRecord = async (req: Request, res: Response) => {
       startDateVal,
       endDateVal,
       nextServiceDueVal,
-      // A brand new service order is logged today or scheduled forward — it can
-      // never start years in the past.
-      enforceNotBackdated: true,
+      // A new open or scheduled order starts today or later; a completed one is history being
+      // logged (it sets when a planned service was last done), so it may be in the past.
+      enforceNotBackdated: status !== 'Completed',
     });
     if (dateError) {
       return res.status(400).json({
@@ -563,7 +612,22 @@ export const createMaintenanceRecord = async (req: Request, res: Response) => {
             service_date: serviceDateVal,
             work_done: work_done || null,
             odometer_reading: Number.isFinite(odometer_reading) ? odometer_reading : 0,
-            cost: Number.isFinite(cost) ? cost : 0,
+            cost: totals.total,
+            vat_amount: totals.vat,
+            payment_status: payment_status || 'Paid',
+            paymentAccountId: payment_account_id || null,
+            expected_end_date: toDate(expected_end_date),
+            items: {
+              create: totals.lines.map((l) => ({
+                kind: l.kind,
+                description: l.description.trim(),
+                quantity: l.quantity,
+                unit_price: l.unit_price,
+                amount: l.amount,
+                servicePlanId: l.servicePlanId || null,
+                sort_order: l.sort_order,
+              })),
+            },
             invoice_number: invoice_number || null,
             invoice_url: invoice_url || null,
             next_service_due: nextServiceDueVal,
@@ -633,6 +697,34 @@ export const updateMaintenanceRecord = async (req: Request, res: Response) => {
 
     const data: any = { ...parseResult.data };
 
+    // Cost lines replace the order's lines; a bare `cost` (older clients) becomes one line
+    let newLines: ReturnType<typeof orderTotals> | null = null;
+    if (data.items !== undefined || data.cost !== undefined || data.vat_amount !== undefined) {
+      const current = await prisma.maintenanceItem.findMany({ where: { recordId: existing.id }, orderBy: { sort_order: 'asc' } });
+      const itemInputs: ItemInput[] = data.items
+        ? toItemInputs(data.items)
+        : data.cost !== undefined
+          ? Number(data.cost) > 0
+            ? [{ kind: 'other', description: (data.work_done ?? existing.work_done)?.trim() || existing.maintenance_type, quantity: 1, unit_price: Number(data.cost) }]
+            : []
+          : current.map((c) => ({ kind: c.kind as ItemInput['kind'], description: c.description, quantity: Number(c.quantity), unit_price: Number(c.unit_price), servicePlanId: c.servicePlanId }));
+      const vatVal = data.vat_amount !== undefined ? Number(data.vat_amount) || 0 : data.items ? 0 : Number(existing.vat_amount);
+      const problem = itemsProblem(itemInputs, vatVal);
+      if (problem) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: problem } });
+      newLines = orderTotals(itemInputs, vatVal);
+      data.cost = newLines.total;
+      data.vat_amount = newLines.vat;
+    }
+    delete data.items;
+    for (const k of ['cost', 'vat_amount', 'payment_account_id', 'expected_end_date']) if (data[k] === undefined) delete data[k];
+    if (data.payment_account_id !== undefined) {
+      const problem = await paymentAccountProblem(data.payment_account_id);
+      if (problem) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: problem } });
+      data.paymentAccountId = data.payment_account_id || null;
+      delete data.payment_account_id;
+    }
+    if (data.expected_end_date !== undefined) data.expected_end_date = toDate(data.expected_end_date);
+
     // Empty strings mean "clear this date". `service_date` and `start_date` are
     // non-nullable in the schema, so an empty value there means "leave untouched".
     for (const field of ['start_date', 'service_date'] as const) {
@@ -664,15 +756,29 @@ export const updateMaintenanceRecord = async (req: Request, res: Response) => {
       });
     }
 
-    const updated = await prisma.maintenanceRecord.update({
-      where: { id: existing.id },
-      data: {
-        ...data,
-        updated_by: (req as any).user?.id,
-      },
-      include: {
-        vehicle: true,
-      },
+    const updated = await prisma.$transaction(async (tx) => {
+      if (newLines) {
+        await tx.maintenanceItem.deleteMany({ where: { recordId: existing.id } });
+        if (newLines.lines.length) {
+          await tx.maintenanceItem.createMany({
+            data: newLines.lines.map((l) => ({
+              recordId: existing.id,
+              kind: l.kind,
+              description: l.description.trim(),
+              quantity: l.quantity,
+              unit_price: l.unit_price,
+              amount: l.amount,
+              servicePlanId: l.servicePlanId || null,
+              sort_order: l.sort_order,
+            })),
+          });
+        }
+      }
+      return tx.maintenanceRecord.update({
+        where: { id: existing.id },
+        data: { ...data, updated_by: (req as any).user?.id },
+        include: { vehicle: true, items: { orderBy: { sort_order: 'asc' } } },
+      });
     });
 
     // Handle Vehicle status transitions and odometer updates

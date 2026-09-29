@@ -14,6 +14,14 @@ import {
   createSavedWorkItem,
   deleteSavedWorkItem
 } from '../controllers/maintenanceController';
+import {
+  getMaintenanceOverview,
+  getMaintenanceDue,
+  listServicePlans,
+  createServicePlan,
+  updateServicePlan,
+  deleteServicePlan,
+} from '../controllers/maintenancePlanController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 
@@ -24,6 +32,14 @@ router.use(authorizeRoles('Admin', 'Operator'));
 router.use(requireModuleEnabled('maintenance'));
 
 router.get('/', getMaintenanceRecords);
+
+// Hub figures, due services and service plans (above '/:id')
+router.get('/overview', getMaintenanceOverview);
+router.get('/due', getMaintenanceDue);
+router.get('/plans', listServicePlans);
+router.post('/plans', createServicePlan);
+router.put('/plans/:planId', updateServicePlan);
+router.delete('/plans/:planId', deleteServicePlan);
 
 // Workshop routes (must stay above '/:id' so 'workshops' isn't read as a UUID/ref_id)
 router.get('/workshops', getWorkshops);
