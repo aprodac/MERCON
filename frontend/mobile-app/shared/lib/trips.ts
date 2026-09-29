@@ -249,7 +249,7 @@ export function getMonthlyDriverPayout(trips: (MobileTrip | null | undefined)[],
 }
 
 /** Which proof step a trip screen is collecting. */
-export type EvidenceStage = 'arrival' | 'loading' | 'stop' | 'delivery';
+export type EvidenceStage = 'loading' | 'stop' | 'delivery';
 
 export interface EvidencePolicy {
   /** Photos the driver must attach before the step can be confirmed. */
@@ -265,13 +265,14 @@ export interface EvidencePolicy {
 /**
  * The one place that decides what proof each trip step needs. NATIVE and
  * EXTERNAL_APP trips go through the same screens (navigate → pickup → stop →
- * navigate → delivery); only this differs. The backend tags uploads on
+ * navigate → delivery); only this differs. Arriving needs no proof — the
+ * driver just taps "I've arrived". The backend tags uploads on
  * EXTERNAL_APP trips as `external_app_screenshot` by itself, so the web
  * dashboard's time confirmation keeps working whichever screen sent them.
  */
 export function getEvidencePolicy(trip: MobileTrip | null | undefined, stage: EvidenceStage): EvidencePolicy {
   if (trip?.driver_workflow === 'EXTERNAL_APP') return { count: 1, screenshot: true };
-  return { count: stage === 'arrival' ? 1 : 3, screenshot: false };
+  return { count: 3, screenshot: false };
 }
 
 /** A road route to the trip's next stop, as MERCON returns it. */

@@ -65,9 +65,15 @@ const billLineSchema = z.object({
   source_type: z.string().default('Manual'),
   source_id: z.string().uuid().nullable().optional(),
   accountId: z.string().uuid().nullable().optional(),
+  // Manual lines only — Vehicle P&L counts it against this truck.
+  vehicleId: z.string().uuid().nullable().optional(),
   description: z.string().min(1, 'Line description is required'),
   amount: z.number().min(0, 'Amount cannot be negative'),
 });
+
+/** Only a Manual line keeps its truck — sourced lines count via their source. */
+const lineVehicle = (l: { source_type?: string; vehicleId?: string | null }) =>
+  (l.source_type || 'Manual') === 'Manual' ? l.vehicleId || null : null;
 
 const createBillSchema = z.object({
   providerId: z.string().uuid().nullable().optional(),
@@ -310,6 +316,7 @@ export const createDraftBill = async (req: Request, res: Response) => {
             source_type: l.source_type || 'Manual',
             source_id: l.source_id || null,
             accountId: l.accountId || null,
+            vehicleId: lineVehicle(l),
             description: l.description,
             amount: l.amount,
           })),
@@ -406,6 +413,7 @@ export const updateDraftBill = async (req: Request<{ id: string }>, res: Respons
           source_type: l.source_type || 'Manual',
           source_id: l.source_id || null,
           accountId: l.accountId || null,
+          vehicleId: lineVehicle(l),
           description: l.description,
           amount: l.amount,
         })),

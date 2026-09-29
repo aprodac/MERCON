@@ -45,6 +45,8 @@ interface HeaderProps {
   onBackClick?: () => void;
   /** Opens the off-canvas sidebar — only rendered below lg */
   onMenuClick?: () => void;
+  /** Slimmer row (≈56 px) and smaller title, for pages that need the height. */
+  compact?: boolean;
 }
 
 interface RouteIconInfo {
@@ -167,7 +169,7 @@ function getRouteIcon(pathname: string, title?: string): RouteIconInfo | null {
   return { icon: Truck, colorClass: 'text-orange-500 dark:text-orange-400' };
 }
 
-export default function Header({ title, icon, breadcrumb, hideBackButton, onBackClick, onMenuClick }: HeaderProps) {
+export default function Header({ title, icon, breadcrumb, hideBackButton, onBackClick, onMenuClick, compact = false }: HeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -210,7 +212,7 @@ export default function Header({ title, icon, breadcrumb, hideBackButton, onBack
   return (
     <div className="shrink-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 relative z-20 flex flex-col">
       {/* Primary Top Header Row */}
-      <div className="px-3 sm:px-4 lg:px-6 h-[72px] lg:h-[88px] flex items-center justify-between gap-2 sm:gap-4">
+      <div className={`px-3 sm:px-4 lg:px-6 ${compact ? 'h-14' : 'h-[72px] lg:h-[88px]'} flex items-center justify-between gap-2 sm:gap-4`}>
 
         {/* Mobile: hamburger + back button + icon + current page title */}
         <div className="flex items-center gap-2.5 min-w-0 lg:hidden">
@@ -271,7 +273,7 @@ export default function Header({ title, icon, breadcrumb, hideBackButton, onBack
               <ResolvedIcon className={`w-6 h-6 shrink-0 ${resolved.colorClass}`} />
             ) : null}
             {title && (
-              <h1 className="font-black text-slate-900 dark:text-slate-100 text-lg xl:text-2xl tracking-tight truncate" title={title}>{title}</h1>
+              <h1 className={`font-black text-slate-900 dark:text-slate-100 tracking-tight truncate ${compact ? 'text-base xl:text-lg' : 'text-lg xl:text-2xl'}`} title={title}>{title}</h1>
             )}
           </div>
         </div>

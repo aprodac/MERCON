@@ -15,6 +15,8 @@ export interface ScrollTableCardProps {
   containerClassName?: string;
   /** ID for scroll targeting */
   id?: string;
+  /** Additional footer classes (e.g. a coloured top rule for a statement total) */
+  footerClassName?: string;
 }
 
 export function ScrollTableCard({
@@ -24,12 +26,14 @@ export function ScrollTableCard({
   className,
   containerClassName,
   id,
+  footerClassName,
 }: ScrollTableCardProps) {
   return (
     <Card
       id={id}
       className={cn(
-        'flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-xs',
+        // gap-0 / py-0 / ring-0 undo the base Card's padding and ring: the table sits flush with one border
+        'flex min-h-0 flex-1 flex-col gap-0 overflow-hidden rounded-xl border border-border bg-card py-0 shadow-xs ring-0',
         className
       )}
     >
@@ -44,7 +48,7 @@ export function ScrollTableCard({
         </div>
       </CardContent>
       {footer && (
-        <div className="border-t border-border bg-background px-4 py-2.5 text-xs flex flex-wrap items-center justify-between gap-2 shrink-0">
+        <div className={cn('border-t border-border bg-background px-4 py-2.5 text-xs flex flex-wrap items-center justify-between gap-2 shrink-0', footerClassName)}>
           {footer}
         </div>
       )}

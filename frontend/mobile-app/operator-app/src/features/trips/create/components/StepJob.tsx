@@ -488,7 +488,8 @@ function typeLook(lineType: string): { Icon: LucideIcon; bg: string; fg: string 
   return { Icon: ArrowRight, bg: '#FAECE7', fg: '#993C1D' };
 }
 
-function QuotationCard({ q, fits, first, onPress }: { q: OperatorQuotation; fits?: boolean; first?: boolean; onPress: () => void }) {
+/** One quotation as a card — also used on the customer details screen. */
+export function QuotationCard({ q, fits, first, onPress }: { q: OperatorQuotation; fits?: boolean; first?: boolean; onPress?: () => void }) {
   const route = getQuotationRoute(q);
   const lineType = quotationLineType(q);
   const monthly = quotationBilling(q) === 'Monthly';
@@ -497,7 +498,7 @@ function QuotationCard({ q, fits, first, onPress }: { q: OperatorQuotation; fits
   const rate = Number(q.rate) || 0;
   const { Icon, bg, fg } = typeLook(lineType);
   return (
-    <TouchableOpacity activeOpacity={0.7} onPress={onPress} style={[styles.quote, first && { marginTop: 0 }, fits && styles.quoteFits]}>
+    <TouchableOpacity activeOpacity={0.7} onPress={onPress} disabled={!onPress} style={[styles.quote, first && { marginTop: 0 }, fits && styles.quoteFits]}>
       <View style={[styles.quoteIcon, { backgroundColor: bg }]}>
         <Icon size={16} color={fg} strokeWidth={2.2} />
       </View>

@@ -8,10 +8,7 @@ const PALETTE_REGEX =
 // Explicitly allowlisted non-chip component files (charts, status ribbons, step dots, warning modals, print layouts)
 const ALLOWLIST: string[] = [
   'components/finance/kit/FilterBar.tsx',
-  'components/finance/kit/InsightRail.tsx',
   'components/finance/kit/MoneyText.tsx',
-  'components/finance/kit/StatementRow.tsx',
-  'components/finance/kit/StatementRow.test.tsx',
   'components/finance/kit/StatusTabs.tsx',
   'components/finance/kit/ActivityTimeline.tsx',
   'components/finance/kit/DocStatusBar.tsx',
@@ -22,7 +19,6 @@ const ALLOWLIST: string[] = [
   'components/finance/advances/AdvancePrintVoucher.tsx',
   'components/finance/advances/AdvanceReadinessRail.tsx',
   'components/finance/banking/TransferSheet.tsx',
-  'components/finance/payables/PayRunSheet.tsx',
   'components/finance/periods/BulkGeneratePeriodsSheet.tsx',
   'components/finance/periods/CloseWarningModal.tsx',
   'components/finance/periods/GuidedFiscalYearCloseSheet.tsx',

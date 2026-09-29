@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, Plus, Tag, Trash2, Loader2, Check } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
+import { QuotationPriceHistory } from './QuotationPriceHistory';
 import { cn, isUuid } from '@/lib/utils';
 import { surchargeRuleService, SurchargeRule } from '@/services/quotationService';
 import { TripChargeInput } from '@/services/tripService';
@@ -25,6 +26,7 @@ interface TripEconomicsSectionProps {
   handleUpdateTripSlot?: (slotId: string, patch: any) => void;
   isBaseBillingLocked?: boolean;
   isFinancialsLocked?: boolean;
+  fieldErrors?: Record<string, boolean>;
 }
 
 export const TripEconomicsSection: React.FC<TripEconomicsSectionProps> = ({
@@ -38,6 +40,7 @@ export const TripEconomicsSection: React.FC<TripEconomicsSectionProps> = ({
   handleUpdateTripSlot,
   isBaseBillingLocked = false,
   isFinancialsLocked = false,
+  fieldErrors = {},
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -68,14 +71,24 @@ export const TripEconomicsSection: React.FC<TripEconomicsSectionProps> = ({
   const is3PL = assignmentType === 'third_party' || assignmentType === '3pl';
   const activeCardRate = matchedRateCard?.rate ?? matchedRateCard?.base_price;
   const rawBilling = activeCardRate !== undefined && activeCardRate !== null ? activeCardRate : primarySlot.billingAmount;
-  const slotPayoutRaw = primarySlot.driverPayout !== undefined ? primarySlot.driverPayout : (matchedRateCard?.driver_payout ?? matchedRateCard?.default_trip_charge);
+  // The payout actually used: an edited value, else the lane's / quotation's (same order as the saved trip).
+  const hasEditedPayout = primarySlot.driverPayout !== undefined && primarySlot.driverPayout !== '';
+  const slotPayoutRaw = hasEditedPayout
+    ? primarySlot.driverPayout
+    : primarySlot.tripCharges || (matchedRateCard?.driver_payout ?? matchedRateCard?.default_trip_charge);
+  // Fees for intermediate stops are billed on top of the rate.
+  const stopFeesTotal = [...(primarySlot.intermediateStopFees || []), ...(primarySlot.returnIntermediateStopFees || [])].reduce(
+    (sum: number, f: any) => sum + (Number(f) || 0),
+    0
+  );
+  const payoutError = Boolean(fieldErrors?.[`driverPayout-${primarySlot.id}`] || fieldErrors?.['driverPayout']);
 
   const fin = computeTripFinancials({
     customerBilling: rawBilling,
     driverPayout: slotPayoutRaw,
     is3PL,
     subcontractCost: thirdPartyCost,
-    additionalCharges: totalAdditionalCharges,
+    additionalCharges: totalAdditionalCharges + stopFeesTotal,
     pricingBasis: primarySlot.pricingBasis || matchedRateCard?.pricing_basis,
   });
 
@@ -212,12 +225,28 @@ export const TripEconomicsSection: React.FC<TripEconomicsSectionProps> = ({
             </span>
           </div>
 
+          {stopFeesTotal > 0 && (
+            <div className="flex items-center justify-between py-1 px-2.5 rounded-lg bg-slate-50/60 dark:bg-slate-800/40">
+              <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Stop fees</span>
+              <span className="text-xs font-black font-mono text-[#3E3C3D] dark:text-white">SAR {stopFeesTotal.toLocaleString()}</span>
+            </div>
+          )}
+
           {/* ROW 2: DRIVER PAYOUT / 3PL COST */}
-          <div className="flex items-center justify-between py-1 px-2.5 rounded-lg bg-slate-50/60 dark:bg-slate-800/40 gap-2">
+          <div
+            id={`field-driver-payout-${primarySlot.id}-summary`}
+            className={cn(
+              'flex items-center justify-between py-1 px-2.5 rounded-lg bg-slate-50/60 dark:bg-slate-800/40 gap-2',
+              payoutError && 'ring-2 ring-red-400/60 bg-red-50/40 dark:bg-red-950/20'
+            )}
+          >
             <div className="flex flex-col">
               <span className="text-[10px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 {is3PL ? '3PL Cost' : 'Driver Payout'}
               </span>
+              {!is3PL && payoutError && (
+                <span className="text-[10px] font-bold text-red-600">Enter the driver payout</span>
+              )}
               {!is3PL && primarySlot.driverPayoutModified && (
                 <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400">
                   Syncs to Quotation
@@ -237,7 +266,7 @@ export const TripEconomicsSection: React.FC<TripEconomicsSectionProps> = ({
                   min="0"
                   step="1"
                   disabled={isFinancialsLocked}
-                  value={primarySlot.driverPayout !== undefined ? primarySlot.driverPayout : (matchedRateCard?.driver_payout ?? '')}
+                  value={hasEditedPayout ? primarySlot.driverPayout : (slotPayoutRaw ?? '')}
                   onChange={(e) => {
                     const val = e.target.value;
                     const orig = matchedRateCard?.driver_payout != null ? String(matchedRateCard.driver_payout) : '';
@@ -291,6 +320,15 @@ export const TripEconomicsSection: React.FC<TripEconomicsSectionProps> = ({
             </div>
           </div>
         </div>
+
+        {/* PRICE HISTORY of the selected quotation + other rates on this lane */}
+        <QuotationPriceHistory
+          quotationId={rateCardId}
+          origin={primarySlot.origin}
+          destination={primarySlot.destination}
+          vehicleClass={matchedRateCard?.vehicle_type || matchedRateCard?.vehicle_class}
+          customerId={customerId}
+        />
       </div>
 
       {/* PERFECTLY ALIGNED MERCON UI MODAL DIALOG */}

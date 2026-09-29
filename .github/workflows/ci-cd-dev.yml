@@ -18,7 +18,9 @@ concurrency:
 jobs:
   deploy:
     name: Deploy dev stack to Self-Hosted Runner
-    runs-on: self-hosted
+    # The dev server (82.29.167.128). Its runner has only the `dev` label (no
+    # generic `self-hosted`), so production jobs can never land there.
+    runs-on: [dev]
 
     steps:
       - name: Free Disk Space (Pre-checkout)
@@ -113,6 +115,20 @@ jobs:
           echo "=== REBUILDING DEV STACK (mercon-dev) ==="
           echo "Target Project: mercon-dev (CLIENT_NAME=dev)"
 
+          # Per-client secrets live on this server, not in GitHub
+          # (scripts/provision/client-secrets.sh, docs/CLIENT_SECRETS.md).
+          # `ensure` creates dev's own data encryption key on the first deploy
+          # and never replaces it; a missing or malformed key stops the deploy
+          # here, before anything is built or restarted.
+          sudo bash scripts/provision/client-secrets.sh ensure "$CLIENT_NAME"
+          eval "$(sudo bash scripts/provision/client-secrets.sh export "$CLIENT_NAME")"
+          echo "::add-mask::$DATA_ENCRYPTION_KEY"
+          [ -n "$DATA_ENCRYPTION_KEY_PREVIOUS" ] && echo "::add-mask::$DATA_ENCRYPTION_KEY_PREVIOUS"
+          if [ -z "$DATA_ENCRYPTION_KEY" ]; then
+            echo "ERROR: no DATA_ENCRYPTION_KEY for client '$CLIENT_NAME'. Aborting deploy." >&2
+            exit 1
+          fi
+
           echo "Ensuring persistent dev uploads directory exists..."
           sudo mkdir -p /var/lib/mercon/dev-uploads
           sudo chmod -R 777 /var/lib/mercon/dev-uploads 2>/dev/null || true
@@ -127,7 +143,17 @@ jobs:
           df -h / || true
 
           echo "Building mercon-dev images (running container remains untouched during build)..."
-          docker compose -p mercon-dev build
+          # One image at a time: building the API and the web dashboard in
+          # parallel peaked above this host's 3.8 GB RAM and the OOM killer took
+          # out docker-buildx and the runner service with it (2026-09-27).
+          docker compose -p mercon-dev build mercon-api
+          docker compose -p mercon-dev build mercon-frontend
+
+          # The migration below runs with --no-deps, so the database must
+          # already be up. On a fresh server (first deploy) nothing has started
+          # it yet; on later deploys this is a no-op for a running database.
+          echo "Ensuring the dev database is running and healthy..."
+          docker compose -p mercon-dev up -d --wait postgres-db
 
           echo "Executing Prisma database migrations with newly built image..."
           docker compose -p mercon-dev run --rm --no-deps mercon-api npx prisma migrate deploy
@@ -192,8 +218,10 @@ jobs:
 
           # Deploy catch-all default SSL block (rejects unknown HTTPS hosts)
           # Both pipelines deploy this to guarantee the safety net is always present.
-          if [ -f nginx/00-default-ssl.conf ]; then
-            sudo cp nginx/00-default-ssl.conf /etc/nginx/sites-available/00-default-ssl.conf
+          # The dev server has only the dev.mercon.tech certificate, so it gets
+          # its own catch-all (00-default-ssl.conf needs the mercon.tech one).
+          if [ -f nginx/00-default-ssl-dev.conf ]; then
+            sudo cp nginx/00-default-ssl-dev.conf /etc/nginx/sites-available/00-default-ssl.conf
             sudo ln -sf /etc/nginx/sites-available/00-default-ssl.conf /etc/nginx/sites-enabled/00-default-ssl.conf
           fi
 

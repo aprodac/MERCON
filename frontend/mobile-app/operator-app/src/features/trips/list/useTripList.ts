@@ -32,15 +32,21 @@ export function useNow(everyMs = 60_000): number {
   return now;
 }
 
-export function useTripList(view: View, search: string, now: number) {
+/**
+ * `scope` narrows every view to one truck or one customer (opened from their
+ * details screen), e.g. { vehicle_id } or { customer_id }.
+ */
+export function useTripList(view: View, search: string, now: number, scope?: Record<string, string>) {
+  const filter: Record<string, string> = scope ?? {};
+  const scopeKey = scope ? Object.entries(scope).map(([k, v]) => `${k}=${v}`).join('&') : undefined;
   const tzQuery = useQuery({ queryKey: ['trips', 'tz'], queryFn: () => operatorService.deploymentTimezone(), staleTime: Infinity });
   const tz = tzQuery.data ?? 'Asia/Riyadh';
   const f = useMemo(() => makeTime(tz), [tz]);
   const todayKey = f.dayKey(now);
 
   const openQ = useQuery({
-    queryKey: ['trips', 'open'],
-    queryFn: () => fetchTrips({ status: 'Draft,Scheduled,Loading,InTransit,Delayed', per_page: 300 }),
+    queryKey: ['trips', 'open', scopeKey ?? 'all'],
+    queryFn: () => fetchTrips({ status: 'Draft,Scheduled,Loading,InTransit,Delayed', per_page: 300, ...filter }),
     refetchInterval: view === 'now' ? 30_000 : false,
     enabled: view === 'now' || view === 'schedule',
   });
@@ -55,24 +61,24 @@ export function useTripList(view: View, search: string, now: number) {
   }, [f, todayKey]);
 
   const schedule = useQuery({
-    queryKey: ['trips', 'window', todayKey],
-    queryFn: () => fetchTrips({ start_date: windowStart.toISOString(), end_date: new Date(windowEnd.getTime() - 1).toISOString(), per_page: 500 }),
+    queryKey: ['trips', 'window', todayKey, scopeKey ?? 'all'],
+    queryFn: () => fetchTrips({ start_date: windowStart.toISOString(), end_date: new Date(windowEnd.getTime() - 1).toISOString(), per_page: 500, ...filter }),
     enabled: view === 'schedule',
     refetchInterval: view === 'schedule' ? 60_000 : false,
   });
 
   const history = useInfiniteQuery({
-    queryKey: ['trips', 'history'],
+    queryKey: ['trips', 'history', scopeKey ?? 'all'],
     initialPageParam: 1,
-    queryFn: ({ pageParam }) => fetchTrips({ status: 'Completed,Invoiced,Cancelled', per_page: HISTORY_PAGE, page: pageParam }),
+    queryFn: ({ pageParam }) => fetchTrips({ status: 'Completed,Invoiced,Cancelled', per_page: HISTORY_PAGE, page: pageParam, ...filter }),
     getNextPageParam: (last, pages) => (last.trips.length < HISTORY_PAGE ? undefined : pages.length + 1),
     enabled: view === 'history',
   });
 
   const term = search.trim();
   const found = useQuery({
-    queryKey: ['trips', 'search', term],
-    queryFn: () => fetchTrips({ search: term, per_page: 60 }),
+    queryKey: ['trips', 'search', term, scopeKey ?? 'all'],
+    queryFn: () => fetchTrips({ search: term, per_page: 60, ...filter }),
     enabled: term.length >= 2,
     staleTime: 15_000,
   });

@@ -109,6 +109,17 @@ export const CATEGORY_COLOR_MAP: Record<string, CategoryTheme> = {
     badgeClass:
       'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/50',
   },
+  Tyres: {
+    bg: 'bg-stone-50',
+    text: 'text-stone-700',
+    border: 'border-stone-200/80',
+    dot: 'bg-stone-500',
+    darkBg: 'dark:bg-stone-950/40',
+    darkText: 'dark:text-stone-300',
+    darkBorder: 'dark:border-stone-800/50',
+    badgeClass:
+      'bg-stone-50 text-stone-700 border-stone-200/80 dark:bg-stone-950/40 dark:text-stone-300 dark:border-stone-800/50',
+  },
   'Government Fees': {
     bg: 'bg-violet-50',
     text: 'text-violet-700',

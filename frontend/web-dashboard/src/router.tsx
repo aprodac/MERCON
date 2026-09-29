@@ -34,6 +34,7 @@ const NotificationsPage       = lazyWithRetry(() => import('@/pages/notification
 
 // Trips
 const TripListPage            = lazyWithRetry(() => import('@/pages/trips/TripListPage'));
+const LiveMapPage             = lazyWithRetry(() => import('@/pages/live-map/LiveMapPage'));
 const MonthlyTripsPage        = lazyWithRetry(() => import('@/pages/trips/MonthlyTripsPage'));
 const TripDetailsPage         = lazyWithRetry(() => import('@/pages/trips/TripDetailsPage'));
 const CreateTripPage          = lazyWithRetry(() => import('@/pages/trips/CreateTripPage'));
@@ -60,6 +61,7 @@ const EditVehiclePage         = lazyWithRetry(() => import('@/pages/vehicles/Edi
 const VehicleDocumentsPage    = lazyWithRetry(() => import('@/pages/vehicles/VehicleDocumentsPage'));
 const VehicleFinancialsPage   = lazyWithRetry(() => import('@/pages/vehicles/VehicleFinancialsPage'));
 const VehicleSingleFinancialsPage = lazyWithRetry(() => import('@/pages/vehicles/VehicleSingleFinancialsPage'));
+const VehicleCostSetupPage    = lazyWithRetry(() => import('@/pages/vehicles/VehicleCostSetupPage'));
 const MaintenanceListPage     = lazyWithRetry(() => import('@/pages/maintenance/MaintenanceListPage'));
 const MaintenanceDetailsPage  = lazyWithRetry(() => import('@/pages/maintenance/MaintenanceDetailsPage'));
 const AddMaintenancePage      = lazyWithRetry(() => import('@/pages/maintenance/AddMaintenancePage'));
@@ -95,6 +97,7 @@ const JournalEntriesPage      = lazyWithRetry(() => import('@/pages/finance/Jour
 const JournalEntryDetailPage  = lazyWithRetry(() => import('@/pages/finance/JournalEntryDetailPage'));
 const JournalEntryEditorPage  = lazyWithRetry(() => import('@/pages/finance/JournalEntryEditorPage'));
 const InvoicesPage            = lazyWithRetry(() => import('@/pages/finance/InvoicesPage'));
+const InvoiceDetailPage       = lazyWithRetry(() => import('@/pages/finance/InvoiceDetailPage'));
 const InvoiceCreatePage       = lazyWithRetry(() => import('@/pages/finance/InvoiceCreatePage'));
 const BillsPage               = lazyWithRetry(() => import('@/pages/finance/BillsPage'));
 const BillCreatePage          = lazyWithRetry(() => import('@/pages/finance/BillCreatePage'));
@@ -146,6 +149,7 @@ const BrandingSettingsPage    = lazyWithRetry(() => import('@/pages/settings/Bra
 const SystemHealthPage        = lazyWithRetry(() => import('@/pages/settings/SystemHealthPage'));
 const AuditLogPage            = lazyWithRetry(() => import('@/pages/settings/AuditLogPage'));
 const ModuleGovernancePage    = lazyWithRetry(() => import('@/pages/settings/ModuleGovernancePage'));
+const ZatcaSettingsPage       = lazyWithRetry(() => import('@/pages/settings/ZatcaSettingsPage'));
 const ErrorConsolePage        = lazyWithRetry(() => import('@/pages/settings/ErrorConsolePage'));
 const ErrorEventDetailPage    = lazyWithRetry(() => import('@/pages/settings/ErrorEventDetailPage'));
 const RecycleBinPage          = lazyWithRetry(() => import('@/pages/recycle-bin/RecycleBinPage'));
@@ -213,6 +217,21 @@ export default function AppRouter() {
             }
           />
 
+          {/* Live map — full screen, outside the app shell: no app sidebar or
+              header, the operations panel floats inside the map. */}
+          <Route
+            path="/live-map"
+            element={
+              <ProtectedRoute>
+                <RequireModule moduleKey="trips">
+                  <Suspense fallback={<FullPageSpinner />}>
+                    <LiveMapPage />
+                  </Suspense>
+                </RequireModule>
+              </ProtectedRoute>
+            }
+          />
+
           {/* ── Protected layout route ────────────────────────────────
               AppShell renders the sidebar + header ONCE and keeps them
               mounted. <Outlet> renders the active child page. Each page
@@ -253,6 +272,7 @@ export default function AppRouter() {
             {/* Vehicles */}
             <Route path="/vehicles"                 element={<RequireModule moduleKey="vehicles"><VehicleListPage /></RequireModule>} />
             <Route path="/vehicles/financials"      element={<RequireModule moduleKey="vehicles"><VehicleFinancialsPage /></RequireModule>} />
+            <Route path="/vehicles/financials/setup" element={<RequireModule moduleKey="vehicles"><VehicleCostSetupPage /></RequireModule>} />
             <Route path="/vehicles/new"             element={<RequireModule moduleKey="vehicles"><AddVehiclePage /></RequireModule>} />
             <Route path="/vehicles/:id"             element={<RequireModule moduleKey="vehicles"><VehicleDetailsPage /></RequireModule>} />
             <Route path="/vehicles/:id/edit"        element={<RequireModule moduleKey="vehicles"><EditVehiclePage /></RequireModule>} />
@@ -302,6 +322,8 @@ export default function AppRouter() {
             <Route path="/finance/journal-entries/:id/edit" element={<RequireModule moduleKey="finance"><WithIdKey Page={JournalEntryEditorPage} /></RequireModule>} />
             <Route path="/finance/invoices/new"      element={<RequireModule moduleKey="finance"><InvoiceCreatePage /></RequireModule>} />
             <Route path="/finance/invoices"          element={<RequireModule moduleKey="finance"><InvoicesPage /></RequireModule>} />
+            <Route path="/finance/invoices/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={InvoiceDetailPage} /></RequireModule>} />
+            <Route path="/finance/invoices/:id/edit" element={<RequireModule moduleKey="finance"><WithIdKey Page={InvoiceCreatePage} /></RequireModule>} />
             <Route path="/finance/bills/new"        element={<RequireModule moduleKey="finance"><BillCreatePage /></RequireModule>} />
             <Route path="/finance/bills"             element={<RequireModule moduleKey="finance"><BillsPage /></RequireModule>} />
             <Route path="/finance/bank-accounts/new"      element={<RequireModule moduleKey="finance"><BankAccountEditorPage /></RequireModule>} />
@@ -363,6 +385,7 @@ export default function AppRouter() {
               <Route path="/settings/system-health"   element={<RequireRole roles={['SuperAdmin']}><SystemHealthPage /></RequireRole>} />
               <Route path="/settings/audit-log"       element={<RequireRole roles={['SuperAdmin']}><AuditLogPage /></RequireRole>} />
               <Route path="/settings/module-governance" element={<RequireRole roles={['SuperAdmin']}><ModuleGovernancePage /></RequireRole>} />
+              <Route path="/settings/zatca"           element={<RequireRole roles={['Admin']}><RequireModule moduleKey="zatca"><ZatcaSettingsPage /></RequireModule></RequireRole>} />
               <Route path="/settings/error-console"     element={<RequireRole roles={['Admin']}><ErrorConsolePage /></RequireRole>} />
               <Route path="/settings/error-console/:id" element={<RequireRole roles={['Admin']}><ErrorEventDetailPage /></RequireRole>} />
               <Route path="/settings/recycle-bin"     element={<RequireModule moduleKey="recycle-bin"><RecycleBinPage /></RequireModule>} />

@@ -19,7 +19,7 @@ on:
 jobs:
   backup:
     name: Dump and retain production database
-    runs-on: self-hosted
+    runs-on: [self-hosted, prod]
 
     steps:
       - name: Verify production Postgres container is running

@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 
-import DashboardLayout from '@/components/layout/DashboardLayout';
+import { SettingsPage, StatusDot } from '@/components/settings/SettingsKit';
 import DataTable, { Column } from '@/components/ui/DataTable';
-import { Badge } from '@/components/ui/badge';
 import {
   Select,
   SelectContent,
@@ -14,11 +13,13 @@ import {
 } from '@/components/ui/select';
 import { errorConsoleService, ErrorEvent } from '@/services/errorConsoleService';
 
-const STATUS_BADGE: Record<ErrorEvent['status'], string> = {
-  New: 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-900',
-  Acknowledged: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900',
-  Resolved: 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900',
+export const ERROR_STATUS_TONE: Record<ErrorEvent['status'], 'red' | 'amber' | 'green'> = {
+  New: 'red',
+  Acknowledged: 'amber',
+  Resolved: 'green',
 };
+
+const SOURCE_LABEL: Record<string, string> = { api: 'Backend', web: 'Web' };
 
 export default function ErrorConsolePage() {
   const navigate = useNavigate();
@@ -46,28 +47,35 @@ export default function ErrorConsolePage() {
     {
       header: 'Status',
       accessor: (row) => (
-        <Badge variant="outline" className={STATUS_BADGE[row.status]}>
+        <span className="inline-flex items-center gap-2 whitespace-nowrap">
+          <StatusDot tone={ERROR_STATUS_TONE[row.status]} />
           {row.status}
-        </Badge>
+        </span>
       ),
     },
     {
-      header: 'Message',
-      accessor: (row) => <span className="font-medium">{row.message.slice(0, 120)}</span>,
+      header: 'Error',
+      accessor: (row) => (
+        <div className="min-w-0 max-w-[520px]">
+          <p className="font-semibold text-foreground truncate">{row.message}</p>
+          <p className="text-xs text-muted-foreground truncate">
+            {row.code}
+            {row.route ? ` · ${row.route}` : ''}
+          </p>
+        </div>
+      ),
     },
-    { header: 'Code', accessor: (row) => <span className="font-mono text-xs">{row.code}</span> },
-    { header: 'Route', accessor: (row) => <span className="font-mono text-xs">{row.route}</span> },
-    { header: 'Source', accessor: (row) => row.source },
-    { header: 'Count', accessor: (row) => row.count },
-    { header: 'Last Seen', accessor: (row) => new Date(row.updatedAt).toLocaleString() },
+    { header: 'Where', accessor: (row) => <span className="text-muted-foreground">{SOURCE_LABEL[row.source] ?? row.source}</span> },
+    { header: 'Times', accessor: (row) => <span className="font-semibold">{row.count}</span> },
+    { header: 'Last seen', accessor: (row) => <span className="text-muted-foreground whitespace-nowrap">{new Date(row.updatedAt).toLocaleString()}</span> },
   ];
 
   return (
-    <DashboardLayout active="Settings" title="Error Console">
-      <div className="p-6 max-w-[1600px] mx-auto w-full flex flex-col gap-5 bg-slate-50/50 dark:bg-slate-950">
-        <div className="flex items-center justify-between flex-wrap gap-4">
-          <h1 className="text-2xl font-black text-[#3E3C3D] dark:text-white tracking-tight">Error Console</h1>
-        </div>
+    <SettingsPage
+      wide
+      title="Error console"
+      description="Errors the app and API caught, grouped by type. Open one to see the details and mark it acknowledged or resolved."
+    >
 
         <DataTable
           columns={columns}
@@ -106,7 +114,6 @@ export default function ErrorConsolePage() {
             </div>
           }
         />
-      </div>
-    </DashboardLayout>
+    </SettingsPage>
   );
 }

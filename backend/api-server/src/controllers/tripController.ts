@@ -1192,10 +1192,45 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
           rowCharges.push({ amount: Number(row.additional_charge), description: 'Additional Charge' });
         }
 
+        const rowAwb = (row as any).awb_number ? String((row as any).awb_number).trim() : '';
+        const updateQuotationPayout = (row as any).update_quotation_driver_payout === true;
+
         const trip = await prisma.$transaction(async (tx) => {
+          // Same as POST /trips: an edited payout can be written back to the quotation.
+          // Later rows of the same batch see the new value, so it is recorded once.
+          if (updateQuotationPayout && appliedQuotation && !row.is_third_party) {
+            const oldPayout = appliedQuotation.driver_payout != null ? Number(appliedQuotation.driver_payout) : null;
+            if (oldPayout !== totalRowPayout) {
+              await tx.quotation.update({
+                where: { id: appliedQuotation.id },
+                data: { driver_payout: totalRowPayout, updated_by: createdBy },
+              });
+              try {
+                const userObj = createdBy ? await tx.user.findFirst({ where: { id: createdBy }, select: { name: true, username: true } }) : null;
+                const userName = userObj ? (userObj.name || userObj.username) : ((req as any).user?.name || (req as any).user?.username || null);
+                await tx.quotationHistory.create({
+                  data: {
+                    quotationId: appliedQuotation.id,
+                    old_driver_payout: oldPayout,
+                    new_driver_payout: totalRowPayout,
+                    changed_by: userName,
+                    changed_by_user_id: createdBy,
+                    changed_by_name: userName,
+                    reason: 'Updated driver payout during trip creation',
+                    source: 'TRIP_CREATION',
+                  },
+                });
+              } catch (hErr) {
+                logger.warn({ err: hErr }, 'Failed to record quotation history for driver payout update during bulk trip creation');
+              }
+            }
+          }
+
           return tx.trip.create({
             data: {
               ref_id,
+              ...(rowAwb ? { awb_number: rowAwb } : {}),
+              carrier_name: carrierName,
               customerId: customer.id,
               driver_workflow: customer.driver_workflow || 'NATIVE',
               ...(driverId ? { driverId } : {}),
@@ -1496,8 +1531,10 @@ export const dispatchTrip = async (req: Request, res: Response) => {
           ...(driver_id ? { driverId: driver_id } : {}),
           ...(vehicle_id ? { vehicleId: vehicle_id } : {}),
           // Only moves out of Draft once both a driver and a vehicle are on
-          // the trip — a single-sided assignment leaves it in Draft.
-          ...(finalDriverId && finalVehicleId ? { status: 'Scheduled' as const } : {}),
+          // the trip — a single-sided assignment leaves it in Draft. A trip
+          // already past Draft keeps its status: giving a truck to a trip that
+          // is Loading or InTransit must not send it back to Scheduled.
+          ...(finalDriverId && finalVehicleId && trip.status === TripStatus.Draft ? { status: TripStatus.Scheduled } : {}),
           updated_by: (req as any).user?.id
         }
       });

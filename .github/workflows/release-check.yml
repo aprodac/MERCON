@@ -23,7 +23,7 @@ jobs:
     name: Read production migration ledger
     # Self-hosted = the production server. Only same-repo PRs, never forks.
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: self-hosted
+    runs-on: [self-hosted, prod]
     permissions: {}
     outputs:
       reachable: ${{ steps.read.outputs.reachable }}

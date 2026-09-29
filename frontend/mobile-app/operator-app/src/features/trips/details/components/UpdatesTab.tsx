@@ -63,7 +63,7 @@ export function UpdatesTab({ trip, phase, updates, f, onQuick, onSendUpdate, onO
         <Card style={{ alignItems: 'center', gap: 6, paddingVertical: 22 }}>
           <ImagePlus size={24} color={MUTED} />
           <Text style={s.emptyTitle}>No photos from the driver yet</Text>
-          <Text style={[s.muted, { textAlign: 'center' }]}>Loading, arrival and delivery photos show up here, ready to send on WhatsApp.</Text>
+          <Text style={[s.muted, { textAlign: 'center' }]}>Loading, stop and delivery photos show up here, ready to send on WhatsApp.</Text>
         </Card>
       ) : (
         feed.map((u) => {

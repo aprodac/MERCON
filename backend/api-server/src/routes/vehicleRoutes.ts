@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import { getVehicles, getVehicleById, createVehicle, updateVehicle, deleteVehicle , bulkDeleteVehicles, bulkUpdateVehicleStatus, getVehicleFinancials, getFleetFinancials, bulkImportVehicles, getVehicleUsage, getVehicleStats, getPhysicalGpsStatusSummary } from '../controllers/vehicleController';
+import { getVehicles, getVehicleById, createVehicle, updateVehicle, deleteVehicle , bulkDeleteVehicles, bulkUpdateVehicleStatus, bulkImportVehicles, getVehicleUsage, getVehicleStats, getPhysicalGpsStatusSummary } from '../controllers/vehicleController';
 import { getFleetLiveMap, getFleetLiveRoute, getFleetLiveTripMedia, getFleetLiveTripOverview } from '../controllers/fleetLiveMapController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
-import { createVehicleBody, updateVehicleBody, listQuery, idParam, bulkImportVehiclesBody } from '../schemas';
+import { getFleetFinancials, getVehicleFinancials, getCostSetup, createVehicleFixedCost, updateVehicleFixedCost, deleteVehicleFixedCost } from '../controllers/vehicleCostController';
+import { createVehicleBody, updateVehicleBody, listQuery, idParam, bulkImportVehiclesBody, vehicleFixedCostBody, updateVehicleFixedCostBody, nestedIdParams } from '../schemas';
 
 const router = Router();
 
@@ -26,7 +27,11 @@ router.get('/', validate({ query: listQuery }), getVehicles);
 router.post('/', validate({ body: createVehicleBody }), createVehicle);
 // Must be registered before `/:id` so the literal path isn't captured as an id.
 router.get('/financials/fleet', getFleetFinancials);
+router.get('/financials/cost-setup', getCostSetup);
 router.get('/:id/financials', validate({ params: idParam }), getVehicleFinancials);
+router.post('/:id/fixed-costs', validate({ params: idParam, body: vehicleFixedCostBody }), createVehicleFixedCost);
+router.patch('/:id/fixed-costs/:itemId', validate({ params: nestedIdParams, body: updateVehicleFixedCostBody }), updateVehicleFixedCost);
+router.delete('/:id/fixed-costs/:itemId', validate({ params: nestedIdParams }), deleteVehicleFixedCost);
 router.get('/:id', validate({ params: idParam }), getVehicleById);
 router.get('/:id/usage', validate({ params: idParam }), getVehicleUsage);
 router.patch('/:id', validate({ params: idParam, body: updateVehicleBody }), updateVehicle);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import MapGL, { Layer, Source, type MapRef } from 'react-map-gl/maplibre';
+import MapGL, { Layer, Marker, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import Supercluster from 'supercluster';
@@ -10,14 +10,14 @@ import { cn } from '@/lib/utils';
 import { formatInDeploymentTz, useDeploymentTimezone } from '@/lib/datetime';
 import { whatsAppLink } from '@/lib/share';
 import {
-  LIVE_FILTERS, buildEtaShareText, computeEta, groupStops, isOffline, matchesFilter, matchesQuery, nextStop, pickLabels, routeBearing, timeAgo,
+  LIVE_FILTERS, buildEtaShareText, computeEta, groupStops, groupStopsOf, isOffline, matchesFilter, matchesQuery, nextStop, pickLabels, routeBearing, timeAgo,
   unitPriority, unitTitle, type LiveFilter,
 } from '@/lib/fleetLive';
-import { fleetLiveService, type LiveUnit } from '@/services/fleetLiveService';
+import { fleetLiveService, type LiveStop, type LiveUnit } from '@/services/fleetLiveService';
 import { SAUDI_BOUNDS_COORDS, SAUDI_CENTER, DEFAULT_SAUDI_ZOOM } from '@/utils/saudiMapConfig';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { LiveUnitMarker } from './LiveUnitMarker';
-import { ClusterMarker, ControlGroup, CtlButton, HoverPeek, MapLegend, StopPin } from './LiveMapBits';
+import { ClusterMarker, ControlGroup, CtlButton, HoverPeek, MapLegend, StopPin, type StopPinTone } from './LiveMapBits';
 import { EtaStrip, GLASS, LiveUnitPanel, NextStopCard } from './LiveUnitPanel';
 import { BUILDING_EXTRUSION_COLOR, LIVE_MAP_STYLES, ROUTE_COLOR, TONE, applyMapPalette, type LiveMapTheme, type UnitTone } from './liveMapStyle';
 
@@ -60,11 +60,71 @@ function boundsOf(points: { lat: number; lng: number }[]): [[number, number], [n
   return [[minLng, minLat], [maxLng, maxLat]];
 }
 
+/** A trip drawn from its stops alone — for trips with no truck reporting GPS (planned, or tracker offline). */
+export interface PreviewTrip {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  stops: LiveStop[];
+  next_stop_index: number | null;
+  tone: StopPinTone;
+}
+
+const PREVIEW_LINE: Record<StopPinTone, string> = {
+  planned: '#7c3aed',
+  live: '#2563eb',
+  done: '#059669',
+  cancelled: '#a8a29e',
+};
+
+/** A search catchment drawn as a circle — "trucks near Riyadh", or each end of "Riyadh to Jeddah". */
+export interface MapArea {
+  id: string;
+  label: string;
+  lat: number;
+  lng: number;
+  radiusKm: number;
+}
+
+/** A circle as a 64-point polygon — MapLibre has no geodesic circle primitive. */
+function circlePolygon(a: MapArea): [number, number][] {
+  const pts: [number, number][] = [];
+  const latR = a.radiusKm / 110.574;
+  const lngR = a.radiusKm / (111.32 * Math.cos((a.lat * Math.PI) / 180));
+  for (let i = 0; i <= 64; i++) {
+    const t = (i / 64) * 2 * Math.PI;
+    pts.push([a.lng + lngR * Math.cos(t), a.lat + latR * Math.sin(t)]);
+  }
+  return pts;
+}
+
 interface Props {
   className?: string;
   /** Ask the map to fly to this trip's truck; bump `focusNonce` to repeat the same trip. */
   focusTripId?: string | null;
+  /** Same as `focusTripId`, for a unit picked by its key (a free truck has no trip). */
+  focusUnitKey?: string | null;
   focusNonce?: number;
+  /** Controlled filter and search — when set, the page's own sidebar owns them. */
+  filter?: LiveFilter;
+  query?: string;
+  /** Hide the built-in search, filter chips and offline list (a sidebar shows them instead). */
+  hideFinder?: boolean;
+  /** Hide the full-view toggle — for a page where the map already fills the screen. */
+  hideExpand?: boolean;
+  /** Told whenever the selected unit changes, including clicks on the map itself. */
+  onSelectedChange?: (unit: LiveUnit | null) => void;
+  /** Draw this trip's stops and planned road route; bump `focusNonce` to re-frame it. */
+  previewTrip?: PreviewTrip | null;
+  onPreviewClose?: () => void;
+  /** When set, only these units are drawn (search results, assign candidates). */
+  onlyKeys?: ReadonlySet<string> | null;
+  /** Catchment circles; the map frames them whenever the set changes. */
+  areas?: MapArea[];
+  /** Width in px of a panel floating over the map's left edge — overlays and framing keep clear of it. */
+  insetLeft?: number;
+  /** Extra controls for the top-right corner (e.g. a back button on a full-screen page). */
+  topRight?: React.ReactNode;
 }
 
 /**
@@ -72,7 +132,10 @@ interface Props {
  * Click a unit to fly to it and see its trip, both GPS feeds, the road route to
  * the next stop with a drive-time ETA, and share that ETA on WhatsApp.
  */
-export default function FleetCommandMap({ className, focusTripId, focusNonce }: Props) {
+export default function FleetCommandMap({
+  className, focusTripId, focusUnitKey, focusNonce, filter: filterProp, query: queryProp, hideFinder, hideExpand,
+  onSelectedChange, previewTrip, onPreviewClose, onlyKeys, areas, insetLeft = 0, topRight,
+}: Props) {
   const mapRef = useRef<MapRef>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const tz = useDeploymentTimezone();
@@ -81,8 +144,10 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
   const [theme, setTheme] = useState<LiveMapTheme>(readTheme);
   const [expanded, setExpanded] = useState(false);
   const [compact, setCompact] = useState(true);
-  const [filter, setFilter] = useState<LiveFilter>('all');
-  const [query, setQuery] = useState('');
+  const [filterState, setFilter] = useState<LiveFilter>('all');
+  const [queryState, setQuery] = useState('');
+  const filter = filterProp ?? filterState;
+  const query = queryProp ?? queryState;
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [follow, setFollow] = useState(true);
   /** Driver view: camera low behind the selected arrow, facing where it is going. */
@@ -106,7 +171,10 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
   const units = useMemo(() => data?.units ?? [], [data]);
 
   const onMap = useMemo(() => units.filter((u) => u.position), [units]);
-  const visible = useMemo(() => onMap.filter((u) => matchesFilter(u, filter) && matchesQuery(u, query)), [onMap, filter, query]);
+  const visible = useMemo(
+    () => onMap.filter((u) => (onlyKeys ? onlyKeys.has(u.key) : matchesFilter(u, filter) && matchesQuery(u, query))),
+    [onMap, filter, query, onlyKeys],
+  );
   const offlineUnits = useMemo(() => units.filter(isOffline), [units]);
   const counts = useMemo(
     () => Object.fromEntries(LIVE_FILTERS.map((f) => [f.id, onMap.filter((u) => matchesFilter(u, f.id)).length])) as Record<LiveFilter, number>,
@@ -233,8 +301,8 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
 
   // ── Camera helpers ──
   const panelPadding = useCallback(
-    () => (compact ? { top: 40, bottom: 190, left: 40, right: 40 } : { top: 60, bottom: 60, left: 60, right: 340 }),
-    [compact],
+    () => (compact ? { top: 40, bottom: 190, left: 40 + insetLeft, right: 40 } : { top: 60, bottom: 60, left: 60 + insetLeft, right: 340 }),
+    [compact, insetLeft],
   );
   // Read by the resize timer, which fires after the layout has already switched.
   const panelPaddingRef = useRef(panelPadding);
@@ -251,9 +319,9 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
         map.flyTo({ center: [SAUDI_CENTER[1], SAUDI_CENTER[0]], zoom: DEFAULT_SAUDI_ZOOM, pitch: 0, bearing: 0 });
         return;
       }
-      map.fitBounds(b, { padding: 70, maxZoom: 11, pitch: 0, bearing: 0, duration: animate ? 1200 : 0 });
+      map.fitBounds(b, { padding: { top: 70, bottom: 70, right: 70, left: 70 + insetLeft }, maxZoom: 11, pitch: 0, bearing: 0, duration: animate ? 1200 : 0 });
     },
-    [visible],
+    [visible, insetLeft],
   );
 
   const flyToUnit = useCallback(
@@ -274,8 +342,14 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
     [panelPadding],
   );
 
+  const insetLeftRef = useRef(insetLeft);
+  insetLeftRef.current = insetLeft;
+  const onPreviewCloseRef = useRef(onPreviewClose);
+  onPreviewCloseRef.current = onPreviewClose;
+
   const select = useCallback(
     (key: string) => {
+      onPreviewCloseRef.current?.();
       setSelectedKey(key);
       setFollow(true);
       setPov(false);
@@ -352,21 +426,90 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
   // Requests from outside (the inbox): select the trip's unit and fly to it.
   const handledFocus = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (!focusTripId || focusNonce === handledFocus.current || !data) return;
+    if ((!focusTripId && !focusUnitKey) || focusNonce === handledFocus.current || !data) return;
     handledFocus.current = focusNonce;
-    const u = units.find((x) => x.trip?.id === focusTripId);
+    const u = focusUnitKey ? units.find((x) => x.key === focusUnitKey) : units.find((x) => x.trip?.id === focusTripId);
     if (!u) return void toast.info('That trip has no truck or driver on the map');
     if (!u.position) return void toast.info(`${unitTitle(u)} hasn't reported a GPS position yet`);
     select(u.key);
-  }, [focusTripId, focusNonce, data, units, select]);
+  }, [focusTripId, focusUnitKey, focusNonce, data, units, select]);
 
-  // First data: frame everything once.
+  // Tell the page what is selected — only when the selection itself changes, not on every refresh.
+  const onSelectedChangeRef = useRef(onSelectedChange);
+  onSelectedChangeRef.current = onSelectedChange;
+  const unitsRef = useRef(units);
+  unitsRef.current = units;
   useEffect(() => {
-    if (!fittedOnce.current && data && mapRef.current) {
+    onSelectedChangeRef.current?.(selectedKey ? unitsRef.current.find((u) => u.key === selectedKey) ?? null : null);
+  }, [selectedKey]);
+
+  // ── Planned-route preview: a trip without a live truck, drawn from its stops ──
+  const previewPoints = useMemo(
+    () => (previewTrip?.stops ?? []).filter((s) => s.lat != null && s.lng != null).map((s) => ({ lat: s.lat!, lng: s.lng! })),
+    [previewTrip],
+  );
+  const { data: previewRoute } = useQuery({
+    queryKey: ['fleet-live-preview-route', previewTrip?.id, previewPoints.map((p) => `${p.lat},${p.lng}`).join(';')],
+    queryFn: () => fleetLiveService.getRouteThrough(previewPoints),
+    enabled: previewPoints.length >= 2,
+    staleTime: 10 * 60_000,
+  });
+  const previewGroups = useMemo(() => (previewTrip ? groupStopsOf(previewTrip) : []), [previewTrip]);
+  const previewLine = useMemo(() => {
+    if (!previewTrip || previewPoints.length < 2) return null;
+    const coords = previewRoute?.geometry ?? previewPoints.map((p) => [p.lng, p.lat] as [number, number]);
+    return { type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: coords } };
+  }, [previewTrip, previewPoints, previewRoute]);
+
+  // A new preview (or the same one asked for again) clears the selection and frames every stop.
+  const framedPreview = useRef<string | null>(null);
+  const previewId = previewTrip?.id ?? null;
+  useEffect(() => {
+    if (!previewId) { framedPreview.current = null; return; }
+    const frameKey = `${previewId}:${focusNonce ?? ''}`;
+    if (framedPreview.current === frameKey) return;
+    framedPreview.current = frameKey;
+    setSelectedKey(null);
+    setPov(false);
+    setOverview(false);
+    const b = boundsOf(previewPoints);
+    if (!b) return void toast.info('None of this trip\'s stops have a map position');
+    mapRef.current?.fitBounds(b, { padding: { top: 110, bottom: 70, left: 70 + insetLeftRef.current, right: 70 }, maxZoom: 13, pitch: 0, bearing: 0, duration: 1200 });
+  }, [previewId, focusNonce, previewPoints]);
+
+  // ── Search areas ──
+  const areaShapes = useMemo(() => {
+    if (!areas?.length) return null;
+    return {
+      type: 'FeatureCollection' as const,
+      features: areas.map((a) => ({
+        type: 'Feature' as const,
+        properties: { id: a.id },
+        geometry: { type: 'Polygon' as const, coordinates: [circlePolygon(a)] },
+      })),
+    };
+  }, [areas]);
+  const areasKey = (areas ?? []).map((a) => `${a.id}:${a.lat.toFixed(3)},${a.lng.toFixed(3)}:${a.radiusKm}`).join('|');
+  const framedAreas = useRef('');
+  useEffect(() => {
+    if (!areasKey || framedAreas.current === areasKey || !areas?.length) {
+      if (!areasKey) framedAreas.current = '';
+      return;
+    }
+    framedAreas.current = areasKey;
+    const b = boundsOf(areas.flatMap((a) => circlePolygon(a).map(([lng, lat]) => ({ lat, lng }))));
+    if (b) mapRef.current?.fitBounds(b, { padding: { top: 90, bottom: 60, left: 60 + insetLeftRef.current, right: 60 }, maxZoom: 12, pitch: 0, bearing: 0, duration: 1100 });
+  }, [areasKey, areas]);
+
+  // First data: frame everything once — after the map has loaded, or the
+  // padding (which keeps clear of a floating panel) is dropped.
+  const [mapLoaded, setMapLoaded] = useState(false);
+  useEffect(() => {
+    if (!fittedOnce.current && data && mapLoaded && mapRef.current) {
       fittedOnce.current = true;
       fitAll(false);
     }
-  }, [data, fitAll]);
+  }, [data, fitAll, mapLoaded]);
 
   // Follow the selected unit as fresh positions arrive.
   // Only a real change of position moves the camera. Selecting a unit and
@@ -495,13 +638,13 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
           dragRotate
           touchPitch
           attributionControl={false}
-          onLoad={onStyleLoad}
+          onLoad={() => { onStyleLoad(); setMapLoaded(true); }}
           onStyleData={onStyleLoad}
           onMove={syncCamera}
           onMoveEnd={snapshotView}
           onResize={snapshotView}
           onDragStart={() => setFollow(false)}
-          onClick={() => selectedKey && deselect()}
+          onClick={() => (selectedKey ? deselect() : previewTrip && onPreviewClose?.())}
           cursor="grab"
           style={{ width: '100%', height: '100%' }}
         >
@@ -544,6 +687,40 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
             </Source>
           )}
 
+          {areaShapes && (
+            <Source id="live-areas" type="geojson" data={areaShapes}>
+              <Layer id="live-areas-fill" type="fill" beforeId={firstSymbolId} paint={{ 'fill-color': '#0ea5e9', 'fill-opacity': 0.07 }} />
+              <Layer id="live-areas-line" type="line" beforeId={firstSymbolId}
+                paint={{ 'line-color': '#0284c7', 'line-width': 1.5, 'line-opacity': 0.7, 'line-dasharray': [3, 2] }} />
+            </Source>
+          )}
+          {areas?.map((a) => (
+            // Label on the circle's top edge, so it never covers the trucks inside it.
+            <Marker key={`area-${a.id}`} longitude={a.lng} latitude={a.lat + a.radiusKm / 110.574} anchor="bottom" style={{ zIndex: 1 }}>
+              <span className="pointer-events-none mb-1 block rounded-md bg-sky-700/90 px-1.5 py-0.5 text-[10.5px] font-semibold whitespace-nowrap text-white shadow">
+                {a.label} · {a.radiusKm} km
+              </span>
+            </Marker>
+          ))}
+
+          {!selected && previewLine && previewTrip && (
+            <Source id="live-preview" type="geojson" data={previewLine}>
+              <Layer id="live-preview-casing" type="line" beforeId={firstSymbolId}
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                paint={{ 'line-color': PREVIEW_LINE[previewTrip.tone], 'line-width': 12, 'line-opacity': 0.15, 'line-blur': 2 }} />
+              <Layer id="live-preview-line" type="line" beforeId={firstSymbolId}
+                layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+                paint={{
+                  'line-color': PREVIEW_LINE[previewTrip.tone],
+                  'line-width': ['interpolate', ['linear'], ['zoom'], 6, 2.5, 14, 6],
+                  ...(previewRoute ? {} : { 'line-dasharray': [2, 1.5] }),
+                }} />
+            </Source>
+          )}
+          {!selected && previewGroups.map((g) => (
+            <StopPin key={`preview-${g.numbers.join('-')}`} group={g} eta={null} tone={previewTrip!.tone} />
+          ))}
+
           {/* Stops of the selected trip */}
           {stopGroups.map((g) => (
             <StopPin key={`stop-${g.numbers.join('-')}`} group={g} eta={g.isNext && eta?.arrival ? formatTime(eta.arrival) : null} />
@@ -581,7 +758,7 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
       </div>
 
       {/* ── Overlays ── */}
-      <div className="pointer-events-none absolute inset-0 z-10 p-3">
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-10 p-3 transition-[left] duration-300" style={{ left: insetLeft }}>
         {focusView && selected && (
           <div className="absolute top-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full bg-charcoal/90 p-1 text-xs font-medium text-white shadow-lg backdrop-blur-md pointer-events-auto">
             <span className="px-2 font-mono">{unitTitle(selected)}</span>
@@ -615,7 +792,22 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
         <div className="absolute top-3 left-3 flex max-w-[calc(100%-5rem)] flex-col gap-2">
           {selected && compact ? null : selected && selected.trip && stop ? (
             <NextStopCard unit={selected} eta={eta} />
-          ) : (
+          ) : previewTrip ? (
+            <div className={cn('pointer-events-auto flex max-w-[320px] items-start gap-2.5 rounded-xl px-3 py-2.5', GLASS)}>
+              <span className="mt-1 size-2 shrink-0 rounded-full" style={{ background: PREVIEW_LINE[previewTrip.tone] }} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-mono text-[13px] font-semibold text-foreground">{previewTrip.title}</p>
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {previewTrip.subtitle ?? (previewRoute ? 'Planned road route' : 'Planned stops')}
+                </p>
+              </div>
+              {onPreviewClose && (
+                <button type="button" onClick={onPreviewClose} aria-label="Close trip preview" className="text-muted-foreground hover:text-foreground">
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+          ) : hideFinder ? null : (
             <>
               <div className={cn('pointer-events-auto flex h-9 items-center gap-2 rounded-xl px-3', GLASS, compact ? 'w-[200px]' : 'w-[260px]')}>
                 <Search className="size-4 shrink-0 text-muted-foreground" />
@@ -661,13 +853,16 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
 
         {/* Top-right: live status + speed */}
         <div className="absolute top-3 right-3 flex flex-col items-end gap-2">
-          <div className={cn('pointer-events-auto flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium', GLASS)}>
-            <span className="relative flex size-2">
-              {!isError && <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
-              <span className={cn('relative inline-flex size-2 rounded-full', isError ? 'bg-rose-500' : 'bg-emerald-500')} />
-            </span>
-            <span className="text-foreground">{isError ? 'Connection lost' : 'Live'}</span>
-            {lastUpdate && !isError && <span className="text-muted-foreground">· {lastUpdate}</span>}
+          <div className="flex items-center gap-2">
+            <div className={cn('pointer-events-auto flex h-9 items-center gap-2 rounded-xl px-3 text-xs font-medium', GLASS)}>
+              <span className="relative flex size-2">
+                {!isError && <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />}
+                <span className={cn('relative inline-flex size-2 rounded-full', isError ? 'bg-rose-500' : 'bg-emerald-500')} />
+              </span>
+              <span className="text-foreground">{isError ? 'Connection lost' : 'Live'}</span>
+              {lastUpdate && !isError && <span className="text-muted-foreground">· {lastUpdate}</span>}
+            </div>
+            {topRight && <div className="pointer-events-auto flex items-center gap-2">{topRight}</div>}
           </div>
           {!compact && selected?.motion === 'moving' && selected.position?.speed_kph != null && (
             <div className={cn('pointer-events-auto flex size-14 flex-col items-center justify-center rounded-2xl', GLASS)}>
@@ -680,7 +875,7 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
         {/* Right: details panel (full layout) */}
         {selected && !compact && (
           <div className="absolute top-16 right-3 bottom-3 flex items-start">
-            <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact={false} onClose={deselect} onShare={share} onShowRoute={showRoute} expanded={expanded} onToggleExpand={() => setExpanded((v) => !v)} pov={pov} onTogglePov={pov ? exitPov : enterPov} />
+            <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact={false} onClose={deselect} onShare={share} onShowRoute={showRoute} expanded={expanded} onToggleExpand={hideExpand ? undefined : () => setExpanded((v) => !v)} pov={pov} onTogglePov={pov ? exitPov : enterPov} />
           </div>
         )}
 
@@ -688,7 +883,7 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
         <div className="absolute bottom-3 left-3 flex items-end gap-2">
           {selected && !compact && eta && selected.trip ? (
             <EtaStrip eta={eta} formatTime={formatTime} />
-          ) : !selected && offlineUnits.length > 0 ? (
+          ) : !selected && !hideFinder && offlineUnits.length > 0 ? (
             <OfflineList units={offlineUnits} onSelect={select} />
           ) : null}
         </div>
@@ -710,9 +905,11 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
           </ControlGroup>
           <ControlGroup>
             <CtlButton label={theme === 'light' ? 'Dark map' : 'Light map'} onClick={toggleTheme}>{theme === 'light' ? <Moon /> : <Sun />}</CtlButton>
-            <CtlButton label={expanded ? 'Exit full view' : 'Full view'} onClick={() => setExpanded((v) => !v)}>
-              {expanded ? <Minimize2 /> : <Maximize2 />}
-            </CtlButton>
+            {!hideExpand && (
+              <CtlButton label={expanded ? 'Exit full view' : 'Full view'} onClick={() => setExpanded((v) => !v)}>
+                {expanded ? <Minimize2 /> : <Maximize2 />}
+              </CtlButton>
+            )}
             <MapLegend />
           </ControlGroup>
         </div>
@@ -720,7 +917,7 @@ export default function FleetCommandMap({ className, focusTripId, focusNonce }: 
         {/* Compact: one bottom card */}
         {selected && compact && (
           <div className="absolute right-3 bottom-3 left-3">
-            <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact onClose={deselect} onShare={share} onShowRoute={showRoute} expanded={expanded} onToggleExpand={() => setExpanded((v) => !v)} pov={pov} onTogglePov={pov ? exitPov : enterPov} />
+            <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact onClose={deselect} onShare={share} onShowRoute={showRoute} expanded={expanded} onToggleExpand={hideExpand ? undefined : () => setExpanded((v) => !v)} pov={pov} onTogglePov={pov ? exitPov : enterPov} />
           </div>
         )}
 

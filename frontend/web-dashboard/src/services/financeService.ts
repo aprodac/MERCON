@@ -92,6 +92,8 @@ export interface BillLineDTO {
   source_type?: string;
   source_id?: string | null;
   accountId?: string | null;
+  /** Truck the line is for, so it counts in Vehicle P&L (manual lines only). */
+  vehicleId?: string | null;
   description: string;
   amount: number;
 }
@@ -295,16 +297,31 @@ export const financeService = {
   },
 
   // Invoices (Accounts Receivable)
-  getInvoices: async (params?: {
-    customer_id?: string;
-    status?: InvoiceStatus | 'all';
-    date_from?: string;
-    date_to?: string;
-    search?: string;
-    page?: number;
-    per_page?: number;
-  }) => {
+  getInvoices: async (params?: InvoiceListParams) => {
     const response = await api.get('/invoices', { params });
+    return response.data;
+  },
+
+  /** Tab counts and totals for the invoice list; honours the same filters (minus status). */
+  getInvoiceSummary: async (params?: Omit<InvoiceListParams, 'status' | 'sort' | 'page' | 'per_page'>): Promise<ApiResponse<InvoiceSummary>> => {
+    const response = await api.get('/invoices/summary', { params });
+    return response.data;
+  },
+
+  /** Completed trips not on any invoice yet, grouped by customer. */
+  getUnbilledTrips: async (): Promise<ApiResponse<UnbilledTrips>> => {
+    const response = await api.get('/invoices/unbilled-trips');
+    return response.data;
+  },
+
+  getInvoiceActivity: async (id: string): Promise<ApiResponse<InvoiceActivity[]>> => {
+    const response = await api.get(`/invoices/${id}/activity`);
+    return response.data;
+  },
+
+  /** Record that an invoice was sent or shared (shows in its activity). */
+  logInvoiceSent: async (id: string, channel: InvoiceShareChannel) => {
+    const response = await api.post(`/invoices/${id}/activity`, { action: 'SENT', channel });
     return response.data;
   },
 
@@ -410,6 +427,11 @@ export const financeService = {
 
   getARAgeing: async (params?: GetAgeingParams): Promise<ApiResponse<AgeingReportData>> => {
     const response = await api.get('/finance/reports/ar-ageing', { params });
+    return response.data;
+  },
+
+  getCustomerStatementLedger: async (params: { customer_id: string; date_from?: string; date_to?: string }): Promise<ApiResponse<CustomerStatementLedger>> => {
+    const response = await api.get('/finance/reports/customer-statement', { params });
     return response.data;
   },
 
@@ -581,6 +603,54 @@ export interface ReportLineItem {
   amount: number;
 }
 
+export type InvoiceListStatus = InvoiceStatus | 'all' | 'unpaid' | 'overdue';
+export type InvoiceSort = 'due_asc' | 'date_desc' | 'date_asc' | 'total_desc' | 'balance_desc' | 'created_desc';
+export type InvoiceShareChannel = 'whatsapp' | 'email' | 'copy' | 'download' | 'print';
+
+export interface InvoiceListParams {
+  customer_id?: string;
+  status?: InvoiceListStatus;
+  date_from?: string;
+  date_to?: string;
+  search?: string;
+  sort?: InvoiceSort;
+  page?: number;
+  per_page?: number;
+}
+
+export interface InvoiceSummary {
+  counts: { all: number; Draft: number; unpaid: number; overdue: number; Paid: number; Void: number };
+  unpaid_balance: number;
+  overdue_balance: number;
+  paid_this_month: number;
+  payments_this_month: number;
+}
+
+export interface UnbilledCustomer {
+  customer_id: string;
+  customer_name: string;
+  payment_terms: string | null;
+  trip_ids: string[];
+  amount: number;
+  /** Completed trips with no billing amount set — they can't be invoiced yet. */
+  missing_amount: number;
+}
+
+export interface UnbilledTrips {
+  customers: UnbilledCustomer[];
+  trip_count: number;
+  amount: number;
+  missing_amount_count: number;
+}
+
+export interface InvoiceActivity {
+  id: string;
+  action: string;
+  at: string;
+  by: string | null;
+  details: { channel?: InvoiceShareChannel; amount?: number | string; ref_id?: string };
+}
+
 export interface ProfitAndLossData {
   date_from?: string;
   date_to?: string;
@@ -607,9 +677,37 @@ export interface GetAgeingParams {
   as_of?: string;
   basis?: 'due' | 'bill';
   include_bills?: boolean;
+  include_invoices?: boolean;
   include_documents?: boolean;
   provider_id?: string;
   customer_id?: string;
+}
+
+export type StatementLineType = 'Invoice' | 'Payment' | 'AdvanceApplied' | 'InvoiceVoided';
+
+export interface CustomerStatementLine {
+  date: string;
+  type: StatementLineType;
+  ref: string | null;
+  description: string;
+  debit: number;
+  credit: number;
+  running_balance: number;
+  document_id: string;
+}
+
+/** Ledger-style statement of account for one customer (GET /finance/reports/customer-statement). */
+export interface CustomerStatementLedger {
+  customer: { id: string; name: string; phone: string | null; payment_terms: string | null };
+  date_from: string | null;
+  date_to: string;
+  opening_balance: number;
+  lines: CustomerStatementLine[];
+  total_debit: number;
+  total_credit: number;
+  closing_balance: number;
+  ageing: { current: number; days_1_30: number; days_31_60: number; days_61_90: number; days_90_plus: number; total: number };
+  unapplied_advances: number;
 }
 
 export interface AgeingBillDetail {

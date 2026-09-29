@@ -11,8 +11,15 @@ export * from './SidePanelTabs';
 export * from './JournalLinesTable';
 export * from './ActivityTimeline';
 export * from './BalanceHeroCard';
-export * from './StatementHeaderBar';
-export * from './InsightRail';
-export * from './StatementRow';
 export * from './ScrollTableCard';
 
+export * from './tones';
+export * from './AsOfControl';
+export * from './FigurePopover';
+export * from './SegmentedControl';
+export * from './ReportViewState';
+export * from './StatementTable';
+export * from './StatementCustomize';
+export * from './PeriodControl';
+export * from './HeadlineTerm';
+export * from './TwoColumnStatement';

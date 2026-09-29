@@ -67,14 +67,13 @@ export default function DriverDetailsScreen() {
   // There is no vehicle-details route in the app yet; vehicle-edit is the real
   // destination that shows this vehicle's record.
   const handleViewVehicle = useCallback(() => {
-    if (vehicle) router.push({ pathname: '/vehicle-edit', params: { id: vehicle.id } });
+    if (vehicle) router.push({ pathname: '/vehicle-details', params: { id: vehicle.id } });
   }, [router, vehicle]);
 
   const handleTrackTrip = useCallback(() => {
     if (assignment) router.push({ pathname: '/trip-details', params: { id: assignment.tripId } });
   }, [router, assignment]);
 
-  const handleViewAllDocuments = useCallback(() => router.push('/documents'), [router]);
 
   const renderBody = () => {
     if (loading) return <SkeletonDriverDetails />;
@@ -111,7 +110,6 @@ export default function DriverDetailsScreen() {
           loading={documentsLoading}
           error={documentsError}
           onRetry={refresh}
-          onViewAll={handleViewAllDocuments}
         />
 
         {assignment ? (

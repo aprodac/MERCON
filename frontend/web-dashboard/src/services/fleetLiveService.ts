@@ -45,6 +45,8 @@ export interface LiveUnit {
     name: string;
     phone: string | null;
     avatar_url: string | null;
+    /** Available / OnTrip / OffDuty / Inactive — dispatch only accepts Available. */
+    status?: string | null;
   } | null;
   trip: {
     id: string;

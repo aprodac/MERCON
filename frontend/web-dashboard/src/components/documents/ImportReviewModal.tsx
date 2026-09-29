@@ -16,6 +16,7 @@ import { documentTypeService } from '@/services/documentTypeService';
 import { driverService } from '@/services/driverService';
 import { vehicleService } from '@/services/vehicleService';
 import { resolveFileUrl } from '@/lib/documents';
+import { collectDroppedFiles, partitionUploadable, DOC_UPLOAD_ACCEPT } from '@/lib/fileDrop';
 import { cn } from '@/lib/utils';
 import { useDeploymentTimezone, formatInDeploymentTz } from '@/lib/datetime';
 
@@ -66,47 +67,8 @@ export default function ImportReviewModal({
   const [isDragging, setIsDragging] = useState(false);
   const seededRef = useRef(false);
 
-  const extractFilesFromDrop = async (dataTransfer: DataTransfer): Promise<File[]> => {
-    const fileEntries: File[] = [];
-    const items = Array.from(dataTransfer.items || []);
-    
-    const processEntry = async (entry: any) => {
-      if (entry.isFile) {
-        await new Promise<void>((resolve) => {
-          entry.file((file: File) => {
-            if (file.name && !file.name.startsWith('.')) {
-              fileEntries.push(file);
-            }
-            resolve();
-          }, () => resolve());
-        });
-      } else if (entry.isDirectory) {
-        const dirReader = entry.createReader();
-        const entries: any[] = await new Promise((resolve) => {
-          dirReader.readEntries((results: any[]) => resolve(results), () => resolve([]));
-        });
-        for (const childEntry of entries) {
-          await processEntry(childEntry);
-        }
-      }
-    };
-
-    const queue: Promise<void>[] = [];
-    for (const item of items) {
-      if (item.kind === 'file') {
-        const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
-        if (entry) {
-          queue.push(processEntry(entry));
-        } else {
-          const file = item.getAsFile();
-          if (file) fileEntries.push(file);
-        }
-      }
-    }
-
-    await Promise.all(queue);
-    return fileEntries.length > 0 ? fileEntries : Array.from(dataTransfer.files || []);
-  };
+  const [uploadPct, setUploadPct] = useState(0);
+  const initialFilesHandledRef = useRef(false);
 
   // Poll while anything is being read by AI
   const { data: imp } = useQuery({
@@ -161,7 +123,9 @@ export default function ImportReviewModal({
     setSelected(new Set());
     setDupActions({});
     setExpandedId(null);
+    setUploadPct(0);
     seededRef.current = false;
+    initialFilesHandledRef.current = false;
   };
 
   const handleClose = () => {
@@ -172,21 +136,43 @@ export default function ImportReviewModal({
 
   // Process initialFiles if provided when modal opens
   useEffect(() => {
-    if (isOpen && initialFiles && initialFiles.length > 0 && !importId && !isUploading) {
-      handleFiles(initialFiles);
+    if (isOpen && initialFiles && initialFiles.length > 0 && !importId && !isUploading && !initialFilesHandledRef.current) {
+      initialFilesHandledRef.current = true;
+      handleFiles(initialFiles, { analyze: true });
     }
   }, [isOpen, initialFiles]);
 
-  const handleFiles = async (files: File[]) => {
-    if (files.length === 0) return;
+  const handleFiles = async (picked: File[], opts: { analyze?: boolean } = {}) => {
+    const { accepted: files, rejected } = partitionUploadable(picked);
+    if (rejected.length > 0) {
+      toast.warning(`${rejected.length} file(s) skipped — unsupported type or too large`, {
+        description: rejected.slice(0, 4).map((r) => `${r.name} (${r.reason})`).join('\n'),
+      });
+    }
+    if (files.length === 0) {
+      if (picked.length > 0 && rejected.length === 0) toast.error('No documents found in that selection');
+      return;
+    }
     setIsUploading(true);
+    setUploadPct(0);
     try {
-      const created = await documentService.createImport(files, lockOwnerType, lockOwnerId);
+      const created = await documentService.stageImport(files, {
+        ownerType: lockOwnerType,
+        ownerId: lockOwnerId,
+        onProgress: (pct) => setUploadPct(pct),
+      });
       setImportId(created.id);
-      toast.success(`${created.itemCount} file(s) staged — Click "Analyse with AI" on any file or choose document type manually.`);
+      if (opts.analyze) {
+        // Coming from the upload modal's "Auto-sort with AI" — the user
+        // already asked for AI, so start reading straight away.
+        const res = await documentService.analyzeImport(created.id);
+        toast.success(`${created.itemCount} file(s) uploaded — AI is reading them now`, { description: res.message });
+      } else {
+        toast.success(`${created.itemCount} file(s) staged — Click "Analyse with AI" on any file or choose document type manually.`);
+      }
       await queryClient.invalidateQueries({ queryKey: ['documentImport', created.id] });
     } catch (err: any) {
-      toast.error(err.response?.data?.error?.message || 'Upload failed');
+      toast.error(err.response?.data?.error?.message || err.message || 'Upload failed');
     } finally {
       setIsUploading(false);
     }
@@ -362,7 +348,8 @@ export default function ImportReviewModal({
               onDrop={async (e) => {
                 e.preventDefault();
                 setIsDragging(false);
-                const files = await extractFilesFromDrop(e.dataTransfer);
+                if (isUploading) return;
+                const files = await collectDroppedFiles(e.dataTransfer);
                 handleFiles(files);
               }}
               className={cn(
@@ -373,7 +360,10 @@ export default function ImportReviewModal({
               {isUploading ? (
                 <div className="flex flex-col items-center gap-3 text-slate-600 dark:text-slate-300 py-6">
                   <Loader2 className="w-10 h-10 animate-spin text-brand" />
-                  <p className="text-sm font-bold">Uploading files & folders…</p>
+                  <p className="text-sm font-bold">Uploading files & folders… {uploadPct}%</p>
+                  <div className="w-full max-w-xs h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                    <div className="h-full bg-brand rounded-full transition-all duration-300" style={{ width: `${Math.max(uploadPct, 3)}%` }} />
+                  </div>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-4 py-2">
@@ -422,7 +412,7 @@ export default function ImportReviewModal({
               ref={fileInputRef}
               type="file"
               multiple
-              accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.gif,.doc,.docx,.xls,.xlsx,.txt,.rtf,.csv"
+              accept={DOC_UPLOAD_ACCEPT}
               className="hidden"
               onChange={(e) => { handleFiles(Array.from(e.target.files || [])); e.target.value = ''; }}
             />

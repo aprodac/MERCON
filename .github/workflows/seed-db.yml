@@ -17,7 +17,7 @@ on:
 jobs:
   seed-database:
     name: Run Database Seeding
-    runs-on: self-hosted
+    runs-on: [self-hosted, prod]
 
     steps:
       - name: Checkout Repository

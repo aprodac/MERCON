@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Clock, Navigation, MapPin, CheckCircle2, ArrowRight } from 'lucide-react';
 import {
   estimateTravelTimeByName,
@@ -78,22 +78,30 @@ export default function TransitTimeBadge({
     };
   }, [origin, destination, originLat, originLng, destinationLat, destinationLng]);
 
+  // Callers pass inline callbacks (a new function every render). Keeping them in a ref
+  // means the auto-fill below runs only when the estimate or the pickup actually
+  // changes — not on every render, which looped and overwrote a hand-set drop-off.
+  const autoSetRef = useRef({ onAutoSetDropoffDateTime, onAutoSetDropoffTime });
+  autoSetRef.current = { onAutoSetDropoffDateTime, onAutoSetDropoffTime };
+
   // Auto-update dropoff date and time when estimate, pickupDate, or pickupTime changes
+  const durationMinutes = estimate?.durationMinutes;
   useEffect(() => {
-    if (estimate && pickupTime && pickupTime.trim()) {
-      if (onAutoSetDropoffDateTime) {
-        const arrivalCalc = calculateArrivalDropoffDateAndTime(pickupDate, pickupTime, estimate.durationMinutes);
-        if (arrivalCalc.dropoffTime) {
-          onAutoSetDropoffDateTime(arrivalCalc.dropoffDate, arrivalCalc.dropoffTime, arrivalCalc.isOvernight, estimate);
-        }
-      } else if (onAutoSetDropoffTime) {
-        const arrivalCalc = calculateArrivalDropoffTime(pickupTime, estimate.durationMinutes);
-        if (arrivalCalc.dropoffTime) {
-          onAutoSetDropoffTime(arrivalCalc.dropoffTime, arrivalCalc.isOvernight);
-        }
+    if (!estimate || !pickupTime || !pickupTime.trim()) return;
+    const { onAutoSetDropoffDateTime: setDateTime, onAutoSetDropoffTime: setTime } = autoSetRef.current;
+    if (setDateTime) {
+      const arrivalCalc = calculateArrivalDropoffDateAndTime(pickupDate, pickupTime, estimate.durationMinutes);
+      if (arrivalCalc.dropoffTime) {
+        setDateTime(arrivalCalc.dropoffDate, arrivalCalc.dropoffTime, arrivalCalc.isOvernight, estimate);
+      }
+    } else if (setTime) {
+      const arrivalCalc = calculateArrivalDropoffTime(pickupTime, estimate.durationMinutes);
+      if (arrivalCalc.dropoffTime) {
+        setTime(arrivalCalc.dropoffTime, arrivalCalc.isOvernight);
       }
     }
-  }, [estimate, pickupDate, pickupTime, onAutoSetDropoffDateTime, onAutoSetDropoffTime]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [durationMinutes, pickupDate, pickupTime]);
 
   if (!origin.trim() || !destination.trim()) {
     return null;

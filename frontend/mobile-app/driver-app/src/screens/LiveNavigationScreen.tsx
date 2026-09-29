@@ -1,29 +1,24 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { openInGoogleMaps } from '../services/maps';
 import {
-  View, Text, TouchableOpacity, StyleSheet, StatusBar, Alert, ActivityIndicator, Platform, Image,
+  View, Text, TouchableOpacity, StyleSheet, StatusBar, Alert, ActivityIndicator, Platform,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { NavMap } from '../components/common/NavMap';
 import { isValidCoordinate } from '../utils/geo';
-import { ArrowLeft, MapPin, Truck, Siren, Clock, Banknote, ArrowUpRight, Navigation, Camera, Trash2, CheckCircle2, Maximize, Moon, Sun } from 'lucide-react-native';
+import { ArrowLeft, MapPin, Truck, Siren, Clock, Banknote, ArrowUpRight, Navigation, Maximize, Moon, Sun } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { DelayReportModal } from '../components/DelayReportModal';
 import { TripProgressStepper } from '../components/TripProgressStepper';
 import { DelayButton } from '../components/DelayButton';
-import { GeotagPhotoModal } from '../components/GeotagPhotoModal';
 import { useCurrentTrip } from '../hooks/use-current-trip';
-import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
+import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeActiveStop, getLegEndpoints } from '@mercon/mobile-shared/lib/trips';
 
 import { targetFromWorkflowState, parseStopWorkflowState } from '../utils/routeParser';
-import { takePhoto, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
-import { showToast } from '../components/AppToast';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
-
-const ARRIVAL_RADIUS_M = 200;
 
 /** Great-circle distance between two lat/lng points, in meters. */
 function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -62,14 +57,7 @@ const LiveNavigationScreen = () => {
   
   const [arriving, setArriving] = useState(false);
   const [delayModalVisible, setDelayModalVisible] = useState(false);
-  const [arrivalPhoto, setArrivalPhoto] = useState<CapturedPhoto | null>(null);
-  const arrivalPhotoRef = useRef<CapturedPhoto | null>(null);
-  useEffect(() => { arrivalPhotoRef.current = arrivalPhoto; }, [arrivalPhoto]);
-  const [previewPhoto, setPreviewPhoto] = useState<CapturedPhoto | null>(null);
   const hasArrivedRef = useRef(false);
-
-  // 1 geotagged photo, or 1 customer-app screenshot on EXTERNAL_APP trips.
-  const evidence = getEvidencePolicy(trip, 'arrival');
 
   const ws = trip?.driver_workflow_state || 'ASSIGNED';
   const isRound = isRoundTrip(trip);
@@ -141,63 +129,19 @@ const LiveNavigationScreen = () => {
     };
   }, [dropoffStop]);
 
-  const handleAddPhoto = async () => {
-    const photo = evidence.screenshot ? await pickFromGallery().catch(() => null) : await takePhoto();
-    if (photo) setArrivalPhoto(photo);
-    return photo;
-  };
-
   /**
-   * "I've arrived": takes the arrival photo right now if there isn't one yet
-   * (camera opens straight away), then confirms arrival — one tap instead of
-   * a separate photo box plus a disabled button.
+   * "I've arrived": always a deliberate tap — no photo, and no GPS auto-arrival
+   * (a GPS jump near the site must not move the driver on). The arrival time
+   * is stamped server-side by the status change. On EXTERNAL_APP trips the
+   * operator confirms the real arrival time from the loading/delivery
+   * screenshot, which shows both arrive and departure times.
    */
-  const goToStop = async (photoArg?: CapturedPhoto | null) => {
+  const goToStop = async () => {
     if (!trip || hasArrivedRef.current) return;
-
-    const arrivalPhoto = photoArg ?? arrivalPhotoRef.current ?? (await handleAddPhoto());
-    if (!arrivalPhoto) return;
 
     hasArrivedRef.current = true;
     setArriving(true);
     try {
-      if (arrivalPhoto && trip.id) {
-        try {
-          const arrivalOp = isHeadingToPickup
-            ? (legIndex === 1 ? 'return_loading_arrival' : 'pickup_arrival')
-            : (legIndex === 1 ? 'return_delivery_arrival' : 'delivery_arrival');
-
-          await tripService.uploadPhoto(
-            trip.id,
-            isHeadingToPickup ? 'cargo' : 'pod',
-            {
-              uri: arrivalPhoto.uri,
-              fileName: arrivalPhoto.fileName,
-              mimeType: arrivalPhoto.mimeType,
-              location: arrivalPhoto.location ? {
-                latitude: arrivalPhoto.location.latitude,
-                longitude: arrivalPhoto.location.longitude,
-                timestamp: arrivalPhoto.location.timestamp,
-              } : null,
-            },
-            legIndex,
-            arrivalOp,
-            activeStop?.id
-          );
-        } catch (photoErr) {
-          console.warn('Arrival photo upload warning:', photoErr);
-          // The screenshot is the only proof of an external-app arrival (the
-          // operator reads the real time off it), so don't advance without it.
-          if (evidence.screenshot) {
-            hasArrivedRef.current = false;
-            setArriving(false);
-            showToast(t('err_screenshot_upload', 'Screenshot could not upload. Check your connection and tap again.'), 'error');
-            return;
-          }
-          showToast(t('warn_arrival_photo_upload', 'Arrival photo could not upload — arrival is still confirmed.'), 'info');
-        }
-      }
-
       if (isHeadingToPickup) {
         await tripService.updateStatus(trip.id, 'Loading', 'ARRIVED_AT_PICKUP');
         router.replace('/trip/pickup' as any);
@@ -222,7 +166,7 @@ const LiveNavigationScreen = () => {
 
   const lastPostTimeRef = useRef<number>(0);
 
-  // Stream live position to backend and auto-detect arrival at the dropoff.
+  // Stream live position to backend and track distance to the destination.
   useEffect(() => {
     let sub: Location.LocationSubscription | null = null;
     let cancelled = false;
@@ -299,9 +243,7 @@ const LiveNavigationScreen = () => {
           }
 
           if (activeStop && isValidCoordinate(activeStop.location_lat, activeStop.location_lng)) {
-            const dist = distanceMeters(lat, lng, activeStop.location_lat, activeStop.location_lng);
-            setDistanceToTarget(dist);
-            if (dist <= ARRIVAL_RADIUS_M && !hasArrivedRef.current && arrivalPhotoRef.current) goToStop();
+            setDistanceToTarget(distanceMeters(lat, lng, activeStop.location_lat, activeStop.location_lng));
           } else {
             setDistanceToTarget(null);
           }
@@ -518,7 +460,7 @@ const LiveNavigationScreen = () => {
       {/* Bottom Sheet Container */}
       <View style={styles.bottomCardShadow}>
         <View style={[styles.bottomCardInner, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
-          {/* 1. Destination Information Block with Add Photo button */}
+          {/* 1. Destination Information Block */}
           <View style={styles.destinationBlock}>
             <View style={styles.destinationRow}>
               <View style={styles.destinationTextCol}>
@@ -532,29 +474,6 @@ const LiveNavigationScreen = () => {
                   {stopAddress(activeStop) ?? (isHeadingToPickup ? "Pickup Point, Saudi Arabia" : "Delivery Destination, Saudi Arabia")}
                 </Text>
               </View>
-
-              {/* Photo Upload Tile (Matching user screenshot) */}
-              {arrivalPhoto ? (
-                <View style={styles.photoTileWrapper}>
-                  <TouchableOpacity
-                    style={styles.arrivalPhotoThumbBox}
-                    activeOpacity={0.85}
-                    onPress={() => setPreviewPhoto(arrivalPhoto)}
-                  >
-                    <Image source={{ uri: arrivalPhoto.uri }} style={styles.arrivalPhotoThumb} />
-                    <View style={styles.photoCheckBadge}>
-                      <CheckCircle2 size={11} color="#FFFFFF" strokeWidth={2.5} />
-                    </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.removePhotoBtn}
-                    activeOpacity={0.7}
-                    onPress={() => setArrivalPhoto(null)}
-                  >
-                    <Trash2 size={11} color="#FFFFFF" strokeWidth={2.2} />
-                  </TouchableOpacity>
-                </View>
-              ) : null}
             </View>
 
             {!hasValidActiveCoords && (
@@ -580,12 +499,6 @@ const LiveNavigationScreen = () => {
             <Text style={styles.primaryArrivedBtnText}>
               {arriving
                 ? t('msg_updating_state', 'Updating State…')
-                : !arrivalPhoto && evidence.screenshot
-                ? t('action_arrived_screenshot', "I'VE ARRIVED — ADD SCREENSHOT")
-                : !arrivalPhoto
-                ? (isHeadingToPickup
-                  ? t('action_arrived_pickup_photo', "I'VE ARRIVED — TAKE PHOTO")
-                  : t('action_arrived_delivery_photo', "I'VE ARRIVED — TAKE PHOTO"))
                 : isHeadingToPickup
                 ? t('action_arrived_pickup', "I'VE ARRIVED AT PICKUP")
                 : t('action_arrived_delivery', "I'VE ARRIVED AT DELIVERY")}
@@ -619,12 +532,6 @@ const LiveNavigationScreen = () => {
         tripId={trip?.id ?? null}
         onClose={() => setDelayModalVisible(false)}
         onSuccess={() => refetch()}
-      />
-
-      <GeotagPhotoModal
-        visible={!!previewPhoto}
-        photo={previewPhoto ? { uri: previewPhoto.uri, title: 'Arrival Photo Preview', location: previewPhoto.location } : null}
-        onClose={() => setPreviewPhoto(null)}
       />
     </View>
   );
@@ -1030,80 +937,6 @@ const styles = StyleSheet.create({
     color: '#92400E',
     lineHeight: 16,
     fontWeight: '600',
-  },
-  addArrivalPhotoBtn: {
-    width: 76,
-    height: 72,
-    borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: '#FA634E',
-    borderStyle: 'dashed',
-    backgroundColor: '#FFF5F3',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 4,
-  },
-  addPhotoIconCircle: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#FFEBE8',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 2,
-  },
-  addPhotoBtnText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#FA634E',
-  },
-  requiredBadge: {
-    fontSize: 8.5,
-    fontWeight: '800',
-    color: '#E11D48',
-    marginTop: 1,
-  },
-  photoTileWrapper: {
-    position: 'relative',
-    width: 72,
-    height: 72,
-  },
-  arrivalPhotoThumbBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: '#10B981',
-  },
-  arrivalPhotoThumb: {
-    width: '100%',
-    height: '100%',
-  },
-  photoCheckBadge: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#10B981',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  removePhotoBtn: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#EF4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
-    zIndex: 10,
   },
   navStats: {
     flexDirection: 'row',

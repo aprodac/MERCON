@@ -109,7 +109,21 @@ export const getCustomerById = async (req: Request, res: Response) => {
 
     const customer = await prisma.customer.findFirst({
       where: whereClause,
-      include: { trips: { take: 5, orderBy: { createdAt: 'desc' } } }
+      // Same trip shape the driver and vehicle detail endpoints return, so the
+      // three detail pages render trip cards (route, driver, payload) alike.
+      include: {
+        trips: {
+          where: { deletedAt: null, status: { notIn: ['Cancelled'] } },
+          take: 100,
+          orderBy: [{ planned_start: 'desc' }, { createdAt: 'desc' }],
+          include: {
+            driver: { select: { id: true, first_name: true, last_name: true, phone_primary: true } },
+            vehicle: { select: { id: true, ref_id: true, plate_number: true, asset_type: true, capacity_kg: true } },
+            stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' } },
+          },
+        },
+        _count: { select: { trips: { where: { deletedAt: null, status: { notIn: ['Cancelled'] } } } } },
+      }
     });
 
     if (!customer) {

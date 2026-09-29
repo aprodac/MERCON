@@ -130,6 +130,9 @@ const saudiLicenseSchema = z.preprocess(
 /** Route param `:id` must be a UUID. */
 export const idParam = z.object({ id: z.string().uuid('Invalid id') });
 
+/** A company-local calendar day, "YYYY-MM-DD". */
+export const dayString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a YYYY-MM-DD date');
+
 /** List query — pagination + search + sort. Coerces and guards against NaN. */
 export const listQuery = z.object({
   page: z.coerce.number().int().positive().default(1),
@@ -531,7 +534,53 @@ export const updateVehicleBody = z.object({
   icces_device_id: z.string().trim().optional().nullable(),
   status: z.enum(['Available', 'OnTrip', 'Maintenance', 'Inactive']).optional(),
   image_url: z.string().nullable().optional(),
+  // Ownership (Vehicle P&L depreciation) — null clears a value.
+  purchase_price: z.coerce.number().min(0).nullable().optional(),
+  purchase_date: dayString.nullable().optional(),
+  useful_life_years: z.coerce.number().int().min(1).max(40).nullable().optional(),
+  residual_value: z.coerce.number().min(0).nullable().optional(),
 });
+
+/* ─── Vehicle P&L cost inputs ────────────────────────────────────────────── */
+export const vehicleFixedCostBody = z.object({
+  category: nonEmpty('Category'),
+  label: z.string().trim().max(120).nullable().optional(),
+  amount: z.coerce.number().positive('Amount must be greater than 0'),
+  frequency: z.enum(['Monthly', 'Yearly']).default('Monthly'),
+  start_date: dayString,
+  end_date: dayString.nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+}).refine((b) => !b.end_date || b.end_date >= b.start_date, { message: 'End date is before the start date', path: ['end_date'] });
+
+export const updateVehicleFixedCostBody = z.object({
+  category: nonEmpty('Category').optional(),
+  label: z.string().trim().max(120).nullable().optional(),
+  amount: z.coerce.number().positive('Amount must be greater than 0').optional(),
+  frequency: z.enum(['Monthly', 'Yearly']).optional(),
+  start_date: dayString.optional(),
+  end_date: dayString.nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+});
+
+export const driverSalaryBody = z.object({
+  base_salary: z.coerce.number().min(0),
+  allowances: z.coerce.number().min(0).default(0),
+  employer_costs: z.coerce.number().min(0).default(0),
+  effective_from: dayString,
+  effective_to: dayString.nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+}).refine((b) => !b.effective_to || b.effective_to >= b.effective_from, { message: 'End date is before the start date', path: ['effective_to'] });
+
+export const updateDriverSalaryBody = z.object({
+  base_salary: z.coerce.number().min(0).optional(),
+  allowances: z.coerce.number().min(0).optional(),
+  employer_costs: z.coerce.number().min(0).optional(),
+  effective_from: dayString.optional(),
+  effective_to: dayString.nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+});
+
+export const nestedIdParams = z.object({ id: z.string().uuid('Invalid id'), itemId: z.string().uuid('Invalid id') });
 
 /* ─── Users (Admin-only web dashboard accounts) ─────────────────────────────
  * Only Admin/Operator are creatable here — Driver accounts are managed

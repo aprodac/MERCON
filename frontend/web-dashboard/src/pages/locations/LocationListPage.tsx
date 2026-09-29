@@ -500,23 +500,16 @@ export default function LocationListPage() {
 
   // ── render ─────────────────────────────────────────────────────────────
   return (
-    <DashboardLayout active="Locations" title="Location Master">
-      <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-5">
+    <DashboardLayout active="Settings" title="Settings">
+      <div className="px-4 sm:px-6 pt-5 pb-6 w-full flex flex-col animate-fade-in gap-5">
 
         {/* ── 1. PAGE HEADER ── */}
-        <div className="flex flex-wrap items-center justify-between gap-4 shrink-0 pb-1">
-          <div className="flex items-center gap-3">
-            <MapPin className="w-6 h-6 text-brand shrink-0" />
-            <div className="flex flex-col">
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-                  Location Master
-                </h1>
-                <Badge className="bg-indigo-50 text-indigo-600 border-indigo-200 font-semibold text-xs shrink-0">
-                  Master Data
-                </Badge>
-              </div>
-            </div>
+        <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 shrink-0">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold tracking-tight text-foreground">Locations</h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Every pickup and delivery place, per customer, with its map pin. Rate cards and trips pick from this list.
+            </p>
           </div>
 
           <div className="flex items-center gap-2.5">

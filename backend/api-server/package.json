@@ -17,10 +17,13 @@
     "test:tracking": "node -r ts-node/register --test src/services/tracking/locationUpdate.test.ts",
     "test:routing": "node -r ts-node/register --test src/services/routing/routeProvider.test.ts",
     "test:trip-financials": "node -r ts-node/register --test src/services/tripFinancials.test.ts",
+    "test:vehicle-pnl": "node -r ts-node/register --test src/services/vehicleFinancials/engine.test.ts",
     "test:trip-board": "node -r ts-node/register --test src/services/tripBoard.test.ts",
+    "test:invoice-query": "node -r ts-node/register --test src/tests/invoiceQuery.test.ts",
     "test:fleet-live-map": "node -r ts-node/register --test src/tests/fleetLiveMap.test.ts",
     "test:operator-inbox": "node -r ts-node/register --test src/tests/operatorInbox.test.ts",
     "test:trip-overview": "node -r ts-node/register --test src/tests/tripOverview.test.ts",
+    "test:zatca": "node -r ts-node/register --test src/services/zatca/csr.test.ts src/services/secrets/secretBox.test.ts",
     "test:xlsx": "node -r ts-node/register --test src/services/reports/xlsxTemplate/splice.test.ts src/services/reports/xlsxTemplate/aliases.test.ts src/services/reports/xlsxTemplate/inspect.test.ts",
     "migrate:driver-avatars": "ts-node scripts/migrateDriverAvatars.ts"
   },
