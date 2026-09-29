@@ -92,6 +92,8 @@ export function useActionInbox() {
       now: items.filter((i) => i.urgency === 'now').length,
     },
     loading: live.isLoading,
+    /** When the live data last arrived (ms), for "Updated 2 min ago". */
+    updatedAt: live.dataUpdatedAt || null,
     liveError: live.isError,
     retry: () => live.refetch(),
   };

@@ -38,6 +38,8 @@ const MUTED = '#71717A';
 const GAP = 12;
 
 interface Props {
+  /** Column id to open on (e.g. 'delayed'); otherwise the first with trips. */
+  initialColumn?: string;
   trips: OperatorTrip[];
   f: TimeFmt;
   now: number;
@@ -103,7 +105,7 @@ const BoardCard = memo(function BoardCard({ trip: t, col, f, now, onOpen, onLong
   );
 });
 
-export function KanbanBoard({ trips, f, now, loading, refreshing, onRefresh, onOpen, onLongPress }: Props) {
+export function KanbanBoard({ initialColumn, trips, f, now, loading, refreshing, onRefresh, onOpen, onLongPress }: Props) {
   const { width } = useWindowDimensions();
   const colW = width - 56;
   const list = useRef<ScrollView>(null);
@@ -121,12 +123,13 @@ export function KanbanBoard({ trips, f, now, loading, refreshing, onRefresh, onO
   useEffect(() => {
     if (placed.current || loading) return;
     placed.current = true;
-    const first = grouped.findIndex((g) => g.length > 0);
+    const asked = initialColumn ? COLUMNS.findIndex((c) => c.id === initialColumn) : -1;
+    const first = asked >= 0 ? asked : grouped.findIndex((g) => g.length > 0);
     if (first > 0) {
       setActive(first);
       setTimeout(() => list.current?.scrollTo({ x: first * (colW + GAP), animated: false }), 0);
     }
-  }, [loading, grouped, colW]);
+  }, [loading, grouped, colW, initialColumn]);
 
   // Keep the active tab in view as the columns are swiped.
   useEffect(() => {

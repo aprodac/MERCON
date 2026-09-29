@@ -67,8 +67,8 @@ const SHOWN = 5;
 
 // ── 1 · Status ────────────────────────────────────────────────────────────────
 
-export function HomeStatus({ needNow, running, delayed, today, loading, onRunning, onDelayed, onToday }: {
-  needNow: number; running: number; delayed: number; today: number; loading: boolean;
+export function HomeStatus({ needNow, running, delayed, today, loading, updatedAt, now, onRunning, onDelayed, onToday }: {
+  needNow: number; running: number; delayed: number; today: number; loading: boolean; updatedAt: number | null; now: number;
   onRunning: () => void; onDelayed: () => void; onToday: () => void;
 }) {
   const clear = !loading && needNow === 0;
@@ -85,15 +85,24 @@ export function HomeStatus({ needNow, running, delayed, today, loading, onRunnin
             <CircleCheckBig size={28} color="#16A34A" strokeWidth={2.2} />
             <View style={{ flex: 1 }}>
               <Text style={s.heroBig}>All clear</Text>
-              <Text style={s.heroSub}>Nothing needs you right now</Text>
+              <Text style={s.heroSub}>{updatedText(updatedAt, now)}</Text>
             </View>
           </>
         ) : (
           <>
-            <Text style={s.heroNumber}>{loading ? '–' : needNow}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={s.heroBig}>{needNow === 1 ? 'thing needs' : 'things need'} your attention</Text>
-              <Text style={s.heroSub}>Urgent first</Text>
+            {loading ? <View style={[s.skel, { width: 46, height: 44 }]} /> : <Text style={s.heroNumber}>{needNow}</Text>}
+            <View style={{ flex: 1, gap: loading ? 8 : 0 }}>
+              {loading ? (
+                <>
+                  <View style={[s.skel, { width: '80%', height: 16 }]} />
+                  <View style={[s.skel, { width: '45%', height: 12 }]} />
+                </>
+              ) : (
+                <>
+                  <Text style={s.heroBig}>{needNow === 1 ? 'thing needs' : 'things need'} your attention</Text>
+                  <Text style={s.heroSub}>{updatedText(updatedAt, now)}</Text>
+                </>
+              )}
             </View>
           </>
         )}
@@ -101,13 +110,19 @@ export function HomeStatus({ needNow, running, delayed, today, loading, onRunnin
       <View style={s.heroStats}>
         {cells.map((c, i) => (
           <TouchableOpacity key={c.key} style={[s.stat, i > 0 && s.statBorder]} onPress={() => { tap(); c.onPress(); }} activeOpacity={0.6}>
-            <Text style={[s.statValue, c.hot && { color: RED }]}>{c.value}</Text>
+            {loading ? <View style={[s.skel, { width: 28, height: 20, marginBottom: 3 }]} /> : <Text style={[s.statValue, c.hot && { color: RED }]}>{c.value}</Text>}
             <Text style={s.statLabel}>{c.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
     </View>
   );
+}
+
+function updatedText(at: number | null, now: number): string {
+  if (!at) return 'Live';
+  const min = Math.floor((now - at) / 60000);
+  return min < 1 ? 'Updated just now' : `Updated ${min} min ago`;
 }
 
 // ── 2 · Needs action ──────────────────────────────────────────────────────────
@@ -121,45 +136,73 @@ export function NeedsActionList({ items, loading, onIntent, onOpenTrip, now }: {
 }) {
   const [group, setGroup] = useState<string | null>(null);
   const [all, setAll] = useState(false);
+  const [laterOpen, setLaterOpen] = useState(false);
+
+  // Only urgent items make the list (the same count the status card shows);
+  // everything lower-priority waits, folded, under "Later".
+  const urgent = useMemo(() => items.filter((i) => i.urgency === 'now'), [items]);
+  const later = useMemo(() => items.filter((i) => i.urgency !== 'now'), [items]);
 
   const chips = useMemo(
-    () => GROUPS.map((g) => ({ ...g, count: items.filter((i) => g.kinds.includes(i.kind)).length })).filter((g) => g.count > 0),
-    [items],
+    () => GROUPS.map((g) => ({ ...g, count: urgent.filter((i) => g.kinds.includes(i.kind)).length })).filter((g) => g.count > 0),
+    [urgent],
   );
   // A chip that has emptied since it was picked falls back to "All".
   const active = chips.find((c) => c.id === group) ?? null;
-  const list = active ? items.filter((i) => active.kinds.includes(i.kind)) : items;
+  const list = active ? urgent.filter((i) => active.kinds.includes(i.kind)) : urgent;
   const visible = all ? list : list.slice(0, SHOWN);
 
-  if (!loading && items.length === 0) return null;
 
   return (
     <View style={{ gap: 12 }}>
       <View style={s.headRow}>
         <Text style={s.h2}>Needs action</Text>
-        {loading ? <ActivityIndicator size="small" color={MUTED} /> : <Text style={s.headCount}>{list.length}</Text>}
+        {loading ? <ActivityIndicator size="small" color={MUTED} /> : <Text style={s.headCount}>{urgent.length}</Text>}
       </View>
 
       {chips.length > 1 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips} style={{ marginHorizontal: -16 }}>
-          <Chip label="All" count={items.length} on={!active} onPress={() => { tap(); setGroup(null); setAll(false); }} />
+          <Chip label="All" count={urgent.length} on={!active} onPress={() => { tap(); setGroup(null); setAll(false); }} />
           {chips.map((c) => (
             <Chip key={c.id} label={c.label} count={c.count} on={active?.id === c.id} onPress={() => { tap(); setGroup(c.id); setAll(false); }} />
           ))}
         </ScrollView>
       ) : null}
 
-      <View style={s.group}>
-        {visible.map((item, i) => (
-          <ActionRow key={item.key} item={item} first={i === 0} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} />
-        ))}
-      </View>
+      {visible.length ? (
+        <View style={s.group}>
+          {visible.map((item, i) => (
+            <ActionRow key={item.key} item={item} first={i === 0} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} />
+          ))}
+        </View>
+      ) : !loading ? (
+        <View style={s.clearRow}>
+          <CircleCheckBig size={18} color="#16A34A" strokeWidth={2.2} />
+          <Text style={s.clearText}>Nothing urgent right now</Text>
+        </View>
+      ) : null}
 
       {list.length > SHOWN ? (
         <TouchableOpacity style={s.showAll} onPress={() => { tap(); setAll((v) => !v); }} activeOpacity={0.7}>
           <Text style={s.showAllText}>{all ? 'Show less' : `Show all ${list.length}`}</Text>
           <ChevronDown size={16} color={INK} style={all ? { transform: [{ rotate: '180deg' }] } : undefined} />
         </TouchableOpacity>
+      ) : null}
+
+      {later.length ? (
+        <View style={s.group}>
+          <TouchableOpacity style={s.laterHead} onPress={() => { tap(); setLaterOpen((v) => !v); }} activeOpacity={0.6}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.laterTitle}>Later</Text>
+              <Text style={s.laterSub}>Photos, documents and invoices that can wait</Text>
+            </View>
+            <Text style={s.laterCount}>{later.length}</Text>
+            <ChevronDown size={18} color={MUTED} style={laterOpen ? { transform: [{ rotate: '180deg' }] } : undefined} />
+          </TouchableOpacity>
+          {laterOpen ? later.map((item) => (
+            <ActionRow key={item.key} item={item} first={false} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} />
+          )) : null}
+        </View>
       ) : null}
     </View>
   );
@@ -282,6 +325,14 @@ const s = StyleSheet.create({
   statBorder: { borderLeftWidth: 1, borderLeftColor: LINE },
   statValue: { fontSize: 20, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
   statLabel: { fontSize: 12, color: MUTED },
+
+  skel: { backgroundColor: '#EDEDF0', borderRadius: 6 },
+  clearRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: LINE, padding: 16 },
+  clearText: { fontSize: 14, fontWeight: '600', color: '#15803D' },
+  laterHead: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 14 },
+  laterTitle: { fontSize: 15, fontWeight: '600', color: INK },
+  laterSub: { fontSize: 12, color: MUTED, marginTop: 1 },
+  laterCount: { fontSize: 14, fontWeight: '600', color: MUTED, fontVariant: ['tabular-nums'] },
 
   // section heads
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

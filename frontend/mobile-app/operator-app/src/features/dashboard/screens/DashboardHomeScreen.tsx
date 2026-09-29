@@ -86,9 +86,11 @@ export default function DashboardHomeScreen() {
           delayed={inbox.counts.delayed}
           today={inbox.today.length}
           loading={inbox.loading}
-          onRunning={() => router.push('/trips')}
-          onDelayed={() => router.push('/trips')}
-          onToday={() => router.push('/trips')}
+          updatedAt={inbox.updatedAt}
+          now={now}
+          onRunning={() => router.push({ pathname: '/trips', params: { view: 'now' } })}
+          onDelayed={() => router.push({ pathname: '/trips', params: { view: 'board', column: 'delayed' } })}
+          onToday={() => router.push({ pathname: '/trips', params: { view: 'schedule' } })}
         />
 
         {inbox.liveError ? (

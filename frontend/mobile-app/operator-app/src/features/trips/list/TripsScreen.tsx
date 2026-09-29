@@ -39,7 +39,7 @@ const tap = () => Haptics.selectionAsync().catch(() => {});
 export default function TripsScreen() {
   const router = useRouter();
   // Opened from a truck's or a customer's details: their trips only, until the chip is cleared.
-  const params = useLocalSearchParams<{ vehicleId?: string; plate?: string; customerId?: string; customerName?: string }>();
+  const params = useLocalSearchParams<{ vehicleId?: string; plate?: string; customerId?: string; customerName?: string; view?: string; column?: string }>();
   const [scope, setScope] = useState<{ kind: 'truck' | 'customer'; filter: Record<string, string>; label: string } | null>(
     params.vehicleId
       ? { kind: 'truck', filter: { vehicle_id: String(params.vehicleId) }, label: String(params.plate ?? 'This truck') }
@@ -47,7 +47,11 @@ export default function TripsScreen() {
         ? { kind: 'customer', filter: { customer_id: String(params.customerId) }, label: String(params.customerName ?? 'This customer') }
         : null,
   );
-  const [view, setView] = useState<ListView>(params.vehicleId || params.customerId ? 'history' : 'now');
+  const [view, setView] = useState<ListView>(
+    params.vehicleId || params.customerId ? 'history'
+      : params.view === 'board' || params.view === 'schedule' || params.view === 'history' ? params.view
+      : 'now',
+  );
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -211,6 +215,7 @@ export default function TripsScreen() {
 
           {view === 'board' ? (
             <KanbanBoard
+              initialColumn={typeof params.column === 'string' ? params.column : undefined}
               trips={data.open}
               f={f}
               now={now}
