@@ -14,8 +14,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useDashboardRefresh } from '../hooks';
 import { useMarkNotificationsRead, useNotifications } from '@/features/notifications/hooks/useNotifications';
-import { HomeTopBar } from '../components/HomeTopBar';
-import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
+import { AppTopBar } from '@/components/AppTopBar';
+import { Search } from 'lucide-react-native';
 import { ErrorState } from '@mercon/mobile-shared/ui';
 import { useActionInbox } from '../actions/useActionInbox';
 import { HomeStatus, NeedsActionList, UpNext } from '../actions/NeedsAction';
@@ -23,7 +23,6 @@ import type { ActionIntent } from '../actions/actionModel';
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
-  const [menuOpen, setMenuOpen] = useState(false);
   // Ticks each minute so "12m late" / "in 2h" stay current.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -36,7 +35,6 @@ export default function DashboardHomeScreen() {
   const { markRead } = useMarkNotificationsRead();
   const inbox = useActionInbox();
 
-  const unreadCount = notifications.data?.filter((n) => !n.is_read).length ?? 0;
 
   const openTrip = (id: string, extra: Record<string, string> = {}) =>
     router.push({ pathname: '/trip-details', params: { id, ...extra } });
@@ -77,9 +75,7 @@ export default function DashboardHomeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
-      <View style={st.topBar}>
-        <HomeTopBar unread={unreadCount} onMenu={() => setMenuOpen(true)} onSearch={() => router.push('/trips')} onNotifications={() => router.push('/notifications')} />
-      </View>
+      <AppTopBar actions={[{ icon: Search, label: 'Search trips', onPress: () => router.push('/trips') }]} />
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 120, gap: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#FA634E" />}
@@ -109,7 +105,6 @@ export default function DashboardHomeScreen() {
 
         <UpNext rows={inbox.today} tz={inbox.tz} onOpenTrip={(id) => openTrip(id)} onAll={() => router.push('/trips')} />
       </ScrollView>
-      <OperatorSidebarDrawer visible={menuOpen} onClose={() => setMenuOpen(false)} side="left" />
     </SafeAreaView>
   );
 }

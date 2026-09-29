@@ -23,6 +23,7 @@ import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import type { OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
 import { KanbanBoard } from './KanbanBoard';
+import { AppTopBar } from '@/components/AppTopBar';
 import { useNow, useTripList, SCHEDULE_AFTER, SCHEDULE_BEFORE, type View as ListView } from './useTripList';
 import {
   dayLabel, dayRange, driverNameOf, driverPhoneOf, groupByDay, needsAttention, phaseOf, tripDayIso, type TimeFmt,
@@ -138,13 +139,10 @@ export default function TripsScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: PAGE }} edges={['top']}>
-      {/* Header */}
-      <View style={s.header}>
+      <AppTopBar title="Trips" />
+      {/* Scope chip (opened from a truck or customer) */}
+      <View style={[s.header, !scope && { paddingTop: 0, paddingBottom: 4 }]}>
         <View style={{ flex: 1 }}>
-          <Text style={s.h1}>Trips</Text>
-          <Text style={s.h1sub}>
-            {board.road.length} on the road · {board.attention.length} need attention
-          </Text>
           {scope ? (
             <TouchableOpacity
               style={s.truckChip}

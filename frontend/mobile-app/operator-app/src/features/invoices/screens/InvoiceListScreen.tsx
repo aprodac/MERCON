@@ -14,6 +14,7 @@ import { Button } from '@mercon/mobile-shared/components/Button';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { operatorService, useOperatorInvoices, type OperatorInvoice } from '../../../lib/operator';
 import { matchesSearch } from '@mercon/mobile-shared/lib/search';
+import { AppTopBar } from '@/components/AppTopBar';
 
 const FILTERS = ['All', 'Pending', 'Paid', 'Overdue', 'Draft', 'Cancelled'];
 
@@ -118,11 +119,9 @@ const InvoiceListScreen = () => {
   }, [invoices, statusFilter, search]);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Invoices</Text>
-      </View>
+      <AppTopBar title="Invoices" />
 
       {/* Stat Cards */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsRow}>
