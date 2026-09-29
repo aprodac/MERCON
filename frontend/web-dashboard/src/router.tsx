@@ -64,8 +64,7 @@ const VehicleSingleFinancialsPage = lazyWithRetry(() => import('@/pages/vehicles
 const VehicleCostSetupPage    = lazyWithRetry(() => import('@/pages/vehicles/VehicleCostSetupPage'));
 const MaintenanceListPage     = lazyWithRetry(() => import('@/pages/maintenance/MaintenanceListPage'));
 const MaintenanceDetailsPage  = lazyWithRetry(() => import('@/pages/maintenance/MaintenanceDetailsPage'));
-const AddMaintenancePage      = lazyWithRetry(() => import('@/pages/maintenance/AddMaintenancePage'));
-const EditMaintenancePage     = lazyWithRetry(() => import('@/pages/maintenance/EditMaintenancePage'));
+const MaintenanceEditorPage   = lazyWithRetry(() => import('@/pages/maintenance/MaintenanceEditorPage'));
 
 // Customers
 const CustomerListPage        = lazyWithRetry(() => import('@/pages/customers/CustomerListPage'));
@@ -284,9 +283,9 @@ export default function AppRouter() {
             <Route path="/vehicles/:id/documents"   element={<RequireModule moduleKey="vehicles"><VehicleDocumentsPage /></RequireModule>} />
             <Route path="/vehicles/:id/financials"  element={<RequireModule moduleKey="vehicles"><VehicleSingleFinancialsPage /></RequireModule>} />
             <Route path="/maintenance"              element={<RequireModule moduleKey="maintenance"><MaintenanceListPage /></RequireModule>} />
-            <Route path="/maintenance/new"          element={<RequireModule moduleKey="maintenance"><AddMaintenancePage /></RequireModule>} />
+            <Route path="/maintenance/new"          element={<RequireModule moduleKey="maintenance"><MaintenanceEditorPage /></RequireModule>} />
             <Route path="/maintenance/:id"          element={<RequireModule moduleKey="maintenance"><MaintenanceDetailsPage /></RequireModule>} />
-            <Route path="/maintenance/:id/edit"     element={<RequireModule moduleKey="maintenance"><EditMaintenancePage /></RequireModule>} />
+            <Route path="/maintenance/:id/edit"     element={<RequireModule moduleKey="maintenance"><MaintenanceEditorPage /></RequireModule>} />
 
             {/* Customers */}
             <Route path="/customers"                          element={<RequireModule moduleKey="customers"><CustomerListPage /></RequireModule>} />

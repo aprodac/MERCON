@@ -414,6 +414,7 @@ model Vehicle {
   trips              Trip[]
   originalTrips      Trip[]                    @relation("TripOriginalVehicle")
   maintenanceRecords MaintenanceRecord[]
+  servicePlans       ServicePlan[]
   expenses           Expense[]
   assignedDriver     Driver?                   @relation("DriverAssignedVehicle")
   driverAssignments  DriverVehicleAssignment[]
@@ -992,7 +993,17 @@ model MaintenanceRecord {
   status           String    @default("Completed")
   work_done        String?   @db.Text
   odometer_reading Float
+  // Total paid, VAT included: the item lines (before VAT) + vat_amount. Mirrored into Expenses.
   cost             Decimal   @default(0.0) @db.Decimal(12, 2)
+  // Reclaimable VAT on the workshop's tax invoice
+  vat_amount       Decimal   @default(0.0) @db.Decimal(12, 2)
+  // Paid · Pending (to pay the workshop later)
+  payment_status   String    @default("Paid")
+  // Bank or cash GL account it was paid from
+  paymentAccountId String?   @db.Uuid
+  // When the truck is expected back on the road (downtime planning)
+  expected_end_date DateTime? @db.Timestamptz
+  items            MaintenanceItem[]
 
   invoice_number   String?
   invoice_url      String?
@@ -1010,6 +1021,52 @@ model MaintenanceRecord {
 
   @@index([vehicleId, status])
   @@index([deletedAt])
+}
+
+/// One cost line of a service order: a part, labour, or anything else. Before VAT.
+/// A line tied to a service plan task marks that task done when the order completes.
+model MaintenanceItem {
+  id          String            @id @default(uuid()) @db.Uuid
+  recordId    String            @db.Uuid
+  record      MaintenanceRecord @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  // part · labour · other
+  kind        String            @default("other")
+  description String
+  quantity    Decimal           @default(1) @db.Decimal(10, 2)
+  unit_price  Decimal           @default(0.0) @db.Decimal(12, 2)
+  amount      Decimal           @default(0.0) @db.Decimal(12, 2)
+  servicePlanId String?         @db.Uuid
+  servicePlan   ServicePlan?    @relation(fields: [servicePlanId], references: [id], onDelete: SetNull)
+  sort_order  Int               @default(0)
+
+  @@index([recordId])
+  @@index([servicePlanId])
+}
+
+/// A preventive service that repeats: "Oil change every 10,000 km or 180 days". For every truck
+/// of a type (asset_type), or one truck (vehicleId) — a truck's own plan for a task overrides the
+/// type's. Due = last completed order with this task + the interval, whichever comes first.
+model ServicePlan {
+  id            String     @id @default(uuid()) @db.Uuid
+  task          String
+  asset_type    AssetType?
+  vehicleId     String?    @db.Uuid
+  vehicle       Vehicle?   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  interval_km   Int?
+  interval_days Int?
+  // Warn this far ahead
+  warn_km       Int        @default(1000)
+  warn_days     Int        @default(14)
+  notes         String?
+  isActive      Boolean    @default(true)
+  items         MaintenanceItem[]
+
+  created_by String?  @db.Uuid
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz
+
+  @@index([asset_type])
+  @@index([vehicleId])
 }
 
 model SavedWorkshop {
