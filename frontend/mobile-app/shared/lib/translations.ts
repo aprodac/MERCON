@@ -161,8 +161,6 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   hint_upload_screenshot: { en: "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.", ur: 'کسٹمر ایپ کا اسکرین شاٹ لگائیں جس میں یہ اپڈیٹ نظر آئے۔ کیمرہ استعمال کرنے کے لیے دبائے رکھیں۔' },
   label_screenshot: { en: 'Screenshot', ur: 'اسکرین شاٹ' },
   action_take_photo_instead: { en: 'Take a photo instead', ur: 'اس کے بجائے تصویر لیں' },
-  action_arrived_screenshot: { en: "I'VE ARRIVED — ADD SCREENSHOT", ur: 'میں پہنچ گیا — اسکرین شاٹ لگائیں' },
-  err_screenshot_upload: { en: 'Screenshot could not upload. Check your connection and tap again.', ur: 'اسکرین شاٹ اپلوڈ نہیں ہو سکا۔ کنکشن چیک کریں اور دوبارہ دبائیں۔' },
   title_upload_return_loading_photos: { en: 'UPLOAD RETURN LOADING PHOTOS', ur: 'واپسی لوڈنگ کی تصاویر اپلوڈ کریں' },
   action_loading_complete: { en: 'LOADING COMPLETE', ur: 'لوڈنگ مکمل کریں' },
   action_return_loading_complete: { en: 'RETURN LOADING COMPLETE', ur: 'واپسی لوڈنگ مکمل کریں' },
@@ -205,12 +203,10 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   warn_gps_missing: { en: 'Stop GPS coordinates unavailable — Tap Open Navigation to search by address', ur: '⚠️ GPS کوآرڈینیٹس دستیاب نہیں — ایڈریس تلاش کرنے کے لیے نیویگیشن کھولیں' },
   action_arrived_pickup: { en: "I'VE ARRIVED AT PICKUP", ur: 'میں پک اپ پوائنٹ پر پہنچ گیا ہوں' },
   action_arrived_delivery: { en: "I'VE ARRIVED AT DELIVERY", ur: 'میں ڈلیوری پوائنٹ پر پہنچ گیا ہوں' },
-  action_add_image_first: { en: 'ADD IMAGE TO CONFIRM ARRIVAL', ur: 'پہنچنے کی تصدیق کے لیے تصویر لیں' },
   msg_updating_state: { en: 'Updating State…', ur: 'اسٹیٹس اپ ڈیٹ ہو رہا ہے…' },
   action_go_to_pickup: { en: 'GO TO PICKUP', ur: 'پک اپ کا راستہ دیکھیں' },
   action_go_to_delivery: { en: 'GO TO DELIVERY', ur: 'ڈلیوری کا راستہ دیکھیں' },
   label_open_nav_app: { en: 'Open navigation app', ur: 'نیویگیشن ایپ کھولیں' },
-  err_arrival_photo_needed: { en: 'Please capture or attach an arrival photo before confirming arrival.', ur: 'پہنچنے کی تصدیق کرنے سے پہلے لوکیشن کی تصویر لینا لازمی ہے۔' },
   err_camera_title: { en: 'Camera Error', ur: 'کیمرہ کی خرابی' },
 
   // Trip Completed Summary Screen
