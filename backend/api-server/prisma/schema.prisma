@@ -1079,7 +1079,11 @@ model Expense {
   paymentAccount   Account? @relation("ExpensePaymentAccount", fields: [paymentAccountId], references: [id], onDelete: SetNull)
 
   payee          String?
+  // What was paid, VAT included
   amount         Decimal  @db.Decimal(12, 2)
+  // The VAT inside `amount` that can be reclaimed (from the supplier's tax invoice); 0 = none.
+  // Posts to the VAT input account; the cost is amount − vat_amount.
+  vat_amount     Decimal  @default(0.0) @db.Decimal(12, 2)
   currency       String   @default("SAR")
   expense_date   DateTime @db.Timestamptz
   payment_method String?
@@ -1986,6 +1990,8 @@ model Settings {
   defaultVatOutputAccountId String? @db.Uuid
   // Expense account driver trip pay posts to when a driver settlement is paid
   defaultDriverPayAccountId String? @db.Uuid
+  // VAT paid on purchases (bills, expenses) that can be reclaimed: debited here, not to the cost
+  defaultVatInputAccountId  String? @db.Uuid
   // Expenses: which expense account each category posts to ({ "Fuel": "<account id>", … }),
   // and the account for categories not in the map. Without a default, expenses don't post.
   expenseAccountMap         Json?

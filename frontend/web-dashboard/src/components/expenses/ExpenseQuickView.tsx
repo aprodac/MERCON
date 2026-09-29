@@ -84,6 +84,11 @@ export function ExpenseQuickView({
                 </SheetTitle>
                 <SheetDescription className="text-xs">
                   {e.payee ? `Paid to ${e.payee}` : 'No payee recorded'} · {formatDate(e.expense_date)}
+                  {Number(e.vat_amount) > 0 && (
+                    <span className="fin-num block">
+                      Cost {formatMoney(Number(e.amount) - Number(e.vat_amount))} + VAT reclaimed {formatMoney(e.vat_amount)}
+                    </span>
+                  )}
                 </SheetDescription>
               </div>
               <div className="flex flex-wrap gap-2">

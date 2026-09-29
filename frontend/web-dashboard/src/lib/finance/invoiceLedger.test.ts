@@ -36,3 +36,11 @@ describe('invoice ledger setup', () => {
     expect(suggestAccount('vat_output_account_id', [acc('2000', 'Accounts Payable', 'Liability')])).toBe('');
   });
 });
+
+describe('VAT input account', () => {
+  it('is offered from assets and liabilities, suggested by name, and never blocks invoices', () => {
+    expect(slotAccounts('vat_input_account_id', chart).map((a) => a.id)).toEqual(['1200', '1100', '2310', '2300', '2000']);
+    expect(suggestAccount('vat_input_account_id', chart)).toBe('2310');
+    expect(ledgerGaps({ receivable_account_id: 'a', revenue_account_id: 'r', vat_output_account_id: 'v', vat_input_account_id: null }, true)).toEqual([]);
+  });
+});

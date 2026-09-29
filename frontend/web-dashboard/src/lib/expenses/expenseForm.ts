@@ -13,6 +13,8 @@ export interface ExpenseForm {
   /** Typing a category that isn't in the list. */
   customCategory: boolean;
   amount: string;
+  /** Reclaimable VAT inside the amount ('' = none). */
+  vat_amount: string;
   expense_date: string;
   payee: string;
   payment_method: string;
@@ -41,6 +43,7 @@ export const emptyExpenseForm = (): ExpenseForm => ({
   category: '',
   customCategory: false,
   amount: '',
+  vat_amount: '',
   expense_date: todayIso(),
   payee: '',
   payment_method: 'Bank Transfer',
@@ -61,6 +64,7 @@ export function expenseFormFrom(e: Expense, duplicate: boolean): ExpenseForm {
     category: e.category,
     customCategory: !known && Boolean(e.category),
     amount: e.amount !== undefined && e.amount !== null ? String(e.amount) : '',
+    vat_amount: Number(e.vat_amount) > 0 ? String(Number(e.vat_amount)) : '',
     expense_date: duplicate ? todayIso() : dateOnly(e.expense_date) || todayIso(),
     payee: e.payee ?? '',
     payment_method: e.payment_method ?? '',
@@ -96,6 +100,9 @@ export function expenseFormProblems(f: ExpenseForm, trip?: FormTrip | null): str
   const out: string[] = [];
   if (!f.category.trim()) out.push('Choose a category.');
   if (!(Number(f.amount) > 0)) out.push('Enter an amount above zero.');
+  const vat = Number(f.vat_amount) || 0;
+  if (vat < 0) out.push('VAT can’t be negative.');
+  else if (vat > 0 && Number(f.amount) > 0 && vat >= Number(f.amount)) out.push('The VAT must be less than the amount (the amount includes the VAT).');
   if (f.category.trim()) {
     const link = expenseLinkProblem({
       category: f.category,
@@ -213,4 +220,13 @@ export function linksFor(f: Pick<ExpenseForm, 'trip_id' | 'vehicle_id' | 'driver
   if (kind === 'vehicle') return { trip_id: '', vehicle_id: f.vehicle_id, driver_id: f.trip_id ? '' : f.driver_id };
   if (kind === 'driver') return { trip_id: '', vehicle_id: '', driver_id: f.trip_id ? '' : f.driver_id };
   return { trip_id: '', vehicle_id: '', driver_id: '' };
+}
+
+/** Saudi standard VAT rate. */
+export const STANDARD_VAT_RATE = 15;
+
+/** The VAT inside a VAT-inclusive amount at the standard rate (15/115 of it). */
+export function vatInside(amount: number, rate = STANDARD_VAT_RATE): number {
+  if (!(amount > 0)) return 0;
+  return Math.round(((amount * rate) / (100 + rate)) * 100) / 100;
 }

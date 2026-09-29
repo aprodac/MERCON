@@ -703,6 +703,7 @@ export const getInvoiceLedgerSetup = async (_req: Request, res: Response) => {
         receivable_account_id: s?.defaultReceivableAccountId ?? null,
         revenue_account_id: s?.defaultRevenueAccountId ?? null,
         vat_output_account_id: s?.defaultVatOutputAccountId ?? null,
+        vat_input_account_id: s?.defaultVatInputAccountId ?? null,
       },
     });
   } catch (error: any) {
@@ -714,6 +715,7 @@ const ledgerSetupSchema = z.object({
   receivable_account_id: z.string().uuid().nullable().optional(),
   revenue_account_id: z.string().uuid().nullable().optional(),
   vat_output_account_id: z.string().uuid().nullable().optional(),
+  vat_input_account_id: z.string().uuid().nullable().optional(),
 });
 
 // Each slot takes one kind of account: what the invoice engine posts it as
@@ -737,13 +739,20 @@ export const updateInvoiceLedgerSetup = async (req: Request, res: Response) => {
         });
       }
     }
-    const { receivable_account_id, revenue_account_id, vat_output_account_id } = parsed.data;
+    const { receivable_account_id, revenue_account_id, vat_output_account_id, vat_input_account_id } = parsed.data;
+    if (vat_input_account_id) {
+      const a = await prisma.account.findUnique({ where: { id: vat_input_account_id } });
+      if (!a || !['Asset', 'Liability'].includes(a.account_type) || !a.is_postable || !a.isActive || a.deletedAt) {
+        return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'VAT input must be an active, postable Asset or Liability account.' } });
+      }
+    }
     await prisma.settings.update({
       where: { id: 'singleton' },
       data: {
         ...(receivable_account_id !== undefined ? { defaultReceivableAccountId: receivable_account_id } : {}),
         ...(revenue_account_id !== undefined ? { defaultRevenueAccountId: revenue_account_id } : {}),
         ...(vat_output_account_id !== undefined ? { defaultVatOutputAccountId: vat_output_account_id } : {}),
+        ...(vat_input_account_id !== undefined ? { defaultVatInputAccountId: vat_input_account_id } : {}),
         updated_by: (req as any).user?.id,
       },
     });

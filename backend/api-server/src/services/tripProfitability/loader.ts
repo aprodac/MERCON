@@ -65,9 +65,10 @@ export async function loadTripProfitability(q: ProfitabilityQuery, db: Db = defa
   const rows: TripRow[] = await db.trip.findMany({ where, include: tripInclude, orderBy: { createdAt: 'desc' }, take: LIMIT });
   const ids = rows.map((t) => t.id);
   const expenseSums = ids.length
-    ? await db.expense.groupBy({ by: ['tripId'], where: { tripId: { in: ids }, deletedAt: null }, _sum: { amount: true } })
+    ? await db.expense.groupBy({ by: ['tripId'], where: { tripId: { in: ids }, deletedAt: null }, _sum: { amount: true, vat_amount: true } })
     : [];
-  const expenseByTrip = new Map(expenseSums.map((e) => [e.tripId as string, Number(e._sum.amount ?? 0)]));
+  // Cost is net of reclaimable VAT
+  const expenseByTrip = new Map(expenseSums.map((e) => [e.tripId as string, Number(e._sum.amount ?? 0) - Number(e._sum.vat_amount ?? 0)]));
 
   const trips: ProfitTrip[] = rows.map((t) => {
     // Same calculation as the Trip Details page

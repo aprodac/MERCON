@@ -4,6 +4,7 @@
  * An expense posts when it is saved:
  *   Paid     Dr <category's expense account>   Cr <bank / cash account it was paid from>
  *   To pay   Dr <category's expense account>   Cr Accounts payable          (source_type 'Expense')
+ *   With VAT the expense account takes amount − VAT and the VAT input account takes the VAT.
  *   …later paid: Dr Accounts payable          Cr <bank / cash account>     (source_type 'ExpensePayment')
  *
  * Posting is idempotent: `syncExpenseLedger` works out the entries the expense should have, keeps
@@ -44,6 +45,8 @@ export interface ExpenseForPlan {
   category: string;
   status: string;
   amount: number;
+  /** Reclaimable VAT inside `amount`; 0 when none. */
+  vat_amount?: number;
   expense_date: Date;
   bill_paid_date: Date | null;
   payee: string | null;
@@ -54,6 +57,8 @@ export interface LedgerSetup {
   /** Resolved for the expense's category (map, else default); null when not set up. */
   expenseAccountId: string | null;
   payableAccountId: string | null;
+  /** Where reclaimable VAT goes; needed only when an expense has VAT. */
+  vatInputAccountId?: string | null;
 }
 
 /** An incurred-to-payable entry already in the ledger, which a later payment clears. */
@@ -79,8 +84,12 @@ export function planExpenseEntries(
   const ref = e.ref_id ?? 'expense';
   const what = `${e.category}${e.payee ? ` · ${e.payee}` : ''}`;
   if (!setup.expenseAccountId) return { entries: [], problem: `No expense account for ${e.category}. Set it in Expenses → Ledger setup.` };
+  const vat = r2(Number(e.vat_amount) || 0);
+  if (vat < 0 || vat >= amount) return { entries: [], problem: 'The VAT must be less than the amount.' };
+  if (vat > 0 && !setup.vatInputAccountId) return { entries: [], problem: 'This expense has VAT, and the VAT input account is not set. Set it in Expenses → Ledger setup.' };
   const expenseLine = (credit: string): PlannedLine[] => [
-    { accountId: setup.expenseAccountId as string, debit: amount, credit: 0, description: what },
+    { accountId: setup.expenseAccountId as string, debit: r2(amount - vat), credit: 0, description: what },
+    ...(vat > 0 ? [{ accountId: setup.vatInputAccountId as string, debit: vat, credit: 0, description: `VAT input · ${what}` }] : []),
     { accountId: credit, debit: 0, credit: amount, description: what },
   ];
 
@@ -171,6 +180,7 @@ async function loadSetup(tx: Tx | typeof prisma, category: string): Promise<Ledg
     enabled: Boolean(s?.defaultExpenseAccountId),
     expenseAccountId: expenseAccountFor(category, s?.expenseAccountMap, s?.defaultExpenseAccountId ?? null),
     payableAccountId: s?.defaultPayableAccountId ?? null,
+    vatInputAccountId: s?.defaultVatInputAccountId ?? null,
   };
 }
 
@@ -201,6 +211,7 @@ export async function syncExpenseLedger(expenseId: string, userId?: string | nul
           category: e.category,
           status: e.status,
           amount: Number(e.amount),
+          vat_amount: Number(e.vat_amount),
           expense_date: e.expense_date,
           bill_paid_date: e.bill_paid_date,
           payee: e.payee,
@@ -262,7 +273,7 @@ export async function expenseLedgerStatus(expenseId: string): Promise<LedgerSync
   if (!setup.enabled) return { entries: toResultEntries(existing), problem: 'Expenses are not posting to the ledger yet. Set the accounts in Expenses → Ledger setup.', viaBill: null, planned: [] };
   const incurredNow = existing.find((j) => j.source_type === EXPENSE_SOURCE);
   const plan = planExpenseEntries(
-    { ref_id: e.ref_id, category: e.category, status: e.status, amount: Number(e.amount), expense_date: e.expense_date, bill_paid_date: e.bill_paid_date, payee: e.payee, paymentAccountId: e.paymentAccountId },
+    { ref_id: e.ref_id, category: e.category, status: e.status, amount: Number(e.amount), vat_amount: Number(e.vat_amount), expense_date: e.expense_date, bill_paid_date: e.bill_paid_date, payee: e.payee, paymentAccountId: e.paymentAccountId },
     setup,
     incurredNow ? { day: dayOf(incurredNow.entry_date), lines: incurredNow.lines.map((l) => ({ accountId: l.accountId, debit: Number(l.debit), credit: Number(l.credit) })) } : null,
   );
