@@ -46,7 +46,7 @@ export default function TripsScreen() {
         ? { kind: 'customer', filter: { customer_id: String(params.customerId) }, label: String(params.customerName ?? 'This customer') }
         : null,
   );
-  const [view, setView] = useState<ListView>(params.vehicleId || params.customerId ? 'history' : 'board');
+  const [view, setView] = useState<ListView>(params.vehicleId || params.customerId ? 'history' : 'now');
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -286,7 +286,7 @@ export default function TripsScreen() {
 
 // ── Pieces ─────────────────────────────────────────────────────────────────────
 
-const Gap = () => <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: '#E4E4E7' }} />;
+const Gap = () => <View style={{ height: 12 }} />;
 const Loading = () => <ActivityIndicator color={Colors.primary} style={{ marginVertical: 30 }} />;
 
 function Empty({ icon: Icon, title, text, good }: { icon: LucideIcon; title: string; text: string; good?: boolean }) {
