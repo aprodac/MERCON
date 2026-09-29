@@ -18,7 +18,7 @@ import { HomeTopBar } from '../components/HomeTopBar';
 import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
 import { ErrorState } from '@mercon/mobile-shared/ui';
 import { useActionInbox } from '../actions/useActionInbox';
-import { ActionSummary, NeedsActionList, TodayTrips } from '../actions/NeedsAction';
+import { HomeStatus, NeedsActionList, UpNext } from '../actions/NeedsAction';
 import type { ActionIntent } from '../actions/actionModel';
 
 export default function DashboardHomeScreen() {
@@ -76,18 +76,20 @@ export default function DashboardHomeScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#FAFAFA' }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#FFF8F5' }} edges={['top']}>
       <View style={st.topBar}>
         <HomeTopBar unread={unreadCount} onMenu={() => setMenuOpen(true)} onSearch={() => router.push('/trips')} onNotifications={() => router.push('/notifications')} />
       </View>
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 120, gap: 14 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 120, gap: 22 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#FA634E" />}
       >
-        <ActionSummary
+        <HomeStatus
+          needNow={inbox.counts.now}
           running={inbox.counts.running}
           delayed={inbox.counts.delayed}
           today={inbox.today.length}
+          loading={inbox.loading}
           onRunning={() => router.push('/trips')}
           onDelayed={() => router.push('/trips')}
           onToday={() => router.push('/trips')}
@@ -105,7 +107,7 @@ export default function DashboardHomeScreen() {
           now={now}
         />
 
-        <TodayTrips rows={inbox.today} tz={inbox.tz} onOpenTrip={(id) => openTrip(id)} onAll={() => router.push('/trips')} />
+        <UpNext rows={inbox.today} tz={inbox.tz} onOpenTrip={(id) => openTrip(id)} onAll={() => router.push('/trips')} />
       </ScrollView>
       <OperatorSidebarDrawer visible={menuOpen} onClose={() => setMenuOpen(false)} side="left" />
     </SafeAreaView>
@@ -113,5 +115,5 @@ export default function DashboardHomeScreen() {
 }
 
 const st = StyleSheet.create({
-  topBar: { paddingHorizontal: 16, paddingBottom: 6, backgroundColor: '#FAFAFA' },
+  topBar: { paddingHorizontal: 16, paddingBottom: 6, backgroundColor: '#FFF8F5' },
 });
