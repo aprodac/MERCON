@@ -349,8 +349,9 @@ maths in `backend/api-server/src/utils/expenseSummary.ts`, tested).
 - Table: month header rows with the month's filtered total, category chip with a colour dot (token tones from `CATEGORY_TONE`),
   charged-to column, To pay / Paid chips, row menu (mark as paid, edit, duplicate, delete). Selection turns the card toolbar into a bulk bar.
 - Row click opens the quick view. New / edit / duplicate open a full page (`pages/expenses/ExpenseEditorPage.tsx`,
-  form model in `lib/expenses/expenseForm.ts`): sectioned single card (label column + fields), category as a chip grid,
-  and a sticky rail with a live summary, where the cost counts, checks and a possible-duplicate warning
+  form model in `lib/expenses/expenseForm.ts`): a daily-use form, so it is dense: one card, 4-column grid, every choice a
+  dropdown, labels only (no descriptions; explanations live in a Help popover), fits one screen without scrolling.
+  A small rail shows a live summary, where the cost counts, checks and a possible-duplicate warning
   (same amount + category or payee within 3 days). Filters, period, sort and page live in the URL.
 
 ### 4.4 Report page (P&L, Balance Sheet, Trial Balance, Cash Flow, Ageing, General Ledger)
