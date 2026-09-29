@@ -2,7 +2,7 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TONE_CLASSES } from '@/components/finance/kit/tones';
 import type { ExpenseLink, ExpenseSummary } from '@/services/expenseService';
-import { categoryTone, changePercent, LINK_LABEL, LINK_TONE, monthLabel, share, type LinkKind } from '@/lib/expenses/expenseMeta';
+import { categoryTone, changePercent, LINK_KINDS, LINK_LABEL, LINK_TONE, monthLabel, share, type LinkKind } from '@/lib/expenses/expenseMeta';
 import { formatMoney } from '@/lib/finance/format';
 import { cn } from '@/lib/utils';
 
@@ -52,12 +52,12 @@ export function ExpenseInsights({
       </Card>
     );
   }
-  const s = summary ?? { count: 0, total: 0, paid: 0, pending: 0, pending_count: 0, by_category: [], by_month: [], linked: { vehicle: 0, driver: 0, overhead: 0 }, top_payees: [], previous_total: null };
+  const s = summary ?? { count: 0, total: 0, paid: 0, pending: 0, pending_count: 0, by_category: [], by_month: [], linked: { trip: 0, vehicle: 0, driver: 0, overhead: 0 }, top_payees: [], previous_total: null };
   const change = changePercent(s.total, s.previous_total);
   const maxMonth = Math.max(...s.by_month.map((m) => m.amount), 0);
   const cats = s.by_category.slice(0, MAX_CATEGORIES);
   const otherCats = s.by_category.slice(MAX_CATEGORIES).reduce((sum, c) => sum + c.amount, 0);
-  const links: LinkKind[] = ['vehicle', 'driver', 'overhead'];
+  const links: LinkKind[] = LINK_KINDS;
 
   return (
     <Card className="grid shrink-0 gap-0 divide-border/60 rounded-xl py-0 shadow-xs max-lg:divide-y lg:grid-cols-[1fr_1fr_1.2fr] lg:divide-x">
@@ -133,7 +133,7 @@ export function ExpenseInsights({
               <span key={k} className={TONE_CLASSES[LINK_TONE[k]].dot} style={{ width: `${share(s.linked[k], s.total)}%` }} />
             ))}
           </div>
-          <div className="grid grid-cols-3 gap-1">
+          <div className="grid grid-cols-4 gap-1">
             {links.map((k) => (
               <button
                 key={k}

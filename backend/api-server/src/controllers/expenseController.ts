@@ -3,9 +3,12 @@ import { z } from 'zod';
 import { prisma } from '../db';
 import { generateRefId } from '../utils/refId';
 import { logger } from '../utils/logger';
-import { VEHICLE_REQUIRED_EXPENSE_CATEGORIES } from '@mercon/shared-types';
+import { expenseLinkProblem, FIXED_COST_EXPENSE_CATEGORIES } from '@mercon/shared-types';
 import { buildExpenseWhere, expenseOrderBy, filterDate, previousRange, summarizeExpenses } from '../utils/expenseSummary';
 
+
+/** What an expense shows of its trip. */
+const TRIP_SELECT = { id: true, ref_id: true, status: true, is_third_party: true, vehicleId: true, driverId: true, deletedAt: true } as const;
 
 /** Expenses are numbered EXP-001, EXP-002, … and gaps are refilled on delete. */
 const EXPENSE_REF_PREFIX = 'EXP';
@@ -53,6 +56,7 @@ export const getExpenses = async (req: Request, res: Response) => {
         include: {
           driver: { select: { id: true, first_name: true, last_name: true, ref_id: true, deletedAt: true } },
           vehicle: { select: { id: true, plate_number: true, ref_id: true, deletedAt: true } },
+          trip: { select: TRIP_SELECT },
         },
       }),
       prisma.expense.count({ where: whereClause }),
@@ -120,6 +124,7 @@ const findExpenseByIdOrRef = async (idOrRef: string) => {
     include: {
       driver: { select: { id: true, first_name: true, last_name: true, ref_id: true, deletedAt: true } },
       vehicle: { select: { id: true, plate_number: true, ref_id: true, deletedAt: true } },
+      trip: { select: TRIP_SELECT },
     },
   });
 };
@@ -137,7 +142,7 @@ export const getExpenseSummary = async (req: Request, res: Response) => {
     const [rows, previous] = await Promise.all([
       prisma.expense.findMany({
         where,
-        select: { amount: true, status: true, category: true, expense_date: true, vehicleId: true, driverId: true, payee: true },
+        select: { amount: true, status: true, category: true, expense_date: true, vehicleId: true, driverId: true, tripId: true, payee: true },
       }),
       from && to
         ? (() => {
@@ -174,19 +179,69 @@ export const getExpenseById = async (req: Request, res: Response) => {
   }
 };
 
+type LinkResult = { ok: true; tripId: string | null; vehicleId: string | null; driverId: string | null } | { ok: false; message: string };
+
 /**
- * Truck-only categories must name the truck, or Vehicle P&L can't count them.
- * Not enforced while Pending — a placeholder only knows its category yet.
+ * The links an expense will carry, checked against the category rules. A trip brings its own truck
+ * and driver (they are copied, so truck P&L keeps counting the cost). A truck's recurring cost of the
+ * same kind (e.g. insurance set up in Vehicle cost setup) can't also be recorded as an expense.
  */
-const needsVehicle = (category: string | null | undefined) =>
-  VEHICLE_REQUIRED_EXPENSE_CATEGORIES.includes((category || '').trim());
-const vehicleRequiredMessage = (category: string) => `Choose the vehicle this ${category.toLowerCase()} expense is for.`;
+async function resolveExpenseLinks(input: {
+  category: string;
+  status: string;
+  tripId: string | null;
+  vehicleId: string | null;
+  driverId: string | null;
+  expenseDate: Date;
+}): Promise<LinkResult> {
+  let { vehicleId, driverId } = input;
+  let tripIsThirdParty = false;
+  if (input.tripId) {
+    const trip = await prisma.trip.findFirst({ where: { id: input.tripId, deletedAt: null }, select: { is_third_party: true, vehicleId: true, driverId: true } });
+    if (!trip) return { ok: false, message: 'Selected trip does not exist.' };
+    tripIsThirdParty = trip.is_third_party;
+    vehicleId = trip.vehicleId;
+    driverId = trip.driverId;
+  }
+  const problem = expenseLinkProblem({ category: input.category, status: input.status, tripId: input.tripId, vehicleId, driverId, tripIsThirdParty });
+  if (problem) return { ok: false, message: problem };
+
+  if (driverId && !input.tripId) {
+    const driver = await prisma.driver.findFirst({ where: { id: driverId, deletedAt: null }, select: { id: true } });
+    if (!driver) return { ok: false, message: 'Selected driver does not exist.' };
+  }
+  if (vehicleId) {
+    const vehicle = await prisma.vehicle.findFirst({ where: { id: vehicleId, deletedAt: null }, select: { id: true, plate_number: true } });
+    if (!vehicle && !input.tripId) return { ok: false, message: 'Selected vehicle does not exist.' };
+    const category = input.category.trim();
+    if (vehicle && FIXED_COST_EXPENSE_CATEGORIES.includes(category)) {
+      const fixed = await prisma.vehicleFixedCost.findFirst({
+        where: {
+          vehicleId,
+          deletedAt: null,
+          category: { equals: category, mode: 'insensitive' },
+          start_date: { lte: input.expenseDate },
+          OR: [{ end_date: null }, { end_date: { gte: input.expenseDate } }],
+        },
+        select: { id: true },
+      });
+      if (fixed) {
+        return {
+          ok: false,
+          message: `${vehicle.plate_number} already has ${category.toLowerCase()} set up as a recurring cost in Vehicle cost setup, so its P&L counts it there. Record it without the truck, or change the cost setup.`,
+        };
+      }
+    }
+  }
+  return { ok: true, tripId: input.tripId, vehicleId, driverId };
+}
 
 const expenseSchema = z.object({
   category: z.string().min(1, 'Category is required'),
   status: z.enum(['Paid', 'Pending']).default('Paid'),
   driver_id: z.string().uuid().optional().nullable(),
   vehicle_id: z.string().uuid().optional().nullable(),
+  trip_id: z.string().uuid().optional().nullable(),
   payee: z.string().optional().nullable(),
   amount: z.union([z.string(), z.number()]).transform((v) => parseFloat(v as string)),
   currency: z.string().optional(),
@@ -212,7 +267,7 @@ export const createExpense = async (req: Request, res: Response) => {
     }
 
     const {
-      category, status, driver_id, vehicle_id, payee, amount, currency, expense_date,
+      category, status, driver_id, vehicle_id, trip_id, payee, amount, currency, expense_date,
       payment_method, description, bill_issued_date, bill_paid_date,
     } = parseResult.data;
 
@@ -223,28 +278,17 @@ export const createExpense = async (req: Request, res: Response) => {
       });
     }
 
-    if (status !== 'Pending' && needsVehicle(category) && !vehicle_id) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: vehicleRequiredMessage(category) } });
-    }
-
-    if (driver_id) {
-      const driver = await prisma.driver.findFirst({ where: { id: driver_id, deletedAt: null } });
-      if (!driver) {
-        return res.status(400).json({
-          success: false,
-          error: { code: 'VALIDATION_ERROR', message: 'Selected driver does not exist.' },
-        });
-      }
-    }
-
-    if (vehicle_id) {
-      const vehicle = await prisma.vehicle.findFirst({ where: { id: vehicle_id, deletedAt: null } });
-      if (!vehicle) {
-        return res.status(400).json({
-          success: false,
-          error: { code: 'VALIDATION_ERROR', message: 'Selected vehicle does not exist.' },
-        });
-      }
+    const expenseDate = toDate(expense_date) ?? new Date();
+    const links = await resolveExpenseLinks({
+      category,
+      status: status || 'Paid',
+      tripId: trip_id || null,
+      vehicleId: vehicle_id || null,
+      driverId: driver_id || null,
+      expenseDate,
+    });
+    if (!links.ok) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: links.message } });
     }
 
     // ref_id is unique; two operators saving at the same instant can pick the same
@@ -257,12 +301,13 @@ export const createExpense = async (req: Request, res: Response) => {
             ref_id: await nextExpenseRefId(),
             category,
             status: status || 'Paid',
-            driverId: driver_id || null,
-            vehicleId: vehicle_id || null,
+            driverId: links.driverId,
+            vehicleId: links.vehicleId,
+            tripId: links.tripId,
             payee: payee || null,
             amount,
             currency: currency || 'SAR',
-            expense_date: toDate(expense_date) ?? new Date(),
+            expense_date: expenseDate,
             payment_method: payment_method || null,
             description: description || null,
             bill_issued_date: toDate(bill_issued_date),
@@ -272,6 +317,7 @@ export const createExpense = async (req: Request, res: Response) => {
           include: {
             driver: { select: { id: true, first_name: true, last_name: true, ref_id: true, deletedAt: true } },
             vehicle: { select: { id: true, plate_number: true, ref_id: true, deletedAt: true } },
+            trip: { select: TRIP_SELECT },
           },
         });
         break;
@@ -320,13 +366,25 @@ export const updateExpense = async (req: Request, res: Response) => {
 
     const data: any = { ...parseResult.data };
 
-    // Check the expense as it will be after the update, not just the fields sent
-    const nextCategory = data.category ?? existing.category;
-    const nextVehicle = 'vehicle_id' in data ? data.vehicle_id : existing.vehicleId;
-    const nextStatus = data.status ?? existing.status;
-    if (nextStatus !== 'Pending' && needsVehicle(nextCategory) && !nextVehicle) {
-      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: vehicleRequiredMessage(nextCategory) } });
+    // Check the links as they will be after the update, not just the fields sent
+    const nextDate = 'expense_date' in data ? toDate(data.expense_date) ?? existing.expense_date : existing.expense_date;
+    const links = await resolveExpenseLinks({
+      category: data.category ?? existing.category,
+      status: data.status ?? existing.status,
+      tripId: 'trip_id' in data ? data.trip_id || null : existing.tripId,
+      vehicleId: 'vehicle_id' in data ? data.vehicle_id || null : existing.vehicleId,
+      driverId: 'driver_id' in data ? data.driver_id || null : existing.driverId,
+      expenseDate: nextDate,
+    });
+    if (!links.ok) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: links.message } });
     }
+    delete data.trip_id;
+    delete data.driver_id;
+    delete data.vehicle_id;
+    data.tripId = links.tripId;
+    data.vehicleId = links.vehicleId;
+    data.driverId = links.driverId;
 
     if ('amount' in data && (!Number.isFinite(data.amount) || data.amount <= 0)) {
       return res.status(400).json({
@@ -346,15 +404,6 @@ export const updateExpense = async (req: Request, res: Response) => {
     if ('bill_issued_date' in data) data.bill_issued_date = toDate(data.bill_issued_date);
     if ('bill_paid_date' in data) data.bill_paid_date = toDate(data.bill_paid_date);
 
-    if ('driver_id' in data) {
-      data.driverId = data.driver_id || null;
-      delete data.driver_id;
-    }
-    if ('vehicle_id' in data) {
-      data.vehicleId = data.vehicle_id || null;
-      delete data.vehicle_id;
-    }
-
     const updated = await prisma.expense.update({
       where: { id: existing.id },
       data: {
@@ -364,6 +413,7 @@ export const updateExpense = async (req: Request, res: Response) => {
       include: {
         driver: { select: { id: true, first_name: true, last_name: true, ref_id: true, deletedAt: true } },
         vehicle: { select: { id: true, plate_number: true, ref_id: true, deletedAt: true } },
+        trip: { select: TRIP_SELECT },
       },
     });
 

@@ -25,11 +25,13 @@ export const categoryTone = (category: string | null | undefined): ChipTone => C
 /** Categories that are pay for people: offer the driver link first. */
 export const DRIVER_CATEGORIES = ['Salary', 'Salary Advance'];
 
-export type LinkKind = 'vehicle' | 'driver' | 'overhead';
-export const LINK_LABEL: Record<LinkKind, string> = { vehicle: 'Trucks', driver: 'Drivers', overhead: 'Overhead' };
-export const LINK_TONE: Record<LinkKind, ChipTone> = { vehicle: 'info', driver: 'violet', overhead: 'neutral' };
+export type LinkKind = 'trip' | 'vehicle' | 'driver' | 'overhead';
+export const LINK_KINDS: LinkKind[] = ['trip', 'vehicle', 'driver', 'overhead'];
+export const LINK_LABEL: Record<LinkKind, string> = { trip: 'Trips', vehicle: 'Trucks', driver: 'Drivers', overhead: 'Overhead' };
+export const LINK_TONE: Record<LinkKind, ChipTone> = { trip: 'teal', vehicle: 'info', driver: 'violet', overhead: 'neutral' };
 
-export const linkKind = (e: Pick<Expense, 'vehicleId' | 'driverId'>): LinkKind => (e.vehicleId ? 'vehicle' : e.driverId ? 'driver' : 'overhead');
+export const linkKind = (e: Pick<Expense, 'vehicleId' | 'driverId' | 'tripId'>): LinkKind =>
+  e.tripId ? 'trip' : e.vehicleId ? 'vehicle' : e.driverId ? 'driver' : 'overhead';
 
 export const driverName = (e: Pick<Expense, 'driver'>) => (e.driver ? `${e.driver.first_name} ${e.driver.last_name}`.trim() : null);
 

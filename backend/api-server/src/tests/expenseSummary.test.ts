@@ -15,7 +15,7 @@ const row = (p: Partial<SummaryRow>): SummaryRow => ({
 
 test('summarizeExpenses: totals, pending, categories, links and payees', () => {
   const s = summarizeExpenses([
-    row({ amount: '1000.10', category: 'Fuel', vehicleId: 'v1', payee: 'Aldrees' }),
+    row({ amount: '1000.10', category: 'Fuel', vehicleId: 'v1', tripId: 't1', payee: 'Aldrees' }),
     row({ amount: 500, category: 'Fuel', vehicleId: 'v2', payee: 'aldrees ', status: 'Pending' }),
     row({ amount: '3000', category: 'Salary', driverId: 'd1' }),
     row({ amount: 250.45, category: 'Rent', payee: 'Landlord', expense_date: '2026-07-01T00:00:00Z' }),
@@ -26,7 +26,7 @@ test('summarizeExpenses: totals, pending, categories, links and payees', () => {
   assert.equal(s.pending, 500);
   assert.equal(s.pending_count, 1);
   assert.deepEqual(s.by_category.map((c) => [c.category, c.amount, c.count]), [['Salary', 3000, 1], ['Fuel', 1500.1, 2], ['Rent', 250.45, 1]]);
-  assert.deepEqual(s.linked, { vehicle: 1500.1, driver: 3000, overhead: 250.45 });
+  assert.deepEqual(s.linked, { trip: 1000.1, vehicle: 500, driver: 3000, overhead: 250.45 });
   // Payees are matched case- and space-insensitively
   assert.deepEqual(s.top_payees[0], { payee: 'Aldrees', amount: 1500.1, count: 2 });
   // Months without spend inside the data span are filled with zero
@@ -59,8 +59,10 @@ test('buildExpenseWhere: filters, link kinds and "all" values', () => {
     status: 'Pending',
     payment_method: 'Cash',
   });
-  assert.deepEqual(buildExpenseWhere({ linked: 'overhead' }), { deletedAt: null, vehicleId: null, driverId: null });
-  assert.deepEqual(buildExpenseWhere({ linked: 'vehicle' }), { deletedAt: null, vehicleId: { not: null } });
+  assert.deepEqual(buildExpenseWhere({ linked: 'overhead' }), { deletedAt: null, vehicleId: null, driverId: null, tripId: null });
+  assert.deepEqual(buildExpenseWhere({ linked: 'trip' }), { deletedAt: null, tripId: { not: null } });
+  assert.deepEqual(buildExpenseWhere({ trip_id: 't9' }), { deletedAt: null, tripId: 't9' });
+  assert.deepEqual(buildExpenseWhere({ linked: 'vehicle' }), { deletedAt: null, vehicleId: { not: null }, tripId: null });
   const dated = buildExpenseWhere({ date_from: '2026-09-01', date_to: '2026-09-30' }) as any;
   assert.equal(dated.expense_date.lte.toISOString(), '2026-09-30T23:59:59.999Z');
   assert.equal((buildExpenseWhere({ date_from: '2026-09-01' }, { withDates: false }) as any).expense_date, undefined);

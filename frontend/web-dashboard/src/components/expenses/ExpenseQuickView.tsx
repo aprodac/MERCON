@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, CheckCircle2, Copy, Pencil, Trash2, Truck, User } from 'lucide-react';
+import { ArrowRight, CheckCircle2, Copy, Pencil, Route, Trash2, Truck, User } from 'lucide-react';
 
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -97,7 +97,15 @@ export function ExpenseQuickView({
 
               <section className="space-y-2">
                 <h3 className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Charged to</h3>
-                {!e.vehicle && !driver && <p className="text-sm text-muted-foreground">Company overhead (no truck or driver)</p>}
+                {!e.trip && !e.vehicle && !driver && <p className="text-sm text-muted-foreground">Company overhead (no trip, truck or driver)</p>}
+                {e.trip && (
+                  <Link to={`/trips/${e.trip.id}`} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm hover:bg-muted/40">
+                    <span className="flex items-center gap-2">
+                      <Route className="size-4 text-muted-foreground" /> {e.trip.ref_id ?? 'Trip'}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">Comes off the trip&apos;s margin</span>
+                  </Link>
+                )}
                 {e.vehicle && (
                   <Link to={`/vehicles/${e.vehicle.id}`} className="flex items-center justify-between rounded-lg border px-3 py-2 text-sm hover:bg-muted/40">
                     <span className="flex items-center gap-2">

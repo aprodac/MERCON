@@ -20,8 +20,9 @@ export interface ExpenseQuery {
   status?: unknown;
   driver_id?: unknown;
   vehicle_id?: unknown;
+  trip_id?: unknown;
   payment_method?: unknown;
-  /** 'vehicle' (has a truck), 'driver' (has a driver), 'overhead' (neither). */
+  /** 'trip' (charged to a trip), 'vehicle' (a truck, no trip), 'driver' (a driver only), 'overhead' (nothing). */
   linked?: unknown;
   date_from?: unknown;
   date_to?: unknown;
@@ -46,17 +47,26 @@ export function buildExpenseWhere(q: ExpenseQuery, opts: { withDates?: boolean }
   const driver = str(q.driver_id);
   const vehicle = str(q.vehicle_id);
   const method = str(q.payment_method);
+  const trip = str(q.trip_id);
   const linked = str(q.linked);
   if (category) where.category = category;
   if (status) where.status = status;
   if (driver) where.driverId = driver;
   if (vehicle) where.vehicleId = vehicle;
   if (method) where.payment_method = method;
-  if (linked === 'vehicle') where.vehicleId = vehicle ?? { not: null };
-  else if (linked === 'driver') where.driverId = driver ?? { not: null };
-  else if (linked === 'overhead') {
+  if (trip) where.tripId = trip;
+  if (linked === 'trip') where.tripId = trip ?? { not: null };
+  else if (linked === 'vehicle') {
+    where.vehicleId = vehicle ?? { not: null };
+    where.tripId = null;
+  } else if (linked === 'driver') {
+    where.driverId = driver ?? { not: null };
+    where.vehicleId = null;
+    where.tripId = null;
+  } else if (linked === 'overhead') {
     where.vehicleId = null;
     where.driverId = null;
+    where.tripId = null;
   }
   if (opts.withDates !== false) {
     const from = filterDate(q.date_from);
@@ -90,6 +100,7 @@ export interface SummaryRow {
   expense_date: Date | string;
   vehicleId: string | null;
   driverId: string | null;
+  tripId?: string | null;
   payee: string | null;
 }
 
@@ -103,8 +114,8 @@ export interface ExpenseSummary {
   by_category: { category: string; amount: number; count: number }[];
   /** Calendar months (UTC), oldest first, including empty months inside the range. */
   by_month: { month: string; amount: number; count: number }[];
-  /** Truck costs, driver costs (no truck), and overhead (neither). */
-  linked: { vehicle: number; driver: number; overhead: number };
+  /** Trip costs, other truck costs, driver-only costs, and overhead (none of them). */
+  linked: { trip: number; vehicle: number; driver: number; overhead: number };
   top_payees: { payee: string; amount: number; count: number }[];
   /** Spend in the equal-length period just before the date range; null without a full range. */
   previous_total: number | null;
@@ -138,7 +149,7 @@ export function summarizeExpenses(rows: SummaryRow[], range: { from?: Date; to?:
     pending_count: 0,
     by_category: [],
     by_month: [],
-    linked: { vehicle: 0, driver: 0, overhead: 0 },
+    linked: { trip: 0, vehicle: 0, driver: 0, overhead: 0 },
     top_payees: [],
     previous_total: previousTotal === null ? null : r2(previousTotal),
   };
@@ -166,7 +177,8 @@ export function summarizeExpenses(rows: SummaryRow[], range: { from?: Date; to?:
     mo.count += 1;
     months.set(key, mo);
 
-    if (row.vehicleId) s.linked.vehicle += amount;
+    if (row.tripId) s.linked.trip += amount;
+    else if (row.vehicleId) s.linked.vehicle += amount;
     else if (row.driverId) s.linked.driver += amount;
     else s.linked.overhead += amount;
 
@@ -182,7 +194,7 @@ export function summarizeExpenses(rows: SummaryRow[], range: { from?: Date; to?:
   s.total = r2(s.total);
   s.paid = r2(s.paid);
   s.pending = r2(s.pending);
-  s.linked = { vehicle: r2(s.linked.vehicle), driver: r2(s.linked.driver), overhead: r2(s.linked.overhead) };
+  s.linked = { trip: r2(s.linked.trip), vehicle: r2(s.linked.vehicle), driver: r2(s.linked.driver), overhead: r2(s.linked.overhead) };
   s.by_category = [...cats.values()].map((c) => ({ ...c, amount: r2(c.amount) })).sort((a, b) => b.amount - a.amount);
   s.top_payees = [...payees.values()]
     .map((p) => ({ ...p, amount: r2(p.amount) }))

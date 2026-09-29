@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, AlertTriangle, CheckCircle2, CircleHelp, Loader2, Truck, User, Building2, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle2, CircleHelp, Loader2, Route, Truck, User, Building2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, VEHICLE_REQUIRED_EXPENSE_CATEGORIES } from '@mercon/shared-types';
+import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, expenseCategoryRule } from '@mercon/shared-types';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -19,13 +19,17 @@ import { TONE_CLASSES } from '@/components/finance/kit/tones';
 import { expenseService, type CreateExpensePayload, type Expense } from '@/services/expenseService';
 import { vehicleService } from '@/services/vehicleService';
 import { driverService, type Driver } from '@/services/driverService';
-import { categoryTone, DRIVER_CATEGORIES, expenseRef, todayIso } from '@/lib/expenses/expenseMeta';
-import { emptyExpenseForm, expenseFormFrom, expenseFormProblems, likelyDuplicates, type ExpenseForm } from '@/lib/expenses/expenseForm';
+import { categoryTone, expenseRef, todayIso } from '@/lib/expenses/expenseMeta';
+import { allowedLinks, emptyExpenseForm, expenseFormFrom, expenseFormProblems, fitLinksToCategory, likelyDuplicates, type ExpenseForm } from '@/lib/expenses/expenseForm';
+import { TripPicker } from '@/components/expenses/TripPicker';
+import { toPickedTrip, type PickedTrip } from '@/lib/expenses/pickedTrip';
+import { tripService } from '@/services/tripService';
 import { formatDate, formatMoney } from '@/lib/finance/format';
 import { cn } from '@/lib/utils';
 
 const NONE = '__none';
 const CUSTOM = '__custom';
+const ADVANCE = '__advance';
 const label = 'text-[11px] font-medium text-muted-foreground';
 
 /**
@@ -38,6 +42,8 @@ export default function ExpenseEditorPage() {
   const { id: editId } = useParams<{ id: string }>();
   const [params] = useSearchParams();
   const copyId = params.get('from');
+  // From a trip's page: /expenses/new?trip=<id>
+  const tripParam = params.get('trip');
   const editing = Boolean(editId);
   const sourceId = editId ?? copyId;
   const back = params.get('back') || (editing ? `/expenses/${editId}` : '/expenses');
@@ -55,6 +61,21 @@ export default function ExpenseEditorPage() {
     setForm(expenseFormFrom(source.data, !editing));
   }, [source.data, editing]);
 
+  // The chosen trip (its truck and driver are the expense's); loaded for a saved expense or ?trip=
+  const [trip, setTrip] = useState<PickedTrip | null>(null);
+  useEffect(() => {
+    if (!editing && !copyId && tripParam) setForm((f) => ({ ...f, trip_id: tripParam }));
+  }, [editing, copyId, tripParam]);
+  const tripLookup = useQuery({
+    queryKey: ['trips', 'detail', form.trip_id],
+    queryFn: () => tripService.getById(form.trip_id),
+    enabled: Boolean(form.trip_id) && trip?.id !== form.trip_id,
+  });
+  useEffect(() => {
+    if (tripLookup.data && (tripLookup.data as any).id === form.trip_id) setTrip(toPickedTrip(tripLookup.data));
+  }, [tripLookup.data, form.trip_id]);
+  const chosenTrip = trip && trip.id === form.trip_id ? trip : null;
+
   const { data: vehiclesRes } = useQuery({ queryKey: ['vehicles', 'lookup'], queryFn: () => vehicleService.getAll({ per_page: 500, mode: 'lookup' } as any) });
   const { data: driversRes } = useQuery({ queryKey: ['drivers-select'], queryFn: () => driverService.getAll({ per_page: 500, mode: 'lookup' } as any) });
   // Recent expenses: payee suggestions, "last time" hints and the duplicate check
@@ -71,15 +92,24 @@ export default function ExpenseEditorPage() {
 
   const paid = form.status === 'Paid';
   const amount = Number(form.amount);
-  const vehicleRequired = paid && VEHICLE_REQUIRED_EXPENSE_CATEGORIES.includes(form.category);
-  const problems = expenseFormProblems(form);
+  const rule = expenseCategoryRule(form.category);
+  const links = allowedLinks(form.category);
+  const vehicleRequired = paid && Boolean(rule.needsTruckWhenPaid) && !form.trip_id;
+  const problems = expenseFormProblems(form, chosenTrip);
   const duplicates = useMemo(() => likelyDuplicates(form, recent), [form, recent]);
   const samePayee = useMemo(
     () => (form.payee.trim() ? recent.filter((e) => e.payee?.trim().toLowerCase() === form.payee.trim().toLowerCase()).slice(0, 3) : []),
     [form.payee, recent],
   );
-  const vehicle = vehicles.find((v) => v.id === form.vehicle_id);
-  const driver = drivers.find((d) => d.id === form.driver_id);
+  // A trip's truck and driver are the expense's
+  const vehicleId = form.trip_id ? chosenTrip?.vehicleId ?? '' : form.vehicle_id;
+  const driverId = form.trip_id ? chosenTrip?.driverId ?? '' : form.driver_id;
+  const vehicle = vehicles.find((v) => v.id === vehicleId);
+  const driver = drivers.find((d) => d.id === driverId);
+  const chooseCategory = (category: string, custom = false) => {
+    setForm((f) => ({ ...f, category, customCategory: custom, ...fitLinksToCategory(f, category) }));
+    setDirty(true);
+  };
 
   const save = useCallback(
     async (again: boolean, e?: FormEvent) => {
@@ -99,8 +129,9 @@ export default function ExpenseEditorPage() {
         expense_date: form.expense_date || todayIso(),
         payee: form.payee.trim() || undefined,
         payment_method: form.payment_method || undefined,
-        vehicle_id: form.vehicle_id || null,
-        driver_id: form.driver_id || null,
+        trip_id: form.trip_id || null,
+        vehicle_id: form.trip_id ? null : form.vehicle_id || null,
+        driver_id: form.trip_id ? null : form.driver_id || null,
         description: form.description.trim() || undefined,
         bill_issued_date: form.bill_issued_date || null,
         bill_paid_date: paid ? form.bill_paid_date || null : null,
@@ -112,7 +143,8 @@ export default function ExpenseEditorPage() {
         toast.success(`${saved?.ref_id ?? 'Expense'} ${editing ? 'saved' : 'recorded'}`);
         if (again) {
           // Keep the kind of expense for the next one
-          setForm((f) => ({ ...emptyExpenseForm(), category: f.category, customCategory: f.customCategory, payment_method: f.payment_method, expense_date: f.expense_date, status: f.status }));
+          // Same trip too: several costs of one trip are usually entered together
+          setForm((f) => ({ ...emptyExpenseForm(), category: f.category, customCategory: f.customCategory, payment_method: f.payment_method, expense_date: f.expense_date, status: f.status, trip_id: f.trip_id }));
           document.getElementById('exp-amount')?.focus();
         } else navigate(editing ? back : saved?.id ? `/expenses?view=${saved.id}` : back);
       } catch (err: any) {
@@ -148,15 +180,21 @@ export default function ExpenseEditorPage() {
   }, [dirty, saving]);
 
   const title = editing ? `Edit ${source.data ? expenseRef(source.data) : 'expense'}` : copyId ? 'Duplicate expense' : 'New expense';
-  const where = vehicle ? `${vehicle.plate_number}'s P&L` : driver ? `${driver.first_name} ${driver.last_name}` : 'Company overhead';
-  const WhereIcon = vehicle ? Truck : driver ? User : Building2;
+  const where = form.trip_id
+    ? `${chosenTrip?.ref_id ?? 'The trip'}'s margin${vehicle ? ` and ${vehicle.plate_number}'s P&L` : ''}`
+    : vehicle
+      ? `${vehicle.plate_number}'s P&L`
+      : driver
+        ? `${driver.first_name} ${driver.last_name}`
+        : 'Company overhead';
+  const WhereIcon = form.trip_id ? Route : vehicle ? Truck : driver ? User : Building2;
 
   const categorySelect = form.customCategory ? (
     <div className="relative">
-      <Input autoFocus value={form.category} onChange={(e) => set('category', e.target.value)} placeholder="New category name" aria-label="Category" className="h-9 pr-8 text-sm" />
+      <Input autoFocus value={form.category} onChange={(e) => chooseCategory(e.target.value, true)} placeholder="New category name" aria-label="Category" className="h-9 pr-8 text-sm" />
       <button
         type="button"
-        onClick={() => setForm((f) => ({ ...f, customCategory: false, category: '' }))}
+        onClick={() => chooseCategory('', false)}
         className="absolute right-2 top-1/2 -translate-y-1/2 rounded text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
         aria-label="Back to the category list"
         title="Back to the list"
@@ -169,9 +207,10 @@ export default function ExpenseEditorPage() {
       value={form.category || undefined}
       onValueChange={(v) => {
         if (!v) return;
-        if (v === CUSTOM) setForm((f) => ({ ...f, customCategory: true, category: '' }));
-        else set('category', v);
-        setDirty(true);
+        // A salary advance is money the driver owes back: it lives in Advances, not Expenses
+        if (v === ADVANCE) navigate(`/finance/advances/new?type=employee${form.driver_id ? `&party_id=${form.driver_id}` : ''}`);
+        else if (v === CUSTOM) chooseCategory('', true);
+        else chooseCategory(v);
       }}
     >
       <SelectTrigger className="h-9 text-sm" aria-label="Category">
@@ -189,17 +228,20 @@ export default function ExpenseEditorPage() {
         <SelectItem value={CUSTOM} className="text-xs text-muted-foreground">
           Other category…
         </SelectItem>
+        <SelectItem value={ADVANCE} className="text-xs text-muted-foreground">
+          Salary advance → record in Advances
+        </SelectItem>
       </SelectContent>
     </Select>
   );
 
   const truckSelect = (
-    <Select value={form.vehicle_id || NONE} onValueChange={(v) => v && set('vehicle_id', v === NONE ? '' : v)}>
-      <SelectTrigger className={cn('h-9 text-sm', vehicleRequired && !form.vehicle_id && 'border-chip-negative-border')} aria-label="Truck">
+    <Select value={vehicleId || NONE} onValueChange={(v) => v && set('vehicle_id', v === NONE ? '' : v)} disabled={Boolean(form.trip_id) || !links.vehicle}>
+      <SelectTrigger className={cn('h-9 text-sm', vehicleRequired && !form.vehicle_id && 'border-chip-negative-border')} aria-label="Truck" title={form.trip_id ? "The trip's truck" : undefined}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={NONE} className="text-xs text-muted-foreground">No truck</SelectItem>
+        <SelectItem value={NONE} className="text-xs text-muted-foreground">{links.vehicle || form.trip_id ? 'No truck' : 'Not for this category'}</SelectItem>
         {vehicles.map((v) => (
           <SelectItem key={v.id} value={v.id} className="text-xs">
             {v.plate_number}
@@ -210,12 +252,12 @@ export default function ExpenseEditorPage() {
     </Select>
   );
   const driverSelect = (
-    <Select value={form.driver_id || NONE} onValueChange={(v) => v && set('driver_id', v === NONE ? '' : v)}>
-      <SelectTrigger className="h-9 text-sm" aria-label="Driver">
+    <Select value={driverId || NONE} onValueChange={(v) => v && set('driver_id', v === NONE ? '' : v)} disabled={Boolean(form.trip_id) || !links.driver}>
+      <SelectTrigger className="h-9 text-sm" aria-label="Driver" title={form.trip_id ? "The trip's driver" : undefined}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value={NONE} className="text-xs text-muted-foreground">No driver</SelectItem>
+        <SelectItem value={NONE} className="text-xs text-muted-foreground">{links.driver || form.trip_id ? 'No driver' : 'Not for this category'}</SelectItem>
         {drivers.map((d) => (
           <SelectItem key={d.id} value={d.id} className="text-xs">
             {d.first_name} {d.last_name}
@@ -225,7 +267,6 @@ export default function ExpenseEditorPage() {
       </SelectContent>
     </Select>
   );
-  const driverFirst = DRIVER_CATEGORIES.includes(form.category);
 
   return (
     <DashboardLayout active="Expenses" title={title}>
@@ -247,7 +288,9 @@ export default function ExpenseEditorPage() {
               <PopoverContent align="end" className="w-80 space-y-2.5 p-4 text-xs leading-relaxed">
                 <p className="font-semibold text-foreground">Recording an expense</p>
                 <p><span className="font-medium text-foreground">To pay</span> records a bill you haven&apos;t paid yet. Only the category and amount are needed; mark it as paid from the list later.</p>
-                <p><span className="font-medium text-foreground">Truck</span>: fuel, maintenance and tyres must name the truck once paid, and count in that truck&apos;s P&amp;L. With no truck or driver the cost is company overhead.</p>
+                <p><span className="font-medium text-foreground">Trip</span>: fuel and tolls for one trip. The trip&apos;s truck and driver fill in, the cost comes off the trip&apos;s margin and counts in the truck&apos;s P&amp;L. Subcontracted trips can&apos;t take expenses.</p>
+                <p><span className="font-medium text-foreground">Truck</span>: maintenance and tyres go on the truck; fuel needs a trip or a truck once paid. Rent, utilities and office costs are company overhead. Fields a category can&apos;t use are greyed out.</p>
+                <p><span className="font-medium text-foreground">Salary advance</span> is money the driver owes back, so it is recorded in Finance → Advances, not here.</p>
                 <p><span className="font-medium text-foreground">Bill date / Bill paid</span> are the dates on the supplier&apos;s bill. Both optional.</p>
                 <p><span className="font-medium text-foreground">Duplicate warning</span> appears when an expense with the same amount and the same category or payee was recorded within 3 days.</p>
                 <p className="border-t pt-2 text-muted-foreground"><kbd className="rounded border bg-muted px-1">Ctrl</kbd> + <kbd className="rounded border bg-muted px-1">S</kbd> saves. &quot;Save and add another&quot; keeps the category, method, date and status.</p>
@@ -338,23 +381,36 @@ export default function ExpenseEditorPage() {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label className={label}>{driverFirst ? 'Driver' : 'Truck'}{!driverFirst && vehicleRequired && <span className={TONE_CLASSES.negative.fg}> *</span>}</Label>
-                  {driverFirst ? driverSelect : truckSelect}
+                  <Label htmlFor="exp-billed" className={label}>Bill date</Label>
+                  <Input id="exp-billed" type="date" value={form.bill_issued_date} onChange={(e) => set('bill_issued_date', e.target.value)} className="h-9 text-sm" />
                 </div>
 
                 <div className="space-y-1">
-                  <Label className={label}>{driverFirst ? 'Truck' : 'Driver'}{driverFirst && vehicleRequired && <span className={TONE_CLASSES.negative.fg}> *</span>}</Label>
-                  {driverFirst ? truckSelect : driverSelect}
+                  <Label className={label}>Trip</Label>
+                  <TripPicker
+                    value={chosenTrip ?? (form.trip_id && tripLookup.isLoading ? { id: form.trip_id, ref_id: 'Loading…', is_third_party: false, vehicleId: null, driverId: null, plate: null, driver: null, customer: null, day: null } : null)}
+                    disabled={!links.trip && !form.trip_id}
+                    onChange={(t) => {
+                      setTrip(t);
+                      setForm((f) => ({ ...f, trip_id: t?.id ?? '', vehicle_id: t ? '' : f.vehicle_id, driver_id: t ? '' : f.driver_id }));
+                      setDirty(true);
+                    }}
+                  />
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="exp-billed" className={label}>Bill date</Label>
-                  <Input id="exp-billed" type="date" value={form.bill_issued_date} onChange={(e) => set('bill_issued_date', e.target.value)} className="h-9 text-sm" />
+                  <Label className={label}>
+                    Truck{vehicleRequired && !vehicleId && <span className={TONE_CLASSES.negative.fg}> *</span>}
+                  </Label>
+                  {truckSelect}
+                </div>
+                <div className="space-y-1">
+                  <Label className={label}>Driver</Label>
+                  {driverSelect}
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="exp-billpaid" className={label}>Bill paid</Label>
                   <Input id="exp-billpaid" type="date" value={form.bill_paid_date} onChange={(e) => set('bill_paid_date', e.target.value)} disabled={!paid} className="h-9 text-sm" />
                 </div>
-                <div className="hidden md:block" aria-hidden />
 
                 <div className="col-span-2 space-y-1 md:col-span-4">
                   <Label htmlFor="exp-notes" className={label}>Notes</Label>
@@ -393,6 +449,18 @@ export default function ExpenseEditorPage() {
                 </p>
               </div>
               <div className="space-y-1.5 p-4">
+                {form.category === 'Salary Advance' && (
+                  <p className={cn('flex items-start gap-1.5', TONE_CLASSES.warning.fg)}>
+                    <AlertTriangle className="mt-px size-3.5 shrink-0" />
+                    <span>
+                      New salary advances go in{' '}
+                      <Link to={`/finance/advances/new?type=employee${driverId ? `&party_id=${driverId}` : ''}`} className="font-medium underline underline-offset-2">
+                        Advances
+                      </Link>
+                      ; this older record can still be edited here.
+                    </span>
+                  </p>
+                )}
                 {problems.length === 0 && duplicates.length === 0 && (
                   <p className={cn('flex items-center gap-1.5 font-medium', TONE_CLASSES.positive.fg)}>
                     <CheckCircle2 className="size-3.5" /> Ready to save

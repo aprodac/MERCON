@@ -10,6 +10,8 @@ export interface Expense {
   status: ExpenseStatus;
   driverId?: string | null;
   vehicleId?: string | null;
+  /** A cost of one trip; its truck and driver are copied onto vehicleId / driverId. */
+  tripId?: string | null;
   payee?: string | null;
   amount: number;
   currency: string;
@@ -35,6 +37,15 @@ export interface Expense {
     ref_id: string | null;
     deletedAt?: string | null;
   } | null;
+  trip?: {
+    id: string;
+    ref_id: string | null;
+    status: string;
+    is_third_party: boolean;
+    vehicleId: string | null;
+    driverId: string | null;
+    deletedAt?: string | null;
+  } | null;
 }
 
 export interface CreateExpensePayload {
@@ -42,6 +53,7 @@ export interface CreateExpensePayload {
   status?: ExpenseStatus;
   driver_id?: string | null;
   vehicle_id?: string | null;
+  trip_id?: string | null;
   payee?: string;
   amount: number;
   currency?: string;
@@ -55,14 +67,15 @@ export interface CreateExpensePayload {
 export interface UpdateExpensePayload extends Partial<CreateExpensePayload> {}
 
 export type ExpenseSort = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
-/** 'vehicle' = has a truck, 'driver' = has a driver, 'overhead' = neither. */
-export type ExpenseLink = 'vehicle' | 'driver' | 'overhead';
+/** 'trip' = a trip's cost, 'vehicle' = a truck (no trip), 'driver' = a driver only, 'overhead' = none. */
+export type ExpenseLink = 'trip' | 'vehicle' | 'driver' | 'overhead';
 
 export interface ExpenseFilters {
   category?: string;
   status?: string;
   driver_id?: string;
   vehicle_id?: string;
+  trip_id?: string;
   payment_method?: string;
   linked?: ExpenseLink;
   date_from?: string;
@@ -82,7 +95,7 @@ export interface ExpenseSummary {
   pending_count: number;
   by_category: { category: string; amount: number; count: number }[];
   by_month: { month: string; amount: number; count: number }[];
-  linked: { vehicle: number; driver: number; overhead: number };
+  linked: { trip: number; vehicle: number; driver: number; overhead: number };
   top_payees: { payee: string; amount: number; count: number }[];
   /** Spend in the equal-length period before the date range; null without a range. */
   previous_total: number | null;

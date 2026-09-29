@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, ChevronLeft, ChevronRight, Copy, Download, MoreHorizontal, Pencil, Plus, Search, Trash2, Truck, User, X } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ChevronRight, Copy, Download, MoreHorizontal, Pencil, Plus, Route, Search, Trash2, Truck, User, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS } from '@mercon/shared-types';
 
@@ -24,7 +24,7 @@ import { ExpenseQuickView } from '@/components/expenses/ExpenseQuickView';
 import { expenseService, type Expense, type ExpenseFilters, type ExpenseLink, type ExpenseSort } from '@/services/expenseService';
 import { resolvePeriodPreset, type PeriodPreset } from '@/lib/finance/pnlPeriodHelpers';
 import { formatDate, formatMoney } from '@/lib/finance/format';
-import { categoryTone, driverName, expenseRef, LINK_LABEL, monthKey, monthLabel, todayIso } from '@/lib/expenses/expenseMeta';
+import { categoryTone, driverName, expenseRef, LINK_KINDS, LINK_LABEL, monthKey, monthLabel, todayIso } from '@/lib/expenses/expenseMeta';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { cn } from '@/lib/utils';
 
@@ -96,6 +96,8 @@ export default function ExpenseListPage() {
   const category = params.get('category') || ALL;
   const linked = (params.get('linked') as ExpenseLink | null) || null;
   const method = params.get('method') || ALL;
+  // From a trip's page: its expenses
+  const tripFilter = params.get('trip');
   const sort = (params.get('sort') as ExpenseSort) || 'date_desc';
   const page = Math.max(1, Number(params.get('page')) || 1);
   const perPage = PAGE_SIZES.includes(Number(params.get('per'))) ? Number(params.get('per')) : 50;
@@ -112,10 +114,11 @@ export default function ExpenseListPage() {
     category: category !== ALL ? category : undefined,
     linked: linked ?? undefined,
     payment_method: method !== ALL ? method : undefined,
+    trip_id: tripFilter || undefined,
     date_from: dateFrom || undefined,
     date_to: dateTo || undefined,
   };
-  const filtered = Boolean(q || status !== ALL || category !== ALL || linked || method !== ALL);
+  const filtered = Boolean(q || status !== ALL || category !== ALL || linked || method !== ALL || tripFilter);
 
   // ── Data ────────────────────────────────────────────────────────────────
   const list = useQuery({
@@ -328,9 +331,17 @@ export default function ExpenseListPage() {
                   label="Charged to"
                   value={linked ?? ALL}
                   onChange={(v) => set({ linked: v })}
-                  options={(['vehicle', 'driver', 'overhead'] as const).map((k) => ({ value: k, label: LINK_LABEL[k] }))}
+                  options={LINK_KINDS.map((k) => ({ value: k, label: LINK_LABEL[k] }))}
                 />
                 <FilterSelect label="Methods" value={method} onChange={(v) => set({ method: v })} options={EXPENSE_PAYMENT_METHODS.map((m) => ({ value: m, label: m }))} />
+                {tripFilter && (
+                  <Chip tone="teal" size="sm" className="gap-1.5 pr-1">
+                    Trip {rows.find((r) => r.tripId === tripFilter)?.trip?.ref_id ?? ''}
+                    <button type="button" aria-label="Show all trips" onClick={() => set({ trip: null })} className="rounded outline-none hover:opacity-70 focus-visible:ring-2 focus-visible:ring-ring">
+                      <X className="size-3" />
+                    </button>
+                  </Chip>
+                )}
                 {filtered && (
                   <Button
                     variant="ghost"
@@ -338,7 +349,7 @@ export default function ExpenseListPage() {
                     className="h-8 gap-1 text-xs"
                     onClick={() => {
                       setSearch('');
-                      set({ q: null, status: null, category: null, linked: null, method: null });
+                      set({ q: null, status: null, category: null, linked: null, method: null, trip: null });
                     }}
                   >
                     <X className="size-3.5" /> Clear filters
@@ -499,6 +510,11 @@ export default function ExpenseListPage() {
                       <td className={cn(td, 'max-w-[180px] truncate text-foreground')}>{r.payee || <span className="text-muted-foreground">—</span>}</td>
                       <td className={td}>
                         <div className="flex max-w-[200px] flex-col gap-0.5">
+                          {r.trip && (
+                            <span className="flex items-center gap-1 truncate text-foreground">
+                              <Route className="size-3 shrink-0 text-muted-foreground" /> {r.trip.ref_id ?? 'Trip'}
+                            </span>
+                          )}
                           {r.vehicle && (
                             <span className="flex items-center gap-1 truncate text-foreground">
                               <Truck className="size-3 shrink-0 text-muted-foreground" /> {r.vehicle.plate_number}
@@ -509,7 +525,7 @@ export default function ExpenseListPage() {
                               <User className="size-3 shrink-0 text-muted-foreground" /> {driver}
                             </span>
                           )}
-                          {!r.vehicle && !driver && <span className="text-muted-foreground">Overhead</span>}
+                          {!r.trip && !r.vehicle && !driver && <span className="text-muted-foreground">Overhead</span>}
                         </div>
                       </td>
                       <td className={cn(td, 'text-muted-foreground')}>{r.payment_method || '—'}</td>

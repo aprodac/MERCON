@@ -9,6 +9,7 @@ describe('expense helpers', () => {
   });
 
   it('says what an expense is charged to', () => {
+    expect(linkKind({ vehicleId: 'v', driverId: 'd', tripId: 't' })).toBe('trip');
     expect(linkKind({ vehicleId: 'v', driverId: 'd' })).toBe('vehicle');
     expect(linkKind({ vehicleId: null, driverId: 'd' })).toBe('driver');
     expect(linkKind({ vehicleId: null, driverId: null })).toBe('overhead');

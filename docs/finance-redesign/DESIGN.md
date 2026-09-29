@@ -354,6 +354,27 @@ maths in `backend/api-server/src/utils/expenseSummary.ts`, tested).
   A small rail shows a live summary, where the cost counts, checks and a possible-duplicate warning
   (same amount + category or payee within 3 days). Filters, period, sort and page live in the URL.
 
+#### What an expense is charged to (owner-approved 2026-09-29)
+
+Trip → Truck → Driver → Company. A trip brings its truck and driver (copied onto the expense); a truck's costs count in
+its P&L; a driver link records who it was for; none of them means company overhead. Rules live in
+`@mercon/shared-types` (`EXPENSE_CATEGORY_RULES`, `expenseLinkProblem`) and are enforced by the API and the form.
+
+| Category | Can be charged to |
+|---|---|
+| Fuel | Trip or truck (required once paid) |
+| Toll & Parking | Trip, truck or company |
+| Vehicle Maintenance, Tyres | Truck (required once paid) |
+| Insurance | Truck or company; not a truck that has insurance as a recurring fixed cost |
+| Government Fees | Truck, driver or company; same fixed-cost check |
+| Salary | Driver or company (not the truck P&L: salaries accrue from the salary package) |
+| Rent, Utilities, Office Supplies | Company |
+| Other / custom | Anything |
+| Any, on a subcontracted trip | Not allowed (the subcontract bill carries its cost) |
+
+Salary advances are employee advances (Finance → Advances), not expenses. Trip margin on the trip page = billing − driver
+pay − the trip's expenses (`net_margin`). Next: paid expenses post to the general ledger.
+
 ### 4.4 Report page (P&L, Balance Sheet, Trial Balance, Cash Flow, Ageing, General Ledger)
 
 ```
