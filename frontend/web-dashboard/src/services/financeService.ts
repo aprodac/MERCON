@@ -318,7 +318,7 @@ export type VatBox = 'standard_sales' | 'zero_sales' | 'standard_purchases' | 'n
 
 export interface VatDoc {
   box: VatBox;
-  kind: 'invoice' | 'credit_note' | 'bill';
+  kind: 'invoice' | 'credit_note' | 'bill' | 'expense';
   id: string;
   ref: string | null;
   date: string;
@@ -414,6 +414,8 @@ export interface InvoiceLedgerSetup {
   receivable_account_id: string | null;
   revenue_account_id: string | null;
   vat_output_account_id: string | null;
+  /** Reclaimable VAT on bills and expenses (not needed to issue invoices). */
+  vat_input_account_id?: string | null;
 }
 
 export const financeService = {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { EXPENSE_CATEGORIES, expenseLinkProblem } from '@mercon/shared-types';
 import type { Expense } from '@/services/expenseService';
-import { allowedLinks, defaultFor, emptyExpenseForm, expenseFormFrom, expenseFormProblems, fitLinksToCategory, forOf, forOptions, likelyDuplicates, linksFor, suggestPayFrom } from './expenseForm';
+import { allowedLinks, defaultFor, emptyExpenseForm, expenseFormFrom, expenseFormProblems, fitLinksToCategory, forOf, forOptions, likelyDuplicates, linksFor, suggestPayFrom, vatInside } from './expenseForm';
 
 const exp = (p: Partial<Expense>): Expense =>
   ({ id: 'e1', ref_id: 'EXP-001', category: 'Fuel', status: 'Paid', amount: 250, currency: 'SAR', expense_date: '2026-09-20T00:00:00.000Z', createdAt: '', updatedAt: '', ...p }) as Expense;
@@ -116,5 +116,20 @@ describe('what the expense is for', () => {
     expect(linksFor({ trip_id: 't', vehicle_id: 'v', driver_id: 'd' }, 'company')).toEqual({ trip_id: '', vehicle_id: '', driver_id: '' });
     expect(forOf({ trip_id: '', vehicle_id: 'v', driver_id: 'd' })).toBe('vehicle');
     expect(forOf({ trip_id: '', vehicle_id: '', driver_id: '' })).toBeNull();
+  });
+});
+
+describe('VAT on expenses', () => {
+  it('works out the VAT inside a VAT-inclusive amount', () => {
+    expect(vatInside(115)).toBe(15);
+    expect(vatInside(100)).toBe(13.04);
+    expect(vatInside(0)).toBe(0);
+  });
+
+  it('keeps the VAT below the amount', () => {
+    const f = { ...emptyExpenseForm(), category: 'Rent', amount: '100' };
+    expect(expenseFormProblems({ ...f, vat_amount: '15' })).toEqual([]);
+    expect(expenseFormProblems({ ...f, vat_amount: '100' })[0]).toMatch(/less than the amount/);
+    expect(expenseFormProblems({ ...f, vat_amount: '-1' })[0]).toMatch(/negative/);
   });
 });

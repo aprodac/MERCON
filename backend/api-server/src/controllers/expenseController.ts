@@ -238,6 +238,22 @@ async function resolveExpenseLinks(input: {
   return { ok: true, tripId: input.tripId, vehicleId, driverId };
 }
 
+/** VAT input is a balance the tax authority owes back: an Asset, or a Liability used as its contra. */
+export async function vatInputAccountProblem(id: string): Promise<string | null> {
+  const a = await prisma.account.findUnique({ where: { id } });
+  if (!a || !['Asset', 'Liability'].includes(a.account_type) || !a.is_postable || !a.isActive || a.deletedAt) {
+    return 'VAT input must be an active, postable Asset or Liability account.';
+  }
+  return null;
+}
+
+/** VAT must be a number from 0 up to (not including) the amount it's part of. */
+export function checkVat(amount: number, vat: number): string | null {
+  if (!Number.isFinite(vat) || vat < 0) return 'VAT must be zero or more.';
+  if (vat > 0 && vat >= amount) return 'The VAT must be less than the amount (the amount includes the VAT).';
+  return null;
+}
+
 const expenseSchema = z.object({
   category: z.string().min(1, 'Category is required'),
   status: z.enum(['Paid', 'Pending']).default('Paid'),
@@ -248,6 +264,8 @@ const expenseSchema = z.object({
   payment_account_id: z.string().uuid().optional().nullable(),
   payee: z.string().optional().nullable(),
   amount: z.union([z.string(), z.number()]).transform((v) => parseFloat(v as string)),
+  /** Reclaimable VAT inside `amount` (from the supplier's tax invoice). */
+  vat_amount: z.union([z.string(), z.number()]).transform((v) => (v === '' ? 0 : parseFloat(v as string))).optional().nullable(),
   currency: z.string().optional(),
   expense_date: z.string().or(z.date()).optional(),
   payment_method: z.string().optional().nullable(),
@@ -272,7 +290,7 @@ export const createExpense = async (req: Request, res: Response) => {
 
     const {
       category, status, driver_id, vehicle_id, trip_id, payee, amount, currency, expense_date,
-      payment_method, description, bill_issued_date, bill_paid_date, payment_account_id,
+      payment_method, description, bill_issued_date, bill_paid_date, payment_account_id, vat_amount,
     } = parseResult.data;
 
     const paymentProblem = await checkPaymentAccount(payment_account_id);
@@ -286,6 +304,9 @@ export const createExpense = async (req: Request, res: Response) => {
         error: { code: 'VALIDATION_ERROR', message: 'Amount must be a positive number.' },
       });
     }
+    const vat = vat_amount ?? 0;
+    const vatProblem = checkVat(amount, vat);
+    if (vatProblem) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: vatProblem } });
 
     const expenseDate = toDate(expense_date) ?? new Date();
     const links = await resolveExpenseLinks({
@@ -316,6 +337,7 @@ export const createExpense = async (req: Request, res: Response) => {
             paymentAccountId: payment_account_id || null,
             payee: payee || null,
             amount,
+            vat_amount: vat,
             currency: currency || 'SAR',
             expense_date: expenseDate,
             payment_method: payment_method || null,
@@ -411,6 +433,12 @@ export const updateExpense = async (req: Request, res: Response) => {
         success: false,
         error: { code: 'VALIDATION_ERROR', message: 'Amount must be a positive number.' },
       });
+    }
+    // Check the VAT against the amount as it will be after the update
+    if ('vat_amount' in data || 'amount' in data) {
+      if ('vat_amount' in data) data.vat_amount = data.vat_amount ?? 0;
+      const vatProblem = checkVat('amount' in data ? data.amount : Number(existing.amount), 'vat_amount' in data ? data.vat_amount : Number(existing.vat_amount));
+      if (vatProblem) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: vatProblem } });
     }
 
     if ('expense_date' in data) {
@@ -562,6 +590,7 @@ export const getExpenseLedgerSetup = async (_req: Request, res: Response) => {
         default_expense_account_id: s?.defaultExpenseAccountId ?? null,
         category_accounts: (s?.expenseAccountMap as Record<string, string> | null) ?? {},
         payable_account_id: s?.defaultPayableAccountId ?? null,
+        vat_input_account_id: s?.defaultVatInputAccountId ?? null,
         unposted_count: ids.length - posted.size,
       },
     });
@@ -575,6 +604,8 @@ const setupSchema = z.object({
   category_accounts: z.record(z.string().min(1), z.string().uuid()),
   /** Accounts payable, used by to-pay expenses (the same account bills use). */
   payable_account_id: z.string().uuid().nullable().optional(),
+  /** VAT input (reclaimable VAT on purchases); an Asset or Liability account. */
+  vat_input_account_id: z.string().uuid().nullable().optional(),
 });
 
 /** PUT /expenses/ledger/setup (Admin): which accounts expenses post to. */
@@ -582,7 +613,7 @@ export const updateExpenseLedgerSetup = async (req: Request, res: Response) => {
   try {
     const parsed = setupSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message } });
-    const { default_expense_account_id, category_accounts, payable_account_id } = parsed.data;
+    const { default_expense_account_id, category_accounts, payable_account_id, vat_input_account_id } = parsed.data;
     const expenseIds = [...new Set([default_expense_account_id, ...Object.values(category_accounts)].filter((x): x is string => Boolean(x)))];
     const accounts = await prisma.account.findMany({ where: { id: { in: expenseIds } } });
     const bad = expenseIds.find((id) => {
@@ -590,6 +621,10 @@ export const updateExpenseLedgerSetup = async (req: Request, res: Response) => {
       return !a || a.account_type !== 'Expense' || !a.is_postable || !a.isActive || a.deletedAt;
     });
     if (bad) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Every expense account must be an active, postable account of type Expense.' } });
+    if (vat_input_account_id) {
+      const problem = await vatInputAccountProblem(vat_input_account_id);
+      if (problem) return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: problem } });
+    }
     if (payable_account_id) {
       const ap = await prisma.account.findUnique({ where: { id: payable_account_id } });
       if (!ap || ap.account_type !== 'Liability' || !ap.is_postable || !ap.isActive || ap.deletedAt) {
@@ -602,6 +637,7 @@ export const updateExpenseLedgerSetup = async (req: Request, res: Response) => {
         defaultExpenseAccountId: default_expense_account_id,
         expenseAccountMap: category_accounts,
         ...(payable_account_id !== undefined ? { defaultPayableAccountId: payable_account_id } : {}),
+        ...(vat_input_account_id !== undefined ? { defaultVatInputAccountId: vat_input_account_id } : {}),
         updated_by: (req as any).user?.id,
       },
     });

@@ -19,7 +19,10 @@ export interface Expense {
   /** Returned by create / update: what happened in the ledger. */
   ledger?: ExpenseLedgerResult;
   payee?: string | null;
+  /** What was paid, VAT included. */
   amount: number;
+  /** Reclaimable VAT inside `amount`; the cost is amount − vat_amount. */
+  vat_amount?: number | string;
   currency: string;
   expense_date: string;
   payment_method?: string | null;
@@ -63,6 +66,7 @@ export interface CreateExpensePayload {
   payment_account_id?: string | null;
   payee?: string;
   amount: number;
+  vat_amount?: number;
   currency?: string;
   expense_date?: string;
   payment_method?: string;
@@ -135,6 +139,7 @@ export interface ExpenseLedgerSetup {
   default_expense_account_id: string | null;
   category_accounts: Record<string, string>;
   payable_account_id: string | null;
+  vat_input_account_id?: string | null;
   unposted_count: number;
 }
 
@@ -207,7 +212,7 @@ export const expenseService = {
     return res.data.data;
   },
 
-  async updateLedgerSetup(body: { default_expense_account_id: string | null; category_accounts: Record<string, string>; payable_account_id?: string | null }): Promise<void> {
+  async updateLedgerSetup(body: { default_expense_account_id: string | null; category_accounts: Record<string, string>; payable_account_id?: string | null; vat_input_account_id?: string | null }): Promise<void> {
     await api.put('/expenses/ledger/setup', body);
   },
 

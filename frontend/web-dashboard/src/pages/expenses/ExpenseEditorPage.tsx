@@ -11,6 +11,7 @@ import { EXPENSE_CATEGORIES, EXPENSE_PAYMENT_METHODS, expenseCategoryRule } from
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Chip } from '@/components/ui/chip';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,7 +25,7 @@ import { expenseService, type CreateExpensePayload, type Expense } from '@/servi
 import { vehicleService } from '@/services/vehicleService';
 import { driverService, type Driver } from '@/services/driverService';
 import { categoryTone, expenseRef, todayIso } from '@/lib/expenses/expenseMeta';
-import { allowedLinks, emptyExpenseForm, expenseFormFrom, expenseFormProblems, fitLinksToCategory, defaultFor, forOf, forOptions, linksFor, likelyDuplicates, suggestPayFrom, payFromOptions, lastPayFrom, rememberPayFrom, type ExpenseForm, type ExpenseFor } from '@/lib/expenses/expenseForm';
+import { allowedLinks, emptyExpenseForm, expenseFormFrom, expenseFormProblems, fitLinksToCategory, defaultFor, forOf, forOptions, linksFor, likelyDuplicates, suggestPayFrom, payFromOptions, lastPayFrom, rememberPayFrom, vatInside, type ExpenseForm, type ExpenseFor } from '@/lib/expenses/expenseForm';
 import { financeService } from '@/services/financeService';
 import { TripPicker } from '@/components/expenses/TripPicker';
 import { toPickedTrip, type PickedTrip } from '@/lib/expenses/pickedTrip';
@@ -75,6 +76,8 @@ export default function ExpenseEditorPage() {
   const [tried, setTried] = useState(false);
   const [showNote, setShowNote] = useState(false);
   const [showBillDate, setShowBillDate] = useState(false);
+  // VAT: off, worked out at 15% of the amount (kept in step with it), or typed from the receipt
+  const [vatMode, setVatMode] = useState<'off' | 'auto' | 'manual'>('off');
   // "What it's for" before its trip, truck or driver is picked
   const [forPick, setForPick] = useState<ExpenseFor | null>(null);
   const loaded = useRef<string | null>(null);
@@ -83,6 +86,7 @@ export default function ExpenseEditorPage() {
     if (!source.data || loaded.current === source.data.id) return;
     loaded.current = source.data.id;
     setForm(expenseFormFrom(source.data, !editing));
+    setVatMode(Number(source.data.vat_amount) > 0 ? 'manual' : 'off');
   }, [source.data, editing]);
 
   // The chosen trip (its truck and driver are the expense's); loaded for a saved expense or ?trip=
@@ -128,6 +132,14 @@ export default function ExpenseEditorPage() {
     if (pick) setForm((f) => ({ ...f, payment_account_id: pick }));
   }, [paid, form.payment_account_id, form.payment_method, payFrom]);
   const amount = Number(form.amount);
+  const vat = vatMode === 'off' ? 0 : Number(form.vat_amount) || 0;
+  const netCost = Math.round((amount - vat) * 100) / 100;
+  // Auto VAT follows the amount
+  useEffect(() => {
+    if (vatMode !== 'auto') return;
+    const next = vatInside(Number(form.amount));
+    setForm((f) => (f.vat_amount === (next ? String(next) : '') ? f : { ...f, vat_amount: next ? String(next) : '' }));
+  }, [vatMode, form.amount]);
   const rule = expenseCategoryRule(form.category);
   const links = allowedLinks(form.category);
   const vehicleRequired = paid && Boolean(rule.needsTruckWhenPaid) && !form.trip_id;
@@ -171,6 +183,7 @@ export default function ExpenseEditorPage() {
         category: form.category.trim(),
         status: form.status,
         amount,
+        vat_amount: vat,
         currency: 'SAR',
         expense_date: form.expense_date || todayIso(),
         payee: form.payee.trim() || undefined,
@@ -433,6 +446,50 @@ export default function ExpenseEditorPage() {
                       </datalist>
                     </div>
                   </div>
+                  {/* Reclaimable VAT: only with a supplier tax invoice */}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <label className="flex cursor-pointer items-center gap-2 text-xs text-foreground">
+                      <Checkbox
+                        checked={vatMode !== 'off'}
+                        onCheckedChange={(c) => {
+                          setVatMode(c ? 'auto' : 'off');
+                          if (!c) set('vat_amount', '');
+                        }}
+                        aria-label="Tax invoice with VAT"
+                      />
+                      Tax invoice with VAT
+                    </label>
+                    {vatMode !== 'off' && (
+                      <>
+                        <div className="relative w-36">
+                          <Input
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            step="0.01"
+                            value={form.vat_amount}
+                            onChange={(e) => {
+                              setVatMode('manual');
+                              set('vat_amount', e.target.value);
+                            }}
+                            aria-label="VAT amount"
+                            className={cn('fin-num h-8 pr-12 text-right text-xs', tried && vat >= amount && amount > 0 && 'border-chip-negative-border')}
+                          />
+                          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">VAT</span>
+                        </div>
+                        {vatMode === 'manual' && (
+                          <button type="button" onClick={() => setVatMode('auto')} className="text-[11px] text-muted-foreground hover:text-foreground">
+                            Use 15%
+                          </button>
+                        )}
+                        {amount > 0 && vat > 0 && vat < amount && (
+                          <span className="text-[11px] text-muted-foreground">
+                            Cost <span className="fin-num font-medium text-foreground">{formatMoney(netCost)}</span> · VAT reclaimed <span className="fin-num font-medium text-foreground">{formatMoney(vat)}</span>
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </Step>
 
                 <Step n={3} title="What it's for" hint={form.category.trim() && forChoices.length > 1 ? `what ${form.category.toLowerCase()} can be charged to` : undefined}>
@@ -598,6 +655,11 @@ export default function ExpenseEditorPage() {
                   <span className="mr-1 text-xs font-medium text-muted-foreground">SAR</span>
                   {formatMoney(amount > 0 ? amount : 0)}
                 </p>
+                {vat > 0 && amount > vat && (
+                  <p className="fin-num text-muted-foreground">
+                    {formatMoney(netCost)} + VAT {formatMoney(vat)}
+                  </p>
+                )}
                 {form.payee.trim() && <p className="truncate text-muted-foreground">to {form.payee.trim()}</p>}
                 <p className="flex items-center gap-1.5 text-muted-foreground" title="Where this cost counts">
                   <WhereIcon className="size-3.5 shrink-0" /> {where}
@@ -612,9 +674,12 @@ export default function ExpenseEditorPage() {
                     <p className="text-muted-foreground">Posting is off</p>
                   ) : paid && !form.payment_account_id ? (
                     <p className={TONE_CLASSES.warning.fg}>Choose Paid from to post it</p>
+                  ) : vat > 0 && !ledgerSetup.data.vat_input_account_id ? (
+                    <p className={TONE_CLASSES.warning.fg}>Set the VAT input account in Expenses → Ledger setup to post VAT</p>
                   ) : (
                     <>
-                      <p className="text-foreground">Dr {form.category || 'expense'}</p>
+                      <p className="fin-num flex justify-between gap-2 text-foreground"><span className="truncate font-sans">Dr {form.category || 'expense'}</span>{amount > 0 && <span>{formatMoney(netCost)}</span>}</p>
+                      {vat > 0 && <p className="fin-num flex justify-between gap-2 text-foreground"><span className="font-sans">Dr VAT input</span><span>{formatMoney(vat)}</span></p>}
                       <p className="text-foreground">Cr {paid ? payFromName ?? 'the chosen account' : 'payables, until paid'}</p>
                     </>
                   )}

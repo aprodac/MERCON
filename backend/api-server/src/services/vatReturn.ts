@@ -1,7 +1,8 @@
 /**
  * VAT return, shaped like the ZATCA return's sales and purchases boxes, built from the documents:
- * issued invoices (per-line VAT), credit notes (adjustments, negative) and approved bills.
- * Voided documents don't count. Expenses carry no VAT field, so they are not in purchases.
+ * issued invoices (per-line VAT), credit notes (adjustments, negative), approved bills, and
+ * expenses with reclaimable VAT (not the ones carried on a bill, which the bill counts).
+ * Voided documents don't count.
  */
 import { Prisma, PrismaClient } from '@prisma/client';
 import { prisma as defaultPrisma } from '../db';
@@ -14,7 +15,7 @@ export type VatBox = 'standard_sales' | 'zero_sales' | 'standard_purchases' | 'n
 
 export interface VatDoc {
   box: VatBox;
-  kind: 'invoice' | 'credit_note' | 'bill';
+  kind: 'invoice' | 'credit_note' | 'bill' | 'expense';
   id: string;
   ref: string | null;
   date: string;
@@ -75,7 +76,7 @@ export async function loadVatReturn(fromDay: string, toDay: string, db: Db = def
   const day = (d: Date) => localDay(d, tz);
   const range = { gte: localDateToUtc(fromDay, tz, false), lte: localDateToUtc(toDay, tz, true) };
 
-  const [invoices, notes, bills] = await Promise.all([
+  const [invoices, notes, bills, expenses] = await Promise.all([
     db.invoice.findMany({
       where: { status: { in: [...ISSUED] }, invoice_date: range },
       select: { id: true, ref_id: true, invoice_date: true, customer: { select: { name: true } }, lines: { select: { amount: true, tax_rate: true, tax_amount: true } } },
@@ -88,7 +89,17 @@ export async function loadVatReturn(fromDay: string, toDay: string, db: Db = def
       where: { status: { in: [...APPROVED_BILLS] }, bill_date: range },
       select: { id: true, ref_id: true, bill_date: true, subtotal: true, tax_amount: true, payee_name: true, provider: { select: { name: true } } },
     }),
+    db.expense.findMany({
+      where: { deletedAt: null, vat_amount: { gt: 0 }, expense_date: range },
+      select: { id: true, ref_id: true, expense_date: true, amount: true, vat_amount: true, payee: true, category: true },
+    }),
   ]);
+  // Expenses on a live bill are counted through the bill
+  const onBills = expenses.length
+    ? new Set(
+        (await db.billLine.findMany({ where: { source_type: 'Expense', source_id: { in: expenses.map((e) => e.id) }, bill: { status: { not: 'Void' } } }, select: { source_id: true } })).map((l) => l.source_id),
+      )
+    : new Set<string | null>();
 
   const docs: VatDoc[] = [];
   // An invoice can mix 15% and 0% lines: it counts in each box for its own lines
@@ -117,6 +128,14 @@ export async function loadVatReturn(fromDay: string, toDay: string, db: Db = def
     docs.push({
       box: vat > 0.005 ? 'standard_purchases' : 'no_vat_purchases', kind: 'bill', id: b.id, ref: b.ref_id, date: day(b.bill_date), party: b.provider?.name ?? b.payee_name ?? '—',
       amount: r2(Number(b.subtotal)), adjustment: 0, vat: r2(vat),
+    });
+  }
+  for (const e of expenses) {
+    if (onBills.has(e.id)) continue;
+    const vat = Number(e.vat_amount);
+    docs.push({
+      box: 'standard_purchases', kind: 'expense', id: e.id, ref: e.ref_id, date: day(e.expense_date), party: e.payee || e.category,
+      amount: r2(Number(e.amount) - vat), adjustment: 0, vat: r2(vat),
     });
   }
   docs.sort((a, b) => a.date.localeCompare(b.date));

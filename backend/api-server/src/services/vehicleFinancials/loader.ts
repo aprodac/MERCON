@@ -230,7 +230,7 @@ async function load(db: Db, range: Range, scope: Scope) {
     const vehicleId = e.trip?.vehicleId ?? e.vehicleId;
     if (!line || !vehicleId) continue;
     if (scope.vehicleId && vehicleId !== scope.vehicleId) continue;
-    costs.push({ id: e.id, refId: e.ref_id, source: 'expense', vehicleId, day: localDay(e.expense_date, tz), amount: num(e.amount), line, category: e.category, description: e.description });
+    costs.push({ id: e.id, refId: e.ref_id, source: 'expense', vehicleId, day: localDay(e.expense_date, tz), amount: num(e.amount) - num(e.vat_amount), line, category: e.category, description: e.description });
   }
   for (const m of maintenance) {
     costs.push({

@@ -21,6 +21,8 @@ export async function populateLinesFromSources(
     accountId?: string | null;
     description: string;
     amount: number;
+    /** Reclaimable VAT of an expense line; the line is net of it and it joins the bill's VAT. */
+    vat?: number;
   }[] = [];
 
   if (expenseIds && expenseIds.length > 0) {
@@ -34,7 +36,8 @@ export async function populateLinesFromSources(
         source_id: exp.id,
         accountId: null, // picked by operator or resolved via default expense accounts
         description: `[${exp.ref_id || 'EXP'}] ${exp.category}: ${exp.description || exp.payee || 'Operating Expense'}`,
-        amount: Number(exp.amount) || 0,
+        amount: Math.round(((Number(exp.amount) || 0) - (Number(exp.vat_amount) || 0)) * 100) / 100,
+        vat: Number(exp.vat_amount) || 0,
       });
     }
   }
@@ -306,7 +309,9 @@ export const createDraftBill = async (req: Request, res: Response) => {
     const ref_id = await nextBillRefId(prisma);
 
     const subtotal = allLines.reduce((sum, l) => sum + l.amount, 0);
-    const tax_amount = validated.tax_amount || 0;
+    // Expenses brought onto the bill bring their VAT with them
+    const expenseVat = autoLines.reduce((sum, l) => sum + (l.vat || 0), 0);
+    const tax_amount = Math.round(((validated.tax_amount || 0) + expenseVat) * 100) / 100;
     const total_amount = subtotal + tax_amount;
     const balance_due = total_amount;
 

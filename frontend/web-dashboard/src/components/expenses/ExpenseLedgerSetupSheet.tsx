@@ -34,10 +34,13 @@ export function ExpenseLedgerSetupSheet({ open, onOpenChange, extraCategories }:
   const all = ((accounts.data?.data ?? []) as Account[]).filter((a) => a.is_postable);
   const expenseAccounts = all.filter((a) => a.account_type === 'Expense');
   const liabilityAccounts = all.filter((a) => a.account_type === 'Liability');
+  // VAT input is usually an asset (VAT receivable); some charts keep it under liabilities
+  const vatInputAccounts = all.filter((a) => a.account_type === 'Asset' || a.account_type === 'Liability');
 
   const [def, setDef] = useState<string>('');
   const [map, setMap] = useState<Record<string, string>>({});
   const [ap, setAp] = useState<string>('');
+  const [vatIn, setVatIn] = useState<string>('');
   const [fallback, setFallback] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const [posting, setPosting] = useState(false);
@@ -48,6 +51,7 @@ export function ExpenseLedgerSetupSheet({ open, onOpenChange, extraCategories }:
     setDef(setup.data.default_expense_account_id ?? '');
     setMap(setup.data.category_accounts ?? {});
     setAp(setup.data.payable_account_id ?? '');
+    setVatIn(setup.data.vat_input_account_id ?? '');
   }, [open, setup.data]);
   useEffect(() => {
     if (open) setResult(null);
@@ -60,7 +64,7 @@ export function ExpenseLedgerSetupSheet({ open, onOpenChange, extraCategories }:
     setSaving(true);
     try {
       const clean = Object.fromEntries(Object.entries(map).filter(([, v]) => v));
-      await expenseService.updateLedgerSetup({ default_expense_account_id: def || null, category_accounts: clean, payable_account_id: ap || null });
+      await expenseService.updateLedgerSetup({ default_expense_account_id: def || null, category_accounts: clean, payable_account_id: ap || null, vat_input_account_id: vatIn || null });
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       queryClient.invalidateQueries({ queryKey: ['settings'] });
       toast.success(def ? 'Expense accounts saved. New and edited expenses now post to the ledger.' : 'Saved. Expenses will post once a default account is set.');
@@ -132,6 +136,20 @@ export function ExpenseLedgerSetupSheet({ open, onOpenChange, extraCategories }:
                 </SelectContent>
               </Select>
             </div>
+          </div>
+          <div className="space-y-1">
+            <Label className={label}>VAT input (reclaimable VAT on expenses and bills)</Label>
+            <Select value={vatIn || NONE} onValueChange={(v) => v && setVatIn(v === NONE ? '' : v)}>
+              <SelectTrigger className="h-9 text-xs" aria-label="VAT input account">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE} className="text-xs text-muted-foreground">Not set (expenses with VAT won't post)</SelectItem>
+                {vatInputAccounts.map((a) => (
+                  <SelectItem key={a.id} value={a.id} className="text-xs">{accountLabel(a)} <span className="text-muted-foreground">· {a.account_type.toLowerCase()}</span></SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           {expenseAccounts.length === 0 && !accounts.isLoading && (
             <p className={cn('text-xs', TONE_CLASSES.warning.fg)}>There are no postable Expense accounts yet. Add them in Finance → Chart of accounts.</p>

@@ -580,10 +580,11 @@ export const getTripById = async (req: Request, res: Response) => {
     // Costs recorded against this trip in Expenses (fuel, tolls) come off its margin
     const tripExpenses = await prisma.expense.findMany({
       where: { tripId: trip.id, deletedAt: null },
-      select: { id: true, ref_id: true, category: true, amount: true, status: true, expense_date: true, payee: true },
+      select: { id: true, ref_id: true, category: true, amount: true, vat_amount: true, status: true, expense_date: true, payee: true },
       orderBy: { expense_date: 'asc' },
     });
-    const tripExpensesTotal = Math.round(tripExpenses.reduce((sum, e) => sum + Number(e.amount), 0) * 100) / 100;
+    // The cost is net of reclaimable VAT
+    const tripExpensesTotal = Math.round(tripExpenses.reduce((sum, e) => sum + Number(e.amount) - Number(e.vat_amount), 0) * 100) / 100;
     const netMargin = Math.round((fin.balanceMargin - tripExpensesTotal) * 100) / 100;
 
     const stopIds = (trip.stops || []).map((s: any) => s.id).filter(isUuid);

@@ -17,15 +17,16 @@ import { cn } from '@/lib/utils';
 const BOX_META: Record<VatBox, { no: string; label: string; hint: string }> = {
   standard_sales: { no: '1', label: 'Standard-rated sales (15%)', hint: 'Invoice lines with VAT' },
   zero_sales: { no: '3–4', label: 'Zero-rated sales and exports', hint: 'Invoice lines at 0%, e.g. international freight' },
-  standard_purchases: { no: '7', label: 'Standard-rated purchases', hint: 'Approved bills with VAT' },
+  standard_purchases: { no: '7', label: 'Standard-rated purchases', hint: 'Approved bills and expenses with VAT' },
   no_vat_purchases: { no: '10–11', label: 'Purchases without VAT', hint: 'Approved bills with no VAT' },
 };
 const KIND_LINK: Record<VatDoc['kind'], (id: string) => string> = {
   invoice: (id) => `/finance/invoices/${id}`,
   credit_note: () => '/finance/invoices',
   bill: () => '/finance/bills',
+  expense: (id) => `/expenses?view=${id}`,
 };
-const KIND_LABEL: Record<VatDoc['kind'], string> = { invoice: 'Invoice', credit_note: 'Credit note', bill: 'Bill' };
+const KIND_LABEL: Record<VatDoc['kind'], string> = { invoice: 'Invoice', credit_note: 'Credit note', bill: 'Bill', expense: 'Expense' };
 
 function csv(rows: VatDoc[]) {
   const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
@@ -185,7 +186,7 @@ export default function VatReturnPage() {
 
         <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
           <Info className="mt-px size-3.5 shrink-0" />
-          Built from issued invoices, credit notes and approved bills dated in the period; voided documents don't count. Expenses have no VAT field, so VAT paid on them isn't here. Check the figures with your accountant before filing with ZATCA.
+          Built from issued invoices, credit notes and approved bills dated in the period; voided documents don't count. Expenses count when they're marked as a tax invoice with VAT. Check the figures with your accountant before filing with ZATCA.
         </p>
       </div>
     </DashboardLayout>

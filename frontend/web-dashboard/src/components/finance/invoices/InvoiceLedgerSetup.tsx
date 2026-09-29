@@ -203,7 +203,7 @@ export function InvoiceLedgerSetupSheet({ open, onOpenChange }: { open: boolean;
       <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
         <SheetHeader className="border-b p-5 pr-14">
           <SheetTitle className="text-base">Ledger setup for invoices</SheetTitle>
-          <SheetDescription className="text-xs">Issuing an invoice posts Dr accounts receivable for the total, Cr revenue for the amount before VAT and Cr VAT output for the VAT.</SheetDescription>
+          <SheetDescription className="text-xs">Issuing an invoice posts Dr accounts receivable for the total, Cr revenue for the amount before VAT and Cr VAT output for the VAT. VAT input takes the reclaimable VAT on bills and expenses.</SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           {!loading && (

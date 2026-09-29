@@ -27,6 +27,7 @@
     "test:driver-settlement": "node -r ts-node/register --test src/tests/driverSettlement.test.ts",
     "test:credit-notes": "node -r ts-node/register --test src/tests/creditNote.test.ts",
     "test:vat-return": "node -r ts-node/register --test src/tests/vatReturn.test.ts",
+    "test:purchase-vat": "node -r ts-node/register --test src/tests/purchaseVat.test.ts",
     "test:fleet-live-map": "node -r ts-node/register --test src/tests/fleetLiveMap.test.ts",
     "test:operator-inbox": "node -r ts-node/register --test src/tests/operatorInbox.test.ts",
     "test:trip-overview": "node -r ts-node/register --test src/tests/tripOverview.test.ts",
