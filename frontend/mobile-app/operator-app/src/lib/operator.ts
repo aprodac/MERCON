@@ -513,6 +513,8 @@ export interface OperatorDocument {
 
 export const ACTIVE_TRIP_STATUSES = ['Scheduled', 'Loading', 'InTransit', 'Delayed', 'Emergency'];
 
+let timezoneRequest: Promise<string> | null = null;
+
 export const operatorService = {
   async summary(): Promise<DashboardSummary> {
     const { data } = await api.get('/reports/summary');
@@ -531,12 +533,12 @@ export const operatorService = {
   },
 
   async drivers(): Promise<OperatorDriver[]> {
-    const { data } = await api.get('/drivers', { params: { per_page: 100 } });
+    const { data } = await api.get('/drivers', { params: { mode: 'lookup', per_page: 100 } });
     return (data.data ?? []) as OperatorDriver[];
   },
 
   async vehicles(): Promise<OperatorVehicle[]> {
-    const { data } = await api.get('/vehicles', { params: { per_page: 100 } });
+    const { data } = await api.get('/vehicles', { params: { mode: 'lookup', per_page: 100 } });
     return (data.data ?? []) as OperatorVehicle[];
   },
 
@@ -545,26 +547,12 @@ export const operatorService = {
     return (data.data ?? []) as OperatorInvoice[];
   },
 
+  /** GET /trips/:id already carries every document on the trip and its stops. */
   async tripById(id: string): Promise<OperatorTripDetail> {
     const { data } = await api.get(`/trips/${id}`);
-    const tripDetail = data.data as OperatorTripDetail;
-
-    if (!tripDetail.documents || tripDetail.documents.length === 0) {
-      try {
-        const docRes = await api.get('/documents', {
-          params: { entity_type: 'Trip', entity_id: tripDetail.id || id, per_page: 50 },
-        });
-        const docs = docRes.data?.data || [];
-        if (docs.length > 0) {
-          tripDetail.documents = docs;
-        }
-      } catch {
-        // silent fallback
-      }
-    }
-
-    return tripDetail;
+    return data.data as OperatorTripDetail;
   },
+
 
   async customers(): Promise<OperatorCustomer[]> {
     const { data } = await api.get('/customers', { params: { per_page: 100 } });
@@ -587,12 +575,12 @@ export const operatorService = {
   },
 
   async availableDrivers(): Promise<OperatorDriver[]> {
-    const { data } = await api.get('/drivers', { params: { per_page: 100, status: 'Available' } });
+    const { data } = await api.get('/drivers', { params: { mode: 'lookup', per_page: 100, status: 'Available' } });
     return (data.data ?? []) as OperatorDriver[];
   },
 
   async availableVehicles(): Promise<OperatorVehicle[]> {
-    const { data } = await api.get('/vehicles', { params: { per_page: 100, status: 'Available' } });
+    const { data } = await api.get('/vehicles', { params: { mode: 'lookup', per_page: 100, status: 'Available' } });
     return (data.data ?? []) as OperatorVehicle[];
   },
 
@@ -718,14 +706,20 @@ export const operatorService = {
     }
   },
 
-  /** The deployment timezone trip times are entered in (Settings.timezone). */
-  async deploymentTimezone(): Promise<string> {
-    try {
-      const { data } = await api.get('/settings/public');
-      return data?.data?.timezone || 'Asia/Riyadh';
-    } catch {
-      return 'Asia/Riyadh';
+  /**
+   * The deployment timezone trip times are entered in (Settings.timezone).
+   * Asked once per app run: Home, Trips, Trip details and Create Trip all need it.
+   */
+  deploymentTimezone(): Promise<string> {
+    if (!timezoneRequest) {
+      timezoneRequest = api.get('/settings/public')
+        .then(({ data }) => (data?.data?.timezone as string | undefined) || 'Asia/Riyadh')
+        .catch(() => {
+          timezoneRequest = null; // try again next time
+          return 'Asia/Riyadh';
+        });
     }
+    return timezoneRequest;
   },
 
   /**
