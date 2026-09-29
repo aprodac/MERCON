@@ -359,6 +359,7 @@ this is the single source of truth all three surfaces (Kanban, Trip Details, Dri
 ### Milestone 4 — Testing, builds, handover
 - ⬜ Real-phone test, both roles (Android + iPhone)
 - 🔄 EAS builds — APK (Android) + TestFlight (iOS); app linked to an EAS project (`c99aab6`), no build run yet
+  - 2026-09-29: driver `eas.json` production profile (Play Store AAB) now sets `EXPO_PUBLIC_API_URL=https://mercon.tech/api` (was falling back to dev). First workflow run (2026-09-24) failed: repo `EXPO_TOKEN` is not authorized on the `alan32` Expo project — needs a token from `alan32` (or a member of it)
 - ⬜ Database backup set up + tested once
 - ⬜ Short user guide (operator + driver, with screenshots)
 - ⬜ Full end-to-end acceptance: create trip → driver runs it → invoice appears
