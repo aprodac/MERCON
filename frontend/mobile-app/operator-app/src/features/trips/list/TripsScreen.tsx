@@ -1,7 +1,8 @@
 /**
  * Route: /trips — the operator's trips.
  *
- *   Now      — a live board: needs attention, on the road, starting next.
+ *   Board    — kanban columns by status (Scheduled · Loading · In transit · Delayed).
+ *   Now      — a live list: needs attention, on the road, starting next.
  *   Schedule — a date strip (with a count per day) and that day's trips.
  *   History  — delivered and cancelled trips by day, loading as you scroll.
  * Search looks across every trip on the server. Long-press a trip for quick
@@ -14,13 +15,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  Building2, CalendarDays, CircleCheckBig, History, MessageCircle, Phone, Radio, Search, Send, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
+  Building2, CalendarDays, CircleCheckBig, History, Columns3, MessageCircle, Phone, Radio, Search, Send, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import type { OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
+import { KanbanBoard } from './KanbanBoard';
 import { useNow, useTripList, SCHEDULE_AFTER, SCHEDULE_BEFORE, type View as ListView } from './useTripList';
 import {
   dayLabel, dayRange, driverNameOf, driverPhoneOf, groupByDay, needsAttention, phaseOf, tripDayIso, type TimeFmt,
@@ -44,7 +46,7 @@ export default function TripsScreen() {
         ? { kind: 'customer', filter: { customer_id: String(params.customerId) }, label: String(params.customerName ?? 'This customer') }
         : null,
   );
-  const [view, setView] = useState<ListView>(params.vehicleId || params.customerId ? 'history' : 'now');
+  const [view, setView] = useState<ListView>(params.vehicleId || params.customerId ? 'history' : 'board');
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -127,6 +129,7 @@ export default function TripsScreen() {
 
   const views: { id: ListView; label: string; icon: LucideIcon; badge?: number }[] = [
     { id: 'now', label: 'Now', icon: Radio, badge: board.attention.length || undefined },
+    { id: 'board', label: 'Board', icon: Columns3 },
     { id: 'schedule', label: 'Schedule', icon: CalendarDays },
     { id: 'history', label: 'History', icon: History },
   ];
@@ -208,7 +211,18 @@ export default function TripsScreen() {
             })}
           </View>
 
-          {view === 'now' ? (
+          {view === 'board' ? (
+            <KanbanBoard
+              trips={data.open}
+              f={f}
+              now={now}
+              loading={data.openLoading}
+              refreshing={refreshing}
+              onRefresh={refresh}
+              onOpen={open}
+              onLongPress={setActionsFor}
+            />
+          ) : view === 'now' ? (
             <SectionList
               sections={nowSections}
               keyExtractor={(t) => t.id}
