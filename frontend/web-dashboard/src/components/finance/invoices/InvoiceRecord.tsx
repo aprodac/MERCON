@@ -14,6 +14,7 @@ import { dueText, invoiceState, paidShare } from '@/lib/finance/invoices';
 import { formatDate, formatMoney } from '@/lib/finance/format';
 import { cn } from '@/lib/utils';
 import { InvoiceActions, InvoiceStateChip } from './InvoiceActions';
+import { InvoiceTripSheetButton } from './InvoiceTripSheetButton';
 import type { InvoiceCommand } from './useInvoiceWorkflow';
 
 const n = (v: number | string | null | undefined) => Number(v ?? 0);
@@ -209,6 +210,11 @@ export function InvoiceRecord({
               <Info label="Terms">{inv.customer?.payment_terms || '—'}</Info>
               <Info label="VAT rate">{n(inv.tax_rate)}%</Info>
             </div>
+            {lines.some((l) => l.tripId) && (
+              <div className="flex justify-end">
+                <InvoiceTripSheetButton invoiceId={inv.id} customerId={inv.customerId} />
+              </div>
+            )}
             <div className="overflow-hidden rounded-lg border">
               <table className="w-full text-left text-xs">
                 <thead className="border-b bg-muted/50 text-muted-foreground">

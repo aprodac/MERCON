@@ -2,7 +2,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Home, Truck, CalendarRange, Calculator, Building2, Car, Users, Wrench, Handshake,
   ReceiptText, Clock, CreditCard, Wallet, Landmark, Scale, HandCoins, BookOpen, BookOpenText,
-  FolderTree, CalendarCheck, BarChart3, FileBarChart, Coins, TrendingUp, FileSpreadsheet,
+  FolderTree, CalendarCheck, BarChart3, FileBarChart, Coins, TrendingUp,
   SlidersHorizontal, Files, GraduationCap, Bell, Settings, Palette, UserCog, ShieldCheck,
   Map as MapIcon, MapPin, Layers, Tags, FileType, Trash2, ScrollText, AlertTriangle, Activity, FolderArchive, FileCheck2,
   ArrowLeftRight, Percent, Banknote,
@@ -197,7 +197,6 @@ export const NAV_PAGES: NavPage[] = [
   },
 
   // Workspace
-  { id: 'company-reports', label: 'Reports', path: '/company-reports', icon: FileSpreadsheet, section: 'workspace', moduleKey: 'company-reports', permissionKey: 'reports.view', keywords: ['company reports', 'export'] },
   { id: 'report-builder', label: 'Report builder', path: '/report-builder', icon: SlidersHorizontal, section: 'workspace', moduleKey: 'report-builder', permissionKey: 'reports.view', keywords: ['quick report', 'advanced builder', 'custom report'] },
   {
     id: 'documents', label: 'Documents', path: '/documents', icon: Files, section: 'workspace', moduleKey: 'documents', keywords: ['files', 'expiry'],

@@ -28,6 +28,8 @@ router.post('/', uploadSpreadsheet.single('file'), createReportTemplate);
 router.patch('/:id', uploadSpreadsheet.single('file'), updateReportTemplate);
 router.delete('/:id', deleteReportTemplate);
 
+// Body: { invoiceId } for an invoice's trips, or { startDate, endDate } for the
+// format's customer over a date range.
 router.post('/:id/preview', previewReportTemplate);
 router.post('/:id/generate', generateReportTemplate);
 

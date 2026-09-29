@@ -132,7 +132,6 @@ const ReportsDashboardPage        = lazyWithRetry(() => import('@/pages/reports/
 const FleetPerformancePage        = lazyWithRetry(() => import('@/pages/reports/FleetPerformancePage'));
 const RevenueReportsPage          = lazyWithRetry(() => import('@/pages/reports/RevenueReportsPage'));
 const CustomReportPage            = lazyWithRetry(() => import('@/pages/reports/CustomReportPage'));
-const CompanyReportsGeneratorPage = lazyWithRetry(() => import('@/pages/reports/CompanyReportsGeneratorPage'));
 const DelayReportPage             = lazyWithRetry(() => import('@/pages/reports/DelayReportPage'));
 
 // Smart Report Builder
@@ -369,12 +368,12 @@ export default function AppRouter() {
             <Route path="/custom-report"            element={<RequireModule moduleKey="reports"><CustomReportPage /></RequireModule>} />
             <Route path="/reports/custom"          element={<RequireModule moduleKey="reports"><CustomReportPage /></RequireModule>} />
 
-            {/* Reports (Legacy -> Redirect to Company Reports) */}
-            <Route path="/reports/*"                element={<Navigate to="/company-reports" replace />} />
-            <Route path="/reports"                  element={<Navigate to="/company-reports" replace />} />
+            {/* Reports (legacy) -> Report builder */}
+            <Route path="/reports/*"                element={<Navigate to="/report-builder" replace />} />
+            <Route path="/reports"                  element={<Navigate to="/report-builder" replace />} />
 
-            {/* Custom Company Reports Generator */}
-            <Route path="/company-reports"          element={<RequireModule moduleKey="company-reports"><CompanyReportsGeneratorPage /></RequireModule>} />
+            {/* Company Excel reports now live on the customer (Trip sheets tab) and the invoice (Trip sheet button) */}
+            <Route path="/company-reports"          element={<Navigate to="/customers" replace />} />
 
             {/* Smart Report Builder */}
             <Route path="/report-builder"          element={<RequireModule moduleKey="report-builder"><ReportBuilderLandingPage /></RequireModule>} />
