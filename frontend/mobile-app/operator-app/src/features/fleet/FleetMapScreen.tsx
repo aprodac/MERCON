@@ -12,17 +12,20 @@
  * Not ported from the web: assigning trucks and changing trip status —
  * those stay on the trip's own page.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, TextInput, ScrollView, FlatList, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronRight, List, Map as MapIcon, MessageCircle, Phone, Search, Smartphone, Truck, X } from 'lucide-react-native';
+import {
+  ChevronRight, Compass, Focus, List, Map as MapIcon, MessageCircle, Minus, Moon, Navigation, Phone, Plus, Search, Smartphone, Sun, Truck, X,
+  type LucideIcon,
+} from 'lucide-react-native';
 import { operatorService, type LiveUnit } from '../../lib/operator';
 import { AppTopBar } from '@/components/AppTopBar';
 import { niceName } from '../trips/create/components/ui';
 import { makeTime } from '../trips/list/tripListModel';
-import { FleetMap, STATE_STYLE, unitState } from './FleetMap';
+import { FleetMap, STATE_STYLE, unitState, type FleetMapHandle, type FocusMode, type MapTheme, type MapView } from './FleetMap';
 import {
   NEAR_KM, agoText, buildEtaShareText, computeEta, formatDuration, formatKm, haversineKm, isDelayed, isFree, isSilent,
   matchesFilter, matchesQuery, nextStop, onTrip, placeFromQuery, punctuality, unitPriority, type FleetFilter,
@@ -75,7 +78,30 @@ export default function FleetMapScreen() {
   }, [all, filter, place, query, now]);
 
   const unit = all.find((u) => u.key === selected) ?? null;
-  const pick = (key: string | null) => { setSelected(key); if (key) setView('map'); };
+  const pick = (key: string | null) => { setSelected(key); setFocusMode('none'); if (key) setView('map'); };
+
+  // Map view state (the web map's controls): theme, 2D/3D, driver view / trip overview.
+  const mapRef = useRef<FleetMapHandle>(null);
+  const [theme, setTheme] = useState<MapTheme>('light');
+  const [is3D, setIs3D] = useState(false);
+  const [focusMode, setFocusMode] = useState<FocusMode>('none');
+  const [camera, setCamera] = useState<MapView>({ zoom: 5, pitch: 0, bearing: 0 });
+  const turned = Math.abs(camera.bearing) > 1 || camera.pitch > 1;
+
+  // One road route for the selected truck: drawn on the map and used for its ETA.
+  const next = unit ? nextStop(unit) : null;
+  const target = next && next.lat != null && next.lng != null ? { lat: next.lat, lng: next.lng } : null;
+  // Rounded so a few metres of GPS drift don't refetch.
+  const from = unit?.position ? { lat: +unit.position.lat.toFixed(3), lng: +unit.position.lng.toFixed(3) } : null;
+  const routeQ = useQuery({
+    queryKey: ['fleet', 'route', unit?.key, from?.lat, from?.lng, target?.lat, target?.lng],
+    queryFn: () => operatorService.liveRoute([from!, target!]),
+    enabled: !!from && !!target && !!unit && onTrip(unit),
+    staleTime: 60_000,
+  });
+  const eta = unit && onTrip(unit) && (routeQ.isFetched || !target) ? computeEta(unit, routeQ.data ?? null, live.dataUpdatedAt || now) : null;
+
+  const lastUpdate = live.dataUpdatedAt ? agoText(new Date(live.dataUpdatedAt).toISOString(), now) : null;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
@@ -127,16 +153,76 @@ export default function FleetMapScreen() {
       ) : (
         <View style={{ flex: 1 }}>
           <FleetMap
+            ref={mapRef}
             units={shown}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={pick}
             interactive
+            theme={theme}
+            tilted={is3D}
+            focusMode={focusMode}
+            routeLine={routeQ.data?.geometry ?? null}
             focus={place ? { lat: place.lat, lng: place.lng, km: NEAR_KM } : null}
-            padding={{ top: 70, bottom: unit ? 360 : 70 }}
+            padding={{ top: 70, bottom: unit && focusMode === 'none' ? 380 : 70 }}
+            onViewChange={setCamera}
           />
-          {unit ? (
-            <UnitCard unit={unit} now={now} f={f} onClose={() => setSelected(null)} onOpen={(id) => router.push({ pathname: '/trip-details', params: { id } })} />
-          ) : (
+
+          {/* Top-left: live status (and speed while a picked truck is moving) */}
+          <View style={s.topLeft} pointerEvents="none">
+            <View style={s.live}>
+              <View style={[s.liveDot, { backgroundColor: live.isError ? '#D92D20' : '#16A34A' }]} />
+              <Text style={s.liveText}>{live.isError ? 'Connection lost' : 'Live'}</Text>
+              {lastUpdate && !live.isError ? <Text style={s.liveAgo}>· {lastUpdate}</Text> : null}
+            </View>
+            {unit?.motion === 'moving' && unit.position?.speed_kph != null ? (
+              <View style={s.speed}>
+                <Text style={s.speedNum}>{Math.round(unit.position.speed_kph)}</Text>
+                <Text style={s.speedUnit}>km/h</Text>
+              </View>
+            ) : null}
+          </View>
+
+          {/* The picked truck's views, like the web's focus bar — just above its card, or at the bottom in a focus view */}
+          {unit?.position ? (
+            <View style={[s.viewBar, { bottom: focusMode === 'none' ? 404 : 28 }]}>
+              <Text style={s.viewPlate} numberOfLines={1}>{unit.vehicle?.plate_number ?? 'Truck'}</Text>
+              <ViewChip icon={Navigation} label="Driver view" on={focusMode === 'driver'} onPress={() => { setFocusMode('driver'); mapRef.current?.driverView(); }} />
+              {unit.trip ? <ViewChip icon={MapIcon} label="Trip" on={focusMode === 'overview'} onPress={() => { setFocusMode('overview'); mapRef.current?.tripOverview(); }} /> : null}
+              {focusMode !== 'none' ? (
+                <TouchableOpacity style={s.exit} onPress={() => { setFocusMode('none'); mapRef.current?.set3D(is3D); }}>
+                  <Text style={s.exitText}>Exit</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          ) : null}
+
+          {/* Right: map controls */}
+          <View style={[s.ctlCol, unit && focusMode === 'none' ? { top: 12 } : { bottom: unit ? 84 : 80 }]}>
+            <View style={s.ctlGroup}>
+              <TouchableOpacity
+                style={[s.ctl, s.ctl3d, is3D && s.ctlOn]}
+                onPress={() => { const v = !is3D; setIs3D(v); mapRef.current?.set3D(v); }}
+                accessibilityLabel={is3D ? 'Switch to 2D' : 'Switch to 3D'}
+              >
+                <Text style={[s.ctl3dText, is3D && { color: '#FFFFFF' }]}>{is3D ? '3D' : '2D'}</Text>
+              </TouchableOpacity>
+              {turned ? (
+                <Ctl icon={Compass} label="Face north and flatten" onPress={() => { setIs3D(false); setFocusMode('none'); mapRef.current?.faceNorth(); }} rotate={-camera.bearing - 45} />
+              ) : null}
+              <Ctl icon={Focus} label="Show all trucks" onPress={() => { pick(null); mapRef.current?.fitAll(); }} />
+            </View>
+            <View style={s.ctlGroup}>
+              <Ctl icon={theme === 'light' ? Moon : Sun} label={theme === 'light' ? 'Dark map' : 'Light map'} onPress={() => setTheme(theme === 'light' ? 'dark' : 'light')} />
+            </View>
+            <View style={s.ctlGroup}>
+              <Ctl icon={Plus} label="Zoom in" onPress={() => mapRef.current?.zoomBy(1)} />
+              <Ctl icon={Minus} label="Zoom out" onPress={() => mapRef.current?.zoomBy(-1)} />
+            </View>
+          </View>
+
+          {unit && focusMode === 'none' ? (
+            <UnitCard unit={unit} eta={eta} routeLoading={routeQ.isLoading} now={now} f={f} onClose={() => pick(null)} onOpen={(id) => router.push({ pathname: '/trip-details', params: { id } })} />
+          ) : unit ? null : (
             <View style={s.hint} pointerEvents="none">
               <Text style={s.hintText}>
                 {live.isLoading ? 'Loading trucks…' : `${shown.length} ${shown.length === 1 ? 'truck' : 'trucks'} · tap one for details`}
@@ -183,22 +269,32 @@ function UnitRow({ unit: u, now, km, onPress }: { unit: LiveUnit; now: number; k
   );
 }
 
-function UnitCard({ unit: u, now, f, onClose, onOpen }: {
-  unit: LiveUnit; now: number; f: ReturnType<typeof makeTime>; onClose: () => void; onOpen: (tripId: string) => void;
+function ViewChip({ icon: Icon, label, on, onPress }: { icon: LucideIcon; label: string; on: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={[s.vchip, on && s.vchipOn]} onPress={onPress} activeOpacity={0.8}>
+      <Icon size={12} color={on ? INK : '#FFFFFF'} strokeWidth={2.4} />
+      <Text style={[s.vchipText, on && { color: INK }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function Ctl({ icon: Icon, label, onPress, rotate }: { icon: LucideIcon; label: string; onPress: () => void; rotate?: number }) {
+  return (
+    <TouchableOpacity style={s.ctl} onPress={onPress} accessibilityLabel={label} activeOpacity={0.7}>
+      <View style={rotate != null ? { transform: [{ rotate: `${rotate}deg` }] } : undefined}>
+        <Icon size={18} color={INK} strokeWidth={2.1} />
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function UnitCard({ unit: u, eta, routeLoading, now, f, onClose, onOpen }: {
+  unit: LiveUnit; eta: ReturnType<typeof computeEta>; routeLoading: boolean; now: number; f: ReturnType<typeof makeTime>;
+  onClose: () => void; onOpen: (tripId: string) => void;
 }) {
   const t = u.trip;
   const next = nextStop(u);
   const phone = u.driver?.phone ?? null;
-
-  // Road drive time to the next stop, when the routing service is up.
-  const target = next && next.lat != null && next.lng != null ? { lat: next.lat, lng: next.lng } : null;
-  const routeQ = useQuery({
-    queryKey: ['fleet', 'eta', u.key, u.position?.recorded_at, target?.lat, target?.lng],
-    queryFn: () => operatorService.routeEstimate(u.position!, target!),
-    enabled: !!u.position && !!target && onTrip(u),
-    staleTime: 60_000,
-  });
-  const eta = onTrip(u) ? computeEta(u, routeQ.data ?? null, now) : null;
   const p = punctuality(eta?.lateByMin ?? null);
   const done = t ? t.stops.filter((x) => x.actual_arrival).length : 0;
 
@@ -238,7 +334,7 @@ function UnitCard({ unit: u, now, f, onClose, onOpen }: {
           </View>
         </>
       ) : null}
-      {eta && !eta.distanceIsRoad && !routeQ.isLoading ? <Text style={s.note}>Road routing unavailable — distance is a straight line.</Text> : null}
+      {eta && !eta.distanceIsRoad && !routeLoading ? <Text style={s.note}>Road routing unavailable — distance is a straight line.</Text> : null}
 
       <View style={s.feeds}>
         <Feed icon={Truck} label="Tracker" iso={u.vehicle_gps?.recorded_at} missing={!u.vehicle ? 'No truck' : !u.vehicle.has_tracker ? 'None fitted' : 'No fix yet'} now={now} />
@@ -338,4 +434,30 @@ const s = StyleSheet.create({
   iconBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#F1F1F3', alignItems: 'center', justifyContent: 'center' },
   open: { flex: 1, height: 44, borderRadius: 12, backgroundColor: INK, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   openText: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
+
+  // map overlays
+  topLeft: { position: 'absolute', top: 12, left: 12, gap: 8, alignItems: 'flex-start' },
+  live: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, paddingHorizontal: 10, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.95)', ...shadow },
+  liveDot: { width: 8, height: 8, borderRadius: 4 },
+  liveText: { fontSize: 12, fontWeight: '600', color: INK },
+  liveAgo: { fontSize: 12, color: MUTED },
+  speed: { width: 56, height: 56, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.95)', alignItems: 'center', justifyContent: 'center', ...shadow },
+  speedNum: { fontSize: 20, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
+  speedUnit: { fontSize: 10, color: MUTED },
+  viewBar: {
+    position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: 'rgba(24,24,27,0.92)', borderRadius: 20, padding: 4, paddingLeft: 12, ...shadow,
+  },
+  viewPlate: { fontSize: 12, fontWeight: '700', color: '#FFFFFF', fontFamily: 'monospace', marginRight: 4, maxWidth: 90 },
+  vchip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.12)' },
+  vchipOn: { backgroundColor: '#FFFFFF' },
+  vchipText: { fontSize: 12, fontWeight: '600', color: '#FFFFFF' },
+  exit: { borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.18)' },
+  exitText: { fontSize: 12, fontWeight: '600', color: '#FFFFFF' },
+  ctlCol: { position: 'absolute', right: 12, gap: 8 },
+  ctlGroup: { backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: 14, overflow: 'hidden', ...shadow },
+  ctl: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  ctl3d: { borderBottomWidth: 1, borderBottomColor: '#F1F1F3' },
+  ctlOn: { backgroundColor: INK },
+  ctl3dText: { fontSize: 14, fontWeight: '800', color: INK },
 });

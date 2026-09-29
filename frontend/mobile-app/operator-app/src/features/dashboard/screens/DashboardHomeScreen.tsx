@@ -7,7 +7,8 @@
  * operator screen shares one persistent nav instead of remounting it.
  */
 import React, { useEffect, useState } from 'react';
-import { Alert, Linking, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, RefreshControl, ScrollView } from 'react-native';
+import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -40,14 +41,18 @@ export default function DashboardHomeScreen() {
   const openTrip = (id: string, extra: Record<string, string> = {}) =>
     router.push({ pathname: '/trip-details', params: { id, ...extra } });
 
+  // Only for actions that finish right here on Home — never for ones that
+  // just open another screen or app, which hasn't done anything yet.
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
   const onIntent = (intent: ActionIntent) => {
     switch (intent.type) {
       case 'call':
-        Linking.openURL(`tel:${intent.phone}`).catch(() => {});
+        Linking.openURL(`tel:${intent.phone}`).catch(() => setToast({ message: "Couldn't start the call", type: 'error' }));
         return;
       case 'whatsapp':
         Linking.openURL(`https://wa.me/${(intent.phone ?? '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(intent.text)}`)
-          .catch(() => Alert.alert('Could not open WhatsApp'));
+          .catch(() => setToast({ message: "Couldn't open WhatsApp", type: 'error' }));
         return;
       case 'trip': {
         const extra: Record<string, string> = {};
@@ -59,6 +64,7 @@ export default function DashboardHomeScreen() {
       }
       case 'handled':
         markRead(intent.notificationId);
+        setToast({ message: 'Marked as handled', type: 'success' });
         return;
       case 'driver':
         router.push({ pathname: '/driver-details', params: { id: intent.id } });
@@ -111,10 +117,7 @@ export default function DashboardHomeScreen() {
 
         <UpNext rows={inbox.today} tz={inbox.tz} onOpenTrip={(id) => openTrip(id)} onAll={() => router.push('/trips')} />
       </ScrollView>
+      <Toast visible={!!toast} message={toast?.message ?? ''} type={toast?.type ?? 'success'} onDismiss={() => setToast(null)} />
     </SafeAreaView>
   );
 }
-
-const st = StyleSheet.create({
-  topBar: { paddingHorizontal: 16, paddingBottom: 6, backgroundColor: '#F6F6F7' },
-});

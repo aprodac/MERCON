@@ -12,6 +12,8 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import {
   AlarmClock, ChevronDown, ChevronRight, CircleCheckBig, Clock3, FileClock, Images, Phone, Play, Receipt, MapPinOff, Siren, Split, UserX,
   type LucideIcon,
@@ -244,11 +246,15 @@ export function NeedsActionList({ items, loading, onIntent, onOpenTrip, now }: {
         type="bottom-sheet"
         title={sheet ? `${sheetItems.length} ${GROUP_NOUN[sheet][1]}` : ''}
       >
-        <ScrollView style={{ maxHeight: height * 0.65 }} showsVerticalScrollIndicator={false}>
-          {sheetItems.map((item, i) => (
-            <ActionRow key={item.key} item={item} first={i === 0} now={now} flat onIntent={fromSheet(onIntent)} onOpenTrip={fromSheet(onOpenTrip)} />
-          ))}
-        </ScrollView>
+        {/* A modal is its own native window, so swipe gestures need their own root inside it. */}
+        {/* flex: 0 — the root view defaults to flex: 1, which collapses to nothing in a sheet sized by its content. */}
+        <GestureHandlerRootView style={{ flex: 0 }}>
+          <ScrollView style={{ maxHeight: height * 0.65 }} showsVerticalScrollIndicator={false}>
+            {sheetItems.map((item, i) => (
+              <ActionRow key={item.key} item={item} first={i === 0} now={now} flat onIntent={fromSheet(onIntent)} onOpenTrip={fromSheet(onOpenTrip)} />
+            ))}
+          </ScrollView>
+        </GestureHandlerRootView>
       </AppModal>
     </View>
   );
@@ -277,7 +283,46 @@ function GroupRow({ kind, items, first, now, onPress }: { kind: ActionKind; item
   );
 }
 
-function ActionRow({ item, first, now, flat, onIntent, onOpenTrip }: { item: ActionItem; first: boolean; now: number; flat?: boolean; onIntent: (i: ActionIntent) => void; onOpenTrip: (id: string) => void }) {
+type RowProps = { item: ActionItem; first: boolean; now: number; flat?: boolean; onIntent: (i: ActionIntent) => void; onOpenTrip: (id: string) => void };
+
+/**
+ * A row with swipe shortcuts: swipe right to call the driver, left for the
+ * row's main action (Notify, Assign, Send…). The same buttons stay on the row,
+ * so swiping is only ever a shortcut.
+ */
+function ActionRow(props: RowProps) {
+  const { item, onIntent } = props;
+  const call = item.secondary?.intent.type === 'call' ? item.secondary : null;
+  const run = (intent: ActionIntent, m: SwipeableMethods) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    m.close();
+    onIntent(intent);
+  };
+  return (
+    <ReanimatedSwipeable
+      friction={1.6}
+      overshootLeft={false}
+      overshootRight={false}
+      leftThreshold={60}
+      rightThreshold={60}
+      renderLeftActions={call ? (_p, _t, m) => (
+        <TouchableOpacity style={[s.swipe, { backgroundColor: '#16A34A' }]} onPress={() => run(call.intent, m)} accessibilityLabel="Call driver">
+          <Phone size={18} color="#FFFFFF" strokeWidth={2.2} />
+          <Text style={s.swipeText}>Call</Text>
+        </TouchableOpacity>
+      ) : undefined}
+      renderRightActions={(_p, _t, m) => (
+        <TouchableOpacity style={[s.swipe, { backgroundColor: INK }]} onPress={() => run(item.primary.intent, m)}>
+          <Text style={s.swipeText}>{item.primary.label}</Text>
+        </TouchableOpacity>
+      )}
+    >
+      <View style={{ backgroundColor: Colors.white }}><ActionRowBody {...props} /></View>
+    </ReanimatedSwipeable>
+  );
+}
+
+function ActionRowBody({ item, first, now, flat, onIntent, onOpenTrip }: RowProps) {
   const k = KIND[item.kind];
   const Icon = k.icon;
   const when = whenLabel(item, now);
@@ -419,6 +464,9 @@ const s = StyleSheet.create({
   dayDot: { width: 7, height: 7, borderRadius: 4 },
   dayText: { fontSize: 12, color: MUTED },
   dayNum: { fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
+
+  swipe: { width: 92, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  swipeText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 
   // section heads
   headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
