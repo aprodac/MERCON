@@ -4,18 +4,8 @@ import { prisma } from '../db';
 import { generateRefId } from '../utils/refId';
 import { logger } from '../utils/logger';
 import { VEHICLE_REQUIRED_EXPENSE_CATEGORIES } from '@mercon/shared-types';
-import { buildSearchAnd } from '../utils/search';
+import { buildExpenseWhere, expenseOrderBy, filterDate, previousRange, summarizeExpenses } from '../utils/expenseSummary';
 
-/** Fields the expenses ledger search bar looks at. */
-const EXPENSE_SEARCH_FIELDS = [
-  'ref_id',
-  'category',
-  'payee',
-  'description',
-  'driver.first_name',
-  'driver.last_name',
-  'vehicle.plate_number',
-];
 
 /** Expenses are numbered EXP-001, EXP-002, … and gaps are refilled on delete. */
 const EXPENSE_REF_PREFIX = 'EXP';
@@ -46,47 +36,20 @@ export const getExpenses = async (req: Request, res: Response) => {
     // Ensure all active vehicle maintenance records are mirrored in the Expenses ledger
     await syncAllMaintenanceRecordsToExpenses();
 
-    const { category, status, driver_id, vehicle_id, date_from, date_to, search, page = '1', per_page = '50' } = req.query;
+    const { page = '1', per_page = '50', sort } = req.query;
 
     const pageNumber = parseInt(page as string);
     const limit = parseInt(per_page as string);
     const skip = (pageNumber - 1) * limit;
 
-    const whereClause: any = { deletedAt: null };
-
-    if (category && category !== 'all') {
-      whereClause.category = category as string;
-    }
-
-    if (status && status !== 'all') {
-      whereClause.status = status as string;
-    }
-
-    if (driver_id && driver_id !== 'all') {
-      whereClause.driverId = driver_id as string;
-    }
-
-    if (vehicle_id && vehicle_id !== 'all') {
-      whereClause.vehicleId = vehicle_id as string;
-    }
-
-    if (date_from || date_to) {
-      whereClause.expense_date = {};
-      if (date_from) whereClause.expense_date.gte = toDate(date_from as string) ?? undefined;
-      if (date_to) whereClause.expense_date.lte = toDate(date_to as string) ?? undefined;
-    }
-
-    const searchAnd = buildSearchAnd(search, EXPENSE_SEARCH_FIELDS);
-    if (searchAnd.length > 0) {
-      whereClause.AND = searchAnd;
-    }
+    const whereClause = buildExpenseWhere(req.query);
 
     const [records, total, kpiTotals] = await Promise.all([
       prisma.expense.findMany({
         where: whereClause,
         skip,
         take: limit,
-        orderBy: [{ expense_date: 'desc' }],
+        orderBy: expenseOrderBy(sort),
         include: {
           driver: { select: { id: true, first_name: true, last_name: true, ref_id: true, deletedAt: true } },
           vehicle: { select: { id: true, plate_number: true, ref_id: true, deletedAt: true } },
@@ -159,6 +122,38 @@ const findExpenseByIdOrRef = async (idOrRef: string) => {
       vehicle: { select: { id: true, plate_number: true, ref_id: true, deletedAt: true } },
     },
   });
+};
+
+/**
+ * Totals for the expenses page header, over the same filters as the list: spend, paid and
+ * pending, by category, by month, truck / driver / overhead split, top payees, and the spend of
+ * the previous equal-length period when a date range is given.
+ */
+export const getExpenseSummary = async (req: Request, res: Response) => {
+  try {
+    const where = buildExpenseWhere(req.query);
+    const from = filterDate(req.query.date_from);
+    const to = filterDate(req.query.date_to, true);
+    const [rows, previous] = await Promise.all([
+      prisma.expense.findMany({
+        where,
+        select: { amount: true, status: true, category: true, expense_date: true, vehicleId: true, driverId: true, payee: true },
+      }),
+      from && to
+        ? (() => {
+            const p = previousRange(from, to);
+            return prisma.expense.aggregate({
+              where: { ...buildExpenseWhere(req.query, { withDates: false }), expense_date: { gte: p.from, lte: p.to } },
+              _sum: { amount: true },
+            });
+          })()
+        : Promise.resolve(null),
+    ]);
+    res.json({ success: true, data: summarizeExpenses(rows, { from, to }, previous ? Number(previous._sum.amount ?? 0) : null) });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Failed to summarise expenses');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message } });
+  }
 };
 
 export const getExpenseById = async (req: Request, res: Response) => {

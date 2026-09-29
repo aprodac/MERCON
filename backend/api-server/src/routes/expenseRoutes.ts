@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   getExpenses,
+  getExpenseSummary,
   getExpenseById,
   createExpense,
   updateExpense,
@@ -16,6 +17,8 @@ router.use(authorizeRoles('Admin', 'Operator'));
 router.use(requireModuleEnabled('expenses'));
 
 router.get('/', getExpenses);
+// Before '/:id', which would otherwise match it
+router.get('/summary', getExpenseSummary);
 router.post('/', createExpense);
 router.get('/:id', getExpenseById);
 router.patch('/:id', updateExpense);

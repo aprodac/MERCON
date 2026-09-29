@@ -50,7 +50,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-import ExpenseModal from '@/components/expenses/ExpenseModal';
+import { ExpenseFormSheet } from '@/components/expenses/ExpenseFormSheet';
 import ExpenseCategoryBadge from '@/components/expenses/ExpenseCategoryBadge';
 import { expenseService, Expense, ExpenseStatus } from '@/services/expenseService';
 import { exportExcelTable } from '@/utils/exportUtils';
@@ -564,11 +564,11 @@ export default function ExpenseDetailsPage() {
       </div>
 
       {/* ── Edit Expense Modal ────────────────────────────────────────────── */}
-      <ExpenseModal
+      <ExpenseFormSheet
         open={isEditModalOpen}
         onOpenChange={setIsEditModalOpen}
-        editingExpense={record}
-        onSuccess={() => refetch()}
+        expense={record ?? null}
+        onSaved={() => refetch()}
       />
 
       {/* ── Delete Confirmation Dialog ─────────────────────────────────────── */}

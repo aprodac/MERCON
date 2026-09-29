@@ -337,6 +337,19 @@ Toolbar: [Draft] New invoice · Customer · Unsaved changes        Cancel · Sav
 - Empty state offers "Add all n" ready-to-bill trips; the picker sheet greys out trips with no billing amount.
 - "Save and issue" confirms with the Dr/Cr it will post (principle 4). Ctrl+S saves, Ctrl+Enter issues.
 
+### 4.3c Expenses (built 2026-09-29)
+
+Files: `pages/expenses/ExpenseListPage.tsx`, `components/expenses/{ExpenseInsights,ExpenseQuickView,ExpenseFormSheet}.tsx`,
+`lib/expenses/expenseMeta.ts` (category tones, helpers; tested). API: `GET /expenses/summary` (same filters as the list;
+maths in `backend/api-server/src/utils/expenseSummary.ts`, tested).
+
+- Toolbar: status tabs (All / To pay / Paid, with counts) · `PeriodControl` (default year to date, "Any date" allowed) · Export · New expense.
+- One insights card, three columns: spend + monthly bars (click a bar = that month) + change vs the previous equal period
+  (up is shown as bad); still to pay (click = To pay tab) + trucks / drivers / overhead split (click = filter); top categories (click = filter).
+- Table: month header rows with the month's filtered total, category chip with a colour dot (token tones from `CATEGORY_TONE`),
+  charged-to column, To pay / Paid chips, row menu (mark as paid, edit, duplicate, delete). Selection turns the card toolbar into a bulk bar.
+- Row click opens the quick view; the form is a side sheet. Filters, period, sort and page live in the URL.
+
 ### 4.4 Report page (P&L, Balance Sheet, Trial Balance, Cash Flow, Ageing, General Ledger)
 
 ```

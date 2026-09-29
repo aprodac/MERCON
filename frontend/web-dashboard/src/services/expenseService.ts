@@ -54,16 +54,38 @@ export interface CreateExpensePayload {
 
 export interface UpdateExpensePayload extends Partial<CreateExpensePayload> {}
 
+export type ExpenseSort = 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc';
+/** 'vehicle' = has a truck, 'driver' = has a driver, 'overhead' = neither. */
+export type ExpenseLink = 'vehicle' | 'driver' | 'overhead';
+
 export interface ExpenseFilters {
   category?: string;
   status?: string;
   driver_id?: string;
   vehicle_id?: string;
+  payment_method?: string;
+  linked?: ExpenseLink;
   date_from?: string;
   date_to?: string;
   search?: string;
+  sort?: ExpenseSort;
   page?: number;
   per_page?: number;
+}
+
+/** Totals over the same filters as the list (GET /expenses/summary). */
+export interface ExpenseSummary {
+  count: number;
+  total: number;
+  paid: number;
+  pending: number;
+  pending_count: number;
+  by_category: { category: string; amount: number; count: number }[];
+  by_month: { month: string; amount: number; count: number }[];
+  linked: { vehicle: number; driver: number; overhead: number };
+  top_payees: { payee: string; amount: number; count: number }[];
+  /** Spend in the equal-length period before the date range; null without a range. */
+  previous_total: number | null;
 }
 
 export interface ExpenseKpis {
@@ -90,6 +112,11 @@ export const expenseService = {
   async getAll(filters: ExpenseFilters = {}): Promise<ExpenseListResponse> {
     const res = await api.get<ExpenseListResponse>('/expenses', { params: filters });
     return res.data;
+  },
+
+  async getSummary(filters: Omit<ExpenseFilters, 'page' | 'per_page' | 'sort'> = {}): Promise<ExpenseSummary> {
+    const res = await api.get<ApiResponse<ExpenseSummary>>('/expenses/summary', { params: filters });
+    return res.data.data;
   },
 
   async getById(id: string): Promise<Expense> {
