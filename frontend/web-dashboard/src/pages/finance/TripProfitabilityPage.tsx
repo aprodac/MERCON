@@ -13,6 +13,7 @@ import { ScrollTableCard } from '@/components/finance/kit/ScrollTableCard';
 import { PeriodControl } from '@/components/finance/kit/PeriodControl';
 import { SegmentedControl } from '@/components/finance/kit/SegmentedControl';
 import { TONE_CLASSES } from '@/components/finance/kit/tones';
+import { Figure, FigureStrip } from '@/components/finance/kit/FigureStrip';
 import {
   financeService, type ProfitGroupBy, type ProfitGroupRow, type ProfitTotals, type ProfitTripRow, type TripProfitabilityParams,
 } from '@/services/financeService';
@@ -58,22 +59,6 @@ function MarginCell({ margin, pct }: { margin: number; pct: number | null }) {
         )}
       </td>
     </>
-  );
-}
-
-function Tile({ label, children, sub, onClick, active, tone }: { label: string; children: ReactNode; sub?: ReactNode; onClick?: () => void; active?: boolean; tone?: string }) {
-  const Comp = onClick ? 'button' : 'div';
-  return (
-    <Comp
-      type={onClick ? 'button' : undefined}
-      onClick={onClick}
-      aria-pressed={onClick ? active : undefined}
-      className={cn('min-w-0 rounded-xl border bg-card px-3 py-2 text-left shadow-xs', onClick && 'outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring', active && 'ring-2 ring-ring')}
-    >
-      <span className="block text-[11px] font-medium text-muted-foreground">{label}</span>
-      <span className={cn('fin-num block text-lg font-semibold leading-tight', tone ?? 'text-foreground')}>{children}</span>
-      {sub && <span className="mt-1 block text-[11px] text-muted-foreground">{sub}</span>}
-    </Comp>
   );
 }
 
@@ -154,10 +139,12 @@ export default function TripProfitabilityPage() {
     <DashboardLayout active="finance" title="Trip profitability" fixedViewport>
       <div className="mx-auto flex h-full w-full max-w-7xl min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4 max-md:h-auto max-md:overflow-y-auto">
         {/* The period at a glance */}
-        <div className="grid shrink-0 grid-cols-2 gap-2 md:grid-cols-5">
-          <Tile label={`Revenue · ${s?.trips ?? '…'} trips`}>{s ? formatMoney(s.revenue) : <Skeleton className="mt-1 h-5 w-24" />}</Tile>
-          <Tile
+        <FigureStrip className="shrink-0 flex-none">
+          <Figure label="Revenue" count={s?.trips} value={formatMoney(s?.revenue ?? 0)} loading={!s} />
+          <Figure
             label="Cost"
+            value={formatMoney(s?.cost ?? 0)}
+            loading={!s}
             sub={
               s && (
                 <span className="flex flex-wrap gap-x-2">
@@ -170,25 +157,31 @@ export default function TripProfitabilityPage() {
                 </span>
               )
             }
-          >
-            {s ? formatMoney(s.cost) : <Skeleton className="mt-1 h-5 w-24" />}
-          </Tile>
-          <Tile label="Margin" tone={s ? TONE_CLASSES[marginTone(s.margin, s.marginPct)].fg : undefined} sub={s && <CostBar p={s} />}>
-            {s ? (
-              <>
-                {formatMoney(s.margin)} <span className="text-sm">{formatPct(s.marginPct)}</span>
-              </>
-            ) : (
-              <Skeleton className="mt-1 h-5 w-24" />
-            )}
-          </Tile>
-          <Tile label="Losing trips" tone={s && s.lossTrips > 0 ? TONE_CLASSES.negative.fg : undefined} onClick={() => set({ only: only === 'loss' ? null : 'loss', group: null })} active={only === 'loss'} sub="Cost more than they billed">
-            {s?.lossTrips ?? '…'}
-          </Tile>
-          <Tile label="No price" tone={s && s.unpricedTrips > 0 ? TONE_CLASSES.warning.fg : undefined} onClick={() => set({ only: only === 'unpriced' ? null : 'unpriced', group: null })} active={only === 'unpriced'} sub="Earned trips with no billing">
-            {s?.unpricedTrips ?? '…'}
-          </Tile>
-        </div>
+          />
+          <Figure
+            label="Margin"
+            value={s ? `${formatMoney(s.margin)} · ${formatPct(s.marginPct)}` : ''}
+            tone={s ? TONE_CLASSES[marginTone(s.margin, s.marginPct)].fg : null}
+            loading={!s}
+            sub={s && <CostBar p={s} className="w-40" />}
+          />
+          <Figure
+            label="Losing trips"
+            value={s?.lossTrips ?? 0}
+            tone={s && s.lossTrips > 0 ? TONE_CLASSES.negative.fg : null}
+            loading={!s}
+            onClick={() => set({ only: only === 'loss' ? null : 'loss', group: null })}
+            active={only === 'loss'}
+          />
+          <Figure
+            label="No price"
+            value={s?.unpricedTrips ?? 0}
+            tone={s && s.unpricedTrips > 0 ? TONE_CLASSES.warning.fg : null}
+            loading={!s}
+            onClick={() => set({ only: only === 'unpriced' ? null : 'unpriced', group: null })}
+            active={only === 'unpriced'}
+          />
+        </FigureStrip>
 
         <ScrollTableCard
           toolbar={

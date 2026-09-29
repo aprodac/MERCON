@@ -15,6 +15,7 @@ import {
 import { ScrollTableCard } from '@/components/finance/kit/ScrollTableCard';
 import { SegmentedControl } from '@/components/finance/kit/SegmentedControl';
 import { TONE_CLASSES } from '@/components/finance/kit/tones';
+import { Figure, FigureStrip } from '@/components/finance/kit/FigureStrip';
 import { SettleDriverSheet } from '@/components/finance/driverPay/SettleDriverSheet';
 import { MonthlyPayouts } from '@/components/finance/driverPay/MonthlyPayouts';
 import { financeService } from '@/services/financeService';
@@ -34,6 +35,13 @@ export default function DriverPayPage() {
   const queryClient = useQueryClient();
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as Tab) || 'owed';
+  const setTab = (v: Tab) =>
+    setParams((p) => {
+      const n = new URLSearchParams(p);
+      if (v === 'owed') n.delete('tab');
+      else n.set('tab', v);
+      return n;
+    });
   const [settling, setSettling] = useState<{ id: string; name: string } | null>(null);
   const [viewId, setViewId] = useState<string | null>(null);
   const [voiding, setVoiding] = useState(false);
@@ -69,35 +77,27 @@ export default function DriverPayPage() {
   return (
     <DashboardLayout active="finance" title="Driver pay" fixedViewport>
       <div className="mx-auto flex h-full w-full max-w-6xl min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4 max-md:h-auto max-md:overflow-y-auto">
-        <div className="grid shrink-0 grid-cols-2 gap-2 md:grid-cols-4">
-          <div className="rounded-xl border border-t-2 bg-card px-3 py-2 shadow-xs" style={{ borderTopColor: 'var(--chip-warning-dot)' }}>
-            <span className="block text-[11px] font-medium text-muted-foreground">Trip pay owed · {rows.length} drivers</span>
-            <span className={cn('fin-num block text-lg font-semibold', totalOwed > 0 ? TONE_CLASSES.warning.fg : 'text-foreground')}>{queue.data ? formatMoney(totalOwed) : '…'}</span>
-          </div>
-          <div className="rounded-xl border bg-card px-3 py-2 shadow-xs">
-            <span className="block text-[11px] font-medium text-muted-foreground">Open advances to recover</span>
-            <span className="fin-num block text-lg font-semibold text-foreground">{queue.data ? formatMoney(totalAdv) : '…'}</span>
-          </div>
-          <div className="rounded-xl border bg-card px-3 py-2 shadow-xs">
-            <span className="block text-[11px] font-medium text-muted-foreground">Oldest unpaid trip</span>
-            <span className={cn('block text-lg font-semibold', oldest && daysSince(oldest) > 30 ? TONE_CLASSES.negative.fg : 'text-foreground')}>{oldest ? `${daysSince(oldest)} days` : '—'}</span>
-          </div>
-          <div className="flex items-center rounded-xl border bg-card px-3 py-2 text-[11px] text-muted-foreground shadow-xs">
-            Trip pay only. Salaries are recorded as Salary expenses; advances in Finance → Advances.
-          </div>
-        </div>
+        <FigureStrip className="shrink-0 flex-none">
+          <Figure
+            label="Trip pay owed"
+            count={rows.length}
+            value={formatMoney(totalOwed)}
+            tone={totalOwed > 0.005 ? TONE_CLASSES.warning.fg : null}
+            loading={!queue.data}
+            onClick={() => setTab('owed')}
+            active={tab === 'owed'}
+          />
+          <Figure label="Open advances to recover" value={formatMoney(totalAdv)} loading={!queue.data} />
+          <Figure label="Oldest unpaid trip" value={oldest ? `${daysSince(oldest)} days` : '—'} tone={oldest && daysSince(oldest) > 30 ? TONE_CLASSES.negative.fg : null} loading={!queue.data} />
+          <span className="ml-auto max-w-64 px-2 text-[11px] text-muted-foreground">Trip pay only. Salaries are Salary expenses; advances are in Finance → Advances.</span>
+        </FigureStrip>
 
         <ScrollTableCard
           toolbar={
             <SegmentedControl
               aria-label="View"
               value={tab}
-              onChange={(v) => setParams((p) => {
-                const n = new URLSearchParams(p);
-                if (v === 'owed') n.delete('tab');
-                else n.set('tab', v);
-                return n;
-              })}
+              onChange={setTab}
               options={[
                 { value: 'owed', label: 'To pay' },
                 { value: 'monthly', label: 'By month' },
