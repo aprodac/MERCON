@@ -29,6 +29,7 @@ export interface ReportTemplateSummary {
   source: string;
   customerId: string | null;
   customer: { name: string } | null;
+  /** Line-type filter (legacy column name): only trips of this LINE_TYPES value; null = all. */
   rate_category: string | null;
   original_filename: string;
   file_size: number;

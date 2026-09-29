@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ChevronDown, FileSpreadsheet, Loader2 } from 'lucide-react';
 
+import { lineTypeLabel } from '@mercon/shared-types';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useModuleEnabled } from '@/components/auth/RequireModule';
@@ -66,7 +67,7 @@ export function InvoiceTripSheetButton({ invoiceId, customerId }: { invoiceId: s
         {formats.map((t) => (
           <DropdownMenuItem key={t.id} onClick={() => download(t)} className="flex-col items-start gap-0 text-xs">
             <span className="font-medium">{t.name}</span>
-            <span className="text-[11px] text-muted-foreground">{t.rate_category ? `Only “${t.rate_category}” trips` : 'All trips on the invoice'}</span>
+            <span className="text-[11px] text-muted-foreground">{t.rate_category ? `${lineTypeLabel(t.rate_category)} trips only` : 'All trips on the invoice'}</span>
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

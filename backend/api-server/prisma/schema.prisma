@@ -2213,8 +2213,9 @@ model ReportTemplate {
   customerId String?   @db.Uuid // null = shared/global template
   customer   Customer? @relation(fields: [customerId], references: [id])
 
-  // Only trips of this Trip.rate_category go into the sheet (e.g. a customer's
-  // "Extra trips" workbook vs its "Monthly" one); null = every trip.
+  // Only trips of this line type (LINE_TYPES: SINGLE_TRIP, ROUND_TRIP, 10_HRS,
+  // 12_HRS) go into the sheet; null = every trip. Named after Trip.rate_category,
+  // the legacy column a trip keeps its line type in.
   rate_category String?
 
   original_filename String

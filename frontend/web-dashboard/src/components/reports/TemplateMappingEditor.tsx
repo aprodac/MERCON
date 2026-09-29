@@ -28,7 +28,7 @@ const MAPPING_OPTIONS: ComboboxOption[] = [
   { value: 'field:ref_id', label: 'Trip / Job Reference No.', group: 'Trip Details', keywords: 'waybill trip job reference number ref' },
   { value: 'field:date', label: 'Trip Date', group: 'Trip Details', keywords: 'date time created' },
   { value: 'field:status', label: 'Trip Duty Status', group: 'Trip Details', keywords: 'status state condition' },
-  { value: 'field:rate_category', label: 'Rate Category / Service Type', group: 'Trip Details', keywords: 'rate category type' },
+  { value: 'field:rate_category', label: 'Line Type (Single / Round / 10 h / 12 h)', group: 'Trip Details', keywords: 'line type rate category service trip type duty' },
   { value: 'field:serial', label: 'Row Serial Number (1, 2, 3...)', group: 'Trip Details', keywords: 'serial index row number' },
 
   { value: 'field:customer_name', label: 'Customer / Sender Company', group: 'Parties & Transport', keywords: 'customer sender company client' },
