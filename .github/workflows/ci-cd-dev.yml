@@ -23,37 +23,21 @@ jobs:
     runs-on: [dev]
 
     steps:
-      - name: Free Disk Space (Pre-checkout)
+      # Disk report and build-cache cleanup only. This step used to truncate
+      # every log under /var/log (auth.log included), vacuum journald to one
+      # day and empty all container logs on every dev push, which erased the
+      # server's audit trail each time. Logs are left alone now: container
+      # logs are capped by docker-compose.yml (json-file 20 MB x 3) and system
+      # logs by logrotate/journald.
+      - name: Disk check and build-cache cleanup
         run: |
-          echo "=== 1. PRE-CHECKOUT DISK & PROCESS CHECK ==="
           df -h / || true
-          echo "Active containers before cleanup (Production must remain untouched):"
           docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" || true
-
-          echo "Truncating active and rotated system logs safely..."
-          sudo find /var/log -type f -name "*.log" -exec truncate -s 0 {} + 2>/dev/null || true
-          sudo find /var/log -type f \( -name "*.gz" -o -name "*.[0-9]" -o -name "*.old" \) -delete 2>/dev/null || true
-          sudo truncate -s 0 /var/log/syslog /var/log/messages /var/log/kern.log /var/log/auth.log /var/log/daemon.log /var/log/mail.log 2>/dev/null || true
-          sudo journalctl --vacuum-time=1d 2>/dev/null || sudo journalctl --vacuum-size=20M 2>/dev/null || true
-
-          echo "Truncating Docker container JSON logs..."
-          sudo find /var/lib/docker/containers -type f -name '*-json.log' -exec truncate -s 0 {} + 2>/dev/null || true
-
-          echo "Cleaning transient runner diagnostics, temp files, and apt cache..."
-          sudo find / -maxdepth 4 -path "*/actions-runner/_diag/*" -type f -delete 2>/dev/null || true
-          sudo find / -maxdepth 4 -path "*/actions-runner/_work/_temp/*" -type f -delete 2>/dev/null || true
-          sudo apt-get clean 2>/dev/null || true
-          rm -rf /tmp/npm-* ~/.npm ~/.cache 2>/dev/null || true
-
-          echo "Pruning dangling untagged images (BuildKit cache preserved)..."
-          sudo docker image prune -f 2>/dev/null || true
-
-          echo "=== DISK USAGE AFTER PRE-CHECKOUT CLEANUP ==="
+          # Dangling images and build cache older than 3 days. Never volumes,
+          # never tagged images.
+          docker image prune -f 2>/dev/null || true
+          docker builder prune -af --filter "until=72h" 2>/dev/null || true
           df -h / || true
-          echo "=== TOP 10 LARGEST DIRECTORIES IN /var ==="
-          sudo du -hx -d 2 /var 2>/dev/null | sort -rh | head -n 10 || true
-          echo "=== TOP 10 LARGEST DIRECTORIES IN /home ==="
-          sudo du -hx -d 3 /home 2>/dev/null | sort -rh | head -n 10 || true
 
       # Native git instead of actions/checkout — see ci-cd.yml for why: this
       # runner's work directory persists between runs, so the marketplace
@@ -88,32 +72,40 @@ jobs:
 
       - name: Rebuild and Restart Dev Docker Containers
         env:
-          # Isolated dev credentials — never shared with prod (see repo
-          # secrets DEV_*). Compose project name -p mercon-dev keeps this
-          # stack (containers, network, auto-named volume) fully separate
-          # from the prod "mercon" project even though both check out into
-          # the same runner work directory.
+          # Dev credentials come from DEV_* secrets only. There is no fallback:
+          # an unset DEV_* secret used to silently become the PRODUCTION secret
+          # (or a password written in this file), so dev could run with prod's
+          # JWT signing key and database password. A missing required secret
+          # now stops the deploy below. Optional integrations (ICCES, Gemini)
+          # stay off on dev unless their DEV_* secret is set.
           CLIENT_NAME: dev
           POSTGRES_DB: mercon_dev_db
-          POSTGRES_USER: ${{ secrets.DEV_POSTGRES_USER || secrets.POSTGRES_USER || 'mercon_dev_admin' }}
-          POSTGRES_PASSWORD: ${{ secrets.DEV_POSTGRES_PASSWORD || secrets.POSTGRES_PASSWORD || 'mercon_dev_secure_pass_2026' }}
-          JWT_SECRET: ${{ secrets.DEV_JWT_SECRET || secrets.JWT_SECRET || 'mercon_dev_jwt_secret_key_2026_super_secure' }}
-          SEED_ADMIN_PASSWORD: ${{ secrets.DEV_SEED_ADMIN_PASSWORD || secrets.SEED_ADMIN_PASSWORD || 'Admin@123456' }}
+          POSTGRES_USER: ${{ secrets.DEV_POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.DEV_POSTGRES_PASSWORD }}
+          JWT_SECRET: ${{ secrets.DEV_JWT_SECRET }}
+          SEED_ADMIN_PASSWORD: ${{ secrets.DEV_SEED_ADMIN_PASSWORD }}
           API_PORT: 3051
           FRONTEND_PORT: 3061
           DB_TUNNEL_PORT: 15433
-          DEV_UPLOADS_DIR: /var/lib/mercon/dev-uploads
+          APP_UPLOADS_DIR: /var/lib/mercon/dev-app-uploads
           TMP_UPLOADS_DIR: /var/lib/mercon/dev-uploads
-          # ICCES GPS tracking credentials — injected from repo/environment secrets
-          ICCES_USER: ${{ secrets.DEV_ICCES_USER || secrets.ICCES_USER }}
-          ICCES_PASS: ${{ secrets.DEV_ICCES_PASS || secrets.ICCES_PASS }}
-          ICCES_ACCT: ${{ secrets.DEV_ICCES_ACCT || secrets.ICCES_ACCT }}
-          # Gemini Vision AI — injected from repo/environment secrets
-          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY || secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL: ${{ secrets.DEV_GEMINI_MODEL || secrets.GEMINI_MODEL || 'gemini-flash-latest' }}
+          ICCES_USER: ${{ secrets.DEV_ICCES_USER }}
+          ICCES_PASS: ${{ secrets.DEV_ICCES_PASS }}
+          ICCES_ACCT: ${{ secrets.DEV_ICCES_ACCT }}
+          GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ secrets.DEV_GEMINI_MODEL || 'gemini-flash-latest' }}
         run: |
           echo "=== REBUILDING DEV STACK (mercon-dev) ==="
           echo "Target Project: mercon-dev (CLIENT_NAME=dev)"
+
+          MISSING=""
+          for V in POSTGRES_USER POSTGRES_PASSWORD JWT_SECRET SEED_ADMIN_PASSWORD; do
+            [ -n "${!V}" ] || MISSING="$MISSING DEV_$V"
+          done
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing repository secret(s):$MISSING. Dev never falls back to production secrets; add them under Settings > Secrets and variables > Actions. Nothing was changed." >&2
+            exit 1
+          fi
 
           # Per-client secrets live on this server, not in GitHub
           # (scripts/provision/client-secrets.sh, docs/CLIENT_SECRETS.md).
@@ -129,15 +121,10 @@ jobs:
             exit 1
           fi
 
-          echo "Ensuring persistent dev uploads directory exists..."
-          sudo mkdir -p /var/lib/mercon/dev-uploads
-          sudo chmod -R 777 /var/lib/mercon/dev-uploads 2>/dev/null || true
-
-          # One-time migration of any surviving files from legacy tmp uploads
-          if [ -d /tmp/mercon-dev-tmp-uploads ] && [ "$(ls -A /tmp/mercon-dev-tmp-uploads 2>/dev/null)" ]; then
-            echo "Migrating legacy dev uploads to /var/lib/mercon/dev-uploads..."
-            sudo cp -rn /tmp/mercon-dev-tmp-uploads/* /var/lib/mercon/dev-uploads/ 2>/dev/null || true
-          fi
+          # Uploads live under /var/lib/mercon (docker-compose.yml). Copies
+          # anything still in the old /tmp locations; never deletes them.
+          sudo bash scripts/provision/migrate-uploads.sh /tmp/dev-uploads "$APP_UPLOADS_DIR"
+          sudo bash scripts/provision/migrate-uploads.sh /tmp/mercon-dev-tmp-uploads "$TMP_UPLOADS_DIR"
 
           echo "Disk space available immediately prior to build:"
           df -h / || true
@@ -160,6 +147,8 @@ jobs:
 
           echo "Recreating and restarting mercon-dev containers..."
           docker compose -p mercon-dev up -d --no-build
+          # Second pass: anything the old container wrote during this deploy.
+          sudo bash scripts/provision/migrate-uploads.sh /tmp/dev-uploads "$APP_UPLOADS_DIR"
 
           echo "Waiting for mercon-api service container to achieve healthy status (bounded 60s timeout)..."
           HEALTH_STATUS="unknown"
