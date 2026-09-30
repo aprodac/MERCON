@@ -202,7 +202,14 @@ export function useCreateTripForm() {
     handleUpdateSlotReturnIntermediateFee,
   } = useTripSlotsState();
 
-  const [contractVehicleType, setContractVehicleType] = useState<string>(VEHICLE_TYPES[0] || 'Flatbed');
+  const [contractVehicleType, setContractVehicleTypeRaw] = useState<string>(VEHICLE_TYPES[0] || 'Flatbed');
+  // Until someone picks a truck size, contractVehicleType is only the page default
+  // (3-4 TON) — the rate lookup must not treat it as a real choice.
+  const vehicleTypeChosenRef = useRef(false);
+  const setContractVehicleType = useCallback((value: string) => {
+    vehicleTypeChosenRef.current = true;
+    setContractVehicleTypeRaw(value);
+  }, []);
 
   const primarySlot = contractSlots[0] || {};
   const originName = primarySlot.origin || '';
@@ -483,6 +490,20 @@ export function useCreateTripForm() {
                   if (card && !quotationMatchesRoute(card as any, slotLegs, slotIsRound)) card = null;
                 }
 
+                // No truck size picked yet: when this exact route has quotations for
+                // only one truck size, use it instead of opening "Define Quotation"
+                // for the default size (which then saved a duplicate quotation).
+                if (!card && !vehicleTypeChosenRef.current) {
+                  const targetBilling = normalizeBillingType(bType);
+                  const laneCards = customerRateCards.filter(
+                    (rc: any) =>
+                      normalizeBillingType(rc.operation_type || rc.quotation_operation_type || rc.billing_type) === targetBilling &&
+                      quotationMatchesRoute(rc, slotLegs, slotIsRound)
+                  );
+                  const sizes = new Set(laneCards.map((rc: any) => normalizeVehicleClass(rc.vehicle_class || rc.vehicle_type || rc.source_vehicle_label)));
+                  if (laneCards.length > 0 && sizes.size === 1) card = laneCards[0];
+                }
+
                 if (card) {
                   const cardRate = Number(card.rate ?? card.base_price ?? 0);
                   const driverPayout = card.driver_payout ?? (card as any).driver_charge;
@@ -491,7 +512,8 @@ export function useCreateTripForm() {
                     if (cardClass) {
                       const normClass = normalizeVehicleClass(cardClass);
                       if (normClass) {
-                        setContractVehicleType(normClass);
+                        // Taken from the matched quotation, not a choice by the user.
+                        setContractVehicleTypeRaw(normClass);
                       }
                     }
 
@@ -554,7 +576,7 @@ export function useCreateTripForm() {
         })
         .catch((err) => console.error('Quotation service import error:', err));
     },
-    [contractCustomer, contractVehicleType, contractRateCategory, contractBillingType, getMatchingRateCard, setContractSlots]
+    [contractCustomer, contractVehicleType, contractRateCategory, contractBillingType, getMatchingRateCard, customerRateCards, setContractSlots, setContractVehicleTypeRaw]
   );
 
   const setContractCustomer = useCallback(
