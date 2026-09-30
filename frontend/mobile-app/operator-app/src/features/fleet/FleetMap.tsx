@@ -21,6 +21,7 @@ import { View, Text, StyleSheet, TouchableOpacity, TurboModuleRegistry, useWindo
 import { MapPin, Navigation, Truck } from 'lucide-react-native';
 import type { LiveUnit } from '../../lib/operator';
 import { isDelayed, isFree, isSilent } from './fleetModel';
+import { quietOfflineTileErrors } from '../../lib/mapLogs';
 
 const hasNativeMap = (() => {
   try {
@@ -31,6 +32,7 @@ const hasNativeMap = (() => {
 })();
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ML: typeof import('@maplibre/maplibre-react-native') | null = hasNativeMap ? require('@maplibre/maplibre-react-native') : null;
+quietOfflineTileErrors(ML);
 
 /** OpenFreeMap vector basemaps, the same pair as the web live map. */
 export const MAP_STYLES = {
