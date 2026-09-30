@@ -5,11 +5,9 @@ import type { DriverSortOption } from '../types';
 
 const OPTIONS: readonly SortOption<DriverSortOption>[] = [
   { value: 'name', label: 'Name A-Z' },
+  { value: 'trips', label: 'Most trips' },
+  { value: 'pay', label: 'Highest pay this month' },
   { value: 'newest', label: 'Newest' },
-  { value: 'rating', label: 'Highest Rating' },
-  { value: 'trips', label: 'Most Trips' },
-  { value: 'available', label: 'Available' },
-  { value: 'online', label: 'Online' },
 ];
 
 interface SortDropdownProps {
