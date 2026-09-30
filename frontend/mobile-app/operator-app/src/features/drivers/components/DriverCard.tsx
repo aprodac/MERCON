@@ -7,9 +7,9 @@
  *   ─────────────────────────────────────────────────────────────
  *   Truck          This month        Documents
  *   DRA-6484       SAR 0             Not on file
- *   ─────────────────────────────────────────────────────────────
- *   [ Call ]                          [ View ]
  *
+ * The whole card opens the driver's details; the only button is the round
+ * call (or, on a trip, track) button top-right.
  * Every value sits under a short label in the same three columns, so rows
  * line up card to card. Problems (expired licence or document, no truck)
  * are coloured; everything else stays neutral. On a trip, the truck column
@@ -17,7 +17,7 @@
  */
 import React from 'react';
 import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
-import { ChevronRight, Navigation, Phone } from 'lucide-react-native';
+import { Navigation, Phone } from 'lucide-react-native';
 import { DriverAvatar } from './DriverAvatar';
 import { EXPIRY_SOON_DAYS } from '../services/driverDetailsService';
 import { driverFullName, driverInitials } from '../services/driversService';
@@ -91,37 +91,23 @@ export function DriverCard({ driver, onCall, onTrack, onView }: DriverCardProps)
           </View>
           {driver.phone ? <Text style={s.sub}>{formatPhone(driver.phone)}</Text> : null}
         </View>
+        {/* One quick action, top-right: call the driver — or, on a trip, track it. */}
+        {onTrip ? (
+          <TouchableOpacity style={s.quick} onPress={onTrack ? () => onTrack(driver) : undefined} hitSlop={8} accessibilityLabel={`Track trip for ${name}`}>
+            <Navigation size={18} color="#1D4ED8" strokeWidth={2.2} />
+          </TouchableOpacity>
+        ) : driver.phone ? (
+          <TouchableOpacity style={[s.quick, s.quickCall]} onPress={onCall ? () => onCall(driver) : undefined} hitSlop={8} accessibilityLabel={`Call ${name}`}>
+            <Phone size={18} color="#067647" strokeWidth={2.2} />
+          </TouchableOpacity>
+        ) : null}
       </View>
 
-      {/* Facts — three aligned columns */}
+      {/* Facts — three aligned columns; tapping anywhere on the card opens the driver */}
       <View style={s.facts}>
         <Fact label={onTrip ? 'On trip' : 'Truck'} value={plate ?? 'None'} color={plate ? INK : MUTED} mono={!!plate} />
         <Fact label="This month" value={`SAR ${(driver.monthlyPayout ?? 0).toLocaleString('en-US')}`} color={INK} />
         <Fact label="Documents" value={docs.text} color={docs.color} />
-      </View>
-
-      {/* Actions */}
-      <View style={s.actions}>
-        {onTrip ? (
-          <TouchableOpacity style={s.btn} onPress={onTrack ? () => onTrack(driver) : undefined} activeOpacity={0.8} accessibilityLabel={`Track trip for ${name}`}>
-            <Navigation size={16} color={INK} strokeWidth={2.2} />
-            <Text style={s.btnText}>Track</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            style={[s.btn, !driver.phone && { opacity: 0.4 }]}
-            onPress={driver.phone && onCall ? () => onCall(driver) : undefined}
-            activeOpacity={0.8}
-            accessibilityLabel={`Call ${name}`}
-          >
-            <Phone size={16} color={INK} strokeWidth={2.2} />
-            <Text style={s.btnText}>Call</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={[s.btn, s.btnDark]} onPress={onView ? () => onView(driver) : undefined} activeOpacity={0.85} accessibilityLabel={`View ${name}`}>
-          <Text style={[s.btnText, { color: '#FFFFFF' }]}>View</Text>
-          <ChevronRight size={16} color="#FFFFFF" strokeWidth={2.2} />
-        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -147,14 +133,12 @@ const s = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3 },
   pillText: { fontSize: 12, fontWeight: '600' },
 
-  facts: { flexDirection: 'row', borderTopWidth: 1, borderBottomWidth: 1, borderColor: LINE, paddingVertical: 12 },
+  facts: { flexDirection: 'row', borderTopWidth: 1, borderColor: LINE, paddingTop: 12 },
   fact: { flex: 1, gap: 3, paddingRight: 8 },
   factLabel: { fontSize: 12, color: MUTED },
   factValue: { fontSize: 14, fontWeight: '600', lineHeight: 18 },
   mono: { fontFamily: 'monospace', fontWeight: '700' },
 
-  actions: { flexDirection: 'row', gap: 10 },
-  btn: { flex: 1, height: 42, borderRadius: 12, backgroundColor: '#F4F4F5', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  btnDark: { backgroundColor: INK },
-  btnText: { fontSize: 14, fontWeight: '600', color: INK },
+  quick: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#EEF4FF', alignItems: 'center', justifyContent: 'center' },
+  quickCall: { backgroundColor: '#ECFDF3' },
 });
