@@ -82,7 +82,7 @@ export default function DriversScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }} edges={['top']}>
       <DriversHeader
         onFilterPress={() => setFilterVisible(true)}
-        filterActive={status !== null || anyFlag}
+        filterActive={status !== null || anyFlag || sort !== 'name'}
       />
 
       {error ? (
@@ -112,7 +112,7 @@ export default function DriversScreen() {
                   {flags.noTruck ? <ActiveChip label="No truck" onClear={() => setFlags((f) => ({ ...f, noTruck: false }))} /> : null}
                 </View>
               ) : null}
-              <DriversListHeader total={total} sort={sort} onSortChange={setSort} />
+              <DriversListHeader total={total} sort={sort} />
             </View>
           }
           renderItem={({ item }) => (
@@ -166,7 +166,8 @@ export default function DriversScreen() {
         visible={filterVisible}
         status={status}
         flags={flags}
-        onApply={(st, fl) => { setStatus(st); setFlags(fl); }}
+        sort={sort}
+        onApply={(st, fl, so) => { setStatus(st); setFlags(fl); setSort(so); }}
         onClose={() => setFilterVisible(false)}
       />
     </SafeAreaView>

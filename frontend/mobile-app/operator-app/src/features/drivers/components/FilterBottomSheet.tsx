@@ -2,14 +2,15 @@
  * The Drivers filter sheet. Two things an operator actually filters by:
  *   Status     All · Available · On trip · Offline
  *   Show only  Documents expiring · No truck assigned
- * Choices are drafted in the sheet and applied with "Show drivers";
- * "Reset" clears everything. Sorting stays in the list's sort menu.
+ *   Sort by    Name · Most trips · Highest pay this month · Newest
+ * The page's only filter/sort control. Choices are drafted in the sheet and
+ * applied with "Show drivers"; "Reset" clears everything.
  */
 import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
 import { FileWarning, Truck, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import type { DriverFlags, DriverStatus } from '../types';
+import type { DriverFlags, DriverSortOption, DriverStatus } from '../types';
 
 const INK = '#18181B';
 const MUTED = '#6B6B76';
@@ -21,28 +22,37 @@ export const STATUS_OPTIONS: { value: DriverStatus | null; label: string; dot?: 
   { value: 'OffDuty', label: 'Offline', dot: '#DC2626' },
 ];
 
+export const SORT_LABEL: Record<DriverSortOption, string> = {
+  name: 'Name A-Z',
+  trips: 'Most trips',
+  pay: 'Highest pay this month',
+  newest: 'Newest',
+};
+
 export const NO_FLAGS: DriverFlags = { expiring: false, noTruck: false };
 
 interface FilterBottomSheetProps {
   visible: boolean;
   status: DriverStatus | null;
   flags: DriverFlags;
-  onApply: (status: DriverStatus | null, flags: DriverFlags) => void;
+  sort: DriverSortOption;
+  onApply: (status: DriverStatus | null, flags: DriverFlags, sort: DriverSortOption) => void;
   onClose: () => void;
 }
 
-export function FilterBottomSheet({ visible, status, flags, onApply, onClose }: FilterBottomSheetProps) {
+export function FilterBottomSheet({ visible, status, flags, sort, onApply, onClose }: FilterBottomSheetProps) {
   const [draftStatus, setDraftStatus] = useState(status);
   const [draftFlags, setDraftFlags] = useState(flags);
+  const [draftSort, setDraftSort] = useState(sort);
 
   // Each time it opens, start from what's applied.
   useEffect(() => {
-    if (visible) { setDraftStatus(status); setDraftFlags(flags); }
-  }, [visible, status, flags]);
+    if (visible) { setDraftStatus(status); setDraftFlags(flags); setDraftSort(sort); }
+  }, [visible, status, flags, sort]);
 
   const tap = () => Haptics.selectionAsync().catch(() => {});
-  const apply = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); onApply(draftStatus, draftFlags); onClose(); };
-  const reset = () => { tap(); setDraftStatus(null); setDraftFlags(NO_FLAGS); };
+  const apply = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); onApply(draftStatus, draftFlags, draftSort); onClose(); };
+  const reset = () => { tap(); setDraftStatus(null); setDraftFlags(NO_FLAGS); setDraftSort('name'); };
 
   const toggles: { key: keyof DriverFlags; icon: typeof Truck; title: string; sub: string }[] = [
     { key: 'expiring', icon: FileWarning, title: 'Documents expiring', sub: 'Licence or a document expired or expiring soon' },
@@ -88,6 +98,18 @@ export function FilterBottomSheet({ visible, status, flags, onApply, onClose }: 
                 />
               </View>
             ))}
+          </View>
+
+          <Text style={s.section}>Sort by</Text>
+          <View style={s.chips}>
+            {(Object.keys(SORT_LABEL) as DriverSortOption[]).map((k) => {
+              const on = draftSort === k;
+              return (
+                <TouchableOpacity key={k} style={[s.chip, on && s.chipOn]} onPress={() => { tap(); setDraftSort(k); }} activeOpacity={0.8}>
+                  <Text style={[s.chipText, on && { color: '#FFFFFF' }]}>{SORT_LABEL[k]}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           <View style={s.foot}>

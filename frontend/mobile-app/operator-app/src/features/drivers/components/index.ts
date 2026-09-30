@@ -3,7 +3,6 @@ export * from './FilterButton';
 export * from './DriverStatsSection';
 export * from './DriverStatCard';
 export * from './DriversListHeader';
-export * from './SortDropdown';
 export * from './DriverCard';
 export * from './DriverAvatar';
 export * from './DriverStatusIndicator';
