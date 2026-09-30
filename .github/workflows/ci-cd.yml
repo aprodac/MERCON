@@ -138,8 +138,11 @@ jobs:
           # "Restore instructions" below). The :previous from the release
           # before becomes dangling and the next prune removes it, so this
           # holds one extra image set, not a growing pile.
+          HAD_PREVIOUS=true
           for IMG in mercon-mercon-api mercon-mercon-frontend; do
-            if docker image inspect "$IMG:latest" >/dev/null 2>&1; then
+            if ! docker image inspect "$IMG:latest" >/dev/null 2>&1; then
+              HAD_PREVIOUS=false
+            else
               docker tag "$IMG:latest" "$IMG:previous"
               echo "Kept $IMG:previous ($(docker image inspect -f '{{.Id}}' "$IMG:previous" | cut -c8-19))"
             fi
@@ -202,6 +205,30 @@ jobs:
           echo "Executing Prisma database migrations against production database..."
           docker compose -p mercon run --rm --no-deps mercon-api npx prisma migrate deploy
 
+          # A release that fails its health checks is not left serving: the
+          # images that were live before this deploy (:previous, tagged above)
+          # go back up and the job still fails. The database is not rolled
+          # back — migrations are additive by policy, so the previous code runs
+          # on the migrated schema; the pre-deploy dump is there if a release
+          # changed data (see "Restore instructions" below).
+          rollback_and_fail() {
+            echo "::error::$1" >&2
+            if [ "$HAD_PREVIOUS" != "true" ]; then
+              echo "::error::No :previous images from before this deploy — nothing to roll back to. Production is running the failed release." >&2
+              exit 1
+            fi
+            echo "Rolling back mercon-api and mercon-frontend to the images from before this deploy..."
+            for IMG in mercon-mercon-api mercon-mercon-frontend; do docker tag "$IMG:previous" "$IMG:latest"; done
+            docker compose -p mercon up -d --no-build mercon-api mercon-frontend
+            for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3050/health >/dev/null 2>&1 && break; sleep 2; done
+            if curl -fsS http://127.0.0.1:3050/health >/dev/null 2>&1; then
+              echo "::error::Rolled back: the previous release is serving again and answers /health. This release did NOT deploy." >&2
+            else
+              echo "::error::Rolled back, but the previous release does not answer /health either — investigate now (docker compose -p mercon ps / logs)." >&2
+            fi
+            exit 1
+          }
+
           echo "Recreating and restarting containers..."
           docker compose -p mercon up -d --no-build
 
@@ -249,7 +276,7 @@ jobs:
             echo "::error::Deployment failed! Service mercon-api container did not achieve healthy status (Status: '$HEALTH_STATUS'). Printing logs..." >&2
             echo "--- mercon-api logs (last 100 lines) ---"
             docker compose -p mercon logs --no-color --tail=100 mercon-api || true
-            exit 1
+            rollback_and_fail "mercon-api did not become healthy (status: $HEALTH_STATUS)."
           fi
 
           echo "--- Verifying external health endpoint ---"
@@ -257,15 +284,15 @@ jobs:
             echo "::error::Deployment failed! External health probe GET http://127.0.0.1:3050/health failed or returned non-200. Printing logs..." >&2
             echo "--- mercon-api logs (last 100 lines) ---"
             docker compose -p mercon logs --no-color --tail=100 mercon-api || true
-            exit 1
+            rollback_and_fail "GET http://127.0.0.1:3050/health failed."
           fi
           echo "✓ External health probe GET http://127.0.0.1:3050/health verified successfully."
 
           echo "--- Verifying the web dashboard ---"
+          for i in $(seq 1 15); do curl -fsS http://127.0.0.1:3060/healthz >/dev/null 2>&1 && break; sleep 2; done
           if ! curl -fsS http://127.0.0.1:3060/healthz; then
-            echo "::error::Web dashboard did not answer GET http://127.0.0.1:3060/healthz." >&2
             docker compose -p mercon logs --no-color --tail=50 mercon-frontend || true
-            exit 1
+            rollback_and_fail "Web dashboard did not answer GET http://127.0.0.1:3060/healthz."
           fi
           echo " ← web dashboard /healthz"
 
