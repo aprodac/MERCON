@@ -1,11 +1,11 @@
 /**
  * One driver in the list — same language as Home and the Fleet map:
  *   (photo)  Full name (wraps)                      (● call)
- *            ● Available
  *            DRV-129 · +966 54 612 6286
- *   [🚚 DRA-6484] [💳 SAR 0] [📄 Not on file]
- * Tap the card to open the driver; the round button calls (or, on a trip,
- * tracks). Chips are neutral unless something is wrong (red / amber).
+ *   [🚚 DRA-6484] [💳 SAR 0] [📄 Licence 5 days left — only when there is one]
+ * Status is only the dot on the photo (green free · yellow on a trip · red
+ * offline). Tap the card to open the driver; the round button calls (or, on
+ * a trip, tracks). Chips are neutral unless something is wrong (red / amber).
  */
 import React from 'react';
 import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
@@ -14,21 +14,13 @@ import { DriverAvatar } from './DriverAvatar';
 import { EXPIRY_SOON_DAYS } from '../services/driverDetailsService';
 import { driverFullName, driverInitials } from '../services/driversService';
 import { niceName } from '../../trips/create/components/ui';
-import type { DriverDisplayStatus, DriverListItem } from '../types';
+import type { DriverListItem } from '../types';
 
 const INK = '#18181B';
 const MUTED = '#6B6B76';
 const RED = '#B42318';
 const AMBER = '#B54708';
 
-const STATUS: Record<DriverDisplayStatus, { label: string; bg: string; fg: string; dot: string }> = {
-  Available: { label: 'Available', bg: '#ECFDF3', fg: '#067647', dot: '#16A34A' },
-  OnTrip: { label: 'On trip', bg: '#EEF4FF', fg: '#1D4ED8', dot: '#2563EB' },
-  OffDuty: { label: 'Off duty', bg: '#F4F4F5', fg: '#52525B', dot: '#A1A1AA' },
-  Inactive: { label: 'Inactive', bg: '#F4F4F5', fg: '#52525B', dot: '#A1A1AA' },
-  Suspended: { label: 'Suspended', bg: '#FEF3F2', fg: RED, dot: '#D92D20' },
-  OnLeave: { label: 'On leave', bg: '#F5F3FF', fg: '#5B21B6', dot: '#7C3AED' },
-};
 
 /** "+966546126286" → "+966 54 612 6286"; anything else is shown as given. */
 function formatPhone(p: string): string {
@@ -56,7 +48,6 @@ export function DriverCard({ driver, onCall, onTrack, onView }: DriverCardProps)
   // Names arrive in ALL CAPS; normal case is shorter and easier to read, and it wraps instead of truncating.
   const name = niceName(driverFullName(driver));
   const onTrip = driver.status === 'OnTrip' && !!driver.activeTrip;
-  const st = STATUS[driver.status as DriverDisplayStatus] ?? STATUS.Inactive;
   const plate = driver.activeTrip?.vehiclePlate ?? driver.assignedVehicle?.plateNumber ?? null;
 
   // Documents column: an expired or expiring licence outranks other documents.
@@ -64,7 +55,7 @@ export function DriverCard({ driver, onCall, onTrack, onView }: DriverCardProps)
   const doc = expiryText(driver.docDaysLeft);
   const docs =
     licence && licence.color !== INK ? { text: `Licence ${licence.text.toLowerCase()}`, color: licence.color }
-    : doc ?? { text: 'Not on file', color: MUTED };
+    : doc; // nothing on file → no chip
 
   const payout = `SAR ${(driver.monthlyPayout ?? 0).toLocaleString('en-US')}`;
   const sub = [driver.ref_id, driver.phone ? formatPhone(driver.phone) : null].filter(Boolean).join('  ·  ');
@@ -75,10 +66,6 @@ export function DriverCard({ driver, onCall, onTrack, onView }: DriverCardProps)
         <DriverAvatar initials={driverInitials(driver)} avatarUrl={driver.avatarUrl} status={driver.status} size={50} />
         <View style={s.headText}>
           <Text style={s.name} numberOfLines={2}>{name}</Text>
-          <View style={s.statusRow}>
-            <View style={[s.dot, { backgroundColor: st.dot }]} />
-            <Text style={[s.status, { color: st.fg }]}>{st.label}</Text>
-          </View>
           {sub ? <Text style={s.sub} numberOfLines={1}>{sub}</Text> : null}
         </View>
         {onTrip ? (
@@ -96,7 +83,7 @@ export function DriverCard({ driver, onCall, onTrack, onView }: DriverCardProps)
       <View style={s.chips}>
         <Chip icon={Truck} text={plate ?? 'No truck'} color={plate ? INK : MUTED} mono={!!plate} />
         <Chip icon={Wallet} text={payout} color={INK} />
-        <Chip icon={FileText} text={docs.text} color={docs.color} tint={docs.color === RED ? '#FEF3F2' : docs.color === AMBER ? '#FFFAEB' : undefined} />
+        {docs ? <Chip icon={FileText} text={docs.text} color={docs.color} tint={docs.color === RED ? '#FEF3F2' : docs.color === AMBER ? '#FFFAEB' : undefined} /> : null}
       </View>
     </TouchableOpacity>
   );
@@ -119,9 +106,6 @@ const s = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   headText: { flex: 1, gap: 3 },
   name: { fontSize: 16, fontWeight: '700', color: INK, lineHeight: 21, letterSpacing: -0.2 },
-  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dot: { width: 7, height: 7, borderRadius: 4 },
-  status: { fontSize: 13, fontWeight: '600' },
   sub: { fontSize: 12.5, color: MUTED, fontVariant: ['tabular-nums'] },
   quick: { width: 42, height: 42, borderRadius: 21, backgroundColor: INK, alignItems: 'center', justifyContent: 'center' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
