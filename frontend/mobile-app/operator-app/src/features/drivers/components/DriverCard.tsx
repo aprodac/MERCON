@@ -8,6 +8,7 @@ import { DriverTrips } from './DriverTrips';
 import { DriverActionGroup } from './DriverActionGroup';
 import { EXPIRY_SOON_DAYS, formatDaysLeft } from '../services/driverDetailsService';
 import { driverFullName, driverInitials } from '../services/driversService';
+import { niceName } from '../../trips/create/components/ui';
 import type { DriverListItem } from '../types';
 
 interface DriverCardProps {
@@ -25,7 +26,8 @@ export function DriverCard({ driver, onCall, onTrack, onView, className }: Drive
   const docExpired = driver.docDaysLeft !== null && driver.docDaysLeft < 0;
   const docExpiringSoon = driver.docDaysLeft !== null && !docExpired && driver.docDaysLeft <= EXPIRY_SOON_DAYS;
   const vehiclePlate = driver.activeTrip?.vehiclePlate ?? driver.assignedVehicle?.plateNumber ?? null;
-  const name = driverFullName(driver);
+  // Names arrive in ALL CAPS; normal case is shorter and easier to read, and it can wrap instead of truncating.
+  const name = niceName(driverFullName(driver));
 
   const payoutText = driver.monthlyPayout !== null
     ? `SAR ${driver.monthlyPayout.toLocaleString('en-US')}`
@@ -51,13 +53,13 @@ export function DriverCard({ driver, onCall, onTrack, onView, className }: Drive
         />
 
         <View className="flex-1" style={{ gap: 4 }}>
-          <Text numberOfLines={1} style={{ color: Colors.charcoal }} className="text-[16px] font-bold">
+          <Text numberOfLines={2} style={{ color: Colors.charcoal, lineHeight: 21 }} className="text-[16px] font-bold">
             {name}
           </Text>
           <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
             <DriverStatusBadge status={driver.status} />
             {driver.phone && (
-              <Text numberOfLines={1} style={{ color: Colors.gray400 }} className="flex-1 text-[12px] font-medium">
+              <Text numberOfLines={1} style={{ color: Colors.gray600 }} className="flex-1 text-[13px] font-medium">
                 {driver.phone}
               </Text>
             )}
