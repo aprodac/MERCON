@@ -1,23 +1,15 @@
 /**
- * One driver in the list, on a simple grid:
- *
- *   (photo)  Full name (wraps)
- *            [status]  DRV-106
- *            +966 54 612 6286
- *   ─────────────────────────────────────────────────────────────
- *   Truck          This month        Documents
- *   DRA-6484       SAR 0             Not on file
- *
- * The whole card opens the driver's details; the only button is the round
- * call (or, on a trip, track) button top-right.
- * Every value sits under a short label in the same three columns, so rows
- * line up card to card. Problems (expired licence or document, no truck)
- * are coloured; everything else stays neutral. On a trip, the truck column
- * shows the trip and Call becomes Track.
+ * One driver in the list — same language as Home and the Fleet map:
+ *   (photo)  Full name (wraps)                      (● call)
+ *            ● Available
+ *            DRV-129 · +966 54 612 6286
+ *   [🚚 DRA-6484] [💳 SAR 0] [📄 Not on file]
+ * Tap the card to open the driver; the round button calls (or, on a trip,
+ * tracks). Chips are neutral unless something is wrong (red / amber).
  */
 import React from 'react';
 import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
-import { Navigation, Phone } from 'lucide-react-native';
+import { FileText, Navigation, Phone, Truck, Wallet, type LucideIcon } from 'lucide-react-native';
 import { DriverAvatar } from './DriverAvatar';
 import { EXPIRY_SOON_DAYS } from '../services/driverDetailsService';
 import { driverFullName, driverInitials } from '../services/driversService';
@@ -26,7 +18,6 @@ import type { DriverDisplayStatus, DriverListItem } from '../types';
 
 const INK = '#18181B';
 const MUTED = '#6B6B76';
-const LINE = '#EDEDF0';
 const RED = '#B42318';
 const AMBER = '#B54708';
 
@@ -75,70 +66,66 @@ export function DriverCard({ driver, onCall, onTrack, onView }: DriverCardProps)
     licence && licence.color !== INK ? { text: `Licence ${licence.text.toLowerCase()}`, color: licence.color }
     : doc ?? { text: 'Not on file', color: MUTED };
 
+  const payout = `SAR ${(driver.monthlyPayout ?? 0).toLocaleString('en-US')}`;
+  const sub = [driver.ref_id, driver.phone ? formatPhone(driver.phone) : null].filter(Boolean).join('  ·  ');
+
   return (
-    <TouchableOpacity activeOpacity={onView ? 0.85 : 1} onPress={onView ? () => onView(driver) : undefined} style={s.card}>
-      {/* Header */}
+    <TouchableOpacity activeOpacity={onView ? 0.85 : 1} onPress={onView ? () => onView(driver) : undefined} style={s.card} accessibilityRole="button" accessibilityLabel={`Open ${name}`}>
       <View style={s.head}>
-        <DriverAvatar initials={driverInitials(driver)} avatarUrl={driver.avatarUrl} status={driver.status} size={48} />
+        <DriverAvatar initials={driverInitials(driver)} avatarUrl={driver.avatarUrl} status={driver.status} size={50} />
         <View style={s.headText}>
           <Text style={s.name} numberOfLines={2}>{name}</Text>
-          <View style={s.metaRow}>
-            <View style={[s.pill, { backgroundColor: st.bg }]}>
-              <View style={[s.dot, { backgroundColor: st.dot }]} />
-              <Text style={[s.pillText, { color: st.fg }]}>{st.label}</Text>
-            </View>
-            {driver.ref_id ? <Text style={s.sub}>{driver.ref_id}</Text> : null}
+          <View style={s.statusRow}>
+            <View style={[s.dot, { backgroundColor: st.dot }]} />
+            <Text style={[s.status, { color: st.fg }]}>{st.label}</Text>
           </View>
-          {driver.phone ? <Text style={s.sub}>{formatPhone(driver.phone)}</Text> : null}
+          {sub ? <Text style={s.sub} numberOfLines={1}>{sub}</Text> : null}
         </View>
-        {/* One quick action, top-right: call the driver — or, on a trip, track it. */}
         {onTrip ? (
           <TouchableOpacity style={s.quick} onPress={onTrack ? () => onTrack(driver) : undefined} hitSlop={8} accessibilityLabel={`Track trip for ${name}`}>
-            <Navigation size={18} color="#1D4ED8" strokeWidth={2.2} />
+            <Navigation size={18} color="#FFFFFF" strokeWidth={2.2} />
           </TouchableOpacity>
         ) : driver.phone ? (
-          <TouchableOpacity style={[s.quick, s.quickCall]} onPress={onCall ? () => onCall(driver) : undefined} hitSlop={8} accessibilityLabel={`Call ${name}`}>
-            <Phone size={18} color="#067647" strokeWidth={2.2} />
+          <TouchableOpacity style={s.quick} onPress={onCall ? () => onCall(driver) : undefined} hitSlop={8} accessibilityLabel={`Call ${name}`}>
+            <Phone size={17} color="#FFFFFF" strokeWidth={2.2} />
           </TouchableOpacity>
         ) : null}
       </View>
 
-      {/* Facts — three aligned columns; tapping anywhere on the card opens the driver */}
-      <View style={s.facts}>
-        <Fact label={onTrip ? 'On trip' : 'Truck'} value={plate ?? 'None'} color={plate ? INK : MUTED} mono={!!plate} />
-        <Fact label="This month" value={`SAR ${(driver.monthlyPayout ?? 0).toLocaleString('en-US')}`} color={INK} />
-        <Fact label="Documents" value={docs.text} color={docs.color} />
+      {/* Soft chips: truck, this month's pay, documents — colour only when something's wrong */}
+      <View style={s.chips}>
+        <Chip icon={Truck} text={plate ?? 'No truck'} color={plate ? INK : MUTED} mono={!!plate} />
+        <Chip icon={Wallet} text={payout} color={INK} />
+        <Chip icon={FileText} text={docs.text} color={docs.color} tint={docs.color === RED ? '#FEF3F2' : docs.color === AMBER ? '#FFFAEB' : undefined} />
       </View>
     </TouchableOpacity>
   );
 }
 
-function Fact({ label, value, color, mono }: { label: string; value: string; color: string; mono?: boolean }) {
+function Chip({ icon: Icon, text, color, mono, tint }: { icon: LucideIcon; text: string; color: string; mono?: boolean; tint?: string }) {
   return (
-    <View style={s.fact}>
-      <Text style={s.factLabel} numberOfLines={1}>{label}</Text>
-      <Text style={[s.factValue, { color }, mono && s.mono]} numberOfLines={2}>{value}</Text>
+    <View style={[s.chip, tint ? { backgroundColor: tint } : null]}>
+      <Icon size={13} color={color === INK ? MUTED : color} strokeWidth={2.2} />
+      <Text style={[s.chipText, { color }, mono && s.mono]} numberOfLines={1}>{text}</Text>
     </View>
   );
 }
 
 const s = StyleSheet.create({
-  card: { backgroundColor: '#FFFFFF', borderRadius: 18, borderWidth: 1, borderColor: '#E9E9EC', padding: 16, gap: 14 },
-  head: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  headText: { flex: 1, gap: 5 },
-  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  name: { fontSize: 16, fontWeight: '700', color: INK, lineHeight: 21 },
-  sub: { fontSize: 13, color: MUTED, fontVariant: ['tabular-nums'] },
-  pill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
-  dot: { width: 6, height: 6, borderRadius: 3 },
-  pillText: { fontSize: 12, fontWeight: '600' },
-
-  facts: { flexDirection: 'row', borderTopWidth: 1, borderColor: LINE, paddingTop: 12 },
-  fact: { flex: 1, gap: 3, paddingRight: 8 },
-  factLabel: { fontSize: 12, color: MUTED },
-  factValue: { fontSize: 14, fontWeight: '600', lineHeight: 18 },
+  card: {
+    backgroundColor: '#FFFFFF', borderRadius: 20, borderWidth: 1, borderColor: '#EEEEF1', padding: 14, gap: 12,
+    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1,
+  },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headText: { flex: 1, gap: 3 },
+  name: { fontSize: 16, fontWeight: '700', color: INK, lineHeight: 21, letterSpacing: -0.2 },
+  statusRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  status: { fontSize: 13, fontWeight: '600' },
+  sub: { fontSize: 12.5, color: MUTED, fontVariant: ['tabular-nums'] },
+  quick: { width: 42, height: 42, borderRadius: 21, backgroundColor: INK, alignItems: 'center', justifyContent: 'center' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F5F5F7', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, maxWidth: '100%' },
+  chipText: { fontSize: 13, fontWeight: '600' },
   mono: { fontFamily: 'monospace', fontWeight: '700' },
-
-  quick: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#EEF4FF', alignItems: 'center', justifyContent: 'center' },
-  quickCall: { backgroundColor: '#ECFDF3' },
 });
