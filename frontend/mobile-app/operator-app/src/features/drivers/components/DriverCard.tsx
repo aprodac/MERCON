@@ -1,15 +1,57 @@
+/**
+ * One driver in the list, on a simple grid:
+ *
+ *   (photo)  Full name (wraps)
+ *            [status]  DRV-106
+ *            +966 54 612 6286
+ *   ─────────────────────────────────────────────────────────────
+ *   Truck          This month        Documents
+ *   DRA-6484       SAR 0             Not on file
+ *   ─────────────────────────────────────────────────────────────
+ *   [ Call ]                          [ View ]
+ *
+ * Every value sits under a short label in the same three columns, so rows
+ * line up card to card. Problems (expired licence or document, no truck)
+ * are coloured; everything else stays neutral. On a trip, the truck column
+ * shows the trip and Call becomes Track.
+ */
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
-import { Truck, Navigation, TriangleAlert, FileText, Wallet } from 'lucide-react-native';
-import { Colors, Radius, Shadows, Spacing } from '@mercon/mobile-shared/theme/tokens';
+import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { ChevronRight, Navigation, Phone } from 'lucide-react-native';
 import { DriverAvatar } from './DriverAvatar';
-import { DriverStatusBadge } from './DriverStatusBadge';
-import { DriverTrips } from './DriverTrips';
-import { DriverActionGroup } from './DriverActionGroup';
-import { EXPIRY_SOON_DAYS, formatDaysLeft } from '../services/driverDetailsService';
+import { EXPIRY_SOON_DAYS } from '../services/driverDetailsService';
 import { driverFullName, driverInitials } from '../services/driversService';
 import { niceName } from '../../trips/create/components/ui';
-import type { DriverListItem } from '../types';
+import type { DriverDisplayStatus, DriverListItem } from '../types';
+
+const INK = '#18181B';
+const MUTED = '#6B6B76';
+const LINE = '#EDEDF0';
+const RED = '#B42318';
+const AMBER = '#B54708';
+
+const STATUS: Record<DriverDisplayStatus, { label: string; bg: string; fg: string; dot: string }> = {
+  Available: { label: 'Available', bg: '#ECFDF3', fg: '#067647', dot: '#16A34A' },
+  OnTrip: { label: 'On trip', bg: '#EEF4FF', fg: '#1D4ED8', dot: '#2563EB' },
+  OffDuty: { label: 'Off duty', bg: '#F4F4F5', fg: '#52525B', dot: '#A1A1AA' },
+  Inactive: { label: 'Inactive', bg: '#F4F4F5', fg: '#52525B', dot: '#A1A1AA' },
+  Suspended: { label: 'Suspended', bg: '#FEF3F2', fg: RED, dot: '#D92D20' },
+  OnLeave: { label: 'On leave', bg: '#F5F3FF', fg: '#5B21B6', dot: '#7C3AED' },
+};
+
+/** "+966546126286" → "+966 54 612 6286"; anything else is shown as given. */
+function formatPhone(p: string): string {
+  const m = /^\+?966(5\d)(\d{3})(\d{4})$/.exec(p.replace(/\s+/g, ''));
+  return m ? `+966 ${m[1]} ${m[2]} ${m[3]}` : p;
+}
+
+function expiryText(days: number | null): { text: string; color: string } | null {
+  if (days === null) return null;
+  if (days < 0) return { text: `Expired ${Math.abs(days)}d ago`, color: RED };
+  if (days === 0) return { text: 'Expires today', color: RED };
+  if (days <= EXPIRY_SOON_DAYS) return { text: `${days} days left`, color: AMBER };
+  return { text: `${days} days left`, color: INK };
+}
 
 interface DriverCardProps {
   driver: DriverListItem;
@@ -19,143 +61,100 @@ interface DriverCardProps {
   className?: string;
 }
 
-export function DriverCard({ driver, onCall, onTrack, onView, className }: DriverCardProps) {
-  const onTrip = driver.status === 'OnTrip' && !!driver.activeTrip;
-  const licenseExpired = driver.licenseDaysLeft !== null && driver.licenseDaysLeft < 0;
-  const licenseExpiringSoon = driver.licenseDaysLeft !== null && !licenseExpired && driver.licenseDaysLeft <= EXPIRY_SOON_DAYS;
-  const docExpired = driver.docDaysLeft !== null && driver.docDaysLeft < 0;
-  const docExpiringSoon = driver.docDaysLeft !== null && !docExpired && driver.docDaysLeft <= EXPIRY_SOON_DAYS;
-  const vehiclePlate = driver.activeTrip?.vehiclePlate ?? driver.assignedVehicle?.plateNumber ?? null;
-  // Names arrive in ALL CAPS; normal case is shorter and easier to read, and it can wrap instead of truncating.
+export function DriverCard({ driver, onCall, onTrack, onView }: DriverCardProps) {
+  // Names arrive in ALL CAPS; normal case is shorter and easier to read, and it wraps instead of truncating.
   const name = niceName(driverFullName(driver));
+  const onTrip = driver.status === 'OnTrip' && !!driver.activeTrip;
+  const st = STATUS[driver.status as DriverDisplayStatus] ?? STATUS.Inactive;
+  const plate = driver.activeTrip?.vehiclePlate ?? driver.assignedVehicle?.plateNumber ?? null;
 
-  const payoutText = driver.monthlyPayout !== null
-    ? `SAR ${driver.monthlyPayout.toLocaleString('en-US')}`
-    : 'SAR 0';
+  // Documents column: an expired or expiring licence outranks other documents.
+  const licence = expiryText(driver.licenseDaysLeft);
+  const doc = expiryText(driver.docDaysLeft);
+  const docs =
+    licence && licence.color !== INK ? { text: `Licence ${licence.text.toLowerCase()}`, color: licence.color }
+    : doc ?? { text: 'Not on file', color: MUTED };
 
   return (
-    <TouchableOpacity
-      activeOpacity={onView ? 0.9 : 1}
-      onPress={onView ? () => onView(driver) : undefined}
-      className={`bg-white p-4 ${className ?? ''}`}
-      style={{ borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.coolGray, ...Shadows.sm }}
-    >
-      {/* Header — avatar, name + status/phone/payout, total trips */}
-      <View
-        className="flex-row items-center"
-        style={{ gap: Spacing.md }}
-      >
-        <DriverAvatar
-          initials={driverInitials(driver)}
-          avatarUrl={driver.avatarUrl}
-          status={driver.status}
-          size={52}
-        />
-
-        <View className="flex-1" style={{ gap: 4 }}>
-          <Text numberOfLines={2} style={{ color: Colors.charcoal, lineHeight: 21 }} className="text-[16px] font-bold">
-            {name}
-          </Text>
-          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
-            <DriverStatusBadge status={driver.status} />
-            {driver.phone && (
-              <Text numberOfLines={1} style={{ color: Colors.gray600 }} className="flex-1 text-[13px] font-medium">
-                {driver.phone}
-              </Text>
-            )}
+    <TouchableOpacity activeOpacity={onView ? 0.85 : 1} onPress={onView ? () => onView(driver) : undefined} style={s.card}>
+      {/* Header */}
+      <View style={s.head}>
+        <DriverAvatar initials={driverInitials(driver)} avatarUrl={driver.avatarUrl} status={driver.status} size={48} />
+        <View style={s.headText}>
+          <Text style={s.name} numberOfLines={2}>{name}</Text>
+          <View style={s.metaRow}>
+            <View style={[s.pill, { backgroundColor: st.bg }]}>
+              <View style={[s.dot, { backgroundColor: st.dot }]} />
+              <Text style={[s.pillText, { color: st.fg }]}>{st.label}</Text>
+            </View>
+            {driver.ref_id ? <Text style={s.sub}>{driver.ref_id}</Text> : null}
           </View>
-          <View className="flex-row items-center" style={{ gap: 4 }}>
-            <Wallet size={12} color={Colors.primary} strokeWidth={2} />
-            <Text numberOfLines={1} style={{ color: Colors.gray600 }} className="text-[12px] font-semibold">
-              Payout (Month): <Text style={{ color: Colors.charcoal, fontWeight: '700' }}>{payoutText}</Text>
-            </Text>
-          </View>
+          {driver.phone ? <Text style={s.sub}>{formatPhone(driver.phone)}</Text> : null}
         </View>
-
-        {driver.totalTrips !== null && <DriverTrips totalTrips={driver.totalTrips} />}
       </View>
 
-      {/* Operational details — vehicle assignment + license & doc expiry */}
-      <View style={{ marginTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.coolGray, paddingTop: Spacing.sm, gap: Spacing.xs }}>
-        {onTrip && driver.activeTrip ? (
-          <TouchableOpacity
-            activeOpacity={onTrack ? 0.7 : 1}
-            onPress={onTrack ? () => onTrack(driver) : undefined}
-            className="flex-row items-center justify-between"
-            style={{ borderRadius: Radius.md, backgroundColor: Colors.accentLight, borderWidth: 1, borderColor: '#FDE3DF', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm }}
-          >
-            <View className="flex-row items-center flex-1" style={{ gap: Spacing.sm }}>
-              <View className="items-center justify-center" style={{ width: 28, height: 28, borderRadius: Radius.sm, backgroundColor: Colors.primary }}>
-                <Truck size={14} color={Colors.white} strokeWidth={2.2} />
-              </View>
-              <View className="flex-1">
-                <Text style={{ color: Colors.primary }} className="text-[11px] font-bold uppercase tracking-wider">
-                  On Trip · {driver.activeTrip.status}
-                </Text>
-                <Text numberOfLines={1} style={{ color: Colors.charcoal }} className="text-[13px] font-semibold">
-                  {vehiclePlate ?? 'Assigned vehicle'}
-                </Text>
-              </View>
-            </View>
-            <Navigation size={16} color={Colors.primary} strokeWidth={2} />
-          </TouchableOpacity>
-        ) : (
-          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
-            <Truck size={14} color={Colors.gray500} strokeWidth={2} />
-            <Text numberOfLines={1} style={{ color: Colors.gray600 }} className="flex-1 text-[13px] font-medium">
-              {vehiclePlate ?? 'No vehicle assigned'}
-            </Text>
-          </View>
-        )}
-
-        {(licenseExpired || licenseExpiringSoon) && (
-          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
-            <TriangleAlert size={13} color={licenseExpired ? Colors.danger : Colors.warning} strokeWidth={2} />
-            <Text
-              numberOfLines={1}
-              style={{ color: licenseExpired ? Colors.danger : Colors.warning }}
-              className="flex-1 text-[12px] font-semibold"
-            >
-              License {formatDaysLeft(driver.licenseDaysLeft)}
-            </Text>
-          </View>
-        )}
-
-        {docExpired || docExpiringSoon ? (
-          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
-            <TriangleAlert size={13} color={docExpired ? Colors.danger : Colors.warning} strokeWidth={2} />
-            <Text
-              numberOfLines={1}
-              style={{ color: docExpired ? Colors.danger : Colors.warning }}
-              className="flex-1 text-[12px] font-semibold"
-            >
-              Document {formatDaysLeft(driver.docDaysLeft)}
-            </Text>
-          </View>
-        ) : (
-          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
-            <FileText size={13} color={Colors.gray500} strokeWidth={2} />
-            <Text numberOfLines={1} style={{ color: Colors.gray600 }} className="flex-1 text-[12px] font-medium">
-              Document Expiry:{' '}
-              {driver.docDaysLeft !== null
-                ? `${driver.docDaysLeft} days left`
-                : 'No record'}
-            </Text>
-          </View>
-        )}
+      {/* Facts — three aligned columns */}
+      <View style={s.facts}>
+        <Fact label={onTrip ? 'On trip' : 'Truck'} value={plate ?? 'None'} color={plate ? INK : MUTED} mono={!!plate} />
+        <Fact label="This month" value={`SAR ${(driver.monthlyPayout ?? 0).toLocaleString('en-US')}`} color={INK} />
+        <Fact label="Documents" value={docs.text} color={docs.color} />
       </View>
 
       {/* Actions */}
-      <View style={{ marginTop: Spacing.sm }}>
-        <DriverActionGroup
-          driverName={name}
-          onTrip={onTrip}
-          canCall={!!driver.phone}
-          onCall={onCall ? () => onCall(driver) : undefined}
-          onTrack={onTrack ? () => onTrack(driver) : undefined}
-          onView={onView ? () => onView(driver) : undefined}
-        />
+      <View style={s.actions}>
+        {onTrip ? (
+          <TouchableOpacity style={s.btn} onPress={onTrack ? () => onTrack(driver) : undefined} activeOpacity={0.8} accessibilityLabel={`Track trip for ${name}`}>
+            <Navigation size={16} color={INK} strokeWidth={2.2} />
+            <Text style={s.btnText}>Track</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[s.btn, !driver.phone && { opacity: 0.4 }]}
+            onPress={driver.phone && onCall ? () => onCall(driver) : undefined}
+            activeOpacity={0.8}
+            accessibilityLabel={`Call ${name}`}
+          >
+            <Phone size={16} color={INK} strokeWidth={2.2} />
+            <Text style={s.btnText}>Call</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={[s.btn, s.btnDark]} onPress={onView ? () => onView(driver) : undefined} activeOpacity={0.85} accessibilityLabel={`View ${name}`}>
+          <Text style={[s.btnText, { color: '#FFFFFF' }]}>View</Text>
+          <ChevronRight size={16} color="#FFFFFF" strokeWidth={2.2} />
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
 }
+
+function Fact({ label, value, color, mono }: { label: string; value: string; color: string; mono?: boolean }) {
+  return (
+    <View style={s.fact}>
+      <Text style={s.factLabel} numberOfLines={1}>{label}</Text>
+      <Text style={[s.factValue, { color }, mono && s.mono]} numberOfLines={2}>{value}</Text>
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  card: { backgroundColor: '#FFFFFF', borderRadius: 18, borderWidth: 1, borderColor: '#E9E9EC', padding: 16, gap: 14 },
+  head: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  headText: { flex: 1, gap: 5 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  name: { fontSize: 16, fontWeight: '700', color: INK, lineHeight: 21 },
+  sub: { fontSize: 13, color: MUTED, fontVariant: ['tabular-nums'] },
+  pill: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  pillText: { fontSize: 12, fontWeight: '600' },
+
+  facts: { flexDirection: 'row', borderTopWidth: 1, borderBottomWidth: 1, borderColor: LINE, paddingVertical: 12 },
+  fact: { flex: 1, gap: 3, paddingRight: 8 },
+  factLabel: { fontSize: 12, color: MUTED },
+  factValue: { fontSize: 14, fontWeight: '600', lineHeight: 18 },
+  mono: { fontFamily: 'monospace', fontWeight: '700' },
+
+  actions: { flexDirection: 'row', gap: 10 },
+  btn: { flex: 1, height: 42, borderRadius: 12, backgroundColor: '#F4F4F5', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  btnDark: { backgroundColor: INK },
+  btnText: { fontSize: 14, fontWeight: '600', color: INK },
+});
