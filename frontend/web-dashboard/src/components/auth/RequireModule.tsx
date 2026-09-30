@@ -31,7 +31,7 @@ const MODULE_PATH_MAP: Record<string, string> = {
   expenses: '/expenses',
   documents: '/documents',
   reports: '/reports',
-  'company-reports': '/company-reports',
+  'company-reports': '/customers', // no page of its own — Customer → Trip sheets
   'report-builder': '/report-builder',
   maintenance: '/maintenance',
   'third-party': '/third-party',
@@ -52,6 +52,15 @@ export function getFirstActiveModulePath(enabledModules?: string[], preferredMod
     }
   }
   return '/quotations';
+}
+
+/** For features that live inside another page (not a route): same rule as the guard below. */
+export function useModuleEnabled(moduleKey: ModuleKey): boolean {
+  const user = authStore.getUser();
+  const isSuperAdmin = user?.role === 'SuperAdmin' || (user as any)?.isSuperAdmin === true;
+  const { data: settings } = useQuery({ queryKey: ['settings'], queryFn: settingsService.get, staleTime: 60000 });
+  if (isSuperAdmin || !settings || !Array.isArray(settings.enabledModules)) return true;
+  return settings.enabledModules.includes(moduleKey);
 }
 
 /** Blocks direct navigation to a disabled module's URL for regular users — SuperAdmin bypasses to configure & test. */

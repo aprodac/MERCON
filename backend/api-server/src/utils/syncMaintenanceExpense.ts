@@ -1,5 +1,6 @@
 import { prisma } from '../db';
 import { logger } from './logger';
+import { syncExpenseLedger } from './expenseLedger';
 
 /**
  * ─────────────────────────────────────────────────────────────────────────────
@@ -34,11 +35,16 @@ export async function syncSingleMaintenanceExpense(maintenanceId: string): Promi
         },
         data: { deletedAt: new Date() },
       });
+      const gone = await prisma.expense.findMany({ where: { category: 'Maintenance', OR: [{ ref_id: expRefId }, { description: { contains: mntTag } }] }, select: { id: true } });
+      for (const g of gone) await syncExpenseLedger(g.id);
       return;
     }
 
     const amount = Number(record.cost) || 0;
-    const status = record.status === 'Completed' ? 'Paid' : 'Pending';
+    const vatAmount = Number(record.vat_amount) || 0;
+    // Paid only once the work is done and the workshop is marked paid; otherwise it's owed
+    const status = record.status === 'Completed' && record.payment_status !== 'Pending' ? 'Paid' : 'Pending';
+    const paymentAccountId = status === 'Paid' ? record.paymentAccountId : null;
     const payee = record.workshop_name?.trim() || 'Maintenance Workshop';
     const expenseDate = record.start_date || record.service_date || record.createdAt || new Date();
     const vehiclePlate = record.vehicle?.plate_number ? ` (${record.vehicle.plate_number})` : '';
@@ -57,10 +63,23 @@ export async function syncSingleMaintenanceExpense(maintenanceId: string): Promi
       if (existingExpense.deletedAt) {
         return;
       }
+      // Runs on every expenses list load: only touch the row (and the ledger) when something changed
+      const changed =
+        Number(existingExpense.amount) !== amount ||
+        Number(existingExpense.vat_amount) !== vatAmount ||
+        existingExpense.paymentAccountId !== paymentAccountId ||
+        existingExpense.status !== status ||
+        existingExpense.payee !== payee ||
+        existingExpense.vehicleId !== record.vehicleId ||
+        existingExpense.expense_date.getTime() !== new Date(expenseDate).getTime() ||
+        existingExpense.description !== description;
+      if (!changed) return;
       await prisma.expense.update({
         where: { id: existingExpense.id },
         data: {
           amount,
+          vat_amount: vatAmount,
+          paymentAccountId,
           status,
           payee,
           vehicleId: record.vehicleId,
@@ -68,8 +87,9 @@ export async function syncSingleMaintenanceExpense(maintenanceId: string): Promi
           description,
         },
       });
+      await syncExpenseLedger(existingExpense.id);
     } else {
-      await prisma.expense.create({
+      const created = await prisma.expense.create({
         data: {
           ref_id: expRefId,
           category: 'Maintenance',
@@ -77,12 +97,15 @@ export async function syncSingleMaintenanceExpense(maintenanceId: string): Promi
           vehicleId: record.vehicleId,
           payee,
           amount,
+          vat_amount: vatAmount,
+          paymentAccountId,
           currency: 'SAR',
           expense_date: expenseDate,
           description,
           created_by: record.created_by,
         },
       });
+      await syncExpenseLedger(created.id);
     }
   } catch (error) {
     logger.error({ err: error, maintenanceId }, 'Failed to sync maintenance record to expenses');

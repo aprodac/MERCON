@@ -18,8 +18,10 @@ import { settingsService } from '@/services/settingsService';
 import { dueDateFor, duplicableLines } from '@/lib/finance/invoices';
 import { formatMoney } from '@/lib/finance/format';
 import { SendInvoiceSheet, type InvoiceContact } from './SendInvoiceSheet';
+import { IssueInvoiceDialog } from './InvoiceLedgerSetup';
+import { CreditNoteSheet } from './CreditNoteSheet';
 
-export type InvoiceCommand = 'issue' | 'record_payment' | 'remind' | 'send' | 'print' | 'edit' | 'duplicate' | 'void' | 'delete';
+export type InvoiceCommand = 'issue' | 'record_payment' | 'remind' | 'send' | 'print' | 'edit' | 'duplicate' | 'void' | 'delete' | 'credit_note';
 
 type Confirm = { kind: 'issue' | 'void' | 'delete'; invoice: Invoice };
 
@@ -66,6 +68,7 @@ export function useInvoiceWorkflow(opts: { onDeleted?: (id: string) => void } = 
   const [remindFor, setRemindFor] = useState<ReminderCustomer | null>(null);
   const [sendInvoice, setSendInvoice] = useState<Invoice | null>(null);
   const [printInvoice, setPrintInvoice] = useState<Invoice | null>(null);
+  const [creditFor, setCreditFor] = useState<Invoice | null>(null);
   const [busy, setBusy] = useState(false);
 
   // Open receivables feed the payment and reminder sheets
@@ -111,6 +114,9 @@ export function useInvoiceWorkflow(opts: { onDeleted?: (id: string) => void } = 
         case 'void':
         case 'delete':
           setConfirm({ kind: command, invoice: inv });
+          return;
+        case 'credit_note':
+          setCreditFor(inv);
           return;
         case 'record_payment':
           setCollectFor(inv.customerId);
@@ -164,7 +170,18 @@ export function useInvoiceWorkflow(opts: { onDeleted?: (id: string) => void } = 
 
   const sheets = (
     <>
-      <AlertDialog open={confirm !== null} onOpenChange={(o) => !o && !confirmMutation.isPending && setConfirm(null)}>
+      <IssueInvoiceDialog
+        open={confirm?.kind === 'issue'}
+        onOpenChange={(o) => !o && setConfirm(null)}
+        title={CONFIRM_COPY.issue.title}
+        description={confirm ? CONFIRM_COPY.issue.body(confirm.invoice.ref_id ?? 'This invoice', formatMoney(confirm.invoice.total_amount)) : ''}
+        hasVat={Number(confirm?.invoice.tax_amount) > 0.005}
+        pending={confirmMutation.isPending}
+        onConfirm={() => confirm && confirmMutation.mutate(confirm)}
+        confirmLabel={CONFIRM_COPY.issue.action}
+      />
+
+      <AlertDialog open={confirm !== null && confirm.kind !== 'issue'} onOpenChange={(o) => !o && !confirmMutation.isPending && setConfirm(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{copy?.title}</AlertDialogTitle>
@@ -219,6 +236,8 @@ export function useInvoiceWorkflow(opts: { onDeleted?: (id: string) => void } = 
         }}
         onDownloadPdf={(inv) => setPrintInvoice(inv)}
       />
+
+      <CreditNoteSheet invoice={creditFor} onOpenChange={(o) => !o && setCreditFor(null)} />
 
       <InvoicePrintModal isOpen={printInvoice !== null} onClose={() => setPrintInvoice(null)} invoice={printInvoice} />
     </>

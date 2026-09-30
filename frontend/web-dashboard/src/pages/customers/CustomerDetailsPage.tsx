@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, TrendingUp, Sparkles, CreditCard, ArrowRight, Package, Layers, Phone, Mail,
   Trash2, UploadCloud, User, Download, ChevronDown, Car, UserCheck, Copy, PhoneCall,
   MoreVertical, Award, FolderOpen, Banknote, Gauge, Compass, Radio, Plane, Search, Tag,
-  LayoutDashboard, ReceiptText, ArrowUpRight, MessageCircle
+  LayoutDashboard, ReceiptText, ArrowUpRight, MessageCircle, FileSpreadsheet
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -22,6 +22,8 @@ import QuotationFormDialog from '@/components/quotations/QuotationFormDialog';
 import LocationFormDialog from '@/components/locations/LocationFormDialog';
 import CustomerQuotationsTab from '@/components/customers/CustomerQuotationsTab';
 import CustomerTripsTab from '@/components/customers/CustomerTripsTab';
+import CustomerTripSheetsTab from '@/components/customers/CustomerTripSheetsTab';
+import { useModuleEnabled } from '@/components/auth/RequireModule';
 import VisualRouteProgress from '@/components/trips/VisualRouteProgress';
 import ExcelImportDialog from '@/components/fleet/ExcelImportDialog';
 import { LOCATION_COLUMNS } from '@/utils/importUtils';
@@ -181,8 +183,12 @@ export default function CustomerDetailsPage() {
   const [selectedPreviewTrip, setSelectedPreviewTrip] = useState<any | null>(null);
   const [selectedPreviewQuotation, setSelectedPreviewQuotation] = useState<any | null>(null);
 
-  // Active view tab state: default to 'overview' matching reference screenshot
-  const [activeTab, setActiveTab] = useState<'overview' | 'dispatches' | 'quotations' | 'saved_places' | 'governance' | 'financials'>('overview');
+  // Active view tab state: default to 'overview'; ?tab=trip-sheets opens Trip sheets (linked from an invoice)
+  const [searchParams] = useSearchParams();
+  const tripSheetsEnabled = useModuleEnabled('company-reports');
+  const [activeTab, setActiveTab] = useState<'overview' | 'dispatches' | 'quotations' | 'saved_places' | 'governance' | 'financials' | 'trip_sheets'>(
+    searchParams.get('tab') === 'trip-sheets' ? 'trip_sheets' : 'overview'
+  );
 
   // Fetch Customer details
   const { data: customer, isLoading, error } = useQuery({
@@ -467,6 +473,7 @@ export default function CustomerDetailsPage() {
             { id: 'financials', label: 'Financial Summary', icon: ReceiptText },
             { id: 'dispatches', label: 'Dispatches', icon: Truck },
             { id: 'quotations', label: 'Quotations', icon: Tag },
+            ...(tripSheetsEnabled ? [{ id: 'trip_sheets', label: 'Trip sheets', icon: FileSpreadsheet }] : []),
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -672,6 +679,12 @@ export default function CustomerDetailsPage() {
               onOpenAddQuotation={() => setIsAddQuotationOpen(true)}
               onOpenEditQuotation={(q) => setEditQuotationTarget(q)}
             />
+          </div>
+        )}
+
+        {activeTab === 'trip_sheets' && tripSheetsEnabled && (
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-4 shadow-2xs">
+            <CustomerTripSheetsTab customerId={id!} customerName={customer.name} />
           </div>
         )}
 

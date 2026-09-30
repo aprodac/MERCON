@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db';
+import { postedExpenseIds } from '../utils/expenseLedger';
 import { nextBillRefId } from '../utils/refId';
 import { logger } from '../utils/logger';
 import { approveBill, recordBillPayment, voidBill } from '../utils/billEngine';
@@ -20,6 +21,8 @@ export async function populateLinesFromSources(
     accountId?: string | null;
     description: string;
     amount: number;
+    /** Reclaimable VAT of an expense line; the line is net of it and it joins the bill's VAT. */
+    vat?: number;
   }[] = [];
 
   if (expenseIds && expenseIds.length > 0) {
@@ -33,7 +36,8 @@ export async function populateLinesFromSources(
         source_id: exp.id,
         accountId: null, // picked by operator or resolved via default expense accounts
         description: `[${exp.ref_id || 'EXP'}] ${exp.category}: ${exp.description || exp.payee || 'Operating Expense'}`,
-        amount: Number(exp.amount) || 0,
+        amount: Math.round(((Number(exp.amount) || 0) - (Number(exp.vat_amount) || 0)) * 100) / 100,
+        vat: Number(exp.vat_amount) || 0,
       });
     }
   }
@@ -276,6 +280,19 @@ export const createDraftBill = async (req: Request, res: Response) => {
       });
     }
 
+    // An expense already posted to the ledger would be counted twice if a bill posted it again
+    if (validated.expenseIds && validated.expenseIds.length > 0) {
+      const posted = await postedExpenseIds(validated.expenseIds);
+      if (posted.size > 0) {
+        const refs = (await prisma.expense.findMany({ where: { id: { in: [...posted] } }, select: { ref_id: true } })).map((e) => e.ref_id).join(', ');
+        return res.status(400).json({
+          success: false,
+          error: 'EXPENSE_ALREADY_POSTED',
+          message: `${refs} ${posted.size === 1 ? 'is' : 'are'} already in the ledger from Expenses, so ${posted.size === 1 ? 'it' : 'they'} can't go on a bill as well.`,
+        });
+      }
+    }
+
     // Auto-populate lines from selected source IDs if provided
     const autoLines = await populateLinesFromSources(validated.expenseIds, validated.tripSubcontractIds);
     const manualLines = validated.lines || [];
@@ -292,7 +309,9 @@ export const createDraftBill = async (req: Request, res: Response) => {
     const ref_id = await nextBillRefId(prisma);
 
     const subtotal = allLines.reduce((sum, l) => sum + l.amount, 0);
-    const tax_amount = validated.tax_amount || 0;
+    // Expenses brought onto the bill bring their VAT with them
+    const expenseVat = autoLines.reduce((sum, l) => sum + (l.vat || 0), 0);
+    const tax_amount = Math.round(((validated.tax_amount || 0) + expenseVat) * 100) / 100;
     const total_amount = subtotal + tax_amount;
     const balance_due = total_amount;
 

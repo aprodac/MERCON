@@ -1,4 +1,4 @@
-import type { TripReportFieldKey } from '@mercon/shared-types';
+import { lineTypeLabel, normalizeLineTypeToken, type TripReportFieldKey } from '@mercon/shared-types';
 import { prisma } from '../../../db';
 import { computeTripChargesTotal } from '../../../utils/tripFinancials';
 
@@ -8,14 +8,20 @@ export interface TripReportFilters {
   customerId?: string;
   status?: string;
   /**
-   * Trip.rate_category (e.g. "Trip", "Monthly Round", "Extra Trip/Round
-   * Trip" — see RATE_CATEGORIES in @mercon/shared-types). Real customer
-   * templates split by this: a JDL or IMILE workbook has separate sheets
-   * for trip-rate vs monthly-rate business, so a saved template like
-   * "IMILE Extra" needs to pull only its own slice of trips rather than
-   * everything for the customer.
+   * Only trips of this line type (SINGLE_TRIP, ROUND_TRIP, 10_HRS, 12_HRS —
+   * LINE_TYPES in @mercon/shared-types), for a customer who wants e.g. a
+   * separate sheet for round trips. A trip keeps its line type in the legacy
+   * `rate_category` column, spelled either way ("ROUND_TRIP" / "Round Trip"),
+   * and older trips only have it on their quotation — so it's compared
+   * normalised, in memory, not with an exact-match where clause.
    */
-  rateCategory?: string;
+  lineType?: string;
+  /**
+   * Exactly these trips (e.g. the ones billed on an invoice) instead of a
+   * date range. Soft-deleted trips are kept here: they were billed, so the
+   * sheet must still match the invoice.
+   */
+  tripIds?: string[];
 }
 
 const PAGE_SIZE = 1000;
@@ -34,7 +40,8 @@ const PAGE_SIZE = 1000;
 export async function fetchTripRows(
   filters: TripReportFilters
 ): Promise<Record<TripReportFieldKey, unknown>[]> {
-  const { startDate, endDate, customerId, status, rateCategory } = filters;
+  const { startDate, endDate, customerId, status, lineType, tripIds } = filters;
+  const wantedLineType = lineType ? normalizeLineTypeToken(lineType) : '';
 
   const dateRange: { gte?: Date; lte?: Date } = {};
   if (startDate) dateRange.gte = new Date(startDate);
@@ -44,7 +51,7 @@ export async function fetchTripRows(
     dateRange.lte = end;
   }
 
-  const whereClause: any = { deletedAt: null };
+  const whereClause: any = tripIds ? { id: { in: tripIds } } : { deletedAt: null };
   if (Object.keys(dateRange).length > 0) {
     whereClause.OR = [
       { actual_start: dateRange },
@@ -53,9 +60,8 @@ export async function fetchTripRows(
   }
   if (customerId && customerId !== 'all') whereClause.customerId = customerId;
   if (status && status !== 'all') whereClause.status = status;
-  if (rateCategory && rateCategory !== 'all') whereClause.rate_category = rateCategory;
 
-  const settings = await prisma.settings.findUnique({ where: { id: 'singleton' } });
+  const settings = await prisma.settings.findUnique({ where: { id: 'singleton' }, select: { companyLegalName: true } });
   const defaultCarrierName = settings?.companyLegalName || 'MERCON Logistics';
 
   const rows: Record<TripReportFieldKey, unknown>[] = [];
@@ -73,31 +79,41 @@ export async function fetchTripRows(
         vehicle: { select: { plate_number: true, capacity_kg: true, asset_type: true } },
         stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' } },
         charges: true,
+        subcontract: { include: { provider: { select: { name: true } } } },
+        quotation: { select: { line_type: true } },
       },
     });
     if (page.length === 0) break;
 
     for (const t of page) {
+      const tripLineType = t.rate_category || t.quotation?.line_type || null;
+      if (wantedLineType && normalizeLineTypeToken(tripLineType) !== wantedLineType) continue;
+
       const pickup = t.stops.find((s) => s.stop_type === 'Pickup');
       const dropoff = t.stops.find((s) => s.stop_type === 'Dropoff');
       const billing = Number(t.billing_amount ?? 0);
       const chargesTotal = computeTripChargesTotal(t.charges);
       const totalAmt = billing + chargesTotal;
-      const driverCharge = Number((t as any).driver_payout ?? (t as any).driver_charge ?? (t as any).trip_charges ?? 0);
+      const driverCharge = Number(t.driver_payout ?? 0);
       const balance = totalAmt - (chargesTotal + driverCharge);
-      const vehicleTypeLabel = t.vehicle
-        ? `${(t.vehicle.capacity_kg / 1000).toFixed(0)} TON (${t.vehicle.asset_type})`
-        : 'N/A';
+      // A third-party trip is driven by the subcontractor's driver and truck,
+      // which live on the subcontract, not on driver/vehicle.
+      const sub = t.is_third_party ? t.subcontract : null;
+      const vehicleTypeLabel = sub
+        ? sub.vehicleType || t.vehicle_type || 'N/A'
+        : t.vehicle
+          ? `${(t.vehicle.capacity_kg / 1000).toFixed(0)} TON (${t.vehicle.asset_type})`
+          : 'N/A';
 
       rows.push({
         serial: rows.length + 1,
         ref_id: t.ref_id || t.id,
         date: t.actual_start || t.planned_start || t.createdAt,
-        driver_name: t.driver ? `${t.driver.first_name} ${t.driver.last_name}` : 'N/A',
-        driver_phone: t.driver?.phone_primary || 'N/A',
-        vehicle_plate: t.vehicle?.plate_number || 'N/A',
+        driver_name: sub ? sub.driverName || 'N/A' : t.driver ? `${t.driver.first_name} ${t.driver.last_name}` : 'N/A',
+        driver_phone: (sub ? sub.driverPhone : t.driver?.phone_primary) || 'N/A',
+        vehicle_plate: (sub ? sub.vehiclePlate : t.vehicle?.plate_number) || 'N/A',
         vehicle_type: vehicleTypeLabel,
-        carrier_name: t.carrier_name || defaultCarrierName,
+        carrier_name: t.carrier_name || sub?.provider?.name || defaultCarrierName,
         customer_name: t.customer?.name || 'N/A',
         receiver: dropoff?.location_name || dropoff?.location_address || 'N/A',
         origin: pickup?.location_name || pickup?.location_address || 'N/A',
@@ -108,7 +124,8 @@ export async function fetchTripRows(
         driver_payout: driverCharge,
         balance_amount: balance,
         status: t.status,
-        rate_category: t.rate_category || 'N/A',
+        // Always the display name ("Round trip"), however the trip spelled it.
+        rate_category: tripLineType ? lineTypeLabel(normalizeLineTypeToken(tripLineType)) : 'N/A',
       });
     }
 

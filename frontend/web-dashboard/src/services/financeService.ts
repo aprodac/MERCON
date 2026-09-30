@@ -68,6 +68,10 @@ export interface InvoiceLineDTO {
   quantity?: number;
   rate: number;
   amount: number;
+  /** Percent, 0–100; `amount` is net of it. */
+  discount_pct?: number;
+  /** Percent; defaults to the invoice's VAT rate. */
+  tax_rate?: number;
 }
 
 export interface CreateInvoiceDTO {
@@ -77,7 +81,12 @@ export interface CreateInvoiceDTO {
   tax_rate?: number;
   currency?: string;
   tripIds?: string[];
+  /** Per-trip VAT / discount overrides, keyed by trip id. */
+  tripOptions?: Record<string, { tax_rate?: number; discount_pct?: number }>;
   lines?: InvoiceLineDTO[];
+  /** Shown on the printed invoice. */
+  notes?: string | null;
+  terms?: string | null;
 }
 
 export interface RecordInvoicePaymentDTO {
@@ -148,6 +157,258 @@ export interface TransferFundsDTO {
   amount: number;
   date: string;
   memo?: string | null;
+  /** Deposit slip, cheque or transfer (UTR) number. */
+  reference?: string | null;
+  /** Bank charges, posted to `charges_account_id` (an Expense account). */
+  charges_amount?: number | null;
+  charges_account_id?: string | null;
+}
+
+export interface ProfitTotals {
+  trips: number;
+  revenue: number;
+  driverPay: number;
+  subcontract: number;
+  expenses: number;
+  cost: number;
+  margin: number;
+  marginPct: number | null;
+  lossTrips: number;
+  unpricedTrips: number;
+}
+
+export interface ProfitTripRow {
+  id: string;
+  refId: string | null;
+  day: string;
+  customerId: string;
+  customer: string;
+  lane: string;
+  vehicleId: string | null;
+  vehicle: string | null;
+  driver: string | null;
+  thirdParty: boolean;
+  status: string;
+  revenue: number;
+  driverPay: number;
+  subcontract: number;
+  expenses: number;
+  cost: number;
+  margin: number;
+  marginPct: number | null;
+}
+
+export interface ProfitGroupRow extends ProfitTotals {
+  key: string;
+  label: string;
+}
+
+export type ProfitGroupBy = 'trip' | 'customer' | 'lane' | 'vehicle';
+
+export interface TripProfitability {
+  range: { from: string | null; to: string | null };
+  group: ProfitGroupBy;
+  summary: ProfitTotals;
+  filtered: ProfitTotals;
+  rows: (ProfitTripRow | ProfitGroupRow)[];
+  meta: { total: number; page: number; per_page: number; truncated: boolean };
+}
+
+export interface TripProfitabilityParams {
+  from?: string;
+  to?: string;
+  group?: ProfitGroupBy;
+  customer_id?: string;
+  vehicle_id?: string;
+  only?: 'loss' | 'unpriced';
+  search?: string;
+  sort?: 'margin_pct' | 'margin' | 'revenue' | 'date';
+  dir?: 'asc' | 'desc';
+  page?: number;
+  per_page?: number;
+}
+
+export interface SettlementQueueRow {
+  driver_id: string;
+  driver_ref: string | null;
+  driver_name: string;
+  owed: number;
+  trips: number;
+  oldest: string;
+  open_advances: number;
+}
+
+export interface PayableTrip {
+  tripId: string;
+  refId: string | null;
+  role: 'driver' | 'co_driver';
+  amount: number;
+  day: string;
+  customer: string;
+  lane: string;
+}
+
+export interface DriverPayable {
+  trips: PayableTrip[];
+  advances: { id: string; ref_id: string | null; amount: number; remaining: number; date: string; memo: string | null }[];
+  driver_pay_account_id: string | null;
+}
+
+export interface DriverSettlementRow {
+  id: string;
+  ref_id: string | null;
+  driver_id: string;
+  driver_name: string;
+  status: 'Paid' | 'Voided';
+  paid_date: string;
+  gross: number;
+  deducted: number;
+  net: number;
+  trips: number;
+  reference: string | null;
+  journal_entry_id: string | null;
+}
+
+export interface DriverSettlementDetail extends Omit<DriverSettlementRow, 'trips'> {
+  notes: string | null;
+  voided_at: string | null;
+  paid_from: string | null;
+  lines: { trip_id: string; trip_ref: string | null; customer: string; day: string | null; role: 'driver' | 'co_driver'; amount: number }[];
+  advances: { advance_id: string; ref_id: string | null; amount: number }[];
+}
+
+export interface PayoutMonth {
+  month: string;
+  earned: number;
+  paid: number;
+  owed: number;
+  trips: number;
+  drivers: number;
+}
+
+export interface DriverPayoutMonth {
+  driverId: string;
+  driver_name: string;
+  driver_ref: string | null;
+  month: string;
+  trips: number;
+  earned: number;
+  paid: number;
+  owed: number;
+}
+
+export interface PayoutTrip {
+  month: string;
+  driverId: string;
+  tripId: string;
+  tripRef: string | null;
+  day: string;
+  customer: string;
+  lane: string;
+  role: 'driver' | 'co_driver';
+  amount: number;
+  settlement: { id: string; ref: string | null; paidDate: string } | null;
+}
+
+export interface CreateDriverSettlementDTO {
+  driver_id: string;
+  lines: { trip_id: string; role: 'driver' | 'co_driver' }[];
+  advances: { advance_id: string; amount: number }[];
+  paid_date: string;
+  payment_account_id?: string | null;
+  driver_pay_account_id?: string | null;
+  reference?: string | null;
+  notes?: string | null;
+  period_from?: string | null;
+  period_to?: string | null;
+}
+
+export interface CreditNoteLine {
+  description: string;
+  amount: number;
+  tax_rate: number;
+  tax_amount?: number;
+}
+
+export interface CreditNote {
+  id: string;
+  ref_id: string | null;
+  invoice_id: string;
+  invoice_ref: string | null;
+  customer_name: string | null;
+  credit_date: string;
+  reason: string;
+  status: 'Issued' | 'Void';
+  subtotal: number;
+  tax_amount: number;
+  total_amount: number;
+  journal_entry_id: string | null;
+  voided_at: string | null;
+  lines: CreditNoteLine[];
+}
+
+export type VatBox = 'standard_sales' | 'zero_sales' | 'standard_purchases' | 'no_vat_purchases';
+
+export interface VatDoc {
+  box: VatBox;
+  kind: 'invoice' | 'credit_note' | 'bill' | 'expense';
+  id: string;
+  ref: string | null;
+  date: string;
+  party: string;
+  amount: number;
+  adjustment: number;
+  vat: number;
+}
+
+export interface VatReturn {
+  from: string;
+  to: string;
+  boxes: Record<VatBox, { amount: number; adjustment: number; vat: number; docs: number }>;
+  sales: { amount: number; adjustment: number; vat: number };
+  purchases: { amount: number; vat: number };
+  net_vat: number;
+  documents: VatDoc[];
+}
+
+/** Cash → bank, bank → cash, bank → bank (cash → cash between two tills). */
+export type ContraType = 'deposit' | 'withdrawal' | 'bank_to_bank' | 'cash_to_cash';
+
+export interface ContraSide {
+  account_id: string;
+  bank_account_id: string | null;
+  name: string;
+  code: string;
+  is_cash: boolean;
+}
+
+/** One contra entry: a BankTransfer journal entry read as a transfer. */
+export interface ContraEntry {
+  id: string;
+  ref_id: string | null;
+  entry_date: string;
+  memo: string | null;
+  reference: string | null;
+  status: 'Posted' | 'Voided';
+  voided_by: { id: string; ref_id: string | null; entry_date: string } | null;
+  from: ContraSide | null;
+  to: ContraSide | null;
+  amount: number;
+  charges: number;
+  type: ContraType | null;
+}
+
+export type ContraSummary = Record<ContraType, { count: number; amount: number }> & { charges: number };
+
+export interface ContraListParams {
+  type?: ContraType | 'all';
+  bank_account_id?: string;
+  date_from?: string;
+  date_to?: string;
+  status?: 'posted' | 'voided' | 'all';
+  search?: string;
+  page?: number;
+  per_page?: number;
 }
 
 export interface GetAdvancesParams {
@@ -179,6 +440,15 @@ export interface CreateReconciliationDTO {
   statement_date: string;
   statement_closing_balance: number;
   journalLineIds: string[];
+}
+
+/** The accounts an issued invoice posts to (null = not set). */
+export interface InvoiceLedgerSetup {
+  receivable_account_id: string | null;
+  revenue_account_id: string | null;
+  vat_output_account_id: string | null;
+  /** Reclaimable VAT on bills and expenses (not needed to issue invoices). */
+  vat_input_account_id?: string | null;
 }
 
 export const financeService = {
@@ -342,6 +612,18 @@ export const financeService = {
 
   deleteDraftInvoice: async (id: string) => {
     const response = await api.delete(`/invoices/${id}`);
+    return response.data;
+  },
+
+  /** Where issuing an invoice posts: receivable (Dr), revenue and VAT output (Cr). */
+  getInvoiceLedgerSetup: async (): Promise<InvoiceLedgerSetup> => {
+    const response = await api.get('/invoices/ledger/setup');
+    return response.data.data;
+  },
+
+  /** Admin: set any of the three accounts; a field left out is kept. */
+  updateInvoiceLedgerSetup: async (body: Partial<InvoiceLedgerSetup>) => {
+    const response = await api.put('/invoices/ledger/setup', body);
     return response.data;
   },
 
@@ -529,6 +811,42 @@ export const financeService = {
     return response.data;
   },
 
+  /** VAT return boxes for a period, from invoices, credit notes and bills. */
+  getVatReturn: async (from: string, to: string): Promise<VatReturn> => (await api.get('/finance/reports/vat-return', { params: { from, to } })).data.data,
+  getCreditNotes: async (params: { invoice_id?: string; customer_id?: string } = {}): Promise<CreditNote[]> => (await api.get('/invoices/credit-notes', { params })).data.data,
+  /** Issues a credit note on an issued invoice and posts it. */
+  createCreditNote: async (invoiceId: string, body: { credit_date: string; reason: string; lines: CreditNoteLine[] }): Promise<CreditNote> =>
+    (await api.post(`/invoices/${invoiceId}/credit-notes`, body)).data.data,
+  voidCreditNote: async (id: string) => (await api.post(`/invoices/credit-notes/${id}/void`)).data,
+
+  /** Drivers with unpaid trip pay, most owed first. */
+  getSettlementQueue: async (): Promise<SettlementQueueRow[]> => (await api.get('/driver-settlements/queue')).data.data,
+  /** A driver's unpaid trips and open advances, for a new settlement. */
+  getDriverPayable: async (driverId: string, upTo?: string): Promise<DriverPayable> =>
+    (await api.get('/driver-settlements/payable', { params: { driver_id: driverId, up_to: upTo } })).data.data,
+  getDriverSettlements: async (params: { driver_id?: string; status?: string; date_from?: string; date_to?: string } = {}): Promise<DriverSettlementRow[]> =>
+    (await api.get('/driver-settlements', { params })).data.data,
+  getDriverSettlement: async (id: string): Promise<DriverSettlementDetail> => (await api.get(`/driver-settlements/${id}`)).data.data,
+  /** Pays the chosen trips and posts the entry. */
+  createDriverSettlement: async (body: CreateDriverSettlementDTO): Promise<{ id: string; ref_id: string; net: number }> => (await api.post('/driver-settlements', body)).data.data,
+  /** Trip pay earned vs marked paid, per month (from–to, YYYY-MM) and per driver. */
+  getMonthlyPayouts: async (from: string, to: string): Promise<{ months: PayoutMonth[]; drivers: DriverPayoutMonth[] }> =>
+    (await api.get('/driver-settlements/monthly', { params: { from, to } })).data.data,
+  getMonthlyPayoutTrips: async (month: string, driverId: string): Promise<PayoutTrip[]> =>
+    (await api.get('/driver-settlements/monthly/trips', { params: { month, driver_id: driverId } })).data.data,
+  voidDriverSettlement: async (id: string) => (await api.post(`/driver-settlements/${id}/void`)).data,
+
+  /** Earned trips' margins after driver pay, subcontract and trip expenses; by trip, customer, lane or truck. */
+  getTripProfitability: async (params: TripProfitabilityParams = {}): Promise<TripProfitability> => {
+    const response = await api.get('/finance/reports/trip-profitability', { params });
+    return response.data.data;
+  },
+
+  /** The contra register (cash/bank transfers) with per-type totals for the period. */
+  getContraEntries: async (params: ContraListParams = {}): Promise<{ data: ContraEntry[]; summary: ContraSummary; meta: { total: number; page: number; per_page: number; truncated: boolean } }> => {
+    const response = await api.get('/bank-accounts/transfers', { params });
+    return response.data;
+  },
   // Advances
   getAdvances: async (params?: GetAdvancesParams): Promise<ApiResponse<Advance[]>> => {
     const response = await api.get('/advances', { params });

@@ -64,8 +64,7 @@ const VehicleSingleFinancialsPage = lazyWithRetry(() => import('@/pages/vehicles
 const VehicleCostSetupPage    = lazyWithRetry(() => import('@/pages/vehicles/VehicleCostSetupPage'));
 const MaintenanceListPage     = lazyWithRetry(() => import('@/pages/maintenance/MaintenanceListPage'));
 const MaintenanceDetailsPage  = lazyWithRetry(() => import('@/pages/maintenance/MaintenanceDetailsPage'));
-const AddMaintenancePage      = lazyWithRetry(() => import('@/pages/maintenance/AddMaintenancePage'));
-const EditMaintenancePage     = lazyWithRetry(() => import('@/pages/maintenance/EditMaintenancePage'));
+const MaintenanceEditorPage   = lazyWithRetry(() => import('@/pages/maintenance/MaintenanceEditorPage'));
 
 // Customers
 const CustomerListPage        = lazyWithRetry(() => import('@/pages/customers/CustomerListPage'));
@@ -89,6 +88,7 @@ const QuotationAiImportPage    = lazyWithRetry(() => import('@/pages/quotations/
 // Expenses
 const ExpenseListPage         = lazyWithRetry(() => import('@/pages/expenses/ExpenseListPage'));
 const ExpenseDetailsPage      = lazyWithRetry(() => import('@/pages/expenses/ExpenseDetailsPage'));
+const ExpenseEditorPage       = lazyWithRetry(() => import('@/pages/expenses/ExpenseEditorPage'));
 
 // Accounting & Finance Foundation
 const ChartOfAccountsPage     = lazyWithRetry(() => import('@/pages/finance/ChartOfAccountsPage'));
@@ -102,6 +102,10 @@ const InvoiceCreatePage       = lazyWithRetry(() => import('@/pages/finance/Invo
 const BillsPage               = lazyWithRetry(() => import('@/pages/finance/BillsPage'));
 const BillCreatePage          = lazyWithRetry(() => import('@/pages/finance/BillCreatePage'));
 const BankAccountsPage        = lazyWithRetry(() => import('@/pages/finance/BankAccountsPage'));
+const ContraEntriesPage       = lazyWithRetry(() => import('@/pages/finance/ContraEntriesPage'));
+const TripProfitabilityPage   = lazyWithRetry(() => import('@/pages/finance/TripProfitabilityPage'));
+const DriverPayPage           = lazyWithRetry(() => import('@/pages/finance/DriverPayPage'));
+const VatReturnPage           = lazyWithRetry(() => import('@/pages/finance/VatReturnPage'));
 const BankAccountDetailPage   = lazyWithRetry(() => import('@/pages/finance/BankAccountDetailPage'));
 const BankAccountEditorPage   = lazyWithRetry(() => import('@/pages/finance/BankAccountEditorPage'));
 const AdvancesPage            = lazyWithRetry(() => import('@/pages/finance/AdvancesPage'));
@@ -128,7 +132,6 @@ const ReportsDashboardPage        = lazyWithRetry(() => import('@/pages/reports/
 const FleetPerformancePage        = lazyWithRetry(() => import('@/pages/reports/FleetPerformancePage'));
 const RevenueReportsPage          = lazyWithRetry(() => import('@/pages/reports/RevenueReportsPage'));
 const CustomReportPage            = lazyWithRetry(() => import('@/pages/reports/CustomReportPage'));
-const CompanyReportsGeneratorPage = lazyWithRetry(() => import('@/pages/reports/CompanyReportsGeneratorPage'));
 const DelayReportPage             = lazyWithRetry(() => import('@/pages/reports/DelayReportPage'));
 
 // Smart Report Builder
@@ -279,9 +282,9 @@ export default function AppRouter() {
             <Route path="/vehicles/:id/documents"   element={<RequireModule moduleKey="vehicles"><VehicleDocumentsPage /></RequireModule>} />
             <Route path="/vehicles/:id/financials"  element={<RequireModule moduleKey="vehicles"><VehicleSingleFinancialsPage /></RequireModule>} />
             <Route path="/maintenance"              element={<RequireModule moduleKey="maintenance"><MaintenanceListPage /></RequireModule>} />
-            <Route path="/maintenance/new"          element={<RequireModule moduleKey="maintenance"><AddMaintenancePage /></RequireModule>} />
+            <Route path="/maintenance/new"          element={<RequireModule moduleKey="maintenance"><MaintenanceEditorPage /></RequireModule>} />
             <Route path="/maintenance/:id"          element={<RequireModule moduleKey="maintenance"><MaintenanceDetailsPage /></RequireModule>} />
-            <Route path="/maintenance/:id/edit"     element={<RequireModule moduleKey="maintenance"><EditMaintenancePage /></RequireModule>} />
+            <Route path="/maintenance/:id/edit"     element={<RequireModule moduleKey="maintenance"><MaintenanceEditorPage /></RequireModule>} />
 
             {/* Customers */}
             <Route path="/customers"                          element={<RequireModule moduleKey="customers"><CustomerListPage /></RequireModule>} />
@@ -311,6 +314,9 @@ export default function AppRouter() {
 
             {/* Expenses */}
             <Route path="/expenses"                 element={<RequireModule moduleKey="expenses"><ExpenseListPage /></RequireModule>} />
+            {/* Literal path before /expenses/:id, which would otherwise match it. */}
+            <Route path="/expenses/new"             element={<RequireModule moduleKey="expenses"><ExpenseEditorPage /></RequireModule>} />
+            <Route path="/expenses/:id/edit"        element={<RequireModule moduleKey="expenses"><WithIdKey Page={ExpenseEditorPage} /></RequireModule>} />
             <Route path="/expenses/:id"             element={<RequireModule moduleKey="expenses"><ExpenseDetailsPage /></RequireModule>} />
 
             {/* Finance & General Ledger */}
@@ -330,6 +336,10 @@ export default function AppRouter() {
             <Route path="/finance/bank-accounts/:id/edit" element={<RequireModule moduleKey="finance"><WithIdKey Page={BankAccountEditorPage} /></RequireModule>} />
             <Route path="/finance/bank-accounts/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={BankAccountDetailPage} /></RequireModule>} />
             <Route path="/finance/bank-accounts"          element={<RequireModule moduleKey="finance"><BankAccountsPage /></RequireModule>} />
+            <Route path="/finance/contra"                 element={<RequireModule moduleKey="finance"><ContraEntriesPage /></RequireModule>} />
+            <Route path="/finance/trip-profitability"     element={<RequireModule moduleKey="finance"><TripProfitabilityPage /></RequireModule>} />
+            <Route path="/finance/driver-pay"             element={<RequireModule moduleKey="finance"><DriverPayPage /></RequireModule>} />
+            <Route path="/finance/vat-return"             element={<RequireModule moduleKey="finance"><VatReturnPage /></RequireModule>} />
             <Route path="/finance/advances"          element={<RequireModule moduleKey="finance"><AdvancesPage /></RequireModule>} />
             <Route path="/finance/advances/new"      element={<RequireModule moduleKey="finance"><AdvanceEditorPage /></RequireModule>} />
             <Route path="/finance/advances/:id"      element={<RequireModule moduleKey="finance"><WithIdKey Page={AdvanceDetailPage} /></RequireModule>} />
@@ -358,12 +368,12 @@ export default function AppRouter() {
             <Route path="/custom-report"            element={<RequireModule moduleKey="reports"><CustomReportPage /></RequireModule>} />
             <Route path="/reports/custom"          element={<RequireModule moduleKey="reports"><CustomReportPage /></RequireModule>} />
 
-            {/* Reports (Legacy -> Redirect to Company Reports) */}
-            <Route path="/reports/*"                element={<Navigate to="/company-reports" replace />} />
-            <Route path="/reports"                  element={<Navigate to="/company-reports" replace />} />
+            {/* Reports (legacy) -> Report builder */}
+            <Route path="/reports/*"                element={<Navigate to="/report-builder" replace />} />
+            <Route path="/reports"                  element={<Navigate to="/report-builder" replace />} />
 
-            {/* Custom Company Reports Generator */}
-            <Route path="/company-reports"          element={<RequireModule moduleKey="company-reports"><CompanyReportsGeneratorPage /></RequireModule>} />
+            {/* Company Excel reports now live on the customer (Trip sheets tab) and the invoice (Trip sheet button) */}
+            <Route path="/company-reports"          element={<Navigate to="/customers" replace />} />
 
             {/* Smart Report Builder */}
             <Route path="/report-builder"          element={<RequireModule moduleKey="report-builder"><ReportBuilderLandingPage /></RequireModule>} />
