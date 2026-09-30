@@ -9,6 +9,14 @@
 #   docker cp <file>.dump mercon-postgres:/tmp/restore.dump
 #   docker exec mercon-postgres pg_restore --clean --if-exists --no-owner \
 #     --no-privileges -U "$POSTGRES_USER" -d mercon_db /tmp/restore.dump
+#
+# Every run also (1) restores the new dump into a throwaway Postgres container
+# with no network and compares it with production, so a backup that can't be
+# restored fails the run, and (2) when the repository variable
+# BACKUP_AGE_RECIPIENT holds an age public key, uploads ONE encrypted bundle
+# (database dump + uploaded documents + this client's data encryption key)
+# instead of the plaintext dump. Only the matching private key, kept off
+# GitHub by the owner, can open it. Runbook: docs/infra/BACKUP_RESTORE.md.
 name: Backup Production Database
 
 on:
@@ -16,10 +24,23 @@ on:
     - cron: '0 2 * * *' # 02:00 UTC daily
   workflow_dispatch: {}
 
+permissions:
+  contents: read
+
 jobs:
   backup:
     name: Dump and retain production database
     runs-on: [self-hosted, prod]
+    timeout-minutes: 60
+    env:
+      AGE_VERSION: v1.2.1
+      # sha256 of age-v1.2.1-linux-amd64.tar.gz, pinned 2026-09-30.
+      AGE_SHA256: 7df45a6cc87d4da11cc03a539a7470c15b1041ab2b396af088fe9990f7c79d50
+      AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+      # Above this, uploads are left out of the artifact (GitHub artifact
+      # storage is limited) and the run fails so someone moves them to
+      # proper off-host storage.
+      UPLOADS_ARTIFACT_MAX_MB: 1500
 
     steps:
       - name: Verify production Postgres container is running
@@ -72,7 +93,118 @@ jobs:
           ls -lh /var/backups/mercon/ || true
           df -h / || true
 
+      - name: Restore test (throwaway container, no network)
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+        run: |
+          set -euo pipefail
+          NAME="mercon-restore-test-$GITHUB_RUN_ID"
+          PW=$(openssl rand -hex 16); echo "::add-mask::$PW"
+          # Same image as production, data on tmpfs, no ports, no network,
+          # capped memory. Removed again in the next step whatever happens.
+          docker run -d --rm --name "$NAME" --network none --memory 384m \
+            --tmpfs /var/lib/postgresql/data:size=2g \
+            -e POSTGRES_PASSWORD="$PW" postgres:15-alpine >/dev/null
+          for i in $(seq 1 30); do docker exec "$NAME" pg_isready -U postgres -q && break; sleep 2; done
+          docker exec "$NAME" pg_isready -U postgres
+          docker cp "$DUMP_PATH" "$NAME:/tmp/restore.dump"
+          docker exec "$NAME" createdb -U postgres restore_test
+          docker exec "$NAME" pg_restore --exit-on-error --no-owner --no-privileges \
+            -U postgres -d restore_test /tmp/restore.dump
+
+          r() { docker exec "$NAME" psql -U postgres -d restore_test -At -c "$1"; }
+          p() { docker exec -e PGOPTIONS='-c default_transaction_read_only=on' mercon-postgres \
+                  psql -U "$POSTGRES_USER" -d mercon_db -At -c "$1"; }
+          T="SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'"
+          M="SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL"
+          r "ANALYZE" >/dev/null
+          RT=$(r "$T"); PT=$(p "$T"); RM=$(r "$M"); PM=$(p "$M")
+          echo "Tables: restored $RT / production $PT · applied migrations: restored $RM / production $PM"
+          ROWS=$(r "SELECT string_agg(relname || '=' || n_live_tup, ', ' ORDER BY n_live_tup DESC) FROM (SELECT relname, n_live_tup FROM pg_stat_user_tables ORDER BY n_live_tup DESC LIMIT 8) t")
+          echo "Largest restored tables: $ROWS"
+          if [ "$RT" -lt 1 ] || [ "$RT" != "$PT" ] || [ "$RM" != "$PM" ]; then
+            echo "::error::Restore test failed: the restored copy does not match production." >&2
+            exit 1
+          fi
+          echo "### Restore test passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "$RT tables, $RM migrations; largest: $ROWS" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove restore-test container
+        if: always()
+        run: docker rm -f "mercon-restore-test-$GITHUB_RUN_ID" >/dev/null 2>&1 || true
+
+      - name: Build encrypted bundle (database + uploads + encryption key)
+        id: bundle
+        if: env.AGE_RECIPIENT != ''
+        run: |
+          set -euo pipefail
+          W="$RUNNER_TEMP/backup-bundle"; rm -rf "$W"; mkdir -p "$W"
+          curl -fsSL -o "$W/age.tgz" "https://github.com/FiloSottile/age/releases/download/$AGE_VERSION/age-$AGE_VERSION-linux-amd64.tar.gz"
+          echo "$AGE_SHA256  $W/age.tgz" | sha256sum -c -
+          tar -xzf "$W/age.tgz" -C "$W"
+          AGE="$W/age/age"
+
+          # Upload dirs: the persistent ones and, until the first deploy
+          # that moves them, the old /tmp ones.
+          DIRS=()
+          for d in /var/lib/mercon/mercon-app-uploads /var/lib/mercon/mercon-uploads /tmp/mercon-uploads /tmp/uploads; do
+            [ -d "$d" ] && DIRS+=("$d")
+          done
+          UP_MB=0
+          [ ${#DIRS[@]} -gt 0 ] && UP_MB=$(( $(sudo du -sck "${DIRS[@]}" | tail -1 | cut -f1) / 1024 ))
+          echo "Uploads: ${DIRS[*]:-none} (${UP_MB} MB)"
+          INCLUDE=("$DUMP_PATH")
+          if [ "$UP_MB" -le "$UPLOADS_ARTIFACT_MAX_MB" ]; then
+            INCLUDE+=("${DIRS[@]}")
+          else
+            echo "::error::Uploads are ${UP_MB} MB, over ${UPLOADS_ARTIFACT_MAX_MB} MB: left out of this bundle. Move uploads backup to real off-host storage (docs/infra/BACKUP_RESTORE.md)." >&2
+            echo "uploads_skipped=true" >> "$GITHUB_OUTPUT"
+          fi
+          [ -f /etc/aprodac/clients/mercon/secrets.env ] && INCLUDE+=(/etc/aprodac/clients/mercon/secrets.env)
+
+          # Encrypted as it is written: plaintext never lands on disk here.
+          # tar exit 1 = a file changed while being read (an upload arriving
+          # mid-backup) — acceptable; anything else, or any age error, fails.
+          OUT="$W/mercon-backup-$(date -u +%Y%m%dT%H%M%SZ).tar.gz.age"
+          set +o pipefail
+          sudo tar -czf - "${INCLUDE[@]}" 2>"$W/tar.err" | "$AGE" -r "$AGE_RECIPIENT" -o "$OUT"
+          ST=("${PIPESTATUS[@]}")
+          set -o pipefail
+          if [ "${ST[0]}" -gt 1 ] || [ "${ST[1]}" -ne 0 ]; then
+            grep -v 'Removing leading' "$W/tar.err" >&2 || true
+            echo "::error::Building the encrypted bundle failed (tar ${ST[0]}, age ${ST[1]})." >&2
+            exit 1
+          fi
+          [ "$(head -c 21 "$OUT")" = "age-encryption.org/v1" ] || { echo "::error::Bundle is not an age file." >&2; exit 1; }
+          echo "Encrypted bundle: $(du -h "$OUT" | cut -f1) — ${#INCLUDE[@]} item(s)"
+          echo "path=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Upload encrypted bundle (off-host copy)
+        if: env.AGE_RECIPIENT != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: mercon-backup-${{ github.run_id }}
+          path: ${{ steps.bundle.outputs.path }}
+          retention-days: 14
+          compression-level: 0
+
+      - name: Fail if uploads were left out
+        if: steps.bundle.outputs.uploads_skipped == 'true'
+        run: exit 1
+
+      - name: Remove local bundle
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/backup-bundle"
+
+      # Without an age recipient the old behaviour stays (plaintext dump),
+      # with a warning: that artifact is readable by anyone with read access
+      # to the repository and holds customer data.
+      - name: Warn — backup artifact is not encrypted
+        if: env.AGE_RECIPIENT == ''
+        run: echo "::warning::BACKUP_AGE_RECIPIENT is not set — uploading the database dump unencrypted and WITHOUT uploads or the encryption key. See docs/infra/BACKUP_RESTORE.md."
+
       - name: Upload backup as workflow artifact (off-host copy)
+        if: env.AGE_RECIPIENT == ''
         uses: actions/upload-artifact@v4
         with:
           name: mercon-db-backup-${{ github.run_id }}
