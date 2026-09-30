@@ -3,6 +3,11 @@
 Scope: Hostinger VPS `srv1752379` (production + dev for mercon.tech), the
 GitHub Actions deployment chain, and everything between.
 
+> **Update (same day):** this audit read the workflows on `main`. On `dev`, the
+> dev stack already runs on its own server (82.29.167.128), the frontend
+> healthcheck is fixed and `sync-prod-from-dev.yml` is deleted. Corrections and
+> the fixes are in `INFRA_REMEDIATION_2026-09-30.md`.
+
 **No changes were made** to the VPS, GitHub settings, secrets, workflows,
 firewall, DNS or database during this audit.
 
