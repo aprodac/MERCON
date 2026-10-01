@@ -612,6 +612,7 @@ names, unreliable arrivals and no reasons, and cannot be backfilled.
 
 
 | **Loading / Stop / Delivery look different** (2026-09-29): new `components/StageHeader` — a coloured band per step (loading blue, stop red, delivery green = the route palette `STOP_ROLE_COLORS`) with a big step icon (package-in / pin / finish flag), a one-line instruction, a Return chip on return legs, Back + Delay, and the location-by-location progress bar drawn white-on-colour (`TripProgressStepper onColor`). Page background tinted in the step colour; truck illustrations kept; button icons differ per step. Used by `PickupVerificationScreen`, `StopVerificationScreen`, `DeliveryVerificationScreen`; the map screen keeps the normal stepper | ✅ |
+| **Driver app end-to-end test, both workflows** (2026-10-01): NATIVE and EXTERNAL_APP (iMile) drivers each ran a one-way trip with an intermediate stop and a round trip — 179 API checks (login, access between drivers, every status step, stop time stamps, proof tagging, delay, cancel, operator screenshot-time confirmation) plus the same four trips clicked through the real screens (Expo web). Fixed on the way: **round trips to a new place could not be created** (`tripStopWriter` resolved stops in parallel → the same new Location created twice → unique-code clash aborted the trip transaction; now one at a time, same in `updateTripStopsRoute`); driver could reopen a Completed/Invoiced trip or un-cancel a Cancelled one from the app (now 409); `GET /mobile/trips/:ref_id` was a 500; return leg started too early gave a 500 (now 409); photo stamp + shared image fell back to sample data ("Horizon Distributors Co.", Malappuram, 28 Aug 2026) — now real customer / coordinates / now; round-trip completion screen counted photos twice (18 for 12); "TRP-TRP-" ids; delay button read "Delayed" (now "Delay"); Documents empty state said "No trips found". Still open (not changed): trip created with a driver never notifies them (`isDispatchingNow = false` in `createTrip`); Performance Overview stats are made up server-side (98% on-time, trips × 120 km, "42 hours") and the app reads other field names; migration `20260907204600_add_financial_columns_to_trip` fails on a brand-new database (`trips` table). | ✅ |
 
 
 
@@ -1272,9 +1273,10 @@ this is the single source of truth all three surfaces (Kanban, Trip Details, Dri
 
 
 - ⬜ Real-phone test, both roles (Android + iPhone)
+  - 2026-10-01: driver app run end-to-end on a local stack (API + Expo web), both workflows, one-way + round trip — see §2 Mobile apps. Real-phone pass still needed (camera, GPS, map, push).
 
 
-- 🔄 EAS builds — APK (Android) + TestFlight (iOS); app linked to an EAS project (`c99aab6`), no build run yet
+- 🔄 EAS builds — APK (Android) + TestFlight (iOS); first driver production AAB built 2026-09-29 (EAS, `alan32`, versionCode 2); Play Console internal-testing upload waits on the upload-key reset (new key active 2026-10-03)
   - 2026-09-29: driver `eas.json` production profile (Play Store AAB) now sets `EXPO_PUBLIC_API_URL=https://mercon.tech/api` (was falling back to dev). First workflow run (2026-09-24) failed: repo `EXPO_TOKEN` is not authorized on the `alan32` Expo project — needs a token from `alan32` (or a member of it)
 - ⬜ Database backup set up + tested once
 

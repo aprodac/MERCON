@@ -160,7 +160,7 @@ export default function DriverTripDetailsScreen() {
                 <Text style={styles.customerName} numberOfLines={1}>
                   {trip.customer?.name ?? 'Mercon Logistics'}
                 </Text>
-                <Text style={[styles.tripRefId, { writingDirection: 'ltr' }]}>TRP-{trip.ref_id ?? trip.id.slice(0, 8)}</Text>
+                <Text style={[styles.tripRefId, { writingDirection: 'ltr' }]}>{trip.ref_id ?? `TRP-${trip.id.slice(0, 8)}`}</Text>
               </View>
 
               {/* Status Badge */}
