@@ -116,6 +116,8 @@ export interface OperatorTripDetail {
   } | null;
   stops: OperatorTripStop[];
   documents?: OperatorTripDocument[];
+  /** Photos/videos removed by the 60-day retention job (null when none). */
+  media_purged?: { count: number; purged_at: string; retention_days: number } | null;
 
   // Co-driver — same DB columns/relation as the web dashboard's Trip type.
   co_driver_id?: string | null;

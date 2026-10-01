@@ -94,6 +94,8 @@ export interface Trip {
   planned_end: string | null;
   actual_end: string | null;
   planned_distance: number | null;
+  /** Photos/videos removed by the 60-day retention job (null when none). */
+  media_purged?: { count: number; purged_at: string; retention_days: number } | null;
   /** Itemised customer-billable extras — waiting/labor, additional stops, etc. */
   charges?: TripCharge[];
   driver_payout?: number;

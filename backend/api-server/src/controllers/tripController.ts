@@ -19,6 +19,7 @@ import { buildTripRouteTimeline, isRouteLocked, buildTripStops } from '../servic
 import { parseFullTripStops } from '../services/legacyStopStringParser';
 import { writeTripStops } from '../services/tripStopWriter';
 import { whatsappService } from '../services/whatsappService';
+import { getTripMediaPurge } from '../services/media/tripMediaRetention';
 
 /** Fields the trip ledger search bar looks at. */
 const TRIP_SEARCH_FIELDS = [
@@ -605,10 +606,13 @@ export const getTripById = async (req: Request, res: Response) => {
       },
       orderBy: { createdAt: 'desc' },
     });
+    // Photos/videos the 60-day retention job removed — shown as a notice.
+    const mediaPurged = await getTripMediaPurge(trip.id, stopIds);
 
     const tripData = {
       ...trip,
       documents: tripDocuments,
+      media_purged: mediaPurged,
       paid_amount: fin.paidAmount,
       balance_due: fin.balanceDue,
       total_amount: fin.totalCustomerBilling,
