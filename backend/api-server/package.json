@@ -11,6 +11,7 @@
     "seed": "ts-node prisma/seed.ts",
     "seed:demo": "ts-node scripts/seed-demo-local.ts",
     "demo:purge": "ts-node scripts/demo-purge.ts",
+    "images:convert-inline": "ts-node scripts/convert-inline-images.ts",
     "backfill:trip-charges": "ts-node scripts/backfill-trip-charges.ts",
     "backfill:trip-charges:verify": "ts-node scripts/backfill-trip-charges.ts --verify",
     "test:icces": "node -r ts-node/register --test src/services/icces/trackParser.test.ts src/services/icces/iccesSession.test.ts src/services/icces/fleetPoller.test.ts",

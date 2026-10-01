@@ -353,6 +353,8 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   // Messages & Empty States
   msg_no_active_trips: { en: 'No active trips at the moment', ur: 'اس وقت کوئی فعال ٹرپ نہیں ہے' },
   msg_no_trips_found: { en: 'No trips found', ur: 'کوئی ٹرپ نہیں ملا' },
+  msg_no_documents: { en: 'No documents on file', ur: 'کوئی دستاویز موجود نہیں' },
+  action_report_delay: { en: 'Delay', ur: 'تاخیر' },
   msg_offline_mode: { en: 'Offline Mode - Changes will sync when online', ur: 'آف لائن موڈ - آن لائن ہونے پر سنک ہو جائے گا' },
   msg_syncing: { en: 'Syncing data...', ur: 'ڈیٹا سنک ہو رہا ہے...' },
   msg_confirm_logout: { en: 'Are you sure you want to log out?', ur: 'کیا آپ واقعی لاگ آؤٹ کرنا چاہتے ہیں؟' },

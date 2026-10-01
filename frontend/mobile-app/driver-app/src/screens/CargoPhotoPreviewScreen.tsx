@@ -41,12 +41,15 @@ export const CargoPhotoPreviewScreen: React.FC<CargoPhotoPreviewScreenProps> = (
 
   // Handle passed props or router params or fallback demo photo
   const photoUri = (params.photoUri as string) || propsUri || 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80';
-  const locationName = (params.locationName as string) || propsLoc || 'Up Hill, Malappuram, India';
-  const fullAddress = (params.fullAddress as string) || propsAddr || 'Up Hill, Malappuram,\nKerala 676519, India';
-  const companyName = (params.companyName as string) || propsComp || 'Horizon Distributors Co.';
-  const latitude = params.latitude ? parseFloat(params.latitude as string) : (propsLat ?? 11.0467);
-  const longitude = params.longitude ? parseFloat(params.longitude as string) : (propsLng ?? 76.0747);
-  const timestamp = (params.timestamp as string) || propsTime || '2026-08-28T09:23:00.000Z';
+  const latitude = params.latitude ? parseFloat(params.latitude as string) : (propsLat ?? 0);
+  const longitude = params.longitude ? parseFloat(params.longitude as string) : (propsLng ?? 0);
+  // Shared with the customer as-is (image and WhatsApp text), so never fill a
+  // gap with sample data: fall back to the real coordinates, our own name and now.
+  const coordsLabel = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+  const fullAddress = (params.fullAddress as string) || propsAddr || coordsLabel;
+  const locationName = (params.locationName as string) || propsLoc || fullAddress.split(',')[0] || coordsLabel;
+  const companyName = (params.companyName as string) || propsComp || 'MERCON Logistics';
+  const timestamp = (params.timestamp as string) || propsTime || new Date().toISOString();
 
   const handleClose = () => {
     if (onClose) {

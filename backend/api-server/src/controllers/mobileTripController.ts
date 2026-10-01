@@ -12,6 +12,7 @@ import { getDrivingRoute, RoutingUnavailableError } from '../services/routing/ro
 import { compressUploadedImage } from '../services/imageCompressor';
 import { calculateBackendTripFinancials } from '../utils/tripFinancials';
 import { splitDelayReason } from '../utils/delayReason';
+import { isUuid } from '../utils/uuid';
 
 /**
  * Everything the driver's app needs about a trip, in one shape.
@@ -228,10 +229,9 @@ export const getMobileTripDetails = async (req: Request, res: Response) => {
     const trip = await prisma.trip.findFirst({
       where: {
         driverId,
-        OR: [
-          { id: idStr },
-          { ref_id: idStr },
-        ],
+        // `id` is a uuid column: comparing it to a ref id ("TRP-0001") is a
+        // query error (500), not a miss, so only offer it a real uuid.
+        OR: isUuid(idStr) ? [{ id: idStr }, { ref_id: idStr }] : [{ ref_id: idStr }],
         deletedAt: null,
       },
       include: tripInclude,
@@ -268,6 +268,13 @@ export const updateTripStatus = async (req: Request, res: Response) => {
     }
     if (!isValidTransition(trip.status, status)) {
       return res.status(400).json({ success: false, error: { message: 'That status change is not allowed from the trip\'s current state' } });
+    }
+    // ALLOWED_TRANSITIONS lets an operator reopen a finished trip or restore a
+    // cancelled one from the dashboard. A driver never may: a stale or retried
+    // request from the app would otherwise put a done trip back on the road.
+    const finishedForDriver: TripStatus[] = [TripStatus.Completed, TripStatus.Invoiced, TripStatus.Cancelled];
+    if (finishedForDriver.includes(trip.status) && status !== trip.status) {
+      return res.status(409).json({ success: false, error: { message: `This trip is already ${trip.status === TripStatus.Cancelled ? 'cancelled' : 'finished'}` } });
     }
 
     // Completing a trip always goes through the shared helper — this is the
@@ -351,6 +358,11 @@ export const updateTripStatus = async (req: Request, res: Response) => {
 
     res.json({ success: true, data: await attachTripDocuments(updatedTrip) });
   } catch (error: any) {
+    // The return leg cannot start before the outbound delivery — a rule the
+    // driver broke, not a server fault.
+    if (String(error?.message).startsWith('OUTBOUND_DELIVERY_NOT_COMPLETED')) {
+      return res.status(409).json({ success: false, error: { message: 'Finish the first delivery before starting the return trip' } });
+    }
     logger.error({ err: error }, 'updateTripStatus error:');
     res.status(500).json({ success: false, error: { message: error?.message || 'Failed to update trip status' } });
   }
