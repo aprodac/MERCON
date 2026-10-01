@@ -124,6 +124,12 @@ export interface QuotationLookupResult {
 
 export type RateLookupResult = QuotationLookupResult;
 
+/** Recent quotation lookups, shared by identical requests (see `lookup`). */
+const LOOKUP_REUSE_MS = 5000;
+const lookupCache = new Map<string, { at: number; promise: Promise<QuotationLookupResult> }>();
+/** A quotation changed — the next lookup must ask the server again. */
+export const clearQuotationLookupCache = () => lookupCache.clear();
+
 export const quotationService = {
   async getAll(params?: QuotationListParams): Promise<ApiResponse<Quotation[]>> {
     const res = await api.get<ApiResponse<Quotation[]>>('/quotations', {
@@ -162,6 +168,18 @@ export const quotationService = {
     trip_date?: string | null;
     stops?: any[] | null;
   }): Promise<QuotationLookupResult> {
+    // Create Trip fires the same lookup several times per route change (one per
+    // re-render path). Identical requests within a few seconds share one call.
+    const key = JSON.stringify(params);
+    const cached = lookupCache.get(key);
+    if (cached && Date.now() - cached.at < LOOKUP_REUSE_MS) return cached.promise;
+    const promise = this.fetchLookup(params);
+    lookupCache.set(key, { at: Date.now(), promise });
+    if (lookupCache.size > 50) lookupCache.delete(lookupCache.keys().next().value as string);
+    return promise;
+  },
+
+  async fetchLookup(params: Record<string, any>): Promise<QuotationLookupResult> {
     try {
       const res = await api.get<ApiResponse<QuotationLookupResult>>('/quotations/lookup', {
         params: {
@@ -264,6 +282,7 @@ export const quotationService = {
     console.log('🚀 [quotationService.create] Sending payload:', payload);
     try {
       const res = await api.post<ApiResponse<Quotation>>('/quotations', payload);
+    clearQuotationLookupCache();
       console.log('✅ [quotationService.create] Success response:', res.data);
       return res.data.data;
     } catch (err: any) {
@@ -282,6 +301,7 @@ export const quotationService = {
     console.log(`🚀 [quotationService.update] Updating quotation ID ${id}:`, payload);
     try {
       const res = await api.put<ApiResponse<Quotation>>(`/quotations/${id}`, payload);
+    clearQuotationLookupCache();
       console.log('✅ [quotationService.update] Success response:', res.data);
       return res.data.data;
     } catch (err: any) {
@@ -303,10 +323,12 @@ export const quotationService = {
 
   async delete(id: string, force?: boolean): Promise<void> {
     await api.delete(`/quotations/${id}${force ? '?force=true' : ''}`);
+    clearQuotationLookupCache();
   },
 
   async bulkDelete(ids: string[]): Promise<void> {
     await api.post('/quotations/bulk-delete', { ids });
+    clearQuotationLookupCache();
   },
 
   async importRows(rows: Record<string, string | number>[]): Promise<ImportSummary> {

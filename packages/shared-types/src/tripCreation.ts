@@ -421,6 +421,12 @@ export interface TripSlotDraft extends QuotationSlotInput {
   dropoffDate?: string;
   dropoffTime: string;
   isOvernight?: boolean;
+  /**
+   * Minutes after pickup at which the truck reaches each outbound intermediate
+   * stop (same order as the stops), from the travel-time estimate. Without it
+   * the stops are spaced evenly between pickup and arrival.
+   */
+  intermediateArrivalOffsets?: number[];
   tripCharges: string;
   driverPayoutModified?: boolean;
   updateQuotationPayout?: boolean;
@@ -610,6 +616,35 @@ export function summarizeTripRows(rows: TripImportRow[]): {
 }
 
 /**
+ * Gives the stops between a leg's first and last stop a planned time. With
+ * `offsetsMinutes` (minutes after `startIso`, one per middle stop) those are
+ * used — clamped inside the leg; otherwise the stops are spaced evenly.
+ * Exported for tests.
+ */
+export function fillIntermediateStopTimes(
+  leg: Array<{ planned_arrival?: Date | string | null }>,
+  startIso?: string,
+  endIso?: string,
+  offsetsMinutes?: number[],
+): void {
+  const middle = leg.slice(1, -1);
+  if (middle.length === 0 || !startIso || !endIso) return;
+  const start = new Date(startIso).getTime();
+  const end = new Date(endIso).getTime();
+  if (isNaN(start) || isNaN(end) || end <= start) return;
+  const useOffsets =
+    Array.isArray(offsetsMinutes) &&
+    offsetsMinutes.length === middle.length &&
+    offsetsMinutes.every((m) => Number.isFinite(m) && m > 0);
+  middle.forEach((stop, i) => {
+    const at = useOffsets
+      ? Math.min(start + offsetsMinutes![i] * 60000, end)
+      : start + ((end - start) * (i + 1)) / (middle.length + 1);
+    stop.planned_arrival = new Date(Math.round(at / 60000) * 60000).toISOString();
+  });
+}
+
+/**
  * The bulk-import rows for the form: one per slot, or one per slot per
  * operating date for a monthly contract.
  */
@@ -662,6 +697,9 @@ export function buildTripRows(input: TripRowsInput): TripImportRow[] {
       if (leg0.length > 1 && outboundArrival) leg0[leg0.length - 1].planned_arrival = outboundArrival;
       if (leg1[0] && ret.pickup) leg1[0].planned_arrival = ret.pickup;
       if (leg1.length > 1 && ret.arrival) leg1[leg1.length - 1].planned_arrival = ret.arrival;
+      // Stops in between: from the estimate's per-stop times, else spaced evenly.
+      fillIntermediateStopTimes(leg0, plannedStart, outboundArrival, slot.intermediateArrivalOffsets);
+      fillIntermediateStopTimes(leg1, ret.pickup, ret.arrival);
 
       const common = {
         customer_id: customerId,

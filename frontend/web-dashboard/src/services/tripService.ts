@@ -330,6 +330,8 @@ export interface TripFilters {
   end_date?: string;
   page?: number;
   per_page?: number;
+  /** Leave out the customer logo on each row (for callers that don't show it). */
+  lite?: boolean;
 }
 
 /* ─── Monthly board ─────────────────────────────────────────────────────── */
