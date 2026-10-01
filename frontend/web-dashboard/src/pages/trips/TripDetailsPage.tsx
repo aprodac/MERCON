@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
-  Copy, Check, CheckCircle2, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
+  Copy, Check, CheckCircle2, Smartphone, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
   CalendarClock, Repeat, Receipt, FileText, Clock, ChevronDown, Navigation, Image as ImageIcon,
   User as UserIcon, Truck, UploadCloud, SquarePen, X, Coins, ListOrdered,
 } from 'lucide-react';
@@ -32,6 +32,9 @@ import { computeTripFinancials } from '@/utils/financialCalculations';
 
 import TripMap from '@/components/maps/live/TripMap';
 import TripStopsPanel from '@/components/trips/details/TripStopsPanel';
+import { DriverPhoneLine, TripDriverTrailList, currentAcknowledgement } from '@/components/trips/details/TripDriverTrail';
+import { driverPhoneKey } from '@/components/drivers/phone/DriverPhoneSheet';
+import { driverPhoneService } from '@/services/driverPhoneService';
 import { Banner, FinancialSummary, PaperworkSection, PreTripChecks, TripSummary, TruckDriverOverlay } from '@/components/trips/details/TripDetailsBits';
 import { statusChip, tripPhaseOf } from '@/components/trips/details/tripStatus';
 import { fleetLiveService } from '@/services/fleetLiveService';
@@ -169,6 +172,21 @@ export default function TripDetailsPage() {
     enabled: !!tripEntityId && !!trip,
   });
   const tripUpdates = tripUpdatesRes?.updates ?? [];
+
+  // Driver side of the trip: pushes, "Got it", app activity (driver phone audit)
+  const { data: driverTrail } = useQuery({
+    queryKey: ['trip-driver-trail', tripEntityId],
+    queryFn: () => driverPhoneService.tripTrail(tripEntityId!),
+    enabled: !!tripEntityId,
+    refetchInterval: 60_000,
+  });
+  const tripDriverId = (trip as any)?.driver?.id as string | undefined;
+  const { data: driverPhone } = useQuery({
+    queryKey: driverPhoneKey(tripDriverId ?? ''),
+    queryFn: () => driverPhoneService.details(tripDriverId!),
+    enabled: !!tripDriverId,
+    refetchInterval: 60_000,
+  });
 
   const { data: overview } = useQuery({
     queryKey: ['trip-overview', tripEntityId],
@@ -603,7 +621,22 @@ export default function TripDetailsPage() {
             <TripMap
               tripId={trip.id}
               onEta={setMapEta}
-              overlay={<TruckDriverOverlay trip={trip} overview={overview} truckLabel={truckDisplayLabel} onReassign={handleOpenReassign} />}
+              overlay={
+                <TruckDriverOverlay
+                  trip={trip}
+                  overview={overview}
+                  truckLabel={truckDisplayLabel}
+                  onReassign={handleOpenReassign}
+                  driverExtra={
+                    <DriverPhoneLine
+                      phone={driverPhone}
+                      {...currentAcknowledgement(driverTrail, tripDriverId)}
+                      tz={tz}
+                      onOpen={() => setIsActivityLogOpen(true)}
+                    />
+                  }
+                />
+              }
             />
           </div>
           <div className="min-h-0 lg:h-full">
@@ -675,6 +708,16 @@ export default function TripDetailsPage() {
                 </div>
               </div>
             ))}
+
+            <div className="pt-3 border-t border-[#E5E7EB]">
+              <p className="mb-1 flex items-center gap-1.5 text-xs font-bold text-[#1F2937]">
+                <Smartphone size={14} className="text-[#FA634E]" /> Driver &amp; phone
+              </p>
+              <p className="mb-2 text-[11px] text-[#6B7280]">
+                What was sent to the driver, whether it reached their phone, and what they did in the app.
+              </p>
+              <TripDriverTrailList trail={driverTrail} tz={tz} />
+            </div>
           </div>
         </SheetContent>
       </Sheet>

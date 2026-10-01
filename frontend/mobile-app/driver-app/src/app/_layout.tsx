@@ -15,6 +15,8 @@ import { ThemeProvider } from '@mercon/mobile-shared/lib/theme-context';
 import { DriverLiveTracking } from '@/components/DriverLiveTracking';
 import { DriverNotificationManager } from '@/components/DriverNotificationManager';
 import { AppToastHost } from '@/components/AppToast';
+import { AcknowledgeTripsPrompt } from '@/components/AcknowledgeTripsPrompt';
+import { PhoneHealthWatcher, PhoneSetupBanner, UpdateRequiredScreen } from '@/components/PhoneHealthManager';
 import { signInDriver, syncPushToken, unregisterPushToken } from '@/services/auth';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -81,12 +83,18 @@ function RootNavigator() {
 
       {isLoggedIn && <DriverLiveTracking />}
       {isLoggedIn && <DriverNotificationManager />}
+      {isLoggedIn && <PhoneHealthWatcher />}
+      {isLoggedIn && <AcknowledgeTripsPrompt />}
 
       {showBottomNav && (
         <View style={styles.floatingNavOverlay} pointerEvents="box-none">
+          <PhoneSetupBanner />
+          <View style={{ height: 10 }} />
           <DriverBottomNav />
         </View>
       )}
+
+      {isLoggedIn && <UpdateRequiredScreen />}
 
       <AppToastHost />
     </View>

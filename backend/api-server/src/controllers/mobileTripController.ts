@@ -7,6 +7,7 @@ import { TripStatus, DocType } from '@prisma/client';
 import { isValidTransition, completeTripAndInvoice, stampStopTransition, stampWorkflowTransition, stampIntermediateStopVisit, resolveAuthoritativeActiveStop, type DelayDetection } from '../services/tripLifecycle';
 import { buildTripRouteTimeline, getLegEndpoints } from '../services/tripRouteTimeline';
 import { notifyOperatorsOfDelay } from './notificationController';
+import { recordDriverActivity } from '../services/driverPhone/activity';
 import { getDrivingRoute, RoutingUnavailableError } from '../services/routing/routeProvider';
 import { compressUploadedImage } from '../services/imageCompressor';
 import { calculateBackendTripFinancials } from '../utils/tripFinancials';
@@ -295,6 +296,10 @@ export const updateTripStatus = async (req: Request, res: Response) => {
         where: { id: updatedTrip.id },
         include: tripInclude,
       });
+      void recordDriverActivity(driverId, 'TripStatusChanged', {
+        tripId: id,
+        metadata: { from: trip.status, to: status, workflow: driver_workflow_state ?? 'COMPLETED' },
+      });
       return res.json({ success: true, data: await attachTripDocuments(full) });
     }
 
@@ -345,6 +350,11 @@ export const updateTripStatus = async (req: Request, res: Response) => {
     });
 
     if (delay) await notifyOperatorsOfDelay(delay);
+
+    void recordDriverActivity(driverId, 'TripStatusChanged', {
+      tripId: id,
+      metadata: { from: trip.status, to: status, workflow: workflowState ?? null },
+    });
 
     res.json({ success: true, data: await attachTripDocuments(updatedTrip) });
   } catch (error: any) {
@@ -457,6 +467,13 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
         },
         created_by: isValidUuid ? userId : undefined,
       },
+    });
+
+    void recordDriverActivity(driverId, 'PhotoUploaded', {
+      tripId: id,
+      lat: location_lat,
+      lng: location_lng,
+      metadata: { kind: isVideo ? 'video' : kind, operation: operation || null, documentId: document.id },
     });
 
     res.status(201).json({ success: true, data: document });

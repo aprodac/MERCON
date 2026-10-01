@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getPublicSettings, getSettings, updateSettings, updateTimezone, getSystemHealth, getAuditLogs } from '../controllers/settingsController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireSuperAdmin } from '../middlewares/rbac';
+import { updateDriverAppMinVersion } from '../controllers/driverPhoneController';
 
 const router = Router();
 
@@ -17,6 +18,7 @@ router.get('/audit-logs', requireSuperAdmin, getAuditLogs);
 
 // Timezone is operational config the client's own Admin owns
 router.put('/timezone', authorizeRoles('Admin'), updateTimezone);
+router.put('/driver-app-version', authorizeRoles('Admin'), updateDriverAppMinVersion);
 
 router.put('/', requireSuperAdmin, updateSettings);
 

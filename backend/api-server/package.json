@@ -32,6 +32,7 @@
     "test:driver-payouts": "node -r ts-node/register --test src/tests/driverPayouts.test.ts",
     "test:maintenance": "node -r ts-node/register --test src/services/maintenance/engine.test.ts",
     "test:fleet-live-map": "node -r ts-node/register --test src/tests/fleetLiveMap.test.ts",
+    "test:driver-phone": "node -r ts-node/register --test src/services/driverPhone/rules.test.ts",
     "test:operator-inbox": "node -r ts-node/register --test src/tests/operatorInbox.test.ts",
     "test:trip-overview": "node -r ts-node/register --test src/tests/tripOverview.test.ts",
     "test:zatca": "node -r ts-node/register --test src/services/zatca/csr.test.ts src/services/secrets/secretBox.test.ts",

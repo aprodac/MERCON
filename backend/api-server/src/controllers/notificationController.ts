@@ -204,7 +204,7 @@ export const createDriverNotification = async (
       notificationId: notification.id,
       ...(dataPayload || {}),
     };
-    sendDriverPushNotification(driverId, title, message, pushData).catch((err) => {
+    sendDriverPushNotification(driverId, title, message, pushData, notification.id).catch((err) => {
       logger.error({ err, driverId }, '[NotificationController] Background push dispatch failed');
     });
 

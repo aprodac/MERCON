@@ -12,6 +12,7 @@ import { safeSecureStore as SecureStore } from './secure-store';
 import { router } from 'expo-router';
 import { translate } from './language-context';
 import { LanguageMode } from './translations';
+import { getInstallId } from './install-id';
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? (Constants.expoConfig?.extra?.apiUrl as string);
 
@@ -74,6 +75,12 @@ api.interceptors.request.use(async (config) => {
   }
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  // Lets the backend mark this phone as "last seen" (driver phone audit).
+  try {
+    config.headers['X-Install-Id'] = await getInstallId();
+  } catch {
+    // Never block a request on secure storage
   }
   return config;
 });

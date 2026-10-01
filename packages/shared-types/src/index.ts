@@ -482,6 +482,8 @@ export interface Settings {
   hiddenModules: ModuleKey[];
   /** IANA timezone (e.g. "Asia/Riyadh") the frontends convert UTC timestamps to for display. */
   timezone: string;
+  /** Lowest driver-app version allowed ("1.2.0"); older installs must update. Null = no check. */
+  driverAppMinVersion?: string | null;
   /** Default country code (e.g. "SA") for phone number fields across the deployment. */
   defaultCountryCode?: string;
   /** Default dial code (e.g. "+966") for phone number fields across the deployment. */
