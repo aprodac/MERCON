@@ -81,7 +81,7 @@ export default function DriversScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
       <DriversHeader
         onFilterPress={() => setFilterVisible(true)}
-        filterActive={status !== null || anyFlag || sort !== 'name'}
+        filterActive={anyFlag || sort !== 'name'}
       />
 
       {error ? (
@@ -160,10 +160,9 @@ export default function DriversScreen() {
 
       <FilterBottomSheet
         visible={filterVisible}
-        status={status}
         flags={flags}
         sort={sort}
-        onApply={(st, fl, so) => { setStatus(st); setFlags(fl); setSort(so); }}
+        onApply={(fl, so) => { setFlags(fl); setSort(so); }}
         onClose={() => setFilterVisible(false)}
       />
     </SafeAreaView>

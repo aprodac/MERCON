@@ -1,5 +1,5 @@
 import React from 'react';
-import { SlidersHorizontal } from 'lucide-react-native';
+import { ArrowDownUp } from 'lucide-react-native';
 import { AppTopBar } from '@/components/AppTopBar';
 
 interface DriversHeaderProps {
@@ -15,7 +15,7 @@ export function DriversHeader({ onFilterPress, filterActive }: DriversHeaderProp
   return (
     <AppTopBar
       title="Drivers"
-      actions={onFilterPress ? [{ icon: SlidersHorizontal, label: 'Filter', onPress: onFilterPress, active: filterActive }] : []}
+      actions={onFilterPress ? [{ icon: ArrowDownUp, label: 'Sort and filter', onPress: onFilterPress, active: filterActive }] : []}
     />
   );
 }
