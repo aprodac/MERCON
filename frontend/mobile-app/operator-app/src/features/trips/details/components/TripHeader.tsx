@@ -40,16 +40,23 @@ export function TripHeader({ trip, phase, f, children }: { trip: OperatorTripDet
         <Chip label={chip.label} tone={chip.tone} dot />
       </View>
 
-      <View style={{ gap: 6 }}>
-        {from ? (
-          <Text style={s.route}>
-            {from}
-            {to ? <Text style={s.arrow}>{'  →  '}</Text> : null}
-            {to}
-            {via > 0 ? <Text style={s.via}>{`   +${via} ${via === 1 ? 'stop' : 'stops'}`}</Text> : null}
-          </Text>
-        ) : null}
-        {now ? <Text style={[s.now, { color: tone.fg }]}>{now}</Text> : null}
+      {from ? (
+        <View style={s.routeBox}>
+          <View style={s.rail}>
+            <View style={[s.pin, { backgroundColor: '#FFFFFF', borderColor: INK }]} />
+            {to ? <View style={s.railLine} /> : null}
+            {to ? <View style={[s.pin, { backgroundColor: INK, borderColor: INK }]} /> : null}
+          </View>
+          <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
+            <Text style={s.route} numberOfLines={1}>{from}</Text>
+            {to ? <Text style={s.route} numberOfLines={1}>{to}</Text> : null}
+          </View>
+          {via > 0 ? <Text style={s.via}>{`+${via} ${via === 1 ? 'stop' : 'stops'}`}</Text> : null}
+        </View>
+      ) : null}
+
+      <View style={{ gap: 4 }}>
+        {now && !(delayed && !reported) ? <Text style={[s.now, { color: tone.fg }]}>{now}</Text> : null}
         {trip.driver_workflow === 'EXTERNAL_APP' ? <Text style={s.note}>Driver uses the customer’s app · screenshots as proof</Text> : null}
       </View>
 
@@ -70,12 +77,15 @@ export function TripHeader({ trip, phase, f, children }: { trip: OperatorTripDet
 }
 
 const s = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  top: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   customer: { fontSize: 17, fontWeight: '700', color: INK, lineHeight: 22, letterSpacing: -0.2 },
   ref: { fontSize: 13, color: MUTED, fontVariant: ['tabular-nums'] },
-  route: { fontSize: 15, fontWeight: '600', color: INK, lineHeight: 21 },
-  arrow: { color: '#A1A1AA', fontWeight: '400' },
-  via: { fontSize: 13, fontWeight: '500', color: MUTED },
+  routeBox: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F6F6F7', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11 },
+  rail: { alignItems: 'center', alignSelf: 'stretch', justifyContent: 'center', paddingVertical: 4 },
+  pin: { width: 9, height: 9, borderRadius: 5, borderWidth: 2 },
+  railLine: { flex: 1, width: 2, backgroundColor: '#C9C9D1', marginVertical: 2 },
+  route: { fontSize: 15, fontWeight: '600', color: INK, lineHeight: 20 },
+  via: { fontSize: 12, fontWeight: '600', color: MUTED, backgroundColor: '#E9E9EC', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
   now: { fontSize: 14, fontWeight: '600' },
   note: { fontSize: 12, color: MUTED },
   segments: { flexDirection: 'row', gap: 4 },

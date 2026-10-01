@@ -8,13 +8,14 @@ import { useRouter } from 'expo-router';
 import {
   Check, ChevronRight, FileText, ListOrdered, Phone, Plus, Receipt, Smartphone, Timer, Route, Truck, UploadCloud, X,
 } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { DriverAvatar } from '../../../drivers/components/DriverAvatar';
 import { initialsOf, niceName } from '../../create/components/ui';
 import type { LiveGpsFix, OperatorTripDetail, OperatorTripDocument, TripOverview, TripPhase } from '../../../../lib/operator';
 import {
-  ON_TIME_GRACE_MIN, TONE, ago, billingLabel, canChangeAssignment, formatDuration, lineType, minutesLate, moneyOf, sar, sortedStops,
+  ON_TIME_GRACE_MIN, TONE, type Tone, ago, billingLabel, canChangeAssignment, formatDuration, lineType, minutesLate, moneyOf, sar, sortedStops,
   type Formatters,
 } from '../tripDetailsModel';
 import { Card, Chip, Divider, Fact, INK, InfoRow, MUTED, SectionHead } from './parts';
@@ -43,7 +44,7 @@ export function DetailsTab({ trip, phase, overview, f, onChange, onCharges, onUp
     { label: 'Created', value: f.date(trip.createdAt) || '—' },
   ];
   return (
-    <View style={{ gap: 12 }}>
+    <View style={{ gap: 22 }}>
       {phase === 'planned' && overview?.checks ? <PreTripChecks checks={overview.checks} f={f} /> : null}
       {phase === 'done' ? (
         <>
@@ -52,18 +53,21 @@ export function DetailsTab({ trip, phase, overview, f, onChange, onCharges, onUp
         </>
       ) : null}
 
-      <Text style={s.group}>Truck and driver</Text>
-      <Assignment trip={trip} phase={phase} overview={overview} onChange={onChange} />
+      <Section title="Truck and driver" icon={Truck} tone="blue">
+        <Assignment trip={trip} phase={phase} overview={overview} onChange={onChange} />
+      </Section>
 
-      <Text style={s.group}>Money</Text>
-      <MoneyCard trip={trip} onCharges={onCharges} />
+      <Section title="Financials" icon={Receipt} tone="green">
+        <MoneyCard trip={trip} onCharges={onCharges} />
+      </Section>
 
-      <Text style={s.group}>Trip info</Text>
-      <Card style={{ paddingVertical: 4 }}>
-        {info.map((r, i) => <InfoRow key={r.label} label={r.label} value={r.value} mono={r.mono} last={i === info.length - 1} />)}
-      </Card>
+      <Section title="Trip info" icon={ListOrdered} tone="violet">
+        <Card style={{ paddingVertical: 4 }}>
+          {info.map((r, i) => <InfoRow key={r.label} label={r.label} value={r.value} mono={r.mono} last={i === info.length - 1} />)}
+        </Card>
+      </Section>
 
-      <Text style={s.group}>Documents</Text>
+      <Section title="Documents" icon={FileText} tone="sky">
       <Card style={{ paddingVertical: 4 }}>
         {paperwork.length === 0 ? <Text style={[s.muted, { paddingVertical: 12 }]}>No paperwork yet. Driver photos are on the Updates tab.</Text> : (
           paperwork.map((d) => (
@@ -88,6 +92,20 @@ export function DetailsTab({ trip, phase, overview, f, onChange, onCharges, onUp
           </TouchableOpacity>
         </View>
       </Card>
+      </Section>
+    </View>
+  );
+}
+
+/** A titled block: a quiet header row above its card, with generous space between blocks. */
+function Section({ title, icon: Icon, children }: { title: string; icon: LucideIcon; tone?: Tone; children: React.ReactNode }) {
+  return (
+    <View style={s.section}>
+      <View style={s.sectionHead}>
+        <Icon size={16} color={MUTED} strokeWidth={2.2} />
+        <Text style={s.sectionTitle}>{title}</Text>
+      </View>
+      {children}
     </View>
   );
 }
@@ -313,6 +331,9 @@ const s = StyleSheet.create({
   lineStrongValue: { fontSize: 17, fontWeight: '700' },
   pay: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginTop: 6 },
   payText: { fontSize: 13, fontWeight: '600' },
+  section: { gap: 8 },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 4 },
+  sectionTitle: { fontSize: 13, fontWeight: '700', color: MUTED, letterSpacing: 0.3, textTransform: 'uppercase' },
   group: { fontSize: 13, fontWeight: '600', color: MUTED, marginTop: 8, marginBottom: -4, marginLeft: 4 },
   factRow: { flexDirection: 'row', gap: 8 },
   inlineLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },

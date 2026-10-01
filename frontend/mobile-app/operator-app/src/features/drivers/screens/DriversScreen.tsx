@@ -23,7 +23,6 @@ import {
   DriverStatsSection,
   FilterBottomSheet,
   NO_FLAGS,
-  STATUS_OPTIONS,
   SkeletonDriverCard,
 } from '../components';
 import { useDriverFilters, useDriverSearch, useDriverSorting, useDrivers } from '../hooks';
@@ -79,7 +78,7 @@ export default function DriversScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
       <DriversHeader
         onFilterPress={() => setFilterVisible(true)}
         filterActive={status !== null || anyFlag || sort !== 'name'}
@@ -92,22 +91,19 @@ export default function DriversScreen() {
           data={drivers}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 110 }}
-          ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={Colors.primary} />}
           ListHeaderComponent={
             <View className="gap-4 pb-3">
-              <DriverStatsSection />
+              <DriverStatsSection status={status} onSelect={setStatus} />
               <SearchBar
                 value={query}
                 onChangeText={setQuery}
-                placeholder="Search drivers by name or phone…"
+                placeholder="Search name or phone"
                 isLoading={isFetching && !isRefreshing}
               />
-              {isFiltered && (status !== null || anyFlag) ? (
+              {anyFlag ? (
                 <View className="flex-row flex-wrap" style={{ gap: 8 }}>
-                  {status !== null ? (
-                    <ActiveChip label={STATUS_OPTIONS.find((o) => o.value === status)?.label ?? status} onClear={() => setStatus(null)} />
-                  ) : null}
                   {flags.expiring ? <ActiveChip label="Documents expiring" onClear={() => setFlags((f) => ({ ...f, expiring: false }))} /> : null}
                   {flags.noTruck ? <ActiveChip label="No truck" onClear={() => setFlags((f) => ({ ...f, noTruck: false }))} /> : null}
                 </View>

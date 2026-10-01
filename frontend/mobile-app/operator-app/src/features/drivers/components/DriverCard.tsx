@@ -1,20 +1,19 @@
 /**
- * One driver in the list — same language as Home and the Fleet map:
- *   (photo)  Full name (wraps)                      (● call)
- *            DRV-129 · +966 54 612 6286
- *   [🚚 DRA-6484] [💳 SAR 0] [📄 Licence 5 days left — only when there is one]
- * Status is only the dot on the photo (green free · yellow on a trip · red
- * offline). Tap the card to open the driver; the round button calls (or, on
- * a trip, tracks). Chips are neutral unless something is wrong (red / amber).
+ * One driver in the list — a compact row:
+ *   (photo)  Full name                                   (call)
+ *            ● Available · DRV-129 · DRA-6484
+ *            ⚠ Licence 5 days left        — only when something is wrong
+ * Tap the row to open the driver; the round button calls (or, on a trip,
+ * opens the trip). Status is said once, in words, with its dot.
  */
 import React from 'react';
 import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
-import { FileText, Navigation, Phone, Truck, Wallet, type LucideIcon } from 'lucide-react-native';
+import { FileWarning, Navigation, Phone } from 'lucide-react-native';
 import { DriverAvatar } from './DriverAvatar';
 import { EXPIRY_SOON_DAYS } from '../services/driverDetailsService';
 import { driverFullName, driverInitials } from '../services/driversService';
 import { niceName } from '../../trips/create/components/ui';
-import type { DriverListItem } from '../types';
+import type { DriverListItem, DriverStatus } from '../types';
 
 const INK = '#18181B';
 const MUTED = '#6B6B76';
@@ -22,11 +21,12 @@ const RED = '#B42318';
 const AMBER = '#B54708';
 
 
-/** "+966546126286" → "+966 54 612 6286"; anything else is shown as given. */
-function formatPhone(p: string): string {
-  const m = /^\+?966(5\d)(\d{3})(\d{4})$/.exec(p.replace(/\s+/g, ''));
-  return m ? `+966 ${m[1]} ${m[2]} ${m[3]}` : p;
-}
+const STATUS: Record<DriverStatus, { label: string; fg: string; dot: string }> = {
+  Available: { label: 'Available', fg: '#146C3C', dot: '#1F9D55' },
+  OnTrip: { label: 'On trip', fg: '#2449A8', dot: '#2F5FD0' },
+  OffDuty: { label: 'Offline', fg: MUTED, dot: '#9898A4' },
+  Inactive: { label: 'Inactive', fg: MUTED, dot: '#9898A4' },
+};
 
 function expiryText(days: number | null): { text: string; color: string } | null {
   if (days === null) return null;
@@ -55,61 +55,51 @@ export function DriverCard({ driver, onCall, onTrack, onView }: DriverCardProps)
   const doc = expiryText(driver.docDaysLeft);
   const docs =
     licence && licence.color !== INK ? { text: `Licence ${licence.text.toLowerCase()}`, color: licence.color }
-    : doc; // nothing on file → no chip
+    : doc && doc.color !== INK ? { text: `Document ${doc.text.toLowerCase()}`, color: doc.color }
+    : null; // nothing wrong → no line
 
-  const payout = `SAR ${(driver.monthlyPayout ?? 0).toLocaleString('en-US')}`;
-  const sub = [driver.ref_id, driver.phone ? formatPhone(driver.phone) : null].filter(Boolean).join('  ·  ');
+  const st = STATUS[driver.status];
+  const meta = [driver.ref_id, plate ?? 'No truck'].filter(Boolean).join('  ·  ');
+  const pay = driver.monthlyPayout ? `SAR ${driver.monthlyPayout.toLocaleString('en-US')} this month` : null;
 
   return (
-    <TouchableOpacity activeOpacity={onView ? 0.85 : 1} onPress={onView ? () => onView(driver) : undefined} style={s.card} accessibilityRole="button" accessibilityLabel={`Open ${name}`}>
-      <View style={s.head}>
-        <DriverAvatar initials={driverInitials(driver)} avatarUrl={driver.avatarUrl} status={driver.status} size={50} />
-        <View style={s.headText}>
-          <Text style={s.name} numberOfLines={2}>{name}</Text>
-          {sub ? <Text style={s.sub} numberOfLines={1}>{sub}</Text> : null}
+    <TouchableOpacity activeOpacity={onView ? 0.8 : 1} onPress={onView ? () => onView(driver) : undefined} style={s.card} accessibilityRole="button" accessibilityLabel={`Open ${name}`}>
+      <DriverAvatar initials={driverInitials(driver)} avatarUrl={driver.avatarUrl} size={48} />
+      <View style={s.text}>
+        <Text style={s.name} numberOfLines={2}>{name}</Text>
+        <View style={s.metaRow}>
+          <View style={[s.dot, { backgroundColor: st.dot }]} />
+          <Text style={s.meta} numberOfLines={1}>
+            <Text style={{ color: st.fg, fontWeight: '600' }}>{st.label}</Text>
+            {meta ? `  ·  ${meta}` : ''}
+          </Text>
         </View>
-        {onTrip ? (
-          <TouchableOpacity style={s.quick} onPress={onTrack ? () => onTrack(driver) : undefined} hitSlop={8} accessibilityLabel={`Track trip for ${name}`}>
-            <Navigation size={18} color="#FFFFFF" strokeWidth={2.2} />
-          </TouchableOpacity>
-        ) : driver.phone ? (
-          <TouchableOpacity style={s.quick} onPress={onCall ? () => onCall(driver) : undefined} hitSlop={8} accessibilityLabel={`Call ${name}`}>
-            <Phone size={17} color="#FFFFFF" strokeWidth={2.2} />
-          </TouchableOpacity>
-        ) : null}
+        {docs ? (
+          <View style={s.metaRow}>
+            <FileWarning size={13} color={docs.color} strokeWidth={2.2} />
+            <Text style={[s.meta, { color: docs.color, fontWeight: '600' }]} numberOfLines={1}>{docs.text}</Text>
+          </View>
+        ) : pay ? <Text style={s.meta} numberOfLines={1}>{pay}</Text> : null}
       </View>
-
-      {/* Soft chips: truck, this month's pay, documents — colour only when something's wrong */}
-      <View style={s.chips}>
-        <Chip icon={Truck} text={plate ?? 'No truck'} color={plate ? INK : MUTED} mono={!!plate} />
-        <Chip icon={Wallet} text={payout} color={INK} />
-        {docs ? <Chip icon={FileText} text={docs.text} color={docs.color} tint={docs.color === RED ? '#FEF3F2' : docs.color === AMBER ? '#FFFAEB' : undefined} /> : null}
-      </View>
+      {onTrip ? (
+        <TouchableOpacity style={s.quick} onPress={onTrack ? () => onTrack(driver) : undefined} hitSlop={8} accessibilityLabel={`Open trip for ${name}`}>
+          <Navigation size={18} color={INK} strokeWidth={2.2} />
+        </TouchableOpacity>
+      ) : driver.phone ? (
+        <TouchableOpacity style={s.quick} onPress={onCall ? () => onCall(driver) : undefined} hitSlop={8} accessibilityLabel={`Call ${name}`}>
+          <Phone size={17} color={INK} strokeWidth={2.2} />
+        </TouchableOpacity>
+      ) : null}
     </TouchableOpacity>
   );
 }
 
-function Chip({ icon: Icon, text, color, mono, tint }: { icon: LucideIcon; text: string; color: string; mono?: boolean; tint?: string }) {
-  return (
-    <View style={[s.chip, tint ? { backgroundColor: tint } : null]}>
-      <Icon size={13} color={color === INK ? MUTED : color} strokeWidth={2.2} />
-      <Text style={[s.chipText, { color }, mono && s.mono]} numberOfLines={1}>{text}</Text>
-    </View>
-  );
-}
-
 const s = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFFFFF', borderRadius: 20, borderWidth: 1, borderColor: '#EEEEF1', padding: 14, gap: 12,
-    shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 1,
-  },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  headText: { flex: 1, gap: 3 },
-  name: { fontSize: 16, fontWeight: '700', color: INK, lineHeight: 21, letterSpacing: -0.2 },
-  sub: { fontSize: 12.5, color: MUTED, fontVariant: ['tabular-nums'] },
-  quick: { width: 42, height: 42, borderRadius: 21, backgroundColor: INK, alignItems: 'center', justifyContent: 'center' },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#F5F5F7', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 7, maxWidth: '100%' },
-  chipText: { fontSize: 13, fontWeight: '600' },
-  mono: { fontFamily: 'monospace', fontWeight: '700' },
+  card: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E9E9EC', paddingVertical: 12, paddingHorizontal: 14 },
+  text: { flex: 1, minWidth: 0, gap: 3 },
+  name: { fontSize: 16, fontWeight: '600', color: INK, letterSpacing: -0.2 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  meta: { fontSize: 13, color: MUTED, flexShrink: 1, fontVariant: ['tabular-nums'] },
+  quick: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F4F4F5', alignItems: 'center', justifyContent: 'center' },
 });

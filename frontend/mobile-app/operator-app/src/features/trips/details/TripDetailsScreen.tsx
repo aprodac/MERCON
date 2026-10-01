@@ -4,7 +4,7 @@
  * Map on top (MapLibre), then who / where / status, then three tabs:
  *   Updates — WhatsApp first: quick sends and the driver's photos, each with Send.
  *   Stops   — every stop with times, lateness, delays and screenshots to check.
- *   Details — pre-trip checks or trip summary, truck & driver, money, paperwork.
+ *   Details — pre-trip checks or trip summary, truck & driver, financials, paperwork.
  * The next status step, WhatsApp and "more" stay pinned at the bottom.
  */
 import React, { useEffect, useMemo, useState } from 'react';
@@ -26,7 +26,6 @@ import { useTripDetails } from './useTripDetails';
 import { ago, digits, hoursText, makeFormatters, mapsLink, nextActionFor, sortedStops, stopName, updateTitle, type QuickKind, type Stop } from './tripDetailsModel';
 import { TripMap } from './components/TripMap';
 import { TripHeader } from './components/TripHeader';
-import { UpdatesTab } from './components/UpdatesTab';
 import { StopsTab } from './components/StopsTab';
 import { DetailsTab } from './components/DetailsTab';
 import { ShareSheet, type ShareTarget } from './components/ShareSheet';
@@ -35,7 +34,7 @@ import { TimeConfirmSheet } from './components/TimeConfirmSheet';
 import { ActivitySheet, ChargesSheet, MoreSheet, UploadSheet } from './components/Sheets';
 import { ACTION, INK, MUTED, PAGE, WA, tap } from './components/parts';
 
-type Tab = 'updates' | 'stops' | 'details';
+type Tab = 'stops' | 'details';
 const MAP_H = 320;
 
 export default function TripDetailsScreen() {
@@ -47,7 +46,7 @@ export default function TripDetailsScreen() {
   const { trip, overview, updates, whatsappApi, tz, phase, remaining, loading, refreshing, error, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
 
-  const [tab, setTab] = useState<Tab>(params.tab === 'updates' || params.tab === 'stops' ? params.tab : 'details');
+  const [tab, setTab] = useState<Tab>(params.tab === 'stops' ? params.tab : 'details');
   const [busy, setBusy] = useState(false);
   const [share, setShare] = useState<ShareTarget | null>(null);
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string; update?: DriverUpdate } | null>(null);
@@ -102,7 +101,6 @@ export default function TripDetailsScreen() {
   const stops = sortedStops(trip);
   const next = nextActionFor(trip.status);
   const position = overview?.unit?.position ? { lat: overview.unit.position.lat, lng: overview.unit.position.lng } : null;
-  const unsentUpdates = updates.filter((u) => u.unsent_count > 0).length;
   const gps = overview?.unit?.position;
 
   // ── Actions ────────────────────────────────────────────────────────────────
@@ -181,15 +179,6 @@ export default function TripDetailsScreen() {
     }
   };
 
-  const openUpdate = (u: DriverUpdate, index: number) => {
-    const where = u.stop?.name ?? 'Trip';
-    setViewer({
-      title: `${updateTitle(u)} · ${where}`,
-      index,
-      update: u,
-      items: u.items.map((m) => ({ id: m.id, url: m.url, kind: m.kind, caption: f.smart(m.captured_at) })),
-    });
-  };
 
   const openStopMedia = (st: Stop) => {
     const ups = updates.filter((u) => u.stop?.id === st.id);
@@ -210,7 +199,6 @@ export default function TripDetailsScreen() {
   // ── Render ─────────────────────────────────────────────────────────────────
   const tabs: { id: Tab; label: string; icon: LucideIcon; badge?: number }[] = [
     { id: 'details', label: 'Details', icon: LayoutList },
-    { id: 'updates', label: 'Updates', icon: MessageCircle, badge: unsentUpdates },
     { id: 'stops', label: 'Stops', icon: Route, badge: undefined },
   ];
 
@@ -237,7 +225,9 @@ export default function TripDetailsScreen() {
       >
         {/* 0 · map + header */}
         <View>
-          <TripMap stops={stops} overview={overview} phase={phase} height={MAP_H} padding={{ top: insets.top + 24, bottom: 60 }} />
+          <View style={s.mapClip}>
+            <TripMap stops={stops} overview={overview} phase={phase} height={MAP_H} padding={{ top: insets.top + 24, bottom: 60 }} />
+          </View>
           <View style={s.mapBottom}>
             {gps && phase === 'active' ? (
               <View style={s.gpsChip}>
@@ -287,18 +277,7 @@ export default function TripDetailsScreen() {
 
         {/* 2 · tab body */}
         <View style={{ paddingHorizontal: 16 }}>
-          {tab === 'updates' ? (
-            <UpdatesTab
-              trip={trip}
-              phase={phase}
-              updates={updates}
-              f={f}
-              onQuick={quick}
-              onSendUpdate={(u) => setShare({ type: 'update', update: u })}
-              onOpenMedia={openUpdate}
-              onAddPhoto={() => setSheet('upload')}
-            />
-          ) : tab === 'stops' ? (
+          {tab === 'stops' ? (
             <StopsTab
               trip={trip}
               phase={phase}
@@ -374,6 +353,8 @@ export default function TripDetailsScreen() {
         onUpload={() => setSheet('upload')}
         onActivity={() => setSheet('activity')}
         onCancel={cancelTrip}
+        onQuick={quick}
+        active={phase === 'active'}
       />
       <UploadSheet visible={sheet === 'upload'} onClose={() => setSheet(null)} onPick={upload} />
       <ActivitySheet visible={sheet === 'activity'} trip={trip} f={f} onClose={() => setSheet(null)} />
@@ -418,14 +399,15 @@ const s = StyleSheet.create({
   topTitle: { fontSize: 16, fontWeight: '700', color: INK },
   topSub: { fontSize: 12, color: MUTED },
   back: { position: 'absolute', left: 14, width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.96)', alignItems: 'center', justifyContent: 'center', ...shadow },
-  mapBottom: { position: 'absolute', left: 14, right: 14, top: MAP_H - 92, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  mapBottom: { position: 'absolute', left: 16, right: 16, top: MAP_H - 38 - 14, height: 38, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   gpsChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, ...shadow },
   gpsDot: { width: 8, height: 8, borderRadius: 4 },
   gpsText: { fontSize: 12, fontWeight: '700', color: INK },
   mapBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.96)', alignItems: 'center', justifyContent: 'center', ...shadow },
-  // The header card overlaps the bottom of the map directly — no grey band between them.
-  sheetTop: { marginTop: -36, paddingHorizontal: 16 },
-  tabsWrap: { backgroundColor: PAGE, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 },
+  // The map has a rounded bottom edge; the header card sits just below it.
+  sheetTop: { marginTop: 14, paddingHorizontal: 16 },
+  mapClip: { height: MAP_H, overflow: 'hidden', borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
+  tabsWrap: { backgroundColor: PAGE, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 18 },
   tabs: { flexDirection: 'row', gap: 4, backgroundColor: '#EAEAED', borderRadius: 12, padding: 3 },
   tab: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 38, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 4 },
   badge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: WA, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
