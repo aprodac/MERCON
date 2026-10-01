@@ -707,7 +707,7 @@ export default function QuotationListPage() {
             <Button
               size="sm"
               className="h-9 gap-1.5 text-xs font-bold bg-[#FA634E] hover:bg-[#DF4834] text-white shadow-xs rounded-lg px-4 cursor-pointer transition-all border-0"
-              onClick={() => navigate('/quotations/new')}
+              onClick={() => navigate(selectedGroup ? `/quotations/new?customer_id=${selectedGroup.id}` : '/quotations/new')}
             >
               <Plus className="h-4 w-4 stroke-[2.5]" />
               <span>New Commercial Route</span>

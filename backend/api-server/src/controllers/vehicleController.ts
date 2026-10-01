@@ -92,12 +92,13 @@ export const getVehicles = async (req: Request, res: Response) => {
           orderBy: { createdAt: 'desc' },
           // Picker shape — see the matching note in driverController. Scalars a
           // dropdown / export column needs plus a shallow assigned-driver join,
-          // and crucially no `trips` / `maintenanceRecords` includes.
+          // and crucially no `trips` / `maintenanceRecords` includes. No
+          // `image_url` either: photos are stored inline (base64) and one of
+          // them alone made this list 1.9 MB — no picker shows the photo.
           select: {
             id: true,
             plate_number: true,
             ref_id: true,
-            image_url: true,
             trailer_number: true,
             trailer_type: true,
             asset_type: true,

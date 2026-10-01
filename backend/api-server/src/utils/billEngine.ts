@@ -158,32 +158,30 @@ export async function approveBill(billId: string, userId: string) {
       );
     }
 
-    // Prepare line debits: allocate tax proportionally so total debits equal totalAmount
-    const jeLineItems: { accountId: string; debit: Prisma.Decimal; credit: Prisma.Decimal | number; description: string }[] = [];
-    let allocatedDebits = new Prisma.Decimal(0);
+    // Each line debits its own account at its net amount; the bill's VAT is reclaimable input VAT,
+    // so it goes to the VAT input account rather than into the cost
+    const jeLineItems: { accountId: string; debit: Prisma.Decimal; credit: Prisma.Decimal | number; description: string }[] = linePostings.map((lp) => ({
+      accountId: lp.accountId,
+      debit: lp.amount,
+      credit: new Prisma.Decimal(0),
+      description: lp.description,
+    }));
 
-    for (let i = 0; i < linePostings.length; i++) {
-      const lp = linePostings[i];
-      let lineDebit = lp.amount;
-
-      if (subtotal.greaterThan(0) && taxAmount.greaterThan(0)) {
-        if (i === linePostings.length - 1) {
-          // Last line gets remainder to prevent rounding discrepancy
-          lineDebit = totalAmount.minus(allocatedDebits);
-        } else {
-          const taxShare = lp.amount.dividedBy(subtotal).times(taxAmount).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
-          lineDebit = lp.amount.plus(taxShare);
-          allocatedDebits = allocatedDebits.plus(lineDebit);
-        }
-      } else {
-        allocatedDebits = allocatedDebits.plus(lineDebit);
+    if (taxAmount.greaterThan(0)) {
+      const vatInputId = settings.defaultVatInputAccountId;
+      const vatAccount = vatInputId ? await tx.account.findUnique({ where: { id: vatInputId } }) : null;
+      if (!vatAccount || !vatAccount.isActive || vatAccount.deletedAt !== null || !vatAccount.is_postable) {
+        throw new AccountingError(
+          'This bill has VAT, and the VAT input account is not set. An Admin can choose it in Invoices → Ledger setup.',
+          'SETTINGS_NOT_CONFIGURED',
+          400,
+        );
       }
-
       jeLineItems.push({
-        accountId: lp.accountId,
-        debit: lineDebit,
+        accountId: vatAccount.id,
+        debit: taxAmount,
         credit: new Prisma.Decimal(0),
-        description: lp.description,
+        description: `VAT input - Bill ${bill.ref_id || bill.id}`,
       });
     }
 

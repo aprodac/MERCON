@@ -1,4 +1,4 @@
-import { BellRing, Copy, FileCheck2, HandCoins, MoreHorizontal, Pencil, Printer, Send, Trash2, XCircle } from 'lucide-react';
+import { BellRing, Copy, FileCheck2, FileMinus2, HandCoins, MoreHorizontal, Pencil, Printer, Send, Trash2, XCircle } from 'lucide-react';
 import type { Invoice } from '@mercon/shared-types';
 import { Button } from '@/components/ui/button';
 import { Chip, type ChipTone } from '@/components/ui/chip';
@@ -90,6 +90,11 @@ export function InvoiceActions({
           {open && primary !== 'remind' && (
             <DropdownMenuItem className="gap-2 text-xs" onClick={() => run('remind', invoice)}>
               <BellRing className="size-3.5" /> Send reminder
+            </DropdownMenuItem>
+          )}
+          {open && (
+            <DropdownMenuItem className="gap-2 text-xs" onClick={() => run('credit_note', invoice)}>
+              <FileMinus2 className="size-3.5" /> Issue credit note
             </DropdownMenuItem>
           )}
           {compact && !draft && state !== 'void' && (

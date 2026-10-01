@@ -264,6 +264,9 @@ export default function LocationFormDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    // The dialog is portalled, but React still bubbles its submit to a parent
+    // <form> (the quotation page's), which then ran that page's save.
+    e.stopPropagation();
     setError(null);
 
     const activeCustId = customerId || defaultCustomerId;

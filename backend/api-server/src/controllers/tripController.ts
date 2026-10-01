@@ -247,6 +247,7 @@ export const getTrips = async (req: Request, res: Response) => {
     const pageNumber = parseInt(page as string);
     const limit = parseInt(per_page as string);
     const skip = (pageNumber - 1) * limit;
+    const isLite = req.query.lite === 'true';
 
     const whereClause: Prisma.TripWhereInput = { deletedAt: null };
     if (status) {
@@ -260,7 +261,8 @@ export const getTrips = async (req: Request, res: Response) => {
     }
     if (driver_id) whereClause.driverId = driver_id as string;
     if (vehicle_id) whereClause.vehicleId = vehicle_id as string;
-    if (customer_id) whereClause.customerId = customer_id as string;
+    const customerFilter = (customer_id || req.query.customerId) as string | undefined;
+    if (customerFilter) whereClause.customerId = customerFilter;
     if (rate_card_id || req.query.pricing_rule_id || req.query.quotation_id) whereClause.quotationId = ((req.query.quotation_id || req.query.pricing_rule_id || rate_card_id) as string);
     const searchAnd = buildSearchAnd(search, TRIP_SEARCH_FIELDS) as Prisma.TripWhereInput[];
 
@@ -379,7 +381,9 @@ export const getTrips = async (req: Request, res: Response) => {
             select: {
               id: true,
               name: true,
-              logo_url: true,
+              // Logos are stored inline (base64, ~100 KB each) — repeated on every
+              // row they made 100 trips ~7 MB. `lite=true` callers don't show them.
+              logo_url: !isLite,
             }
           },
           quotation: {
@@ -577,6 +581,16 @@ export const getTripById = async (req: Request, res: Response) => {
 
     const fin = calculateBackendTripFinancials(trip as any);
 
+    // Costs recorded against this trip in Expenses (fuel, tolls) come off its margin
+    const tripExpenses = await prisma.expense.findMany({
+      where: { tripId: trip.id, deletedAt: null },
+      select: { id: true, ref_id: true, category: true, amount: true, vat_amount: true, status: true, expense_date: true, payee: true },
+      orderBy: { expense_date: 'asc' },
+    });
+    // The cost is net of reclaimable VAT
+    const tripExpensesTotal = Math.round(tripExpenses.reduce((sum, e) => sum + Number(e.amount) - Number(e.vat_amount), 0) * 100) / 100;
+    const netMargin = Math.round((fin.balanceMargin - tripExpensesTotal) * 100) / 100;
+
     const stopIds = (trip.stops || []).map((s: any) => s.id).filter(isUuid);
     const validUuidEntityIds = Array.from(new Set([trip.id, ...stopIds].filter(isUuid)));
 
@@ -606,6 +620,11 @@ export const getTripById = async (req: Request, res: Response) => {
       driver_charge: fin.primaryDriverPayout,
       balance_margin: fin.balanceMargin,
       margin_percent: fin.marginPercent,
+      trip_expenses: tripExpenses,
+      trip_expenses_total: tripExpensesTotal,
+      // Margin after driver pay and the trip's own expenses
+      net_margin: netMargin,
+      net_margin_percent: fin.totalCustomerBilling > 0 ? Number(((netMargin / fin.totalCustomerBilling) * 100).toFixed(1)) : 0,
       vehicle: trip.vehicle
         ? {
             ...trip.vehicle,

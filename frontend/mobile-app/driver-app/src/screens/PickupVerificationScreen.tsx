@@ -6,14 +6,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Svg, { Path, Rect, Circle, Line, G, Polygon, Ellipse } from 'react-native-svg';
-import { Info, Camera, MapPin, Trash2, Package, ArrowRight, Clock, FileText, Check, Navigation, Send, RotateCcw } from 'lucide-react-native';
+import { Info, Camera, MapPin, Trash2, PackagePlus, ArrowRight, Clock, FileText, Check, Navigation, Send, RotateCcw } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { GoogleMapsGeotagPreview } from '../components/GoogleMapsGeotagPreview';
 import { GeotagPhotoModal } from '../components/GeotagPhotoModal';
-import { TripProgressStepper } from '../components/TripProgressStepper';
+import { StageHeader, STAGE_THEME } from '../components/StageHeader';
 import { FadedBottomIllustration } from '../components/FadedBottomIllustration';
 import { DelayReportModal } from '../components/DelayReportModal';
-import { DelayButton } from '../components/DelayButton';
 import { ReturnLoadingModal } from '../components/ReturnLoadingModal';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
@@ -456,22 +455,21 @@ const PickupVerificationScreen = () => {
   const pickupLocationAddr = stopAddress(pickupStop) || '';
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Header Bar */}
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-            <Text style={styles.backIconText}>←</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{isReturnLoading ? t('title_return_loading_header', 'Return Loading') : t('title_loading_header', 'Loading')}</Text>
-          <DelayButton onPress={() => setShowDelayModal(true)} />
-        </View>
-
-        {/* 4-Step Progress Stepper: Pickup -> Loading -> Delivery -> Complete */}
-        <TripProgressStepper
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: STAGE_THEME.loading.main }}>
+      <StatusBar barStyle="light-content" backgroundColor={STAGE_THEME.loading.main} />
+      <ScrollView style={{ backgroundColor: STAGE_THEME.loading.page }} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <StageHeader
+          stage="loading"
+          title={isReturnLoading ? t('title_return_loading_header', 'Return Loading') : t('title_loading_header', 'Loading')}
+          subtitle={evidence.screenshot
+            ? t('sub_stage_screenshot', "Add a screenshot of the customer's app")
+            : t('sub_stage_loading', 'Load the cargo, then take 3 photos')}
+          isReturn={isReturnLoading}
           trip={trip}
           target={{ kind: 'pickup', leg: isReturnLoading ? 1 : 0 }}
+          onBack={() => router.back()}
+          onDelay={() => setShowDelayModal(true)}
+          style={{ marginHorizontal: -14 }}
         />
 
         {/* Location Card (Horizontal Side-by-Side matching Screenshot 2) */}
@@ -566,7 +564,7 @@ const PickupVerificationScreen = () => {
             onPress={handleCompletePickup}
             disabled={!hasAllPhotos || submitting}
           >
-            <Package size={22} color={hasAllPhotos ? "#FFFFFF" : "#94A3B8"} strokeWidth={2} />
+            <PackagePlus size={22} color={hasAllPhotos ? "#FFFFFF" : "#94A3B8"} strokeWidth={2} />
             <Text style={[styles.mainActionBtnText, !hasAllPhotos && styles.mainActionBtnTextDisabled]}>
               {submitting
                 ? t('msg_processing', 'PROCESSING…')
@@ -618,37 +616,8 @@ const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1,
     paddingHorizontal: 14,
-    paddingTop: 6,
+    paddingTop: 0,
     paddingBottom: 0,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  backIconText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
   },
   returnBadgePill: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { getLegEndpoints, isRoundTripCategory, quotationMatchesRoute, tripRouteLegs } from '@mercon/shared-types';
+import { billingTypeVariants, getLegEndpoints, isRoundTripCategory, lineTypeVariants, quotationMatchesRoute, tripRouteLegs } from '@mercon/shared-types';
 
 /**
  * The one rule for "what does this lane cost for this customer".
@@ -75,23 +75,14 @@ export const findQuotationForLane = async (
     deletedAt: null,
   };
 
-  const getLineTypeVariants = (rawLineType?: string | null): string[] => {
-    if (!rawLineType || !rawLineType.trim()) return [];
-    const s = rawLineType.trim().toUpperCase().replace(/_/g, ' ');
-    if (s.includes('10')) return ['10_HRS', '10 Hours Duty', '10 Hrs Duty', '10 Hours Shift', '10_HOURS', '10 HOURS'];
-    if (s.includes('12')) return ['12_HRS', '12 Hours Duty', '12 Hrs Duty', '12 Hours Shift', '12_HOURS', '12 HOURS'];
-    if (s.includes('ROUND')) return ['ROUND_TRIP', 'Round Trip', 'Trip/Round Trip'];
-    if (s.includes('SINGLE')) return ['SINGLE_TRIP', 'Single Trip'];
-    return [rawLineType.trim()];
-  };
-
-  const ltVariants = getLineTypeVariants(lineType);
+  const ltVariants = lineTypeVariants(lineType);
+  const btVariants = billingTypeVariants(billingType);
 
   if (ltVariants.length > 0) {
     whereClause.line_type = { in: ltVariants };
   }
-  if (billingType && billingType.trim()) {
-    whereClause.operation_type = billingType.trim();
+  if (btVariants.length > 0) {
+    whereClause.operation_type = { in: btVariants };
   }
   if (vehicleClass !== undefined && vehicleClass !== null) {
     whereClause.vehicle_class = vehicleClass;
@@ -139,7 +130,7 @@ export const findQuotationForLane = async (
           deletedAt: null,
         };
         if (ltVariants.length > 0) fallbackWhere.line_type = { in: ltVariants };
-        if (billingType && billingType.trim()) fallbackWhere.operation_type = billingType.trim();
+        if (btVariants.length > 0) fallbackWhere.operation_type = { in: btVariants };
         if (vehicleClass !== undefined && vehicleClass !== null) {
           fallbackWhere.vehicle_class = vehicleClass;
         } else if (sourceVehicleLabel !== undefined && sourceVehicleLabel !== null) {

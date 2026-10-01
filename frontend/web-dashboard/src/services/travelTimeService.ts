@@ -123,7 +123,8 @@ export function calculateRoadDistanceKm(
  */
 export function resolveCityCoords(locName: string = ''): { lat: number; lng: number } | null {
   if (!locName || !locName.trim()) return null;
-  const clean = locName.toLowerCase().replace(/[-_]/g, ' ').trim();
+  // Apostrophes dropped so "At Ta'if" / "Ta’if" resolve to taif.
+  const clean = locName.toLowerCase().replace(/['’`]/g, '').replace(/[-_]/g, ' ').trim();
 
   // 1. Direct key search
   for (const [key, coords] of Object.entries(SAUDI_CITY_COORDS)) {
@@ -264,6 +265,56 @@ export async function estimateTravelTimeByName(
     distanceKm: 180,
     source: 'saudi_routes',
   };
+}
+
+/** Time allowed at each intermediate stop (unloading / paperwork). */
+export const STOP_DWELL_MINUTES = 60;
+
+export interface RouteTravelEstimate extends TravelTimeEstimate {
+  /** Minutes after pickup the truck reaches each intermediate stop, in order. */
+  stopOffsetsMinutes: number[];
+}
+
+/**
+ * Drive time over a whole route — origin, each intermediate stop, destination —
+ * plus STOP_DWELL_MINUTES at every intermediate stop. A single leg when there
+ * are no intermediate stops.
+ */
+export async function estimateRouteTravelTime(
+  points: Array<{ name: string; lat?: number | null; lng?: number | null }>
+): Promise<RouteTravelEstimate | null> {
+  const route = points.filter((p) => p.name && p.name.trim());
+  if (route.length < 2) return null;
+  const legs = await Promise.all(
+    route.slice(1).map((to, i) => estimateTravelTimeByName(route[i].name, to.name, route[i].lat, route[i].lng, to.lat, to.lng))
+  );
+  if (legs.some((leg) => !leg)) return null;
+  const stopOffsetsMinutes: number[] = [];
+  let elapsed = 0;
+  let distanceKm = 0;
+  legs.forEach((leg, i) => {
+    elapsed += leg!.durationMinutes;
+    distanceKm += leg!.distanceKm;
+    if (i < legs.length - 1) {
+      stopOffsetsMinutes.push(elapsed); // arrival at intermediate stop i
+      elapsed += STOP_DWELL_MINUTES;
+    }
+  });
+  return {
+    durationMinutes: elapsed,
+    durationText: formatDuration(elapsed),
+    distanceKm,
+    source: legs.every((leg) => leg!.source === 'google_maps') ? 'google_maps' : 'saudi_routes',
+    stopOffsetsMinutes,
+  };
+}
+
+/** Shift length for a duty line type ("10 Hours Duty" → 600), else null. */
+export function dutyShiftMinutes(lineType?: string | null): number | null {
+  const s = String(lineType || '').toUpperCase();
+  if (!/(HOUR|HRS|DUTY|SHIFT)/.test(s)) return null;
+  const hours = Number((s.match(/(\d{1,2})/) || [])[1]);
+  return hours > 0 && hours <= 24 ? hours * 60 : null;
 }
 
 /**
