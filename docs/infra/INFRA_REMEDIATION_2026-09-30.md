@@ -109,3 +109,130 @@ Then check that `mercon-frontend` reports healthy in Hostinger, an old document 
 5. Confirm mesiri's 5432 has no external clients, then approve the Hostinger firewall (22/80/443).
 6. After the release: reboot in a maintenance window; set up the off-host backup of uploads + `/etc/aprodac/clients`; do one restore drill.
 7. With SSH: move the runner off root (section 2).
+
+---
+
+# Second pass — security hardening (2026-09-30 / 10-01)
+
+**Access in this pass:** the same as the first. There was **no shell on the
+VPS**: no SSH key, no `ssh`, and port 22 is unreachable from the session
+sandbox. Hostinger API was read-only apart from the snapshot. GitHub tools
+can read Actions but not change runner groups, rulesets, environments or
+secrets. So everything "on the VPS" below is either verified through the
+Hostinger API / HTTPS, or explicitly marked **not verified**.
+
+Deliberately not done: running diagnostics on production by dispatching a
+modified workflow from this branch onto the prod runner. It would have worked,
+which is the point of finding 1. But it means running unreviewed code as root
+on production outside the release process.
+
+## Remaining security findings
+
+| P | Finding | Evidence | Status |
+|---|---|---|---|
+| **P0** | **Any repo writer can run code as root on production**: new workflow file on any branch, or `workflow_dispatch` of an existing manual workflow on their own branch, with `runs-on: [self-hosted, prod]` | GitHub semantics; runner is repo-scoped (`SERVER_MOVE_DEV.md`) | ⬜ GitHub settings: `RUNNER_AND_NETWORK_HARDENING.md` §1 |
+| **P0** | **mesiri Postgres on 0.0.0.0/[::]:5432 with the compose file's default password** | Hostinger `vps_docker_get mesiri` (values not reproduced) | ⬜ needs SSH + mesiri owner, §3 |
+| **P1** | **All production secrets are repository secrets**: every workflow on every branch (GitHub-hosted too) can read them | workflow `secrets.*` usage; no environments used for them | ⬜ GitHub settings §1 #5 |
+| **P1** | mesiri's hPanel environment holds live third-party API keys, a JWT secret and a WhatsApp token **in plain text** (its `WHATSAPP_VERIFY_TOKEN` name suggests it is tied to MERCON's WhatsApp) | Hostinger API | ⬜ mesiri owner: move to a root-only env file, rotate |
+| P1 | Runner runs as root; Docker group would be root-equivalent anyway | workflows; `/root/actions-runner` | ⬜ SSH, §2 (limited gain, stated honestly) |
+| P1 | Kernel not rebooted in ~110 days | uptime metric 9,488,457 s | ⬜ after the release (uploads off `/tmp` first) |
+| P2 | Gemini key and old dev passwords remain in git history | workflow comments | ⬜ rotate if not already |
+
+## Fixes executed (this pass, in the branch)
+
+| Fix | Commit | How verified |
+|---|---|---|
+| **No PR job runs on the production runner.** `release-check.yml` now runs only on `ubuntu-latest`. The production migration ledger is read by new **`prod-ledger.yml`** (after each deploy via `workflow_run`, every 6 h, manual; never on PRs, which always run the default-branch file) and handed over as an artifact. The report validates it as plain text and never executes it, and shows its timestamp. `pull_request_target` was **not** used. | ef27846a | actionlint; fetch step run with a stub `gh`: outputs identical to the old job's; an injected `$(rm -rf /)` line was dropped; missing ledger → clear block message |
+| **Nightly restore test.** `backup-db.yml` restores each dump into a throwaway `postgres:15-alpine` (no network, tmpfs, 384 MB) and fails if table/migration counts differ from production | b121fae5 | Same `pg_dump -Fc` / `pg_restore --exit-on-error --no-owner --no-privileges` sequence run on a local Postgres built from the repo's migrations, dump owned by a non-superuser like prod: rc 0, 31/31 tables, 64/64 migrations |
+| **Encrypted off-host backup of DB + uploads + encryption key.** With repo variable `BACKUP_AGE_RECIPIENT` set, one `age`-encrypted bundle (checksum-pinned age v1.2.1, streamed so no plaintext on disk) replaces the plaintext dump artifact | b121fae5 | Bundle step run in the sandbox against fake uploads and key at the real paths: checksum OK, decrypt → files byte-identical; restoring the DB from the decrypted dump → 31 tables / 64 migrations; no plaintext key left in the runner temp dir |
+| **A failed deploy no longer leaves a broken release serving.** If the API never turns healthy, `/health` fails or the dashboard `/healthz` fails, `ci-cd.yml` puts the `:previous` images back, re-checks `/health` and still fails the job. The DB is not rolled back (additive migrations; pre-deploy dump printed) | d3c93686 | Deploy step run with stubbed docker/curl/sudo in 4 scenarios: healthy (no rollback) · unhealthy API (rollback, previous serving) · first deploy (no `:previous` → says so) · probe failure (rollback). Order unchanged: uploads copy → DB backup → migrate → swap → uploads pass 2 |
+| Runbooks: `BACKUP_RESTORE.md`, `RUNNER_AND_NETWORK_HARDENING.md` | (docs commit) | — |
+| Repo secret scan | — | Current tree: only test fixtures and `.env.example` files with no real values; no workflow echoes a secret |
+
+## Fixes verified on the live VPS
+
+**None of the branch's changes are live yet** (not merged). What was verified
+live, read-only:
+
+| Check | Result |
+|---|---|
+| Production stack | `mercon-api` healthy, `mercon-postgres` healthy, `mercon-frontend` "unhealthy" (known healthcheck bug, fixed on `dev`) — Hostinger API |
+| Ports today | API/dashboard still `0.0.0.0:3050/3060` (fix ships with release); mesiri Postgres `0.0.0.0:5432` |
+| Resources (Hostinger metrics, 30 Sep 06:00–12:00 UTC) | CPU 6.8–8.4%, RAM 1.52–1.57 GB / 4 GB, disk 28.1 GB (52%) flat. 7-day peaks: RAM 3.88 GB (26 Sep, during a build), disk 40.5 GB (23 Sep). Dev builds have since moved to their own server, which removes the main source of both peaks |
+| Snapshot | Created 30 Sep 09:50 UTC, **expires 1 Oct 09:50 UTC** |
+| External | see Production verification |
+
+Not verifiable without a shell: real upload counts/sizes in `/tmp`, runner
+user, sudoers, UFW/iptables, sshd, log rotation, `/var/backups` contents,
+whether 5432 is reachable from the internet (Shodan has no record of the IP).
+
+## Fixes blocked
+
+| Item | Blocker | Runbook |
+|---|---|---|
+| Restrict which workflows/branches can use the prod runner | GitHub org admin settings | `RUNNER_AND_NETWORK_HARDENING.md` §1 |
+| Production secrets into a `production` environment (main only) | GitHub admin | §1 #5 |
+| Runner as `mercon-runner` with sudo allow-list | **BLOCKED — REQUIRES VPS SHELL ACCESS** | §2 |
+| mesiri 5432 → 127.0.0.1, change its password; Hostinger firewall 22/80/443 | **BLOCKED — REQUIRES CONFIRMATION** (mesiri owner) **+ VPS shell** to inventory listening ports first | §3 |
+| Upload migration on the real server (counts, sizes, newest/oldest, conflicts) | Runs automatically on the first prod deploy of this branch; `migrate-uploads.sh` prints before/after counts and sizes and stops the deploy on any mismatch. **NOT VERIFIED** until then | — |
+| Restore test on real data | First nightly `backup-db` run after merge. **RESTORE TEST ON PRODUCTION DATA: NOT VERIFIED** | `BACKUP_RESTORE.md` |
+| Off-host uploads backup beyond 1.5 GB | Needs object storage + credentials | `BACKUP_RESTORE.md` |
+| Kernel reboot | After release + fresh snapshot, maintenance window | — |
+
+## Changes requiring manual GitHub settings
+
+1. Rulesets on `main` and `dev`: PR + 1 review, no force-push, restricted push.
+2. Re-register the prod runner at org level, in a runner group limited to `aprodac/MERCON` and, if offered, to the branch-pinned workflows listed in §1.
+3. Actions → General: approval for outside collaborators; default token read-only.
+4. Environment `production` (branch `main`) holding the production secrets.
+5. Variable `BACKUP_AGE_RECIPIENT` = your `age` public key (`BACKUP_RESTORE.md`).
+6. Confirm `DEV_POSTGRES_USER`, `DEV_POSTGRES_PASSWORD`, `DEV_JWT_SECRET`, `DEV_SEED_ADMIN_PASSWORD` exist and match the dev database **before** merging to `dev`.
+
+## Changes requiring human approval
+
+- mesiri: confirm no external Postgres clients → bind to 127.0.0.1, change password, rotate its plain-text keys.
+- Hostinger firewall (22/80/443 + anything `ss -tlnp` shows is needed).
+- Reboot after the release.
+- Deleting the old `/tmp` upload copies (after a week of healthy running).
+
+## Production verification (1 Oct, after all branch work; nothing deployed)
+
+See the command output in the session. mercon.tech / api.mercon.tech / `/api/health` (db connected) / `/healthz` / Socket.IO handshake / assets / HTTP→HTTPS all as before.
+
+## Backup / recovery status
+
+```text
+Database backup exists:      YES — nightly + pre-deploy, /var/backups/mercon (7 d) + GitHub artifact (14 d)
+Upload backup exists:        NO today (Hostinger weekly image only) · YES after merge + BACKUP_AGE_RECIPIENT set (≤1.5 GB)
+Encryption key protected:    NO today · YES after merge + recipient set (inside the encrypted bundle)
+Off-host:                    DB yes (plaintext artifact today); encrypted bundle after setup
+Restore tested:              Sandbox: YES (dump→encrypt→decrypt→restore). Production data: NOT VERIFIED (first nightly run after merge)
+Recovery procedure:          docs/infra/BACKUP_RESTORE.md
+App rollback:                rollback-prod.yml (manual) + automatic on failed health checks
+Snapshot:                    expires 2026-10-01 09:50 UTC — retake right before the release
+```
+
+## Final architecture (after merge + the manual steps above)
+
+```text
+                               GitHub aprodac/MERCON
+          ┌──────────────────────────────┼─────────────────────────────────┐
+     pull requests                 push dev / schedules              push main (via reviewed PR)
+          │                              │                                 │
+   GitHub-hosted runners          dev runner (label dev)          prod runner (label prod)
+   ci.yml, release-check          82.29.167.128 — dev stack       org runner group: this repo +
+   (reads ledger artifact,        DEV_* secrets only, logs kept    branch-pinned workflows only
+    no server access)                                                   │
+                                                  ┌─────────────────────┼──────────────────────┐
+                                                  │ ci-cd.yml (main)    │ backup-db / prod-ledger
+                                                  │ /opt/mercon/prod    │ / disk-guard (dev = default
+                                                  │ backup→migrate→swap │   branch, scheduled)
+                                                  │ health→auto-rollback│
+                                                  ▼                     ▼
+       Internet ──443/80──► nginx (host) ──► 127.0.0.1:3050 mercon-api ──► mercon-postgres (pgdata, 127.0.0.1:15432)
+       (firewall: 22/80/443 only)        └─► 127.0.0.1:3060 mercon-frontend
+                                            mercon-api ──► /var/lib/mercon/mercon-*uploads (persistent)
+       Backups: /var/backups/mercon (7 d) ─► age-encrypted bundle (DB + uploads + key) ─► GitHub artifact (14 d)
+                Hostinger weekly image (2) · snapshot before releases
+       mesiri (separate product): Postgres 127.0.0.1:5432, Redis 127.0.0.1:6379
+```

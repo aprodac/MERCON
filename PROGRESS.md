@@ -912,7 +912,10 @@ Audit + fixes: `docs/infra/INFRA_AUDIT_2026-09-30.md`, `docs/infra/INFRA_REMEDIA
 | Dev deploy: no log wiping, `DEV_*` secrets only (fails if missing) | ✅ code · ⬜ merged to dev — **confirm DEV_* secrets first** |
 | `disk-guard.yml` (6-hourly, both servers) | ✅ code · ⬜ running |
 | Hostinger snapshot of prod | ✅ taken 2026-09-30 09:50 UTC (expires after 24 h — retake before release) |
-| PR workflows on the prod runner (`release-check.yml`), runner-group restriction | ⬜ needs owner decision / GitHub admin |
+| No PR job on the prod runner: `release-check.yml` on ubuntu-latest, ledger via new `prod-ledger.yml` | ✅ code (stub-tested) · ⬜ merged |
+| Nightly restore test + age-encrypted off-host bundle (DB + uploads + key) in `backup-db.yml` | ✅ code (sandbox-tested end to end) · ⬜ merged · ⬜ `BACKUP_AGE_RECIPIENT` set |
+| Failed prod deploy auto-restores `:previous` images | ✅ code (4 scenarios simulated) · ⬜ deployed |
+| Runner-group / branch / environment restrictions on GitHub | ⬜ needs GitHub admin — `docs/infra/RUNNER_AND_NETWORK_HARDENING.md` §1 |
 | Runner off root; mesiri Postgres 5432 public; Hostinger firewall; off-host uploads/key backup; reboot | ⬜ needs VPS shell / approval |
 
 ### Release process (dev → main) — ✅ 2026-09-24
