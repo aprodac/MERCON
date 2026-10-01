@@ -15,6 +15,7 @@ import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
 import { operatorService, type OperatorDriver, type PlatformUser } from '@/lib/operator';
+import { AppTopBar } from '@/components/AppTopBar';
 
 type Tab = 'drivers' | 'users';
 
@@ -111,23 +112,10 @@ export default function UserManagementScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
 
-      <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.iconBtn}>
-            <ArrowLeft size={18} color={Colors.gray800} strokeWidth={2.2} />
-          </TouchableOpacity>
-          <View>
-            <Text style={styles.title}>User management</Text>
-            <Text style={styles.subtitle}>Drivers and platform logins</Text>
-          </View>
-        </View>
-        <TouchableOpacity onPress={() => setDrawerVisible(true)} activeOpacity={0.75} style={styles.iconBtn}>
-          <Menu size={20} color={Colors.gray800} strokeWidth={2.2} />
-        </TouchableOpacity>
-      </View>
+      <AppTopBar title="Users" />
 
       <View style={styles.toolbar}>
         <View style={styles.tabs}>
@@ -199,7 +187,6 @@ export default function UserManagementScreen() {
         />
       )}
 
-      <OperatorSidebarDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </SafeAreaView>
   );
 }

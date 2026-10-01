@@ -20,7 +20,7 @@ import {
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
-import { OperatorSidebarDrawer } from '../../../components/OperatorSidebarDrawer';
+import { AppTopBar } from '@/components/AppTopBar';
 
 interface MenuItem {
   Icon: LucideIcon;
@@ -73,22 +73,10 @@ const MoreScreen = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
       
-      {/* Header with Top-Right Hamburger Button */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>More</Text>
-        <TouchableOpacity
-          onPress={() => setDrawerVisible(true)}
-          activeOpacity={0.75}
-          accessibilityRole="button"
-          accessibilityLabel="Open sidebar menu"
-          style={styles.hamburgerBtn}
-        >
-          <Menu size={22} color={Colors.gray800} strokeWidth={2.2} />
-        </TouchableOpacity>
-      </View>
+      <AppTopBar title="More" />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Profile Card */}
@@ -151,8 +139,6 @@ const MoreScreen = () => {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Sidebar Drawer */}
-      <OperatorSidebarDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </SafeAreaView>
   );
 };

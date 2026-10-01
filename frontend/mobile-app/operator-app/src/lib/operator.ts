@@ -164,11 +164,13 @@ export interface OperatorTripCharge {
 export type TripPhase = 'planned' | 'active' | 'done' | 'cancelled';
 export type LiveMediaStage = 'loaded' | 'arrived' | 'stop' | 'delivered' | 'delay' | 'other';
 
+/** Mirrors `LiveGpsFix` in backend services/fleetLiveMap.ts (field names as the API sends them). */
 export interface LiveGpsFix {
   lat: number;
   lng: number;
-  heading?: number | null;
-  speed_kmh?: number | null;
+  heading_deg?: number | null;
+  speed_kph?: number | null;
+  accuracy_m?: number | null;
   recorded_at: string;
   fresh: boolean;
 }
@@ -258,6 +260,9 @@ export interface LiveUnit {
   driver_gps: LiveGpsFix | null;
   position: (LiveGpsFix & { source: 'vehicle' | 'driver' }) | null;
   feeds_gap_m?: number | null;
+  /** Which GPS feeds are live, and whether the truck is moving (same as the web live map). */
+  feed?: 'both' | 'vehicle' | 'driver' | 'none';
+  motion?: 'moving' | 'idle' | 'stale' | 'no_signal';
 }
 
 /** A document or licence that has expired or expires soon (backend services/operatorInbox.ts). */
@@ -931,6 +936,21 @@ export const operatorService = {
   async tripOverview(id: string): Promise<TripOverview> {
     const { data } = await api.get(`/vehicles/live-map/trips/${id}/overview`);
     return data.data as TripOverview;
+  },
+
+  /** Road route between two points or through several, with its [lng, lat] geometry (null when routing is down). */
+  async liveRoute(points: { lat: number; lng: number }[]): Promise<{ geometry: [number, number][]; distanceMeters: number; durationSeconds: number } | null> {
+    if (points.length < 2) return null;
+    try {
+      const params = points.length === 2
+        ? { from: `${points[0].lat},${points[0].lng}`, to: `${points[1].lat},${points[1].lng}` }
+        : { points: points.map((p) => `${p.lat},${p.lng}`).join(';') };
+      const { data } = await api.get('/vehicles/live-map/route', { params, timeout: 10_000 });
+      const r = data?.data;
+      return r && Array.isArray(r.geometry) && Number.isFinite(r.distanceMeters) ? r : null;
+    } catch {
+      return null;
+    }
   },
 
   /** Road distance and drive time between two points (null when routing is down) — the web map's route call. */

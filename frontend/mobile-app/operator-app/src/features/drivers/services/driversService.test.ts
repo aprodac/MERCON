@@ -186,9 +186,9 @@ describe('driversService pure functions', () => {
       assert.equal(sorted[0].id, '2'); // 50 trips comes before 10 trips
     });
 
-    it('sorts by available status first', () => {
-      const sorted = sortDrivers([d1, d2], 'available');
-      assert.equal(sorted[0].id, '2'); // Available comes before OffDuty
+    it('sorts by highest pay this month', () => {
+      const sorted = sortDrivers([{ ...d1, monthlyPayout: 900 }, { ...d2, monthlyPayout: 300 }], 'pay');
+      assert.equal(sorted[0].id, '1'); // SAR 900 comes before SAR 300
     });
   });
 });

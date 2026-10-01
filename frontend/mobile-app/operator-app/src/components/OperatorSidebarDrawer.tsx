@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import {
+  Map as MapIcon,
   Bell, Building2, CalendarClock, CreditCard, FileText, FolderOpen, House, LogOut, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
   type LucideIcon,
 } from 'lucide-react-native';
@@ -64,6 +65,7 @@ const GROUPS: MenuGroup[] = [
   {
     title: 'Fleet',
     items: [
+      { Icon: MapIcon, label: 'Fleet map', route: '/fleet-map', keywords: 'live map trucks location gps tracking' },
       { Icon: Truck, label: 'Vehicles', route: '/vehicles', keywords: 'trucks trailers' },
       // Hidden until these screens can do more than list (owner, 2026-09-26).
       // { Icon: Building2, label: '3rd party fleet', route: '/third-party', keywords: 'subcontractors providers 3pl' },

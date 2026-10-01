@@ -11,10 +11,12 @@ interface UseDriversParams {
   status?: DriverStatus | null;
   sort?: DriverSortOption;
   page?: number;
+  /** Load every driver in one go — needed when sorting or filtering client-side, so it covers the whole fleet, not one page. */
+  all?: boolean;
 }
 
 /** Paginated driver list (10 per page) — search/status/page reload from backend. */
-export function useDrivers({ search = '', status = null, sort = 'name', page = 1 }: UseDriversParams) {
+export function useDrivers({ search = '', status = null, sort = 'name', page = 1, all = false }: UseDriversParams) {
   const tripCounts = useQuery({
     queryKey: ['drivers', 'trip-counts'],
     queryFn: driversApi.getDriverTripCounts,
@@ -23,8 +25,8 @@ export function useDrivers({ search = '', status = null, sort = 'name', page = 1
   const tripCountById = useMemo(() => tripCountMap(tripCounts.data ?? []), [tripCounts.data]);
 
   const query = useQuery({
-    queryKey: ['drivers', 'list', search, status, page],
-    queryFn: () => driversApi.getDrivers({ page, per_page: PAGE_SIZE, search, status }),
+    queryKey: ['drivers', 'list', search, status, all ? 'all' : page],
+    queryFn: () => driversApi.getDrivers({ page: all ? 1 : page, per_page: all ? 500 : PAGE_SIZE, search, status }),
   });
 
   const rawDrivers = query.data?.data ?? [];

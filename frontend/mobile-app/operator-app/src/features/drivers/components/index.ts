@@ -2,8 +2,6 @@ export * from './DriversHeader';
 export * from './FilterButton';
 export * from './DriverStatsSection';
 export * from './DriverStatCard';
-export * from './DriversListHeader';
-export * from './SortDropdown';
 export * from './DriverCard';
 export * from './DriverAvatar';
 export * from './DriverStatusIndicator';
@@ -12,7 +10,6 @@ export * from './DriverRating';
 export * from './DriverTrips';
 export * from './DriverActionButton';
 export * from './DriverActionGroup';
-export * from './FilterBottomSheet';
 export * from './DriverPagination';
 export * from './LoadingSkeleton';
 
