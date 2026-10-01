@@ -5,6 +5,7 @@ import { getDriverSalaries, createDriverSalary, updateDriverSalary, deleteDriver
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
+import { storeInlineImages } from '../middlewares/inlineImages';
 import { createDriverBody, updateDriverBody, listQuery, bulkImportDriversBody, setDriverPasswordBody, idParam, driverSalaryBody, updateDriverSalaryBody, nestedIdParams } from '../schemas';
 
 const router = Router();
@@ -24,7 +25,7 @@ router.get('/stats', getDriverStats);
 router.get('/export', exportDrivers);
 router.get('/payouts', getDriverPayouts);
 router.get('/', validate({ query: listQuery }), getDrivers);
-router.post('/', validate({ body: createDriverBody }), createDriver);
+router.post('/', validate({ body: createDriverBody }), storeInlineImages('avatar_url'), createDriver);
 router.get('/:id', getDriverById);
 router.get('/:id/usage', getDriverUsage);
 router.post('/:id/assignments', upsertDriverVehiclePreference);
@@ -33,7 +34,7 @@ router.post('/:id/salaries', validate({ params: idParam, body: driverSalaryBody 
 router.patch('/:id/salaries/:itemId', validate({ params: nestedIdParams, body: updateDriverSalaryBody }), updateDriverSalary);
 router.delete('/:id/salaries/:itemId', validate({ params: nestedIdParams }), deleteDriverSalary);
 router.post('/:id/set-password', validate({ params: idParam, body: setDriverPasswordBody }), setDriverPassword);
-router.patch('/:id', validate({ body: updateDriverBody }), updateDriver);
+router.patch('/:id', validate({ body: updateDriverBody }), storeInlineImages('avatar_url'), updateDriver);
 router.delete('/:id', deleteDriver);
 
 export default router;

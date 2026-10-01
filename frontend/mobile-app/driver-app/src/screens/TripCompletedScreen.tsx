@@ -157,10 +157,16 @@ const TripCompletedScreen = () => {
     ? documents.filter((d) => d.entity_id === activeTrip.id || d.trip_ref_id === activeTrip.ref_id)
     : [];
 
-  const apiCargo = tripDocs.filter((d) => d.doc_type === 'Waybill' || d.doc_type === 'CARGO_PHOTO' || d.doc_type === 'CustomsClearance');
-  const apiPod = tripDocs.filter((d) => d.doc_type === 'POD');
-  const apiReturnCargo = tripDocs.filter((d) => d.doc_type === 'RETURN_CARGO_PHOTO' || d.doc_type === 'RETURN_POL');
-  const apiReturnPod = tripDocs.filter((d) => d.doc_type === 'RETURN_POD');
+  // Return-leg photos are uploaded with the same doc types as the outbound
+  // ones and told apart by leg_index — without the split a round trip listed
+  // every photo twice (once per leg) and over-counted "Photos saved".
+  const isReturnLegDoc = (d: any) => Number(d.ai_extracted_json?.leg_index ?? 0) === 1;
+  const allCargo = tripDocs.filter((d) => d.doc_type === 'Waybill' || d.doc_type === 'CARGO_PHOTO' || d.doc_type === 'CustomsClearance');
+  const allPod = tripDocs.filter((d) => d.doc_type === 'POD');
+  const apiCargo = allCargo.filter((d) => !isReturnLegDoc(d));
+  const apiPod = allPod.filter((d) => !isReturnLegDoc(d));
+  const apiReturnCargo = [...tripDocs.filter((d) => d.doc_type === 'RETURN_CARGO_PHOTO' || d.doc_type === 'RETURN_POL'), ...allCargo.filter(isReturnLegDoc)];
+  const apiReturnPod = [...tripDocs.filter((d) => d.doc_type === 'RETURN_POD'), ...allPod.filter(isReturnLegDoc)];
 
   const polList = apiCargo.length > 0 ? apiCargo : localPickupPhotos;
   const podList = apiPod.length > 0 ? apiPod : localDeliveryPhotos;

@@ -11,6 +11,7 @@ import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { operatorService, type DriverUpdate, type OperatorTripDetail, type TripOverview } from '../../../lib/operator';
 import { haversineKm, phaseOf, sortedStops, stopName, type Remaining } from './tripDetailsModel';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ACTIVE_REFRESH_MS = 20_000;
 const IDLE_REFRESH_MS = 60_000;
 /** Average truck speed for the straight-line guess when routing is down. */
@@ -34,14 +35,18 @@ export function useTripDetails(id: string | undefined) {
     inFlight.current = true;
     if (mode === 'pull') setRefreshing(true);
     try {
+      // The overview and photos are extras: the page still works without them.
+      // Those endpoints take the trip's UUID; when the route already has it,
+      // ask for all three at once instead of waiting for the trip first.
+      const extras = (tripId: string) => Promise.allSettled([
+        operatorService.tripOverview(tripId),
+        operatorService.tripDriverUpdates(tripId),
+      ]);
+      const early = UUID_RE.test(id) ? extras(id) : null;
       const t = await operatorService.tripById(id);
       setTrip(t);
       setError(null);
-      // The overview and photos are extras: the page still works without them.
-      const [ov, up] = await Promise.allSettled([
-        operatorService.tripOverview(t.id),
-        operatorService.tripDriverUpdates(t.id),
-      ]);
+      const [ov, up] = await (early ?? extras(t.id));
       if (ov.status === 'fulfilled') setOverview(ov.value);
       if (up.status === 'fulfilled') {
         setUpdates(up.value.updates ?? []);

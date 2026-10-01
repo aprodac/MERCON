@@ -396,6 +396,7 @@ export default function StopVerificationScreen() {
       {/* Geotag Preview Modal */}
       {previewPhoto && (
         <GeotagPhotoModal
+          companyName={trip?.customer?.name}
           visible={Boolean(previewPhoto)}
           photo={{ uri: previewPhoto.uri, location: previewPhoto.location || previewPhoto.geotag }}
           onClose={() => setPreviewPhoto(null)}

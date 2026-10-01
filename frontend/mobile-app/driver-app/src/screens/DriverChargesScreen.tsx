@@ -88,7 +88,8 @@ const ChargeRowItem = ({
 
   const chargeVal = getTripChargeValue(item);
   const chargeText = formatCurrency(chargeVal, language);
-  const displayId = item.ref_id ?? item.id.slice(0, 8);
+  // ref_id already carries its prefix ("TRP-0002"); adding another showed "TRP-TRP-0002".
+  const displayId = item.ref_id ?? `TRP-${item.id.slice(0, 8)}`;
 
   return (
     <TouchableOpacity style={styles.rowWrapper} activeOpacity={0.85} onPress={onPress}>
@@ -128,7 +129,7 @@ const ChargeRowItem = ({
 
         {/* Trip ID & Date */}
         <View style={styles.rowMetaLine}>
-          <Text style={[styles.rowMetaText, { writingDirection: 'ltr' }]}>TRP-{displayId}</Text>
+          <Text style={[styles.rowMetaText, { writingDirection: 'ltr' }]}>{displayId}</Text>
           <Text style={styles.rowMetaDot}>·</Text>
           <Text style={[styles.rowMetaText, isUpcoming && styles.rowMetaTextUpcoming]}>
             {isUpcoming ? formatRelativeDate(dateSource, language) : formatDateTime(dateSource)}

@@ -24,7 +24,7 @@ export const DelayButton: React.FC<DelayButtonProps> = ({ onPress, style }) => {
 
       {/* Joint Attached Soft Pill Body on Right */}
       <View style={styles.pillBody}>
-        <Text style={styles.label}>{t('status_delayed', 'Delay')}</Text>
+        <Text style={styles.label}>{t('action_report_delay', 'Delay')}</Text>
       </View>
     </TouchableOpacity>
   );
