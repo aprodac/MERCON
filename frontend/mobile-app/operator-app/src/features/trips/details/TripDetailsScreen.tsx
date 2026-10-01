@@ -36,7 +36,7 @@ import { ActivitySheet, ChargesSheet, MoreSheet, UploadSheet } from './component
 import { ACTION, INK, MUTED, PAGE, WA, tap } from './components/parts';
 
 type Tab = 'updates' | 'stops' | 'details';
-const MAP_H = 250;
+const MAP_H = 320;
 
 export default function TripDetailsScreen() {
   const router = useRouter();
@@ -237,7 +237,7 @@ export default function TripDetailsScreen() {
       >
         {/* 0 · map + header */}
         <View>
-          <TripMap stops={stops} overview={overview} phase={phase} height={MAP_H} padding={{ top: insets.top + 60, bottom: 50 }} />
+          <TripMap stops={stops} overview={overview} phase={phase} height={MAP_H} padding={{ top: insets.top + 24, bottom: 60 }} />
           <View style={s.mapBottom}>
             {gps && phase === 'active' ? (
               <View style={s.gpsChip}>
@@ -418,12 +418,13 @@ const s = StyleSheet.create({
   topTitle: { fontSize: 16, fontWeight: '700', color: INK },
   topSub: { fontSize: 12, color: MUTED },
   back: { position: 'absolute', left: 14, width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.96)', alignItems: 'center', justifyContent: 'center', ...shadow },
-  mapBottom: { position: 'absolute', left: 14, right: 14, top: MAP_H - 76, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  mapBottom: { position: 'absolute', left: 14, right: 14, top: MAP_H - 92, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   gpsChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, ...shadow },
   gpsDot: { width: 8, height: 8, borderRadius: 4 },
   gpsText: { fontSize: 12, fontWeight: '700', color: INK },
   mapBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.96)', alignItems: 'center', justifyContent: 'center', ...shadow },
-  sheetTop: { marginTop: -24, backgroundColor: PAGE, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 16, paddingTop: 16 },
+  // The header card overlaps the bottom of the map directly — no grey band between them.
+  sheetTop: { marginTop: -36, paddingHorizontal: 16 },
   tabsWrap: { backgroundColor: PAGE, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10 },
   tabs: { flexDirection: 'row', gap: 4, backgroundColor: '#EAEAED', borderRadius: 12, padding: 3 },
   tab: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 38, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 4 },

@@ -45,7 +45,12 @@ export function DetailsTab({ trip, phase, overview, f, onChange, onCharges, onUp
   return (
     <View style={{ gap: 12 }}>
       {phase === 'planned' && overview?.checks ? <PreTripChecks checks={overview.checks} f={f} /> : null}
-      {phase === 'done' ? <TripSummary trip={trip} overview={overview} f={f} /> : null}
+      {phase === 'done' ? (
+        <>
+          <Text style={[s.group, { marginTop: 0 }]}>Trip summary</Text>
+          <TripSummary trip={trip} overview={overview} f={f} />
+        </>
+      ) : null}
 
       <Text style={s.group}>Truck and driver</Text>
       <Assignment trip={trip} phase={phase} overview={overview} onChange={onChange} />
@@ -122,30 +127,40 @@ function PreTripChecks({ checks, f }: { checks: NonNullable<TripOverview['checks
   );
 }
 
-// ── How it went ───────────────────────────────────────────────────────────────
+// ── Trip summary (finished trips) ─────────────────────────────────────────────
 
+/** How the finished trip actually ran: when, how long, how far, how punctual, and whether it's been invoiced. */
 function TripSummary({ trip, overview, f }: { trip: OperatorTripDetail; overview: TripOverview | null; f: Formatters }) {
   const stops = sortedStops(trip);
   const judged = stops.map((st) => minutesLate(st.planned_arrival, st.actual_arrival)).filter((m): m is number => m != null);
   const onTime = judged.filter((m) => m <= ON_TIME_GRACE_MIN).length;
-  const allOnTime = judged.length > 0 && onTime === judged.length;
+  const late = judged.length - onTime;
   const durationSec = trip.actual_start && trip.actual_end ? (new Date(trip.actual_end).getTime() - new Date(trip.actual_start).getTime()) / 1000 : null;
-  const km = overview?.path_distance_m ? `${Math.round(overview.path_distance_m / 1000)} km` : 'no GPS';
+  const meters = overview?.path_distance_m ?? 0;
   const invoiced = trip.status === 'Invoiced';
-  const punctual = judged.length === 0 ? TONE.gray : allOnTime ? TONE.green : TONE.red;
+
+  const rows: { label: string; value: string; color?: string }[] = [
+    { label: 'Started', value: trip.actual_start ? f.dateTime(trip.actual_start) : 'Not recorded' },
+    { label: 'Delivered', value: trip.actual_end ? f.dateTime(trip.actual_end) : 'Not recorded' },
+    { label: 'Time taken', value: durationSec && durationSec > 0 ? formatDuration(durationSec) : 'Not recorded' },
+    // Under 1 km means the truck's GPS never reported the drive, not that it didn't move.
+    { label: 'Distance driven', value: meters >= 1000 ? `${Math.round(meters / 1000)} km` : 'No GPS record' },
+    {
+      label: 'Stops on time',
+      value: judged.length === 0 ? 'No planned times' : late === 0 ? `All ${judged.length} on time` : `${late} of ${judged.length} late`,
+      color: judged.length === 0 ? undefined : late === 0 ? TONE.green.fg : TONE.red.fg,
+    },
+    { label: 'Invoice', value: invoiced ? 'Invoiced' : 'Not invoiced yet', color: invoiced ? TONE.green.fg : '#B54708' },
+  ];
 
   return (
-    <Card style={{ gap: 12 }}>
-      <SectionHead title="How it went" right={<Chip label={invoiced ? 'Invoiced' : 'Not invoiced'} tone={invoiced ? 'green' : 'gray'} />} />
-      <View style={s.factRow}>
-        <Fact label="Duration" value={durationSec && durationSec > 0 ? formatDuration(durationSec) : '—'} />
-        <Fact label="Distance" value={km} />
-        <View style={[s.tile, { backgroundColor: punctual.bg }]}>
-          <Text style={[s.tileLabel, { color: punctual.fg }]}>On time</Text>
-          <Text style={[s.tileValue, { color: punctual.fg }]}>{judged.length ? `${onTime} of ${judged.length}` : '—'}</Text>
+    <Card style={{ paddingVertical: 4 }}>
+      {rows.map((r, i) => (
+        <View key={r.label} style={[s.sumRow, i < rows.length - 1 && s.sumBorder]}>
+          <Text style={s.sumLabel}>{r.label}</Text>
+          <Text style={[s.sumValue, r.color ? { color: r.color } : null]}>{r.value}</Text>
         </View>
-      </View>
-      {trip.actual_start ? <Text style={s.muted}>Started {f.dateTime(trip.actual_start)}</Text> : null}
+      ))}
     </Card>
   );
 }
@@ -240,49 +255,64 @@ function Assignment({ trip, phase, overview, onChange }: { trip: OperatorTripDet
 function MoneyCard({ trip, onCharges }: { trip: OperatorTripDetail; onCharges: () => void }) {
   const m = moneyOf(trip);
   const payout = m.driverPayout + m.coDriverPayout;
-  const total = Math.max(payout + m.charges + Math.max(m.margin, 0), 1);
+  const rate = m.billing - m.charges;
   const settled = m.balanceDue <= 0;
-  const parts = [
-    { key: 'payout', label: m.is3PL ? 'Subcontract' : 'Driver payout', value: payout, color: '#7651D6' },
-    { key: 'charges', label: `Charges${m.chargesCount ? ` (${m.chargesCount})` : ''}`, value: m.charges, color: '#F0B429' },
-    { key: 'margin', label: 'Margin', value: m.margin, color: TONE.green.dot },
-  ];
+  const paid = Math.max(0, m.billing - Math.max(0, m.balanceDue));
   return (
-    <Card style={{ gap: 12 }}>
-      <View style={s.moneyTop}>
-        <View>
-          <Text style={s.muted}>{m.isMonthly ? 'Billing · monthly contract (per day)' : 'Billing'}</Text>
-          <Text style={s.billing}>{sar(m.billing)}</Text>
-        </View>
-        <View style={{ alignItems: 'flex-end', gap: 4 }}>
-          <Chip label={`${m.marginPercent.toFixed(1)}% margin`} tone={m.margin >= 0 ? 'green' : 'red'} />
-          <Chip label={settled ? 'Paid in full' : `${sar(m.balanceDue)} due`} tone={settled ? 'green' : 'red'} />
-        </View>
+    <Card style={{ gap: 0, paddingVertical: 6 }}>
+      {/* What the customer is charged */}
+      <Line label={m.isMonthly ? 'Trip rate (monthly contract, per day)' : 'Trip rate'} value={sar(rate)} />
+      <Line label={m.chargesCount ? `Extra charges (${m.chargesCount})` : 'Extra charges'} value={m.charges ? `+ ${sar(m.charges)}` : sar(0)} muted={!m.charges} />
+      <Line label="Customer pays" value={sar(m.billing)} strong border />
+
+      {/* What it costs, and what's left */}
+      <Line label={m.is3PL ? 'Subcontractor cost' : m.coDriverPayout ? 'Driver and co-driver pay' : 'Driver pay'} value={`− ${sar(payout)}`} />
+      <Line
+        label={`Margin · ${m.marginPercent.toFixed(0)}%`}
+        value={sar(m.margin)}
+        strong
+        border
+        color={m.margin >= 0 ? TONE.green.fg : TONE.red.fg}
+      />
+
+      {/* Has the customer paid? */}
+      <View style={[s.pay, { backgroundColor: settled ? TONE.green.bg : '#FEF3F2' }]}>
+        <Text style={[s.payText, { color: settled ? TONE.green.fg : TONE.red.fg }]}>
+          {settled ? 'Paid in full' : paid > 0 ? `${sar(paid)} paid · ${sar(m.balanceDue)} still due` : `Not paid yet · ${sar(m.balanceDue)} due`}
+        </Text>
       </View>
-      <View style={s.bar}>
-        {parts.map((pt) => pt.value > 0 ? <View key={pt.key} style={{ width: `${(pt.value / total) * 100}%`, backgroundColor: pt.color }} /> : null)}
-      </View>
-      <View style={s.factRow}>
-        {parts.map((pt) => (
-          <View key={pt.key} style={{ flex: 1, minWidth: 0 }}>
-            <View style={s.partLabel}>
-              <View style={[s.feedDot, { backgroundColor: pt.color }]} />
-              <Text style={s.muted} numberOfLines={1}>{pt.label}</Text>
-            </View>
-            <Text style={[s.partValue, pt.key === 'margin' && pt.value < 0 && { color: TONE.red.fg }]} numberOfLines={1}>{sar(pt.value)}</Text>
-          </View>
-        ))}
-      </View>
+
       <TouchableOpacity style={s.addCharge} onPress={onCharges} activeOpacity={0.8}>
         <Plus size={15} color={INK} strokeWidth={2.4} />
-        <Text style={s.addChargeText}>{m.chargesCount ? 'Edit charges' : 'Add charge'}</Text>
+        <Text style={s.addChargeText}>{m.chargesCount ? 'Edit extra charges' : 'Add extra charge'}</Text>
       </TouchableOpacity>
     </Card>
   );
 }
 
+function Line({ label, value, strong, border, muted, color }: { label: string; value: string; strong?: boolean; border?: boolean; muted?: boolean; color?: string }) {
+  return (
+    <View style={[s.line, border && s.lineBorder]}>
+      <Text style={[s.lineLabel, strong && s.lineStrong, color ? { color } : null]}>{label}</Text>
+      <Text style={[s.lineValue, strong && s.lineStrongValue, muted && { color: MUTED, fontWeight: '500' }, color ? { color } : null]}>{value}</Text>
+    </View>
+  );
+}
+
 const s = StyleSheet.create({
   muted: { fontSize: 12, color: MUTED },
+  sumRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 16, paddingVertical: 11 },
+  sumBorder: { borderBottomWidth: 1, borderBottomColor: '#F1F1F3' },
+  sumLabel: { fontSize: 14, color: MUTED },
+  sumValue: { fontSize: 14, fontWeight: '600', color: INK, textAlign: 'right', flexShrink: 1 },
+  line: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 16, paddingVertical: 9 },
+  lineBorder: { borderBottomWidth: 1, borderBottomColor: '#EDEDF0', paddingBottom: 12, marginBottom: 4 },
+  lineLabel: { fontSize: 14, color: MUTED, flexShrink: 1 },
+  lineValue: { fontSize: 14, fontWeight: '600', color: INK, fontVariant: ['tabular-nums'] },
+  lineStrong: { color: INK, fontWeight: '700', fontSize: 15 },
+  lineStrongValue: { fontSize: 17, fontWeight: '700' },
+  pay: { borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginTop: 6 },
+  payText: { fontSize: 13, fontWeight: '600' },
   group: { fontSize: 13, fontWeight: '600', color: MUTED, marginTop: 8, marginBottom: -4, marginLeft: 4 },
   factRow: { flexDirection: 'row', gap: 8 },
   inlineLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -322,6 +352,6 @@ const s = StyleSheet.create({
   bar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: '#EEF0F4' },
   partLabel: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   partValue: { fontSize: 14, fontWeight: '600', color: INK, marginTop: 2 },
-  addCharge: { height: 44, borderRadius: 12, backgroundColor: '#F4F4F5', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  addCharge: { marginTop: 10, marginBottom: 8, height: 44, borderRadius: 12, backgroundColor: '#F4F4F5', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
   addChargeText: { fontSize: 14, fontWeight: '600', color: INK },
 });
