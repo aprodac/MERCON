@@ -29,8 +29,18 @@ export function StopsTab({ trip, phase, updates, f, onOpenStopMedia, onConfirmTi
     return <Card><Text style={s.muted}>This trip has no stops.</Text></Card>;
   }
 
+  const purged = trip.media_purged;
+
   return (
     <Card style={{ paddingVertical: 8 }}>
+      {purged ? (
+        <View style={s.purged}>
+          <ImageIcon size={13} color={MUTED} />
+          <Text style={s.purgedText}>
+            {purged.count} {purged.count === 1 ? 'photo/video' : 'photos/videos'} from this trip were deleted on {f.date(purged.purged_at)}, {purged.retention_days} days after the trip ended.
+          </Text>
+        </View>
+      ) : null}
       {stops.map((st, i) => {
         const done = phase === 'done' || !!st.actual_arrival;
         const isNext = i === nextIdx;
@@ -121,4 +131,6 @@ const s = StyleSheet.create({
   links: { flexDirection: 'row', gap: 16, marginTop: 7 },
   link: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   linkText: { fontSize: 12, fontWeight: '700', color: '#2449A8' },
+  purged: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 4, marginBottom: 4, backgroundColor: '#F2F3F6', borderRadius: 10, paddingHorizontal: 9, paddingVertical: 7 },
+  purgedText: { flex: 1, fontSize: 12, fontWeight: '600', color: MUTED },
 });

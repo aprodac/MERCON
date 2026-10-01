@@ -652,13 +652,19 @@ export default function TripDetailsPage() {
                   refetchDocuments();
                   queryClient.invalidateQueries({ queryKey: ['operator-inbox', 'trip-driver-updates', trip.id] });
                 }}
-                top={
-                  phase === 'planned' ? (overview?.checks ? <PreTripChecks checks={overview.checks} formatDate={formatDate} /> : null)
+                top={<>
+                  {phase === 'planned' ? (overview?.checks ? <PreTripChecks checks={overview.checks} formatDate={formatDate} /> : null)
                   : phase === 'done' ? <TripSummary trip={trip} overview={overview} formatDateTime={formatDateTime} />
                   : phase === 'cancelled' ? <Banner tone="muted">Cancelled{trip.updatedAt ? ` on ${formatDateTime(trip.updatedAt)}` : ''}. The planned route is shown for reference.</Banner>
                   : trip.status === 'Delayed' ? <Banner tone="danger"><strong>Delayed.</strong> {delayReason ?? 'No reason reported yet.'}</Banner>
-                  : null
-                }
+                  : null}
+                  {trip.media_purged && (
+                    <Banner tone="muted">
+                      {trip.media_purged.count} photo{trip.media_purged.count === 1 ? '' : 's'}/video{trip.media_purged.count === 1 ? '' : 's'} from this trip
+                      {' '}were deleted on {formatDate(trip.media_purged.purged_at)}, {trip.media_purged.retention_days} days after the trip ended.
+                    </Banner>
+                  )}
+                </>}
                 bottom={
                   <PaperworkSection
                     documents={documents}

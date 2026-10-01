@@ -147,6 +147,32 @@ export async function runTripMediaRetention(now = new Date()): Promise<{ documen
   return totals;
 }
 
+export interface TripMediaPurge {
+  count: number;
+  purged_at: string;
+  retention_days: number;
+}
+
+/**
+ * How many of a trip's photos/videos the retention job removed, and when —
+ * so screens can say "deleted after 60 days" instead of showing nothing.
+ */
+export async function getTripMediaPurge(tripId: string, stopIds: string[] = []): Promise<TripMediaPurge | null> {
+  const agg = await prisma.document.aggregate({
+    where: {
+      file_purged_at: { not: null },
+      OR: [
+        { entity_type: 'Trip', entity_id: tripId },
+        ...(stopIds.length ? [{ entity_type: 'TripStop', entity_id: { in: stopIds } }] : []),
+      ],
+    },
+    _count: { _all: true },
+    _max: { file_purged_at: true },
+  });
+  if (!agg._count._all || !agg._max.file_purged_at) return null;
+  return { count: agg._count._all, purged_at: agg._max.file_purged_at.toISOString(), retention_days: retentionDays() || 60 };
+}
+
 export function initTripMediaRetention(): void {
   if (timer || retentionDays() === 0) return;
   logger.info(`[MediaRetention] Trip photos/videos are deleted ${retentionDays()} days after the trip ends (daily check)`);
