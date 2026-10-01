@@ -1,7 +1,7 @@
 /**
  * Route: /trips — the operator's trips.
  *
- *   Board    — kanban columns by status (Scheduled · Loading · In transit · Delayed).
+ *   Delayed  — every delayed trip, the longest-delayed first.
  *   Now      — a live list: needs attention, on the road, starting next.
  *   Schedule — a date strip (with a count per day) and that day's trips.
  *   History  — delivered and cancelled trips by day, loading as you scroll.
@@ -15,14 +15,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  Building2, CalendarDays, CircleCheckBig, History, Columns3, MessageCircle, Phone, Radio, Search, Send, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
+  Building2, CalendarDays, CircleCheckBig, History, AlertTriangle, MessageCircle, Phone, Radio, Search, Send, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import type { OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
-import { KanbanBoard } from './KanbanBoard';
 import { AppTopBar } from '@/components/AppTopBar';
 import { useNow, useTripList, SCHEDULE_AFTER, SCHEDULE_BEFORE, type View as ListView } from './useTripList';
 import {
@@ -39,7 +38,7 @@ const tap = () => Haptics.selectionAsync().catch(() => {});
 export default function TripsScreen() {
   const router = useRouter();
   // Opened from a truck's or a customer's details: their trips only, until the chip is cleared.
-  const params = useLocalSearchParams<{ vehicleId?: string; plate?: string; customerId?: string; customerName?: string; view?: string; column?: string }>();
+  const params = useLocalSearchParams<{ vehicleId?: string; plate?: string; customerId?: string; customerName?: string; view?: string }>();
   const [scope, setScope] = useState<{ kind: 'truck' | 'customer'; filter: Record<string, string>; label: string } | null>(
     params.vehicleId
       ? { kind: 'truck', filter: { vehicle_id: String(params.vehicleId) }, label: String(params.plate ?? 'This truck') }
@@ -49,7 +48,7 @@ export default function TripsScreen() {
   );
   const [view, setView] = useState<ListView>(
     params.vehicleId || params.customerId ? 'history'
-      : params.view === 'board' || params.view === 'schedule' || params.view === 'history' ? params.view
+      : params.view === 'delayed' || params.view === 'schedule' || params.view === 'history' ? params.view
       : 'now',
   );
   const [query, setQuery] = useState('');
@@ -97,6 +96,14 @@ export default function TripsScreen() {
     };
   }, [data.open, now]);
 
+  // Delayed: every delayed / emergency trip, the one that's been late longest first.
+  const delayedTrips = useMemo(
+    () => data.open
+      .filter((t) => phaseOf(t.status) === 'delayed')
+      .sort((a, b) => new Date(tripDayIso(a) ?? 0).getTime() - new Date(tripDayIso(b) ?? 0).getTime()),
+    [data.open],
+  );
+
   // The sections are the grouping — no filter chips on top of them.
   const nowSections = useMemo(() => [
     { key: 'attention', title: 'Needs attention', tone: '#D92D20', data: board.attention },
@@ -133,8 +140,8 @@ export default function TripsScreen() {
   );
 
   const views: { id: ListView; label: string; icon: LucideIcon; badge?: number }[] = [
-    { id: 'now', label: 'Now', icon: Radio, badge: board.attention.length || undefined },
-    { id: 'board', label: 'Board', icon: Columns3 },
+    { id: 'now', label: 'Now', icon: Radio },
+    { id: 'delayed', label: 'Delayed', icon: AlertTriangle, badge: delayedTrips.length || undefined },
     { id: 'schedule', label: 'Schedule', icon: CalendarDays },
     { id: 'history', label: 'History', icon: History },
   ];
@@ -213,17 +220,16 @@ export default function TripsScreen() {
             })}
           </View>
 
-          {view === 'board' ? (
-            <KanbanBoard
-              initialColumn={typeof params.column === 'string' ? params.column : undefined}
-              trips={data.open}
-              f={f}
-              now={now}
-              loading={data.openLoading}
-              refreshing={refreshing}
-              onRefresh={refresh}
-              onOpen={open}
-              onLongPress={setActionsFor}
+          {view === 'delayed' ? (
+            <FlatList
+              data={delayedTrips}
+              keyExtractor={(t) => t.id}
+              contentContainerStyle={s.list}
+              refreshControl={refreshControl}
+              renderItem={({ item }) => renderCard(item, true)}
+              ItemSeparatorComponent={Gap}
+              ListHeaderComponent={delayedTrips.length ? <Text style={s.resultsHead}>{delayedTrips.length} delayed · longest first</Text> : null}
+              ListEmptyComponent={data.openLoading ? <Loading /> : <Empty icon={CircleCheckBig} title="Nothing delayed" text="Every open trip is on schedule." good />}
             />
           ) : view === 'now' ? (
             <SectionList
@@ -387,7 +393,7 @@ const s = StyleSheet.create({
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, height: 46, borderRadius: 14, backgroundColor: Colors.white, paddingHorizontal: 13, borderWidth: 1, borderColor: '#EEF0F4' },
   searchInput: { flex: 1, fontSize: 15, color: INK, paddingVertical: 0 },
   segment: { flexDirection: 'row', gap: 4, marginHorizontal: 16, marginTop: 12, backgroundColor: '#E4E7EE', borderRadius: 13, padding: 3 },
-  segItem: { flex: 1, height: 38, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  segItem: { flex: 1, height: 38, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   segOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   segText: { fontSize: 13, fontWeight: '700', color: '#4A4A55' },
   segTextOn: { color: INK, fontWeight: '800' },

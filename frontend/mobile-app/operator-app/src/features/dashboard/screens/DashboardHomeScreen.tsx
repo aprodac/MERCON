@@ -97,7 +97,7 @@ export default function DashboardHomeScreen() {
           updatedAt={inbox.updatedAt}
           now={now}
           onRunning={() => router.push({ pathname: '/trips', params: { view: 'now' } })}
-          onDelayed={() => router.push({ pathname: '/trips', params: { view: 'board', column: 'delayed' } })}
+          onDelayed={() => router.push({ pathname: '/trips', params: { view: 'delayed' } })}
           onToday={() => router.push({ pathname: '/trips', params: { view: 'schedule' } })}
         />
 
