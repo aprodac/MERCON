@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveUnit } from '@/services/fleetLiveService';
-import { buildEtaShareText, computeEta, formatDuration, formatKm, matchesFilter, matchesQuery, punctuality } from './fleetLive';
+import { buildEtaShareText, computeEta, formatDuration, formatKm, matchesFilter, matchesQuery, punctuality, truckDriveSeconds } from './fleetLive';
 
 const NOW = Date.parse('2026-09-26T10:00:00Z');
 
@@ -64,6 +64,20 @@ describe('fleet live map helpers', () => {
     expect(buildEtaShareText(unit(), eta, () => '14:38')).toBe(
       '*TRP-10482 · ABC 4521*\nNext stop: Jubail port\nETA: 14:38 (in 38 min) · 42 km\nDriver: Mohammed Ali',
     );
+  });
+
+  it('ends the ETA message with the tracking link when there is one', () => {
+    const eta = computeEta(unit(), { distanceMeters: 42_000, durationSeconds: 38 * 60 }, NOW);
+    expect(buildEtaShareText(unit(), eta, () => '14:38', 'https://mercon.tech/t/abc')).toBe(
+      '*TRP-10482 · ABC 4521*\nNext stop: Jubail port\nETA: 14:38 (in 38 min) · 42 km\nDriver: Mohammed Ali\n\nTrack live: https://mercon.tech/t/abc',
+    );
+  });
+
+  it('never times a truck faster than 80 km/h on average', () => {
+    // 300 km the router says takes 2.5 h → 3 h 45 min for a truck.
+    const eta = computeEta(unit(), { distanceMeters: 300_000, durationSeconds: 9_000 }, NOW)!;
+    expect(eta.durationSeconds).toBe(13_500);
+    expect(truckDriveSeconds(10_000, 1_200)).toBe(1_200);
   });
 
   it('formats distances and durations', () => {

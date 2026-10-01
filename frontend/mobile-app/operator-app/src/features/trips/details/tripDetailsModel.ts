@@ -336,6 +336,8 @@ export interface QuickContext {
   f: Formatters;
   position: { lat: number; lng: number } | null;
   remaining: Remaining | null;
+  /** The customer tracking link, ending status messages when there is one. */
+  trackingUrl?: string | null;
 }
 
 /** A stop as a short place code for the route line ("RUH"), else its name. */
@@ -363,7 +365,7 @@ export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; l
 }
 
 /** The message for a quick send — every line the operator can still edit before sending. */
-export function quickMessage(kind: QuickKind, { trip, phase, f, position, remaining }: QuickContext): string {
+export function quickMessage(kind: QuickKind, { trip, phase, f, position, remaining, trackingUrl }: QuickContext): string {
   const stops = sortedStops(trip);
   const nextIdx = stops.findIndex((s) => !s.actual_arrival);
   const next = nextIdx >= 0 ? stops[nextIdx] : null;
@@ -394,6 +396,7 @@ export function quickMessage(kind: QuickKind, { trip, phase, f, position, remain
       lines.push(`Delivered: ${f.dayTime(trip.actual_end)}`);
     }
     lines.push(`Status: ${statusChip(trip.status).label.replace(/\b\w/g, (c) => c.toUpperCase())}`);
+    if (trackingUrl) lines.push('', `Track live: ${trackingUrl}`);
   } else if (kind === 'location') {
     lines.push(`*${ref} · Truck location*`);
     if (position) lines.push(mapsLink(position.lat, position.lng));

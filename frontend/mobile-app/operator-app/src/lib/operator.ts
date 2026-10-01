@@ -929,6 +929,12 @@ export const operatorService = {
   },
 
   /** Phase, pre-trip checks, live GPS and the path driven — the web map's data. */
+  /** The trip's customer tracking link (created on first ask) — added to status messages. */
+  async trackingLink(id: string): Promise<string> {
+    const { data } = await api.post(`/trips/${id}/tracking-link`, {});
+    return data.data.url as string;
+  },
+
   async tripOverview(id: string): Promise<TripOverview> {
     const { data } = await api.get(`/vehicles/live-map/trips/${id}/overview`);
     return data.data as TripOverview;

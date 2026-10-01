@@ -4,8 +4,9 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Copy, Check, CheckCircle2, Smartphone, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
   CalendarClock, Repeat, Receipt, FileText, Clock, ChevronDown, Navigation, Image as ImageIcon,
-  User as UserIcon, Truck, UploadCloud, SquarePen, X, Coins, ListOrdered,
+  User as UserIcon, Truck, UploadCloud, SquarePen, X, Coins, ListOrdered, Link2, ExternalLink, RefreshCw,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useTripWhatsAppShare } from '@/hooks/useTripWhatsAppShare';
+import { useTrackingLink } from '@/hooks/useTrackingLink';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import {
   tripService, TripStatus,
@@ -172,6 +174,11 @@ export default function TripDetailsPage() {
     enabled: !!tripEntityId && !!trip,
   });
   const tripUpdates = tripUpdatesRes?.updates ?? [];
+
+  // The customer tracking link — loaded up front so Share can include it without a pop-up-blocked wait.
+  const trackable = !!trip && trip.status !== 'Draft' && trip.status !== 'Cancelled';
+  const tracking = useTrackingLink(trip?.id, trackable);
+  const [renewLinkOpen, setRenewLinkOpen] = useState(false);
 
   // Driver side of the trip: pushes, "Got it", app activity (driver phone audit)
   const { data: driverTrail } = useQuery({
@@ -391,8 +398,23 @@ export default function TripDetailsPage() {
 
   const shareEta = () => {
     if (!overview?.unit || !mapEta) return;
-    const text = buildEtaShareText(overview.unit, mapEta, (d) => formatTime(d.toISOString()));
+    const text = buildEtaShareText(overview.unit, mapEta, (d) => formatTime(d.toISOString()), tracking.url);
     window.open(whatsAppLink(null, text), '_blank', 'noopener');
+  };
+
+  const sendTrackingLink = () => {
+    if (!tracking.url) return;
+    const head = [trip.ref_id, trip.vehicle?.plate_number].filter(Boolean).join(' · ');
+    window.open(whatsAppLink(null, `*${head}*\nTrack your truck live: ${tracking.url}`), '_blank', 'noopener');
+  };
+  const copyTrackingLink = async () => {
+    if (!tracking.url) return;
+    try {
+      await navigator.clipboard.writeText(tracking.url);
+      toast.success('Tracking link copied');
+    } catch {
+      toast.error("Couldn't copy — select the link on the tracking page instead");
+    }
   };
 
   // One short phrase beside the status: what matters about the trip right now.
@@ -511,6 +533,24 @@ export default function TripDetailsPage() {
                         <DropdownMenuItem onClick={shareEta} disabled={!mapEta?.arrival}>
                           <Navigation size={14} className="mr-2 text-muted-foreground" /> ETA{mapEta?.arrival ? ` · ${formatTime(mapEta.arrival.toISOString())}` : ' (working it out…)'}
                         </DropdownMenuItem>
+                      )}
+                      {trackable && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <p className="px-2 pt-1 pb-0.5 text-[11px] font-medium text-muted-foreground">Customer tracking link</p>
+                          <DropdownMenuItem onClick={sendTrackingLink} disabled={!tracking.url}>
+                            <Link2 size={14} className="mr-2 text-muted-foreground" /> {tracking.url ? 'Send tracking link' : 'Getting the link…'}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={copyTrackingLink} disabled={!tracking.url}>
+                            <Copy size={14} className="mr-2 text-muted-foreground" /> Copy link
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => tracking.url && window.open(tracking.url, '_blank', 'noopener')} disabled={!tracking.url}>
+                            <ExternalLink size={14} className="mr-2 text-muted-foreground" /> Open what the customer sees
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setRenewLinkOpen(true)} disabled={!tracking.url}>
+                            <RefreshCw size={14} className="mr-2 text-muted-foreground" /> New link…
+                          </DropdownMenuItem>
+                        </>
                       )}
                       {tripUpdates.length > 0 && (
                         <>
@@ -729,6 +769,19 @@ export default function TripDetailsPage() {
       </Sheet>
 
       {/* ── Status Confirmation Modal ── */}
+      <ConfirmModal
+        isOpen={renewLinkOpen}
+        onClose={() => setRenewLinkOpen(false)}
+        title="Make a new tracking link?"
+        message="The current link stops working for everyone who has it. Use this if the link was sent to the wrong person."
+        confirmLabel="Make new link"
+        isLoading={tracking.renew.isPending}
+        onConfirm={() => tracking.renew.mutate(undefined, {
+          onSuccess: () => { setRenewLinkOpen(false); toast.success('New tracking link ready — the old one no longer works'); },
+          onError: () => toast.error("Couldn't make a new link. Try again."),
+        })}
+      />
+
       <ConfirmModal
         isOpen={isStatusModalOpen}
         onClose={() => setIsStatusModalOpen(false)}

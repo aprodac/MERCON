@@ -18,6 +18,13 @@ const IDLE_REFRESH_MS = 60_000;
 const FALLBACK_KMH = 70;
 /** Straight line → road distance, roughly. */
 const ROAD_FACTOR = 1.25;
+/**
+ * The router times a car; a loaded truck averages less. Same cap as the
+ * customer tracking page (backend `customerTracking.ts`), so the ETA in the
+ * status message matches what the customer's link shows.
+ */
+const TRUCK_MAX_AVG_KMH = 80;
+const truckDriveSeconds = (meters: number, providerSec: number) => Math.max(providerSec, meters / (TRUCK_MAX_AVG_KMH / 3.6));
 
 export function useTripDetails(id: string | undefined) {
   const [trip, setTrip] = useState<OperatorTripDetail | null>(null);
@@ -91,7 +98,7 @@ export function useTripDetails(id: string | undefined) {
     operatorService.routeEstimate({ lat: flat, lng: flng }, { lat: tlat, lng: tlng }).then((r) => {
       if (!live) return;
       if (r) {
-        setRemaining({ km: r.distanceMeters / 1000, sec: r.durationSeconds, to: destName, approx: false });
+        setRemaining({ km: r.distanceMeters / 1000, sec: truckDriveSeconds(r.distanceMeters, r.durationSeconds), to: destName, approx: false });
       } else {
         const km = haversineKm({ lat: flat, lng: flng }, { lat: tlat, lng: tlng }) * ROAD_FACTOR;
         setRemaining({ km, sec: (km / FALLBACK_KMH) * 3600, to: destName, approx: true });
@@ -99,6 +106,18 @@ export function useTripDetails(id: string | undefined) {
     });
     return () => { live = false; };
   }, [posKey, destKey, destName]);
+
+  // The customer tracking link for status messages — asked for once per trip.
+  // Without it (offline, older server) the message simply goes without a link.
+  const [trackingUrl, setTrackingUrl] = useState<string | null>(null);
+  const tripId = trip?.id;
+  const trackable = !!trip && trip.status !== 'Draft' && trip.status !== 'Cancelled';
+  useEffect(() => {
+    if (!tripId || !trackable) return;
+    let live = true;
+    operatorService.trackingLink(tripId).then((url) => { if (live) setTrackingUrl(url); }).catch(() => {});
+    return () => { live = false; };
+  }, [tripId, trackable]);
 
   // Poll while this screen is focused and the app is in the foreground.
   useFocusEffect(
@@ -129,6 +148,7 @@ export function useTripDetails(id: string | undefined) {
     tz,
     phase,
     remaining: posKey && destKey ? remaining : null,
+    trackingUrl: trackable ? trackingUrl : null,
     loading,
     refreshing,
     error,

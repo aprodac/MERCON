@@ -6,6 +6,8 @@ import {
   logStopDelay, confirmEvidenceTime, bulkImportTrips, updateTripStop, updateTripStopsRoute, getMonthlyTripBoard, shareTripMediaToWhatsApp
 } from '../controllers/tripController';
 import { exportTrips } from '../controllers/tripExportController';
+import { getTripTrackingLink, trackingLinkBody } from '../controllers/trackingController';
+import { idParam } from '../schemas';
 import { getTripDriverTrail } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
@@ -65,6 +67,8 @@ router.post('/:id/delivery/verify', deliveryVerify);
 
 // Phase 3: Operator WhatsApp Media Dispatch
 router.post('/:id/share-whatsapp', shareTripMediaToWhatsApp);
+// The customer tracking link for this trip (created on first ask; renew issues a new one).
+router.post('/:id/tracking-link', validate({ params: idParam, body: trackingLinkBody }), getTripTrackingLink);
 
 export default router;
 
