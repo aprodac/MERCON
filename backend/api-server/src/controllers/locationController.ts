@@ -41,6 +41,13 @@ export const resolveLocation = async (
     lng?: number | null;
     coordinate_precision?: CoordinatePrecision | null;
     skipCanonicalUpdate?: boolean;
+    /**
+     * A person explicitly creating a location: reuse only an exact code/name
+     * match and never modify it. The fuzzy city-alias match below is for
+     * imports — here it merged "Hofuf" into the customer's "Al Ahsa" and
+     * overwrote that location's code, city and pin.
+     */
+    strictMatch?: boolean;
   },
   userId?: string | null
 ) => {
@@ -106,7 +113,7 @@ export const resolveLocation = async (
   });
 
   // 2. Advanced Fuzzy / Token / City Alias Search if direct exact match failed
-  if (!found) {
+  if (!found && !input.strictMatch) {
     const candidates = await tx.location.findMany({
       where: {
         deletedAt: null,
@@ -222,7 +229,7 @@ export const resolveLocation = async (
   const precision = resolvePrecision(input.lat, input.lng, input.coordinate_precision);
 
   if (found) {
-    if (input.skipCanonicalUpdate && !found.deletedAt && found.is_active) {
+    if ((input.skipCanonicalUpdate || input.strictMatch) && !found.deletedAt && found.is_active) {
       return found;
     }
     const isSoftDeleted = found.deletedAt !== null || !found.is_active;
@@ -446,6 +453,7 @@ export const createLocation = async (req: Request, res: Response) => {
         lat: numericLat,
         lng: numericLng,
         coordinate_precision: precision,
+        strictMatch: true,
       },
       (req as any).user?.id
     );

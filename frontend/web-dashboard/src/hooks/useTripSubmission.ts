@@ -426,7 +426,7 @@ export function useTripSubmission(
   };
 
   const openPastDateModal = (rows: BulkImportTripRow[], pastCount: number, pending: NonNullable<typeof pendingSubmit>) => {
-    setPastDateAnalysis({ ...analyzePastDateRows(rows), hasPastTrips: true, pastTripsCount: pastCount });
+    setPastDateAnalysis({ ...analyzePastDateRows(rows, tz), hasPastTrips: true, pastTripsCount: pastCount });
     setPendingSubmit(pending);
     setPastDateModalOpen(true);
   };
@@ -446,7 +446,7 @@ export function useTripSubmission(
 
   const executeBulkSubmit = (rows: BulkImportTripRow[]) => {
     if (busyRef.current || bulkMutation.isPending) return;
-    const analysis = analyzePastDateRows(rows);
+    const analysis = analyzePastDateRows(rows, tz);
     if (analysis.hasPastTrips) {
       openPastDateModal(rows, analysis.pastTripsCount, { kind: 'rows', rows });
       return;
@@ -463,7 +463,7 @@ export function useTripSubmission(
     if (pending.kind === 'contract') {
       void runContractSubmit(choice);
     } else {
-      bulkMutation.mutate(applyPastStatusToRows(pending.rows, selectedStatus as any));
+      bulkMutation.mutate(applyPastStatusToRows(pending.rows, selectedStatus as any, tz));
     }
   };
 

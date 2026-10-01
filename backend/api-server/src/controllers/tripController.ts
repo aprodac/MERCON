@@ -247,6 +247,7 @@ export const getTrips = async (req: Request, res: Response) => {
     const pageNumber = parseInt(page as string);
     const limit = parseInt(per_page as string);
     const skip = (pageNumber - 1) * limit;
+    const isLite = req.query.lite === 'true';
 
     const whereClause: Prisma.TripWhereInput = { deletedAt: null };
     if (status) {
@@ -260,7 +261,8 @@ export const getTrips = async (req: Request, res: Response) => {
     }
     if (driver_id) whereClause.driverId = driver_id as string;
     if (vehicle_id) whereClause.vehicleId = vehicle_id as string;
-    if (customer_id) whereClause.customerId = customer_id as string;
+    const customerFilter = (customer_id || req.query.customerId) as string | undefined;
+    if (customerFilter) whereClause.customerId = customerFilter;
     if (rate_card_id || req.query.pricing_rule_id || req.query.quotation_id) whereClause.quotationId = ((req.query.quotation_id || req.query.pricing_rule_id || rate_card_id) as string);
     const searchAnd = buildSearchAnd(search, TRIP_SEARCH_FIELDS) as Prisma.TripWhereInput[];
 
@@ -379,7 +381,9 @@ export const getTrips = async (req: Request, res: Response) => {
             select: {
               id: true,
               name: true,
-              logo_url: true,
+              // Logos are stored inline (base64, ~100 KB each) — repeated on every
+              // row they made 100 trips ~7 MB. `lite=true` callers don't show them.
+              logo_url: !isLite,
             }
           },
           quotation: {
