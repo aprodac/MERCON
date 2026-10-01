@@ -6,6 +6,7 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-sha
 import { useOperatorMaintenanceRecords, type OperatorMaintenanceRecord } from '@/lib/operator';
 import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
+import { AppTopBar } from '@/components/AppTopBar';
 
 export default function MaintenanceScreen() {
   const router = useRouter();
@@ -69,39 +70,10 @@ export default function MaintenanceScreen() {
   );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
       
-      {/* Header */}
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingHorizontal: Spacing.lg,
-          paddingVertical: Spacing.md,
-          backgroundColor: Colors.white,
-          borderBottomWidth: 1,
-          borderBottomColor: Colors.gray100,
-        }}
-      >
-        <View className="flex-row items-center gap-3">
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} className="h-9 w-9 items-center justify-center rounded-xl bg-gray-100">
-            <ArrowLeft size={18} color={Colors.gray800} strokeWidth={2.2} />
-          </TouchableOpacity>
-          <View>
-            <Text style={{ fontSize: Typography.lg, fontWeight: '800', color: Colors.gray900 }}>Maintenance</Text>
-            <Text style={{ fontSize: Typography.xs, color: Colors.gray500 }}>Vehicle service & repair logs</Text>
-          </View>
-        </View>
-        <TouchableOpacity
-          onPress={() => setDrawerVisible(true)}
-          activeOpacity={0.75}
-          style={{ width: 38, height: 38, borderRadius: Radius.md, backgroundColor: Colors.gray100, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Menu size={20} color={Colors.gray800} strokeWidth={2.2} />
-        </TouchableOpacity>
-      </View>
+      <AppTopBar title="Maintenance" />
 
       {error ? (
         <ErrorState message={error} onRetry={refetch} className="flex-1" />
@@ -125,7 +97,6 @@ export default function MaintenanceScreen() {
         />
       )}
 
-      <OperatorSidebarDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </SafeAreaView>
   );
 }

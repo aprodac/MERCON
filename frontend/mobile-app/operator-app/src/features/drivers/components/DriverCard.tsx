@@ -1,14 +1,40 @@
+/**
+ * One driver in the list — a compact row:
+ *   (photo)  Full name                                   (call)
+ *            ● Available · DRV-129 · DRA-6484
+ *            ⚠ Licence 5 days left        — only when something is wrong
+ * Tap the row to open the driver; the round button calls (or, on a trip,
+ * opens the trip). Status is said once, in words, with its dot.
+ */
 import React from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
-import { Truck, Navigation, TriangleAlert, FileText, Wallet } from 'lucide-react-native';
-import { Colors, Radius, Shadows, Spacing } from '@mercon/mobile-shared/theme/tokens';
+import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { FileWarning, Navigation, Phone } from 'lucide-react-native';
 import { DriverAvatar } from './DriverAvatar';
-import { DriverStatusBadge } from './DriverStatusBadge';
-import { DriverTrips } from './DriverTrips';
-import { DriverActionGroup } from './DriverActionGroup';
-import { EXPIRY_SOON_DAYS, formatDaysLeft } from '../services/driverDetailsService';
+import { EXPIRY_SOON_DAYS } from '../services/driverDetailsService';
 import { driverFullName, driverInitials } from '../services/driversService';
-import type { DriverListItem } from '../types';
+import { niceName } from '../../trips/create/components/ui';
+import type { DriverListItem, DriverStatus } from '../types';
+
+const INK = '#18181B';
+const MUTED = '#6B6B76';
+const RED = '#B42318';
+const AMBER = '#B54708';
+
+
+const STATUS: Record<DriverStatus, { label: string; fg: string; dot: string }> = {
+  Available: { label: 'Available', fg: '#146C3C', dot: '#1F9D55' },
+  OnTrip: { label: 'On trip', fg: '#2449A8', dot: '#2F5FD0' },
+  OffDuty: { label: 'Offline', fg: MUTED, dot: '#9898A4' },
+  Inactive: { label: 'Inactive', fg: MUTED, dot: '#9898A4' },
+};
+
+function expiryText(days: number | null): { text: string; color: string } | null {
+  if (days === null) return null;
+  if (days < 0) return { text: `Expired ${Math.abs(days)}d ago`, color: RED };
+  if (days === 0) return { text: 'Expires today', color: RED };
+  if (days <= EXPIRY_SOON_DAYS) return { text: `${days} days left`, color: AMBER };
+  return { text: `${days} days left`, color: INK };
+}
 
 interface DriverCardProps {
   driver: DriverListItem;
@@ -18,142 +44,62 @@ interface DriverCardProps {
   className?: string;
 }
 
-export function DriverCard({ driver, onCall, onTrack, onView, className }: DriverCardProps) {
+export function DriverCard({ driver, onCall, onTrack, onView }: DriverCardProps) {
+  // Names arrive in ALL CAPS; normal case is shorter and easier to read, and it wraps instead of truncating.
+  const name = niceName(driverFullName(driver));
   const onTrip = driver.status === 'OnTrip' && !!driver.activeTrip;
-  const licenseExpired = driver.licenseDaysLeft !== null && driver.licenseDaysLeft < 0;
-  const licenseExpiringSoon = driver.licenseDaysLeft !== null && !licenseExpired && driver.licenseDaysLeft <= EXPIRY_SOON_DAYS;
-  const docExpired = driver.docDaysLeft !== null && driver.docDaysLeft < 0;
-  const docExpiringSoon = driver.docDaysLeft !== null && !docExpired && driver.docDaysLeft <= EXPIRY_SOON_DAYS;
-  const vehiclePlate = driver.activeTrip?.vehiclePlate ?? driver.assignedVehicle?.plateNumber ?? null;
-  const name = driverFullName(driver);
+  const plate = driver.activeTrip?.vehiclePlate ?? driver.assignedVehicle?.plateNumber ?? null;
 
-  const payoutText = driver.monthlyPayout !== null
-    ? `SAR ${driver.monthlyPayout.toLocaleString('en-US')}`
-    : 'SAR 0';
+  // Documents column: an expired or expiring licence outranks other documents.
+  const licence = expiryText(driver.licenseDaysLeft);
+  const doc = expiryText(driver.docDaysLeft);
+  const docs =
+    licence && licence.color !== INK ? { text: `Licence ${licence.text.toLowerCase()}`, color: licence.color }
+    : doc && doc.color !== INK ? { text: `Document ${doc.text.toLowerCase()}`, color: doc.color }
+    : null; // nothing wrong → no line
+
+  const st = STATUS[driver.status];
+  const meta = [driver.ref_id, plate ?? 'No truck'].filter(Boolean).join('  ·  ');
+  const pay = driver.monthlyPayout ? `SAR ${driver.monthlyPayout.toLocaleString('en-US')} this month` : null;
 
   return (
-    <TouchableOpacity
-      activeOpacity={onView ? 0.9 : 1}
-      onPress={onView ? () => onView(driver) : undefined}
-      className={`bg-white p-4 ${className ?? ''}`}
-      style={{ borderRadius: Radius.xl, borderWidth: 1, borderColor: Colors.coolGray, ...Shadows.sm }}
-    >
-      {/* Header — avatar, name + status/phone/payout, total trips */}
-      <View
-        className="flex-row items-center"
-        style={{ gap: Spacing.md }}
-      >
-        <DriverAvatar
-          initials={driverInitials(driver)}
-          avatarUrl={driver.avatarUrl}
-          status={driver.status}
-          size={52}
-        />
-
-        <View className="flex-1" style={{ gap: 4 }}>
-          <Text numberOfLines={1} style={{ color: Colors.charcoal }} className="text-[16px] font-bold">
-            {name}
+    <TouchableOpacity activeOpacity={onView ? 0.8 : 1} onPress={onView ? () => onView(driver) : undefined} style={s.card} accessibilityRole="button" accessibilityLabel={`Open ${name}`}>
+      <DriverAvatar initials={driverInitials(driver)} avatarUrl={driver.avatarUrl} size={48} />
+      <View style={s.text}>
+        <Text style={s.name} numberOfLines={2}>{name}</Text>
+        <View style={s.metaRow}>
+          <View style={[s.dot, { backgroundColor: st.dot }]} />
+          <Text style={s.meta} numberOfLines={1}>
+            <Text style={{ color: st.fg, fontWeight: '600' }}>{st.label}</Text>
+            {meta ? `  ·  ${meta}` : ''}
           </Text>
-          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
-            <DriverStatusBadge status={driver.status} />
-            {driver.phone && (
-              <Text numberOfLines={1} style={{ color: Colors.gray400 }} className="flex-1 text-[12px] font-medium">
-                {driver.phone}
-              </Text>
-            )}
-          </View>
-          <View className="flex-row items-center" style={{ gap: 4 }}>
-            <Wallet size={12} color={Colors.primary} strokeWidth={2} />
-            <Text numberOfLines={1} style={{ color: Colors.gray600 }} className="text-[12px] font-semibold">
-              Payout (Month): <Text style={{ color: Colors.charcoal, fontWeight: '700' }}>{payoutText}</Text>
-            </Text>
-          </View>
         </View>
-
-        {driver.totalTrips !== null && <DriverTrips totalTrips={driver.totalTrips} />}
+        {docs ? (
+          <View style={s.metaRow}>
+            <FileWarning size={13} color={docs.color} strokeWidth={2.2} />
+            <Text style={[s.meta, { color: docs.color, fontWeight: '600' }]} numberOfLines={1}>{docs.text}</Text>
+          </View>
+        ) : pay ? <Text style={s.meta} numberOfLines={1}>{pay}</Text> : null}
       </View>
-
-      {/* Operational details — vehicle assignment + license & doc expiry */}
-      <View style={{ marginTop: Spacing.md, borderTopWidth: 1, borderTopColor: Colors.coolGray, paddingTop: Spacing.sm, gap: Spacing.xs }}>
-        {onTrip && driver.activeTrip ? (
-          <TouchableOpacity
-            activeOpacity={onTrack ? 0.7 : 1}
-            onPress={onTrack ? () => onTrack(driver) : undefined}
-            className="flex-row items-center justify-between"
-            style={{ borderRadius: Radius.md, backgroundColor: Colors.accentLight, borderWidth: 1, borderColor: '#FDE3DF', paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm }}
-          >
-            <View className="flex-row items-center flex-1" style={{ gap: Spacing.sm }}>
-              <View className="items-center justify-center" style={{ width: 28, height: 28, borderRadius: Radius.sm, backgroundColor: Colors.primary }}>
-                <Truck size={14} color={Colors.white} strokeWidth={2.2} />
-              </View>
-              <View className="flex-1">
-                <Text style={{ color: Colors.primary }} className="text-[11px] font-bold uppercase tracking-wider">
-                  On Trip · {driver.activeTrip.status}
-                </Text>
-                <Text numberOfLines={1} style={{ color: Colors.charcoal }} className="text-[13px] font-semibold">
-                  {vehiclePlate ?? 'Assigned vehicle'}
-                </Text>
-              </View>
-            </View>
-            <Navigation size={16} color={Colors.primary} strokeWidth={2} />
-          </TouchableOpacity>
-        ) : (
-          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
-            <Truck size={14} color={Colors.gray500} strokeWidth={2} />
-            <Text numberOfLines={1} style={{ color: Colors.gray600 }} className="flex-1 text-[13px] font-medium">
-              {vehiclePlate ?? 'No vehicle assigned'}
-            </Text>
-          </View>
-        )}
-
-        {(licenseExpired || licenseExpiringSoon) && (
-          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
-            <TriangleAlert size={13} color={licenseExpired ? Colors.danger : Colors.warning} strokeWidth={2} />
-            <Text
-              numberOfLines={1}
-              style={{ color: licenseExpired ? Colors.danger : Colors.warning }}
-              className="flex-1 text-[12px] font-semibold"
-            >
-              License {formatDaysLeft(driver.licenseDaysLeft)}
-            </Text>
-          </View>
-        )}
-
-        {docExpired || docExpiringSoon ? (
-          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
-            <TriangleAlert size={13} color={docExpired ? Colors.danger : Colors.warning} strokeWidth={2} />
-            <Text
-              numberOfLines={1}
-              style={{ color: docExpired ? Colors.danger : Colors.warning }}
-              className="flex-1 text-[12px] font-semibold"
-            >
-              Document {formatDaysLeft(driver.docDaysLeft)}
-            </Text>
-          </View>
-        ) : (
-          <View className="flex-row items-center" style={{ gap: Spacing.sm }}>
-            <FileText size={13} color={Colors.gray500} strokeWidth={2} />
-            <Text numberOfLines={1} style={{ color: Colors.gray600 }} className="flex-1 text-[12px] font-medium">
-              Document Expiry:{' '}
-              {driver.docDaysLeft !== null
-                ? `${driver.docDaysLeft} days left`
-                : 'No record'}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* Actions */}
-      <View style={{ marginTop: Spacing.sm }}>
-        <DriverActionGroup
-          driverName={name}
-          onTrip={onTrip}
-          canCall={!!driver.phone}
-          onCall={onCall ? () => onCall(driver) : undefined}
-          onTrack={onTrack ? () => onTrack(driver) : undefined}
-          onView={onView ? () => onView(driver) : undefined}
-        />
-      </View>
+      {onTrip ? (
+        <TouchableOpacity style={s.quick} onPress={onTrack ? () => onTrack(driver) : undefined} hitSlop={8} accessibilityLabel={`Open trip for ${name}`}>
+          <Navigation size={18} color={INK} strokeWidth={2.2} />
+        </TouchableOpacity>
+      ) : driver.phone ? (
+        <TouchableOpacity style={s.quick} onPress={onCall ? () => onCall(driver) : undefined} hitSlop={8} accessibilityLabel={`Call ${name}`}>
+          <Phone size={17} color={INK} strokeWidth={2.2} />
+        </TouchableOpacity>
+      ) : null}
     </TouchableOpacity>
   );
 }
+
+const s = StyleSheet.create({
+  card: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E9E9EC', paddingVertical: 12, paddingHorizontal: 14 },
+  text: { flex: 1, minWidth: 0, gap: 3 },
+  name: { fontSize: 16, fontWeight: '600', color: INK, letterSpacing: -0.2 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  meta: { fontSize: 13, color: MUTED, flexShrink: 1, fontVariant: ['tabular-nums'] },
+  quick: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#F4F4F5', alignItems: 'center', justifyContent: 'center' },
+});

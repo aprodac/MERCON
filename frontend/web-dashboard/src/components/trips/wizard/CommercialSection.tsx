@@ -687,6 +687,10 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
                     driverPayout: rc.driver_payout != null ? String(rc.driver_payout) : '0',
                     driverPayoutModified: false,
                     updateQuotationPayout: false,
+                    // An existing quotation is being used — not a new one to save.
+                    // Left on (from an earlier "Define Quotation"), submit saved a copy.
+                    saveAsQuotation: false,
+                    saveAsRateCard: false,
                     rateCategory: targetCategory,
                     vehicleType: targetVehicleClass,
                     pricingBasis: rc.pricing_basis || (normalizeBillingType(rc.operation_type || rc.billing_type) === 'Monthly' ? 'Per Month' : 'Per Trip'),

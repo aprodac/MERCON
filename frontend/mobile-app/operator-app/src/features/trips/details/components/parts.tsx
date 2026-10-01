@@ -6,13 +6,14 @@ import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { TONE, type Tone } from '../tripDetailsModel';
 
-export const INK = '#2B2A2B';
-export const MUTED = '#5F5F6E';
-export const PAGE = '#EEF1F6';
+export const INK = '#18181B';
+export const MUTED = '#6B6B76';
+export const PAGE = '#F6F6F7';
 export const WA = '#1A9E55';
 export const WA_LIGHT = '#E3F7EA';
 export const WA_INK = '#0F6B37';
-export const ACTION = '#C4432F';
+/** The one primary-button colour: ink, like the rest of the app. */
+export const ACTION = '#18181B';
 
 export function tap() {
   Haptics.selectionAsync().catch(() => {});
@@ -83,27 +84,41 @@ export function SheetRow({
   );
 }
 
+/** A plain label / value line for lists of facts (no tile). */
+export function InfoRow({ label, value, mono, last }: { label: string; value: string; mono?: boolean; last?: boolean }) {
+  return (
+    <View style={[p.infoRow, !last && p.infoBorder]}>
+      <Text style={p.infoLabel}>{label}</Text>
+      <Text style={[p.infoValue, mono && p.mono]} numberOfLines={2}>{value}</Text>
+    </View>
+  );
+}
+
 export function Divider({ style }: { style?: StyleProp<ViewStyle> }) {
   return <View style={[p.divider, style]} />;
 }
 
 export const p = StyleSheet.create({
-  card: { backgroundColor: Colors.white, borderRadius: 18, padding: 14, shadowColor: '#14141E', shadowOpacity: 0.05, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  card: { backgroundColor: Colors.white, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#E9E9EC' },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3, alignSelf: 'flex-start' },
   chipDot: { width: 7, height: 7, borderRadius: 4 },
   chipText: { fontSize: 12, fontWeight: '700' },
   sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  sectionTitle: { fontSize: 15, fontWeight: '800', color: INK },
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: INK },
   muted: { fontSize: 12, color: MUTED },
-  fact: { flex: 1, backgroundColor: '#F5F6F9', borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9 },
-  factLabel: { fontSize: 11, color: MUTED, fontWeight: '500' },
-  factValue: { fontSize: 13, fontWeight: '700', color: INK, marginTop: 1 },
+  fact: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, backgroundColor: '#F6F6F7', borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9 },
+  factLabel: { fontSize: 12, color: MUTED },
+  factValue: { fontSize: 14, fontWeight: '600', color: INK, marginTop: 2 },
   mono: { fontFamily: 'monospace', fontWeight: '600' },
   softBtn: { height: 44, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12 },
-  softBtnText: { fontSize: 14, fontWeight: '700' },
+  softBtnText: { fontSize: 14, fontWeight: '600' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 9 },
   rowIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   rowLabel: { fontSize: 15, fontWeight: '700', color: INK },
   rowSub: { fontSize: 12, color: MUTED, marginTop: 1 },
   divider: { height: 1, backgroundColor: '#EEF0F4' },
+  infoRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, paddingVertical: 11 },
+  infoBorder: { borderBottomWidth: 1, borderBottomColor: '#F1F1F3' },
+  infoLabel: { fontSize: 14, color: MUTED },
+  infoValue: { flex: 1, textAlign: 'right', fontSize: 14, fontWeight: '600', color: INK },
 });

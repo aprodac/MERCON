@@ -1,7 +1,7 @@
 import React from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Menu, Plus, Search, SlidersHorizontal, X } from 'lucide-react-native';
-import { IconButton } from '@/features/dashboard/components';
+import { AppTopBar } from '@/components/AppTopBar';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { CUSTOMER_STATUS_FILTERS } from '../hooks/useCustomerFilters';
 import type { CustomerStatusFilter } from '../types';
@@ -41,25 +41,17 @@ export function CustomersHeader({
   onMenuPress,
 }: CustomersHeaderProps) {
   return (
-    <View className="border-b border-gray-100 bg-white px-4 pb-4 pt-3">
-      <View className="flex-row items-start justify-between">
-        <View className="min-w-0 flex-1 pr-3">
-          <Text numberOfLines={1} className="text-[26px] font-extrabold leading-[30px] text-gray-900">
-            Customers
-          </Text>
-          <Text numberOfLines={1} className="mt-1 text-[13px] text-gray-500">
-            Manage your customers and contracts
-          </Text>
-        </View>
-        <View className="flex-row gap-2.5">
-          <IconButton Icon={Search} onPress={onToggleSearch} elevated />
-          <IconButton Icon={SlidersHorizontal} onPress={onToggleFilters} badge={status !== 'all'} elevated />
-          {onMenuPress && <IconButton Icon={Menu} onPress={onMenuPress} elevated />}
-        </View>
-      </View>
-
+    <View>
+      <AppTopBar
+        title="Customers"
+        actions={[
+          { icon: Search, label: 'Search customers', onPress: onToggleSearch, active: query.length > 0 },
+          { icon: SlidersHorizontal, label: 'Filter', onPress: onToggleFilters, active: status !== 'all' },
+        ]}
+      />
+      <View className="px-4 pb-3">
       {searchVisible && (
-        <View className="mt-4 flex-row items-center rounded-2xl border border-gray-200 bg-gray-50 px-3.5">
+        <View className="mt-1 flex-row items-center rounded-2xl border border-gray-200 bg-gray-50 px-3.5">
           <Search size={16} color={Colors.gray400} strokeWidth={2} />
           <TextInput
             value={query}
@@ -116,6 +108,7 @@ export function CustomersHeader({
           </Text>
         </TouchableOpacity>
       )}
+      </View>
     </View>
   );
 }

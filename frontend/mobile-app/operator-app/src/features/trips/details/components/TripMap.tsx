@@ -13,6 +13,7 @@ import { MapPin, Truck } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import type { TripOverview, TripPhase } from '../../../../lib/operator';
 import { mapsLink, type Stop } from '../tripDetailsModel';
+import { quietOfflineTileErrors } from '../../../../lib/mapLogs';
 
 export const MAP_STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 
@@ -27,6 +28,7 @@ const hasNativeMap = (() => {
 })();
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const ML: typeof import('@maplibre/maplibre-react-native') | null = hasNativeMap ? require('@maplibre/maplibre-react-native') : null;
+quietOfflineTileErrors(ML);
 
 const ROUTE = '#E0503B';
 const DONE = '#1F9D55';

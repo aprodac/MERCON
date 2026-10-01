@@ -107,24 +107,16 @@ export function tripCountMap(counts: DriverTripCount[]): Map<string, DriverPerfD
   );
 }
 
-/**
- * Sorts client-side — GET /drivers only supports a fixed name order
- * server-side (no `sort_by` handling in the controller). "Highest Rating"
- * has no backing data yet (see DriverListItem.rating), so it's a stable
- * no-op today rather than a fabricated ordering.
- */
+/** Sorts client-side (GET /drivers only orders by name). */
 export function sortDrivers(drivers: DriverListItem[], sort: DriverSortOption): DriverListItem[] {
   const sorted = [...drivers];
   switch (sort) {
-    case 'newest':
-      return sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     case 'trips':
       return sorted.sort((a, b) => (b.totalTrips ?? 0) - (a.totalTrips ?? 0));
-    case 'available':
-      return sorted.sort((a, b) => Number(b.status === 'Available') - Number(a.status === 'Available'));
-    case 'online':
-      return sorted.sort((a, b) => Number(b.status !== 'OffDuty' && b.status !== 'Inactive') - Number(a.status !== 'OffDuty' && a.status !== 'Inactive'));
-    case 'rating':
+    case 'pay':
+      return sorted.sort((a, b) => (b.monthlyPayout ?? 0) - (a.monthlyPayout ?? 0));
+    case 'newest':
+      return sorted.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     case 'name':
     default:
       return sorted.sort((a, b) => driverFullName(a).localeCompare(driverFullName(b)));

@@ -73,7 +73,15 @@ export interface DriverStats {
   inactive: number;
 }
 
-export type DriverSortOption = 'name' | 'newest' | 'rating' | 'trips' | 'available' | 'online';
+export type DriverSortOption = 'name' | 'trips' | 'pay' | 'newest';
+
+/** "Show only" filters the backend can't do, applied to the full list client-side. */
+export interface DriverFlags {
+  /** Licence or a document expired or expiring within EXPIRY_SOON_DAYS. */
+  expiring: boolean;
+  /** No truck assigned and not on a trip. */
+  noTruck: boolean;
+}
 
 export interface DriverListParams {
   search?: string;
