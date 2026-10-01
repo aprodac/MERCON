@@ -749,7 +749,9 @@ export function buildTripRows(input: TripRowsInput): TripImportRow[] {
       const coDriverId = pick(assignment.coDriverId, masterCoDriver);
 
       const baseRateCardPayout = resolveSlotDriverPayout(slot);
-      const shouldUpdateQuotation = Boolean(slot.updateQuotationPayout || slot.driverPayoutModified);
+      // An explicit updateQuotationPayout (e.g. "Save it on the quotation too" unticked) wins;
+      // otherwise an edited payout is written back to the quotation.
+      const shouldUpdateQuotation = Boolean(slot.updateQuotationPayout ?? slot.driverPayoutModified);
 
       let finalDriverPayout = baseRateCardPayout;
       let finalCoDriverPayout = 0;

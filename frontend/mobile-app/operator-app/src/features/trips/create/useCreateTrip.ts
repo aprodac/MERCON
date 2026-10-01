@@ -289,6 +289,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     rateMatched: false,
     matchedRateCard: null,
     rateCardId: undefined,
+    driverPayoutModified: false,
+    updateQuotationPayout: undefined,
     // A price copied from a quotation belongs to that quotation's route — drop it.
     ...(keepTyped ? {} : { billingAmount: '', driverPayout: '', tripCharges: '' }),
   });
@@ -307,6 +309,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
       rateCardId: q.id,
       billingAmount: pricing?.billingAmount ?? '',
       driverPayout: pricing?.driverPayout ?? '',
+      driverPayoutModified: false,
+      updateQuotationPayout: undefined,
       tripCharges: '',
       pricingBasis: undefined,
       saveAsQuotation: false,
