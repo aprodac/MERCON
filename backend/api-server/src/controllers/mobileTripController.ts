@@ -10,6 +10,7 @@ import { notifyOperatorsOfDelay } from './notificationController';
 import { recordDriverActivity } from '../services/driverPhone/activity';
 import { getDrivingRoute, RoutingUnavailableError } from '../services/routing/routeProvider';
 import { compressUploadedImage } from '../services/imageCompressor';
+import { queueVideoCompression } from '../services/media/videoCompressor';
 import { calculateBackendTripFinancials } from '../utils/tripFinancials';
 import { splitDelayReason } from '../utils/delayReason';
 import { isUuid } from '../utils/uuid';
@@ -468,6 +469,9 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
         created_by: isValidUuid ? userId : undefined,
       },
     });
+
+    // Phone videos are 20–60 MB; shrink them in the background (keeps the original on failure).
+    if (isVideo) queueVideoCompression(document.id, req.file.path);
 
     void recordDriverActivity(driverId, 'PhotoUploaded', {
       tripId: id,
