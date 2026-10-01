@@ -247,6 +247,7 @@ export const getTrips = async (req: Request, res: Response) => {
     const pageNumber = parseInt(page as string);
     const limit = parseInt(per_page as string);
     const skip = (pageNumber - 1) * limit;
+    const isLite = req.query.lite === 'true';
 
     const whereClause: Prisma.TripWhereInput = { deletedAt: null };
     if (status) {
@@ -380,7 +381,9 @@ export const getTrips = async (req: Request, res: Response) => {
             select: {
               id: true,
               name: true,
-              logo_url: true,
+              // Logos are stored inline (base64, ~100 KB each) — repeated on every
+              // row they made 100 trips ~7 MB. `lite=true` callers don't show them.
+              logo_url: !isLite,
             }
           },
           quotation: {

@@ -7,6 +7,7 @@ import { vehicleService } from '@/services/vehicleService';
 import { parseCSVFile } from '@/utils/exportUtils';
 import { parseSheet, TRIP_COLUMNS } from '@/utils/importUtils';
 import { analyzePastDateRows, applyPastStatusToRows, PastDateAnalysis } from '@/utils/pastDateTripUtils';
+import { useDeploymentTimezone } from '@/lib/datetime';
 
 const IMPORT_FIELD_ALIASES: Partial<Record<keyof BulkImportTripRow, string[]>> = {
   customer_name: ['customer_name', 'customer', 'client', 'client_name'],
@@ -132,6 +133,7 @@ export function downloadImportTemplate() {
  * state, same parsing/matching rules, same submit flow.
  */
 export function useTripBulkImport() {
+  const tz = useDeploymentTimezone();
   const queryClient = useQueryClient();
 
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -217,7 +219,7 @@ export function useTripBulkImport() {
       };
     });
 
-    const analysis = analyzePastDateRows(rowsToSubmit);
+    const analysis = analyzePastDateRows(rowsToSubmit, tz);
     if (analysis.hasPastTrips) {
       setPendingImportRows(rowsToSubmit);
       setPastDateAnalysis(analysis);
@@ -229,7 +231,7 @@ export function useTripBulkImport() {
 
   const handlePastDateImportConfirm = async (selectedStatus: TripStatus) => {
     if (!pendingImportRows) return;
-    const finalRows = applyPastStatusToRows(pendingImportRows, selectedStatus);
+    const finalRows = applyPastStatusToRows(pendingImportRows, selectedStatus, tz);
     setPastDateModalOpen(false);
     setPendingImportRows(null);
     await doSubmitImport(finalRows);

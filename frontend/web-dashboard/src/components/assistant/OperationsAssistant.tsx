@@ -163,7 +163,7 @@ export default function OperationsAssistant() {
 
       let trips: Trip[] = [];
       try {
-        const res = await tripService.getAll({ status: 'Completed', per_page: 50 });
+        const res = await tripService.getAll({ status: 'Completed', per_page: 50, lite: true });
         trips = res.data || [];
       } catch { /* network unavailable */ }
 

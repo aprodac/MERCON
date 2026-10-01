@@ -9,6 +9,8 @@ import TransitTimeBadge from '@/components/trips/TransitTimeBadge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getAllTaxonomyOptions, resolveTaxonomyOption } from '@/utils/taxonomyRegistry';
 import { isDateTimeInPast } from '@/utils/pastDateTripUtils';
+import { useDeploymentTimezone } from '@/lib/datetime';
+import { dutyShiftMinutes } from '@/services/travelTimeService';
 import { cn, isUuid } from '@/lib/utils';
 import { STOP_ROLE_COLORS } from '@mercon/shared-types';
 
@@ -73,6 +75,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
 }) => {
   const showRoute = part !== 'schedule';
   const showSchedule = part !== 'route';
+  const tz = useDeploymentTimezone();
   // A route filled by a quotation folds into one line; "Edit route" opens it.
   const [routeOpen, setRouteOpen] = React.useState(false);
   const matchedId = slot.matchedRateCard?.id;
@@ -139,8 +142,8 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
 
   const isPastSchedule = React.useMemo(() => {
     if (isMonthly || !slot.date) return false;
-    return isDateTimeInPast(slot.date, slot.pickupTime);
-  }, [isMonthly, slot.date, slot.pickupTime]);
+    return isDateTimeInPast(slot.date, slot.pickupTime, tz);
+  }, [isMonthly, slot.date, slot.pickupTime, tz]);
 
   const scheduleError = React.useMemo(() => {
     if (isMonthly) return null;
@@ -695,11 +698,19 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                   destinationLng={slot.destinationLng}
                   pickupDate={slot.date || slot.pickupDate}
                   pickupTime={slot.pickupTime || ''}
-                  onAutoSetDropoffDateTime={(dDate, dTime, isOvernight) => {
+                  intermediateStops={(slot.intermediateLocations || []).map((name: string) => ({ name }))}
+                  fixedDurationMinutes={dutyShiftMinutes(contractRateCategory)}
+                  onAutoSetDropoffDateTime={(dDate, dTime, isOvernight, _estimate, stopOffsetsMinutes) => {
                     // Never overwrite an arrival the user set by hand, nor a saved trip's.
                     if (!autoFillArrival || slot.dropoffManual || isRouteLocked) return;
                     if (slot.pickupTime && slot.pickupTime.trim()) {
-                      handleUpdateTripSlot(slot.id, { dropoffDate: dDate, dropoffTime: dTime, isOvernight });
+                      handleUpdateTripSlot(slot.id, {
+                        dropoffDate: dDate,
+                        dropoffTime: dTime,
+                        isOvernight,
+                        // Planned time at each intermediate stop (see buildTripRows).
+                        intermediateArrivalOffsets: stopOffsetsMinutes,
+                      });
                     }
                   }}
                   compact
