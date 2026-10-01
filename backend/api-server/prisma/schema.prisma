@@ -843,6 +843,11 @@ model Document {
   ai_extracted_json Json?   @db.JsonB
   is_confidential   Boolean @default(false)
 
+  // When the retention job deleted this trip photo/video from disk (see
+  // services/media/tripMediaRetention.ts). The row is kept — soft-deleted —
+  // so GPS, stop and timestamps stay in the history.
+  file_purged_at DateTime? @db.Timestamptz
+
   verified_by      String? @db.Uuid
   verifier         User?   @relation("VerifiedBy", fields: [verified_by], references: [id])
   executorDriverId String? @db.Uuid

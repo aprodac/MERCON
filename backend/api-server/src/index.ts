@@ -98,6 +98,7 @@ import { initFleetTracking } from './services/icces/fleetPoller';
 import { normalizeMobileLocationUpdate } from './services/tracking/locationUpdate';
 import { initTripDelayMonitor } from './services/tracking/tripDelayMonitor';
 import { initDriverWatch } from './services/tracking/driverWatch';
+import { initTripMediaRetention } from './services/media/tripMediaRetention';
 import { driverSocketConnected, driverSocketDisconnected } from './services/driverPhone/presence';
 
 import helmet from 'helmet';
@@ -315,6 +316,7 @@ app.use((err: Error, req: Request, res: Response, next: express.NextFunction) =>
 initFleetTracking();
 initTripDelayMonitor();
 initDriverWatch();
+initTripMediaRetention();
 
 /**
  * Integration secrets key (docs/CLIENT_SECRETS.md). The deploy refuses to run
