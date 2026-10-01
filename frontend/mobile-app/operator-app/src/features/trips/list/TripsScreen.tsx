@@ -212,7 +212,6 @@ export default function TripsScreen() {
               const on = v.id === view;
               return (
                 <TouchableOpacity key={v.id} style={[s.segItem, on && s.segOn]} onPress={() => { if (!on) tap(); setView(v.id); }} activeOpacity={0.8} accessibilityRole="tab" accessibilityState={{ selected: on }}>
-                  <v.icon size={15} color={on ? INK : '#6E6E80'} strokeWidth={on ? 2.4 : 2} />
                   <Text style={[s.segText, on && s.segTextOn]}>{v.label}</Text>
                   {v.badge ? <View style={s.badge}><Text style={s.badgeText}>{v.badge}</Text></View> : null}
                 </TouchableOpacity>
@@ -393,7 +392,7 @@ const s = StyleSheet.create({
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, height: 46, borderRadius: 14, backgroundColor: Colors.white, paddingHorizontal: 13, borderWidth: 1, borderColor: '#EEF0F4' },
   searchInput: { flex: 1, fontSize: 15, color: INK, paddingVertical: 0 },
   segment: { flexDirection: 'row', gap: 4, marginHorizontal: 16, marginTop: 12, backgroundColor: '#E4E7EE', borderRadius: 13, padding: 3 },
-  segItem: { flex: 1, height: 38, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
+  segItem: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 38, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 4 },
   segOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   segText: { fontSize: 13, fontWeight: '700', color: '#4A4A55' },
   segTextOn: { color: INK, fontWeight: '800' },
