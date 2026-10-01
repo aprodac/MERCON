@@ -6,6 +6,7 @@ import {
   logStopDelay, confirmEvidenceTime, bulkImportTrips, updateTripStop, updateTripStopsRoute, getMonthlyTripBoard, shareTripMediaToWhatsApp
 } from '../controllers/tripController';
 import { exportTrips } from '../controllers/tripExportController';
+import { getTripDriverTrail } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
@@ -34,6 +35,8 @@ router.get('/', validate({ query: listQuery }), getTrips);
 router.get('/export', exportTrips);
 router.post('/', validate({ body: createTripBody }), createTrip);
 router.get('/:id', getTripById);
+// What the driver was sent for this trip, whether it reached the phone, and what they did.
+router.get('/:id/driver-trail', getTripDriverTrail);
 router.patch('/:id/status', updateTripStatus);
 router.patch('/:id/financials', updateTripFinancials);
 

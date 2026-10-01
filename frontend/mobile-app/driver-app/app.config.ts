@@ -55,7 +55,7 @@ if (!client) {
 export default (): ExpoConfig => ({
   name: client.name,
   slug: client.slug,
-  version: '1.0.0',
+  version: '1.1.0',
   orientation: 'portrait',
   icon: client.icon,
   scheme: client.scheme,

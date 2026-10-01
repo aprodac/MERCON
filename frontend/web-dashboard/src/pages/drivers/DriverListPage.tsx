@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { driverPhoneService } from '@/services/driverPhoneService';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -419,8 +420,19 @@ export default function DriverListPage() {
     downloadCSV(data, `drivers_roster_${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
+  const { data: phoneStatusRows } = useQuery({
+    queryKey: ['drivers-phone-status'],
+    queryFn: () => driverPhoneService.statusAll(),
+    refetchInterval: 60_000,
+  });
+  const phoneStatus = useMemo(
+    () => new Map((phoneStatusRows ?? []).map((r) => [r.driverId, r])),
+    [phoneStatusRows],
+  );
+
   const columns = useDriverTableColumns({
     tz,
+    phoneStatus,
     onPreviewDriver: setPreviewDriver,
     onWhatsappShare: openWhatsappShare,
     setConfirmModal,
