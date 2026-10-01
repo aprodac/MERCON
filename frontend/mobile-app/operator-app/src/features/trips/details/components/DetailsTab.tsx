@@ -17,7 +17,7 @@ import {
   ON_TIME_GRACE_MIN, TONE, ago, billingLabel, canChangeAssignment, formatDuration, lineType, minutesLate, moneyOf, sar, sortedStops,
   type Formatters,
 } from '../tripDetailsModel';
-import { Card, Chip, Divider, Fact, INK, MUTED, SectionHead, SoftButton } from './parts';
+import { Card, Chip, Divider, Fact, INK, InfoRow, MUTED, SectionHead } from './parts';
 
 interface Props {
   trip: OperatorTripDetail;
@@ -33,57 +33,55 @@ interface Props {
 
 export function DetailsTab({ trip, phase, overview, f, onChange, onCharges, onUpload, onActivity, onOpenDoc }: Props) {
   const paperwork = (trip.documents ?? []).filter((d) => !['POD', 'Waybill', 'Emergency'].includes(d.doc_type ?? ''));
+  const info: { label: string; value: string; mono?: boolean }[] = [
+    { label: 'Scheduled', value: trip.planned_start ? f.dayTime(trip.planned_start) : '—' },
+    { label: 'Line type', value: lineType(trip) },
+    { label: 'Billing', value: billingLabel(trip) },
+    ...(trip.awb_number ? [{ label: 'AWB', value: trip.awb_number, mono: true }] : []),
+    ...(trip.planned_distance ? [{ label: 'Planned distance', value: `${Math.round(trip.planned_distance)} km` }] : []),
+    ...(trip.quotation?.name || trip.rateCard?.name ? [{ label: 'Quotation', value: niceName(trip.quotation?.name || trip.rateCard?.name || '') }] : []),
+    { label: 'Created', value: f.date(trip.createdAt) || '—' },
+  ];
   return (
-    <View style={{ gap: 10 }}>
+    <View style={{ gap: 12 }}>
       {phase === 'planned' && overview?.checks ? <PreTripChecks checks={overview.checks} f={f} /> : null}
       {phase === 'done' ? <TripSummary trip={trip} overview={overview} f={f} /> : null}
-      <Text style={s.group}>Truck & driver</Text>
+
+      <Text style={s.group}>Truck and driver</Text>
       <Assignment trip={trip} phase={phase} overview={overview} onChange={onChange} />
+
       <Text style={s.group}>Money</Text>
       <MoneyCard trip={trip} onCharges={onCharges} />
+
       <Text style={s.group}>Trip info</Text>
-      <Card style={{ gap: 8 }}>
-        <View style={s.factRow}>
-          <Fact label="Scheduled" value={trip.planned_start ? f.dayTime(trip.planned_start) : '—'} />
-          <Fact label="Line type" value={lineType(trip)} />
-        </View>
-        <View style={s.factRow}>
-          <Fact label="Billing" value={billingLabel(trip)} />
-          {trip.awb_number ? <Fact label="AWB" value={trip.awb_number} mono /> : <Fact label="Created" value={f.date(trip.createdAt) || '—'} />}
-        </View>
-        {trip.planned_distance ? (
-          <View style={s.factRow}>
-            <Fact label="Planned distance" value={`${Math.round(trip.planned_distance)} km`} />
-            <Fact label="Quotation" value={trip.quotation?.name || trip.rateCard?.name || '—'} />
-          </View>
-        ) : null}
+      <Card style={{ paddingVertical: 4 }}>
+        {info.map((r, i) => <InfoRow key={r.label} label={r.label} value={r.value} mono={r.mono} last={i === info.length - 1} />)}
       </Card>
 
-      <Card>
-        <SectionHead
-          title={`Documents · ${paperwork.length}`}
-          right={(
-            <TouchableOpacity onPress={onUpload} hitSlop={8} style={s.inlineLink}>
-              <UploadCloud size={14} color="#B43A27" />
-              <Text style={s.inlineLinkText}>Upload</Text>
+      <Text style={s.group}>Documents</Text>
+      <Card style={{ paddingVertical: 4 }}>
+        {paperwork.length === 0 ? <Text style={[s.muted, { paddingVertical: 12 }]}>No paperwork yet. Driver photos are on the Updates tab.</Text> : (
+          paperwork.map((d) => (
+            <TouchableOpacity key={d.id} style={s.doc} activeOpacity={0.6} onPress={() => onOpenDoc(d)}>
+              <FileText size={18} color={MUTED} />
+              <View style={{ flex: 1 }}>
+                <Text style={s.docName} numberOfLines={1}>{d.documentType?.name || d.title || d.doc_type || 'Document'}</Text>
+                <Text style={s.muted}>{f.date(d.createdAt)}</Text>
+              </View>
+              <ChevronRight size={16} color="#A1A1AA" />
             </TouchableOpacity>
-          )}
-        />
-        {paperwork.length === 0 ? <Text style={s.muted}>No paperwork yet. Driver photos are on the Updates tab.</Text> : (
-          <View style={{ gap: 6 }}>
-            {paperwork.map((d) => (
-              <TouchableOpacity key={d.id} style={s.doc} activeOpacity={0.75} onPress={() => onOpenDoc(d)}>
-                <FileText size={18} color={MUTED} />
-                <View style={{ flex: 1 }}>
-                  <Text style={s.docName} numberOfLines={1}>{d.documentType?.name || d.title || d.doc_type || 'Document'}</Text>
-                  <Text style={s.muted}>{f.date(d.createdAt)}</Text>
-                </View>
-                <ChevronRight size={16} color="#8A8A96" />
-              </TouchableOpacity>
-            ))}
-          </View>
+          ))
         )}
-        <SoftButton label="Activity log" icon={ListOrdered} onPress={onActivity} style={{ marginTop: 10 }} />
+        <View style={s.docActions}>
+          <TouchableOpacity style={s.linkBtn} onPress={onUpload} activeOpacity={0.7}>
+            <UploadCloud size={16} color={INK} strokeWidth={2.1} />
+            <Text style={s.linkBtnText}>Upload</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.linkBtn} onPress={onActivity} activeOpacity={0.7}>
+            <ListOrdered size={16} color={INK} strokeWidth={2.1} />
+            <Text style={s.linkBtnText}>Activity log</Text>
+          </TouchableOpacity>
+        </View>
       </Card>
     </View>
   );
@@ -135,36 +133,19 @@ function TripSummary({ trip, overview, f }: { trip: OperatorTripDetail; overview
   const km = overview?.path_distance_m ? `${Math.round(overview.path_distance_m / 1000)} km` : 'no GPS';
   const invoiced = trip.status === 'Invoiced';
   const punctual = judged.length === 0 ? TONE.gray : allOnTime ? TONE.green : TONE.red;
-  const inv = invoiced ? TONE.green : TONE.gray;
 
   return (
-    <Card style={{ gap: 10 }}>
-      <SectionHead title="How it went" />
-      <View style={s.journey}>
-        <View>
-          <Text style={s.muted}>Started</Text>
-          <Text style={s.journeyTime}>{trip.actual_start ? f.dateTime(trip.actual_start) : '—'}</Text>
-        </View>
-        <View style={{ flex: 1, alignItems: 'center', gap: 3 }}>
-          <View style={s.journeyStat}><Timer size={12} color="#2449A8" /><Text style={[s.journeyStatText, { color: '#2449A8' }]}>{durationSec && durationSec > 0 ? formatDuration(durationSec) : '—'}</Text></View>
-          <View style={s.journeyLine} />
-          <View style={s.journeyStat}><Route size={12} color="#5B34B0" /><Text style={[s.journeyStatText, { color: '#5B34B0' }]}>{km}</Text></View>
-        </View>
-        <View style={{ alignItems: 'flex-end' }}>
-          <Text style={s.muted}>Finished</Text>
-          <Text style={s.journeyTime}>{trip.actual_end ? f.dateTime(trip.actual_end) : '—'}</Text>
-        </View>
-      </View>
+    <Card style={{ gap: 12 }}>
+      <SectionHead title="How it went" right={<Chip label={invoiced ? 'Invoiced' : 'Not invoiced'} tone={invoiced ? 'green' : 'gray'} />} />
       <View style={s.factRow}>
+        <Fact label="Duration" value={durationSec && durationSec > 0 ? formatDuration(durationSec) : '—'} />
+        <Fact label="Distance" value={km} />
         <View style={[s.tile, { backgroundColor: punctual.bg }]}>
           <Text style={[s.tileLabel, { color: punctual.fg }]}>On time</Text>
-          <Text style={[s.tileValue, { color: punctual.fg }]}>{judged.length ? `${onTime} of ${judged.length} stops` : 'No planned times'}</Text>
-        </View>
-        <View style={[s.tile, { backgroundColor: inv.bg }]}>
-          <Receipt size={14} color={inv.fg} />
-          <Text style={[s.tileValue, { color: inv.fg }]}>{invoiced ? 'Invoiced' : 'Not invoiced yet'}</Text>
+          <Text style={[s.tileValue, { color: punctual.fg }]}>{judged.length ? `${onTime} of ${judged.length}` : '—'}</Text>
         </View>
       </View>
+      {trip.actual_start ? <Text style={s.muted}>Started {f.dateTime(trip.actual_start)}</Text> : null}
     </Card>
   );
 }
@@ -215,7 +196,7 @@ function Assignment({ trip, phase, overview, onChange }: { trip: OperatorTripDet
         <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={s.plate} numberOfLines={1}>{plate}</Text>
           <Text style={s.muted} numberOfLines={1}>{truckSub || '—'}</Text>
-          {v && !tp ? (
+          {v && !tp && !showFeeds ? (
             <View style={s.gpsRow}>
               <View style={[s.feedDot, { backgroundColor: v.icces_device_id ? TONE.green.dot : '#C9CCD6' }]} />
               <Text style={s.muted}>{v.icces_device_id ? 'GPS tracker fitted' : 'No GPS tracker'}</Text>
@@ -293,7 +274,7 @@ function MoneyCard({ trip, onCharges }: { trip: OperatorTripDetail; onCharges: (
         ))}
       </View>
       <TouchableOpacity style={s.addCharge} onPress={onCharges} activeOpacity={0.8}>
-        <Plus size={15} color="#7A4F00" strokeWidth={2.5} />
+        <Plus size={15} color={INK} strokeWidth={2.4} />
         <Text style={s.addChargeText}>{m.chargesCount ? 'Edit charges' : 'Add charge'}</Text>
       </TouchableOpacity>
     </Card>
@@ -302,12 +283,15 @@ function MoneyCard({ trip, onCharges }: { trip: OperatorTripDetail; onCharges: (
 
 const s = StyleSheet.create({
   muted: { fontSize: 12, color: MUTED },
-  group: { fontSize: 12, fontWeight: '800', color: '#3B3B44', marginTop: 4, marginBottom: -2, marginLeft: 4 },
+  group: { fontSize: 13, fontWeight: '600', color: MUTED, marginTop: 8, marginBottom: -4, marginLeft: 4 },
   factRow: { flexDirection: 'row', gap: 8 },
   inlineLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   inlineLinkText: { fontSize: 13, fontWeight: '700', color: '#B43A27' },
-  doc: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 10, backgroundColor: '#F7F8FA', borderRadius: 12 },
-  docName: { fontSize: 13, fontWeight: '700', color: INK },
+  doc: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F1F3' },
+  docActions: { flexDirection: 'row', gap: 10, paddingVertical: 12 },
+  linkBtn: { flex: 1, height: 42, borderRadius: 12, backgroundColor: '#F4F4F5', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  linkBtnText: { fontSize: 14, fontWeight: '600', color: INK },
+  docName: { fontSize: 14, fontWeight: '600', color: INK },
   checkRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
   checkDot: { width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
   checkText: { flex: 1, fontSize: 14, color: INK },
@@ -316,17 +300,17 @@ const s = StyleSheet.create({
   journeyStat: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   journeyStatText: { fontSize: 12, fontWeight: '700' },
   journeyLine: { height: 3, borderRadius: 2, backgroundColor: TONE.green.dot, alignSelf: 'stretch' },
-  tile: { flex: 1, borderRadius: 14, padding: 12, gap: 2 },
-  tileLabel: { fontSize: 12, fontWeight: '500' },
-  tileValue: { fontSize: 14, fontWeight: '800' },
+  tile: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9, gap: 2 },
+  tileLabel: { fontSize: 12 },
+  tileValue: { fontSize: 14, fontWeight: '600' },
   assignRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14 },
   truckImg: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#EEF0F4' },
   truckIcon: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#EEF0F4', alignItems: 'center', justifyContent: 'center' },
   plate: { fontFamily: 'monospace', fontSize: 15, fontWeight: '700', color: INK },
   gpsRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
-  driverName: { fontSize: 15, fontWeight: '800', color: INK },
+  driverName: { fontSize: 15, fontWeight: '700', color: INK },
   change: { backgroundColor: '#F1F3F7', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
-  changeText: { fontSize: 12, fontWeight: '800', color: INK },
+  changeText: { fontSize: 13, fontWeight: '600', color: INK },
   coRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#F8F9FB' },
   coText: { flex: 1, fontSize: 13, fontWeight: '700', color: INK },
   feeds: { flexDirection: 'row', flexWrap: 'wrap', gap: 14, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#F8F9FB', borderBottomLeftRadius: 18, borderBottomRightRadius: 18 },
@@ -334,10 +318,10 @@ const s = StyleSheet.create({
   feedText: { fontSize: 12, color: MUTED },
   feedDot: { width: 7, height: 7, borderRadius: 4 },
   moneyTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  billing: { fontSize: 24, fontWeight: '800', color: INK, letterSpacing: -0.4 },
+  billing: { fontSize: 26, fontWeight: '700', color: INK, letterSpacing: -0.5 },
   bar: { flexDirection: 'row', height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: '#EEF0F4' },
   partLabel: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  partValue: { fontSize: 14, fontWeight: '800', color: INK, marginTop: 1 },
-  addCharge: { height: 44, borderRadius: 12, borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#D9A21B', backgroundColor: '#FFF8E6', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  addChargeText: { fontSize: 13, fontWeight: '800', color: '#7A4F00' },
+  partValue: { fontSize: 14, fontWeight: '600', color: INK, marginTop: 2 },
+  addCharge: { height: 44, borderRadius: 12, backgroundColor: '#F4F4F5', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  addChargeText: { fontSize: 14, fontWeight: '600', color: INK },
 });
