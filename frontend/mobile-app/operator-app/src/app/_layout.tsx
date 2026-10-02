@@ -91,6 +91,7 @@ function RootNavigator() {
         <Stack.Screen name="trip-edit" />
         <Stack.Screen name="third-party-details" />
         <Stack.Screen name="third-party-edit" />
+        <Stack.Screen name="profile" />
       </Stack>
 
       {showBottomNav && (

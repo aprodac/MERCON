@@ -79,8 +79,8 @@ const MoreScreen = () => {
       <AppTopBar title="More" />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Profile Card */}
-        <View style={styles.profileCard}>
+        {/* Profile card — opens your profile */}
+        <TouchableOpacity style={styles.profileCard} activeOpacity={0.8} onPress={() => router.push('/profile')} accessibilityRole="button" accessibilityLabel="Open your profile">
           <View style={styles.avatarBox}>
             <User size={22} color={Colors.white} strokeWidth={2} />
           </View>
@@ -88,7 +88,8 @@ const MoreScreen = () => {
             <Text style={styles.profileName}>{profile?.name ?? 'Operator'}</Text>
             <Text style={styles.profileRole}>{role ?? 'Operator'}</Text>
           </View>
-        </View>
+          <ChevronRight size={18} color={Colors.gray400} strokeWidth={2} />
+        </TouchableOpacity>
 
         {/* Grouped Menu Sections */}
         {MENU_SECTIONS.map((section) => (

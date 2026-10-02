@@ -310,11 +310,13 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
           {/* Account */}
           <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
             <View style={styles.account}>
-              <View style={styles.avatar}><Text style={styles.avatarText}>{initialsOf(name)}</Text></View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.name} numberOfLines={1}>{name}</Text>
-                <Text style={styles.role} numberOfLines={1}>{role ?? 'Operator'}</Text>
-              </View>
+              <TouchableOpacity style={styles.accountLink} onPress={() => go('/profile')} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Open your profile">
+                <View style={styles.avatar}><Text style={styles.avatarText}>{initialsOf(name)}</Text></View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.name} numberOfLines={1}>{name}</Text>
+                  <Text style={styles.role} numberOfLines={1}>{role ?? 'Operator'}</Text>
+                </View>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.signOut} onPress={handleSignOut} activeOpacity={0.7}>
                 <LogOut size={14} color="#B42318" strokeWidth={2} />
                 <Text style={styles.signOutText}>Sign out</Text>
@@ -393,6 +395,7 @@ const styles = StyleSheet.create({
   avatarText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
   name: { fontSize: 14, fontWeight: '600', color: ZINC.fg },
   role: { fontSize: 12, color: ZINC.muted },
+  accountLink: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
   signOut: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: ZINC.border, backgroundColor: '#FFFFFF' },
   signOutText: { fontSize: 13, fontWeight: '500', color: '#B42318' },
   version: { fontSize: 11, color: ZINC.faint, paddingHorizontal: 6 },

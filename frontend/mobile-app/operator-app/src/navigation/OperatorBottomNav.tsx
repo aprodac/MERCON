@@ -7,7 +7,7 @@
 import React, { useEffect, useRef } from 'react';
 import { View, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
-import { House, Truck, User, Ellipsis, Plus, type LucideIcon } from 'lucide-react-native';
+import { House, Truck, Users, Ellipsis, Plus, type LucideIcon } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Shadows } from '@mercon/mobile-shared/theme/tokens';
 
 export type OperatorTab = 'Home' | 'Trips' | 'Drivers' | 'More';
@@ -21,7 +21,7 @@ interface OperatorBottomNavProps {
 const DEFAULT_FAB_ROUTE = '/create-trip';
 
 const LEFT_TABS:  { label: 'Home' | 'Trips'; Icon: LucideIcon }[]   = [{ label: 'Home', Icon: House }, { label: 'Trips', Icon: Truck }];
-const RIGHT_TABS: { label: 'Drivers' | 'More'; Icon: LucideIcon }[] = [{ label: 'Drivers', Icon: User }, { label: 'More', Icon: Ellipsis }];
+const RIGHT_TABS: { label: 'Drivers' | 'More'; Icon: LucideIcon }[] = [{ label: 'Drivers', Icon: Users }, { label: 'More', Icon: Ellipsis }];
 
 const INACTIVE = 'rgba(238, 241, 246, 0.65)'; // Light Cool Gray (#EEF1F6) matching web dashboard sidebar text
 
