@@ -53,7 +53,7 @@ const formatPhoneForAuth = (raw: string, defaultCode: string = '+966'): string =
 const LoginScreen = () => {
   const router = useRouter();
   const { signIn } = useAuth();
-  const { language, openLanguageModal, t } = useLanguage();
+  const { language, openLanguageModal, t, tp } = useLanguage();
 
   const [selectedCountry, setSelectedCountry] = useState<CountryOption>(COUNTRIES[0]);
   const [showCountryModal, setShowCountryModal] = useState(false);
@@ -149,7 +149,7 @@ const LoginScreen = () => {
               label={t('label_password', 'Password or License Number')}
               value={secret}
               onChangeText={setSecret}
-              placeholder={t('placeholder_password', 'Enter password or license number')}
+              placeholder={tp('placeholder_password', 'Enter password or license number')}
               autoCapitalize="none"
               secureTextEntry={!showSecret}
               iconLeft={<Lock size={20} color={Colors.gray400} />}
