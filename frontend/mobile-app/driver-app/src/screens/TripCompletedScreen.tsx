@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, StatusBar, Image, TouchableOpacity, ScrollView, Share, Animated,
+  View, Text, StyleSheet, StatusBar, Image, TouchableOpacity, ScrollView, Share, Animated, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -44,6 +44,8 @@ const TripCompletedScreen = () => {
   
   const [selectedPhoto, setSelectedPhoto] = useState<any>(null);
   const [showDetails, setShowDetails] = useState<boolean>(false);
+  const [isSharing, setIsSharing] = useState<boolean>(false);
+  const summaryCardRef = useRef<View>(null);
   const [completedTrip, setCompletedTrip] = useState<MobileTrip | null>(null);
   const [localPickupPhotos, setLocalPickupPhotos] = useState<any[]>([]);
   const [localDeliveryPhotos, setLocalDeliveryPhotos] = useState<any[]>([]);
@@ -234,15 +236,61 @@ const TripCompletedScreen = () => {
   })();
 
   const handleShare = async () => {
+    if (isSharing) return;
+    setIsSharing(true);
     try {
-      const lines = [
-        `Trip ${tripIdDisplay} delivered${customerName ? ` to ${activeTrip?.customer?.name}` : ''}.`,
-        routeText ? `Route: ${routeText}` : null,
-        endIso ? `Completed: ${formattedDeliveryDate}` : null,
-      ].filter(Boolean);
-      await Share.share({ title: `MERCON Trip ${tripIdDisplay}`, message: lines.join('\n') });
+      let snapshotUri: string | null = null;
+      try {
+        const viewShot = require('react-native-view-shot');
+        if (viewShot && typeof viewShot.captureRef === 'function' && summaryCardRef.current) {
+          snapshotUri = await viewShot.captureRef(summaryCardRef, {
+            format: 'png',
+            quality: 0.95,
+            result: 'tmpfile',
+          });
+        }
+      } catch (shotErr) {
+        console.warn('captureRef error:', shotErr);
+      }
+
+      if (snapshotUri) {
+        let sharedViaExpo = false;
+        try {
+          const expoSharing = require('expo-sharing');
+          if (expoSharing && typeof expoSharing.isAvailableAsync === 'function') {
+            const available = await expoSharing.isAvailableAsync();
+            if (available && typeof expoSharing.shareAsync === 'function') {
+              await expoSharing.shareAsync(snapshotUri, {
+                mimeType: 'image/png',
+                dialogTitle: `MERCON Trip ${tripIdDisplay}`,
+                UTI: 'public.png',
+              });
+              sharedViaExpo = true;
+            }
+          }
+        } catch (shareErr) {
+          console.warn('expoSharing error:', shareErr);
+        }
+
+        if (!sharedViaExpo) {
+          await Share.share({
+            title: `MERCON Trip ${tripIdDisplay}`,
+            url: snapshotUri,
+            message: `Trip ${tripIdDisplay} delivered${customerName ? ` to ${activeTrip?.customer?.name}` : ''}.${routeText ? ` Route: ${routeText}` : ''}`,
+          });
+        }
+      } else {
+        const lines = [
+          `Trip ${tripIdDisplay} delivered${customerName ? ` to ${activeTrip?.customer?.name}` : ''}.`,
+          routeText ? `Route: ${routeText}` : null,
+          endIso ? `Completed: ${formattedDeliveryDate}` : null,
+        ].filter(Boolean);
+        await Share.share({ title: `MERCON Trip ${tripIdDisplay}`, message: lines.join('\n') });
+      }
     } catch {
       // silent
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -258,72 +306,79 @@ const TripCompletedScreen = () => {
       <SafeAreaView style={styles.cleanContainer}>
         <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <ScrollView contentContainerStyle={styles.cleanScroll} showsVerticalScrollIndicator={false}>
-          {/* Result */}
-          <View style={styles.cleanCheckWrapper}>
-            <View style={styles.checkRing}>
-              <View style={styles.cleanCheckCircle}>
-                <Check size={40} color="#FFFFFF" strokeWidth={3.8} />
-              </View>
-            </View>
-          </View>
-          <View style={styles.cleanHeaderGroup}>
-            <Text style={styles.cleanSubtitle}>{t('title_delivered_to', 'Delivered to')}</Text>
-            {customerName ? <Text style={styles.cleanCustomerName}>{customerName}</Text> : null}
-            <View style={styles.completedPill}>
-              <View style={styles.completedPillDot} />
-              <Text style={styles.completedPillText}>{completedPill}</Text>
-            </View>
-          </View>
-
-          {/* Trip details, grouped: label over value */}
-          <View style={styles.detailCard}>
-            {routeText ? (
-              <View style={styles.detailRow}>
-                <View style={styles.detailIcon}><MapPin size={17} color="#16A34A" strokeWidth={2.2} /></View>
-                <View style={styles.detailCol}>
-                  <Text style={styles.detailLabel}>{tr('Route', 'راستہ')}</Text>
-                  <Text style={styles.detailValue} numberOfLines={1}>{routeText}</Text>
+          {/* Shareable summary card — "Share screenshot" captures exactly this */}
+          <View
+            ref={summaryCardRef}
+            collapsable={false}
+            style={styles.shareableSummaryCard}
+          >
+            {/* Result */}
+            <View style={styles.cleanCheckWrapper}>
+              <View style={styles.checkRing}>
+                <View style={styles.cleanCheckCircle}>
+                  <Check size={40} color="#FFFFFF" strokeWidth={3.8} />
                 </View>
               </View>
-            ) : null}
-            <View style={styles.detailRow}>
-              <View style={styles.detailIcon}><Calendar size={17} color="#16A34A" strokeWidth={2.2} /></View>
-              <View style={styles.detailCol}>
-                <Text style={styles.detailLabel}>{tr('Date', 'تاریخ')}</Text>
-                <Text style={styles.detailValue}>{dayText ?? '—'}</Text>
+            </View>
+            <View style={styles.cleanHeaderGroup}>
+              <Text style={styles.cleanSubtitle}>{t('title_delivered_to', 'Delivered to')}</Text>
+              {customerName ? <Text style={styles.cleanCustomerName}>{customerName}</Text> : null}
+              <View style={styles.completedPill}>
+                <View style={styles.completedPillDot} />
+                <Text style={styles.completedPillText}>{completedPill}</Text>
               </View>
-              {durationText ? (
-                <View style={styles.detailColRight}>
-                  <Text style={styles.detailLabel}>{t('label_duration', 'Duration')}</Text>
-                  <Text style={styles.detailValue}>{durationText}</Text>
+            </View>
+
+            {/* Trip details, grouped: label over value */}
+            <View style={styles.detailCard}>
+              {routeText ? (
+                <View style={styles.detailRow}>
+                  <View style={styles.detailIcon}><MapPin size={17} color="#16A34A" strokeWidth={2.2} /></View>
+                  <View style={styles.detailCol}>
+                    <Text style={styles.detailLabel}>{tr('Route', 'راستہ')}</Text>
+                    <Text style={styles.detailValue} numberOfLines={1}>{routeText}</Text>
+                  </View>
                 </View>
               ) : null}
-            </View>
-            <View style={[styles.detailRow, styles.detailRowLast]}>
-              <View style={styles.detailIcon}><FileText size={17} color="#16A34A" strokeWidth={2.2} /></View>
-              <View style={styles.detailCol}>
-                <Text style={styles.detailLabel}>{t('label_trip_id', 'Trip ID')}</Text>
-                <Text style={styles.detailValue}>{tripIdDisplay}</Text>
+              <View style={styles.detailRow}>
+                <View style={styles.detailIcon}><Calendar size={17} color="#16A34A" strokeWidth={2.2} /></View>
+                <View style={styles.detailCol}>
+                  <Text style={styles.detailLabel}>{tr('Date', 'تاریخ')}</Text>
+                  <Text style={styles.detailValue}>{dayText ?? '—'}</Text>
+                </View>
+                {durationText ? (
+                  <View style={styles.detailColRight}>
+                    <Text style={styles.detailLabel}>{t('label_duration', 'Duration')}</Text>
+                    <Text style={styles.detailValue}>{durationText}</Text>
+                  </View>
+                ) : null}
               </View>
-              <View style={styles.detailColRight}>
-                <Text style={styles.detailLabel}>{tr('Photos', 'تصاویر')}</Text>
-                <Text style={styles.detailValue}>{language === 'ur' ? `${photoCount} محفوظ` : `${photoCount} saved`}</Text>
+              <View style={[styles.detailRow, styles.detailRowLast]}>
+                <View style={styles.detailIcon}><FileText size={17} color="#16A34A" strokeWidth={2.2} /></View>
+                <View style={styles.detailCol}>
+                  <Text style={styles.detailLabel}>{t('label_trip_id', 'Trip ID')}</Text>
+                  <Text style={styles.detailValue}>{tripIdDisplay}</Text>
+                </View>
+                <View style={styles.detailColRight}>
+                  <Text style={styles.detailLabel}>{tr('Photos', 'تصاویر')}</Text>
+                  <Text style={styles.detailValue}>{language === 'ur' ? `${photoCount} محفوظ` : `${photoCount} saved`}</Text>
+                </View>
               </View>
             </View>
-          </View>
 
-          {/* Earnings */}
-          {charge > 0 ? (
-            <View style={styles.chargeBox}>
-              <View>
-                <Text style={styles.chargeLabel}>{t('label_driver_charge', 'Driver charge')}</Text>
-                <Text style={styles.chargeSub}>{tr('Added to your earnings', 'آپ کی آمدنی میں شامل')}</Text>
+            {/* Earnings */}
+            {charge > 0 ? (
+              <View style={styles.chargeBox}>
+                <View>
+                  <Text style={styles.chargeLabel}>{t('label_driver_charge', 'Driver charge')}</Text>
+                  <Text style={styles.chargeSub}>{tr('Added to your earnings', 'آپ کی آمدنی میں شامل')}</Text>
+                </View>
+                <Text style={styles.chargeValue}>
+                  {formatCurrency(charge)}
+                </Text>
               </View>
-              <Text style={styles.chargeValue}>
-                {formatCurrency(charge)}
-              </Text>
-            </View>
-          ) : null}
+            ) : null}
+          </View>
 
           {/* What's next */}
           {nextTrip && nextTripText ? (
@@ -345,9 +400,22 @@ const TripCompletedScreen = () => {
         {/* Actions: two secondary side by side, Done full width */}
         <View style={styles.cleanActionBar}>
           <View style={styles.secondaryActionRow}>
-            <TouchableOpacity style={styles.cleanBtnShare} activeOpacity={0.8} onPress={handleShare}>
-              <Share2 size={15} color="#16A34A" strokeWidth={2.2} />
-              <Text style={styles.cleanBtnShareText} numberOfLines={1}>{t('action_share_screenshot', 'Share screenshot')}</Text>
+            <TouchableOpacity
+              style={[styles.cleanBtnShare, isSharing && { opacity: 0.7 }]}
+              activeOpacity={0.8}
+              onPress={handleShare}
+              disabled={isSharing}
+            >
+              {isSharing ? (
+                <ActivityIndicator size="small" color="#16A34A" />
+              ) : (
+                <Share2 size={15} color="#16A34A" strokeWidth={2.2} />
+              )}
+              <Text style={styles.cleanBtnShareText} numberOfLines={1}>
+                {isSharing
+                  ? (language === 'ur' ? 'تیار ہو رہا ہے...' : 'Preparing...')
+                  : t('action_share_screenshot', 'Share screenshot')}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cleanBtnDetails} activeOpacity={0.8} onPress={() => setShowDetails(true)}>
               <FileText size={16} color="#2563EB" strokeWidth={2.2} />
@@ -764,6 +832,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#166534',
+  },
+  shareableSummaryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    gap: 20,
   },
   detailCard: {
     backgroundColor: '#F8FAFC',
