@@ -173,24 +173,28 @@ export default function OwnerFolderPage() {
               {/* Row 1: Plate Number + Metadata Badges */}
               <div className="flex items-center gap-2.5 flex-wrap">
                 <h1 className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-slate-100 tracking-tight leading-none">
-                  {vehicle?.plate_number || (normalizedType === 'Vehicle' ? ownerName : 'VRA-5510')}
+                  {vehicle?.plate_number || ownerName}
                 </h1>
                 
                 {/* Vehicle Ref Code Tag */}
-                <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px] font-bold uppercase tracking-wider">
-                  {vehicle?.ref_id || 'TRK-110'}
-                </span>
+                {vehicle?.ref_id && (
+                  <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px] font-bold uppercase tracking-wider">
+                    {vehicle.ref_id}
+                  </span>
+                )}
 
                 {/* Capacity Tag */}
-                <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px] font-bold uppercase tracking-wider">
-                  {(vehicle?.capacity_kg ? vehicle.capacity_kg / 1000 : 10).toFixed(0)} TON
-                </span>
+                {vehicle?.capacity_kg ? (
+                  <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-[11px] font-bold uppercase tracking-wider">
+                    {(vehicle.capacity_kg / 1000).toFixed(0)} TON
+                  </span>
+                ) : null}
               </div>
 
               {/* Row 2: Subtitle Name & Phone */}
               {(() => {
                 const fullDName = activeDriverObj ? `${activeDriverObj.first_name} ${activeDriverObj.last_name}` : (normalizedType === 'Driver' ? ownerName : driverName);
-                const phoneNum = (activeDriverObj as any)?.phone || (activeDriverObj as any)?.phone_number || (assignedDriver as any)?.phone || '+966 50 123 4567';
+                const phoneNum = (activeDriverObj as any)?.phone_primary || (activeDriverObj as any)?.phone || (assignedDriver as any)?.phone_primary || (assignedDriver as any)?.phone || null;
 
                 return (
                   <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 flex-wrap">

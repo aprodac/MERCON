@@ -520,15 +520,15 @@ export default function DashboardPage() {
         : (t.is_third_party ? (t.third_party_driver_name?.[0] || t.thirdPartyProvider?.name?.[0] || '3P').toUpperCase() : 'UN');
       const vehiclePlate = t.vehicle?.plate_number || t.vehicle?.ref_id || (t.is_third_party ? (t.third_party_vehicle_plate || '3PL Truck') : 'VEH-PENDING');
 
-      const origin = (t.stops?.[0]?.location_name || t.rateCard?.route_origin || 'Riyadh Hub').replace(/\]+$/, '').trim();
-      const rawDest = (t.stops?.[t.stops.length - 1]?.location_name || t.rateCard?.route_destination || 'Jeddah Gateway').replace(/\]+$/, '').trim();
+      const origin = (t.stops?.[0]?.location_name || t.rateCard?.route_origin || '—').replace(/\]+$/, '').trim();
+      const rawDest = (t.stops?.[t.stops.length - 1]?.location_name || t.rateCard?.route_destination || '—').replace(/\]+$/, '').trim();
       // Strip "RETURN: Origin → " prefix — return trips encode destination as "RETURN: From → To"
       const destination = rawDest.includes('→')
         ? rawDest.split('→').pop()?.trim() || rawDest
         : rawDest.replace(/^RETURN:\s*/i, '').trim();
       const route = `${origin} → ${destination}`;
-      const customerName = t.customer?.name || 'Saudi Aramco Logistics';
-      const price = t.billing_amount ?? t.trip_charges ?? t.rateCard?.base_price ?? (t.planned_distance ? t.planned_distance * 3 : 2450);
+      const customerName = t.customer?.name || '—';
+      const price = t.billing_amount ?? t.trip_charges ?? t.rateCard?.base_price ?? null;
 
       const display = getTripDisplayStatus(t.status, (t as any).driver_workflow_state, t.planned_end, t.planned_start);
       const mappedStatus = display.label;
@@ -565,7 +565,7 @@ export default function DashboardPage() {
           : formatInDeploymentTz(t.createdAt, tz, 'd MMM'),
         eta: formattedEta,
         progress,
-        distance: `${t.planned_distance || 850} km`,
+        distance: t.planned_distance ? `${t.planned_distance} km` : '—',
         lat: coords[0],
         lng: coords[1],
         plate: vehiclePlate,

@@ -149,26 +149,26 @@ export default function DocumentsValidityFolder({
     const title = newDocTypeName.trim() || 'Custom Document';
     const newId = `new-veh-doc-${Date.now()}`;
 
-    let fileUrl = 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80';
-    let mimeType = 'image/jpeg';
-    if (selectedFile) {
-      fileUrl = URL.createObjectURL(selectedFile);
-      mimeType = selectedFile.type || (selectedFile.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+    if (!selectedFile) {
+      toast.error('Choose a file to add');
+      return;
     }
+    const fileUrl = URL.createObjectURL(selectedFile);
+    const mimeType = selectedFile.type || (selectedFile.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
 
     const newDoc = {
       id: newId,
       name: title,
       doc_type: title,
-      status: 'Verified',
-      expiry_date: '2027-12-31T00:00:00.000Z',
+      status: 'Pending',
+      expiry_date: null,
       file_url: fileUrl,
       mime_type: mimeType,
-      label: 'Valid (31 Dec 2027)',
-      badgeBg: 'bg-emerald-50',
-      badgeText: 'text-emerald-700',
-      badgeBorder: 'border-[#A7F3D0]',
-      dotColor: 'bg-[#16A34A]',
+      label: 'No Expiry',
+      badgeBg: 'bg-slate-50 dark:bg-slate-800/60',
+      badgeText: 'text-slate-600 dark:text-slate-400',
+      badgeBorder: 'border-slate-200/80 dark:border-slate-700',
+      dotColor: 'bg-slate-400',
     };
 
     setAddedLocalDocs((prev) => [...prev, newDoc]);

@@ -111,7 +111,8 @@ export default function UserManagementPage() {
         isSuperAdmin: u.isSuperAdmin,
         accountType: 'Web',
         status: u.status || 'Active',
-        lastLogin: idx === 0 ? 'Today, 10:24 AM' : idx % 2 === 0 ? '14 Sep 2026 08:12 PM' : '13 Sep 2026 11:05 AM',
+        // Sign-ins are not tracked yet — show a dash rather than an invented time.
+        lastLogin: '—',
         originalUser: u,
       }));
 
@@ -123,11 +124,11 @@ export default function UserManagementPage() {
         username: d.ref_id || d.phone_primary || 'driver',
         avatarUrl: getDriverAvatar(d.avatar_url, dName),
         phone: d.phone_primary || 'No phone',
-        email: d.ref_id ? `${d.ref_id}@mercon.app` : 'driver@mercon.app',
-        role: 'Operator',
+        email: '',
+        role: 'Driver',
         accountType: 'Driver App',
         status: d.status === 'Inactive' || !d.isActive ? 'Inactive' : 'Active',
-        lastLogin: d.hasAccountPassword ? '12 Sep 2026 04:20 PM' : 'Pending Password Setup',
+        lastLogin: d.hasAccountPassword ? '—' : 'Pending Password Setup',
         hasAccountPassword: Boolean(d.hasAccountPassword),
         originalDriver: d,
       };

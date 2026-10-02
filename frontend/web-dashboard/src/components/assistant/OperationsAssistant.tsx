@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { expenseService } from '@/services/expenseService';
 import { tripService, Trip } from '@/services/tripService';
+import { authStore } from '@/store/authStore';
+import { toast } from 'sonner';
 
 const HANDLED_REMINDERS_KEY = 'mercon_assistant_handled_reminders_v2';
 const SNOOZED_REMINDERS_KEY  = 'mercon_assistant_snoozed_reminders_v2';
@@ -34,8 +36,10 @@ export default function OperationsAssistant() {
   const [activeId,       setActiveId]       = useState<string | null>(null);
   const [visible,        setVisible]        = useState(false);
   const [panelView,      setPanelView]      = useState<PanelView>('question');
-  const [chargeAmount,   setChargeAmount]   = useState('150');
+  const [chargeAmount,   setChargeAmount]   = useState('');
   const [isSubmitting,   setIsSubmitting]   = useState(false);
+  const firstName = authStore.getUser()?.name?.trim().split(/\s+/)[0];
+  const greeting = firstName ? `Hey ${firstName}!` : 'Hey!';
   const [successMessage, setSuccessMessage] = useState('');
   const [selectedTimer,  setSelectedTimer]  = useState<number | null>(null);
 
@@ -177,8 +181,8 @@ export default function OperationsAssistant() {
         const hasLabor = ((t as any).charges?.length ?? 0) > 0;
         if (hasLabor) return;
 
-        pending.push({ id:rid, tripId:t.id, tripRef:t.ref_id||'TRP-0159',
-          type:'labor_charge', title:`Trip ${t.ref_id||'TRP-0159'} completed`,
+        pending.push({ id:rid, tripId:t.id, tripRef:t.ref_id||t.id,
+          type:'labor_charge', title:`Trip ${t.ref_id||t.id} completed`,
           question:'Was there any labor charge for this trip?' });
       });
 
@@ -215,7 +219,7 @@ export default function OperationsAssistant() {
 
   const dismiss = () => {
     setVisible(false);
-    setTimeout(() => { setPanelView('question'); setChargeAmount('150'); }, 500);
+    setTimeout(() => { setPanelView('question'); setChargeAmount(''); }, 500);
   };
 
   const handleYes = () => {
@@ -224,12 +228,20 @@ export default function OperationsAssistant() {
 
   const handleAddCharge = async () => {
     if (!activeReminder) return;
-    const amount = parseFloat(chargeAmount) || 150;
+    const amount = parseFloat(chargeAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a labour charge amount');
+      return;
+    }
     setIsSubmitting(true);
     try {
       await expenseService.create({ category:'Labor Charge', amount, status:'Paid',
         description:`Labor charge for completed trip ${activeReminder.tripRef}`, currency:'SAR' });
-    } catch { /**/ }
+    } catch {
+      toast.error('Could not record the labour charge. Please try again.');
+      setIsSubmitting(false);
+      return;
+    }
     setSuccessMessage(`SAR ${amount.toFixed(2)} recorded for ${activeReminder.tripRef}`);
     setPanelView('success');
     markHandled(activeReminder.id);
@@ -402,7 +414,7 @@ export default function OperationsAssistant() {
                   {reminders.length === 0 ? (
                     <div className="msg-in space-y-3">
                       <div className="space-y-1">
-                        <p className="text-[15px] font-bold text-slate-900">Hey Ian!</p>
+                        <p className="text-[15px] font-bold text-slate-900">{greeting}</p>
                         <p className="text-sm text-slate-700 leading-snug">
                           All caught up! No pending labor charges to add right now.
                         </p>
@@ -424,11 +436,11 @@ export default function OperationsAssistant() {
                       {panelView === 'question' && (
                         <div className="msg-in space-y-3.5">
                           <div className="space-y-1">
-                            <p className="text-[15px] font-bold text-slate-900">Hey Ian!</p>
+                            <p className="text-[15px] font-bold text-slate-900">{greeting}</p>
                             <p className="text-sm text-slate-700 leading-snug">
                               Trip{' '}
                               <strong className="text-[#E8450F] font-bold">
-                                {activeReminder?.tripRef ?? 'TRP-0159'}
+                                {activeReminder?.tripRef}
                               </strong>{' '}
                               has been completed.
                             </p>
@@ -480,7 +492,7 @@ export default function OperationsAssistant() {
                             <div className="relative flex-1">
                               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">SAR</span>
                               <Input type="number" value={chargeAmount} onChange={(e) => setChargeAmount(e.target.value)}
-                                placeholder="150" className="h-9 pl-11 rounded-xl text-xs font-bold border-slate-200 focus-visible:ring-[#E8450F]"/>
+                                placeholder="0" className="h-9 pl-11 rounded-xl text-xs font-bold border-slate-200 focus-visible:ring-[#E8450F]"/>
                             </div>
                             <button type="button" disabled={isSubmitting || !chargeAmount} onClick={handleAddCharge}
                               className="btn-hover h-9 px-4 rounded-xl bg-[#E8450F] hover:bg-[#d03d0c] disabled:opacity-60 text-white text-xs font-bold shrink-0 cursor-pointer">

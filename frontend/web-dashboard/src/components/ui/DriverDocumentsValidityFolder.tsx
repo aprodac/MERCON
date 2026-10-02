@@ -160,25 +160,22 @@ export default function DriverDocumentsValidityFolder({
     const title = newDocTypeName.trim() || 'Custom Document';
     const newId = `new-stack-doc-${Date.now()}`;
 
-    let fileUrl = 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?w=800&auto=format&fit=crop&q=80';
-    let mimeType = 'image/jpeg';
-    if (selectedFile) {
-      fileUrl = URL.createObjectURL(selectedFile);
-      mimeType = selectedFile.type || (selectedFile.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
+    if (!selectedFile) {
+      toast.error('Choose a file to add');
+      return;
     }
+    const fileUrl = URL.createObjectURL(selectedFile);
+    const mimeType = selectedFile.type || (selectedFile.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
 
     const newDoc = {
       id: newId,
       name: title,
       doc_type: title,
-      status: 'Verified',
-      expiry_date: '2027-12-31T00:00:00.000Z',
+      status: 'Pending',
+      expiry_date: null,
       file_url: fileUrl,
       mime_type: mimeType,
-      ai_extracted_json: {
-        document_number: newDocNumber || `SA-PAS-${Math.floor(100000 + Math.random() * 900000)}`,
-        issuing_authority: 'Saudi Regulatory Authority',
-      },
+      ai_extracted_json: newDocNumber ? { document_number: newDocNumber } : {},
     };
 
     setAddedLocalDocs((prev) => [...prev, newDoc]);

@@ -118,15 +118,35 @@ const CALCULATION_ITEMS: CalculationValueItem[] = [
 export type DateFilterOption = 'this_month' | 'today' | 'this_week' | 'last_month' | 'custom';
 export type ViewModeOption = 'Grid' | 'Bar' | 'Column' | 'Line' | 'Pie';
 
-// ─── SAMPLE REALISTIC DATABASE SEED FOR DEFAULT DEMO ──────────────────────
+/** yyyy-MM-dd in the browser's local calendar. */
+function ymd(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 
-const INITIAL_EXAMPLE_ROWS = [
-  { date: '15 Aug 2026', driver: 'Ahmed Khan', vehicle: 'MH12 AB 1234', status: 'Completed', tripCount: 12, revenue: 24500, tripCharges: 22000, thirdPartyCost: 3200 },
-  { date: '15 Aug 2026', driver: 'Rahul Sharma', vehicle: 'MH12 CD 5678', status: 'Completed', tripCount: 10, revenue: 19800, tripCharges: 17600, thirdPartyCost: 2600 },
-  { date: '16 Aug 2026', driver: 'Ahmed Khan', vehicle: 'MH12 AB 1234', status: 'Completed', tripCount: 14, revenue: 28700, tripCharges: 25500, thirdPartyCost: 3800 },
-  { date: '16 Aug 2026', driver: 'Imran Ali', vehicle: 'MH12 EF 9012', status: 'Completed', tripCount: 8, revenue: 16200, tripCharges: 14000, thirdPartyCost: 2100 },
-  { date: '17 Aug 2026', driver: 'Rahul Sharma', vehicle: 'MH12 CD 5678', status: 'Completed', tripCount: 9, revenue: 18300, tripCharges: 16200, thirdPartyCost: 2400 },
-];
+/** The start/end dates a date filter covers, sent to GET /reports/custom. */
+function rangeFor(filter: DateFilterOption, customStart: string, customEnd: string): { startDate?: string; endDate?: string } {
+  const now = new Date();
+  switch (filter) {
+    case 'today':
+      return { startDate: ymd(now), endDate: ymd(now) };
+    case 'this_week': {
+      const start = new Date(now);
+      start.setDate(now.getDate() - now.getDay());
+      return { startDate: ymd(start), endDate: ymd(now) };
+    }
+    case 'last_month':
+      return {
+        startDate: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)),
+        endDate: ymd(new Date(now.getFullYear(), now.getMonth(), 0)),
+      };
+    case 'custom':
+      return { startDate: customStart || undefined, endDate: customEnd || undefined };
+    case 'this_month':
+    default:
+      return { startDate: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), endDate: ymd(now) };
+  }
+}
 
 export default function CustomReportPage() {
   // 1. SELECT DATA STATE
@@ -166,13 +186,10 @@ export default function CustomReportPage() {
 
   // ── Query real backend data when needed ──
   const { data: realTripsData, isLoading: isQueryLoading, refetch: refetchTrips } = useQuery({
-    queryKey: ['custom-report-data', dateFilter, statusFilter, driverFilter, vehicleFilter],
+    queryKey: ['custom-report-data', dateFilter, customStartDate, customEndDate],
     queryFn: async () => {
       try {
-        const res = await reportsService.getCustomReport({
-          startDate: dateFilter === 'this_month' ? '2026-08-01' : undefined,
-          endDate: dateFilter === 'this_month' ? '2026-08-31' : undefined,
-        });
+        const res = await reportsService.getCustomReport(rangeFor(dateFilter, customStartDate, customEndDate));
         return res;
       } catch (err) {
         return null;
@@ -256,40 +273,24 @@ export default function CustomReportPage() {
     }));
   };
 
-  // Combined Rows Data (From backend or enriched example seed data)
+  // Rows straight from the backend — a missing value shows as a dash or 0, never an invented one.
   const combinedRows = useMemo(() => {
-    if (realTripsData?.trips && realTripsData.trips.length > 0) {
-      return realTripsData.trips.map(t => ({
-        date: t.date ? t.date.slice(0, 10) : '15 Aug 2026',
-        driver: t.driver || 'Ahmed Khan',
-        vehicle: t.vehicle || 'MH12 AB 1234',
-        status: t.status || 'Completed',
-        tripCount: 1,
-        revenue: Number(t.total_amount || t.billing_amount || 24500),
-        tripCharges: Number(t.trip_charges || 22000),
-        thirdPartyCost: Number(t.balance_amount || 3200),
-        tripId: t.ref_id || 'TRIP-101',
-        location: 'Jeddah Hub',
-        customerName: t.customer || 'MERCON Client',
-        receiver: t.receiver || 'Standard Depot',
-        carrierName: t.carrier_name || 'MERCON Fleet',
-        vehicleType: t.vehicle_type || '10 TON',
-        distance: 240,
-        extraCharges: Number(t.total_charges || 350),
-        balanceAmount: Number(t.balance_amount || 1500),
-      }));
-    }
-    return INITIAL_EXAMPLE_ROWS.map(row => ({
-      ...row,
-      tripId: 'TRIP-' + Math.floor(100 + Math.random() * 900),
-      location: 'Dammam Port',
-      customerName: 'Aramco Logistics',
-      receiver: 'Central Warehouse',
-      carrierName: 'MERCON Express',
-      vehicleType: 'Heavy Truck 16M',
-      distance: 350,
-      extraCharges: 750,
-      balanceAmount: 2500,
+    return (realTripsData?.trips || []).map(t => ({
+      date: t.date ? t.date.slice(0, 10) : '—',
+      driver: t.driver || '—',
+      vehicle: t.vehicle || '—',
+      status: t.status || '—',
+      tripCount: 1,
+      revenue: Number(t.total_amount || t.billing_amount || 0),
+      tripCharges: Number(t.trip_charges || 0),
+      thirdPartyCost: Number(t.balance_amount || 0),
+      tripId: t.ref_id || t.id,
+      customerName: t.customer || '—',
+      receiver: t.receiver || '—',
+      carrierName: t.carrier_name || '—',
+      vehicleType: t.vehicle_type || '—',
+      extraCharges: Number(t.total_charges || 0),
+      balanceAmount: Number(t.balance_amount || 0),
     }));
   }, [realTripsData]);
 
@@ -312,19 +313,27 @@ export default function CustomReportPage() {
     const avgRevenuePerTrip = totalTripsSum > 0 ? Math.round(totalRevenueSum / totalTripsSum) : 0;
 
     return {
-      totalTrips: totalTripsSum > 0 ? totalTripsSum : 53,
-      totalRevenue: totalRevenueSum > 0 ? totalRevenueSum : 107500,
-      totalTripCharges: totalTripChargesSum > 0 ? totalTripChargesSum : 95300,
-      totalThirdPartyCost: totalThirdPartyCostSum > 0 ? totalThirdPartyCostSum : 14100,
-      avgRevenuePerTrip: avgRevenuePerTrip > 0 ? avgRevenuePerTrip : 2028,
+      totalTrips: totalTripsSum,
+      totalRevenue: totalRevenueSum,
+      totalTripCharges: totalTripChargesSum,
+      totalThirdPartyCost: totalThirdPartyCostSum,
+      avgRevenuePerTrip,
     };
   }, [filteredDataRows]);
 
   // Pagination calculation
-  const totalEntries = filteredDataRows.length * 9; // Displaying realistic record total e.g. 45 entries
-  const totalPages = Math.ceil(totalEntries / itemsPerPage) || 9;
-  const startIndex = (currentPage - 1) * itemsPerPage + 1;
-  const endIndex = Math.min(currentPage * itemsPerPage, totalEntries);
+  const totalEntries = filteredDataRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalEntries / itemsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = totalEntries === 0 ? 0 : (safePage - 1) * itemsPerPage + 1;
+  const endIndex = Math.min(safePage * itemsPerPage, totalEntries);
+  const paginatedRows = filteredDataRows.slice((safePage - 1) * itemsPerPage, safePage * itemsPerPage);
+  // Page buttons: first, last, and the pages around the current one.
+  const pageButtons: (number | string)[] = [];
+  for (let p = 1; p <= totalPages; p++) {
+    if (p === 1 || p === totalPages || Math.abs(p - safePage) <= 1) pageButtons.push(p);
+    else if (pageButtons[pageButtons.length - 1] !== '...') pageButtons.push('...');
+  }
 
   // Dynamic Chart Dataset grouped by Driver
   const chartData = useMemo(() => {
@@ -351,9 +360,9 @@ export default function CustomReportPage() {
       r.vehicle,
       r.status,
       r.tripCount,
-      `₹${r.revenue.toLocaleString()}`,
-      `₹${r.tripCharges.toLocaleString()}`,
-      `₹${r.thirdPartyCost.toLocaleString()}`,
+      `SAR ${r.revenue.toLocaleString()}`,
+      `SAR ${r.tripCharges.toLocaleString()}`,
+      `SAR ${r.thirdPartyCost.toLocaleString()}`,
     ]);
 
     const title = 'MERCON Logistics - Custom Performance Report';
@@ -662,9 +671,6 @@ export default function CustomReportPage() {
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 outline-none focus:border-orange-500"
                     >
                       <option value="All">All</option>
-                      <option value="Ahmed Khan">Ahmed Khan</option>
-                      <option value="Rahul Sharma">Rahul Sharma</option>
-                      <option value="Imran Ali">Imran Ali</option>
                       {availableDrivers.map((d, i) => (
                         <option key={i} value={d}>{d}</option>
                       ))}
@@ -682,9 +688,6 @@ export default function CustomReportPage() {
                       className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 outline-none focus:border-orange-500"
                     >
                       <option value="All">All</option>
-                      <option value="MH12 AB 1234">MH12 AB 1234</option>
-                      <option value="MH12 CD 5678">MH12 CD 5678</option>
-                      <option value="MH12 EF 9012">MH12 EF 9012</option>
                       {availableVehicles.map((v, i) => (
                         <option key={i} value={v}>{v}</option>
                       ))}
@@ -802,7 +805,14 @@ export default function CustomReportPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200 font-medium">
-                        {filteredDataRows.map((row, idx) => (
+                        {paginatedRows.length === 0 && (
+                          <tr>
+                            <td colSpan={8} className="py-10 px-4 text-center text-xs text-slate-400">
+                              {isQueryLoading ? 'Loading trips…' : 'No trips in this period.'}
+                            </td>
+                          </tr>
+                        )}
+                        {paginatedRows.map((row, idx) => (
                           <tr key={idx} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors">
                             <td className="py-3 px-4 whitespace-nowrap">{row.date}</td>
                             <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">{row.driver}</td>
@@ -814,13 +824,13 @@ export default function CustomReportPage() {
                             </td>
                             <td className="py-3 px-4 text-center font-bold">{row.tripCount}</td>
                             <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                              ₹{row.revenue.toLocaleString()}
+                              SAR {row.revenue.toLocaleString()}
                             </td>
                             <td className="py-3 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
-                              ₹{row.tripCharges.toLocaleString()}
+                              SAR {row.tripCharges.toLocaleString()}
                             </td>
                             <td className="py-3 px-4 text-right font-mono text-slate-600 dark:text-slate-400">
-                              ₹{row.thirdPartyCost.toLocaleString()}
+                              SAR {row.thirdPartyCost.toLocaleString()}
                             </td>
                           </tr>
                         ))}
@@ -839,17 +849,17 @@ export default function CustomReportPage() {
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                        disabled={currentPage === 1}
+                        disabled={safePage === 1}
                         className="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <ChevronLeft className="w-4 h-4" />
                       </button>
 
-                      {[1, 2, 3, '...', 9].map((p, i) => {
+                      {pageButtons.map((p, i) => {
                         if (typeof p === 'string') {
                           return <span key={i} className="px-1 text-slate-400">...</span>;
                         }
-                        const isCurrent = currentPage === p;
+                        const isCurrent = safePage === p;
                         return (
                           <button
                             key={i}
@@ -867,7 +877,7 @@ export default function CustomReportPage() {
 
                       <button
                         onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                        disabled={currentPage === totalPages}
+                        disabled={safePage === totalPages}
                         className="w-8 h-8 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <ChevronRight className="w-4 h-4" />
@@ -889,7 +899,7 @@ export default function CustomReportPage() {
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                           <XAxis dataKey="name" stroke="#64748B" fontSize={11} />
                           <YAxis stroke="#64748B" fontSize={11} />
-                          <RechartsTooltip formatter={(v: any) => `₹${Number(v).toLocaleString()}`} />
+                          <RechartsTooltip formatter={(v: any) => `SAR ${Number(v).toLocaleString()}`} />
                           <Line type="monotone" dataKey="revenue" stroke="#F97316" strokeWidth={3} activeDot={{ r: 8 }} />
                         </LineChart>
                       ) : viewMode === 'Pie' ? (
@@ -902,13 +912,13 @@ export default function CustomReportPage() {
                             cy="50%"
                             outerRadius={90}
                             fill="#F97316"
-                            label={({ name, value }: any) => `${name}: ₹${((value || 0) / 1000).toFixed(1)}k`}
+                            label={({ name, value }: any) => `${name}: SAR ${((value || 0) / 1000).toFixed(1)}k`}
                           >
                             {chartData.map((_, index) => (
                               <Cell key={`cell-${index}`} fill={['#F97316', '#3B82F6', '#10B981', '#8B5CF6'][index % 4]} />
                             ))}
                           </Pie>
-                          <RechartsTooltip formatter={(v: any) => `₹${Number(v).toLocaleString()}`} />
+                          <RechartsTooltip formatter={(v: any) => `SAR ${Number(v).toLocaleString()}`} />
                         </PieChart>
                       ) : (
                         <BarChart data={chartData} layout={viewMode === 'Bar' ? 'vertical' : 'horizontal'}>
@@ -924,7 +934,7 @@ export default function CustomReportPage() {
                               <YAxis stroke="#64748B" fontSize={11} />
                             </>
                           )}
-                          <RechartsTooltip formatter={(v: any) => `₹${Number(v).toLocaleString()}`} />
+                          <RechartsTooltip formatter={(v: any) => `SAR ${Number(v).toLocaleString()}`} />
                           <Bar dataKey="revenue" fill="#F97316" radius={[6, 6, 0, 0]} />
                         </BarChart>
                       )}
@@ -958,7 +968,7 @@ export default function CustomReportPage() {
                       Total Revenue
                     </p>
                     <h4 className="text-xl font-black text-emerald-600 dark:text-emerald-400">
-                      ₹{dynamicKpiSummary.totalRevenue.toLocaleString()}
+                      SAR {dynamicKpiSummary.totalRevenue.toLocaleString()}
                     </h4>
                   </div>
 
@@ -968,7 +978,7 @@ export default function CustomReportPage() {
                       Total Driver Charges
                     </p>
                     <h4 className="text-xl font-black text-slate-900 dark:text-slate-100">
-                      ₹{dynamicKpiSummary.totalTripCharges.toLocaleString()}
+                      SAR {dynamicKpiSummary.totalTripCharges.toLocaleString()}
                     </h4>
                   </div>
 
@@ -978,7 +988,7 @@ export default function CustomReportPage() {
                       Total Third-Party Cost
                     </p>
                     <h4 className="text-xl font-black text-slate-900 dark:text-slate-100">
-                      ₹{dynamicKpiSummary.totalThirdPartyCost.toLocaleString()}
+                      SAR {dynamicKpiSummary.totalThirdPartyCost.toLocaleString()}
                     </h4>
                   </div>
 
@@ -988,7 +998,7 @@ export default function CustomReportPage() {
                       Average Revenue / Trip
                     </p>
                     <h4 className="text-xl font-black text-orange-600 dark:text-orange-400">
-                      ₹{dynamicKpiSummary.avgRevenuePerTrip.toLocaleString()}
+                      SAR {dynamicKpiSummary.avgRevenuePerTrip.toLocaleString()}
                     </h4>
                   </div>
                 </div>
@@ -1012,8 +1022,8 @@ export default function CustomReportPage() {
                     <BarChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E2E8F0" />
                       <XAxis dataKey="name" stroke="#64748B" fontSize={11} />
-                      <YAxis stroke="#64748B" fontSize={11} tickFormatter={(v) => `₹${v/1000}k`} />
-                      <RechartsTooltip formatter={(v: any) => `₹${Number(v).toLocaleString()}`} />
+                      <YAxis stroke="#64748B" fontSize={11} tickFormatter={(v) => `SAR ${v/1000}k`} />
+                      <RechartsTooltip formatter={(v: any) => `SAR ${Number(v).toLocaleString()}`} />
                       <Bar dataKey="revenue" fill="#F97316" radius={[8, 8, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
