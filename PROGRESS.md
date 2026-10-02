@@ -994,6 +994,7 @@ Owner: check every driver-app screen in Urdu and Urdu/English, fix what's messed
 - ✅ Removed made-up "Duty Status: Active — You have 42 hours logged this week" card from Performance
 - ✅ Driver + operator app typecheck; driver lint unchanged from dev (6 pre-existing errors)
 - ⬜ Look on a real Android phone (Urdu font rendering can differ from the browser)
+- ⬜ Photo screens (loading / POD / stop photos): review + changes needed written up in `docs/DRIVER_APP_PHOTO_SCREENS.md` — not implemented yet
 
 ### Customers pages UI/UX redesign — 🔄 built 2026-10-02 (branch `customers-ux`), not yet on dev
 
