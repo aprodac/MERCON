@@ -12,13 +12,12 @@ import { Input } from '@/components/ui/input';
 import { useModuleEnabled } from '@/components/auth/RequireModule';
 import { LOCATION_COLUMNS } from '@/utils/importUtils';
 import { cn } from '@/lib/utils';
+import { isExactPin } from '@/components/locations/PinChip';
 import { Badge, EmptyBlock, Panel, ui, type UiTone } from '@/components/customers/customerUi';
 
-const PRECISION: Record<string, { tone: UiTone; label: string }> = {
-  EXACT: { tone: 'emerald', label: 'Exact GPS' },
-  APPROXIMATE: { tone: 'blue', label: 'Area' },
-  UNKNOWN: { tone: 'amber', label: 'Not pinned' },
-};
+// Same two states as everywhere else (PinChip): exact, or a pin is still needed.
+const PIN_EXACT: { tone: UiTone; label: string } = { tone: 'emerald', label: 'Exact' };
+const PIN_NEEDED: { tone: UiTone; label: string } = { tone: 'amber', label: 'Pin needed' };
 
 /** Customer → Locations: their saved pickup / delivery places, used by quotations and trips. */
 export default function CustomerLocationsTab({ customerId, locations }: { customerId: string; locations: Location[] }) {
@@ -90,7 +89,7 @@ export default function CustomerLocationsTab({ customerId, locations }: { custom
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {shown.map((l) => {
-                const p = PRECISION[l.coordinate_precision || (l.lat != null && l.lng != null ? 'EXACT' : 'UNKNOWN')] ?? PRECISION.UNKNOWN;
+                const p = isExactPin(l.coordinate_precision, l.lat, l.lng) ? PIN_EXACT : PIN_NEEDED;
                 return (
                   <tr
                     key={l.id}

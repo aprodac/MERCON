@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { MapPin, Search, Building2, Check, Loader2, Map as MapIcon, X, AlertTriangle, CheckCircle2, Info } from 'lucide-react';
+import { MapPin, Search, Building2, Check, Loader2, Map as MapIcon, X, CheckCircle2 } from 'lucide-react';
 import TripStopMap from '@/components/trips/TripStopMap';
 import { locationService, Location, CoordinatePrecision } from '@/services/locationService';
 import {
@@ -290,11 +290,9 @@ export default function TripLocationField({
                   'h-10 w-10 shrink-0 rounded-xl border flex items-center justify-center transition-all cursor-pointer',
                   currentPrecision === 'EXACT'
                     ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:border-emerald-800'
-                    : currentPrecision === 'APPROXIMATE'
-                    ? 'border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-800'
                     : 'border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:border-amber-800'
                 )}
-                title={hasCoords ? "Adjust pin on map" : "Add / Resolve Location Pin"}
+                title={currentPrecision === 'EXACT' ? 'Move the pin' : 'Set the exact pin'}
               >
                 <MapIcon className="w-4 h-4" />
               </button>
@@ -330,7 +328,7 @@ export default function TripLocationField({
                     className="w-full h-8 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
-                    Set Exact Trip Location
+                    Save pin
                   </Button>
                 </div>
               )}
@@ -379,14 +377,9 @@ export default function TripLocationField({
                             Exact
                           </Badge>
                         )}
-                        {locPrec === 'APPROXIMATE' && (
-                          <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[9px] font-bold">
-                            Area
-                          </Badge>
-                        )}
-                        {locPrec === 'UNKNOWN' && (
-                          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[9px] font-bold">
-                            Not Pinned
+                        {locPrec !== 'EXACT' && (
+                          <Badge variant="outline" className="bg-amber-50 text-amber-800 border-amber-200 text-[9px] font-bold">
+                            Pin needed
                           </Badge>
                         )}
                         {locationId === loc.id && <Check className="w-4 h-4 text-brand shrink-0" />}
@@ -424,29 +417,19 @@ export default function TripLocationField({
 
       <PasteLocationStatus status={paste.status} />
 
-      {/* Non-blocking Precision Banners (Phase 10C.1 Specification #7) */}
-      {currentPrecision === 'APPROXIMATE' && (
-        <div className="p-2.5 rounded-xl bg-indigo-50/90 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/60 text-xs text-indigo-900 dark:text-indigo-200 flex items-start gap-2">
-          <Info className="w-4 h-4 shrink-0 text-indigo-600 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <span className="font-bold block">Area location</span>
-            <span className="text-[11px] text-indigo-800 dark:text-indigo-300">
-              Approximate location — navigation will take the driver to the known area. Confirm the facility on arrival.
-            </span>
-          </div>
-        </div>
-      )}
-
-      {currentPrecision === 'UNKNOWN' && (
-        <div className="p-2.5 rounded-xl bg-amber-50/90 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <span className="font-bold block">Coordinates unavailable</span>
-            <span className="text-[11px] text-amber-800 dark:text-amber-300">
-              Coordinates unavailable — navigation is not available for this stop.
-            </span>
-          </div>
-        </div>
+      {/* Never blocks: the exact site is often only known later, and can be
+          pinned from the trip, the Locations list or the operator app. */}
+      {currentPrecision !== 'EXACT' && (
+        <button
+          type="button"
+          onClick={() => setIsMapOpen(true)}
+          className="flex w-full items-center gap-1.5 rounded-lg px-1 text-left text-[11px] text-amber-800 dark:text-amber-300"
+        >
+          <MapPin className="size-3 shrink-0" />
+          <span>
+            <span className="font-semibold">Pin needed</span> — ETA is a guess until the exact pin is set. Set it now, or later from the trip.
+          </span>
+        </button>
       )}
 
       {resolvedAddress && (

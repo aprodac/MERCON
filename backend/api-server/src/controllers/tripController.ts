@@ -18,6 +18,7 @@ import { recordAssignmentEvent } from '../services/fleetDispatchService';
 import { buildTripRouteTimeline, isRouteLocked, buildTripStops } from '../services/tripRouteTimeline';
 import { parseFullTripStops } from '../services/legacyStopStringParser';
 import { writeTripStops } from '../services/tripStopWriter';
+import { pinTripStop, PinError } from '../services/locationPin';
 import { whatsappService } from '../services/whatsappService';
 import { getTripMediaPurge } from '../services/media/tripMediaRetention';
 
@@ -1995,6 +1996,34 @@ export const updateTripStop = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error({ err: error }, 'Failed to update trip stop');
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to update this stop' } });
+  }
+};
+
+/**
+ * POST /trips/:id/stops/:stopId/pin — the "Set pin" box on a stop. Allowed
+ * while the trip is running (that is when a wrong pin costs the most: ETA and
+ * arrival detection both read it); refused once the trip is closed.
+ */
+export const pinStop = async (req: Request, res: Response) => {
+  try {
+    const { id: rawTripId, stopId } = req.params as { id: string; stopId: string };
+    const tripId = isUuid(rawTripId) ? rawTripId : (await resolveTripId(rawTripId));
+    if (!tripId) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+    const userId = getValidUuid((req as any).user?.id);
+    const { lat, lng, address } = req.body;
+    const result = await prisma.$transaction((tx) => pinTripStop(tx, tripId, stopId, { lat, lng, address }, userId));
+    res.json({
+      success: true,
+      data: { stop: result.stop, location_pinned: result.locationPinned, other_trip_count: result.otherTripIds.length },
+    });
+  } catch (error) {
+    if (error instanceof PinError) {
+      return res.status(error.status).json({ success: false, error: { code: error.code, message: error.message } });
+    }
+    logger.error({ err: error }, 'Failed to pin trip stop');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to save the pin' } });
   }
 };
 

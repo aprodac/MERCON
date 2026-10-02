@@ -8,7 +8,7 @@ import 'leaflet/dist/leaflet.css';
 import {
   MapPin, Plus, RotateCw, Edit2, Trash2, MoreHorizontal,
   Download, FileSpreadsheet, FileText, UploadCloud,
-  Building2, List, Map as MapIcon, Check,
+  Building2, List, Map as MapIcon,
   Search, Filter, X, ArrowDown, ArrowUp,
   ChevronDown, Eye, MessageSquare,
 } from 'lucide-react';
@@ -18,6 +18,8 @@ import DataTable from '@/components/ui/DataTable';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import LocationFormDialog from '@/components/locations/LocationFormDialog';
+import PinChip, { isExactPin } from '@/components/locations/PinChip';
+import SetPinDialog from '@/components/locations/SetPinDialog';
 import ExcelImportDialog from '@/components/fleet/ExcelImportDialog';
 import { LOCATION_COLUMNS } from '@/utils/importUtils';
 
@@ -134,6 +136,12 @@ export default function LocationListPage() {
   const [search, setSearch] = useState('');
   const [filter] = useState<'all' | 'pinned' | 'unpinned' | 'active' | 'inactive' | 'exact' | 'approximate' | 'unknown'>('all');
   const [sortOrder] = useState<LocationSortOption>('code_asc');
+  // "Pin needed" — the to-do list of locations whose ETA / arrival can't be trusted yet.
+  const pinNeededOnly = searchParams.get('pins') === 'needed';
+  const setPinNeededOnly = (on: boolean) => {
+    setSearchParams(prev => { const n = new URLSearchParams(prev); if (on) n.set('pins', 'needed'); else n.delete('pins'); return n; });
+  };
+  const [pinTarget, setPinTarget] = useState<Location | null>(null);
   const [isAddOpen, setIsAddOpen] = useState(false);
 
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -181,6 +189,7 @@ export default function LocationListPage() {
         else if (filter === 'unknown')     matchesFilter = l.coordinate_precision === 'UNKNOWN';
         else if (filter === 'active')      matchesFilter = l.is_active === true;
         else if (filter === 'inactive')    matchesFilter = l.is_active === false;
+        if (pinNeededOnly && isExactPin(l.coordinate_precision, l.lat, l.lng)) return false;
         return matchesCustomer && matchesTerm && matchesFilter;
       })
       .sort((a, b) => {
@@ -192,7 +201,19 @@ export default function LocationListPage() {
         const dB = new Date(b.createdAt || 0).getTime();
         return sortOrder === 'oldest' ? dA - dB : dB - dA;
       });
-  }, [locations, selectedCustomerId, search, filter, sortOrder]);
+  }, [locations, selectedCustomerId, search, filter, sortOrder, pinNeededOnly]);
+
+  const pinNeededCount = useMemo(
+    () => locations.filter(l => l.is_active && !isExactPin(l.coordinate_precision, l.lat, l.lng)).length,
+    [locations]
+  );
+
+  const savePin = async (loc: Location, pin: { lat: number; lng: number; address?: string | null }) => {
+    const r = await locationService.pin(loc.id, pin);
+    const n = r.updated_trip_count;
+    toast.success(`Pin saved for ${loc.name}${n > 0 ? ` · ${n} open trip${n === 1 ? '' : 's'} updated` : ''}`);
+    queryClient.invalidateQueries({ queryKey: ['locations'] });
+  };
 
 
 
@@ -284,31 +305,11 @@ export default function LocationListPage() {
       ),
     },
     {
-      header: 'Precision / Map Pin',
-      className: 'w-[18%] min-w-[140px]',
-      accessor: (row: Location) => {
-        const prec = row.coordinate_precision || (row.lat != null ? 'APPROXIMATE' : 'UNKNOWN');
-        return (
-          <div className="flex flex-col gap-1">
-            {prec === 'EXACT' && (
-              <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 font-bold text-[10px] w-fit flex items-center gap-1">
-                <Check className="w-3 h-3 text-emerald-600" />
-                <span>Exact ({row.lat!.toFixed(3)}, {row.lng!.toFixed(3)})</span>
-              </Badge>
-            )}
-            {prec === 'APPROXIMATE' && (
-              <Badge className="bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 font-bold text-[10px] w-fit flex items-center gap-1">
-                <span>Area ({row.lat!.toFixed(3)}, {row.lng!.toFixed(3)})</span>
-              </Badge>
-            )}
-            {prec === 'UNKNOWN' && (
-              <Badge variant="outline" className="bg-amber-50/80 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 font-bold text-[10px] w-fit flex items-center gap-1">
-                <span>○ Not pinned</span>
-              </Badge>
-            )}
-          </div>
-        );
-      },
+      header: 'Pin',
+      className: 'w-[120px]',
+      accessor: (row: Location) => (
+        <PinChip exact={isExactPin(row.coordinate_precision, row.lat, row.lng)} onClick={() => setPinTarget(row)} />
+      ),
     },
     {
       header: 'Status',
@@ -449,6 +450,20 @@ export default function LocationListPage() {
           </SelectGroup>
         </SelectContent>
       </Select>
+      <button
+        type="button"
+        onClick={() => setPinNeededOnly(!pinNeededOnly)}
+        className={cn(
+          'h-9 px-3 rounded-lg border text-xs font-semibold inline-flex items-center gap-1.5 transition-colors',
+          pinNeededOnly
+            ? 'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
+            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
+        )}
+      >
+        <MapPin className="h-3.5 w-3.5" />
+        Pin needed
+        <span className="rounded-full bg-amber-100 px-1.5 text-[10px] text-amber-800 dark:bg-amber-900 dark:text-amber-200">{pinNeededCount}</span>
+      </button>
     </div>
   );
 
@@ -752,6 +767,15 @@ export default function LocationListPage() {
         defaultCustomerId={selectedCustomerId !== 'all' ? selectedCustomerId : undefined}
       />
 
+      <SetPinDialog
+        open={!!pinTarget}
+        onOpenChange={(o) => !o && setPinTarget(null)}
+        placeName={pinTarget?.name ?? ''}
+        lat={pinTarget?.lat ?? null}
+        lng={pinTarget?.lng ?? null}
+        footnote="Open trips still on the old guess are updated too."
+        onSave={(pin) => savePin(pinTarget!, pin)}
+      />
       <ConfirmModal
         isOpen={confirmModal.isOpen}
         onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}

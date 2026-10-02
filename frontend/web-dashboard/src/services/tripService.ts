@@ -224,6 +224,8 @@ export interface TripStop {
   stop_type: 'Pickup' | 'Dropoff' | 'Rest' | 'Refuel';
   location_lat: number;
   location_lng: number;
+  /** How sure the pin is — anything but EXACT shows as "Pin needed". */
+  location_coordinate_precision?: 'EXACT' | 'APPROXIMATE' | 'UNKNOWN' | null;
   /** Short label for the exact yard — "Khamis Sorting Center". */
   location_name: string | null;
   /** Its full postal address. This is what the driver's app shows. */
@@ -523,6 +525,22 @@ export const tripService = {
     }
   ): Promise<TripStop> {
     const res = await api.patch<ApiResponse<TripStop>>(`/trips/${tripId}/stops/${stopId}`, payload);
+    return res.data.data;
+  },
+
+  /**
+   * Pin a stop exactly. When the stop is its customer location (and that isn't
+   * pinned yet) the location and its other open trips are pinned too.
+   */
+  async pinStop(
+    tripId: string,
+    stopId: string,
+    pin: { lat: number; lng: number; address?: string | null }
+  ): Promise<{ stop: TripStop; location_pinned: boolean; other_trip_count: number }> {
+    const res = await api.post<ApiResponse<{ stop: TripStop; location_pinned: boolean; other_trip_count: number }>>(
+      `/trips/${tripId}/stops/${stopId}/pin`,
+      pin
+    );
     return res.data.data;
   },
 

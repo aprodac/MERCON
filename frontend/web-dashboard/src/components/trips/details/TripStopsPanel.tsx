@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import { toast } from 'sonner';
 import { Check, CheckCheck, Clock3, Play, RefreshCw, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
@@ -10,7 +12,9 @@ import { ShareUpdateDialog } from '@/components/dashboard/inbox/ShareUpdateDialo
 import { shortAgo } from '@/components/dashboard/inbox/inboxText';
 import { operatorInboxService, type DriverUpdate } from '@/services/operatorInboxService';
 import type { TripPhase } from '@/services/fleetLiveService';
-import type { Trip, TripStop } from '@/services/tripService';
+import { tripService, type Trip, type TripStop } from '@/services/tripService';
+import PinChip, { isExactPin } from '@/components/locations/PinChip';
+import SetPinDialog from '@/components/locations/SetPinDialog';
 import { STAGE_LABEL, minutesLate, timeReviewOf, toLightboxItems } from './stopEvidence';
 
 /** Arrival within this many minutes of the plan counts as on time. */
@@ -23,10 +27,24 @@ interface Props {
   formatTime: (iso: string) => string;
   formatDateTime: (iso: string) => string;
   onEvidenceUpdated: () => void;
+  /** A stop was pinned — the page reloads the trip (ETA and map read the pin). */
+  onPinned?: () => void;
   /** State-specific block above the stops (pre-trip checks, trip summary, …). */
   top?: React.ReactNode;
   /** Shown after the stops (the page puts the trip's paperwork here). */
   bottom?: React.ReactNode;
+}
+
+/**
+ * Whether pinning this stop also pins its customer location — when the stop is
+ * that place, not a yard inside a lane endpoint (mirrors the API's isSamePlace).
+ * The API additionally keeps an already-exact location unless this stop still
+ * held its pin; the footnote only promises the common case.
+ */
+function sharesCustomerPin(s: TripStop): boolean {
+  if (!s.location) return false;
+  const slug = (v: string) => v.trim().toLowerCase().replace(/\s+/g, ' ');
+  return !s.location_name?.trim() || slug(s.location_name) === slug(s.location.name);
 }
 
 function stopTitle(s: TripStop, i: number): string {
@@ -39,8 +57,10 @@ function stopTitle(s: TripStop, i: number): string {
  * grouped by step (Loaded, Arrived, Delivered · POD, Delay) with a Send button
  * that forwards them on WhatsApp and remembers who already did.
  */
-export default function TripStopsPanel({ trip, phase, documents, formatTime, formatDateTime, onEvidenceUpdated, top, bottom }: Props) {
+export default function TripStopsPanel({ trip, phase, documents, formatTime, formatDateTime, onEvidenceUpdated, onPinned, top, bottom }: Props) {
   const [sharing, setSharing] = useState<DriverUpdate | null>(null);
+  const [pinning, setPinning] = useState<TripStop | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [viewer, setViewer] = useState<{ items: LightboxPhotoItem[]; index: number } | null>(null);
 
   const { data } = useQuery({
@@ -53,6 +73,31 @@ export default function TripStopsPanel({ trip, phase, documents, formatTime, for
   const stops = useMemo(() => [...(trip.stops ?? [])].sort((a, b) => a.stop_sequence - b.stop_sequence), [trip.stops]);
   const nextIndex = phase === 'active' ? stops.findIndex((s) => !s.actual_arrival) : -1;
   const doneCount = stops.filter((s) => s.actual_arrival).length;
+  // A finished trip is a record — its stops can't be re-pinned (the API refuses too).
+  const canPin = phase === 'planned' || phase === 'active';
+
+  // The dashboard's "Pin needed" alert links here with ?pin=<stopId>.
+  const pinParam = searchParams.get('pin');
+  useEffect(() => {
+    if (!pinParam || !canPin) return;
+    const target = stops.find((s) => s.id === pinParam) ?? stops.find((s) => !s.actual_arrival && !isExactPin(s.location_coordinate_precision, s.location_lat, s.location_lng));
+    if (target) setPinning(target);
+    const next = new URLSearchParams(searchParams);
+    next.delete('pin');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinParam, canPin, stops]);
+
+  const savePin = async (stop: TripStop, pin: { lat: number; lng: number; address?: string | null }) => {
+    const r = await tripService.pinStop(trip.id, stop.id, pin);
+    const others = r.other_trip_count;
+    toast.success(
+      r.location_pinned
+        ? `Pin saved for ${stop.location?.name || stop.location_name || 'this location'}${others > 0 ? ` and ${others} other open trip${others === 1 ? '' : 's'}` : ''}`
+        : 'Pin saved'
+    );
+    onPinned?.();
+  };
 
   const updatesFor = (stopId: string | null) => updates.filter((u) => (u.stop?.id ?? null) === stopId);
   const unplaced = updatesFor(null);
@@ -91,7 +136,12 @@ export default function TripStopsPanel({ trip, phase, documents, formatTime, for
                   {done || phase === 'done' ? <Check className="size-3.5" strokeWidth={3} /> : i + 1}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className={cn('truncate text-sm', isNext ? 'font-semibold text-foreground' : 'font-medium text-foreground')}>{name}</p>
+                  <div className="flex items-center gap-2">
+                    <p className={cn('min-w-0 truncate text-sm', isNext ? 'font-semibold text-foreground' : 'font-medium text-foreground')}>{name}</p>
+                    {canPin && !done && (
+                      <PinChip exact={isExactPin(s.location_coordinate_precision, s.location_lat, s.location_lng)} onClick={() => setPinning(s)} />
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     {s.stop_type}
                     {s.actual_arrival
@@ -134,6 +184,15 @@ export default function TripStopsPanel({ trip, phase, documents, formatTime, for
         {bottom}
       </div>
 
+      <SetPinDialog
+        open={!!pinning}
+        onOpenChange={(o) => !o && setPinning(null)}
+        placeName={pinning ? stopTitle(pinning, stops.indexOf(pinning)) : ''}
+        lat={pinning && (pinning.location_lat || pinning.location_lng) ? pinning.location_lat : null}
+        lng={pinning && (pinning.location_lat || pinning.location_lng) ? pinning.location_lng : null}
+        footnote={pinning && sharesCustomerPin(pinning) ? `Also saved to ${pinning.location!.name}, so other open and future trips use it.` : undefined}
+        onSave={(pin) => savePin(pinning!, pin)}
+      />
       {sharing && <ShareUpdateDialog update={sharing} apiAvailable={!!data?.whatsapp_api_available} onClose={() => setSharing(null)} />}
       <EvidenceLightboxModal
         isOpen={!!viewer}

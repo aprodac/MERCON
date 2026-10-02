@@ -49,9 +49,11 @@ export interface OperatorTripStop {
   stop_type: string;
   location_lat: number;
   location_lng: number;
+  /** EXACT, or a guess (APPROXIMATE / UNKNOWN / null) that still needs a pin. */
+  location_coordinate_precision?: 'EXACT' | 'APPROXIMATE' | 'UNKNOWN' | null;
   location_name: string | null;
   /** The saved place, when the stop was picked from Locations. */
-  location?: { name?: string | null; code?: string | null; city?: string | null } | null;
+  location?: { id?: string; name?: string | null; code?: string | null; city?: string | null } | null;
   planned_arrival: string | null;
   actual_arrival: string | null;
   actual_departure: string | null;
@@ -902,6 +904,33 @@ export const operatorService = {
   ): Promise<OperatorTripStop> {
     const { data } = await api.patch(`/trips/${tripId}/stops/${stopId}/confirm-time`, payload);
     return data.data as OperatorTripStop;
+  },
+
+  /**
+   * Pin a stop exactly — same endpoint as the web's "Set pin" box. When the
+   * stop is its customer location (not pinned yet), that location and its
+   * other open trips are pinned too.
+   */
+  async pinStop(
+    tripId: string,
+    stopId: string,
+    pin: { lat: number; lng: number; address?: string | null }
+  ): Promise<{ location_pinned: boolean; other_trip_count: number }> {
+    const { data } = await api.post(`/trips/${tripId}/stops/${stopId}/pin`, pin);
+    return data.data;
+  },
+
+  /** A pasted Google Maps / WhatsApp link or "lat, lng" → a pin (resolved by the API). */
+  async resolveLocationText(text: string): Promise<{ lat: number; lng: number; address?: string }> {
+    const { data } = await api.get('/geocoding/resolve-location', { params: { text } });
+    return data;
+  },
+
+  /** Place search (Saudi Arabia). */
+  async searchPlaces(q: string): Promise<{ id: string; label: string; lat: number; lng: number }[]> {
+    const { data } = await api.get('/geocoding/search', { params: { q } });
+    return ((data?.suggestions ?? []) as { id: string; display_name: string; lat: number; lon: number }[])
+      .map((r) => ({ id: r.id, label: r.display_name, lat: r.lat, lng: r.lon }));
   },
 
   /** Every truck/driver with a running or scheduled trip and its GPS — the web's live map. */

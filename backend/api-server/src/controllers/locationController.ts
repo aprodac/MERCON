@@ -3,6 +3,8 @@ import { Prisma, CoordinatePrecision } from '@prisma/client';
 import { prisma } from '../db';
 import { getValidUuid } from '../utils/uuid';
 import { buildSearchAnd } from '../utils/search';
+import { pinLocation } from '../services/locationPin';
+import { logger } from '../utils/logger';
 
 const LOCATION_SEARCH_FIELDS = ['name', 'code', 'address', 'city'];
 
@@ -784,5 +786,26 @@ export const deleteLocation = async (req: Request, res: Response) => {
     res.json({ success: true, message: 'Location deleted successfully' });
   } catch (error: any) {
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message || 'Failed to delete location' } });
+  }
+};
+
+/**
+ * POST /locations/:id/pin — the "Set pin" box on a customer location. Saves the
+ * pin as exact and carries it to open trips still on the old guess.
+ */
+export const pinLocationHandler = async (req: Request, res: Response) => {
+  try {
+    const id = getValidUuid(req.params.id as string);
+    const existing = id ? await prisma.location.findFirst({ where: { id, deletedAt: null } }) : null;
+    if (!existing) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Location not found' } });
+    }
+    const userId = getValidUuid((req as any).user?.id);
+    const { lat, lng, address } = req.body;
+    const result = await prisma.$transaction((tx) => pinLocation(tx, existing.id, { lat, lng, address }, userId));
+    res.json({ success: true, data: { location: result.location, updated_trip_count: result.tripIds.length } });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to pin location');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to save the pin' } });
   }
 };

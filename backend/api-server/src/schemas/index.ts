@@ -272,6 +272,13 @@ export const updateTripStopBody = z.object({
   lng: z.coerce.number().min(-180).max(180).optional(),
 });
 
+/** Pinning a stop or customer location exactly — the "Set pin" box. */
+export const pinBody = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  lng: z.coerce.number().min(-180).max(180),
+  address: z.string().trim().max(500).nullable().optional(),
+}).refine((b) => b.lat !== 0 || b.lng !== 0, { message: 'Pick a point on the map', path: ['lat'] });
+
 /* ─── Fleet bulk import ───────────────────────────────────────────────────── */
 
 /** Drivers workbook — one driver per row. Columns are mapped to these names by
