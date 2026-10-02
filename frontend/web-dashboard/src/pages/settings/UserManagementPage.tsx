@@ -33,7 +33,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { authStore } from '@/store/authStore';
 import { userService, UserDTO } from '@/services/userService';
 import { driverService, Driver, DriverStatus } from '@/services/driverService';
-import { getDriverAvatar } from '@/lib/driverAvatarMap';
+import { driverPhotoUrl } from '@/lib/documents';
 import UserModal from './components/UserModal';
 import DriverPasswordModal from './components/DriverPasswordModal';
 
@@ -121,7 +121,7 @@ export default function UserManagementPage() {
         id: d.id || `driver-${idx}`,
         name: dName,
         username: d.ref_id || d.phone_primary || 'driver',
-        avatarUrl: getDriverAvatar(d.avatar_url, dName),
+        avatarUrl: driverPhotoUrl(d.avatar_url),
         phone: d.phone_primary || 'No phone',
         email: d.ref_id ? `${d.ref_id}@mercon.app` : 'driver@mercon.app',
         role: 'Operator',

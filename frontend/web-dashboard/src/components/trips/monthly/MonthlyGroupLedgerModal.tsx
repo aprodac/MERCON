@@ -52,7 +52,7 @@ import type { TemplateGroup } from './MonthlyCompanyBoard';
 import { tripService, type MonthlyBoardTrip } from '@/services/tripService';
 import { driverService } from '@/services/driverService';
 import { vehicleService } from '@/services/vehicleService';
-import { getDriverAvatar } from '@/lib/driverAvatarMap';
+import { driverPhotoUrl } from '@/lib/documents';
 import { formatDayHeading, formatMoney, formatTime, initialsOf, isUnassigned, formatLocationClean } from './monthlyBoardUtils';
 
 const STATUS_LIST = [
@@ -999,7 +999,7 @@ export default function MonthlyGroupLedgerModal({
                               {trip.driver ? (
                                 <>
                                   {(() => {
-                                    const tripDriverAvatar = getDriverAvatar(trip.driver.avatar_url, trip.driver.name);
+                                    const tripDriverAvatar = driverPhotoUrl(trip.driver.avatar_url);
                                     return tripDriverAvatar ? (
                                       <img
                                         src={tripDriverAvatar}
@@ -1061,7 +1061,7 @@ export default function MonthlyGroupLedgerModal({
                                   const isSelected = trip.driver?.id === d.id;
                                   const name = getDriverDisplayName(d);
                                   const phone = (d as any).phone || d.phone_primary || '';
-                                  const dAvatar = getDriverAvatar(d.avatar_url, name);
+                                  const dAvatar = driverPhotoUrl(d.avatar_url);
                                   return (
                                     <button
                                       key={d.id}

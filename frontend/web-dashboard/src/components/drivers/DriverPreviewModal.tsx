@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import StatusBadge from '@/components/ui/StatusBadge';
 import PhoneDisplay from '@/components/ui/PhoneDisplay';
 import DriverAvatar from '@/components/ui/DriverAvatar';
-import { getDriverAvatar } from '@/lib/driverAvatarMap';
+import { driverPhotoUrl } from '@/lib/documents';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import { Driver } from '@/services/driverService';
 import { cn } from '@/lib/utils';
@@ -286,7 +286,7 @@ export default function DriverPreviewModal({ driver, isOpen, onClose, onEdit, on
 
     {/* Standalone Zoomed Photo Modal */}
     {(() => {
-      const zoomPhotoUrl = getDriverAvatar(driver.avatar_url, `${driver.first_name} ${driver.last_name}`);
+      const zoomPhotoUrl = driverPhotoUrl(driver.avatar_url);
       return (
         <Dialog open={photoZoom && !!zoomPhotoUrl} onOpenChange={setPhotoZoom}>
           <DialogContent className="max-w-md w-[92vw] p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xl flex flex-col items-center">

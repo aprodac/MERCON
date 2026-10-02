@@ -14,6 +14,7 @@
     "images:convert-inline": "ts-node scripts/convert-inline-images.ts",
     "backfill:trip-charges": "ts-node scripts/backfill-trip-charges.ts",
     "backfill:trip-charges:verify": "ts-node scripts/backfill-trip-charges.ts --verify",
+    "backfill:driver-photos": "ts-node scripts/backfill-driver-photos.ts",
     "test:icces": "node -r ts-node/register --test src/services/icces/trackParser.test.ts src/services/icces/iccesSession.test.ts src/services/icces/fleetPoller.test.ts",
     "test:tracking": "node -r ts-node/register --test src/services/tracking/locationUpdate.test.ts",
     "test:routing": "node -r ts-node/register --test src/services/routing/routeProvider.test.ts",

@@ -23,7 +23,6 @@ import { PhoneDot } from '@/components/drivers/phone/PhoneStatus';
 import { documentService } from '@/services/documentService';
 import { exportExcelTable } from '@/utils/exportUtils';
 import DriverAvatar from '@/components/ui/DriverAvatar';
-import { getDriverAvatar } from '@/lib/driverAvatarMap';
 import DocumentPreviewSheet from '@/components/documents/DocumentPreviewSheet';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -505,9 +504,6 @@ export default function DriverDetailsPage() {
   const assignedVehicle = driver.assignedVehicle;
   const driverName = personName(driver) || EMPTY;
 
-  // Driver photo; initials when none is on file.
-  const photoUrl = getDriverAvatar(driver.avatar_url, driverName) || null;
-
   // Active / Live trip
   const activeTrip = trips.find((t: any) => {
     const s = (t.status || '').toLowerCase();
@@ -540,15 +536,8 @@ export default function DriverDetailsPage() {
         {/* ── HEADER: photo, name, 3 KPI cards ── */}
         <div className="flex items-stretch gap-4 shrink-0">
           <div className={dk.avatar}>
-            {photoUrl ? (
-              <img
-                src={photoUrl}
-                alt={driverName}
-                className="w-full h-full object-cover object-top rounded-full"
-              />
-            ) : (
-              <DriverAvatar firstName={driver.first_name} lastName={driver.last_name} size="lg" className="w-full h-full text-3xl" />
-            )}
+            {/* Driver photo; initials when none is on file or it fails to load. */}
+            <DriverAvatar src={driver.avatar_url} firstName={driver.first_name} lastName={driver.last_name} size="lg" className="w-full h-full text-3xl" imgClassName="object-top" />
           </div>
 
           <div className="flex-1 flex flex-col justify-end gap-2 min-w-0">

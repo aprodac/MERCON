@@ -28,7 +28,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import QuickCreateVehicleModal from '@/components/trips/QuickCreateVehicleModal';
 import { driverService, DriverStatus } from '@/services/driverService';
 import { vehicleService, Vehicle } from '@/services/vehicleService';
-import { getDriverAvatar } from '@/lib/driverAvatarMap';
+import { driverPhotoUrl } from '@/lib/documents';
 import { Card, CardContent } from '@/components/ui/card';
 import PhoneInput from '@/components/ui/PhoneInput';
 import { Badge } from '@/components/ui/badge';
@@ -544,7 +544,7 @@ export default function EditDriverPage() {
                 <div className="flex items-center gap-3">
                   <div className="w-11 h-11 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-black text-sm text-slate-700 dark:text-slate-300 border-2 border-slate-200 dark:border-slate-700 overflow-hidden shrink-0">
                     {(() => {
-                      const avatarSrc = getDriverAvatar(formData.avatar_url, `${formData.first_name} ${formData.last_name}`);
+                      const avatarSrc = driverPhotoUrl(formData.avatar_url);
                       return avatarSrc ? (
                         <img src={avatarSrc} alt="Driver" className="w-full h-full object-cover" />
                       ) : (
