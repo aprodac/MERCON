@@ -5,7 +5,7 @@ import { endOfMonth, format, startOfMonth, subMonths } from 'date-fns';
 import { Download, FilePlus2, FileSpreadsheet, Loader2, Pencil, Plus, ReceiptText, Tag, Trash2, Truck, type LucideIcon } from 'lucide-react';
 import { REPORT_SOURCES, REPORT_SOURCE_LABELS, lineTypeLabel, type ReportSource } from '@mercon/shared-types';
 
-import { Button } from '@/components/ui/button';
+import { Badge, EmptyBlock, IconTile, Panel, ui } from '@/components/customers/customerUi';
 import { DateRangePicker } from '@/components/ui/date-range-picker';
 import ExportFormatDialog, { exportFormatsKey } from '@/components/reports/ExportFormatDialog';
 import { cn } from '@/lib/utils';
@@ -105,22 +105,29 @@ export default function CustomerExportsTab({ customerId, customerName }: { custo
   const periodLabel = range ? `${format(new Date(range.startDate), 'd MMM')} – ${format(new Date(range.endDate), 'd MMM yyyy')}` : 'Pick dates';
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-slate-200/80 dark:border-slate-800">
-      {/* ── Header: title · period (applies to every download) · new format ── */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-slate-200 px-4 py-2.5 dark:border-slate-800">
-        <h3 className="text-sm font-bold text-slate-900 dark:text-white">Excel exports</h3>
-        <span className="text-xs text-slate-400">{formats.length} format{formats.length === 1 ? '' : 's'}</span>
-
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <div className="flex rounded-lg border border-slate-200 p-0.5 dark:border-slate-700">
+    <div className="flex flex-col gap-6">
+      {/* ── Header: what this is · the period every download uses · upload a format ── */}
+      <section className={cn(ui.card, 'flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between')}>
+        <div className="flex items-start gap-3">
+          <IconTile icon={FileSpreadsheet} tone="emerald" />
+          <div>
+            <h2 className={ui.h2}>Excel trip sheets</h2>
+            <p className={cn(ui.muted, 'mt-0.5 max-w-xl')}>
+              Download {customerName}'s trips, statement and rates in the Excel layout they asked for — or MERCON's standard layout if they haven't given one.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-lg border border-slate-200 p-0.5 dark:border-slate-700" role="group" aria-label="Period">
             {([['last_month', 'Last month'], ['this_month', 'This month'], ['custom', 'Custom']] as const).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
                 onClick={() => setPeriod(value)}
+                aria-pressed={period === value}
                 className={cn(
-                  'rounded-md px-2.5 py-1 text-xs font-semibold transition-colors',
-                  period === value ? 'bg-[#FA634E] text-white' : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800'
+                  'h-8 rounded-md px-3 text-[13px] font-medium transition-colors cursor-pointer',
+                  period === value ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800',
                 )}
               >
                 {label}
@@ -131,134 +138,125 @@ export default function CustomerExportsTab({ customerId, customerName }: { custo
             <DateRangePicker
               value={{ from: custom.from, to: custom.to }}
               onChange={(r) => setCustom({ from: r?.from, to: r?.to })}
-              buttonClassName="h-8 w-56 rounded-lg text-xs font-semibold"
+              buttonClassName="h-9 w-60 rounded-lg text-[13px]"
             />
           ) : (
-            <span className="text-xs text-slate-500">{periodLabel}</span>
+            <span className="px-1 text-[13px] text-slate-500 tabular-nums">{periodLabel}</span>
           )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setDialog({ open: true, template: null, source: 'trips' })}
-            className="h-8 gap-1.5 rounded-lg text-xs font-semibold"
-          >
-            <Plus className="h-3.5 w-3.5" /> New format
-          </Button>
+          <button type="button" onClick={() => setDialog({ open: true, template: null, source: 'trips' })} className={cn(ui.btn, ui.btnPrimary)}>
+            <Plus className="size-4" /> Upload their format
+          </button>
         </div>
-      </div>
+      </section>
 
       {isLoading ? (
-        <div className="py-10 text-center text-xs text-slate-400">Loading formats…</div>
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+          {[0, 1, 2].map((i) => <div key={i} className="h-56 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />)}
+        </div>
       ) : isError ? (
-        <div className="py-10 text-center text-xs text-slate-400">Formats couldn’t be loaded. Try again, or check the “Customer Excel exports” module is on.</div>
+        <EmptyBlock icon={FileSpreadsheet} title="Formats couldn't be loaded" text="Try again, or check the “Customer Excel exports” module is on." />
       ) : (
-        REPORT_SOURCES.map((source) => {
-          const Icon = SOURCE_ICON[source];
-          const group = bySource[source];
-          return (
-            <section key={source} className="border-b border-slate-100 last:border-b-0 dark:border-slate-800">
-              <div className="flex items-center gap-1.5 bg-slate-50/70 px-4 py-1.5 text-[11px] dark:bg-slate-900/60">
-                <Icon className="h-3.5 w-3.5 text-slate-400" />
-                <span className="font-semibold text-slate-600 dark:text-slate-300">{REPORT_SOURCE_LABELS[source]}</span>
-                <span className="text-slate-400">· {source === 'rates' || range ? summaryText(source, summary?.[source]) || '…' : 'pick dates'}</span>
-              </div>
-
-              {group.length === 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setDialog({ open: true, template: null, source })}
-                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900"
-                >
-                  <FilePlus2 className="h-4 w-4" />
-                  No format yet — <span className="font-semibold text-[#FA634E]">upload their {REPORT_SOURCE_LABELS[source].toLowerCase()} sheet</span>
-                </button>
-              ) : (
-                <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {group.map((t) => {
-                    const empty = emptyColumns(t);
-                    const shared = !t.customerId;
-                    const run = runFor(source);
-                    return (
-                      <li key={t.id} className="flex items-center gap-3 px-4 py-2">
-                        <FileSpreadsheet className={cn('h-4 w-4 shrink-0', empty > 0 ? 'text-amber-500' : 'text-emerald-600')} />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-xs font-semibold text-slate-900 dark:text-slate-100">
-                            {t.name}
-                            {shared && <span className="ml-1.5 rounded bg-slate-100 px-1 py-px text-[10px] font-medium text-slate-500 dark:bg-slate-800">Shared</span>}
-                          </p>
-                          <p className="truncate text-[11px] text-slate-500">
-                            <span className="font-mono">{t.original_filename}</span>
-                            {source !== 'statement' && <> · {t.rate_category ? `${lineTypeLabel(t.rate_category)} only` : 'all line types'}</>}
-                            {' · '}
-                            {empty > 0 ? (
-                              <span className="text-amber-600 dark:text-amber-400">{empty} column{empty === 1 ? '' : 's'} empty</span>
-                            ) : (
-                              `${t.layout?.columns?.length ?? 0} columns`
-                            )}
-                          </p>
-                        </div>
-
-                        {confirmDeleteId === t.id ? (
-                          <div className="flex shrink-0 items-center gap-1">
-                            <button type="button" onClick={() => handleDelete(t)} className="rounded bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
-                              Remove
+        <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-3">
+          {REPORT_SOURCES.map((source) => {
+            const group = bySource[source];
+            const standardKey = `standard:${source}`;
+            const needsRange = source !== 'rates';
+            const summaryLine = source === 'rates' || range ? summaryText(source, summary?.[source]) || 'Counting…' : 'Pick dates first';
+            return (
+              <Panel
+                key={source}
+                title={REPORT_SOURCE_LABELS[source]}
+                description={summaryLine}
+                icon={SOURCE_ICON[source]}
+                tone={source === 'trips' ? 'brand' : source === 'statement' ? 'indigo' : 'amber'}
+                flush
+              >
+                <div className="border-t border-slate-100 dark:border-slate-800">
+                  {group.length === 0 ? (
+                    <div className="px-5 py-4">
+                      <button
+                        type="button"
+                        onClick={() => setDialog({ open: true, template: null, source })}
+                        className="flex w-full flex-col items-center gap-1 rounded-lg border border-dashed border-slate-200 px-4 py-6 text-center transition-colors hover:border-[#FA634E]/50 hover:bg-orange-50/40 dark:border-slate-700 cursor-pointer"
+                      >
+                        <FilePlus2 className="mb-1 size-5 text-slate-400" />
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Upload their {REPORT_SOURCE_LABELS[source].toLowerCase()} sheet</span>
+                        <span className={ui.muted}>We fill it in their columns every time</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {group.map((t) => {
+                        const empty = emptyColumns(t);
+                        const shared = !t.customerId;
+                        const run = runFor(source);
+                        return (
+                          <li key={t.id} className="flex flex-col gap-3 px-5 py-4">
+                            <div className="flex items-start gap-3">
+                              <FileSpreadsheet className={cn('mt-0.5 size-4 shrink-0', empty > 0 ? 'text-amber-500' : 'text-emerald-600')} />
+                              <div className="min-w-0 flex-1">
+                                <p className="flex items-center gap-2 text-sm font-medium text-slate-900 dark:text-white">
+                                  <span className="truncate">{t.name}</span>
+                                  {shared && <Badge>Shared</Badge>}
+                                </p>
+                                <p className="mt-0.5 truncate text-xs text-slate-500" title={t.original_filename}>
+                                  {source !== 'statement' && <>{t.rate_category ? `${lineTypeLabel(t.rate_category)} only` : 'All line types'} · </>}
+                                  {empty > 0 ? (
+                                    <span className="text-amber-600 dark:text-amber-400">{empty} column{empty === 1 ? '' : 's'} not mapped</span>
+                                  ) : (
+                                    `${t.layout?.columns?.length ?? 0} columns`
+                                  )}
+                                </p>
+                              </div>
+                              {confirmDeleteId === t.id ? (
+                                <div className="flex shrink-0 items-center gap-1">
+                                  <button type="button" onClick={() => handleDelete(t)} className="rounded-md bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-300">Remove</button>
+                                  <button type="button" onClick={() => setConfirmDeleteId(null)} className="rounded-md px-2 py-1 text-xs text-slate-500 hover:text-slate-800">Keep</button>
+                                </div>
+                              ) : (
+                                <div className="flex shrink-0 items-center">
+                                  <button type="button" onClick={() => setDialog({ open: true, template: t, source })} title="Edit format" aria-label="Edit format" className={cn(ui.iconBtn, 'size-7')}>
+                                    <Pencil className="size-3.5" />
+                                  </button>
+                                  <button type="button" onClick={() => setConfirmDeleteId(t.id)} title="Remove format" aria-label="Remove format" className={cn(ui.iconBtn, 'size-7 hover:bg-rose-50 hover:text-rose-600')}>
+                                    <Trash2 className="size-3.5" />
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              disabled={shared || !run || busy === t.id}
+                              title={shared ? 'A shared format can only be used from an invoice' : !run ? 'Pick dates first' : `Download for ${source === 'rates' ? 'the active quotations' : periodLabel}`}
+                              onClick={() => run && download(t.id, () => reportTemplateService.download(t.id, run))}
+                              className={cn(ui.btn, ui.btnOutline, 'h-8 w-full')}
+                            >
+                              {busy === t.id ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+                              Download {source === 'rates' ? '' : periodLabel}
                             </button>
-                            <button type="button" onClick={() => setConfirmDeleteId(null)} className="px-1.5 py-1 text-[11px] text-slate-500 hover:text-slate-800">
-                              Keep
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex shrink-0 items-center gap-0.5">
-                            <button type="button" onClick={() => setDialog({ open: true, template: t, source })} title="Edit format" className="rounded p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800">
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button type="button" onClick={() => setConfirmDeleteId(t.id)} title="Remove format" className="rounded p-1.5 text-slate-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/30">
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        )}
-
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={shared || !run || busy === t.id}
-                          title={shared ? 'A shared format can only be used from an invoice' : !run ? 'Pick dates first' : `Download for ${source === 'rates' ? 'the active quotations' : periodLabel}`}
-                          onClick={() => run && download(t.id, () => reportTemplateService.download(t.id, run))}
-                          className="h-7 shrink-0 gap-1.5 rounded-lg text-xs font-semibold"
-                        >
-                          {busy === t.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-                          Download
-                        </Button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-          );
-        })
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3 dark:border-slate-800 dark:bg-slate-800/30">
+                    <span className="text-xs text-slate-500">MERCON standard layout</span>
+                    <button
+                      type="button"
+                      disabled={(needsRange && !range) || busy === standardKey}
+                      onClick={() => download(standardKey, () => reportTemplateService.downloadStandard(source, customerId, needsRange ? range! : undefined))}
+                      className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#E5533F] hover:underline disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                    >
+                      {busy === standardKey ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+                      Download
+                    </button>
+                  </div>
+                </div>
+              </Panel>
+            );
+          })}
+        </div>
       )}
-
-      {/* ── MERCON's own layout, for customers who haven't given one ── */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-200 bg-slate-50 px-4 py-2 text-xs dark:border-slate-800 dark:bg-slate-900">
-        <span className="text-slate-500">Standard MERCON layout, no format needed:</span>
-        {REPORT_SOURCES.map((source) => {
-          const key = `standard:${source}`;
-          const needsRange = source !== 'rates';
-          return (
-            <button
-              key={source}
-              type="button"
-              disabled={(needsRange && !range) || busy === key}
-              onClick={() => download(key, () => reportTemplateService.downloadStandard(source, customerId, needsRange ? range! : undefined))}
-              className="flex items-center gap-1 font-semibold text-[#FA634E] hover:underline disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {busy === key && <Loader2 className="h-3 w-3 animate-spin" />}
-              {REPORT_SOURCE_LABELS[source]}
-            </button>
-          );
-        })}
-      </div>
 
       <ExportFormatDialog
         open={dialog.open}

@@ -216,7 +216,8 @@ export function useCreateTripForm() {
   const destinationName = primarySlot.destination || '';
 
   // Declared up here: the driver ranking below needs the customer.
-  const [contractCustomer, setContractCustomerRaw] = useState('');
+  // ?customer_id= (e.g. "New trip" from a customer page) preselects the customer.
+  const [contractCustomer, setContractCustomerRaw] = useState(() => searchParams.get('customer_id') || '');
   const contractCustomerForRec = contractCustomer;
 
   // The trip's window, route and customer — the ranking checks clashes (1 h gap),
