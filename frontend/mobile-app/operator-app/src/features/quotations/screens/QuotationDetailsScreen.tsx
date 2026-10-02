@@ -1,7 +1,7 @@
 /**
  * Route: /quotation-details?id= — one quotation.
  *
- * A header in the app's brand colour (number, customer, route, the rate and
+ * A black header (number, customer, route, the rate and
  * what it is for), driver pay and margin as two tiles, the remaining terms,
  * and the stops as a timeline. Reads the same cached list as the
  * quotations page. Each fact appears once.
@@ -21,8 +21,8 @@ import { formatCurrency, formatValidityRange } from '../services/quotationsServi
 
 const PICKUP = '#1F9D55';
 const BORDER = '#E9E9EC';
-/** Dark coral for text on the light brand tint. */
-const BRAND_INK = '#A8361F';
+/** Secondary text on the black header. */
+const ON_DARK_MUTED = '#A1A1AA';
 
 /** Number only — "SAR" is shown small beside it. */
 function amount(n: number): string {
@@ -61,7 +61,7 @@ export default function QuotationDetailsScreen() {
 
     return (
       <>
-        {/* 0 · header in the app's brand colour: who, where, how much */}
+        {/* 0 · black header: who, where, how much */}
         <View style={s.header}>
           <View style={s.headerTop}>
             <Text style={s.number} numberOfLines={1}>
@@ -178,18 +178,18 @@ const s = StyleSheet.create({
   barTitle: { fontSize: 16, fontWeight: '700', color: INK },
   scroll: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 48, gap: 20 },
 
-  header: { backgroundColor: Colors.primaryLight, borderRadius: 20, borderWidth: 1, borderColor: '#FBD9D1', padding: 16, gap: 6 },
+  header: { backgroundColor: INK, borderRadius: 20, padding: 16, gap: 6 },
   headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 },
-  number: { flex: 1, fontSize: 13, fontWeight: '600', color: BRAND_INK, fontVariant: ['tabular-nums'] },
+  number: { flex: 1, fontSize: 13, fontWeight: '600', color: ON_DARK_MUTED, fontVariant: ['tabular-nums'] },
   status: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.white, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   statusText: { fontSize: 12, fontWeight: '700' },
-  route: { fontSize: 20, fontWeight: '700', color: INK, letterSpacing: -0.3, lineHeight: 26 },
+  route: { fontSize: 20, fontWeight: '700', color: Colors.white, letterSpacing: -0.3, lineHeight: 26 },
   arrow: { color: Colors.primary, fontWeight: '400' },
   rateRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 6 },
-  cur: { fontSize: 17, fontWeight: '700', color: BRAND_INK },
-  rate: { flexShrink: 1, fontSize: 40, fontWeight: '800', color: INK, letterSpacing: -1.2, fontVariant: ['tabular-nums'] },
-  basis: { fontSize: 13, color: BRAND_INK },
+  cur: { fontSize: 17, fontWeight: '700', color: ON_DARK_MUTED },
+  rate: { flexShrink: 1, fontSize: 40, fontWeight: '800', color: Colors.white, letterSpacing: -1.2, fontVariant: ['tabular-nums'] },
+  basis: { fontSize: 13, color: ON_DARK_MUTED },
 
   tiles: { flexDirection: 'row', gap: 10 },
   tile: { flex: 1, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: BORDER, padding: 16, gap: 4 },
