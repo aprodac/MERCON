@@ -20,15 +20,24 @@
  *
  * Safe to run more than once: a second run finds every matched driver
  * already has a photo and skips it.
+ *
+ * Deploys (ci-cd.yml, ci-cd-dev.yml) run it with `--apply --once`: it runs
+ * the first time on each server and leaves a marker file in the uploads
+ * folder, so later deploys never re-add a photo someone removed or give one
+ * to a newly added driver who happens to share a short name.
  */
 import fs from 'fs';
 import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { storeInlineImage } from '../src/services/inlineImage';
+import { getUploadDir } from '../src/middlewares/upload';
 
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes('--apply');
+const ONCE = process.argv.includes('--once');
 const PHOTO_DIR = path.join(__dirname, 'driver-photos');
+/** Written next to the uploads after an --apply --once run, so later deploys skip it. */
+const DONE_MARKER = path.join(getUploadDir(), '.driver-photos-backfilled');
 
 /** Photo file → the driver's full name as written on the photo. */
 const PHOTOS: Record<string, string> = {
@@ -91,6 +100,10 @@ function manualAssignments(): Map<string, string> {
 }
 
 async function main() {
+  if (ONCE && fs.existsSync(DONE_MARKER)) {
+    console.log(`Driver photos were already backfilled on this server (${DONE_MARKER}) — nothing to do.`);
+    return;
+  }
   console.log(APPLY ? 'Saving driver photos…' : 'Dry run (pass --apply to save)…');
   const assign = manualAssignments();
 
@@ -154,6 +167,11 @@ async function main() {
     `\n${APPLY ? 'Saved' : 'Would save'}: ${counts.saved}, already had a photo: ${counts.hasPhoto}, ` +
       `no match: ${counts.unmatched}, more than one match: ${counts.ambiguous}`,
   );
+
+  if (APPLY && ONCE) {
+    fs.writeFileSync(DONE_MARKER, `${new Date().toISOString()} saved=${counts.saved}\n`);
+    console.log(`Marked done (${DONE_MARKER}); later --once runs skip. Run without --once to assign more by hand.`);
+  }
 }
 
 main()

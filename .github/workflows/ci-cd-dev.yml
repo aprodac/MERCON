@@ -194,6 +194,15 @@ jobs:
           fi
           echo "✓ External health probe GET http://127.0.0.1:3051/health verified successfully."
 
+          # One-time data step: put the driver photos from scripts/driver-photos/
+          # onto the matching drivers (backfill-driver-photos.ts). --once leaves a
+          # marker in the uploads folder, so it only does anything on the first
+          # deploy. Never fails the deploy — the app works without it.
+          # Production is not automated: check this dev log, then run it by hand.
+          echo "--- Driver photo backfill (one-time) ---"
+          docker compose -p mercon-dev exec -T mercon-api npx ts-node scripts/backfill-driver-photos.ts --apply --once \
+            || echo "::warning::Driver photo backfill failed — run it by hand (see scripts/backfill-driver-photos.ts)."
+
 
 
           echo "=== FINAL DISK AND DOCKER STORAGE STATE ==="
