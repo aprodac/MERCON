@@ -28,6 +28,43 @@ export interface TripChargeInput {
   save_as_rule?: boolean;
 }
 
+/** A sub-charge added when answering "any extra charges?" — amount = rate × quantity on the server. */
+export interface NewSubCharge {
+  surchargeRuleId?: string | null;
+  charge_type: string;
+  unit?: string | null;
+  rate: number;
+  quantity: number;
+}
+
+/** A completed trip waiting for its "any extra charges?" answer (slim, from GET /trips/unsettled). */
+export interface ChargeReviewTrip {
+  id: string;
+  ref_id: string | null;
+  customerId: string | null;
+  quotationId: string | null;
+  billing_amount: number | string | null;
+  planned_start: string | null;
+  actual_end: string | null;
+  is_third_party: boolean;
+  customer: { id: string; name: string } | null;
+  driver: { id: string; first_name: string; last_name: string | null; avatar_url: string | null } | null;
+  vehicle: { id: string; plate_number: string } | null;
+  subcontract: { driverName: string | null; vehiclePlate: string | null; provider: { name: string } | null } | null;
+  stops: {
+    stop_type: string;
+    stop_sequence: number;
+    location_name: string | null;
+    location: { name: string } | null;
+    actual_arrival: string | null;
+    actual_departure: string | null;
+  }[];
+  charges: { id: string; charge_type: string; amount: number | string }[];
+}
+
+export type { CustomerChargeHabit } from '@mercon/shared-types';
+import type { CustomerChargeHabit } from '@mercon/shared-types';
+
 export type DriverTripRole = 'PRIMARY' | 'CO_DRIVER' | 'RELIEVER';
 export type AssignmentEntityType = 'DRIVER' | 'VEHICLE';
 
@@ -450,9 +487,15 @@ export const tripService = {
     return res.data.data;
   },
 
-  async getUnsettled(): Promise<Trip[]> {
-    const res = await api.get<ApiResponse<Trip[]>>('/trips/unsettled');
-    return res.data.data;
+  /** Completed trips (last 30 days) nobody has answered "any extra charges?" for yet. */
+  async getChargeReviewQueue(): Promise<{ trips: ChargeReviewTrip[]; count: number; habits: Record<string, CustomerChargeHabit[]> }> {
+    const res = await api.get<ApiResponse<ChargeReviewTrip[]> & { count: number; habits?: Record<string, CustomerChargeHabit[]> }>('/trips/unsettled');
+    return { trips: res.data.data, count: res.data.count ?? res.data.data.length, habits: res.data.habits ?? {} };
+  },
+
+  /** Answer "any extra charges?" — adds the sub-charges (billed to the customer); [] = none. */
+  async reviewCharges(id: string, charges: NewSubCharge[]): Promise<void> {
+    await api.post(`/trips/${id}/charge-review`, { charges });
   },
 
   async create(payload: CreateTripPayload): Promise<Trip> {

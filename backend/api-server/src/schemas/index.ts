@@ -460,6 +460,17 @@ export const confirmTripTimesBody = z.object({
   })).max(100),
 });
 
+/** "Any extra charges?" answer for a completed trip — sub-charges billed to the customer; [] = none. */
+export const reviewTripChargesBody = z.object({
+  charges: z.array(z.object({
+    surchargeRuleId: z.string().uuid().nullish(),
+    charge_type: z.string().trim().min(1, 'Charge type is required').max(120),
+    unit: z.string().trim().max(40).nullish(),
+    rate: z.number().positive().max(1_000_000),
+    quantity: z.number().positive().max(10_000),
+  })).max(20),
+});
+
 /* ─── Drivers ────────────────────────────────────────────────────────────── */
 export const createDriverBody = z.object({
   first_name: nonEmpty('First name'),

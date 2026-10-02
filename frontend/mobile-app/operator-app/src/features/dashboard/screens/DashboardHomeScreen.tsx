@@ -22,6 +22,8 @@ import { ErrorState } from '@mercon/mobile-shared/ui';
 import { useActionInbox } from '../actions/useActionInbox';
 import { HomeStatus, NeedsActionList, UpNext } from '../actions/NeedsAction';
 import type { ActionIntent } from '../actions/actionModel';
+import { useCurrentUser } from '../hooks/useCurrentUser';
+import { ChargeAssistant } from '@/features/charges/ChargeAssistant';
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
@@ -36,6 +38,7 @@ export default function DashboardHomeScreen() {
   const notifications = useNotifications();
   const { markRead } = useMarkNotificationsRead();
   const inbox = useActionInbox();
+  const { data: me } = useCurrentUser();
 
 
   const openTrip = (id: string, extra: Record<string, string> = {}) =>
@@ -118,6 +121,8 @@ export default function DashboardHomeScreen() {
 
         <UpNext rows={inbox.today} tz={inbox.tz} onOpenTrip={(id) => openTrip(id)} onAll={() => router.push('/trips')} />
       </ScrollView>
+      {/* Finished trips waiting for an answer on extra charges */}
+      <ChargeAssistant userName={me?.name || me?.username || undefined} />
       <Toast visible={!!toast} message={toast?.message ?? ''} type={toast?.type ?? 'success'} onDismiss={() => setToast(null)} />
     </SafeAreaView>
   );
