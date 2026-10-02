@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import AssistantToggle from '@/components/assistant/AssistantToggle';
 import { 
   Bell, 
   Truck, 
@@ -294,6 +295,9 @@ export default function Header({ title, icon, breadcrumb, hideBackButton, onBack
             <span className="text-[13px] hidden xl:inline">Search</span>
             <kbd className="text-[10px] font-medium border border-border rounded px-1 text-muted-foreground">Ctrl K</kbd>
           </button>
+
+          {/* Extra-charges assistant: show / hide */}
+          <AssistantToggle />
 
           {/* Fullscreen toggle */}
           <button
