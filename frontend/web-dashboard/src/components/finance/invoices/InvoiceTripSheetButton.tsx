@@ -8,28 +8,29 @@ import { lineTypeLabel } from '@mercon/shared-types';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useModuleEnabled } from '@/components/auth/RequireModule';
-import { tripSheetFormatsKey } from '@/components/reports/TripSheetFormatDialog';
+import { exportFormatsKey } from '@/components/reports/ExportFormatDialog';
 import { reportTemplateService, type ReportTemplateSummary } from '@/services/reportTemplateService';
 
 /**
  * Downloads the invoice's trips in the customer's own Excel layout — the trip
  * list many customers want alongside the invoice. Formats are set up on the
- * customer page (Customer → Trip sheets).
+ * customer page (Customer → Excel exports); only trips formats apply here.
  */
 export function InvoiceTripSheetButton({ invoiceId, customerId }: { invoiceId: string; customerId: string }) {
   const enabled = useModuleEnabled('company-reports');
   const [busyId, setBusyId] = useState<string | null>(null);
-  const { data: formats, isError } = useQuery({
-    queryKey: tripSheetFormatsKey(customerId),
+  const { data: allFormats, isError } = useQuery({
+    queryKey: exportFormatsKey(customerId),
     queryFn: () => reportTemplateService.list(customerId),
     enabled,
   });
+  const formats = allFormats?.filter((f) => f.source === 'trips');
 
   if (!enabled || isError || !formats) return null;
 
   if (formats.length === 0) {
     return (
-      <Link to={`/customers/${customerId}?tab=trip-sheets`} className="text-[11px] text-muted-foreground hover:text-foreground hover:underline">
+      <Link to={`/customers/${customerId}?tab=exports`} className="text-[11px] text-muted-foreground hover:text-foreground hover:underline">
         + Add a trip sheet format for this customer
       </Link>
     );

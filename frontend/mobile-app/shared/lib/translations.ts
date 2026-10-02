@@ -353,6 +353,8 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   // Messages & Empty States
   msg_no_active_trips: { en: 'No active trips at the moment', ur: 'اس وقت کوئی فعال ٹرپ نہیں ہے' },
   msg_no_trips_found: { en: 'No trips found', ur: 'کوئی ٹرپ نہیں ملا' },
+  msg_no_documents: { en: 'No documents on file', ur: 'کوئی دستاویز موجود نہیں' },
+  action_report_delay: { en: 'Delay', ur: 'تاخیر' },
   msg_offline_mode: { en: 'Offline Mode - Changes will sync when online', ur: 'آف لائن موڈ - آن لائن ہونے پر سنک ہو جائے گا' },
   msg_syncing: { en: 'Syncing data...', ur: 'ڈیٹا سنک ہو رہا ہے...' },
   msg_confirm_logout: { en: 'Are you sure you want to log out?', ur: 'کیا آپ واقعی لاگ آؤٹ کرنا چاہتے ہیں؟' },
@@ -428,6 +430,24 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   label_return_prefix: { en: 'Return', ur: 'واپسی' },
   err_could_not_load_vehicle: { en: 'Could not load vehicle', ur: 'گاڑی کی تفصیلات لوڈ نہیں ہو سکیں' },
   msg_no_vehicle_assigned_desc: { en: "You'll see your truck here once you're assigned to a trip.", ur: 'جب آپ کو ٹرپ تفویض کیا جائے گا تو گاڑی یہاں نظر آئے گی۔' },
+
+  // Phone health & trip acknowledgement (driver app)
+  ack_title: { en: 'New trip assigned', ur: 'نیا ٹرپ تفویض ہوا' },
+  ack_subtitle: { en: 'Tap "Got it" so the office knows you have seen it.', ur: '"ٹھیک ہے" دبائیں تاکہ دفتر کو معلوم ہو کہ آپ نے دیکھ لیا ہے۔' },
+  ack_got_it: { en: 'Got it', ur: 'ٹھیک ہے' },
+  ack_view_trip: { en: 'View trip', ur: 'ٹرپ دیکھیں' },
+  ack_more: { en: '+{count} more waiting', ur: 'مزید {count} انتظار میں' },
+  ack_starts: { en: 'Starts', ur: 'شروع' },
+  phone_banner_notif_off: { en: 'Notifications are off — you will miss new trips.', ur: 'نوٹیفکیشنز بند ہیں — آپ نئے ٹرپس سے محروم رہیں گے۔' },
+  phone_banner_location_off: { en: 'Location access is off — the office cannot see your arrivals.', ur: 'لوکیشن کی اجازت بند ہے — دفتر آپ کی آمد نہیں دیکھ سکتا۔' },
+  phone_banner_gps_off: { en: "Your phone's GPS is switched off.", ur: 'آپ کے فون کا GPS بند ہے۔' },
+  phone_banner_battery_saver: { en: 'Battery saver is on — the app may stop updating.', ur: 'بیٹری سیور آن ہے — ایپ اپڈیٹ ہونا بند ہو سکتی ہے۔' },
+  phone_banner_fix: { en: 'Fix', ur: 'ٹھیک کریں' },
+  update_required_title: { en: 'Update required', ur: 'اپڈیٹ ضروری ہے' },
+  update_required_body: { en: 'This version of the app is too old. Install the latest version to keep receiving trips.', ur: 'ایپ کا یہ ورژن پرانا ہے۔ ٹرپس ملتے رہنے کے لیے تازہ ترین ورژن انسٹال کریں۔' },
+  update_required_store: { en: 'Open store', ur: 'اسٹور کھولیں' },
+  update_required_check: { en: 'Check again', ur: 'دوبارہ چیک کریں' },
+  update_required_help: { en: 'Ask the office if you need help.', ur: 'مدد کے لیے دفتر سے رابطہ کریں۔' },
 
   // Languages Options
   lang_english: { en: 'English', ur: 'English' },

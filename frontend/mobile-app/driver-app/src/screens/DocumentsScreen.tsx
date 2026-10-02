@@ -106,7 +106,7 @@ const DocumentsScreen = () => {
           loading ? (
             <ActivityIndicator color={Colors.primary} style={{ marginTop: Spacing['3xl'] }} />
           ) : (
-            <Text style={styles.emptyText}>{error ?? t('msg_no_trips_found', 'No documents on file.')}</Text>
+            <Text style={styles.emptyText}>{error ?? t('msg_no_documents', 'No documents on file')}</Text>
           )
         }
       />

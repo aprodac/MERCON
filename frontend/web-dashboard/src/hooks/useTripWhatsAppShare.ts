@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Trip } from '@/services/tripService';
 import { calculateRoadDistanceKm, resolveCityCoords } from '@/services/travelTimeService';
 import { openMultipleWhatsappMessages } from '@/utils/whatsappFormatter';
+import { useTrackingLinks } from '@/hooks/useTrackingLink';
 
 export type WhatsAppRecipientType = 'driver' | 'customer' | 'custom';
 
@@ -18,6 +19,8 @@ export function useTripWhatsAppShare() {
   const [whatsappRecipientType, setWhatsappRecipientType] = useState<WhatsAppRecipientType>('custom');
   const [whatsappCustomPhone, setWhatsappCustomPhone] = useState('');
   const [whatsappMessageText, setWhatsappMessageText] = useState('');
+  // Customer tracking links for the chosen trips (only customers who want them in messages).
+  const trackingLinks = useTrackingLinks(whatsappSelectedTrips.map((t) => t.id), whatsappDialogOpen);
   const [whatsappWithTailgate, setWhatsappWithTailgate] = useState(false);
 
   const openWhatsappShare = (selectedRows: Trip[]) => {
@@ -120,6 +123,7 @@ export function useTripWhatsAppShare() {
                `ETA: ${etaText}\n` +
                `Status: ${statusDisplay}`;
       }
+      if (trackingLinks[trip.id]) text += `\n\nTrack live: ${trackingLinks[trip.id]}`;
       setWhatsappMessageText(text);
     } else {
       let text = `*MERCON LOGISTICS - Manifest Summary*\n`;
@@ -135,15 +139,16 @@ export function useTripWhatsAppShare() {
                 (t.is_third_party ? `  • 3PL Provider: ${t.thirdPartyProvider?.name || '3PL'}\n` : '') +
                 `  • Driver: ${drv}\n` +
                 `  • Vehicle: ${plate}\n` +
-                `  • Status: ${t.status}\n`;
+                `  • Status: ${t.status}\n` +
+                (trackingLinks[t.id] ? `  • Track live: ${trackingLinks[t.id]}\n` : '');
       });
       setWhatsappMessageText(text);
     }
-  }, [whatsappSelectedTrips, whatsappWithTailgate, whatsappDialogOpen]);
+  }, [whatsappSelectedTrips, whatsappWithTailgate, whatsappDialogOpen, trackingLinks]);
 
   const handleWhatsappSend = () => {
     if (whatsappSelectedTrips.length > 1) {
-      openMultipleWhatsappMessages(whatsappSelectedTrips);
+      openMultipleWhatsappMessages(whatsappSelectedTrips, 'combined', trackingLinks);
       setWhatsappDialogOpen(false);
       return;
     }

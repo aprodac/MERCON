@@ -38,6 +38,8 @@ import {
 } from 'lucide-react';
 import { Trip } from '@/services/tripService';
 import { customerService, Customer } from '@/services/customerService';
+import { useTrackingLink } from '@/hooks/useTrackingLink';
+import { galleryUrl } from '@/services/trackingService';
 
 export interface WhatsappShareModalProps {
   isOpen: boolean;
@@ -128,6 +130,8 @@ export default function WhatsappShareModal({
   const [editedMessageText, setEditedMessageText] = useState('');
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  // The trip's customer tracking link, for customers who want it in status messages.
+  const tracking = useTrackingLink(selectedTrip?.id, isOpen && mode === 'single_trip');
 
   // Formatting toggles
   const [includeDriver, setIncludeDriver] = useState(true);
@@ -247,7 +251,9 @@ export default function WhatsappShareModal({
       if ((selectedTrip as any).notes) {
         text += `\nNotes # ${(selectedTrip as any).notes}\n`;
       }
-      text += `\n🔗 *Evidence Gallery*:\n${window.location.origin}/trips/evidence-gallery?ref=${encodeURIComponent(tripRef)}`;
+      if (tracking.autoUrl) text += `\n📍 *Track live*:\n${tracking.autoUrl}\n`;
+      const gallery = galleryUrl(tracking.link);
+      if (gallery) text += `\n🔗 *Evidence Gallery*:\n${gallery}`;
       return text;
     }
 
@@ -311,6 +317,8 @@ export default function WhatsappShareModal({
     includeVehicle,
     includeEta,
     includeDelays,
+    tracking.autoUrl,
+    tracking.link,
   ]);
 
   // Keep message in sync with options unless manually edited

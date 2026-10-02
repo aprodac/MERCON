@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
-  Copy, Check, CheckCircle2, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
+  Copy, Check, CheckCircle2, Smartphone, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
   CalendarClock, Repeat, Receipt, FileText, Clock, ChevronDown, Navigation, Image as ImageIcon,
-  User as UserIcon, Truck, UploadCloud, SquarePen, X, Coins, ListOrdered,
+  User as UserIcon, Truck, UploadCloud, SquarePen, X, Coins, ListOrdered, Link2, ExternalLink, RefreshCw, Eye,
 } from 'lucide-react';
+import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
@@ -19,6 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useTripWhatsAppShare } from '@/hooks/useTripWhatsAppShare';
+import { useTrackingLink } from '@/hooks/useTrackingLink';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import {
   tripService, TripStatus,
@@ -32,10 +34,13 @@ import { computeTripFinancials } from '@/utils/financialCalculations';
 
 import TripMap from '@/components/maps/live/TripMap';
 import TripStopsPanel from '@/components/trips/details/TripStopsPanel';
+import { DriverPhoneLine, TripDriverTrailList, currentAcknowledgement } from '@/components/trips/details/TripDriverTrail';
+import { driverPhoneKey } from '@/components/drivers/phone/DriverPhoneSheet';
+import { driverPhoneService } from '@/services/driverPhoneService';
 import { Banner, FinancialSummary, PaperworkSection, PreTripChecks, TripSummary, TruckDriverOverlay } from '@/components/trips/details/TripDetailsBits';
 import { statusChip, tripPhaseOf } from '@/components/trips/details/tripStatus';
 import { fleetLiveService } from '@/services/fleetLiveService';
-import { buildEtaShareText, formatDuration, type EtaInfo } from '@/lib/fleetLive';
+import { buildEtaShareText, formatDuration, timeAgo, type EtaInfo } from '@/lib/fleetLive';
 import { whatsAppLink } from '@/lib/share';
 import { operatorInboxService, type DriverUpdate } from '@/services/operatorInboxService';
 import { ShareUpdateDialog } from '@/components/dashboard/inbox/ShareUpdateDialog';
@@ -169,6 +174,26 @@ export default function TripDetailsPage() {
     enabled: !!tripEntityId && !!trip,
   });
   const tripUpdates = tripUpdatesRes?.updates ?? [];
+
+  // The customer tracking link — loaded up front so Share can include it without a pop-up-blocked wait.
+  const trackable = !!trip && trip.status !== 'Draft' && trip.status !== 'Cancelled';
+  const tracking = useTrackingLink(trip?.id, trackable);
+  const [renewLinkOpen, setRenewLinkOpen] = useState(false);
+
+  // Driver side of the trip: pushes, "Got it", app activity (driver phone audit)
+  const { data: driverTrail } = useQuery({
+    queryKey: ['trip-driver-trail', tripEntityId],
+    queryFn: () => driverPhoneService.tripTrail(tripEntityId!),
+    enabled: !!tripEntityId,
+    refetchInterval: 60_000,
+  });
+  const tripDriverId = (trip as any)?.driver?.id as string | undefined;
+  const { data: driverPhone } = useQuery({
+    queryKey: driverPhoneKey(tripDriverId ?? ''),
+    queryFn: () => driverPhoneService.details(tripDriverId!),
+    enabled: !!tripDriverId,
+    refetchInterval: 60_000,
+  });
 
   const { data: overview } = useQuery({
     queryKey: ['trip-overview', tripEntityId],
@@ -373,8 +398,23 @@ export default function TripDetailsPage() {
 
   const shareEta = () => {
     if (!overview?.unit || !mapEta) return;
-    const text = buildEtaShareText(overview.unit, mapEta, (d) => formatTime(d.toISOString()));
+    const text = buildEtaShareText(overview.unit, mapEta, (d) => formatTime(d.toISOString()), tracking.autoUrl);
     window.open(whatsAppLink(null, text), '_blank', 'noopener');
+  };
+
+  const sendTrackingLink = () => {
+    if (!tracking.url) return;
+    const head = [trip.ref_id, trip.vehicle?.plate_number].filter(Boolean).join(' · ');
+    window.open(whatsAppLink(null, `*${head}*\nTrack your truck live: ${tracking.url}`), '_blank', 'noopener');
+  };
+  const copyTrackingLink = async () => {
+    if (!tracking.url) return;
+    try {
+      await navigator.clipboard.writeText(tracking.url);
+      toast.success('Tracking link copied');
+    } catch {
+      toast.error("Couldn't copy — select the link on the tracking page instead");
+    }
   };
 
   // One short phrase beside the status: what matters about the trip right now.
@@ -494,6 +534,38 @@ export default function TripDetailsPage() {
                           <Navigation size={14} className="mr-2 text-muted-foreground" /> ETA{mapEta?.arrival ? ` · ${formatTime(mapEta.arrival.toISOString())}` : ' (working it out…)'}
                         </DropdownMenuItem>
                       )}
+                      {trackable && (
+                        <>
+                          <DropdownMenuSeparator />
+                          <p className="px-2 pt-1 pb-0.5 text-[11px] font-medium text-muted-foreground">Customer tracking link</p>
+                          {tracking.link?.enabled && (
+                            <p className="flex items-center gap-1 px-2 pb-1 text-[11px] text-muted-foreground">
+                              <Eye size={11} />
+                              {tracking.link.open_count > 0
+                                ? `Customer opened it ${tracking.link.open_count}× · last ${timeAgo(tracking.link.last_opened_at)}`
+                                : 'Not opened yet'}
+                            </p>
+                          )}
+                          {tracking.disabled ? (
+                            <p className="px-2 pb-1.5 text-[11px] text-muted-foreground">Tracking is off for this customer (Customer → Tracking).</p>
+                          ) : (
+                          <>
+                          <DropdownMenuItem onClick={sendTrackingLink} disabled={!tracking.url}>
+                            <Link2 size={14} className="mr-2 text-muted-foreground" /> {tracking.url ? 'Send tracking link' : 'Getting the link…'}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={copyTrackingLink} disabled={!tracking.url}>
+                            <Copy size={14} className="mr-2 text-muted-foreground" /> Copy link
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => tracking.url && window.open(tracking.url, '_blank', 'noopener')} disabled={!tracking.url}>
+                            <ExternalLink size={14} className="mr-2 text-muted-foreground" /> Open what the customer sees
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setRenewLinkOpen(true)} disabled={!tracking.url}>
+                            <RefreshCw size={14} className="mr-2 text-muted-foreground" /> New link…
+                          </DropdownMenuItem>
+                          </>
+                          )}
+                        </>
+                      )}
                       {tripUpdates.length > 0 && (
                         <>
                           <DropdownMenuSeparator />
@@ -603,7 +675,22 @@ export default function TripDetailsPage() {
             <TripMap
               tripId={trip.id}
               onEta={setMapEta}
-              overlay={<TruckDriverOverlay trip={trip} overview={overview} truckLabel={truckDisplayLabel} onReassign={handleOpenReassign} />}
+              overlay={
+                <TruckDriverOverlay
+                  trip={trip}
+                  overview={overview}
+                  truckLabel={truckDisplayLabel}
+                  onReassign={handleOpenReassign}
+                  driverExtra={
+                    <DriverPhoneLine
+                      phone={driverPhone}
+                      {...currentAcknowledgement(driverTrail, tripDriverId)}
+                      tz={tz}
+                      onOpen={() => setIsActivityLogOpen(true)}
+                    />
+                  }
+                />
+              }
             />
           </div>
           <div className="min-h-0 lg:h-full">
@@ -619,13 +706,19 @@ export default function TripDetailsPage() {
                   refetchDocuments();
                   queryClient.invalidateQueries({ queryKey: ['operator-inbox', 'trip-driver-updates', trip.id] });
                 }}
-                top={
-                  phase === 'planned' ? (overview?.checks ? <PreTripChecks checks={overview.checks} formatDate={formatDate} /> : null)
+                top={<>
+                  {phase === 'planned' ? (overview?.checks ? <PreTripChecks checks={overview.checks} formatDate={formatDate} /> : null)
                   : phase === 'done' ? <TripSummary trip={trip} overview={overview} formatDateTime={formatDateTime} />
                   : phase === 'cancelled' ? <Banner tone="muted">Cancelled{trip.updatedAt ? ` on ${formatDateTime(trip.updatedAt)}` : ''}. The planned route is shown for reference.</Banner>
                   : trip.status === 'Delayed' ? <Banner tone="danger"><strong>Delayed.</strong> {delayReason ?? 'No reason reported yet.'}</Banner>
-                  : null
-                }
+                  : null}
+                  {trip.media_purged && (
+                    <Banner tone="muted">
+                      {trip.media_purged.count} photo{trip.media_purged.count === 1 ? '' : 's'}/video{trip.media_purged.count === 1 ? '' : 's'} from this trip
+                      {' '}were deleted on {formatDate(trip.media_purged.purged_at)}, {trip.media_purged.retention_days} days after the trip ended.
+                    </Banner>
+                  )}
+                </>}
                 bottom={
                   <PaperworkSection
                     documents={documents}
@@ -675,11 +768,34 @@ export default function TripDetailsPage() {
                 </div>
               </div>
             ))}
+
+            <div className="pt-3 border-t border-[#E5E7EB]">
+              <p className="mb-1 flex items-center gap-1.5 text-xs font-bold text-[#1F2937]">
+                <Smartphone size={14} className="text-[#FA634E]" /> Driver &amp; phone
+              </p>
+              <p className="mb-2 text-[11px] text-[#6B7280]">
+                What was sent to the driver, whether it reached their phone, and what they did in the app.
+              </p>
+              <TripDriverTrailList trail={driverTrail} tz={tz} />
+            </div>
           </div>
         </SheetContent>
       </Sheet>
 
       {/* ── Status Confirmation Modal ── */}
+      <ConfirmModal
+        isOpen={renewLinkOpen}
+        onClose={() => setRenewLinkOpen(false)}
+        title="Make a new tracking link?"
+        message="The current link stops working for everyone who has it. Use this if the link was sent to the wrong person."
+        confirmLabel="Make new link"
+        isLoading={tracking.renew.isPending}
+        onConfirm={() => tracking.renew.mutate(undefined, {
+          onSuccess: () => { setRenewLinkOpen(false); toast.success('New tracking link ready — the old one no longer works'); },
+          onError: () => toast.error("Couldn't make a new link. Try again."),
+        })}
+      />
+
       <ConfirmModal
         isOpen={isStatusModalOpen}
         onClose={() => setIsStatusModalOpen(false)}

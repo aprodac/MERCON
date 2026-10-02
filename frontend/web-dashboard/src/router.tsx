@@ -43,6 +43,8 @@ const TripTrackingPage        = lazyWithRetry(() => import('@/pages/trips/TripTr
 const TripCompletionPage      = lazyWithRetry(() => import('@/pages/trips/TripCompletionPage'));
 const TripEvidencePublicGalleryPage = lazyWithRetry(() => import('@/pages/public/TripEvidencePublicGalleryPage'));
 const SharedUpdatePage = lazyWithRetry(() => import('@/pages/public/SharedUpdatePage'));
+const TrackingPage = lazyWithRetry(() => import('@/pages/public/TrackingPage'));
+const FleetTrackingPage = lazyWithRetry(() => import('@/pages/public/FleetTrackingPage'));
 const ThirdPartyListPage      = lazyWithRetry(() => import('@/pages/third-party/ThirdPartyListPage'));
 const ThirdPartyDetailsPage   = lazyWithRetry(() => import('@/pages/third-party/ThirdPartyDetailsPage'));
 
@@ -219,6 +221,24 @@ export default function AppRouter() {
               </Suspense>
             }
           />
+          {/* Public customer tracking page behind a trip's tracking link (WhatsApp). */}
+          <Route
+            path="/t/:token"
+            element={
+              <Suspense fallback={<FullPageSpinner />}>
+                <TrackingPage />
+              </Suspense>
+            }
+          />
+          {/* Public customer-wide tracking page: all of one customer's trucks on the road. */}
+          <Route
+            path="/c/:token"
+            element={
+              <Suspense fallback={<FullPageSpinner />}>
+                <FleetTrackingPage />
+              </Suspense>
+            }
+          />
 
           {/* Live map — full screen, outside the app shell: no app sidebar or
               header, the operations panel floats inside the map. */}
@@ -372,7 +392,7 @@ export default function AppRouter() {
             <Route path="/reports/*"                element={<Navigate to="/report-builder" replace />} />
             <Route path="/reports"                  element={<Navigate to="/report-builder" replace />} />
 
-            {/* Company Excel reports now live on the customer (Trip sheets tab) and the invoice (Trip sheet button) */}
+            {/* Company Excel reports now live on the customer (Excel exports tab) and the invoice (Trip sheet button) */}
             <Route path="/company-reports"          element={<Navigate to="/customers" replace />} />
 
             {/* Smart Report Builder */}

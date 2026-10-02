@@ -495,6 +495,7 @@ const DeliveryVerificationScreen = () => {
                     <Image source={{ uri: photos[i].uri }} style={styles.photoImage} resizeMode={evidence.screenshot ? 'contain' : 'cover'} />
                     {!evidence.screenshot && !!photos[i].location && (
                       <GoogleMapsGeotagPreview
+                        customerName={trip?.customer?.name}
                         latitude={photos[i].location!.latitude}
                         longitude={photos[i].location!.longitude}
                         timestamp={photos[i].location!.timestamp}
@@ -562,6 +563,7 @@ const DeliveryVerificationScreen = () => {
       />
 
       <GeotagPhotoModal
+        companyName={trip?.customer?.name}
         visible={!!previewPhoto}
         photo={previewPhoto ? { uri: previewPhoto.uri, title: t('title_pod_preview', 'POD Photo Preview'), location: previewPhoto.location } : null}
         onClose={() => setPreviewPhoto(null)}

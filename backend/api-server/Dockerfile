@@ -1,7 +1,8 @@
 # Build from the repo root: docker build -f backend/api-server/Dockerfile .
 FROM node:20-alpine
 
-RUN apk add --no-cache openssl curl
+# ffmpeg: shrinks driver videos after upload (services/media/videoCompressor.ts)
+RUN apk add --no-cache openssl curl ffmpeg
 
 WORKDIR /app
 

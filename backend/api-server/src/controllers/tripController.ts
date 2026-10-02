@@ -19,6 +19,7 @@ import { buildTripRouteTimeline, isRouteLocked, buildTripStops } from '../servic
 import { parseFullTripStops } from '../services/legacyStopStringParser';
 import { writeTripStops } from '../services/tripStopWriter';
 import { whatsappService } from '../services/whatsappService';
+import { getTripMediaPurge } from '../services/media/tripMediaRetention';
 
 /** Fields the trip ledger search bar looks at. */
 const TRIP_SEARCH_FIELDS = [
@@ -605,10 +606,13 @@ export const getTripById = async (req: Request, res: Response) => {
       },
       orderBy: { createdAt: 'desc' },
     });
+    // Photos/videos the 60-day retention job removed — shown as a notice.
+    const mediaPurged = await getTripMediaPurge(trip.id, stopIds);
 
     const tripData = {
       ...trip,
       documents: tripDocuments,
+      media_purged: mediaPurged,
       paid_amount: fin.paidAmount,
       balance_due: fin.balanceDue,
       total_amount: fin.totalCustomerBilling,
@@ -2078,47 +2082,50 @@ export const updateTripStopsRoute = async (req: Request, res: Response) => {
       parsedPlannedEnd = new Date(planned_end);
     }
 
-    const resolvedStops = await Promise.all(
-      rawStops.map(async (stop: any) => {
-        const stopName = String(stop.location_name ?? stop.name ?? '').trim();
-        let locId = stop.location_id || stop.locationId || null;
-        let resolvedLoc: any = null;
+    // One stop at a time, not Promise.all: a round trip names the same new
+    // place twice (A→B, then B→A), and two parallel creates of one Location
+    // collide on its unique code — which left one of the stops without its location.
+    const resolveStop = async (stop: any) => {
+      const stopName = String(stop.location_name ?? stop.name ?? '').trim();
+      let locId = stop.location_id || stop.locationId || null;
+      let resolvedLoc: any = null;
 
-        if (locId) {
-          resolvedLoc = await resolveLocation(prisma, { id: locId, customerId: existingTrip.customerId, skipCanonicalUpdate: true }, createdBy);
-          if (resolvedLoc) locId = resolvedLoc.id;
-        } else if (stopName) {
-          try {
-            const loc = await resolveLocation(
-              prisma,
-              {
-                customerId: existingTrip.customerId,
-                name: stopName,
-                address: String(stop.location_address ?? stop.address ?? '').trim() || null,
-                lat: parseOptionalFloat(stop.lat ?? stop.location_lat),
-                lng: parseOptionalFloat(stop.lng ?? stop.location_lng),
-                skipCanonicalUpdate: !stop.update_canonical_location,
-              },
-              createdBy
-            );
-            if (loc) { locId = loc.id; resolvedLoc = loc; }
-          } catch (e) {
-            logger.warn({ err: e }, 'Failed to resolve location for trip stop edit');
-          }
+      if (locId) {
+        resolvedLoc = await resolveLocation(prisma, { id: locId, customerId: existingTrip.customerId, skipCanonicalUpdate: true }, createdBy);
+        if (resolvedLoc) locId = resolvedLoc.id;
+      } else if (stopName) {
+        try {
+          const loc = await resolveLocation(
+            prisma,
+            {
+              customerId: existingTrip.customerId,
+              name: stopName,
+              address: String(stop.location_address ?? stop.address ?? '').trim() || null,
+              lat: parseOptionalFloat(stop.lat ?? stop.location_lat),
+              lng: parseOptionalFloat(stop.lng ?? stop.location_lng),
+              skipCanonicalUpdate: !stop.update_canonical_location,
+            },
+            createdBy
+          );
+          if (loc) { locId = loc.id; resolvedLoc = loc; }
+        } catch (e) {
+          logger.warn({ err: e }, 'Failed to resolve location for trip stop edit');
         }
+      }
 
-        // A stop sent without coordinates/address (e.g. an intermediate stop,
-        // which the edit form only holds as a name) falls back to its Location
-        // master record, so rebuilding the route never strips coordinates.
-        const hasCoords = parseOptionalFloat(stop.lat ?? stop.location_lat) != null && parseOptionalFloat(stop.lng ?? stop.location_lng) != null;
-        const fallback = !hasCoords && resolvedLoc?.lat != null && resolvedLoc?.lng != null
-          ? { lat: resolvedLoc.lat, lng: resolvedLoc.lng, coordinate_precision: stop.coordinate_precision || resolvedLoc.coordinate_precision || 'APPROXIMATE' }
-          : {};
-        const addressFallback = !(stop.location_address ?? stop.address) && resolvedLoc?.address ? { location_address: resolvedLoc.address } : {};
+      // A stop sent without coordinates/address (e.g. an intermediate stop,
+      // which the edit form only holds as a name) falls back to its Location
+      // master record, so rebuilding the route never strips coordinates.
+      const hasCoords = parseOptionalFloat(stop.lat ?? stop.location_lat) != null && parseOptionalFloat(stop.lng ?? stop.location_lng) != null;
+      const fallback = !hasCoords && resolvedLoc?.lat != null && resolvedLoc?.lng != null
+        ? { lat: resolvedLoc.lat, lng: resolvedLoc.lng, coordinate_precision: stop.coordinate_precision || resolvedLoc.coordinate_precision || 'APPROXIMATE' }
+        : {};
+      const addressFallback = !(stop.location_address ?? stop.address) && resolvedLoc?.address ? { location_address: resolvedLoc.address } : {};
 
-        return { ...stop, ...fallback, ...addressFallback, location_id: locId, location_name: stopName };
-      })
-    );
+      return { ...stop, ...fallback, ...addressFallback, location_id: locId, location_name: stopName };
+    };
+    const resolvedStops: any[] = [];
+    for (const stop of rawStops) resolvedStops.push(await resolveStop(stop));
 
     const stopValidation = validateTripStops(resolvedStops);
     if (!stopValidation.isValid) {

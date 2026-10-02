@@ -43,7 +43,7 @@ const MODULE_DESCRIPTIONS: Record<string, { label: string; desc: string }> = {
   zatca: { label: 'ZATCA e-invoicing', desc: 'Connecting to ZATCA Fatoora for e-invoices.' },
   documents: { label: 'Documents', desc: 'Driver, vehicle and trip documents with expiry tracking.' },
   reports: { label: 'Reports', desc: 'Operations and performance reports.' },
-  'company-reports': { label: 'Customer trip sheets', desc: 'Trip lists filled into each customer’s own Excel layout — Customer → Trip sheets, and Trip sheet on an invoice.' },
+  'company-reports': { label: 'Customer Excel exports', desc: 'Trips, statement of account and rates filled into each customer’s own Excel layout — Customer → Excel exports, and Trip sheet on an invoice.' },
   'report-builder': { label: 'Report builder', desc: 'Build custom reports with your own filters.' },
   taxonomy: { label: 'Taxonomy', desc: 'Vehicle classes, line types and billing types.' },
   'aprodac-documents': { label: 'Aprodac vault', desc: 'Contracts and documents shared with Aprodac.' },

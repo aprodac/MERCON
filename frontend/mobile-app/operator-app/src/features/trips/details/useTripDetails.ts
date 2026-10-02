@@ -8,15 +8,23 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
-import { operatorService, type DriverUpdate, type OperatorTripDetail, type TripOverview } from '../../../lib/operator';
+import { autoTrackingUrl, operatorService, type DriverUpdate, type OperatorTripDetail, type TrackingLinkInfo, type TripOverview } from '../../../lib/operator';
 import { haversineKm, phaseOf, sortedStops, stopName, type Remaining } from './tripDetailsModel';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ACTIVE_REFRESH_MS = 20_000;
 const IDLE_REFRESH_MS = 60_000;
 /** Average truck speed for the straight-line guess when routing is down. */
 const FALLBACK_KMH = 70;
 /** Straight line → road distance, roughly. */
 const ROAD_FACTOR = 1.25;
+/**
+ * The router times a car; a loaded truck averages less. Same cap as the
+ * customer tracking page (backend `customerTracking.ts`), so the ETA in the
+ * status message matches what the customer's link shows.
+ */
+const TRUCK_MAX_AVG_KMH = 80;
+const truckDriveSeconds = (meters: number, providerSec: number) => Math.max(providerSec, meters / (TRUCK_MAX_AVG_KMH / 3.6));
 
 export function useTripDetails(id: string | undefined) {
   const [trip, setTrip] = useState<OperatorTripDetail | null>(null);
@@ -34,14 +42,18 @@ export function useTripDetails(id: string | undefined) {
     inFlight.current = true;
     if (mode === 'pull') setRefreshing(true);
     try {
+      // The overview and photos are extras: the page still works without them.
+      // Those endpoints take the trip's UUID; when the route already has it,
+      // ask for all three at once instead of waiting for the trip first.
+      const extras = (tripId: string) => Promise.allSettled([
+        operatorService.tripOverview(tripId),
+        operatorService.tripDriverUpdates(tripId),
+      ]);
+      const early = UUID_RE.test(id) ? extras(id) : null;
       const t = await operatorService.tripById(id);
       setTrip(t);
       setError(null);
-      // The overview and photos are extras: the page still works without them.
-      const [ov, up] = await Promise.allSettled([
-        operatorService.tripOverview(t.id),
-        operatorService.tripDriverUpdates(t.id),
-      ]);
+      const [ov, up] = await (early ?? extras(t.id));
       if (ov.status === 'fulfilled') setOverview(ov.value);
       if (up.status === 'fulfilled') {
         setUpdates(up.value.updates ?? []);
@@ -86,7 +98,7 @@ export function useTripDetails(id: string | undefined) {
     operatorService.routeEstimate({ lat: flat, lng: flng }, { lat: tlat, lng: tlng }).then((r) => {
       if (!live) return;
       if (r) {
-        setRemaining({ km: r.distanceMeters / 1000, sec: r.durationSeconds, to: destName, approx: false });
+        setRemaining({ km: r.distanceMeters / 1000, sec: truckDriveSeconds(r.distanceMeters, r.durationSeconds), to: destName, approx: false });
       } else {
         const km = haversineKm({ lat: flat, lng: flng }, { lat: tlat, lng: tlng }) * ROAD_FACTOR;
         setRemaining({ km, sec: (km / FALLBACK_KMH) * 3600, to: destName, approx: true });
@@ -94,6 +106,28 @@ export function useTripDetails(id: string | undefined) {
     });
     return () => { live = false; };
   }, [posKey, destKey, destName]);
+
+  // The customer tracking link — asked for once per trip, and again on pull to
+  // refresh (for "opened 3 times"). Without it (offline, older server) messages
+  // simply go without a link.
+  const [tracking, setTracking] = useState<TrackingLinkInfo | null>(null);
+  const tripId = trip?.id;
+  const trackable = !!trip && trip.status !== 'Draft' && trip.status !== 'Cancelled';
+  const [trackingTick, setTrackingTick] = useState(0);
+  useEffect(() => {
+    if (!tripId || !trackable) return;
+    let live = true;
+    operatorService.trackingLink(tripId).then((l) => { if (live) setTracking(l); }).catch(() => {});
+    return () => { live = false; };
+  }, [tripId, trackable, trackingTick]);
+
+  /** A new link; the old one stops working for everyone who has it. */
+  const renewTracking = useCallback(async () => {
+    if (!tripId) return null;
+    const l = await operatorService.trackingLink(tripId, true);
+    setTracking(l);
+    return l;
+  }, [tripId]);
 
   // Poll while this screen is focused and the app is in the foreground.
   useFocusEffect(
@@ -124,10 +158,14 @@ export function useTripDetails(id: string | undefined) {
     tz,
     phase,
     remaining: posKey && destKey ? remaining : null,
+    tracking: trackable ? tracking : null,
+    /** The link status messages end with — only when the customer wants it added. */
+    trackingUrl: trackable ? autoTrackingUrl(tracking) : null,
+    renewTracking,
     loading,
     refreshing,
     error,
-    refresh: () => load('pull'),
+    refresh: () => { setTrackingTick((n) => n + 1); return load('pull'); },
     reload: () => load('silent'),
   };
 }

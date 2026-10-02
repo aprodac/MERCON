@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { createNotification } from './notificationController';
+import { recordDriverActivity } from '../services/driverPhone/activity';
 import { Role, TripStatus, DocType } from '@prisma/client';
 
 /**
@@ -77,6 +78,13 @@ export const raiseEmergency = async (req: Request, res: Response) => {
         createNotification(u.id, '🚨 Driver Emergency', message, 'Emergency', entityType, entityId),
       ),
     );
+
+    void recordDriverActivity(driverId, 'Emergency', {
+      tripId: activeTrip?.id ?? null,
+      lat: hasCoords ? lat : null,
+      lng: hasCoords ? lng : null,
+      metadata: { incident_type, photos: files.length },
+    });
 
     res.status(201).json({ success: true, data: { notified: staff.length, photos: files.length } });
   } catch (error) {

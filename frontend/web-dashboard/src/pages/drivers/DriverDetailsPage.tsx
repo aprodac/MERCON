@@ -7,7 +7,7 @@ import {
   MoreVertical, Activity, Award, FolderOpen, Mail, Gauge, Search,
   TrendingUp, BarChart2, DollarSign, ChevronDown, Eye,
   Building2, Banknote, Package, MapPin, ArrowRight, AlertCircle,
-  ArrowLeft, ExternalLink, PhoneCall, MessageSquare, Loader2
+  ArrowLeft, ExternalLink, PhoneCall, MessageSquare, Loader2, Smartphone
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -17,6 +17,9 @@ import DocumentsValidityFolder from '@/components/ui/DocumentsValidityFolder';
 import DriverDocumentsValidityFolder from '@/components/ui/DriverDocumentsValidityFolder';
 import VisualRouteProgress from '@/components/trips/VisualRouteProgress';
 import { driverService } from '@/services/driverService';
+import { driverPhoneService, PHONE_LEVEL_LABEL, timeAgo } from '@/services/driverPhoneService';
+import DriverPhoneSheet, { driverPhoneKey } from '@/components/drivers/phone/DriverPhoneSheet';
+import { PhoneDot } from '@/components/drivers/phone/PhoneStatus';
 import { documentService } from '@/services/documentService';
 import { exportExcelTable } from '@/utils/exportUtils';
 import DriverAvatar from '@/components/ui/DriverAvatar';
@@ -328,6 +331,7 @@ export default function DriverDetailsPage() {
   const [driverTripPage, setDriverTripPage] = useState<number>(1);
   const [tripDateFilter, setTripDateFilter] = useState<'all' | 'this_month' | '30d' | '90d'>('all');
   const [deletedDocIds, setDeletedDocIds] = useState<string[]>([]);
+  const [phoneSheetOpen, setPhoneSheetOpen] = useState(false);
 
   const { data: driver, isLoading, error } = useQuery({
     queryKey: ['driver', id],
@@ -343,6 +347,14 @@ export default function DriverDetailsPage() {
       }
     }
   }, [driver?.id, driver?.ref_id, id, navigate]);
+
+  // Same query (and cache) the Phone & App sheet uses
+  const { data: phone } = useQuery({
+    queryKey: driverPhoneKey(driver?.id ?? ''),
+    queryFn: () => driverPhoneService.details(driver!.id),
+    enabled: !!driver?.id,
+    refetchInterval: 60_000,
+  });
 
   const { data: driverUsage } = useQuery({
     queryKey: ['driver-usage', id],
@@ -557,7 +569,7 @@ export default function DriverDetailsPage() {
               }
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 shrink-0">
               <KpiCard
                 icon={Truck}
                 iconClass="text-[#FA634E]"
@@ -592,6 +604,21 @@ export default function DriverDetailsPage() {
                 label="Total Trips"
                 value={trips.length}
                 sub={activeTrip ? '1 trip in progress' : 'Completed & active'}
+              />
+              <KpiCard
+                icon={Smartphone}
+                iconClass={phone?.status.level === 'red' ? 'text-rose-600' : phone?.status.level === 'amber' ? 'text-amber-600' : 'text-emerald-600 dark:text-emerald-400'}
+                label="Phone & App"
+                value={
+                  <span className="flex items-center gap-2">
+                    <PhoneDot level={phone?.status.level} />
+                    {phone ? PHONE_LEVEL_LABEL[phone.status.level] : '…'}
+                  </span>
+                }
+                sub={phone ? (phone.status.reasons[0] ?? `Seen ${timeAgo(phone.status.lastSeenAt)}`) : 'Checking phone…'}
+                onClick={() => setPhoneSheetOpen(true)}
+                title="Phone status, notifications and activity"
+                trailing={<ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
               />
             </div>
           </div>
@@ -773,6 +800,8 @@ export default function DriverDetailsPage() {
           </div>
 
         </div>
+
+        <DriverPhoneSheet driverId={driver.id} driverName={driverName} open={phoneSheetOpen} onOpenChange={setPhoneSheetOpen} />
 
         {/* ── DELETE DRIVER CONFIRMATION MODAL ── */}
         <Dialog open={isDeleteModalOpen} onOpenChange={(open) => !open && setIsDeleteModalOpen(false)}>

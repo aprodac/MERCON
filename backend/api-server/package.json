@@ -11,6 +11,7 @@
     "seed": "ts-node prisma/seed.ts",
     "seed:demo": "ts-node scripts/seed-demo-local.ts",
     "demo:purge": "ts-node scripts/demo-purge.ts",
+    "images:convert-inline": "ts-node scripts/convert-inline-images.ts",
     "backfill:trip-charges": "ts-node scripts/backfill-trip-charges.ts",
     "backfill:trip-charges:verify": "ts-node scripts/backfill-trip-charges.ts --verify",
     "test:icces": "node -r ts-node/register --test src/services/icces/trackParser.test.ts src/services/icces/iccesSession.test.ts src/services/icces/fleetPoller.test.ts",
@@ -31,10 +32,12 @@
     "test:driver-payouts": "node -r ts-node/register --test src/tests/driverPayouts.test.ts",
     "test:maintenance": "node -r ts-node/register --test src/services/maintenance/engine.test.ts",
     "test:fleet-live-map": "node -r ts-node/register --test src/tests/fleetLiveMap.test.ts",
+    "test:driver-phone": "node -r ts-node/register --test src/services/driverPhone/rules.test.ts",
     "test:operator-inbox": "node -r ts-node/register --test src/tests/operatorInbox.test.ts",
     "test:trip-overview": "node -r ts-node/register --test src/tests/tripOverview.test.ts",
+    "test:customer-tracking": "node -r ts-node/register --test src/tests/customerTracking.test.ts src/tests/stopGeofence.test.ts",
     "test:zatca": "node -r ts-node/register --test src/services/zatca/csr.test.ts src/services/secrets/secretBox.test.ts",
-    "test:xlsx": "node -r ts-node/register --test src/services/reports/xlsxTemplate/splice.test.ts src/services/reports/xlsxTemplate/aliases.test.ts src/services/reports/xlsxTemplate/inspect.test.ts",
+    "test:xlsx": "node -r ts-node/register --test src/services/reports/xlsxTemplate/splice.test.ts src/services/reports/xlsxTemplate/aliases.test.ts src/services/reports/xlsxTemplate/inspect.test.ts src/services/reports/xlsxTemplate/statementData.test.ts",
     "migrate:driver-avatars": "ts-node scripts/migrateDriverAvatars.ts"
   },
   "prisma": {

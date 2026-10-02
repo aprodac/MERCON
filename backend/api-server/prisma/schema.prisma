@@ -194,6 +194,18 @@ model Customer {
 
   driver_workflow DriverWorkflow @default(NATIVE)
 
+  // Customer tracking link (services/tracking/customerTracking.ts).
+  /// Off: no tracking links for this customer; links already sent stop working.
+  tracking_enabled           Boolean @default(true)
+  /// Status / ETA / truck-details messages end with the trip's tracking link.
+  tracking_auto_link         Boolean @default(true)
+  /// The page shows the planned arrival time and "on time" / "late by".
+  tracking_show_deadline     Boolean @default(false)
+  /// The page shows the delay reason category (never the driver's typed note).
+  tracking_show_delay_reason Boolean @default(false)
+  /// Finished stops show the loading / delivery photos (POD).
+  tracking_show_photos       Boolean @default(true)
+
   created_by String?   @db.Uuid
   updated_by String?   @db.Uuid
   deleted_by String?   @db.Uuid
@@ -209,6 +221,7 @@ model Customer {
   reportTemplates ReportTemplate[]
   locations       Location[]
   invoices        Invoice[]
+  trackingLinks   CustomerTrackingLink[]
 
   // Every customer list and picker filters on deletedAt.
   @@index([deletedAt])
@@ -251,6 +264,8 @@ model Driver {
   vehicleAssignments DriverVehicleAssignment[]
   notifications      Notification[]
   devices            DriverDevice[]
+  activityEvents     DriverActivityEvent[]
+  tripAcks           TripAcknowledgement[]
   expenses           Expense[]
   salaries           DriverSalary[]
   settlements        DriverSettlement[]
@@ -517,6 +532,8 @@ model Trip {
   charges   TripCharge[]
   locations TripLocation[]
   updateShares TripUpdateShare[]
+  driverActivityEvents DriverActivityEvent[]
+  driverAcknowledgements TripAcknowledgement[]
 
   @@index([vehicleId, driverId])
   @@index([is_third_party])
@@ -737,9 +754,31 @@ model TripUpdateShare {
   sharedBy        User?     @relation("TripUpdateShareUser", fields: [shared_by], references: [id], onDelete: SetNull)
   expiresAt       DateTime  @db.Timestamptz
   createdAt       DateTime  @default(now()) @db.Timestamptz
+  /// Times the page was opened (tracking links) — page loads, not refreshes.
+  open_count      Int       @default(0)
+  first_opened_at DateTime? @db.Timestamptz
+  last_opened_at  DateTime? @db.Timestamptz
 
   @@index([tripId, update_key])
   @@map("trip_update_shares")
+}
+
+/// One page per customer showing all of their trucks that are on the road —
+/// for monthly contracts, so the customer bookmarks one link instead of one per trip.
+model CustomerTrackingLink {
+  id             String    @id @default(uuid()) @db.Uuid
+  customerId     String    @db.Uuid
+  customer       Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  token          String    @unique
+  created_by     String?   @db.Uuid
+  createdAt      DateTime  @default(now()) @db.Timestamptz
+  /// Set when replaced by a new link; the old one then stops working.
+  revokedAt      DateTime? @db.Timestamptz
+  open_count     Int       @default(0)
+  last_opened_at DateTime? @db.Timestamptz
+
+  @@index([customerId])
+  @@map("customer_tracking_links")
 }
 
 model TripLocation {
@@ -838,6 +877,11 @@ model Document {
   ocr_raw_text      String? @db.Text
   ai_extracted_json Json?   @db.JsonB
   is_confidential   Boolean @default(false)
+
+  // When the retention job deleted this trip photo/video from disk (see
+  // services/media/tripMediaRetention.ts). The row is kept — soft-deleted —
+  // so GPS, stop and timestamps stay in the history.
+  file_purged_at DateTime? @db.Timestamptz
 
   verified_by      String? @db.Uuid
   verifier         User?   @relation("VerifiedBy", fields: [verified_by], references: [id])
@@ -2077,6 +2121,13 @@ model Settings {
   maintenanceMode   Boolean @default(false)
   maintenanceBanner String?
 
+  // Lowest driver-app version allowed to work ("1.2.0"). Older installs see an
+  // "update required" screen. Null = no check (the default).
+  driverAppMinVersion String?
+
+  /// Ops WhatsApp number customers reach from the tracking page ("Ask us"). Digits with country code.
+  supportWhatsapp String?
+
   updated_by String?  @db.Uuid
   updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz
 }
@@ -2174,7 +2225,14 @@ model Notification {
   entity_type String? // "Trip", "Driver", "Vehicle"
   entity_id   String? @db.Uuid
 
+  // Driver notifications only: when the driver tapped the push (opened_at) and
+  // when they first saw it in the app (read_at). is_read stays for old clients.
+  opened_at DateTime? @db.Timestamptz
+  read_at   DateTime? @db.Timestamptz
+
   createdAt DateTime @default(now()) @db.Timestamptz
+
+  pushDeliveries PushDelivery[]
 
   // The dashboard bell and the driver app both read the 50 newest for one
   // recipient; neither column was indexed.
@@ -2182,19 +2240,102 @@ model Notification {
   @@index([driverId, createdAt])
 }
 
+// One row per driver-app install. Phones that denied notifications have no
+// token but still report their health, so the dashboard can show why pushes
+// can't reach them.
 model DriverDevice {
   id         String   @id @default(uuid()) @db.Uuid
   driverId   String   @db.Uuid
   driver     Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
-  token      String   @unique
+  // Random id the app keeps in secure storage for the life of the install.
+  // Null on rows registered by app builds older than the phone-health release.
+  install_id String?  @unique
+  token      String?  @unique
   platform   String
   isActive   Boolean  @default(true)
   lastSeenAt DateTime @default(now()) @db.Timestamptz
   createdAt  DateTime @default(now()) @db.Timestamptz
   updatedAt  DateTime @updatedAt @db.Timestamptz
 
+  // Last health snapshot the app sent (all null until a phone-health build reports)
+  app_version          String?
+  build_number         String?
+  os_name              String?
+  os_version           String?
+  device_model         String?
+  notif_permission     String? // granted | denied | undetermined
+  location_permission  String? // always | while_using | denied | undetermined
+  location_services_on Boolean?
+  battery_level        Float? // 0..1
+  low_power_mode       Boolean?
+  network_type         String? // wifi | cellular | none | unknown
+  health_reported_at   DateTime? @db.Timestamptz
+
+  pushDeliveries PushDelivery[]
+
   @@index([driverId, isActive])
   @@map("driver_devices")
+}
+
+// One push attempt: a driver notification sent to one device (or a NoDevice
+// row when the driver had nowhere to send it). Expo first answers with a
+// ticket; the driverWatch job later fetches the receipt that says whether
+// Apple/Google accepted it.
+model PushDelivery {
+  id             String        @id @default(uuid()) @db.Uuid
+  notificationId String        @db.Uuid
+  notification   Notification  @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  deviceId       String?       @db.Uuid
+  device         DriverDevice? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  status             String // NoDevice | Sent | Delivered | Failed | Unknown
+  expo_ticket_id     String?
+  error_code         String?
+  error_message      String?
+  attempts           Int       @default(1)
+  sent_at            DateTime  @default(now()) @db.Timestamptz
+  receipt_checked_at DateTime? @db.Timestamptz
+
+  @@index([notificationId])
+  @@index([status, sent_at])
+  @@map("push_deliveries")
+}
+
+// A driver tapping "Got it" on a trip assignment or change.
+model TripAcknowledgement {
+  id        String   @id @default(uuid()) @db.Uuid
+  tripId    String   @db.Uuid
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  driverId  String   @db.Uuid
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  lat       Float?
+  lng       Float?
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([tripId, createdAt])
+  @@index([driverId, createdAt])
+  @@map("trip_acknowledgements")
+}
+
+// Driver-side audit trail: what the driver and their phone did, and when.
+model DriverActivityEvent {
+  id        String   @id @default(uuid()) @db.Uuid
+  driverId  String   @db.Uuid
+  driver    Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  tripId    String?  @db.Uuid
+  trip      Trip?    @relation(fields: [tripId], references: [id], onDelete: SetNull)
+  // Login | Logout | AppOpened | WentOffline | CameOnline | PermissionChanged |
+  // TripStatusChanged | PhotoUploaded | Emergency | Acknowledged
+  type      String
+  lat       Float?
+  lng       Float?
+  metadata  Json?    @db.JsonB
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([driverId, createdAt])
+  @@index([tripId, createdAt])
+  @@index([createdAt])
+  @@map("driver_activity_events")
 }
 
 // -----------------------------------------

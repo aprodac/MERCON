@@ -36,6 +36,7 @@ import { IccesSession, IccesAuthError } from './iccesSession';
 import { createAxiosTransport } from './axiosTransport';
 import type { IccesTelemetry } from './trackParser';
 import { trackerLocationUpdate } from '../tracking/locationUpdate';
+import { applyGpsStopEvents } from '../tracking/stopGeofence';
 
 /** Matches the dashboard's own refresh rate. Fast enough to watch a truck
  *  move, slow enough that 27 vehicles cost one request per 30s, not per truck. */
@@ -193,6 +194,12 @@ async function pollOnce(session: IccesSession): Promise<void> {
 
   const { matched, unmatched } = await persist(telemetry);
   const broadcast = await broadcastToActiveTrips(telemetry);
+  // Trucks reaching / leaving their stops — fills stop times when the driver
+  // runs the trip in the customer's app instead of MERCON's. Never throws.
+  const stopEvents = await applyGpsStopEvents(
+    getPrisma(),
+    telemetry.map((t) => ({ deviceId: t.deviceId, lat: t.latitude, lng: t.longitude, recordedAt: t.recordedAt })),
+  );
 
   lastPollAt = new Date();
   lastMatchedCount = matched;
@@ -209,8 +216,8 @@ async function pollOnce(session: IccesSession): Promise<void> {
     );
   }
   logger.info(
-    { matched, broadcast, capturedAt },
-    `[ICCES] fleet updated: ${matched} vehicle(s), ${broadcast} trip broadcast(s)`,
+    { matched, broadcast, stopEvents, capturedAt },
+    `[ICCES] fleet updated: ${matched} vehicle(s), ${broadcast} trip broadcast(s), ${stopEvents} stop time(s) from GPS`,
   );
 }
 

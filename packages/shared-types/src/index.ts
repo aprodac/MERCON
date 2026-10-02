@@ -277,6 +277,7 @@ export type BillStatus = 'Draft' | 'Approved' | 'PartiallyPaid' | 'Paid' | 'Void
 export const TRIP_REPORT_FIELDS = [
   { key: 'serial', label: 'Row number', type: 'number' },
   { key: 'ref_id', label: 'Trip / Job No.', type: 'string' },
+  { key: 'awb_number', label: 'AWB / shipment no.', type: 'string' },
   { key: 'date', label: 'Trip date', type: 'date' },
   { key: 'driver_name', label: 'Driver name', type: 'string' },
   { key: 'driver_phone', label: 'Driver mobile', type: 'string' },
@@ -296,6 +297,64 @@ export const TRIP_REPORT_FIELDS = [
   { key: 'rate_category', label: 'Line type', type: 'string' },
 ] as const;
 export type TripReportFieldKey = (typeof TRIP_REPORT_FIELDS)[number]['key'];
+
+/**
+ * Statement of account: one row per issued invoice, payment, advance applied
+ * or credit note, oldest first, with a running balance (opening balance is
+ * carried in, not a row). Draft and void invoices are left out, same as the
+ * customer's Financial Summary.
+ */
+export const STATEMENT_REPORT_FIELDS = [
+  { key: 'serial', label: 'Row number', type: 'number' },
+  { key: 'date', label: 'Date', type: 'date' },
+  { key: 'doc_type', label: 'Type (invoice, payment…)', type: 'string' },
+  { key: 'doc_no', label: 'Document no.', type: 'string' },
+  { key: 'invoice_no', label: 'Invoice no.', type: 'string' },
+  { key: 'reference', label: 'Reference / note', type: 'string' },
+  { key: 'due_date', label: 'Due date', type: 'date' },
+  { key: 'debit', label: 'Debit (invoiced)', type: 'money' },
+  { key: 'credit', label: 'Credit (paid / credited)', type: 'money' },
+  { key: 'balance', label: 'Running balance', type: 'money' },
+  { key: 'invoice_status', label: 'Invoice status', type: 'string' },
+] as const;
+export type StatementReportFieldKey = (typeof STATEMENT_REPORT_FIELDS)[number]['key'];
+
+/** Rates: one row per active quotation for the customer. */
+export const RATE_REPORT_FIELDS = [
+  { key: 'serial', label: 'Row number', type: 'number' },
+  { key: 'quotation_no', label: 'Quotation no.', type: 'string' },
+  { key: 'quotation_name', label: 'Quotation name', type: 'string' },
+  { key: 'origin', label: 'From', type: 'string' },
+  { key: 'destination', label: 'To', type: 'string' },
+  { key: 'route', label: 'Full route (all stops)', type: 'string' },
+  { key: 'vehicle_type', label: 'Vehicle type', type: 'string' },
+  { key: 'line_type', label: 'Line type', type: 'string' },
+  { key: 'pricing_basis', label: 'Per trip / per month', type: 'string' },
+  { key: 'rate', label: 'Rate', type: 'money' },
+  { key: 'currency', label: 'Currency', type: 'string' },
+  { key: 'valid_from', label: 'Valid from', type: 'date' },
+  { key: 'valid_to', label: 'Valid to', type: 'date' },
+] as const;
+export type RateReportFieldKey = (typeof RATE_REPORT_FIELDS)[number]['key'];
+
+/** What a customer Excel export format is filled with. Stored in ReportTemplate.source. */
+export const REPORT_SOURCES = ['trips', 'statement', 'rates'] as const;
+export type ReportSource = (typeof REPORT_SOURCES)[number];
+
+export const REPORT_SOURCE_LABELS: Record<ReportSource, string> = {
+  trips: 'Trips',
+  statement: 'Statement of account',
+  rates: 'Rates',
+};
+
+export const REPORT_FIELDS_BY_SOURCE = {
+  trips: TRIP_REPORT_FIELDS,
+  statement: STATEMENT_REPORT_FIELDS,
+  rates: RATE_REPORT_FIELDS,
+} as const;
+
+/** Any field a format column can be filled from. A key shared by two sources has the same type in both. */
+export type ReportFieldKey = TripReportFieldKey | StatementReportFieldKey | RateReportFieldKey;
 
 /**
  * A confirmed mapping between an uploaded company template's Excel columns
@@ -320,7 +379,7 @@ export interface TemplateLayout {
     colIndex: number; // 1-based
     headerText: string; // for display only
     source:
-      | { kind: 'field'; key: TripReportFieldKey }
+      | { kind: 'field'; key: ReportFieldKey }
       | { kind: 'const'; value: string }
       | { kind: 'formula' } // keep the template's own formula, row-shifted
       | { kind: 'blank' };
@@ -329,24 +388,27 @@ export interface TemplateLayout {
 }
 
 /**
- * Placeholders a customer's trip-sheet template can hold in any text cell
+ * Placeholders a customer's export format can hold in any text cell
  * (e.g. "Invoice: {{invoice_no}}"); filled on export by
- * reportTemplateController's resolveRun. Invoice ones stay blank on a
- * date-range export.
+ * reportTemplateController's resolveRun. A token that doesn't apply to the
+ * format's data (an invoice token on a date-range export) is left blank.
  */
-export const TRIP_SHEET_TOKENS = [
-  { token: 'customer', label: 'Customer name' },
-  { token: 'period', label: 'First – last trip date (or the picked range)' },
-  { token: 'period_from', label: 'Period start' },
-  { token: 'period_to', label: 'Period end' },
-  { token: 'trip_count', label: 'Number of trips' },
-  { token: 'total', label: 'Sum of the trips’ total amount' },
-  { token: 'invoice_no', label: 'Invoice number' },
-  { token: 'invoice_date', label: 'Invoice date' },
-  { token: 'due_date', label: 'Invoice due date' },
-  { token: 'invoice_total', label: 'Invoice total incl. VAT' },
-  { token: 'generated_on', label: 'Export date' },
-] as const;
+export const TRIP_SHEET_TOKENS: ReadonlyArray<{ token: string; label: string; sources: readonly ReportSource[] }> = [
+  { token: 'customer', label: 'Customer name', sources: ['trips', 'statement', 'rates'] },
+  { token: 'period', label: 'Period, e.g. 01/08/2026 - 31/08/2026', sources: ['trips', 'statement'] },
+  { token: 'period_from', label: 'Period start', sources: ['trips', 'statement'] },
+  { token: 'period_to', label: 'Period end', sources: ['trips', 'statement'] },
+  { token: 'row_count', label: 'Number of rows', sources: ['trips', 'statement', 'rates'] },
+  { token: 'trip_count', label: 'Number of trips', sources: ['trips'] },
+  { token: 'total', label: 'Sum of the trips’ total amount', sources: ['trips'] },
+  { token: 'invoice_no', label: 'Invoice number', sources: ['trips'] },
+  { token: 'invoice_date', label: 'Invoice date', sources: ['trips'] },
+  { token: 'due_date', label: 'Invoice due date', sources: ['trips'] },
+  { token: 'invoice_total', label: 'Invoice total incl. VAT', sources: ['trips'] },
+  { token: 'opening_balance', label: 'Balance before the period', sources: ['statement'] },
+  { token: 'closing_balance', label: 'Balance at the end of the period', sources: ['statement'] },
+  { token: 'generated_on', label: 'Export date', sources: ['trips', 'statement', 'rates'] },
+];
 
 // ─── Domain entities ─────────────────────────────────────────────
 export interface User {
@@ -482,6 +544,10 @@ export interface Settings {
   hiddenModules: ModuleKey[];
   /** IANA timezone (e.g. "Asia/Riyadh") the frontends convert UTC timestamps to for display. */
   timezone: string;
+  /** Lowest driver-app version allowed ("1.2.0"); older installs must update. Null = no check. */
+  driverAppMinVersion?: string | null;
+  /** Ops WhatsApp number (digits) for the customer tracking page's "Ask us" button. */
+  supportWhatsapp?: string | null;
   /** Default country code (e.g. "SA") for phone number fields across the deployment. */
   defaultCountryCode?: string;
   /** Default dial code (e.g. "+966") for phone number fields across the deployment. */

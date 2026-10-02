@@ -6,6 +6,9 @@ import {
   logStopDelay, confirmEvidenceTime, bulkImportTrips, updateTripStop, updateTripStopsRoute, getMonthlyTripBoard, shareTripMediaToWhatsApp
 } from '../controllers/tripController';
 import { exportTrips } from '../controllers/tripExportController';
+import { getTripTrackingLink, getTripTrackingLinks, trackingLinkBody, trackingLinksBody } from '../controllers/trackingController';
+import { idParam } from '../schemas';
+import { getTripDriverTrail } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
@@ -26,6 +29,8 @@ router.get('/monthly', getMonthlyTripBoard);
 router.post('/bulk-delete', bulkDeleteTrips);
 router.post('/bulk-update-status', bulkUpdateTripStatus);
 router.post('/bulk-assign', bulkAssignTrips);
+// Customer tracking links for several trips at once (trip list share).
+router.post('/tracking-links', validate({ body: trackingLinksBody }), getTripTrackingLinks);
 router.post('/bulk-import', validate({ body: bulkImportTripsBody }), bulkImportTrips);
 
 
@@ -34,6 +39,8 @@ router.get('/', validate({ query: listQuery }), getTrips);
 router.get('/export', exportTrips);
 router.post('/', validate({ body: createTripBody }), createTrip);
 router.get('/:id', getTripById);
+// What the driver was sent for this trip, whether it reached the phone, and what they did.
+router.get('/:id/driver-trail', getTripDriverTrail);
 router.patch('/:id/status', updateTripStatus);
 router.patch('/:id/financials', updateTripFinancials);
 
@@ -62,6 +69,8 @@ router.post('/:id/delivery/verify', deliveryVerify);
 
 // Phase 3: Operator WhatsApp Media Dispatch
 router.post('/:id/share-whatsapp', shareTripMediaToWhatsApp);
+// The customer tracking link for this trip (created on first ask; renew issues a new one).
+router.post('/:id/tracking-link', validate({ params: idParam, body: trackingLinkBody }), getTripTrackingLink);
 
 export default router;
 

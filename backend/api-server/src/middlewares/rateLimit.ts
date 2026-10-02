@@ -19,3 +19,17 @@ export const createAuthRateLimit = () => rateLimit({
   legacyHeaders: false,
   message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many attempts. Please try again later.' } },
 });
+
+/**
+ * The public tracking page polls about twice a minute per open tab. This only
+ * caps abuse (someone hammering tokens or the routing behind them). The API
+ * sits behind nginx without `trust proxy`, so the key is effectively one shared
+ * address — the limit is sized for every open tracking page together.
+ */
+export const createPublicTrackingRateLimit = () => rateLimit({
+  windowMs: 60 * 1000,
+  limit: process.env.NODE_ENV === 'development' ? 1000 : 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many requests. Try again in a minute.' } },
+});
