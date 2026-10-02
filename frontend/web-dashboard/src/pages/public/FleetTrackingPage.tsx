@@ -11,7 +11,7 @@ import { SAUDI_CENTER, DEFAULT_SAUDI_ZOOM } from '@/utils/saudiMapConfig';
 import { trackingService, type CustomerFleetTracking, type DeliveredTrip, type FleetTruck } from '@/services/trackingService';
 import { filterFleet, routesOf } from './fleetFilters';
 import { useTrackingText, type TrackingText } from './trackingI18n';
-import { AskButton, BrandMark, Centered, Chip, LangToggle, TRACK_BLUE, TruckPuck } from './trackingParts';
+import { AskButton, BrandMark, Centered, Chip, LangToggle, Photo, TRACK_BLUE, TruckPuck } from './trackingParts';
 
 /**
  * The customer-wide tracking page (/c/:token): every truck of one customer
@@ -94,9 +94,12 @@ export default function FleetTrackingPage() {
       >
         <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200 md:hidden" />
         <header className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-slate-500">{text.t.liveTrucks}</p>
-            <h1 className="truncate text-xl font-semibold text-slate-900">{data.customer.name}</h1>
+          <div className="flex min-w-0 items-center gap-3">
+            <Photo url={data.customer.logo_url} name={data.customer.name} kind="logo" size={48} />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-slate-500">{text.t.liveTrucks}</p>
+              <h1 className="truncate text-xl font-semibold text-slate-900">{data.customer.name}</h1>
+            </div>
           </div>
           <span className="hidden shrink-0 md:block"><BrandMark brand={data.brand} className="h-6" /></span>
         </header>
@@ -159,13 +162,18 @@ function TruckCard({ truck: x, text, selected, onSelect }: { truck: FleetTruck; 
         )}
       >
         <button type="button" onClick={onSelect} className="block w-full text-start">
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-sm font-semibold text-slate-900">{x.route_label ?? x.ref}</span>
-            {status}
+          <div className="flex items-start gap-3">
+            <CrewPhoto truck={x} />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-sm font-semibold text-slate-900">{x.route_label ?? x.ref}</span>
+                {status}
+              </div>
+              <p className="truncate text-xs text-slate-500" dir="ltr" style={{ textAlign: text.rtl ? 'right' : 'left' }}>
+                {[x.plate, x.type, x.ref].filter(Boolean).join(' · ')}
+              </p>
+            </div>
           </div>
-          <p className="truncate text-xs text-slate-500" dir="ltr" style={{ textAlign: text.rtl ? 'right' : 'left' }}>
-            {[x.plate, x.type, x.ref].filter(Boolean).join(' · ')}
-          </p>
           <p className="mt-1.5 truncate text-sm text-slate-700">{when}</p>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
             <span>{t.stopsDone(x.stops_done, x.stops_total)}</span>
@@ -188,6 +196,18 @@ function TruckCard({ truck: x, text, selected, onSelect }: { truck: FleetTruck; 
         </a>
       </div>
     </li>
+  );
+}
+
+/** The driver's photo with the truck's photo as a small badge — who and what, at a glance. */
+function CrewPhoto({ truck: x }: { truck: FleetTruck }) {
+  return (
+    <span className="relative shrink-0">
+      <Photo url={x.driver_photo_url} name={x.driver_first_name} kind={x.driver_first_name ? 'person' : 'truck'} size={44} />
+      {x.driver_first_name && (
+        <Photo url={x.vehicle_photo_url} name={x.plate} kind="truck" size={20} className="absolute -right-1 -bottom-1 ring-2 ring-white" />
+      )}
+    </span>
   );
 }
 

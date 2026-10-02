@@ -93,8 +93,12 @@ export interface PublicTracking {
     finished_at: string | null;
     planned_start: string | null;
   };
-  vehicle: { plate: string | null; type: string | null };
+  /** Whose shipment this is — shown as their logo and name on the page. */
+  customer: { name: string; logo_url: string | null } | null;
+  vehicle: { plate: string | null; type: string | null; photo_url: string | null };
   driver_first_name: string | null;
+  /** The driver's profile photo (MERCON drivers only — none for subcontracted trucks). */
+  driver_photo_url: string | null;
   position: {
     lat: number;
     lng: number;
@@ -133,8 +137,8 @@ export interface TrackingTripMeta {
   actual_end: Date | null;
   updatedAt: Date;
   is_third_party: boolean;
-  vehicle: { plate_number: string; asset_type: string } | null;
-  driver: { first_name: string } | null;
+  vehicle: { plate_number: string; asset_type: string; image_url?: string | null } | null;
+  driver: { first_name: string; avatar_url?: string | null } | null;
   subcontract: { vehiclePlate: string | null; vehicleType: string | null; driverName: string | null } | null;
 }
 
@@ -254,6 +258,7 @@ export function buildPublicTracking(input: {
   ahead: RouteResult | null;
   all: RouteResult | null;
   media?: LiveTripMedia | null;
+  customer?: { name: string; logo_url: string | null } | null;
   now: Date;
 }): PublicTracking {
   const { overview, meta, ahead, all, now, options } = input;
@@ -330,11 +335,14 @@ export function buildPublicTracking(input: {
       finished_at: meta.actual_end?.toISOString() ?? null,
       planned_start: meta.planned_start?.toISOString() ?? null,
     },
+    customer: input.customer ?? null,
     vehicle: {
       plate: third ? third.vehiclePlate : meta.vehicle?.plate_number ?? null,
       type: (third ? third.vehicleType : null) || meta.vehicle_type || meta.vehicle?.asset_type || null,
+      photo_url: third ? null : meta.vehicle?.image_url ?? null,
     },
     driver_first_name: firstName(third ? third.driverName : meta.driver?.first_name),
+    driver_photo_url: third ? null : meta.driver?.avatar_url ?? null,
     position: pos ? {
       lat: round5(pos.lat),
       lng: round5(pos.lng),
@@ -405,10 +413,10 @@ export const CUSTOMER_TRACKING_SELECT = {
 
 const META_SELECT = {
   ref_id: true, status: true, vehicle_type: true, planned_start: true, actual_start: true, actual_end: true, updatedAt: true, is_third_party: true,
-  vehicle: { select: { plate_number: true, asset_type: true } },
-  driver: { select: { first_name: true } },
+  vehicle: { select: { plate_number: true, asset_type: true, image_url: true } },
+  driver: { select: { first_name: true, avatar_url: true } },
   subcontract: { select: { vehiclePlate: true, vehicleType: true, driverName: true } },
-  customer: { select: CUSTOMER_TRACKING_SELECT },
+  customer: { select: { ...CUSTOMER_TRACKING_SELECT, name: true, logo_url: true } },
 } as const;
 
 export interface TrackingContext {
@@ -438,7 +446,7 @@ export async function loadTrackingContext(db: PrismaClient): Promise<TrackingCon
 export async function buildTripTracking(
   db: PrismaClient,
   tripId: string,
-  meta: TrackingTripMeta & { customer: TrackingCustomerSettings | null },
+  meta: TrackingTripMeta & { customer: (TrackingCustomerSettings & { name?: string; logo_url?: string | null }) | null },
   ctx: TrackingContext,
   now = new Date(),
 ): Promise<PublicTracking | null> {
@@ -467,7 +475,8 @@ export async function buildTripTracking(
     }
   }
 
-  const data = buildPublicTracking({ overview, meta, brand: ctx.brand, timezone: ctx.timezone, options, ahead, all, media, now });
+  const customer = meta.customer?.name ? { name: meta.customer.name, logo_url: meta.customer.logo_url ?? null } : null;
+  const data = buildPublicTracking({ overview, meta, brand: ctx.brand, timezone: ctx.timezone, options, ahead, all, media, customer, now });
   remember(payloadCache, tripId, { at: now.getTime(), data });
   return data;
 }

@@ -262,6 +262,25 @@ test('customer tracking', async (t) => {
     assert.equal(soon.lte.toISOString(), '2026-10-03T12:00:00.000Z');
   });
 
+  await t.test('photos: driver and truck for our own trucks, none for subcontracted ones; customer logo passed through', () => {
+    const own = buildPublicTracking({
+      overview: overview(), brand: BRAND, timezone: 'Asia/Riyadh', options: DEFAULTS, ahead: null, all: null, now: NOW,
+      meta: { ...meta, vehicle: { ...meta.vehicle!, image_url: '/uploads/truck.jpg' }, driver: { first_name: 'Umar', avatar_url: '/uploads/umar.jpg' } },
+      customer: { name: 'iMile', logo_url: '/uploads/imile.png' },
+    });
+    assert.equal(own.driver_photo_url, '/uploads/umar.jpg');
+    assert.equal(own.vehicle.photo_url, '/uploads/truck.jpg');
+    assert.deepEqual(own.customer, { name: 'iMile', logo_url: '/uploads/imile.png' });
+    assert.equal(toFleetTruck('tok', own).driver_photo_url, '/uploads/umar.jpg');
+
+    const third = build(overview(), null, null, {
+      ...meta, is_third_party: true, vehicle: { ...meta.vehicle!, image_url: '/uploads/truck.jpg' }, driver: { first_name: 'Umar', avatar_url: '/uploads/umar.jpg' },
+      subcontract: { vehiclePlate: 'ABC-1234', vehicleType: '5 TON', driverName: 'ali' },
+    });
+    assert.equal(third.driver_photo_url, null);
+    assert.equal(third.vehicle.photo_url, null);
+  });
+
   await t.test('link lifetime', () => {
     const live = { expiresAt: new Date(NOW.getTime() + 86_400_000) };
     const trip = (status: string, actual_end: Date | null = null) => ({ status, actual_end, updatedAt: NOW });

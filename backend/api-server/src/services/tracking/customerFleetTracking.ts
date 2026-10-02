@@ -36,7 +36,9 @@ export interface FleetTruck {
   route_label: string | null;
   plate: string | null;
   type: string | null;
+  vehicle_photo_url: string | null;
   driver_first_name: string | null;
+  driver_photo_url: string | null;
   position: PublicTracking['position'];
   next_stop_name: string | null;
   last_stop_name: string | null;
@@ -55,7 +57,7 @@ export interface CustomerFleetTracking {
   brand: TrackingBrand;
   timezone: string;
   options: TrackingOptions;
-  customer: { name: string };
+  customer: { name: string; logo_url: string | null };
   /** On the road or loading soon. */
   trucks: FleetTruck[];
   /** Delivered in the last DELIVERED_WINDOW_MS, newest first. */
@@ -107,7 +109,9 @@ export function toFleetTruck(token: string, t: PublicTracking): FleetTruck {
     route_label: t.trip.route_label,
     plate: t.vehicle.plate,
     type: t.vehicle.type,
+    vehicle_photo_url: t.vehicle.photo_url,
     driver_first_name: t.driver_first_name,
+    driver_photo_url: t.driver_photo_url,
     position: t.position,
     next_stop_name: next?.name ?? null,
     last_stop_name: t.stops.length ? t.stops[t.stops.length - 1].name : null,
@@ -166,7 +170,7 @@ export async function loadCustomerFleetTracking(
   if (token.length < 16 || token.length > 64) return { state: 'not_found' };
   const link = await db.customerTrackingLink.findUnique({
     where: { token },
-    select: { id: true, revokedAt: true, customer: { select: { id: true, name: true, deletedAt: true, ...CUSTOMER_TRACKING_SELECT } } },
+    select: { id: true, revokedAt: true, customer: { select: { id: true, name: true, logo_url: true, deletedAt: true, ...CUSTOMER_TRACKING_SELECT } } },
   });
   if (!link || link.customer.deletedAt) return { state: 'not_found' };
   if (link.revokedAt) return { state: 'expired' };
@@ -226,7 +230,7 @@ export async function loadCustomerFleetTracking(
     brand: ctx.brand,
     timezone: ctx.timezone,
     options: optionsOf(link.customer),
-    customer: { name: link.customer.name },
+    customer: { name: link.customer.name, logo_url: link.customer.logo_url },
     trucks: sortFleet(trucks),
     delivered,
     generated_at: now.toISOString(),
