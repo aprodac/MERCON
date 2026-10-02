@@ -183,21 +183,21 @@ export default function ImportantRemindersWidget({
           >
             <div className="flex items-center gap-2.5 min-w-0 flex-1">
               <div className="relative shrink-0">
-                <div className="w-8 h-8 rounded-full border-2 border-[#E8450F] overflow-hidden shadow-2xs group-hover:scale-105 transition-transform">
-                  <img src="/assistant/profile.png" alt="Operations Assistant" className="w-full h-full object-cover" />
+                <div className="w-8 h-8 rounded-[11px] bg-gradient-to-b from-[#ff8b72] to-brand shadow-2xs group-hover:scale-105 transition-transform grid place-items-center" aria-hidden="true">
+                  <span className="flex gap-[5px]"><i className="block w-[3px] h-[7px] rounded-full bg-charcoal-strong" /><i className="block w-[3px] h-[7px] rounded-full bg-charcoal-strong" /></span>
                 </div>
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <p className="text-[11px] font-extrabold text-slate-900 leading-tight truncate">
-                    Operations Assistant
+                    Extra charges assistant
                   </p>
                   <span className="text-[8.5px] font-black px-1.5 py-0.5 rounded-full bg-[#E8450F] text-white whitespace-nowrap shrink-0 leading-none">
-                    Pending
+                    Hidden
                   </span>
                 </div>
                 <p className="text-[10px] font-semibold text-[#E8450F] mt-0.5 truncate">
-                  Was there any labor charge for completed trip?
+                  Bring it back to check finished trips for extra charges
                 </p>
               </div>
             </div>

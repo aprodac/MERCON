@@ -114,6 +114,8 @@ const DeliveryVerificationScreen = () => {
   // Khalid Airport placeholder, since there's no real next pickup) in a
   // loop instead of landing on the completed screen.
   const isReturnDelivery = isRound && (ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'FINAL_DELIVERY_VERIFICATION' || ws === 'IN_TRANSIT_RETURN' || ws === 'COMPLETED');
+  // This delivery completes the trip (one-way, or the return leg of a round trip).
+  const isFinalDelivery = !isRound || isReturnDelivery;
 
   const legIndex = isReturnDelivery ? 1 : 0;
   const dropoffStop = getLegEndpoints(trip, legIndex).delivery;
@@ -477,7 +479,11 @@ const DeliveryVerificationScreen = () => {
           </View>
 
           {evidence.screenshot && (
-            <Text style={styles.screenshotHint}>{t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")}</Text>
+            <Text style={styles.screenshotHint}>
+              {isFinalDelivery
+                ? t('hint_upload_screenshot_final', "Attach a screenshot of the customer app's Completed screen, showing every stop's arrive and departure time. Hold to use the camera instead.")
+                : t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")}
+            </Text>
           )}
 
           {/* Photo slots: 3, or 1 wide slot for a screenshot */}

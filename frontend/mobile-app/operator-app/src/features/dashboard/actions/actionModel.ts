@@ -27,7 +27,7 @@ export type ActionKind =
 export type ActionIntent =
   | { type: 'call'; phone: string }
   | { type: 'whatsapp'; phone: string | null; text: string }
-  | { type: 'trip'; tripId: string; tab?: 'details' | 'updates' | 'stops'; share?: 'status' | 'delay'; assign?: 'driver' | 'truck' }
+  | { type: 'trip'; tripId: string; tab?: 'details' | 'updates' | 'stops'; share?: 'status' | 'delay'; assign?: 'driver' | 'truck'; times?: boolean }
   | { type: 'handled'; notificationId: string }
   | { type: 'driver'; id: string }
   | { type: 'vehicle'; id: string }
@@ -268,11 +268,11 @@ export function buildActions(src: ActionSources): ActionItem[] {
       kind: 'time-check',
       urgency: 'today',
       group: 'trips',
-      title: `${count} screenshot time${count > 1 ? 's' : ''} to confirm`,
+      title: `${count} screenshot${count > 1 ? 's' : ''} · check stop times`,
       detail: [u?.trip?.ref_id, u?.trip?.customer_name, u ? unitName(u) : null].filter(Boolean).join(' · ') || 'Driver uses the customer’s app',
       at: null,
       tripId,
-      primary: { label: 'Confirm', intent: { type: 'trip', tripId, tab: 'stops' } },
+      primary: { label: 'Check', intent: { type: 'trip', tripId, tab: 'stops', times: true } },
     });
   }
 

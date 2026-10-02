@@ -699,6 +699,7 @@ export default function TripDetailsPage() {
                 trip={trip}
                 phase={phase}
                 documents={documents}
+                tz={tz}
                 formatTime={formatTime}
                 formatDateTime={formatDateTime}
                 onPinned={() => refetch()}

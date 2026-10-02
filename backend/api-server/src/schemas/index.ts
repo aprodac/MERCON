@@ -449,6 +449,28 @@ export const confirmEvidenceTimeBody = z.object({
   actual_departure: z.string().min(1).optional(),
 });
 
+/** The whole trip's real stop times, copied by an operator off the customer
+ *  app's screenshots in one go. A stop left out, or a time omitted, keeps
+ *  what is recorded. */
+export const confirmTripTimesBody = z.object({
+  stops: z.array(z.object({
+    stop_id: z.string().uuid(),
+    actual_arrival: z.string().datetime({ offset: true }).optional(),
+    actual_departure: z.string().datetime({ offset: true }).optional(),
+  })).max(100),
+});
+
+/** "Any extra charges?" answer for a completed trip — sub-charges billed to the customer; [] = none. */
+export const reviewTripChargesBody = z.object({
+  charges: z.array(z.object({
+    surchargeRuleId: z.string().uuid().nullish(),
+    charge_type: z.string().trim().min(1, 'Charge type is required').max(120),
+    unit: z.string().trim().max(40).nullish(),
+    rate: z.number().positive().max(1_000_000),
+    quantity: z.number().positive().max(10_000),
+  })).max(20),
+});
+
 /* ─── Drivers ────────────────────────────────────────────────────────────── */
 export const createDriverBody = z.object({
   first_name: nonEmpty('First name'),
