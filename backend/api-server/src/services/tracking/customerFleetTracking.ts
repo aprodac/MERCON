@@ -17,6 +17,7 @@ import {
   optionsOf, placeName, routeLabel, type PublicTracking, type TrackingBrand, type TrackingCustomerSettings, type TrackingOptions, type TrackingTripMeta,
 } from './customerTracking';
 import { publicImage } from './publicImages';
+import { whatsAppGroupUrl } from '@mercon/shared-types';
 
 /** Scheduled trips show up this long before they're due to start. */
 export const UPCOMING_WINDOW_MS = 24 * 60 * 60_000;
@@ -231,7 +232,7 @@ export async function loadCustomerFleetTracking(
   }
 
   const data: CustomerFleetTracking = {
-    brand: ctx.brand,
+    brand: { ...ctx.brand, ask_group_url: whatsAppGroupUrl(link.customer.whatsapp_group_link) },
     timezone: ctx.timezone,
     options: optionsOf(link.customer),
     customer: { name: link.customer.name, logo_url: await publicImage(db, { table: 'customer', field: 'logo_url' }, link.customer.id, link.customer.logo_url) },

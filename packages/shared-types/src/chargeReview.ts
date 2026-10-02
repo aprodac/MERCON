@@ -147,3 +147,13 @@ export function daysWaiting(trip: ChargeReviewTripLike): number {
   const end = trip.actual_end || trip.planned_start;
   return end ? Math.floor((Date.now() - new Date(end).getTime()) / 86_400_000) : 0;
 }
+
+/**
+ * A customer's WhatsApp group invite link ("https://chat.whatsapp.com/AbC123…"),
+ * cleaned up — or null when the saved value isn't one. Used by the tracking
+ * pages' "Ask in your WhatsApp group" button.
+ */
+export function whatsAppGroupUrl(raw: string | null | undefined): string | null {
+  const m = (raw ?? '').trim().match(/^(?:https?:\/\/)?chat\.whatsapp\.com\/(?:invite\/)?([A-Za-z0-9]{10,40})\/?(?:\?.*)?$/i);
+  return m ? `https://chat.whatsapp.com/${m[1]}` : null;
+}
