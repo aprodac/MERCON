@@ -5,17 +5,17 @@
  * cells: outstanding, overdue, paid), then plain sections: contacts (each
  * with call and WhatsApp), open invoices, trips, quotations, saved places
  * and account.
- * New trip is pinned at the bottom. Each fact appears once.
+ * Each fact appears once.
  */
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, Linking } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, ChevronRight, MapPin, MapPinOff, MessageCircle, Phone, Plus, SquarePen, Users } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, MapPin, MapPinOff, MessageCircle, Phone, SquarePen, Users } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { EmptyState, SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { statusChip, TONE } from '../../trips/details/tripDetailsModel';
-import { ACTION, INK, MUTED, PAGE, WA_INK, WA_LIGHT, tap } from '../../trips/details/components/parts';
+import { INK, MUTED, PAGE, WA_INK, WA_LIGHT } from '../../trips/details/components/parts';
 import { QuotationCard } from '../../trips/create/components/StepJob';
 import { fmtSar, niceName } from '../../trips/create/components/ui';
 import { daysOverdue, useCustomerDetail } from './useCustomerDetail';
@@ -48,7 +48,6 @@ const routeOf = (t: CustomerTrip) => {
 
 export default function CustomerDetailsScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [now, setNow] = useState(() => Date.now());
   const c = useCustomerDetail(String(id ?? ''), now);
@@ -285,12 +284,6 @@ export default function CustomerDetailsScreen() {
         </Block>
       </ScrollView>
 
-      <View style={[s.foot, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <TouchableOpacity style={s.primary} activeOpacity={0.85} onPress={() => { tap(); router.push({ pathname: '/create-trip', params: { customerId: customer.id } }); }}>
-          <Plus size={18} color={Colors.white} strokeWidth={2.4} />
-          <Text style={s.primaryText}>New trip</Text>
-        </TouchableOpacity>
-      </View>
     </SafeAreaView>
   );
 }
@@ -327,7 +320,7 @@ const s = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 8 },
   barBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: BORDER },
   barTitle: { fontSize: 16, fontWeight: '700', color: INK },
-  scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24, gap: 18 },
+  scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 48, gap: 18 },
 
   header: { backgroundColor: INK, borderRadius: 20, paddingHorizontal: 16, paddingTop: 16, gap: 8 },
   headerTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
@@ -367,7 +360,4 @@ const s = StyleSheet.create({
   infoLabel: { fontSize: 14, color: MUTED },
   infoValue: { flex: 1, textAlign: 'right', fontSize: 14, fontWeight: '600', color: INK },
 
-  foot: { paddingHorizontal: 16, paddingTop: 12, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: BORDER },
-  primary: { height: 52, borderRadius: 16, backgroundColor: ACTION, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  primaryText: { fontSize: 15, fontWeight: '700', color: Colors.white },
 });
