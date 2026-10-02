@@ -19,7 +19,9 @@ export interface TrackingOptions {
 
 export interface PublicTrackingPhoto {
   url: string;
-  kind: 'pod' | 'photo';
+  kind: 'pod' | 'photo' | 'video';
+  /** Sent by the driver to explain a delay (often a video). */
+  delay: boolean;
   captured_at: string;
 }
 

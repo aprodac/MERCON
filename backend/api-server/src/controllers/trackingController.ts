@@ -6,6 +6,7 @@ import { logAuditEvent } from '../services/auditService';
 import { ensureTrackingLink, ensureTrackingLinks, loadPublicTracking, type TripTrackingLinkInfo } from '../services/tracking/customerTracking';
 import { ensureCustomerTrackingLink, loadCustomerFleetTracking } from '../services/tracking/customerFleetTracking';
 import { fleetPreview, renderPreviewTags, tripPreview } from '../services/tracking/trackingPreview';
+import { fleetPreviewImage, tripPreviewImage } from '../services/tracking/trackingPreviewImage';
 import { publicBaseUrl } from './operatorInboxController';
 import { deviceLabel } from '../utils/deviceLabel';
 
@@ -136,18 +137,48 @@ export const getTrackingPreviewTags = async (req: Request, res: Response) => {
     const proto = String(req.get('x-forwarded-proto') || 'https').split(',')[0].trim();
     const host = req.get('x-public-host');
     const base = process.env.PUBLIC_BASE_URL?.trim().replace(/\/+$/, '') || (host ? `${proto}://${host}` : null);
+    // The generated card; the version changes every 10 minutes so a re-shared link gets a fresh picture.
+    const card = (kind: string) => (base ? `${base}/api/public/og/${kind}/${encodeURIComponent(token)}/card.png?v=${Math.floor(Date.now() / 600_000)}` : null);
     if (req.params.kind === 't') {
       const r = await loadPublicTracking(prisma, token);
-      return res.send(r.state === 'ok' ? renderPreviewTags(tripPreview(r.data), base) : '');
+      return res.send(r.state === 'ok' ? renderPreviewTags(tripPreview(r.data), base, card('t')) : '');
     }
     if (req.params.kind === 'c') {
       const r = await loadCustomerFleetTracking(prisma, token);
-      return res.send(r.state === 'ok' ? renderPreviewTags(fleetPreview(r.data), base) : '');
+      return res.send(r.state === 'ok' ? renderPreviewTags(fleetPreview(r.data), base, card('c')) : '');
     }
     res.send('');
   } catch (error) {
     logger.warn({ err: error }, 'tracking preview tags failed');
     res.send('');
+  }
+};
+
+/**
+ * GET /public/og/:kind/:token/card.png — the white preview card WhatsApp shows
+ * above a tracking link (see trackingPreviewImage). Same link checks as the
+ * page; never counts as an open. 404 when the link isn't valid.
+ */
+export const getTrackingPreviewCard = async (req: Request, res: Response) => {
+  try {
+    const token = String(req.params.token || '');
+    const proto = String(req.get('x-forwarded-proto') || 'https').split(',')[0].trim();
+    const host = req.get('x-public-host') || req.get('host');
+    const base = process.env.PUBLIC_BASE_URL?.trim().replace(/\/+$/, '') || (host ? `${proto}://${host}` : null);
+    let png: Buffer | null = null;
+    if (req.params.kind === 't') {
+      const r = await loadPublicTracking(prisma, token);
+      if (r.state === 'ok') png = await tripPreviewImage(r.data, base);
+    } else if (req.params.kind === 'c') {
+      const r = await loadCustomerFleetTracking(prisma, token);
+      if (r.state === 'ok') png = await fleetPreviewImage(r.data, base);
+    }
+    if (!png) return res.status(404).end();
+    res.set('Cache-Control', 'public, max-age=600');
+    res.type('png').send(png);
+  } catch (error) {
+    logger.warn({ err: error }, 'tracking preview card failed');
+    res.status(500).end();
   }
 };
 

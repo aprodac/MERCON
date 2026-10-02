@@ -21,8 +21,8 @@ import { publicImage } from './publicImages';
 /** Scheduled trips show up this long before they're due to start. */
 export const UPCOMING_WINDOW_MS = 24 * 60 * 60_000;
 /** Delivered trips listed on the page — today's and the past few days'. */
-export const DELIVERED_WINDOW_MS = 7 * 24 * 60 * 60_000;
-export const MAX_DELIVERED = 60;
+export const DELIVERED_WINDOW_MS = 30 * 24 * 60 * 60_000;
+export const MAX_DELIVERED = 200;
 /** Cap on trucks per page — keeps the page and the routing behind it bounded. */
 export const MAX_FLEET_TRUCKS = 40;
 const FLEET_TTL_MS = 30_000;

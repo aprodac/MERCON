@@ -175,9 +175,11 @@ test('customer tracking', async (t) => {
     assert.ok(!JSON.stringify(on).includes('angry'));
   });
 
-  await t.test('photos: done stops only, no delay videos, and only when switched on', () => {
+  await t.test('photos: done stops only, delay videos included and marked, and only when switched on', () => {
     const on = build(overview(), route(300_000, 9_000), undefined, meta, DEFAULTS, MEDIA);
-    assert.deepEqual(on.stops[0].photos.map((p) => p.url), ['/uploads/load.jpg']);
+    assert.deepEqual(on.stops[0].photos.map((p) => [p.url, p.kind, p.delay]), [['/uploads/load.jpg', 'photo', false], ['/uploads/delay.mp4', 'video', true]]);
+    // The driver's typed note never reaches the customer.
+    assert.ok(!JSON.stringify(on).includes('very angry'));
     assert.deepEqual(on.stops[1].photos, []);
     const off = build(overview(), route(300_000, 9_000), undefined, meta, { ...DEFAULTS, show_photos: false }, MEDIA);
     assert.deepEqual(off.stops[0].photos, []);
