@@ -2148,6 +2148,10 @@ model Settings {
   /// Ops WhatsApp number customers reach from the tracking page ("Ask us"). Digits with country code.
   supportWhatsapp String?
 
+  /// The floating assistant (Settings → Assistant): what it reports and how it looks.
+  /// Shape and defaults: AssistantConfig in @mercon/shared-types. Null = defaults.
+  assistantConfig Json?
+
   updated_by String?  @db.Uuid
   updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz
 }

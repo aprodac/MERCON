@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@mercon/mobile-shared/lib/api';
 import { safeSecureStore } from '@mercon/mobile-shared/lib/secure-store';
-import type { ChargeRuleLike, ChargeReviewTripLike, CustomerChargeHabit } from '@mercon/shared-types';
+import { normalizeAssistantConfig, type AssistantConfig, type ChargeRuleLike, type ChargeReviewTripLike, type CustomerChargeHabit } from '@mercon/shared-types';
 
 export interface ChargeReviewTrip extends ChargeReviewTripLike {
   id: string;
@@ -52,7 +52,7 @@ export const driverLabel = (t: ChargeReviewTrip) =>
 export const reviewErrorMessage = (err: any) =>
   err?.response?.data?.error?.message || 'Could not save. Check your connection and try again.';
 
-export function useChargeReviewQueue() {
+export function useChargeReviewQueue(enabled = true) {
   const qc = useQueryClient();
   const [snoozed, setSnoozed] = useState<Record<string, number>>({});
 
@@ -74,6 +74,7 @@ export function useChargeReviewQueue() {
     },
     refetchInterval: 60_000,
     staleTime: 30_000,
+    enabled,
   });
 
   const now = Date.now();
@@ -123,4 +124,17 @@ export function useCustomerChargeRules(customerId?: string | null, quotationId?:
     enabled: enabled && Boolean(customerId),
     staleTime: 60_000,
   });
+}
+
+/** The team's assistant settings (set by an Admin in the web dashboard's Settings → Assistant). */
+export function useAssistantConfig(): AssistantConfig {
+  const { data } = useQuery({
+    queryKey: ['assistant-config'],
+    queryFn: async () => {
+      const { data: res } = await api.get('/settings');
+      return res.data?.assistantConfig ?? null;
+    },
+    staleTime: 5 * 60_000,
+  });
+  return normalizeAssistantConfig(data);
 }

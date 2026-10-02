@@ -3,7 +3,7 @@ import {
   Home, Truck, CalendarRange, Calculator, Building2, Car, Users, Wrench, Handshake,
   ReceiptText, Clock, CreditCard, Wallet, Landmark, Scale, HandCoins, BookOpen, BookOpenText,
   FolderTree, CalendarCheck, BarChart3, FileBarChart, Coins, TrendingUp,
-  SlidersHorizontal, Files, GraduationCap, Bell, Settings, Palette, UserCog, ShieldCheck,
+  SlidersHorizontal, Files, GraduationCap, Bell, Settings, Palette, UserCog, ShieldCheck, Smile,
   Map as MapIcon, MapPin, Layers, Tags, FileType, Trash2, ScrollText, AlertTriangle, Activity, FolderArchive, FileCheck2,
   ArrowLeftRight, Percent, Banknote,
 } from 'lucide-react';
@@ -232,6 +232,7 @@ export const NAV_ACTION_SECTIONS: { id: NavAction['section']; label: string }[] 
 export const SETTINGS_PAGES: SettingsNavPage[] = [
   { id: 'system-settings', label: 'Account & company', path: '/settings', icon: Settings, settingsGroup: 'general', keywords: ['system settings', 'company', 'profile', 'password', 'timezone', 'vat'], match: (p) => p === '/settings' || p === '/settings/profile' },
   { id: 'branding', label: 'Branding', path: '/settings/branding', icon: Palette, settingsGroup: 'general', superAdminOnly: true, keywords: ['logo', 'colors', 'theme'] },
+  { id: 'assistant', label: 'Assistant', path: '/settings/assistant', icon: Smile, settingsGroup: 'general', adminOnly: true, keywords: ['assistant', 'mascot', 'extra charges', 'reminders', 'cap', 'flag', 'headset'] },
   { id: 'zatca', label: 'ZATCA e-invoicing', path: '/settings/zatca', icon: FileCheck2, settingsGroup: 'general', adminOnly: true, moduleKey: 'zatca', keywords: ['fatoora', 'e-invoice', 'vat', 'tax', 'csid', 'certificate'] },
   { id: 'users', label: 'Users', path: '/settings/users', icon: UserCog, settingsGroup: 'access', adminOnly: true, keywords: ['user management', 'roles', 'accounts'] },
   { id: 'module-governance', label: 'Modules', path: '/settings/module-governance', icon: ShieldCheck, settingsGroup: 'access', superAdminOnly: true, keywords: ['module governance', 'enable', 'disable', 'features'] },

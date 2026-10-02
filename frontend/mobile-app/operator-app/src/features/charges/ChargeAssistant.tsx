@@ -13,7 +13,7 @@ import { Minus, Plus, Sparkles, X } from 'lucide-react-native';
 import { SUGGESTED_CHARGE_TYPES, SUGGESTED_UNIT_BY_CHARGE_TYPE, buildChargeHints, daysWaiting } from '@mercon/shared-types';
 import CrewChief, { type CrewChiefHandle, type CrewChiefMood } from './CrewChief';
 import {
-  useChargeReviewQueue, useCustomerChargeRules, tripRef, routeLabel, driverLabel, reviewErrorMessage, type NewSubCharge,
+  useChargeReviewQueue, useCustomerChargeRules, useAssistantConfig, tripRef, routeLabel, driverLabel, reviewErrorMessage, type NewSubCharge,
 } from './chargeReviewApi';
 
 const BRAND = '#FA634E';
@@ -21,7 +21,6 @@ const INK = '#2D2B2C';
 const MUTED = '#7B7678';
 const LINE = '#E7E3E1';
 const BIG_BILL = 500;
-const OLD_TRIP_DAYS = 3;
 
 type View_ = 'ask' | 'charges' | 'later';
 interface DraftLine { surchargeRuleId: string | null; charge_type: string; unit: string | null; rate: string; quantity: number }
@@ -31,7 +30,10 @@ const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 const SNOOZE = [{ label: '15 min', minutes: 15 }, { label: '1 hour', minutes: 60 }, { label: '4 hours', minutes: 240 }, { label: 'Tomorrow', minutes: 1440 }];
 
 export function ChargeAssistant({ userName }: { userName?: string }) {
-  const queue = useChargeReviewQueue();
+  const config = useAssistantConfig();
+  const report = config.reports.extraCharges;
+  const OLD_TRIP_DAYS = report.restlessAfterDays;
+  const queue = useChargeReviewQueue(report.enabled);
   const tileChief = useRef<CrewChiefHandle>(null);
   const chief = useRef<CrewChiefHandle>(null);
 
@@ -68,7 +70,7 @@ export function ChargeAssistant({ userName }: { userName?: string }) {
   useEffect(() => {
     if (queue.isLoading) return;
     const ids = new Set(queue.trips.map((t) => t.id));
-    if (prevIds.current && queue.trips.some((t) => !prevIds.current!.has(t.id)) && !open) {
+    if (prevIds.current && queue.trips.some((t) => !prevIds.current!.has(t.id)) && !open && report.peekOnNewTrip) {
       tileChief.current?.notice();
       Haptics.selectionAsync().catch(() => {});
     }
@@ -145,7 +147,8 @@ export function ChargeAssistant({ userName }: { userName?: string }) {
     if (v === 'ask') chief.current?.mood('ask');
   };
 
-  if (left === 0 && !open) return null;
+  // Switched off for the team (Settings → Assistant on the web), or nothing waiting.
+  if (!report.enabled || (left === 0 && !open)) return null;
 
   const of = answered + left;
   const greeting = (() => {
@@ -159,7 +162,7 @@ export function ChargeAssistant({ userName }: { userName?: string }) {
     <>
       {left > 0 && !open && (
         <Pressable onPress={openSheet} accessibilityRole="button" accessibilityLabel={`Extra charges: ${left} trips to check`} style={s.fab} hitSlop={8}>
-          <CrewChief ref={tileChief} size={58} />
+          <CrewChief ref={tileChief} size={58} look={config.look} />
           <View style={s.count}><Text style={s.countText}>{left > 99 ? '99+' : left}</Text></View>
         </Pressable>
       )}
@@ -170,7 +173,7 @@ export function ChargeAssistant({ userName }: { userName?: string }) {
           <View style={s.sheet}>
             <View style={s.grabber} />
             <View style={s.head}>
-              <CrewChief ref={chief} size={46} />
+              <CrewChief ref={chief} size={46} look={config.look} />
               <View style={{ flex: 1 }}>
                 <Text style={s.headTitle}>{trip && !flash ? `Extra charges · ${Math.min(answered + 1, of)} of ${of}` : 'Extra charges'}</Text>
                 <View style={s.progress}><View style={[s.progressFill, { width: `${of ? (answered / of) * 100 : 100}%` }]} /></View>
@@ -324,7 +327,7 @@ const s = StyleSheet.create({
   sheetWrap: { flex: 1, justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingBottom: 28, maxHeight: '88%' },
   grabber: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, backgroundColor: '#DDD8D5', marginTop: 8 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingTop: 10 },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingTop: 22 }, // room for the cap and flag
   headTitle: { fontSize: 12.5, fontWeight: '600', color: MUTED },
   progress: { height: 3, borderRadius: 2, backgroundColor: '#EFEDEB', marginTop: 7, overflow: 'hidden' },
   progressFill: { height: 3, borderRadius: 2, backgroundColor: BRAND },

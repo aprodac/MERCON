@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { normalizeAssistantConfig } from '@mercon/shared-types';
 import { prisma } from '../db';
 import { generateRefId } from '../utils/refId';
 import { createDriverNotification, notifyOperatorsOfDelay } from './notificationController';
@@ -2604,8 +2605,6 @@ export const bulkAssignTrips = async (req: Request, res: Response) => {
 /**
  * Get all completed trips pending post-trip financial settlement / waiting-labor check
  */
-/** How far back the "any extra charges?" queue looks — older trips are left to the trip pages. */
-const CHARGE_REVIEW_WINDOW_DAYS = 30;
 
 /**
  * Completed trips nobody has answered "any extra charges?" for yet — the
@@ -2616,7 +2615,10 @@ const CHARGE_REVIEW_WINDOW_DAYS = 30;
  */
 export const getUnsettledCompletedTrips = async (req: Request, res: Response) => {
   try {
-    const since = new Date(Date.now() - CHARGE_REVIEW_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    // How far back it looks is set in Settings → Assistant (older trips are left to the trip pages).
+    const settingsRow = await prisma.settings.findUnique({ where: { id: 'singleton' }, select: { assistantConfig: true } });
+    const { lookbackDays } = normalizeAssistantConfig(settingsRow?.assistantConfig).reports.extraCharges;
+    const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
     const where: Prisma.TripWhereInput = {
       deletedAt: null,
       status: TripStatus.Completed,

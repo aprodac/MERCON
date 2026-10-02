@@ -14,6 +14,7 @@ import { useChargeReviewQueue, routeLabel, driverLabel, tripRef, reviewErrorMess
 import CrewChief, { type CrewChiefHandle, type CrewChiefMood } from './CrewChief';
 import { buildChargeHints, daysWaiting } from './chargeHints';
 import { useAssistantHidden } from './assistantVisibility';
+import { useAssistantConfig } from './useAssistantConfig';
 
 /**
  * The extra-charges assistant: after a trip is completed, asks whether the
@@ -26,7 +27,6 @@ const POS_KEY = 'mercon_assistant_pos_v4';
 const TILE = 56; // px
 const EDGE = 20; // px from the screen edge it snaps to
 const BIG_BILL = 500; // SAR — a bill this size gets a bigger reaction
-const OLD_TRIP_DAYS = 3; // trips waiting this long make it restless
 
 type View = 'ask' | 'charges' | 'later';
 
@@ -55,7 +55,10 @@ const initials = (name?: string | null) =>
 const FOCUS_ROUTES = [/\/trips\/new/, /\/trips\/[^/]+\/edit/, /\/new$/, /\/edit$/];
 
 export default function OperationsAssistant() {
-  const queue = useChargeReviewQueue();
+  const config = useAssistantConfig();
+  const report = config.reports.extraCharges;
+  const queue = useChargeReviewQueue(report.enabled);
+  const OLD_TRIP_DAYS = report.restlessAfterDays; // trips waiting this long make it restless
   const location = useLocation();
   const chief = useRef<CrewChiefHandle>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -123,7 +126,7 @@ export default function OperationsAssistant() {
     const ids = new Set(queue.trips.map((t) => t.id));
     if (prevIds.current) {
       const fresh = queue.trips.find((t) => !prevIds.current!.has(t.id));
-      if (fresh && !open && !focusMode && !docked) {
+      if (fresh && !open && !focusMode && !docked && report.peekOnNewTrip) {
         chief.current?.notice();
         setPeek({ tripId: fresh.id, text: `${tripRef(fresh)} just finished. Any extras for ${fresh.customer?.name || 'the customer'}?` });
       }
@@ -351,7 +354,8 @@ export default function OperationsAssistant() {
     if ((e.target as HTMLElement).closest('[data-watch]')) chief.current?.lookAt(null);
   };
 
-  if (docked) return null;
+  // Hidden by this person (top bar), or switched off for the team (Settings → Assistant).
+  if (docked || !report.enabled) return null;
 
   const position = Math.min(answered + 1, answered + left);
   const of = answered + left;
@@ -398,7 +402,7 @@ export default function OperationsAssistant() {
             aria-expanded={open}
             className="block touch-none select-none rounded-[22px] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand cursor-grab active:cursor-grabbing"
           >
-            <CrewChief ref={chief} size={TILE} />
+            <CrewChief ref={chief} size={TILE} look={config.look} />
           </button>
         </div>
         {!open && left > 0 && (

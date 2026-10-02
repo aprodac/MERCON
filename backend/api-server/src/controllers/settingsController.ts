@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db';
-import { MODULE_KEYS, COMMON_TIMEZONES } from '@mercon/shared-types';
+import { MODULE_KEYS, COMMON_TIMEZONES, normalizeAssistantConfig } from '@mercon/shared-types';
 
 const SINGLETON_ID = 'singleton';
 
@@ -127,6 +127,23 @@ export const getSettings = async (_req: Request, res: Response) => {
     return res.json({ success: true, data: settings });
   } catch (error) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to load settings' } });
+  }
+};
+
+/* ─── The floating assistant: what it reports and how it looks — any Admin ──── */
+export const updateAssistantConfig = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    // Already validated by the route; normalising fills anything missing with defaults.
+    const assistantConfig = normalizeAssistantConfig(req.body);
+    await getOrCreateSettings();
+    const settings = await prisma.settings.update({
+      where: { id: SINGLETON_ID },
+      data: { assistantConfig: assistantConfig as any, updated_by: userId },
+    });
+    return res.json({ success: true, data: settings });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to save the assistant settings' } });
   }
 };
 

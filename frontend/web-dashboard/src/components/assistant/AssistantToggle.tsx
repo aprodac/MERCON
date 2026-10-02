@@ -1,6 +1,7 @@
 import { cn } from '@/lib/utils';
 import { useChargeReviewQueue } from '@/hooks/useChargeReviewQueue';
 import { useAssistantHidden } from './assistantVisibility';
+import { useAssistantConfig } from './useAssistantConfig';
 
 /**
  * Top-bar button that shows or hides the extra-charges assistant. A tiny
@@ -9,8 +10,12 @@ import { useAssistantHidden } from './assistantVisibility';
  */
 export default function AssistantToggle() {
   const [hidden, setHidden] = useAssistantHidden();
-  const { total } = useChargeReviewQueue();
+  const { reports } = useAssistantConfig();
+  const { total } = useChargeReviewQueue(reports.extraCharges.enabled);
   const label = hidden ? `Show the extra charges assistant${total ? ` (${total} trips waiting)` : ''}` : 'Hide the extra charges assistant';
+
+  // Switched off for the whole team in Settings → Assistant: nothing to show or hide.
+  if (!reports.extraCharges.enabled) return null;
 
   return (
     <button
