@@ -62,7 +62,7 @@ export interface RawQuotationListResponse {
 export const quotationsApi = {
   async getQuotations(params: {
     page?: number;
-    per_page?: number;
+    per_page?: number | 'all';
     search?: string;
     customerId?: string;
     status?: 'active' | 'inactive' | null;
