@@ -20,7 +20,7 @@ import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 
 export default function ChangePasswordScreen() {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, tp } = useLanguage();
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -119,9 +119,9 @@ export default function ChangePasswordScreen() {
             <View style={styles.iconCircle}>
               <Lock size={40} color="#FA634E" strokeWidth={1.5} />
             </View>
-            <Text style={styles.titleText}>{'Update Your Security'}</Text>
+            <Text style={styles.titleText}>{t('title_update_security', 'Update Your Security')}</Text>
             <Text style={styles.subText}>
-              {'Create a strong, unique password to protect your MERCON driver account.'}
+              {t('msg_update_security', 'Create a strong, unique password to protect your MERCON driver account.')}
             </Text>
           </View>
 
@@ -134,19 +134,19 @@ export default function ChangePasswordScreen() {
           {success && (
             <View style={styles.successBox}>
               <Text style={styles.successText}>
-                {'Password changed successfully! Returning...'}
+                {t('msg_password_changed', 'Password changed successfully! Returning...')}
               </Text>
             </View>
           )}
 
           <View style={styles.formGroup}>
             <View style={styles.labelRow}>
-              <Text style={styles.label}>{'Current Password'}</Text>
+              <Text style={styles.label}>{t('label_current_password', 'Current Password')}</Text>
               <TouchableOpacity onPress={handleForgotPassword} disabled={forgotLoading}>
                 {forgotLoading ? (
                   <ActivityIndicator size={12} color="#FA634E" />
                 ) : (
-                  <Text style={styles.forgotLink}>{'Forgot Password?'}</Text>
+                  <Text style={styles.forgotLink}>{t('action_forgot_password', 'Forgot Password?')}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -156,7 +156,7 @@ export default function ChangePasswordScreen() {
                 value={currentPassword}
                 onChangeText={setCurrentPassword}
                 secureTextEntry={!showCurrent}
-                placeholder="Enter current password"
+                placeholder={tp('placeholder_current_password', 'Enter current password')}
                 placeholderTextColor="#A1A1AA"
                 autoCapitalize="none"
               />
@@ -174,14 +174,14 @@ export default function ChangePasswordScreen() {
           </View>
 
           <View style={styles.formGroup}>
-            <Text style={styles.label}>{'New Password'}</Text>
+            <Text style={styles.label}>{t('label_new_password', 'New Password')}</Text>
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
                 value={newPassword}
                 onChangeText={setNewPassword}
                 secureTextEntry={!showNew}
-                placeholder="Enter new password (min 8 chars)"
+                placeholder={tp('placeholder_new_password', 'Enter new password (min 8 chars)')}
                 placeholderTextColor="#A1A1AA"
                 autoCapitalize="none"
               />
@@ -199,14 +199,14 @@ export default function ChangePasswordScreen() {
           </View>
 
           <View style={styles.formGroup}>
-            <Text style={styles.label}>{'Confirm New Password'}</Text>
+            <Text style={styles.label}>{t('label_confirm_new_password', 'Confirm New Password')}</Text>
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showNew}
-                placeholder="Confirm new password"
+                placeholder={tp('placeholder_confirm_password', 'Confirm new password')}
                 placeholderTextColor="#A1A1AA"
                 autoCapitalize="none"
               />
@@ -225,7 +225,7 @@ export default function ChangePasswordScreen() {
             {loading ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
             ) : (
-              <Text style={styles.submitBtnText}>{'Update Password'}</Text>
+              <Text style={styles.submitBtnText}>{t('action_update_password', 'Update Password')}</Text>
             )}
           </TouchableOpacity>
         </ScrollView>

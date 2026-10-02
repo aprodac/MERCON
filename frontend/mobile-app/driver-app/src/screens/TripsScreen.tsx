@@ -223,7 +223,7 @@ const TripsScreen = ({ navigation }: any) => {
     }
   }, [tab]);
   const [search, setSearch] = useState('');
-  const { t, language } = useLanguage();
+  const { t, tp, language } = useLanguage();
 
   const { trip: currentTrip, loading: loadingCurrent, refetch: refetchCurrent } = useCurrentTrip();
   const { trips: scheduledList, loading: loadingScheduled, error: errorScheduled, refetch: refetchScheduled, refetchIfStale: refreshScheduledIfStale } = useScheduledTrips();
@@ -298,7 +298,7 @@ const TripsScreen = ({ navigation }: any) => {
       <SearchInput
         value={search}
         onChangeText={setSearch}
-        placeholder={t('label_search_trips', 'Search trips by ID, city, customer...')}
+        placeholder={tp('label_search_trips', 'Search trips by ID, city, customer...')}
         style={styles.searchContainer}
       />
 

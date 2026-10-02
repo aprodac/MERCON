@@ -98,11 +98,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#3E3C3D',
   },
+  // No fixed lineHeight: callers pass bigger font sizes, and a 20px line clips tall Urdu glyphs.
   defaultPrimaryUrdu: {
     fontSize: 15,
     fontWeight: '700',
     color: '#3E3C3D',
-    lineHeight: 20,
   },
   defaultSubEn: {
     fontSize: 11,

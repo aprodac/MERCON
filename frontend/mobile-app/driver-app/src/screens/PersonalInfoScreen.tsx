@@ -94,13 +94,13 @@ export default function PersonalInfoScreen() {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>{'Contact Details'}</Text>
+          <Text style={styles.cardTitle}>{t('title_contact_details', 'Contact Details')}</Text>
           <View style={styles.row}>
             <View style={styles.iconBox}>
               <Phone size={18} color="#65A30D" />
             </View>
             <View style={styles.rowTextCol}>
-              <Text style={styles.rowLabel}>{'Phone Number'}</Text>
+              <Text style={styles.rowLabel}>{t('label_phone_number', 'Phone Number')}</Text>
               <Text style={styles.rowValue}>{profile?.phone_primary || '—'}</Text>
             </View>
           </View>
@@ -110,20 +110,20 @@ export default function PersonalInfoScreen() {
               <User size={18} color="#2563EB" />
             </View>
             <View style={styles.rowTextCol}>
-              <Text style={styles.rowLabel}>{'Full Name'}</Text>
+              <Text style={styles.rowLabel}>{t('label_full_name', 'Full Name')}</Text>
               <Text style={styles.rowValue}>{name}</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>{'Identity & Licensing'}</Text>
+          <Text style={styles.cardTitle}>{t('title_identity_licensing', 'Identity & Licensing')}</Text>
           <View style={styles.row}>
             <View style={styles.iconBox}>
               <BadgeCheck size={18} color="#EA580C" />
             </View>
             <View style={styles.rowTextCol}>
-              <Text style={styles.rowLabel}>{'License Number'}</Text>
+              <Text style={styles.rowLabel}>{t('label_license_number', 'License Number')}</Text>
               <Text style={styles.rowValue}>{profile?.license_number || '—'}</Text>
             </View>
           </View>
@@ -133,20 +133,20 @@ export default function PersonalInfoScreen() {
               <Calendar size={18} color="#DC2626" />
             </View>
             <View style={styles.rowTextCol}>
-              <Text style={styles.rowLabel}>{'License Expiry'}</Text>
+              <Text style={styles.rowLabel}>{t('label_license_expiry', 'License Expiry')}</Text>
               <Text style={styles.rowValue}>{formatDate(profile?.license_expiry)}</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>{'Account Info'}</Text>
+          <Text style={styles.cardTitle}>{t('title_account_info', 'Account Info')}</Text>
           <View style={styles.row}>
             <View style={styles.iconBox}>
               <ShieldCheck size={18} color="#059669" />
             </View>
             <View style={styles.rowTextCol}>
-              <Text style={styles.rowLabel}>{'Status'}</Text>
+              <Text style={styles.rowLabel}>{t('label_status', 'Status')}</Text>
               <View style={styles.statusPill}>
                 <Text style={styles.statusText}>{profile?.status || 'Active'}</Text>
               </View>
@@ -158,14 +158,14 @@ export default function PersonalInfoScreen() {
               <Calendar size={18} color="#4B5563" />
             </View>
             <View style={styles.rowTextCol}>
-              <Text style={styles.rowLabel}>{'Joined Date'}</Text>
+              <Text style={styles.rowLabel}>{t('label_joined_date', 'Joined Date')}</Text>
               <Text style={styles.rowValue}>{formatDate(profile?.createdAt)}</Text>
             </View>
           </View>
         </View>
 
         <Text style={styles.footerText}>
-          {'To edit your personal information, please contact your fleet administrator.'}
+          {t('msg_edit_personal_info', 'To edit your personal information, please contact your fleet administrator.')}
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -243,6 +243,8 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   cardTitle: {
+    // Urdu labels line up with their values (numbers, English names) instead of floating right.
+    textAlign: 'left',
     fontSize: 14,
     fontWeight: '600',
     color: '#A1A1AA',
@@ -267,6 +269,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   rowLabel: {
+    // Urdu labels line up with their values (numbers, English names) instead of floating right.
+    textAlign: 'left',
     fontSize: 13,
     color: '#71717A',
     marginBottom: 4,
