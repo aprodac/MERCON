@@ -1,0 +1,71 @@
+name: Production Migration Ledger
+
+# Reads which Prisma migrations production has applied and publishes the
+# result as an artifact. release-check.yml downloads it to build the release
+# report on a GitHub-hosted runner.
+#
+# Why this is separate: the release report runs on every PR into main. It
+# used to read the database with a job on the production runner, and a
+# `pull_request` run uses the workflow file *from the PR* — so anyone who
+# could open a PR could change that job and run any command as root on the
+# production server. This workflow never runs on pull requests: only after a
+# production deploy, on a schedule, or by hand. Scheduled and workflow_run
+# events always use the file as it is on the default branch, i.e. reviewed
+# code.
+#
+# Read-only: default_transaction_read_only=on, no checkout, no secrets beyond
+# the database user name.
+
+on:
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types: [completed]
+  schedule:
+    - cron: '41 */6 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: prod-ledger
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  read:
+    name: Read production migration ledger
+    runs-on: [self-hosted, prod]
+    timeout-minutes: 10
+    steps:
+      - name: Query _prisma_migrations (read-only)
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+        run: |
+          set -uo pipefail
+          OUT="$RUNNER_TEMP/prod-ledger"
+          rm -rf "$OUT" && mkdir -p "$OUT"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$OUT/read_at"
+          q() {
+            docker exec -e PGOPTIONS='-c default_transaction_read_only=on' mercon-postgres \
+              psql -U "$POSTGRES_USER" -d mercon_db -At -v ON_ERROR_STOP=1 -c "$1"
+          }
+          if [ "$(docker inspect -f '{{.State.Running}}' mercon-postgres 2>/dev/null)" != "true" ] || ! q "SELECT 1" >/dev/null 2>&1; then
+            echo false > "$OUT/reachable"
+          else
+            echo true > "$OUT/reachable"
+            q "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'" > "$OUT/tables"
+            if [ "$(q "SELECT to_regclass('public._prisma_migrations') IS NOT NULL")" != "t" ]; then
+              echo false > "$OUT/has_ledger"
+            else
+              echo true > "$OUT/has_ledger"
+              q "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name" > "$OUT/applied"
+              q "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL ORDER BY migration_name" > "$OUT/failed"
+            fi
+          fi
+          for f in "$OUT"/*; do echo "$(basename "$f"): $(wc -l < "$f") line(s)"; done
+
+      - name: Publish
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-migration-ledger
+          path: ${{ runner.temp }}/prod-ledger/
+          retention-days: 7
