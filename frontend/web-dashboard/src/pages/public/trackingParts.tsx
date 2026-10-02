@@ -52,10 +52,9 @@ export function Chip({ tone, children }: { tone: 'blue' | 'violet' | 'green' | '
   return <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap', tones[tone])}>{children}</span>;
 }
 
+/** The company's logo — Settings' logo, else the web app's own logo file. */
 export function BrandMark({ brand, className }: { brand: TrackingBrand; className?: string }) {
-  return brand.logo_url
-    ? <img src={resolveFileUrl(brand.logo_url)} alt={brand.name} className={cn('h-5 w-auto max-w-[120px] object-contain', className)} />
-    : <span className={cn('text-sm font-bold tracking-wide text-[#3E3C3D]', className)}>{brand.name}</span>;
+  return <img src={brand.logo_url ? resolveFileUrl(brand.logo_url) : '/mercon-logo.webp'} alt={brand.name} className={cn('h-5 w-auto max-w-[120px] object-contain', className)} />;
 }
 
 export function LangToggle({ text, className }: { text: TrackingText; className?: string }) {
@@ -87,6 +86,9 @@ export function AskButton({ brand, text, about }: { brand: TrackingBrand; text: 
 }
 
 /** Full-screen photo viewer. */
+/** Videos are told apart by their file type — the viewer plays them instead of showing an image. */
+export const isVideoUrl = (url: string) => /\.(mp4|mov|m4v|webm|3gp|mkv)(\?|$)/i.test(url);
+
 export function PhotoViewer({ url, onClose, closeLabel }: { url: string | null; onClose: () => void; closeLabel: string }) {
   useEffect(() => {
     if (!url) return;
@@ -100,7 +102,11 @@ export function PhotoViewer({ url, onClose, closeLabel }: { url: string | null; 
       <button type="button" className="absolute top-4 right-4 rounded-full bg-white/15 p-2 text-white" aria-label={closeLabel}>
         <X className="size-5" />
       </button>
-      <img src={resolveFileUrl(url)} alt="" className="max-h-full max-w-full rounded-xl object-contain" />
+      {isVideoUrl(url) ? (
+        <video src={resolveFileUrl(url)} controls autoPlay playsInline className="max-h-full max-w-full rounded-xl" onClick={(e) => e.stopPropagation()} />
+      ) : (
+        <img src={resolveFileUrl(url)} alt="" className="max-h-full max-w-full rounded-xl object-contain" />
+      )}
     </div>
   );
 }

@@ -61,7 +61,9 @@ export interface TrackingBrand {
 
 export interface PublicTrackingPhoto {
   url: string;
-  kind: 'pod' | 'photo';
+  kind: 'pod' | 'photo' | 'video';
+  /** Sent by the driver to explain a delay (often a video). */
+  delay: boolean;
   captured_at: string;
 }
 
@@ -235,13 +237,16 @@ export function routeLabel(names: string[]): string | null {
 
 const pointOf = (s: LiveStop): GeoPoint | null => (s.lat != null && s.lng != null ? { lat: s.lat, lng: s.lng } : null);
 
-/** Photos a customer may see for one stop: POD and cargo photos, never delay videos or anything else. */
+/**
+ * Media a customer may see for one stop: proof of delivery, cargo photos, and
+ * the driver's delay photos / videos (owner decision 2026-10-03: customers see
+ * why a truck was held up). All behind the customer's "show photos" setting.
+ */
 function stopPhotos(media: LiveTripMedia | null, stopId: string): PublicTrackingPhoto[] {
   const items = media?.stops.find((m) => m.stop_id === stopId)?.media ?? [];
   return items
-    .filter((m) => (m.kind === 'pod' || m.kind === 'photo') && m.stage !== 'delay')
     .slice(0, MAX_PHOTOS_PER_STOP)
-    .map((m) => ({ url: m.url, kind: m.kind as 'pod' | 'photo', captured_at: m.captured_at }));
+    .map((m) => ({ url: m.url, kind: m.kind, delay: m.stage === 'delay', captured_at: m.captured_at }));
 }
 
 /**
@@ -427,10 +432,12 @@ export interface TrackingContext {
 
 /** Branding and timezone for a tracking page — the same for every trip. */
 export async function loadTrackingContext(db: PrismaClient): Promise<TrackingContext> {
-  const s = await db.settings.findFirst({ select: { appName: true, logoUrl: true, primaryColor: true, timezone: true, supportWhatsapp: true } });
+  const s = await db.settings.findFirst({ select: { companyLegalName: true, logoUrl: true, primaryColor: true, timezone: true, supportWhatsapp: true } });
   return {
     brand: {
-      name: s?.appName || 'MERCON',
+      // Customers see the company, never the internal app name ("MERCON Operator Platform").
+      // The schema's placeholder legal name counts as unset.
+      name: (s?.companyLegalName && s.companyLegalName !== 'MERCON Operations Ltd.' ? s.companyLegalName : null) || 'MERCON',
       logo_url: s?.logoUrl ?? null,
       primary_color: s?.primaryColor ?? null,
       support_whatsapp: waDigits(s?.supportWhatsapp),

@@ -3,7 +3,7 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Layer, Marker, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import { AlertTriangle, Check, ChevronLeft, Clock, Focus, Hash, Loader2, MapPinOff, RefreshCw, SignalLow, Truck } from 'lucide-react';
+import { AlertTriangle, BadgeCheck, Check, ChevronLeft, Clock, Clock3, Focus, Hash, Loader2, MapPinOff, Play, RefreshCw, Truck, WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resolveFileUrl } from '@/lib/documents';
 import type { StopGroup } from '@/lib/fleetLive';
@@ -13,7 +13,7 @@ import { trackingService, type PublicTracking, type PublicTrackingStop } from '@
 import { useTrackingText, type TrackingText } from './trackingI18n';
 import { SheetHandle, useBottomSheet } from './bottomSheet';
 import { PublicMap } from './publicMap';
-import { AskButton, BrandMark, Centered, Chip, LangToggle, Photo, PhotoViewer, TRACK_BLUE, TruckPuck, line } from './trackingParts';
+import { AskButton, BrandMark, Centered, Chip, LangToggle, Photo, PhotoViewer, TRACK_BLUE, TruckPuck, line, isVideoUrl } from './trackingParts';
 
 /**
  * The customer tracking page (/t/:token) — what a customer opens from the
@@ -100,6 +100,8 @@ export default function TrackingPage() {
         {fleetToken && sheet.expanded && <BackToFleet token={fleetToken} text={text} className="mb-3" />}
         <Headline data={data} text={text} />
         <Progress data={data} text={text} />
+        <ProofOfDelivery data={data} text={text} onOpen={setPhoto} />
+        <DelayUpdates data={data} text={text} />
         <Timeline data={data} text={text} onPhoto={setPhoto} />
         {(data.trip.phase === 'active' || data.trip.phase === 'planned') && !notReporting(data) && (
           <div className="mt-4"><AskButton brand={data.brand} text={text} about={about || text.t.trip} /></div>
@@ -416,7 +418,7 @@ function NotReportingCard({ data, text, ago, clock }: {
   return (
     <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3.5">
       <p className="flex items-center gap-2 text-sm font-semibold text-amber-900">
-        <SignalLow className="size-4 shrink-0" /> {t.notReportingTitle}
+        <WifiOff className="size-4 shrink-0" /> {t.notReportingTitle}
       </p>
       <p className="mt-1 text-sm leading-snug text-amber-900/80">
         {pos ? t.notReportingStale(ago(pos.recorded_at), clock(pos.recorded_at)) : t.notReportingNone}
@@ -462,17 +464,17 @@ function Timeline({ data, text, onPhoto }: { data: PublicTracking; text: Trackin
             <div className={cn('min-w-0 flex-1', !last && 'pb-4')}>
               <p className={cn('truncate text-sm font-semibold', s.state === 'upcoming' ? 'text-slate-500' : 'text-slate-900')}>{s.name}</p>
               <p className="text-xs text-slate-500">{stopLine(s, i, data, text)}</p>
-              {s.photos.length > 0 && (
+              {s.photos.some((ph) => !ph.delay) && (
                 <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1">
-                  {s.photos.map((ph) => (
+                  {s.photos.filter((ph) => !ph.delay).map((ph) => (
                     <button
                       key={ph.url}
                       type="button"
                       onClick={() => onPhoto(ph.url)}
-                      className="size-14 shrink-0 overflow-hidden rounded-lg bg-slate-100 ring-1 ring-black/5"
-                      aria-label={text.t.photos}
+                      className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-slate-100 ring-1 ring-black/5"
+                      aria-label={ph.kind === 'video' ? text.t.playVideo : text.t.photos}
                     >
-                      <img src={resolveFileUrl(ph.url)} alt="" loading="lazy" className="size-full object-cover" />
+                      <MediaThumb url={ph.url} video={ph.kind === 'video'} />
                     </button>
                   ))}
                 </div>
@@ -482,6 +484,85 @@ function Timeline({ data, text, onPhoto }: { data: PublicTracking; text: Trackin
         );
       })}
     </ol>
+  );
+}
+
+/** A photo, or a video's first frame with a play mark. */
+function MediaThumb({ url, video }: { url: string; video: boolean }) {
+  if (video || isVideoUrl(url)) {
+    return (
+      <>
+        <video src={`${resolveFileUrl(url)}#t=0.1`} muted playsInline preload="metadata" className="size-full object-cover" />
+        <span className="absolute inset-0 flex items-center justify-center bg-black/20">
+          <span className="flex size-7 items-center justify-center rounded-full bg-white/90 text-slate-900"><Play className="size-3.5 translate-x-px fill-current" /></span>
+        </span>
+      </>
+    );
+  }
+  return <img src={resolveFileUrl(url)} alt="" loading="lazy" className="size-full object-cover" />;
+}
+
+/**
+ * Proof of delivery: the photos taken at the delivery stops, large, newest
+ * delivery first — what a customer forwards to their own customer.
+ */
+function ProofOfDelivery({ data, text, onOpen }: { data: PublicTracking; text: TrackingText; onOpen: (url: string) => void }) {
+  const deliveries = data.stops
+    .filter((s) => s.type === 'Dropoff' && s.state === 'done')
+    .map((s) => ({ stop: s, media: s.photos.filter((p) => !p.delay).sort((a, b) => (a.kind === 'pod' ? -1 : 0) - (b.kind === 'pod' ? -1 : 0)) }))
+    .filter((d) => d.media.length > 0)
+    .reverse();
+  if (deliveries.length === 0) return null;
+  return (
+    <section className="mt-5 border-t border-slate-100 pt-4">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900"><BadgeCheck className="size-4 text-emerald-600" /> {text.t.proofOfDelivery}</h3>
+      <div className="mt-3 space-y-4">
+        {deliveries.map(({ stop, media }, i) => (
+          <div key={i}>
+            <p className="mb-1.5 text-xs text-slate-500">
+              {text.t.deliveredAtStop(stop.name, stop.actual_arrival ? text.clock(stop.actual_arrival) : text.t.delivered)}
+            </p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {media.map((m, k) => (
+                <button
+                  key={m.url}
+                  type="button"
+                  onClick={() => onOpen(m.url)}
+                  className={cn('relative aspect-square overflow-hidden rounded-xl bg-slate-100 ring-1 ring-black/5', k === 0 && media.length > 2 && 'col-span-2 row-span-2')}
+                  aria-label={m.kind === 'video' ? text.t.playVideo : text.t.photos}
+                >
+                  <MediaThumb url={m.url} video={m.kind === 'video'} />
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/** The driver's delay photos and videos, playable right here, with the stop and time. */
+function DelayUpdates({ data, text }: { data: PublicTracking; text: TrackingText }) {
+  const items = data.stops.flatMap((s) => s.photos.filter((p) => p.delay).map((p) => ({ stop: s.name, ...p })));
+  if (items.length === 0) return null;
+  return (
+    <section className="mt-5 border-t border-slate-100 pt-4">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900"><Clock3 className="size-4 text-amber-600" /> {text.t.delayUpdates}</h3>
+      {data.delay?.reason && <p className="mt-1 text-xs text-slate-500">{data.delay.reason}</p>}
+      <div className="mt-3 space-y-3">
+        {items.map((m) => (
+          <figure key={m.url} className="overflow-hidden rounded-2xl bg-slate-50 ring-1 ring-black/5">
+            {m.kind === 'video' || isVideoUrl(m.url) ? (
+              <video src={resolveFileUrl(m.url)} controls playsInline preload="metadata" className="aspect-video w-full bg-black object-contain" />
+            ) : (
+              <img src={resolveFileUrl(m.url)} alt="" loading="lazy" className="aspect-video w-full object-cover" />
+            )}
+            <figcaption className="px-3 py-2 text-xs text-slate-500">{m.stop} · {text.clock(m.captured_at)}</figcaption>
+          </figure>
+        ))}
+      </div>
+    </section>
   );
 }
 
