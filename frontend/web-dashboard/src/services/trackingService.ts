@@ -123,6 +123,23 @@ export interface TrackingLink {
   last_opened_at: string | null;
 }
 
+/** One time a customer opened a tracking link (GET /customers/:id/tracking-opens). */
+export interface TrackingOpen {
+  id: string;
+  opened_at: string;
+  /** e.g. "iPhone · Safari"; null when the browser didn't say. */
+  device: string | null;
+  link: { kind: 'all_trucks' } | { kind: 'trip'; trip_id: string | null; ref_id: string | null };
+}
+
+export interface CustomerTrackingOpens {
+  /** Opens in the history (the list holds the newest ones). */
+  total: number;
+  /** Opens counted before the history was kept — known only as a number. */
+  earlier_opens: number;
+  opens: TrackingOpen[];
+}
+
 export interface CustomerTrackingLink {
   enabled: boolean;
   url: string | null;
@@ -155,6 +172,12 @@ export const trackingService = {
   async getTripLinks(tripIds: string[]): Promise<Record<string, TrackingLink>> {
     if (tripIds.length === 0) return {};
     const res = await api.post<ApiResponse<Record<string, TrackingLink>>>('/trips/tracking-links', { trip_ids: tripIds.slice(0, 100) });
+    return res.data.data;
+  },
+
+  /** Every open of this customer's tracking links, newest first. */
+  async getCustomerOpens(customerId: string, limit = 200): Promise<CustomerTrackingOpens> {
+    const res = await api.get<ApiResponse<CustomerTrackingOpens>>(`/customers/${customerId}/tracking-opens`, { params: { limit } });
     return res.data.data;
   },
 
