@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  ETA_STALE_MS, TRACKING_AFTER_END_DAYS, buildPublicTracking, firstName, lateMinutes, optionsOf, trackingLinkState, truckSeconds, waDigits,
+  ETA_STALE_MS, TRACKING_AFTER_END_DAYS, buildPublicTracking, firstName, lateMinutes, optionsOf, placeName, routeLabel, trackingLinkState, truckSeconds, waDigits,
   type TrackingOptions, type TrackingTripMeta,
 } from '../services/tracking/customerTracking';
-import { fleetTripFilter, sortFleet, toFleetTruck } from '../services/tracking/customerFleetTracking';
+import { deliveredTripFilter, fleetTripFilter, sortFleet, toDeliveredTrip, toFleetTruck } from '../services/tracking/customerFleetTracking';
 import { renderPreviewTags, tripPreview } from '../services/tracking/trackingPreview';
 import type { LiveTripMedia } from '../services/fleetLiveMap';
 import type { TripOverview } from '../services/tripOverview';
@@ -217,10 +217,47 @@ test('customer tracking', async (t) => {
     assert.deepEqual(sortFleet([done, planned, active]).map((x) => x.token), ['tok-a', 'tok-p', 'tok-d']);
   });
 
-  await t.test('customer page shows running, soon-to-load and just-delivered trips only', () => {
+  await t.test('place names read properly; names typed in mixed case are left alone', () => {
+    assert.equal(placeName('khamis mushayt'), 'Khamis Mushayt');
+    assert.equal(placeName('RIYADH'), 'Riyadh');
+    assert.equal(placeName('  al-baha  '), 'Al-Baha');
+    assert.equal(placeName('iMile CDC Riyadh'), 'iMile CDC Riyadh');
+  });
+
+  await t.test('route label: one way, multi-drop, and round trips', () => {
+    assert.equal(routeLabel(['Riyadh', 'Dawadmi']), 'Riyadh → Dawadmi');
+    assert.equal(routeLabel(['Riyadh', 'Hail', 'Qurayyat']), 'Riyadh → Hail → Qurayyat');
+    assert.equal(routeLabel(['Khamis Mushayt', 'Muhayil', 'Muhayil', 'Khamis Mushayt']), 'Khamis Mushayt ⇄ Muhayil');
+    assert.equal(routeLabel(['Riyadh', 'Riyadh']), 'Riyadh');
+    assert.equal(routeLabel([]), null);
+  });
+
+  await t.test('trip page and cards carry the route label', () => {
+    const out = build(overview(), route(300_000, 9_000));
+    assert.equal(out.trip.route_label, 'iMile CDC Riyadh → Al Baha');
+    assert.equal(toFleetTruck('tok', out).route_label, 'iMile CDC Riyadh → Al Baha');
+  });
+
+  await t.test('a delivered trip: route, truck and times only', () => {
+    const d = toDeliveredTrip('tok', {
+      ...meta, status: 'Completed', actual_end: new Date('2026-10-01T20:00:00Z'),
+      stops: [{ location_name: 'riyadh', location_address: null }, { location_name: null, location_address: 'Dawadmi, Saudi Arabia' }],
+    });
+    assert.deepEqual(d, {
+      token: 'tok', ref: 'TRP-0412', plate: 'VRA-3358', type: '10 TON', route_label: 'Riyadh → Dawadmi',
+      started_at: '2026-10-02T06:40:00.000Z', finished_at: '2026-10-01T20:00:00.000Z',
+    });
+  });
+
+  await t.test('delivered list covers the last 7 days', () => {
+    const f = deliveredTripFilter('c1', NOW);
+    assert.equal(f.actual_end.gte.toISOString(), '2026-09-25T12:00:00.000Z');
+  });
+
+  await t.test('customer page shows running and soon-to-load trips', () => {
     const f = fleetTripFilter('c1', NOW);
     assert.equal(f.customerId, 'c1');
-    assert.equal(f.OR.length, 3);
+    assert.equal(f.OR.length, 2);
     const soon = (f.OR[1] as unknown as { OR: Array<{ planned_start?: { lte: Date } | null }> }).OR[1].planned_start as { lte: Date };
     assert.equal(soon.lte.toISOString(), '2026-10-03T12:00:00.000Z');
   });

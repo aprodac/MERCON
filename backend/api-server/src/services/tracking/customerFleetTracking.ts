@@ -1,6 +1,7 @@
 /**
  * The customer-wide tracking page: one link per customer showing every truck
- * of theirs that is on the road, about to load, or just delivered. Built for
+ * of theirs that is on the road or about to load, plus the trips delivered in
+ * the last few days ("did yesterday's truck reach?"). Built for
  * monthly contracts (JD, iMile) where the customer bookmarks one page instead
  * of collecting a link per trip.
  *
@@ -13,13 +14,14 @@ import { logger } from '../../utils/logger';
 import { newShareToken } from '../operatorInbox';
 import {
   CUSTOMER_TRACKING_SELECT, TRACKING_META_SELECT, buildTripTracking, ensureTrackingLink, loadTrackingContext,
-  optionsOf, type PublicTracking, type TrackingBrand, type TrackingCustomerSettings, type TrackingOptions, type TrackingTripMeta,
+  optionsOf, placeName, routeLabel, type PublicTracking, type TrackingBrand, type TrackingCustomerSettings, type TrackingOptions, type TrackingTripMeta,
 } from './customerTracking';
 
 /** Scheduled trips show up this long before they're due to start. */
 export const UPCOMING_WINDOW_MS = 24 * 60 * 60_000;
-/** Delivered trips stay on the page this long after finishing. */
-export const RECENTLY_DONE_MS = 12 * 60 * 60_000;
+/** Delivered trips listed on the page — today's and the past few days'. */
+export const DELIVERED_WINDOW_MS = 7 * 24 * 60 * 60_000;
+export const MAX_DELIVERED = 60;
 /** Cap on trucks per page — keeps the page and the routing behind it bounded. */
 export const MAX_FLEET_TRUCKS = 40;
 const FLEET_TTL_MS = 30_000;
@@ -30,6 +32,8 @@ export interface FleetTruck {
   token: string;
   ref: string | null;
   phase: PublicTracking['trip']['phase'];
+  /** "Khamis Mushayt ⇄ Muhayil" — what the customer recognises a trip by. */
+  route_label: string | null;
   plate: string | null;
   type: string | null;
   driver_first_name: string | null;
@@ -52,8 +56,22 @@ export interface CustomerFleetTracking {
   timezone: string;
   options: TrackingOptions;
   customer: { name: string };
+  /** On the road or loading soon. */
   trucks: FleetTruck[];
+  /** Delivered in the last DELIVERED_WINDOW_MS, newest first. */
+  delivered: DeliveredTrip[];
   generated_at: string;
+}
+
+/** A finished trip on the customer page — no live data, just what and when. */
+export interface DeliveredTrip {
+  token: string;
+  ref: string | null;
+  plate: string | null;
+  type: string | null;
+  route_label: string | null;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 /** Which of a customer's trips belong on the page right now. */
@@ -64,8 +82,17 @@ export function fleetTripFilter(customerId: string, now: Date) {
     OR: [
       { status: { in: ['Loading', 'InTransit', 'Delayed'] as never[] } },
       { status: 'Scheduled' as never, OR: [{ planned_start: null }, { planned_start: { lte: new Date(now.getTime() + UPCOMING_WINDOW_MS) } }] },
-      { status: { in: ['Completed', 'Invoiced'] as never[] }, actual_end: { gte: new Date(now.getTime() - RECENTLY_DONE_MS) } },
     ],
+  };
+}
+
+/** The customer's trips delivered in the last few days. */
+export function deliveredTripFilter(customerId: string, now: Date) {
+  return {
+    customerId,
+    deletedAt: null,
+    status: { in: ['Completed', 'Invoiced'] as never[] },
+    actual_end: { gte: new Date(now.getTime() - DELIVERED_WINDOW_MS) },
   };
 }
 
@@ -77,6 +104,7 @@ export function toFleetTruck(token: string, t: PublicTracking): FleetTruck {
     token,
     ref: t.trip.ref,
     phase: t.trip.phase,
+    route_label: t.trip.route_label,
     plate: t.vehicle.plate,
     type: t.vehicle.type,
     driver_first_name: t.driver_first_name,
@@ -95,7 +123,27 @@ export function toFleetTruck(token: string, t: PublicTracking): FleetTruck {
   };
 }
 
-/** On the road first, then about to load (soonest first), then delivered. */
+export function toDeliveredTrip(
+  token: string,
+  trip: TrackingTripMeta & { stops: Array<{ location_name: string | null; location_address: string | null }> },
+): DeliveredTrip {
+  const third = trip.is_third_party ? trip.subcontract : null;
+  const names = trip.stops
+    .map((s) => s.location_name?.trim() || s.location_address?.split(',')[0]?.trim() || '')
+    .filter(Boolean)
+    .map(placeName);
+  return {
+    token,
+    ref: trip.ref_id,
+    plate: third ? third.vehiclePlate : trip.vehicle?.plate_number ?? null,
+    type: (third ? third.vehicleType : null) || trip.vehicle_type || trip.vehicle?.asset_type || null,
+    route_label: routeLabel(names),
+    started_at: trip.actual_start?.toISOString() ?? null,
+    finished_at: trip.actual_end?.toISOString() ?? null,
+  };
+}
+
+/** On the road first, then about to load (soonest first). */
 export function sortFleet(trucks: FleetTruck[]): FleetTruck[] {
   return [...trucks].sort((a, b) =>
     (PHASE_ORDER[a.phase] ?? 9) - (PHASE_ORDER[b.phase] ?? 9) ||
@@ -133,13 +181,22 @@ export async function loadCustomerFleetTracking(
   const cached = fleetCache.get(link.customer.id);
   if (cached && now.getTime() - cached.at < FLEET_TTL_MS) return { state: 'ok', data: cached.data };
 
-  const [ctx, trips] = await Promise.all([
+  const [ctx, trips, finished] = await Promise.all([
     loadTrackingContext(db),
     db.trip.findMany({
       where: fleetTripFilter(link.customer.id, now),
       select: { id: true, ...TRACKING_META_SELECT },
       orderBy: { planned_start: 'asc' },
       take: MAX_FLEET_TRUCKS,
+    }),
+    db.trip.findMany({
+      where: deliveredTripFilter(link.customer.id, now),
+      select: {
+        id: true, ...TRACKING_META_SELECT,
+        stops: { where: { deletedAt: null }, orderBy: { stop_sequence: 'asc' }, select: { location_name: true, location_address: true } },
+      },
+      orderBy: { actual_end: 'desc' },
+      take: MAX_DELIVERED,
     }),
   ]);
 
@@ -158,12 +215,20 @@ export async function loadCustomerFleetTracking(
   };
   await Promise.all(Array.from({ length: FLEET_CONCURRENCY }, worker));
 
+  // Delivered trips need no live data or routing — just their link and when.
+  const delivered: DeliveredTrip[] = [];
+  for (const trip of finished) {
+    const tripLink = await ensureTrackingLink(db, trip.id, { userId: null, now });
+    if (tripLink?.token) delivered.push(toDeliveredTrip(tripLink.token, trip));
+  }
+
   const data: CustomerFleetTracking = {
     brand: ctx.brand,
     timezone: ctx.timezone,
     options: optionsOf(link.customer),
     customer: { name: link.customer.name },
     trucks: sortFleet(trucks),
+    delivered,
     generated_at: now.toISOString(),
   };
   if (fleetCache.size > 200) fleetCache.clear();

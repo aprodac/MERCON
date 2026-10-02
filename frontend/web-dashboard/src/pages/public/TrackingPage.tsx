@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import MapGL, { Layer, Marker, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { AlertTriangle, Check, Clock, Focus, Hash, Loader2, MapPinOff, RefreshCw, Truck, UserRound } from 'lucide-react';
+import { AlertTriangle, Check, Clock, Focus, Hash, Loader2, MapPinOff, RefreshCw, SignalLow, Truck, UserRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resolveFileUrl } from '@/lib/documents';
 import type { StopGroup } from '@/lib/fleetLive';
@@ -95,7 +95,7 @@ export default function TrackingPage() {
         <Headline data={data} text={text} />
         <Progress data={data} text={text} />
         <Timeline data={data} text={text} onPhoto={setPhoto} />
-        {(data.trip.phase === 'active' || data.trip.phase === 'planned') && (
+        {(data.trip.phase === 'active' || data.trip.phase === 'planned') && !notReporting(data) && (
           <div className="mt-4"><AskButton brand={data.brand} text={text} about={about || text.t.trip} /></div>
         )}
         <Footer data={data} text={text} updatedAt={dataUpdatedAt} refreshing={isFetching} onRefresh={() => refetch()} />
@@ -270,11 +270,11 @@ function MapTopBar({ data, text }: { data: PublicTracking; text: TrackingText })
   return (
     <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2 md:top-4 md:right-4 md:left-auto">
       <span className="pointer-events-auto flex h-9 items-center gap-2 rounded-xl border border-black/5 bg-white/90 px-3 shadow-sm backdrop-blur md:hidden">
-        <BrandMark brand={data.brand} />
+        <BrandMark brand={data.brand} className="block max-w-[150px] truncate whitespace-nowrap" />
       </span>
       <div className="flex items-center gap-2">
         {live && (
-          <span className="pointer-events-auto flex h-9 items-center gap-2 rounded-xl border border-black/5 bg-white/90 px-3 text-xs font-medium text-slate-700 shadow-sm backdrop-blur">
+          <span className="pointer-events-auto flex h-9 items-center gap-2 rounded-xl border border-black/5 bg-white/90 px-3 text-xs font-medium whitespace-nowrap text-slate-700 shadow-sm backdrop-blur">
             {pos ? (
               <>
                 <span className={cn('size-2 rounded-full', pos.fresh ? 'bg-emerald-500' : 'bg-slate-400')} />
@@ -321,10 +321,17 @@ function Headline({ data, text }: { data: PublicTracking; text: TrackingText }) 
   const after = eta ? data.stops.length - 1 - eta.stop_index : 0;
 
   let big: string;
+  let bigIsTime = true;
   let sub: React.ReactNode;
+  const next = data.next_stop_index != null ? data.stops[data.next_stop_index] : null;
   if (phase === 'done') {
     big = data.trip.finished_at ? clock(data.trip.finished_at) : t.delivered;
     sub = t.deliveredAll;
+  } else if (notReporting(data)) {
+    // No arrival time to show: say where it's going; the card below explains why.
+    big = next ? t.toPlace(next.name) : t.onTheWay;
+    bigIsTime = false;
+    sub = null;
   } else if (eta && target) {
     big = clock(eta.arrival);
     sub = (
@@ -338,12 +345,12 @@ function Headline({ data, text }: { data: PublicTracking; text: TrackingText }) 
     );
   } else if (phase === 'planned') {
     big = t.scheduled;
+    bigIsTime = false;
     sub = data.trip.planned_start ? `${t.startsAt} ${clock(data.trip.planned_start)}` : t.soon;
   } else {
-    big = t.onTheWay;
-    sub = data.eta_gap === 'stale' && data.position ? t.staleSub(ago(data.position.recorded_at))
-      : data.eta_gap === 'no_position' ? t.noPosSub
-      : t.noRouteSub;
+    big = next ? t.toPlace(next.name) : t.onTheWay;
+    bigIsTime = false;
+    sub = t.noRouteSub;
   }
 
   return (
@@ -352,9 +359,64 @@ function Headline({ data, text }: { data: PublicTracking; text: TrackingText }) 
         <StatusChips data={data} text={text} />
         <span className="hidden shrink-0 md:block"><BrandMark brand={data.brand} className="h-6" /></span>
       </div>
-      <p className="mt-3 text-[34px] leading-none font-semibold tracking-tight text-slate-900" dir="ltr" style={{ textAlign: text.rtl ? 'right' : 'left' }}>{big}</p>
-      <p className="mt-2 text-sm leading-snug text-slate-600">{sub}</p>
+      <TripSummary data={data} text={text} />
+      <p
+        className={cn('mt-3 leading-none font-semibold tracking-tight text-slate-900', bigIsTime ? 'text-[34px]' : 'text-[26px] leading-tight')}
+        dir={bigIsTime ? 'ltr' : undefined}
+        style={bigIsTime ? { textAlign: text.rtl ? 'right' : 'left' } : undefined}
+      >
+        {big}
+      </p>
+      {sub && <p className="mt-2 text-sm leading-snug text-slate-600">{sub}</p>}
+      {notReporting(data) && <NotReportingCard data={data} text={text} ago={ago} clock={clock} />}
     </header>
+  );
+}
+
+/** Running or about to run, but no usable truck position — so no arrival time. */
+function notReporting(data: PublicTracking): boolean {
+  return (data.trip.phase === 'active' || data.trip.phase === 'planned') && (data.eta_gap === 'stale' || data.eta_gap === 'no_position');
+}
+
+/** Route, truck and dates in one line — "Khamis Mushayt ⇄ Muhayil · 10 TON · Scheduled Thu 2 Oct, 23:40". */
+function TripSummary({ data, text }: { data: PublicTracking; text: TrackingText }) {
+  const { t, clock } = text;
+  const facts = [
+    data.vehicle.type,
+    data.trip.planned_start && `${t.scheduledFor} ${clock(data.trip.planned_start)}`,
+    data.trip.started_at && `${t.startedAt} ${clock(data.trip.started_at)}`,
+  ].filter(Boolean);
+  if (!data.trip.route_label && facts.length === 0) return null;
+  return (
+    <div className="mt-3">
+      {data.trip.route_label && <p className="text-base font-semibold text-slate-900">{data.trip.route_label}</p>}
+      {facts.length > 0 && <p className="text-xs text-slate-500">{facts.join(' · ')}</p>}
+    </div>
+  );
+}
+
+/** Says plainly that the truck has gone quiet, and what the customer can do about it. */
+function NotReportingCard({ data, text, ago, clock }: {
+  data: PublicTracking; text: TrackingText; ago: TrackingText['ago']; clock: TrackingText['clock'];
+}) {
+  const { t } = text;
+  const pos = data.position;
+  const about = [data.trip.ref, data.vehicle.plate].filter(Boolean).join(' · ') || t.trip;
+  return (
+    <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3.5">
+      <p className="flex items-center gap-2 text-sm font-semibold text-amber-900">
+        <SignalLow className="size-4 shrink-0" /> {t.notReportingTitle}
+      </p>
+      <p className="mt-1 text-sm leading-snug text-amber-900/80">
+        {pos ? t.notReportingStale(ago(pos.recorded_at), clock(pos.recorded_at)) : t.notReportingNone}
+      </p>
+      {data.brand.support_whatsapp && (
+        <>
+          <p className="mt-2 text-xs text-amber-900/70">{t.needUpdate}</p>
+          <div className="mt-2"><AskButton brand={data.brand} text={text} about={about} /></div>
+        </>
+      )}
+    </div>
   );
 }
 
