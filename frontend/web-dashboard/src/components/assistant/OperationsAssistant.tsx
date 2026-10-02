@@ -2,15 +2,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import gsap from 'gsap';
-import { Minus, EyeOff, X, Sparkles, Loader2 } from 'lucide-react';
+import { Minus, EyeOff, X, Sparkles, Loader2, Truck, CalendarCheck } from 'lucide-react';
 import { SUGGESTED_CHARGE_TYPES, SUGGESTED_UNIT_BY_CHARGE_TYPE } from '@mercon/shared-types';
 import { surchargeRuleService } from '@/services/quotationService';
+import { customerService } from '@/services/customerService';
+import DriverAvatar from '@/components/ui/DriverAvatar';
 import type { ChargeReviewTrip, NewSubCharge } from '@/services/tripService';
 import { authStore } from '@/store/authStore';
 import { cn } from '@/lib/utils';
 import { useChargeReviewQueue, routeLabel, driverLabel, tripRef, reviewErrorMessage } from '@/hooks/useChargeReviewQueue';
 import CrewChief, { type CrewChiefHandle, type CrewChiefMood } from './CrewChief';
 import { buildChargeHints, daysWaiting } from './chargeHints';
+import { useAssistantHidden } from './assistantVisibility';
 
 /**
  * The extra-charges assistant: after a trip is completed, asks whether the
@@ -19,7 +22,9 @@ import { buildChargeHints, daysWaiting } from './chargeHints';
  * operator's answer clears a trip for everyone.
  */
 
-const DOCKED_KEY = 'mercon_assistant_docked_v1';
+const POS_KEY = 'mercon_assistant_pos_v4';
+const TILE = 56; // px
+const EDGE = 20; // px from the screen edge it snaps to
 const BIG_BILL = 500; // SAR — a bill this size gets a bigger reaction
 const OLD_TRIP_DAYS = 3; // trips waiting this long make it restless
 
@@ -43,6 +48,8 @@ const SNOOZE = [
 const sar = (n: number) => `SAR ${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
 const lineAmount = (l: DraftLine) => (Number(l.rate) || 0) * l.quantity;
+const initials = (name?: string | null) =>
+  (name || '').replace(/[^A-Za-z0-9 ]/g, '').split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
 
 /** Pages where people are filling a form — the assistant stays small and quiet there. */
 const FOCUS_ROUTES = [/\/trips\/new/, /\/trips\/[^/]+\/edit/, /\/new$/, /\/edit$/];
@@ -62,9 +69,7 @@ export default function OperationsAssistant() {
   const [flash, setFlash] = useState<string | null>(null);
   const [peek, setPeek] = useState<{ tripId: string; text: string } | null>(null);
   const [answered, setAnswered] = useState(0); // answered this session, for "2 of 5"
-  const [docked, setDocked] = useState(() => {
-    try { return localStorage.getItem(DOCKED_KEY) === 'true'; } catch { return false; }
-  });
+  const [docked, setHidden] = useAssistantHidden();
 
   const firstName = useMemo(() => {
     const u = authStore.getUser();
@@ -109,7 +114,7 @@ export default function OperationsAssistant() {
   useEffect(() => {
     if (!open && !queue.isLoading) chief.current?.mood(restingMood());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, left, oldest >= OLD_TRIP_DAYS, queue.isLoading]);
+  }, [open, left, oldest >= OLD_TRIP_DAYS, queue.isLoading, docked]);
 
   /* ── A trip just finished: a small hop and a one-line peek ── */
   const prevIds = useRef<Set<string> | null>(null);
@@ -132,25 +137,85 @@ export default function OperationsAssistant() {
     return () => clearTimeout(t);
   }, [peek]);
 
-  /* ── Dock to Important Reminders (kept from the old assistant) ── */
+  /* ── Hide / show (top bar, this card, or Important Reminders) ── */
+  const wasHidden = useRef(docked);
   useEffect(() => {
-    const onDock = () => {
-      try {
-        const val = localStorage.getItem(DOCKED_KEY) === 'true';
-        setDocked(val);
-        if (!val) openCard();
-      } catch { /* storage blocked */ }
-    };
-    window.addEventListener('mercon_assistant_dock_change', onDock);
-    return () => window.removeEventListener('mercon_assistant_dock_change', onDock);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Coming back: a small hop so people see where it went.
+    if (wasHidden.current && !docked) setTimeout(() => chief.current?.notice(), 300);
+    wasHidden.current = docked;
+  }, [docked]);
+  const dock = () => { setOpen(false); setHidden(true); };
+
+  /* ── Position: draggable, snaps to the nearest side; bottom-right by default ── */
+  const clampPos = (p: { x: number; y: number }) => ({
+    x: Math.min(Math.max(EDGE, p.x), window.innerWidth - TILE - EDGE),
+    y: Math.min(Math.max(EDGE, p.y), window.innerHeight - TILE - EDGE),
+  });
+  const [pos, setPos] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+      if (saved && typeof saved.x === 'number') return clampPos(saved);
+    } catch { /* fall through to the default */ }
+    return { x: window.innerWidth - TILE - EDGE, y: window.innerHeight - TILE - EDGE };
+  });
+  useEffect(() => {
+    const onResize = () => setPos((p) => clampPos(p));
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
   }, []);
-  const dock = () => {
-    setOpen(false);
-    setDocked(true);
-    try { localStorage.setItem(DOCKED_KEY, 'true'); } catch { /* storage blocked */ }
-    window.dispatchEvent(new CustomEvent('mercon_assistant_dock_change'));
+  const rootRef = useRef<HTMLDivElement>(null);
+  const tiltRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ sx: number; sy: number; ox: number; oy: number; lastX: number; moved: boolean } | null>(null);
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    drag.current = { sx: e.clientX, sy: e.clientY, ox: pos.x, oy: pos.y, lastX: e.clientX, moved: false };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+    if (!d.moved && Math.hypot(dx, dy) < 5) return;
+    if (!d.moved) { d.moved = true; setPeek(null); }
+    // It leans into the direction it's dragged.
+    const v = e.clientX - d.lastX;
+    d.lastX = e.clientX;
+    if (tiltRef.current) gsap.to(tiltRef.current, { rotation: Math.max(-14, Math.min(14, v * 1.5)), duration: 0.2, overwrite: 'auto' });
+    const p = clampPos({ x: d.ox + dx, y: d.oy + dy });
+    if (rootRef.current) gsap.set(rootRef.current, { left: p.x, top: p.y });
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d) return;
+    if (!d.moved) { open ? closeCard() : openCard(peek?.tripId); return; }
+    const raw = clampPos({ x: d.ox + e.clientX - d.sx, y: d.oy + e.clientY - d.sy });
+    // Snap to the nearer side, like a picture-in-picture window.
+    const snapped = { x: raw.x + TILE / 2 < window.innerWidth / 2 ? EDGE : window.innerWidth - TILE - EDGE, y: raw.y };
+    if (tiltRef.current) gsap.to(tiltRef.current, { rotation: 0, duration: 0.6, ease: 'elastic.out(1, 0.4)' });
+    if (rootRef.current) {
+      gsap.to(rootRef.current, {
+        left: snapped.x, top: snapped.y, duration: 0.45, ease: 'back.out(1.6)',
+        onComplete: () => setPos(snapped),
+      });
+    } else setPos(snapped);
+    try { localStorage.setItem(POS_KEY, JSON.stringify(snapped)); } catch { /* storage blocked */ }
+  };
+  // The card opens toward the roomy side of the screen.
+  const side: 'left' | 'right' = pos.x + TILE / 2 > window.innerWidth / 2 ? 'left' : 'right';
+  const vAlign: 'top' | 'bottom' = pos.y + TILE / 2 > window.innerHeight / 2 ? 'bottom' : 'top';
+
+  /* ── Customer logos (same cached list the Create Trip page uses) ── */
+  const { data: customersRes } = useQuery({
+    queryKey: ['customers-select'],
+    queryFn: () => customerService.getAll({ per_page: 150 }),
+    enabled: open,
+    staleTime: 10 * 60_000,
+  });
+  const customerLogo = useMemo(() => {
+    const list: any[] = Array.isArray((customersRes as any)?.data) ? (customersRes as any).data : Array.isArray(customersRes) ? (customersRes as any) : [];
+    return list.find((c) => c.id === trip?.customerId)?.logo_url as string | undefined;
+  }, [customersRes, trip?.customerId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && open) closeCard(); };
@@ -170,14 +235,14 @@ export default function OperationsAssistant() {
     setView('ask'); setLines([]); setError(null); setFlash(null);
     setOpen(true);
     requestAnimationFrame(() => {
-      if (cardRef.current) gsap.fromTo(cardRef.current, { opacity: 0, scale: 0.94, y: 8 }, { opacity: 1, scale: 1, y: 0, duration: 0.35, ease: 'power3.out' });
+      if (cardRef.current) gsap.fromTo(cardRef.current, { opacity: 0, scale: 0.94 }, { opacity: 1, scale: 1, duration: 0.35, ease: 'power3.out' });
     });
     animateIn();
     chief.current?.mood('greet', left > 0 ? 'ask' : 'sleep');
   }
   function closeCard() {
     if (!cardRef.current) return setOpen(false);
-    gsap.to(cardRef.current, { opacity: 0, scale: 0.94, y: 8, duration: 0.2, ease: 'power2.in', onComplete: () => setOpen(false) });
+    gsap.to(cardRef.current, { opacity: 0, scale: 0.94, duration: 0.2, ease: 'power2.in', onComplete: () => setOpen(false) });
   }
 
   /* ── Charge lines ── */
@@ -302,21 +367,40 @@ export default function OperationsAssistant() {
     return pick(['Next up. Anything extra on this one?', 'And this one, any extra charges?', 'How about this trip?']);
   };
   const completedOn = trip?.actual_end || trip?.planned_start;
+  const route = (() => {
+    const stops = trip?.stops ?? [];
+    const name = (st?: ChargeReviewTrip['stops'][number]) => st?.location?.name || st?.location_name || '—';
+    const work = stops.filter((st) => st.stop_type === 'Pickup' || st.stop_type === 'Dropoff');
+    return { from: name(work[0] || stops[0]), to: name(work[work.length - 1] || stops[stops.length - 1]), extra: Math.max(0, work.length - 2) };
+  })();
   const waitingDays = trip ? daysWaiting(trip) : 0;
 
   return (
-    <div className="pointer-events-none fixed bottom-5 left-5 z-[60] flex items-end gap-3" aria-live="polite">
-      {/* The character — always there; click to open */}
-      <div className={cn('pointer-events-auto relative transition-all duration-300', focusMode && 'scale-75 opacity-60 hover:scale-100 hover:opacity-100')} style={{ transformOrigin: '0% 100%' }}>
-        <button
-          type="button"
-          onClick={() => (open ? closeCard() : openCard(peek?.tripId))}
-          aria-label={left > 0 ? `Extra charges assistant: ${left} trips to check` : 'Extra charges assistant'}
-          aria-expanded={open}
-          className="block rounded-[22px] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand cursor-pointer"
-        >
-          <CrewChief ref={chief} size={56} />
-        </button>
+    <div
+      ref={rootRef}
+      className="pointer-events-none fixed z-[60]"
+      style={{ left: pos.x, top: pos.y, width: TILE, height: TILE }}
+      aria-live="polite"
+    >
+      {/* The character — click to open, drag to move */}
+      <div
+        className={cn('pointer-events-auto relative transition-[transform,opacity] duration-300', focusMode && 'scale-75 opacity-60 hover:scale-100 hover:opacity-100')}
+        style={{ transformOrigin: `${side === 'left' ? '100%' : '0%'} ${vAlign === 'bottom' ? '100%' : '0%'}` }}
+      >
+        <div ref={tiltRef} style={{ transformOrigin: '50% 90%' }}>
+          <button
+            type="button"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (open) closeCard(); else openCard(peek?.tripId); } }}
+            aria-label={left > 0 ? `Extra charges assistant: ${left} trips to check. Drag to move.` : 'Extra charges assistant. Drag to move.'}
+            aria-expanded={open}
+            className="block touch-none select-none rounded-[22px] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand cursor-grab active:cursor-grabbing"
+          >
+            <CrewChief ref={chief} size={TILE} />
+          </button>
+        </div>
         {!open && left > 0 && (
           <span className="pointer-events-none absolute -right-1.5 -top-1.5 min-w-5 h-5 px-1.5 rounded-full bg-charcoal-strong text-white text-[11px] font-semibold font-mono leading-5 text-center ring-2 ring-white dark:bg-white dark:text-charcoal-strong dark:ring-slate-900">
             {left > 99 ? '99+' : left}
@@ -329,7 +413,11 @@ export default function OperationsAssistant() {
         <button
           type="button"
           onClick={() => openCard(peek.tripId)}
-          className="pointer-events-auto mb-2 max-w-[300px] rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-left text-[13px] font-medium leading-snug text-slate-800 shadow-lg animate-fade-in hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 cursor-pointer"
+          className={cn(
+            'pointer-events-auto absolute w-max max-w-[300px] rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-left text-[13px] font-medium leading-snug text-slate-800 shadow-lg animate-fade-in hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 cursor-pointer',
+            side === 'left' ? 'right-[68px]' : 'left-[68px]',
+            vAlign === 'bottom' ? 'bottom-1' : 'top-1'
+          )}
         >
           {peek.text}
         </button>
@@ -345,25 +433,32 @@ export default function OperationsAssistant() {
           onPointerOut={unwatch}
           onFocus={watch}
           onBlur={unwatch}
-          className="pointer-events-auto w-[372px] max-w-[calc(100vw-110px)] overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-[0_1px_2px_rgba(45,43,44,.06),0_12px_32px_-8px_rgba(45,43,44,.22)] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-          style={{ transformOrigin: '0% 100%' }}
+          className={cn(
+            'pointer-events-auto absolute flex w-[384px] max-w-[calc(100vw-110px)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-800 shadow-[0_1px_2px_rgba(45,43,44,.06),0_16px_40px_-10px_rgba(45,43,44,.28)] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100',
+            side === 'left' ? 'right-[68px]' : 'left-[68px]',
+            vAlign === 'bottom' ? 'bottom-0' : 'top-0'
+          )}
+          style={{
+            transformOrigin: `${side === 'left' ? '100%' : '0%'} ${vAlign === 'bottom' ? '100%' : '0%'}`,
+            maxHeight: vAlign === 'bottom' ? pos.y + TILE - EDGE : window.innerHeight - pos.y - EDGE,
+          }}
         >
           <div className="flex items-center gap-1 pl-4 pr-2 pt-2.5">
             <span className="flex-1 text-xs font-semibold text-slate-500 dark:text-slate-400">
               {trip && !flash ? `Extra charges · ${position} of ${of}` : 'Extra charges'}
             </span>
-            <button type="button" onClick={dock} title="Hide the assistant (bring it back from Important Reminders)" className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer">
+            <button type="button" onClick={dock} title="Hide the assistant (show it again from the top bar)" className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer">
               <EyeOff className="h-3.5 w-3.5" />
             </button>
             <button type="button" onClick={closeCard} aria-label="Minimise" className="grid h-7 w-7 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer">
               <Minus className="h-4 w-4" />
             </button>
           </div>
-          <div className="mx-4 mt-2 h-[3px] overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+          <div className="mx-4 mt-2 h-[3px] shrink-0 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
             <div className="h-full rounded-full bg-brand transition-[width] duration-500 ease-out" style={{ width: of > 0 ? `${(answered / of) * 100}%` : '100%' }} />
           </div>
 
-          <div ref={bodyRef} className="grid gap-3.5 px-4 pb-4 pt-3.5">
+          <div ref={bodyRef} className="grid min-h-0 gap-3.5 overflow-y-auto px-4 pb-4 pt-3.5">
             {flash ? (
               <div className="flex items-center gap-2.5 py-1 text-sm font-semibold leading-snug">
                 <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-full bg-emerald-600 text-white">
@@ -385,21 +480,70 @@ export default function OperationsAssistant() {
               </>
             ) : (
               <>
-                {/* Which trip */}
-                <div className="grid gap-1">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <span className="text-[15px] font-bold tracking-tight">{trip.customer?.name || 'No customer'}</span>
-                    <span className="font-mono text-xs text-slate-500">{tripRef(trip)}</span>
-                    {waitingDays >= OLD_TRIP_DAYS && (
-                      <span className="rounded-md bg-amber-50 px-1.5 text-[10.5px] font-semibold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">waiting {waitingDays} days</span>
+                {/* Which trip: customer, route, crew */}
+                <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center gap-3 px-3 pb-2.5 pt-3">
+                    {customerLogo ? (
+                      <img src={customerLogo} alt="" className="h-10 w-10 shrink-0 rounded-xl border border-slate-200 bg-white object-contain p-0.5 dark:border-slate-700" />
+                    ) : (
+                      <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-orange-50 text-[13px] font-bold text-[#c2410c] dark:bg-orange-950/40 dark:text-orange-300" aria-hidden="true">
+                        {initials(trip.customer?.name)}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[15px] font-bold tracking-tight" title={trip.customer?.name || undefined}>{trip.customer?.name || 'No customer'}</div>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-mono text-[11.5px] text-slate-500">{tripRef(trip)}</span>
+                        {waitingDays >= OLD_TRIP_DAYS && (
+                          <span className="rounded-md bg-amber-50 px-1.5 text-[10.5px] font-semibold text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">waiting {waitingDays} days</span>
+                        )}
+                      </div>
+                    </div>
+                    {Number(trip.billing_amount) > 0 && (
+                      <div className="shrink-0 text-right">
+                        <div className="text-[10.5px] font-medium text-slate-400">Trip price</div>
+                        <div className="font-mono text-[13px] font-semibold tabular-nums">{sar(Number(trip.billing_amount))}</div>
+                      </div>
                     )}
                   </div>
-                  <div className="text-[13px] font-medium">{routeLabel(trip)}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
-                    {driverLabel(trip)}
-                    {completedOn ? ` · finished ${new Date(completedOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}
-                    {trip.charges.length > 0 ? ` · already has ${trip.charges.map((c) => c.charge_type).join(', ')}` : ''}
+
+                  {/* Route: first pickup → last drop, with the stops in between */}
+                  <div className="flex items-center gap-2 px-3 pb-3 text-[13px] font-medium">
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-charcoal dark:bg-slate-200" />
+                    <span className="min-w-0 truncate">{route.from}</span>
+                    <span className="relative flex h-px min-w-6 flex-1 items-center justify-center bg-slate-300 dark:bg-slate-600">
+                      {route.extra > 0 && <span className="absolute rounded-full border border-slate-200 bg-white px-1.5 text-[10.5px] font-semibold leading-4 text-slate-500 dark:border-slate-700 dark:bg-slate-900">+{route.extra}</span>}
+                    </span>
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-brand" />
+                    <span className="min-w-0 truncate">{route.to}</span>
                   </div>
+
+                  {/* Crew */}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-slate-100 bg-slate-50/70 px-3 py-2 dark:border-slate-800 dark:bg-slate-800/40">
+                    <span className="flex min-w-0 items-center gap-2">
+                      {trip.is_third_party ? (
+                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-slate-200 text-[9px] font-bold text-slate-600 dark:bg-slate-700 dark:text-slate-200">3PL</span>
+                      ) : (
+                        <DriverAvatar src={trip.driver?.avatar_url} firstName={trip.driver?.first_name || ''} lastName={trip.driver?.last_name || ''} size="xs" />
+                      )}
+                      <span className="truncate text-xs font-semibold" title={driverLabel(trip)}>{driverLabel(trip)}</span>
+                    </span>
+                    {(trip.vehicle?.plate_number || trip.subcontract?.vehiclePlate) && (
+                      <span className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-1.5 py-0.5 font-mono text-[11px] font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                        <Truck className="h-3 w-3" />{trip.vehicle?.plate_number || trip.subcontract?.vehiclePlate}
+                      </span>
+                    )}
+                    {completedOn && (
+                      <span className="flex items-center gap-1 text-[11.5px] text-slate-500">
+                        <CalendarCheck className="h-3 w-3" />Finished {new Date(completedOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                      </span>
+                    )}
+                  </div>
+                  {trip.charges.length > 0 && (
+                    <div className="border-t border-slate-100 px-3 py-1.5 text-[11.5px] text-slate-500 dark:border-slate-800">
+                      Already on the trip: {trip.charges.map((c) => `${c.charge_type} ${sar(Number(c.amount) || 0)}`).join(', ')}
+                    </div>
+                  )}
                 </div>
 
                 {view === 'ask' && (
