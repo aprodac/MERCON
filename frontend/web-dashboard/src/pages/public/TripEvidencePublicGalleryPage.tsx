@@ -24,17 +24,19 @@ function resolveDocUrl(url?: string | null): string {
 
 export default function TripEvidencePublicGalleryPage() {
   const [searchParams] = useSearchParams();
-  const tripRef = searchParams.get('ref') || searchParams.get('token') || '';
+  // Opened by the trip's secret token (?t=). Old ?ref=<trip number> links no
+  // longer work — trip numbers could be changed to see other customers' trips —
+  // and the server answers them with "no longer valid".
+  const token = searchParams.get('t') || '';
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
 
   const { data: galleryRes, isLoading, isError, error } = useQuery({
-    queryKey: ['public-evidence-gallery', tripRef],
+    queryKey: ['public-evidence-gallery', token],
     queryFn: async () => {
-      if (!tripRef) return null;
-      const res = await api.get(`/public/evidence-gallery?ref=${encodeURIComponent(tripRef)}`);
+      const res = await api.get('/public/evidence-gallery', { params: { t: token } });
       return res.data?.data;
     },
-    enabled: Boolean(tripRef),
+    retry: false,
   });
 
   const tripData = galleryRes || null;
@@ -63,7 +65,7 @@ export default function TripEvidencePublicGalleryPage() {
               </Badge>
             </h1>
             <p className="text-[11px] text-slate-400 font-mono">
-              Trip #{tripRef || 'N/A'}
+              Trip #{tripData?.tripRef || '—'}
             </p>
           </div>
         </div>
@@ -103,7 +105,7 @@ export default function TripEvidencePublicGalleryPage() {
             <AlertTriangle className="w-10 h-10 text-rose-400 mx-auto mb-3" />
             <h2 className="text-base font-bold text-white">Invalid or Expired Share Link</h2>
             <p className="text-xs text-rose-300/80 mt-1">
-              {(error as any)?.response?.data?.error?.message || 'Could not find evidence documents for this trip reference.'}
+              {(error as any)?.response?.data?.error?.message || 'This link is not valid. Ask MERCON for a new one.'}
             </p>
           </div>
         )}

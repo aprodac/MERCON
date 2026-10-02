@@ -149,6 +149,15 @@ export const trackingService = {
   },
 };
 
+/**
+ * The trip's photo/video gallery, opened by its tracking token — never by trip
+ * number (those could be changed to see other customers' trips). Null when the
+ * customer has tracking switched off.
+ */
+export function galleryUrl(link: TrackingLink | null | undefined): string | null {
+  return link?.enabled && link.token ? `${window.location.origin}/trips/evidence-gallery?t=${encodeURIComponent(link.token)}` : null;
+}
+
 /** The link a status message should end with: only when the customer wants links added automatically. */
 export function autoTrackingUrl(link: TrackingLink | null | undefined): string | null {
   return link?.enabled && link.auto_link ? link.url : null;

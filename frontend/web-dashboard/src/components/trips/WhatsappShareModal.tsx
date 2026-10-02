@@ -39,6 +39,7 @@ import {
 import { Trip } from '@/services/tripService';
 import { customerService, Customer } from '@/services/customerService';
 import { useTrackingLink } from '@/hooks/useTrackingLink';
+import { galleryUrl } from '@/services/trackingService';
 
 export interface WhatsappShareModalProps {
   isOpen: boolean;
@@ -251,7 +252,8 @@ export default function WhatsappShareModal({
         text += `\nNotes # ${(selectedTrip as any).notes}\n`;
       }
       if (tracking.autoUrl) text += `\n📍 *Track live*:\n${tracking.autoUrl}\n`;
-      text += `\n🔗 *Evidence Gallery*:\n${window.location.origin}/trips/evidence-gallery?ref=${encodeURIComponent(tripRef)}`;
+      const gallery = galleryUrl(tracking.link);
+      if (gallery) text += `\n🔗 *Evidence Gallery*:\n${gallery}`;
       return text;
     }
 
@@ -316,6 +318,7 @@ export default function WhatsappShareModal({
     includeEta,
     includeDelays,
     tracking.autoUrl,
+    tracking.link,
   ]);
 
   // Keep message in sync with options unless manually edited
