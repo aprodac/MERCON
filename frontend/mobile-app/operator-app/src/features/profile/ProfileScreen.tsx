@@ -1,10 +1,10 @@
 /**
- * Route: /profile — the last tab: the signed-in operator's own account and
- * the way into every page that isn't a tab of its own.
+ * Route: /profile — the last tab: the signed-in operator's own account.
  *
- * Who you are (name, role), your contact details (editable), the Manage list
- * (fleet, quotations, customers, users), then password and sign out. Data is
- * GET /auth/me; edits go to PATCH /auth/me and POST /auth/change-password.
+ * Who you are (name, role), your contact details (editable), password and
+ * sign out. Pages (vehicles, quotations, customers…) live in the side menu,
+ * not here. Data is GET /auth/me; edits go to PATCH /auth/me and
+ * POST /auth/change-password.
  */
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, TextInput, Alert, ActivityIndicator } from 'react-native';
@@ -12,7 +12,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
-import { Building2, CalendarClock, ChevronRight, KeyRound, LogOut, SquarePen, Tag, Truck, UserCog, Users, type LucideIcon } from 'lucide-react-native';
+import { ChevronRight, KeyRound, LogOut, SquarePen, type LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
@@ -56,15 +56,6 @@ export default function ProfileScreen() {
     ]);
   };
 
-  const go = (route: string) => () => router.push(route as never);
-  const manage: Link[] = [
-    { icon: Truck, label: 'Vehicles', sub: 'Fleet trucks and trailers', onPress: go('/vehicles') },
-    { icon: CalendarClock, label: 'Vehicle renewals', sub: 'Expiring vehicle documents', onPress: go('/vehicle-renewals') },
-    { icon: Building2, label: '3rd party fleet', sub: 'Subcontractors and 3PL carriers', onPress: go('/third-party') },
-    { icon: Tag, label: 'Quotations', sub: 'Rates and lanes', onPress: go('/quotations') },
-    { icon: Users, label: 'Customers', sub: 'View, add and edit customers', onPress: go('/customers') },
-    { icon: UserCog, label: 'User management', sub: 'Operators, admins and driver logins', onPress: go('/user-management') },
-  ];
   const account: Link[] = [
     { icon: KeyRound, label: 'Change password', sub: 'Use at least 8 characters', onPress: () => setSheet('password') },
   ];
@@ -102,10 +93,7 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* 2 · every page that isn't a tab */}
-        <LinkList title="Manage" links={manage} />
-
-        {/* 3 · account */}
+        {/* 2 · account */}
         <LinkList title="Account" links={account} />
 
         <TouchableOpacity style={s.signOut} activeOpacity={0.8} onPress={confirmSignOut}>
