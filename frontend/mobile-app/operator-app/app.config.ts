@@ -45,6 +45,12 @@ const clientKey = (process.env.APP_CLIENT as ClientKey) || 'mercon';
 const buildNumber = Number(process.env.BUILD_NUMBER) || 1;
 const client = CLIENT_PROFILES[clientKey];
 
+// EAS project for this app — Expo push tokens are issued per project, and the
+// project holds the APNs key / FCM credentials for tech.mercon.operator. Run
+// `eas init` in operator-app once and paste the id here (or set EAS_PROJECT_ID
+// in the build environment). Until then the app runs but gets no push token.
+const easProjectId = process.env.EAS_PROJECT_ID || '';
+
 if (!client) {
   throw new Error(
     `Unknown APP_CLIENT "${process.env.APP_CLIENT}" — add a profile for it in app.config.ts's CLIENT_PROFILES.`,
@@ -78,9 +84,14 @@ export default (): ExpoConfig => ({
       'android.permission.RECORD_AUDIO',
       'android.permission.ACCESS_COARSE_LOCATION',
       'android.permission.ACCESS_FINE_LOCATION',
+      'android.permission.POST_NOTIFICATIONS',
     ],
     package: client.androidPackage,
     versionCode: buildNumber,
+    // Android push needs Firebase (FCM). Point GOOGLE_SERVICES_JSON at this
+    // app's google-services.json (a Codemagic secure file / EAS file env var);
+    // without it Android builds still work but get no push token.
+    ...(process.env.GOOGLE_SERVICES_JSON ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON } : {}),
   },
   web: {
     output: 'static',
@@ -114,6 +125,17 @@ export default (): ExpoConfig => ({
     // Release signing from Codemagic's keystore (no-op elsewhere)
     '../shared/tooling/with-release-signing',
     [
+      'expo-notifications',
+      {
+        icon: client.icon,
+        color: client.brandColor,
+        // TestFlight / App Store builds talk to Apple's production push service.
+        // Codemagic's iOS workflows set APS_ENVIRONMENT=production; local and
+        // dev-client builds keep 'development' (matching a development profile).
+        mode: process.env.APS_ENVIRONMENT === 'production' ? 'production' : 'development',
+      },
+    ],
+    [
       'expo-splash-screen',
       {
         backgroundColor: '#FFFFFF',
@@ -146,8 +168,7 @@ export default (): ExpoConfig => ({
   },
   extra: {
     router: {},
-    // EAS project: run `eas init` in operator-app once to create it and add
-    // `eas: { projectId: '<id>' }` here.
+    ...(easProjectId ? { eas: { projectId: easProjectId } } : {}),
     // Read by shared/lib/api.ts (@mercon/mobile-shared) as the required fallback when EXPO_PUBLIC_API_URL
     // isn't set — per-client, so a misconfigured build can't silently talk to
     // another client's API.

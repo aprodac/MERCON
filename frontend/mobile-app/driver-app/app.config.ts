@@ -83,6 +83,10 @@ export default (): ExpoConfig => ({
     ],
     package: client.androidPackage,
     versionCode: buildNumber,
+    // Android push needs Firebase (FCM). Point GOOGLE_SERVICES_JSON at this
+    // app's google-services.json (a Codemagic secure file / EAS file env var);
+    // without it Android builds still work but get no push token.
+    ...(process.env.GOOGLE_SERVICES_JSON ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON } : {}),
   },
   web: {
     output: 'static',

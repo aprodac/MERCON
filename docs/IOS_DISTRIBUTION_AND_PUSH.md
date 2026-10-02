@@ -22,8 +22,8 @@ MERCON API ──▶ Expo push service (exp.host) ──▶ Apple APNs ──▶
   — on trip assignment, trip changes, delay alerts and operator messages to drivers.
 - **Expo needs an APNs key** from our Apple account to hand pushes to Apple. The app being
   built by Codemagic (not EAS) doesn't change that.
-- **Only the driver app has push today.** The operator app has none yet (needs its own
-  Expo project + backend work — see the end).
+- **Both apps have push code.** The operator app's still needs its own Expo project
+  (`eas init`) and the APNs key uploaded there before it receives anything — see the end.
 
 ---
 
@@ -201,18 +201,35 @@ Internal testers (App Store Connect users on the team) don't need Beta App Revie
 
 ---
 
-## Android (for completeness)
+## Android
 
-Expo push on Android needs **FCM**: a Firebase project with an Android app for
-`tech.mercon.driver`, its `google-services.json` referenced in the app config, and the FCM
-v1 service-account key uploaded to the same Expo project (expo.dev → Credentials →
-Android → FCM V1). Not set up yet.
+Expo push on Android needs **FCM** — without it Android phones get **no push token at all**
+(driver and operator app alike). Not set up yet. Per app:
 
-## Operator app — push not built yet
+1. A Firebase project (one is fine for both) with an Android app for `tech.mercon.driver`
+   and one for `tech.mercon.operator`; download each app's `google-services.json`.
+2. Give the build that file: both `app.config.ts` files read its path from the
+   `GOOGLE_SERVICES_JSON` env var (Codemagic: upload it as a secure file and set the var
+   in the `driver-android` / `operator-android` workflow).
+3. Upload the Firebase **FCM v1 service-account key** to that app's Expo project
+   (expo.dev → project → Credentials → Android → FCM V1).
+4. Install the new build, sign in, and check the phone appears with a token (drivers:
+   web Drivers → phone status; staff: `user_devices` table).
 
-The operator app has no push code. To add it later: run `eas init` in
-`frontend/mobile-app/operator-app` (creates its Expo project; put the `projectId` in its
-`app.config.ts`), upload the **same** APNs key to that project (Part B), and the backend
-needs a device table for operators (a schema change — needs owner approval) plus the events
-that should push (emergencies, delays, photos to send). Parts A1–A3 above already cover the
-Apple side for `tech.mercon.operator`.
+## Operator app push
+
+Built: on sign-in the operator app registers its push token (`POST /notifications/devices`,
+table `user_devices`), and signs it out on logout. Every staff notification the backend
+creates (`createNotification` — driver emergencies, trip delays, stale trips, driver phone
+alerts, password-reset requests) is pushed to each signed-in phone, except `system`
+confirmations. Deliveries are recorded in `push_deliveries` and go through the same receipt
+check and retry as driver pushes. Tapping a trip alert opens that trip.
+
+Still needed before it delivers anything (owner/Apple/Expo side, not code):
+
+1. `eas init` in `frontend/mobile-app/operator-app` → set `EAS_PROJECT_ID` in the build
+   environment (or paste the id into `app.config.ts`). Without it the app gets no token.
+2. Upload the **same** APNs key to that Expo project (Part B). Parts A1–A3 already cover the
+   Apple side for `tech.mercon.operator`.
+3. Android: see the section above.
+4. A new operator-app build (expo-notifications is native).
