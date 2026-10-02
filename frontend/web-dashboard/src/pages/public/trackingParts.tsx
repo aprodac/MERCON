@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Languages, Truck, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resolveFileUrl } from '@/lib/documents';
@@ -49,7 +49,7 @@ export function Chip({ tone, children }: { tone: 'blue' | 'violet' | 'green' | '
     amber: 'bg-amber-50 text-amber-800',
     red: 'bg-rose-50 text-rose-700',
   } as const;
-  return <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', tones[tone])}>{children}</span>;
+  return <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap', tones[tone])}>{children}</span>;
 }
 
 export function BrandMark({ brand, className }: { brand: TrackingBrand; className?: string }) {
@@ -102,6 +102,49 @@ export function PhotoViewer({ url, onClose, closeLabel }: { url: string | null; 
       </button>
       <img src={resolveFileUrl(url)} alt="" className="max-h-full max-w-full rounded-xl object-contain" />
     </div>
+  );
+}
+
+const INITIAL_TONES = ['bg-blue-100 text-blue-700', 'bg-emerald-100 text-emerald-700', 'bg-violet-100 text-violet-700', 'bg-amber-100 text-amber-800', 'bg-rose-100 text-rose-700'];
+
+/**
+ * A round photo — driver, truck or customer logo — with a quiet fallback:
+ * initials (a person or company) or an icon (a truck). Falls back too when the
+ * image fails to load, e.g. a photo deleted from the server.
+ */
+export function Photo({ url, name, kind = 'person', size = 40, className }: {
+  url: string | null | undefined;
+  name?: string | null;
+  kind?: 'person' | 'truck' | 'logo';
+  size?: number;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const box = { width: size, height: size };
+  if (url && !failed) {
+    return (
+      <img
+        src={resolveFileUrl(url)}
+        alt={name ?? ''}
+        onError={() => setFailed(true)}
+        style={box}
+        className={cn('shrink-0 rounded-full bg-white ring-1 ring-black/5', kind === 'logo' ? 'object-contain p-0.5' : 'object-cover', className)}
+      />
+    );
+  }
+  if (kind === 'truck' || !name) {
+    return (
+      <span style={box} className={cn('flex shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500', className)}>
+        <Truck style={{ width: size * 0.45, height: size * 0.45 }} />
+      </span>
+    );
+  }
+  const initials = name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('');
+  const tone = INITIAL_TONES[[...name].reduce((h, c) => h + c.charCodeAt(0), 0) % INITIAL_TONES.length];
+  return (
+    <span style={{ ...box, fontSize: size * 0.38 }} className={cn('flex shrink-0 items-center justify-center rounded-full font-semibold', tone, className)}>
+      {initials}
+    </span>
   );
 }
 

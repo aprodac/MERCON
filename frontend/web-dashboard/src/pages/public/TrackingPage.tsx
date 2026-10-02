@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import MapGL, { Layer, Marker, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { AlertTriangle, Check, Clock, Focus, Hash, Loader2, MapPinOff, RefreshCw, SignalLow, Truck, UserRound } from 'lucide-react';
+import { AlertTriangle, Check, Clock, Focus, Hash, Loader2, MapPinOff, RefreshCw, SignalLow, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resolveFileUrl } from '@/lib/documents';
 import type { StopGroup } from '@/lib/fleetLive';
@@ -13,7 +13,7 @@ import { LIVE_MAP_STYLES, applyMapPalette } from '@/components/maps/live/liveMap
 import { SAUDI_CENTER, DEFAULT_SAUDI_ZOOM } from '@/utils/saudiMapConfig';
 import { trackingService, type PublicTracking, type PublicTrackingStop } from '@/services/trackingService';
 import { useTrackingText, type TrackingText } from './trackingI18n';
-import { AskButton, BrandMark, Centered, Chip, LangToggle, PhotoViewer, TRACK_BLUE, TruckPuck, line } from './trackingParts';
+import { AskButton, BrandMark, Centered, Chip, LangToggle, Photo, PhotoViewer, TRACK_BLUE, TruckPuck, line } from './trackingParts';
 
 /**
  * The customer tracking page (/t/:token) — what a customer opens from the
@@ -386,11 +386,14 @@ function TripSummary({ data, text }: { data: PublicTracking; text: TrackingText 
     data.trip.planned_start && `${t.scheduledFor} ${clock(data.trip.planned_start)}`,
     data.trip.started_at && `${t.startedAt} ${clock(data.trip.started_at)}`,
   ].filter(Boolean);
-  if (!data.trip.route_label && facts.length === 0) return null;
+  if (!data.trip.route_label && facts.length === 0 && !data.customer) return null;
   return (
-    <div className="mt-3">
-      {data.trip.route_label && <p className="text-base font-semibold text-slate-900">{data.trip.route_label}</p>}
-      {facts.length > 0 && <p className="text-xs text-slate-500">{facts.join(' · ')}</p>}
+    <div className="mt-3 flex items-center gap-3">
+      {data.customer && <Photo url={data.customer.logo_url} name={data.customer.name} kind="logo" size={44} />}
+      <div className="min-w-0">
+        {data.trip.route_label && <p className="text-base font-semibold text-slate-900">{data.trip.route_label}</p>}
+        {facts.length > 0 && <p className="text-xs text-slate-500">{facts.join(' · ')}</p>}
+      </div>
     </div>
   );
 }
@@ -509,11 +512,23 @@ function Footer({ data, text, updatedAt, refreshing, onRefresh }: {
   const live = data.trip.phase === 'active' || data.trip.phase === 'planned';
   return (
     <footer className="mt-5 space-y-3 border-t border-slate-100 pt-4">
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 text-sm">
-        {data.vehicle.plate && <Fact icon={Truck} label={t.truck} value={[data.vehicle.plate, data.vehicle.type].filter(Boolean).join(' · ')} />}
-        {data.driver_first_name && <Fact icon={UserRound} label={t.driver} value={data.driver_first_name} />}
-        {data.trip.ref && <Fact icon={Hash} label={t.trip} value={data.trip.ref} />}
-      </dl>
+      <div className="grid grid-cols-2 gap-2">
+        {data.driver_first_name && (
+          <Person photo={<Photo url={data.driver_photo_url} name={data.driver_first_name} />} label={t.driver} value={data.driver_first_name} />
+        )}
+        {data.vehicle.plate && (
+          <Person
+            photo={<Photo url={data.vehicle.photo_url} name={data.vehicle.plate} kind="truck" />}
+            label={t.truck}
+            value={data.vehicle.plate}
+            sub={data.vehicle.type}
+            ltr
+          />
+        )}
+      </div>
+      {data.trip.ref && (
+        <p className="flex items-center gap-1.5 text-xs text-slate-500"><Hash className="size-3.5" /> {t.trip} <span dir="ltr">{data.trip.ref}</span></p>
+      )}
       {live && (
         <div className="flex items-center justify-between gap-2 text-xs text-slate-400">
           <span>{t.updated(text.ago(new Date(updatedAt).toISOString()))}</span>
@@ -527,14 +542,17 @@ function Footer({ data, text, updatedAt, refreshing, onRefresh }: {
   );
 }
 
-function Fact({ icon: Icon, label, value }: { icon: typeof Truck; label: string; value: string }) {
+/** Driver or truck: photo, what it is, and who / which. */
+function Person({ photo, label, value, sub, ltr }: { photo: React.ReactNode; label: string; value: string; sub?: string | null; ltr?: boolean }) {
   return (
-    <div className="flex min-w-0 items-start gap-2">
-      <Icon className="mt-0.5 size-4 shrink-0 text-slate-400" />
+    <div className="flex min-w-0 items-center gap-2.5 rounded-2xl bg-slate-50 p-2.5">
+      {photo}
       <div className="min-w-0">
-        <dt className="text-[11px] text-slate-500">{label}</dt>
-        <dd className="truncate font-medium text-slate-900" dir="ltr">{value}</dd>
+        <p className="text-[11px] text-slate-500">{label}</p>
+        <p className="truncate text-sm font-semibold text-slate-900" dir={ltr ? 'ltr' : undefined}>{value}</p>
+        {sub && <p className="truncate text-[11px] text-slate-500">{sub}</p>}
       </div>
     </div>
   );
 }
+
