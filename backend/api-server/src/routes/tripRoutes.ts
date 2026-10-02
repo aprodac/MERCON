@@ -6,7 +6,7 @@ import {
   logStopDelay, confirmEvidenceTime, bulkImportTrips, updateTripStop, updateTripStopsRoute, getMonthlyTripBoard, shareTripMediaToWhatsApp
 } from '../controllers/tripController';
 import { exportTrips } from '../controllers/tripExportController';
-import { getTripTrackingLink, trackingLinkBody } from '../controllers/trackingController';
+import { getTripTrackingLink, getTripTrackingLinks, trackingLinkBody, trackingLinksBody } from '../controllers/trackingController';
 import { idParam } from '../schemas';
 import { getTripDriverTrail } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
@@ -29,6 +29,8 @@ router.get('/monthly', getMonthlyTripBoard);
 router.post('/bulk-delete', bulkDeleteTrips);
 router.post('/bulk-update-status', bulkUpdateTripStatus);
 router.post('/bulk-assign', bulkAssignTrips);
+// Customer tracking links for several trips at once (trip list share).
+router.post('/tracking-links', validate({ body: trackingLinksBody }), getTripTrackingLinks);
 router.post('/bulk-import', validate({ body: bulkImportTripsBody }), bulkImportTrips);
 
 

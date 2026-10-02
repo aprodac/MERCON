@@ -16,6 +16,12 @@ export interface Customer {
   secondary_contact_phone?: string;
   payment_terms?: string;
   driver_workflow?: 'NATIVE' | 'EXTERNAL_APP';
+  /** Customer tracking link settings (Customer → Tracking tab). */
+  tracking_enabled?: boolean;
+  tracking_auto_link?: boolean;
+  tracking_show_deadline?: boolean;
+  tracking_show_delay_reason?: boolean;
+  tracking_show_photos?: boolean;
   isActive: boolean;
   createdAt: string;
   trips?: { id: string; ref_id: string; status: string; createdAt: string }[];
@@ -37,6 +43,11 @@ export interface CreateCustomerPayload {
   whatsapp_number?: string;
   whatsapp_group_link?: string;
   whatsapp_group_name?: string;
+  tracking_enabled?: boolean;
+  tracking_auto_link?: boolean;
+  tracking_show_deadline?: boolean;
+  tracking_show_delay_reason?: boolean;
+  tracking_show_photos?: boolean;
 }
 
 export interface CustomerFilters {

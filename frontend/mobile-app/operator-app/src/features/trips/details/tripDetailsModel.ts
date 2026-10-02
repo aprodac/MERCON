@@ -409,6 +409,7 @@ export function quickMessage(kind: QuickKind, { trip, phase, f, position, remain
     lines.push(reported ? `Reason: ${delayText(reported)}` : 'Reason: [reason]');
     if (next) lines.push(`Next stop: ${stopName(next, nextIdx)} · new ETA [time]`);
     if (who) lines.push(who);
+    if (trackingUrl) lines.push('', `Track live: ${trackingUrl}`);
   }
   return lines.join('\n');
 }

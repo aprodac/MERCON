@@ -929,10 +929,17 @@ export const operatorService = {
   },
 
   /** Phase, pre-trip checks, live GPS and the path driven — the web map's data. */
-  /** The trip's customer tracking link (created on first ask) — added to status messages. */
-  async trackingLink(id: string): Promise<string> {
-    const { data } = await api.post(`/trips/${id}/tracking-link`, {});
-    return data.data.url as string;
+  /** The trip's customer tracking link (created on first ask); `renew` replaces it and the old one stops working. */
+  async trackingLink(id: string, renew = false): Promise<TrackingLinkInfo> {
+    const { data } = await api.post(`/trips/${id}/tracking-link`, { renew });
+    return data.data as TrackingLinkInfo;
+  },
+
+  /** Tracking links for several trips at once, keyed by trip id (bulk status share). */
+  async trackingLinks(ids: string[]): Promise<Record<string, TrackingLinkInfo>> {
+    if (ids.length === 0) return {};
+    const { data } = await api.post('/trips/tracking-links', { trip_ids: ids.slice(0, 100) });
+    return data.data as Record<string, TrackingLinkInfo>;
   },
 
   async tripOverview(id: string): Promise<TripOverview> {
@@ -1625,4 +1632,20 @@ export function useOperatorDocuments() {
   useEffect(() => { refetch(); }, [refetch]);
 
   return { documents, loading, error, refetch };
+}
+
+/** Mirrors the API's trip tracking link (backend services/tracking/customerTracking.ts). */
+export interface TrackingLinkInfo {
+  /** False when the customer has tracking switched off — then url is null. */
+  enabled: boolean;
+  /** Whether status messages should end with the link (customer setting). */
+  auto_link: boolean;
+  url: string | null;
+  open_count: number;
+  last_opened_at: string | null;
+}
+
+/** The link a status message should end with — only for customers who want it added. */
+export function autoTrackingUrl(link: TrackingLinkInfo | null | undefined): string | null {
+  return link?.enabled && link.auto_link ? link.url : null;
 }

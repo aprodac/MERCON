@@ -601,7 +601,7 @@ export default function FleetCommandMap({
 
   const share = () => {
     if (!selected) return;
-    const text = buildEtaShareText(selected, eta, formatTime, tracking.url);
+    const text = buildEtaShareText(selected, eta, formatTime, tracking.autoUrl);
     window.open(whatsAppLink(null, text), '_blank', 'noopener');
     toast.success('ETA ready to send in WhatsApp');
   };

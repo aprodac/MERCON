@@ -5,13 +5,14 @@
  *
  * Links are rows in `trip_update_shares` with `update_key = 'tracking'` (no
  * media), so they get the same unguessable token and expiry as a forwarded
- * photo page without a new table. One live link per trip; "new link" retires
- * the old one.
+ * photo page. One live link per trip; "new link" retires the old one.
  *
  * What a customer sees is deliberately narrower than the trip page: no phone
- * numbers, no prices, no internal delay notes, the driver's first name only,
- * and no planned stop times or "delayed" flag — those read as deadlines, and
- * whether customers see them is the owner's call (not yet made).
+ * numbers, no prices, never the driver's typed notes, the driver's first name
+ * only. Per customer (Customer.tracking_*), ops choose whether the page also
+ * shows the planned arrival ("on time" / "late by"), the delay reason category,
+ * and the loading / delivery photos — and can switch tracking off entirely.
+ *
  * Nothing here invents a position — a truck that has stopped reporting is shown
  * as "last seen", and its ETA is withheld once the fix is too old to trust.
  */
@@ -20,7 +21,7 @@ import { logger } from '../../utils/logger';
 import { getDrivingRouteThrough, MAX_ROUTE_POINTS, RoutingUnavailableError, type GeoPoint, type RouteResult } from '../routing/routeProvider';
 import { SHARE_LINK_TTL_DAYS, newShareToken } from '../operatorInbox';
 import { loadTripOverview, thinPath, type TripOverview, type TripPhase } from '../tripOverview';
-import type { LiveStop } from '../fleetLiveMap';
+import { loadTripMedia, type LiveStop, type LiveTripMedia } from '../fleetLiveMap';
 
 export const TRACKING_UPDATE_KEY = 'tracking';
 export const TRACKING_CHANNEL = 'tracking_link';
@@ -34,10 +35,34 @@ export const TRACKING_AFTER_END_DAYS = 7;
 export const TRUCK_MAX_AVG_KMH = 80;
 /** Past this, a position is too old to base an ETA on. */
 export const ETA_STALE_MS = 30 * 60_000;
+/** Minutes of slack before an arrival counts as late — same as the dashboard. */
+export const LATE_GRACE_MIN = 5;
 const MAX_PUBLIC_PATH_POINTS = 400;
 const MAX_PUBLIC_ROUTE_POINTS = 600;
+const MAX_PHOTOS_PER_STOP = 12;
 
 export type TrackingEtaGap = 'no_position' | 'stale' | 'no_route' | null;
+
+/** What the customer's settings let the page show. */
+export interface TrackingOptions {
+  show_deadline: boolean;
+  show_delay_reason: boolean;
+  show_photos: boolean;
+}
+
+export interface TrackingBrand {
+  name: string;
+  logo_url: string | null;
+  primary_color: string | null;
+  /** Ops WhatsApp number (digits) for the page's "Ask us" button. */
+  support_whatsapp: string | null;
+}
+
+export interface PublicTrackingPhoto {
+  url: string;
+  kind: 'pod' | 'photo';
+  captured_at: string;
+}
 
 export interface PublicTrackingStop {
   name: string;
@@ -47,11 +72,18 @@ export interface PublicTrackingStop {
   lng: number | null;
   actual_arrival: string | null;
   actual_departure: string | null;
+  /** Planned arrival — only when the customer's settings show deadlines. */
+  due_at: string | null;
+  /** Minutes the truck arrived after `due_at` (beyond the grace); 0 = on time. Done stops with a deadline only. */
+  late_min: number | null;
+  /** Loading / delivery photos — done stops, when the customer's settings show photos. */
+  photos: PublicTrackingPhoto[];
 }
 
 export interface PublicTracking {
-  brand: { name: string; logo_url: string | null; primary_color: string | null };
+  brand: TrackingBrand;
   timezone: string;
+  options: TrackingOptions;
   trip: {
     ref: string | null;
     phase: TripPhase;
@@ -73,7 +105,11 @@ export interface PublicTracking {
   /** Drive to the next stop (to the pickup for a trip that hasn't started). */
   eta: { stop_index: number; arrival: string; seconds: number; distance_m: number } | null;
   eta_gap: TrackingEtaGap;
-  /** Road distance covered vs the whole trip, for the progress bar. Active trips only. */
+  /** ETA against the next stop's planned arrival — only when deadlines are shown. */
+  punctuality: { late_min: number } | null;
+  /** Delay reason category on the stop the truck is heading for — only when the customer's settings show it. */
+  delay: { reason: string } | null;
+  /** Road distance covered vs the whole trip, for the progress bar. */
   progress: { done_m: number; total_m: number; pct: number } | null;
   stops: PublicTrackingStop[];
   next_stop_index: number | null;
@@ -100,6 +136,20 @@ export interface TrackingTripMeta {
   subcontract: { vehiclePlate: string | null; vehicleType: string | null; driverName: string | null } | null;
 }
 
+export interface TrackingCustomerSettings {
+  tracking_enabled: boolean;
+  tracking_auto_link: boolean;
+  tracking_show_deadline: boolean;
+  tracking_show_delay_reason: boolean;
+  tracking_show_photos: boolean;
+}
+
+export const optionsOf = (c: TrackingCustomerSettings | null | undefined): TrackingOptions => ({
+  show_deadline: !!c?.tracking_show_deadline,
+  show_delay_reason: !!c?.tracking_show_delay_reason,
+  show_photos: c ? c.tracking_show_photos : true,
+});
+
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
 /** Drive time a truck needs: the provider's time, but never faster than TRUCK_MAX_AVG_KMH on average. */
@@ -113,14 +163,30 @@ export function firstName(full: string | null | undefined): string | null {
   return f ? f.charAt(0).toUpperCase() + f.slice(1).toLowerCase() : null;
 }
 
+/** Minutes late beyond the grace (0 = on time), or null when either time is missing. */
+export function lateMinutes(actualOrEta: string | Date | null, due: string | Date | null): number | null {
+  if (!actualOrEta || !due) return null;
+  const min = Math.round((new Date(actualOrEta).getTime() - new Date(due).getTime()) / 60_000);
+  return min > LATE_GRACE_MIN ? min : 0;
+}
+
+/** WhatsApp wants digits only, with the country code. */
+export function waDigits(phone: string | null | undefined): string | null {
+  const d = (phone ?? '').replace(/[^0-9]/g, '');
+  return d.length >= 8 ? d : null;
+}
+
+export type LinkState = 'ok' | 'expired' | 'cancelled' | 'not_found' | 'disabled';
+
 /** Whether a link may still be opened. A finished trip's link lasts TRACKING_AFTER_END_DAYS past the finish. */
 export function trackingLinkState(
   share: { expiresAt: Date },
-  trip: { status: string; actual_end: Date | null; updatedAt: Date } | null,
+  trip: { status: string; actual_end: Date | null; updatedAt: Date; customer?: { tracking_enabled: boolean } | null } | null,
   now: Date,
-): 'ok' | 'expired' | 'cancelled' | 'not_found' {
+): LinkState {
   if (!trip) return 'not_found';
   if (share.expiresAt <= now) return 'expired';
+  if (trip.customer && !trip.customer.tracking_enabled) return 'disabled';
   if (trip.status === 'Cancelled') return 'cancelled';
   if (trip.status === 'Completed' || trip.status === 'Invoiced') {
     const ended = trip.actual_end ?? trip.updatedAt;
@@ -139,21 +205,34 @@ function stopName(s: LiveStop, i: number): string {
 
 const pointOf = (s: LiveStop): GeoPoint | null => (s.lat != null && s.lng != null ? { lat: s.lat, lng: s.lng } : null);
 
+/** Photos a customer may see for one stop: POD and cargo photos, never delay videos or anything else. */
+function stopPhotos(media: LiveTripMedia | null, stopId: string): PublicTrackingPhoto[] {
+  const items = media?.stops.find((m) => m.stop_id === stopId)?.media ?? [];
+  return items
+    .filter((m) => (m.kind === 'pod' || m.kind === 'photo') && m.stage !== 'delay')
+    .slice(0, MAX_PHOTOS_PER_STOP)
+    .map((m) => ({ url: m.url, kind: m.kind as 'pod' | 'photo', captured_at: m.captured_at }));
+}
+
 /**
  * Assembles what the customer sees from the trip overview and the road routes.
  * `ahead` is the route from the truck through the remaining stops (planned:
- * through every stop); `all` is the route through every stop.
+ * through every stop); `all` is the route through every stop. `media` carries
+ * the stop photos and delay reasons; it is only loaded when the options need it.
  */
 export function buildPublicTracking(input: {
   overview: TripOverview;
   meta: TrackingTripMeta;
-  brand: PublicTracking['brand'];
+  brand: TrackingBrand;
   timezone: string;
+  options: TrackingOptions;
   ahead: RouteResult | null;
   all: RouteResult | null;
+  media?: LiveTripMedia | null;
   now: Date;
 }): PublicTracking {
-  const { overview, meta, ahead, all, now } = input;
+  const { overview, meta, ahead, all, now, options } = input;
+  const media = input.media ?? null;
   const phase = overview.phase;
   const live = phase === 'active' || phase === 'planned';
   const pos = live ? overview.unit?.position ?? null : null;
@@ -186,17 +265,30 @@ export function buildPublicTracking(input: {
     progress = { done_m: Math.round(all.distanceMeters), total_m: Math.round(all.distanceMeters), pct: 100 };
   }
 
-  const stops: PublicTrackingStop[] = overview.stops.map((s, i) => ({
-    name: stopName(s, i),
-    type: s.type,
-    state: phase === 'done' || s.actual_arrival
+  const stops: PublicTrackingStop[] = overview.stops.map((s, i) => {
+    const state: PublicTrackingStop['state'] = phase === 'done' || s.actual_arrival
       ? 'done'
-      : i === nextIdx && phase !== 'cancelled' ? 'next' : 'upcoming',
-    lat: s.lat != null ? round5(s.lat) : null,
-    lng: s.lng != null ? round5(s.lng) : null,
-    actual_arrival: s.actual_arrival,
-    actual_departure: s.actual_departure,
-  }));
+      : i === nextIdx && phase !== 'cancelled' ? 'next' : 'upcoming';
+    const due = options.show_deadline ? s.planned_arrival : null;
+    return {
+      name: stopName(s, i),
+      type: s.type,
+      state,
+      lat: s.lat != null ? round5(s.lat) : null,
+      lng: s.lng != null ? round5(s.lng) : null,
+      actual_arrival: s.actual_arrival,
+      actual_departure: s.actual_departure,
+      due_at: due,
+      late_min: state === 'done' ? lateMinutes(s.actual_arrival, due) : null,
+      photos: options.show_photos && state === 'done' ? stopPhotos(media, s.id) : [],
+    };
+  });
+
+  const nextStop = nextIdx != null ? overview.stops[nextIdx] : null;
+  const punctualityMin = options.show_deadline && eta && nextStop ? lateMinutes(eta.arrival, nextStop.planned_arrival) : null;
+  const delayReason = options.show_delay_reason && live && nextStop
+    ? media?.stops.find((m) => m.stop_id === nextStop.id)?.delay?.reason ?? null
+    : null;
 
   const third = meta.is_third_party ? meta.subcontract : null;
   const showAllRoute = phase === 'planned' || phase === 'cancelled' || (phase === 'done' && overview.path.length < 2);
@@ -204,6 +296,7 @@ export function buildPublicTracking(input: {
   return {
     brand: input.brand,
     timezone: input.timezone,
+    options,
     trip: {
       ref: meta.ref_id,
       phase,
@@ -227,6 +320,8 @@ export function buildPublicTracking(input: {
     } : null,
     eta,
     eta_gap,
+    punctuality: punctualityMin != null ? { late_min: punctualityMin } : null,
+    delay: delayReason ? { reason: delayReason } : null,
     progress,
     stops,
     next_stop_index: phase === 'done' || phase === 'cancelled' ? null : nextIdx,
@@ -237,15 +332,24 @@ export function buildPublicTracking(input: {
   };
 }
 
-// ── Routes, cached ──────────────────────────────────────────────────────────
-// A tracking page is polled by every customer who has it open. Routing goes
-// to a third-party provider, so answers are cached: the road ahead per ~1 km of
-// truck movement, the whole-trip route per trip.
+// ── Routes and payloads, cached ─────────────────────────────────────────────
+// A tracking page is polled by every customer who has it open, and the
+// customer-wide page asks for every truck at once. Routing goes to a
+// third-party provider, so answers are cached: the road ahead per ~1 km of
+// truck movement, the whole-trip route per trip, and the finished payload per
+// trip for a few seconds.
 
 const AHEAD_TTL_MS = 5 * 60_000;
 const ALL_TTL_MS = 6 * 60 * 60_000;
+const PAYLOAD_TTL_MS = 20_000;
 const CACHE_MAX = 500;
 const routeCache = new Map<string, { at: number; route: RouteResult | null }>();
+const payloadCache = new Map<string, { at: number; data: PublicTracking }>();
+
+function remember<T>(cache: Map<string, T>, key: string, value: T) {
+  if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string);
+  cache.set(key, value);
+}
 
 async function cachedRoute(key: string, ttl: number, points: GeoPoint[]): Promise<RouteResult | null> {
   const hit = routeCache.get(key);
@@ -256,8 +360,7 @@ async function cachedRoute(key: string, ttl: number, points: GeoPoint[]): Promis
   } catch (err) {
     if (!(err instanceof RoutingUnavailableError)) logger.warn({ err }, '[tracking] route failed');
   }
-  if (routeCache.size >= CACHE_MAX) routeCache.delete(routeCache.keys().next().value as string);
-  routeCache.set(key, { at: Date.now(), route });
+  remember(routeCache, key, { at: Date.now(), route });
   return route;
 }
 
@@ -269,43 +372,62 @@ export function clearTrackingCaches(): void {
 
 // ── Loaders ─────────────────────────────────────────────────────────────────
 
+export const CUSTOMER_TRACKING_SELECT = {
+  tracking_enabled: true, tracking_auto_link: true, tracking_show_deadline: true,
+  tracking_show_delay_reason: true, tracking_show_photos: true,
+} as const;
+
 const META_SELECT = {
   ref_id: true, status: true, vehicle_type: true, planned_start: true, actual_start: true, actual_end: true, updatedAt: true, is_third_party: true,
   vehicle: { select: { plate_number: true, asset_type: true } },
   driver: { select: { first_name: true } },
   subcontract: { select: { vehiclePlate: true, vehicleType: true, driverName: true } },
+  customer: { select: CUSTOMER_TRACKING_SELECT },
 } as const;
 
-const PAYLOAD_TTL_MS = 20_000;
-const payloadCache = new Map<string, { at: number; data: PublicTracking }>();
+export interface TrackingContext {
+  brand: TrackingBrand;
+  timezone: string;
+}
 
-export type TrackingLookup =
-  | { state: 'ok'; data: PublicTracking }
-  | { state: 'not_found' | 'expired' | 'cancelled' };
+/** Branding and timezone for a tracking page — the same for every trip. */
+export async function loadTrackingContext(db: PrismaClient): Promise<TrackingContext> {
+  const s = await db.settings.findFirst({ select: { appName: true, logoUrl: true, primaryColor: true, timezone: true, supportWhatsapp: true } });
+  return {
+    brand: {
+      name: s?.appName || 'MERCON',
+      logo_url: s?.logoUrl ?? null,
+      primary_color: s?.primaryColor ?? null,
+      support_whatsapp: waDigits(s?.supportWhatsapp),
+    },
+    timezone: s?.timezone || 'Asia/Riyadh',
+  };
+}
 
-export async function loadPublicTracking(db: PrismaClient, token: string, now = new Date()): Promise<TrackingLookup> {
-  if (token.length < 16 || token.length > 64) return { state: 'not_found' };
-  const share = await db.tripUpdateShare.findUnique({
-    where: { token },
-    select: { tripId: true, update_key: true, expiresAt: true },
-  });
-  if (!share || share.update_key !== TRACKING_UPDATE_KEY) return { state: 'not_found' };
+/**
+ * The customer's view of one trip, by trip id. Callers have already checked the
+ * trip may be shown (link state / customer page). Cached a few seconds per trip,
+ * so the trip page and the customer-wide page share the work.
+ */
+export async function buildTripTracking(
+  db: PrismaClient,
+  tripId: string,
+  meta: TrackingTripMeta & { customer: TrackingCustomerSettings | null },
+  ctx: TrackingContext,
+  now = new Date(),
+): Promise<PublicTracking | null> {
+  const cached = payloadCache.get(tripId);
+  if (cached && now.getTime() - cached.at < PAYLOAD_TTL_MS) return cached.data;
 
-  const meta = await db.trip.findFirst({ where: { id: share.tripId, deletedAt: null }, select: META_SELECT });
-  const linkState = trackingLinkState(share, meta, now);
-  if (linkState !== 'ok') return { state: linkState };
-
-  const cached = payloadCache.get(token);
-  if (cached && now.getTime() - cached.at < PAYLOAD_TTL_MS) return { state: 'ok', data: cached.data };
-
-  const [overview, settings] = await Promise.all([
-    loadTripOverview(db, share.tripId, now),
-    db.settings.findFirst({ select: { appName: true, logoUrl: true, primaryColor: true, timezone: true } }),
+  const options = optionsOf(meta.customer);
+  const [overview, media] = await Promise.all([
+    loadTripOverview(db, tripId, now),
+    options.show_photos || options.show_delay_reason ? loadTripMedia(db, tripId) : Promise.resolve(null),
   ]);
-  if (!overview) return { state: 'not_found' };
+  if (!overview) return null;
 
   const stopPts = overview.stops.map(pointOf).filter((p): p is GeoPoint => !!p);
-  const allKey = `all:${share.tripId}:${stopPts.map((p) => `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join(';')}`;
+  const allKey = `all:${tripId}:${stopPts.map((p) => `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join(';')}`;
   const all = stopPts.length >= 2 ? await cachedRoute(allKey, ALL_TTL_MS, stopPts) : null;
 
   let ahead: RouteResult | null = null;
@@ -314,44 +436,120 @@ export async function loadPublicTracking(db: PrismaClient, token: string, now = 
     const from = overview.phase === 'planned' ? 0 : overview.next_stop_index;
     const remaining = from == null ? [] : overview.stops.slice(from).map(pointOf).filter((p): p is GeoPoint => !!p);
     if (remaining.length) {
-      const key = `ahead:${share.tripId}:${from}:${pos.lat.toFixed(2)},${pos.lng.toFixed(2)}`;
+      const key = `ahead:${tripId}:${from}:${pos.lat.toFixed(2)},${pos.lng.toFixed(2)}`;
       ahead = await cachedRoute(key, AHEAD_TTL_MS, [{ lat: pos.lat, lng: pos.lng }, ...remaining]);
     }
   }
 
-  const data = buildPublicTracking({
-    overview,
-    meta: meta as unknown as TrackingTripMeta,
-    brand: { name: settings?.appName || 'MERCON', logo_url: settings?.logoUrl ?? null, primary_color: settings?.primaryColor ?? null },
-    timezone: settings?.timezone || 'Asia/Riyadh',
-    ahead,
-    all,
-    now,
-  });
-  if (payloadCache.size >= CACHE_MAX) payloadCache.delete(payloadCache.keys().next().value as string);
-  payloadCache.set(token, { at: now.getTime(), data });
-  return { state: 'ok', data };
+  const data = buildPublicTracking({ overview, meta, brand: ctx.brand, timezone: ctx.timezone, options, ahead, all, media, now });
+  remember(payloadCache, tripId, { at: now.getTime(), data });
+  return data;
 }
+
+export type TrackingLookup =
+  | { state: 'ok'; data: PublicTracking }
+  | { state: Exclude<LinkState, 'ok'> };
+
+/** The trip a tracking token points at, if the link may still be opened. */
+async function resolveTripToken(db: PrismaClient, token: string, now: Date) {
+  if (token.length < 16 || token.length > 64) return { state: 'not_found' as const };
+  const share = await db.tripUpdateShare.findUnique({
+    where: { token },
+    select: { id: true, tripId: true, update_key: true, expiresAt: true },
+  });
+  if (!share || share.update_key !== TRACKING_UPDATE_KEY) return { state: 'not_found' as const };
+  const meta = await db.trip.findFirst({ where: { id: share.tripId, deletedAt: null }, select: META_SELECT });
+  const state = trackingLinkState(share, meta, now);
+  if (state !== 'ok') return { state };
+  return { state: 'ok' as const, share, meta: meta! };
+}
+
+export async function loadPublicTracking(
+  db: PrismaClient,
+  token: string,
+  opts: { now?: Date; countView?: boolean } = {},
+): Promise<TrackingLookup> {
+  const now = opts.now ?? new Date();
+  const found = await resolveTripToken(db, token, now);
+  if (found.state !== 'ok') return { state: found.state };
+  if (opts.countView) recordTripLinkOpen(db, found.share.id, now);
+  const data = await buildTripTracking(db, found.share.tripId, found.meta as unknown as TrackingTripMeta & { customer: TrackingCustomerSettings | null }, await loadTrackingContext(db), now);
+  return data ? { state: 'ok', data } : { state: 'not_found' };
+}
+
+/** Counts a page load (not a refresh). Never holds up or fails the page. */
+function recordTripLinkOpen(db: PrismaClient, shareId: string, now: Date) {
+  db.$executeRaw`
+    UPDATE "trip_update_shares"
+    SET open_count = open_count + 1, last_opened_at = ${now}, first_opened_at = COALESCE(first_opened_at, ${now})
+    WHERE id = ${shareId}::uuid
+  `.catch((err) => logger.warn({ err }, '[tracking] could not record a link open'));
+}
+
+// ── Links (ops side) ────────────────────────────────────────────────────────
+
+export interface TripTrackingLinkInfo {
+  /** False when the customer has tracking switched off — then there is no link. */
+  enabled: boolean;
+  /** Whether status / ETA messages should end with the link (customer setting). */
+  auto_link: boolean;
+  token: string | null;
+  expires_at: string | null;
+  created: boolean;
+  open_count: number;
+  first_opened_at: string | null;
+  last_opened_at: string | null;
+}
+
+const LINK_SELECT = { token: true, expiresAt: true, open_count: true, first_opened_at: true, last_opened_at: true } as const;
+
+function linkInfo(
+  row: { token: string; expiresAt: Date; open_count: number; first_opened_at: Date | null; last_opened_at: Date | null },
+  autoLink: boolean,
+  created: boolean,
+): TripTrackingLinkInfo {
+  return {
+    enabled: true,
+    auto_link: autoLink,
+    token: row.token,
+    expires_at: row.expiresAt.toISOString(),
+    created,
+    open_count: row.open_count,
+    first_opened_at: row.first_opened_at?.toISOString() ?? null,
+    last_opened_at: row.last_opened_at?.toISOString() ?? null,
+  };
+}
+
+const DISABLED_LINK: TripTrackingLinkInfo = {
+  enabled: false, auto_link: false, token: null, expires_at: null, created: false, open_count: 0, first_opened_at: null, last_opened_at: null,
+};
 
 /**
  * The trip's live tracking link, created on first ask. `renew` retires every
  * existing link (anyone holding an old one sees "expired") and issues a new one.
+ * Null when the trip doesn't exist; `enabled: false` when the customer has
+ * tracking switched off.
  */
 export async function ensureTrackingLink(
   db: PrismaClient,
   tripId: string,
   opts: { userId: string | null; renew?: boolean; now?: Date },
-): Promise<{ token: string; expires_at: string; created: boolean } | null> {
+): Promise<TripTrackingLinkInfo | null> {
   const now = opts.now ?? new Date();
-  const trip = await db.trip.findFirst({ where: { id: tripId, deletedAt: null }, select: { id: true } });
+  const trip = await db.trip.findFirst({
+    where: { id: tripId, deletedAt: null },
+    select: { id: true, customer: { select: { tracking_enabled: true, tracking_auto_link: true } } },
+  });
   if (!trip) return null;
+  if (trip.customer && !trip.customer.tracking_enabled) return DISABLED_LINK;
+  const autoLink = trip.customer?.tracking_auto_link ?? true;
 
   const live = { tripId, update_key: TRACKING_UPDATE_KEY, expiresAt: { gt: now } };
   if (opts.renew) {
     await db.tripUpdateShare.updateMany({ where: live, data: { expiresAt: now } });
   } else {
-    const existing = await db.tripUpdateShare.findFirst({ where: live, orderBy: { createdAt: 'desc' }, select: { token: true, expiresAt: true } });
-    if (existing) return { token: existing.token, expires_at: existing.expiresAt.toISOString(), created: false };
+    const existing = await db.tripUpdateShare.findFirst({ where: live, orderBy: { createdAt: 'desc' }, select: LINK_SELECT });
+    if (existing) return linkInfo(existing, autoLink, false);
   }
 
   const row = await db.tripUpdateShare.create({
@@ -365,7 +563,24 @@ export async function ensureTrackingLink(
       shared_by: opts.userId,
       expiresAt: new Date(now.getTime() + SHARE_LINK_TTL_DAYS * 86_400_000),
     },
-    select: { token: true, expiresAt: true },
+    select: LINK_SELECT,
   });
-  return { token: row.token, expires_at: row.expiresAt.toISOString(), created: true };
+  return linkInfo(row, autoLink, true);
 }
+
+/** Links for many trips at once (trip list share). Trips that don't exist are left out. */
+export async function ensureTrackingLinks(
+  db: PrismaClient,
+  tripIds: string[],
+  opts: { userId: string | null; now?: Date },
+): Promise<Record<string, TripTrackingLinkInfo>> {
+  const out: Record<string, TripTrackingLinkInfo> = {};
+  for (const id of [...new Set(tripIds)]) {
+    const link = await ensureTrackingLink(db, id, opts);
+    if (link) out[id] = link;
+  }
+  return out;
+}
+
+// Re-exported for the customer-wide page and the preview tags.
+export { resolveTripToken, META_SELECT as TRACKING_META_SELECT };

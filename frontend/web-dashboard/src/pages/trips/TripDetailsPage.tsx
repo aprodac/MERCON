@@ -4,7 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Copy, Check, CheckCircle2, Smartphone, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
   CalendarClock, Repeat, Receipt, FileText, Clock, ChevronDown, Navigation, Image as ImageIcon,
-  User as UserIcon, Truck, UploadCloud, SquarePen, X, Coins, ListOrdered, Link2, ExternalLink, RefreshCw,
+  User as UserIcon, Truck, UploadCloud, SquarePen, X, Coins, ListOrdered, Link2, ExternalLink, RefreshCw, Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -40,7 +40,7 @@ import { driverPhoneService } from '@/services/driverPhoneService';
 import { Banner, FinancialSummary, PaperworkSection, PreTripChecks, TripSummary, TruckDriverOverlay } from '@/components/trips/details/TripDetailsBits';
 import { statusChip, tripPhaseOf } from '@/components/trips/details/tripStatus';
 import { fleetLiveService } from '@/services/fleetLiveService';
-import { buildEtaShareText, formatDuration, type EtaInfo } from '@/lib/fleetLive';
+import { buildEtaShareText, formatDuration, timeAgo, type EtaInfo } from '@/lib/fleetLive';
 import { whatsAppLink } from '@/lib/share';
 import { operatorInboxService, type DriverUpdate } from '@/services/operatorInboxService';
 import { ShareUpdateDialog } from '@/components/dashboard/inbox/ShareUpdateDialog';
@@ -398,7 +398,7 @@ export default function TripDetailsPage() {
 
   const shareEta = () => {
     if (!overview?.unit || !mapEta) return;
-    const text = buildEtaShareText(overview.unit, mapEta, (d) => formatTime(d.toISOString()), tracking.url);
+    const text = buildEtaShareText(overview.unit, mapEta, (d) => formatTime(d.toISOString()), tracking.autoUrl);
     window.open(whatsAppLink(null, text), '_blank', 'noopener');
   };
 
@@ -538,6 +538,18 @@ export default function TripDetailsPage() {
                         <>
                           <DropdownMenuSeparator />
                           <p className="px-2 pt-1 pb-0.5 text-[11px] font-medium text-muted-foreground">Customer tracking link</p>
+                          {tracking.link?.enabled && (
+                            <p className="flex items-center gap-1 px-2 pb-1 text-[11px] text-muted-foreground">
+                              <Eye size={11} />
+                              {tracking.link.open_count > 0
+                                ? `Customer opened it ${tracking.link.open_count}× · last ${timeAgo(tracking.link.last_opened_at)}`
+                                : 'Not opened yet'}
+                            </p>
+                          )}
+                          {tracking.disabled ? (
+                            <p className="px-2 pb-1.5 text-[11px] text-muted-foreground">Tracking is off for this customer (Customer → Tracking).</p>
+                          ) : (
+                          <>
                           <DropdownMenuItem onClick={sendTrackingLink} disabled={!tracking.url}>
                             <Link2 size={14} className="mr-2 text-muted-foreground" /> {tracking.url ? 'Send tracking link' : 'Getting the link…'}
                           </DropdownMenuItem>
@@ -550,6 +562,8 @@ export default function TripDetailsPage() {
                           <DropdownMenuItem onClick={() => setRenewLinkOpen(true)} disabled={!tracking.url}>
                             <RefreshCw size={14} className="mr-2 text-muted-foreground" /> New link…
                           </DropdownMenuItem>
+                          </>
+                          )}
                         </>
                       )}
                       {tripUpdates.length > 0 && (

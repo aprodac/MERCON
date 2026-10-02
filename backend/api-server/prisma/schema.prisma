@@ -194,6 +194,18 @@ model Customer {
 
   driver_workflow DriverWorkflow @default(NATIVE)
 
+  // Customer tracking link (services/tracking/customerTracking.ts).
+  /// Off: no tracking links for this customer; links already sent stop working.
+  tracking_enabled           Boolean @default(true)
+  /// Status / ETA / truck-details messages end with the trip's tracking link.
+  tracking_auto_link         Boolean @default(true)
+  /// The page shows the planned arrival time and "on time" / "late by".
+  tracking_show_deadline     Boolean @default(false)
+  /// The page shows the delay reason category (never the driver's typed note).
+  tracking_show_delay_reason Boolean @default(false)
+  /// Finished stops show the loading / delivery photos (POD).
+  tracking_show_photos       Boolean @default(true)
+
   created_by String?   @db.Uuid
   updated_by String?   @db.Uuid
   deleted_by String?   @db.Uuid
@@ -209,6 +221,7 @@ model Customer {
   reportTemplates ReportTemplate[]
   locations       Location[]
   invoices        Invoice[]
+  trackingLinks   CustomerTrackingLink[]
 
   // Every customer list and picker filters on deletedAt.
   @@index([deletedAt])
@@ -741,9 +754,31 @@ model TripUpdateShare {
   sharedBy        User?     @relation("TripUpdateShareUser", fields: [shared_by], references: [id], onDelete: SetNull)
   expiresAt       DateTime  @db.Timestamptz
   createdAt       DateTime  @default(now()) @db.Timestamptz
+  /// Times the page was opened (tracking links) — page loads, not refreshes.
+  open_count      Int       @default(0)
+  first_opened_at DateTime? @db.Timestamptz
+  last_opened_at  DateTime? @db.Timestamptz
 
   @@index([tripId, update_key])
   @@map("trip_update_shares")
+}
+
+/// One page per customer showing all of their trucks that are on the road —
+/// for monthly contracts, so the customer bookmarks one link instead of one per trip.
+model CustomerTrackingLink {
+  id             String    @id @default(uuid()) @db.Uuid
+  customerId     String    @db.Uuid
+  customer       Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  token          String    @unique
+  created_by     String?   @db.Uuid
+  createdAt      DateTime  @default(now()) @db.Timestamptz
+  /// Set when replaced by a new link; the old one then stops working.
+  revokedAt      DateTime? @db.Timestamptz
+  open_count     Int       @default(0)
+  last_opened_at DateTime? @db.Timestamptz
+
+  @@index([customerId])
+  @@map("customer_tracking_links")
 }
 
 model TripLocation {
@@ -2089,6 +2124,9 @@ model Settings {
   // Lowest driver-app version allowed to work ("1.2.0"). Older installs see an
   // "update required" screen. Null = no check (the default).
   driverAppMinVersion String?
+
+  /// Ops WhatsApp number customers reach from the tracking page ("Ask us"). Digits with country code.
+  supportWhatsapp String?
 
   updated_by String?  @db.Uuid
   updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz

@@ -8,7 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
-import { operatorService, type DriverUpdate, type OperatorTripDetail, type TripOverview } from '../../../lib/operator';
+import { autoTrackingUrl, operatorService, type DriverUpdate, type OperatorTripDetail, type TrackingLinkInfo, type TripOverview } from '../../../lib/operator';
 import { haversineKm, phaseOf, sortedStops, stopName, type Remaining } from './tripDetailsModel';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -107,17 +107,27 @@ export function useTripDetails(id: string | undefined) {
     return () => { live = false; };
   }, [posKey, destKey, destName]);
 
-  // The customer tracking link for status messages — asked for once per trip.
-  // Without it (offline, older server) the message simply goes without a link.
-  const [trackingUrl, setTrackingUrl] = useState<string | null>(null);
+  // The customer tracking link — asked for once per trip, and again on pull to
+  // refresh (for "opened 3 times"). Without it (offline, older server) messages
+  // simply go without a link.
+  const [tracking, setTracking] = useState<TrackingLinkInfo | null>(null);
   const tripId = trip?.id;
   const trackable = !!trip && trip.status !== 'Draft' && trip.status !== 'Cancelled';
+  const [trackingTick, setTrackingTick] = useState(0);
   useEffect(() => {
     if (!tripId || !trackable) return;
     let live = true;
-    operatorService.trackingLink(tripId).then((url) => { if (live) setTrackingUrl(url); }).catch(() => {});
+    operatorService.trackingLink(tripId).then((l) => { if (live) setTracking(l); }).catch(() => {});
     return () => { live = false; };
-  }, [tripId, trackable]);
+  }, [tripId, trackable, trackingTick]);
+
+  /** A new link; the old one stops working for everyone who has it. */
+  const renewTracking = useCallback(async () => {
+    if (!tripId) return null;
+    const l = await operatorService.trackingLink(tripId, true);
+    setTracking(l);
+    return l;
+  }, [tripId]);
 
   // Poll while this screen is focused and the app is in the foreground.
   useFocusEffect(
@@ -148,11 +158,14 @@ export function useTripDetails(id: string | undefined) {
     tz,
     phase,
     remaining: posKey && destKey ? remaining : null,
-    trackingUrl: trackable ? trackingUrl : null,
+    tracking: trackable ? tracking : null,
+    /** The link status messages end with — only when the customer wants it added. */
+    trackingUrl: trackable ? autoTrackingUrl(tracking) : null,
+    renewTracking,
     loading,
     refreshing,
     error,
-    refresh: () => load('pull'),
+    refresh: () => { setTrackingTick((n) => n + 1); return load('pull'); },
     reload: () => load('silent'),
   };
 }

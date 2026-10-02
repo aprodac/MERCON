@@ -484,6 +484,8 @@ export interface Settings {
   timezone: string;
   /** Lowest driver-app version allowed ("1.2.0"); older installs must update. Null = no check. */
   driverAppMinVersion?: string | null;
+  /** Ops WhatsApp number (digits) for the customer tracking page's "Ask us" button. */
+  supportWhatsapp?: string | null;
   /** Default country code (e.g. "SA") for phone number fields across the deployment. */
   defaultCountryCode?: string;
   /** Default dial code (e.g. "+966") for phone number fields across the deployment. */

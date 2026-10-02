@@ -33,6 +33,12 @@ import { MediaViewer, type ViewerItem } from './components/MediaViewer';
 import { TimeConfirmSheet } from './components/TimeConfirmSheet';
 import { ActivitySheet, ChargesSheet, MoreSheet, UploadSheet } from './components/Sheets';
 import { ACTION, INK, MUTED, PAGE, WA, tap } from './components/parts';
+import { shareTextToWhatsApp } from '../../dashboard/components/ActiveTripsSection';
+
+/** Under the More sheet's tracking row: has the customer looked at it? */
+function trackingSub(opens: number, last: string | null): string {
+  return opens > 0 && last ? `Customer opened it ${opens}× · ${ago(last)}` : 'Not opened yet · send, open or replace';
+}
 
 type Tab = 'stops' | 'details';
 const MAP_H = 320;
@@ -43,7 +49,7 @@ export default function TripDetailsScreen() {
   // Links from the home's "Needs action" cards can open a tab, a message or a picker straight away.
   const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; assign?: string }>();
   const { id } = params;
-  const { trip, overview, updates, whatsappApi, tz, phase, remaining, trackingUrl, loading, refreshing, error, refresh, reload } = useTripDetails(id);
+  const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, renewTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
 
   const [tab, setTab] = useState<Tab>(params.tab === 'stops' ? params.tab : 'details');
@@ -195,6 +201,25 @@ export default function TripDetailsScreen() {
   };
 
   const quick = (kind: QuickKind) => setShare({ type: 'quick', kind });
+
+  // The customer tracking link: send it, open what the customer sees, or replace it.
+  const trackingActions = () => {
+    const url = tracking?.url;
+    if (!url) return;
+    const head = [trip.ref_id, trip.vehicle?.plate_number ?? trip.third_party_vehicle_plate].filter(Boolean).join(' · ');
+    Alert.alert('Customer tracking link', url, [
+      { text: 'Send on WhatsApp', onPress: () => { shareTextToWhatsApp(`*${head}*\nTrack your truck live: ${url}`, 'Tracking link').catch(() => {}); } },
+      { text: 'Open the page', onPress: () => { Linking.openURL(url).catch(() => {}); } },
+      {
+        text: 'New link…',
+        onPress: () => Alert.alert('Make a new link?', 'The current link stops working for everyone who has it.', [
+          { text: 'Keep it', style: 'cancel' },
+          { text: 'Make new link', style: 'destructive', onPress: () => { renewTracking().catch((e) => Alert.alert('Could not make a new link', getApiErrorMessage(e))); } },
+        ]),
+      },
+      { text: 'Close', style: 'cancel' },
+    ]);
+  };
 
   // ── Render ─────────────────────────────────────────────────────────────────
   const tabs: { id: Tab; label: string; icon: LucideIcon; badge?: number }[] = [
@@ -355,6 +380,7 @@ export default function TripDetailsScreen() {
         onCancel={cancelTrip}
         onQuick={quick}
         active={phase === 'active'}
+        tracking={tracking?.enabled && tracking.url ? { sub: trackingSub(tracking.open_count, tracking.last_opened_at), onPress: trackingActions } : null}
       />
       <UploadSheet visible={sheet === 'upload'} onClose={() => setSheet(null)} onPick={upload} />
       <ActivitySheet visible={sheet === 'activity'} trip={trip} f={f} onClose={() => setSheet(null)} />
