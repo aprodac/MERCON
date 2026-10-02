@@ -39,12 +39,23 @@ const PAL: Record<CrewChiefMood, [string, string, string, string]> = {
 
 const ONE_OFF: CrewChiefMood[] = ['greet', 'happy', 'thrilled', 'nod', 'oops'];
 
+/** Crew details on the character (Settings → Assistant). */
+export interface CrewChiefLook {
+  cap: boolean;
+  flag: boolean;
+  headset: boolean;
+}
+
 interface Props {
   size?: number;
   className?: string;
+  look?: CrewChiefLook;
 }
 
-const CrewChief = forwardRef<CrewChiefHandle, Props>(function CrewChief({ size = 64, className }, ref) {
+const WAVE = ['M108 -29 Q119 -32 133 -23 Q119 -14 108 -15 Z', 'M108 -29 Q121 -26 132 -21 Q120 -17 108 -15 Z'];
+const DROOP = 'M108 -29 Q112 -22 114 -11 Q109 -12 108 -15 Z';
+
+const CrewChief = forwardRef<CrewChiefHandle, Props>(function CrewChief({ size = 64, className, look = { cap: true, flag: true, headset: true } }, ref) {
   const svgRef = useRef<SVGSVGElement>(null);
   const api = useRef<CrewChiefHandle>({ mood: () => {}, warm: () => {}, lookAt: () => {}, notice: () => {} });
 
@@ -72,6 +83,48 @@ const CrewChief = forwardRef<CrewChiefHandle, Props>(function CrewChief({ size =
       gsap.set(ring, { svgOrigin: '60 60' });
       gsap.set(mouthG, { svgOrigin: '60 79' });
       gsap.set(dots, { opacity: 0 });
+      const cap = el('cap'), flag = el('flag'), pennant = el('pennant'), stripe = el('stripe'), onAir = el('onAir');
+      gsap.set(cap, { svgOrigin: '60 30' });
+      gsap.set(flag, { svgOrigin: '99 22' });
+
+      // Flag: calm wave at rest, fast when excited, limp asleep, checkered when charges are billed.
+      let wave: gsap.core.Tween | null = null;
+      const waveFlag = (speed = 0.9) => {
+        wave?.kill();
+        if (RM) return;
+        gsap.set(stripe, { opacity: 0.7 });
+        wave = gsap.fromTo(pennant, { attr: { d: WAVE[0] } }, { attr: { d: WAVE[1] }, duration: speed, yoyo: true, repeat: -1, ease: 'sine.inOut' });
+      };
+      const droopFlag = () => {
+        wave?.kill();
+        gsap.to(pennant, { attr: { d: DROOP }, duration: D(0.8), ease: 'sine.inOut' });
+        gsap.to(stripe, { opacity: 0, duration: D(0.3) });
+      };
+      const checkered = (sec: number) => {
+        gsap.set(pennant, { attr: { fill: 'url(#cc-checker)' } });
+        gsap.set(stripe, { opacity: 0 });
+        gsap.delayedCall(sec, () => { gsap.set(pennant, { attr: { fill: 'url(#cc-pennant)' } }); gsap.set(stripe, { opacity: 0.7 }); });
+      };
+      const flick = () => gsap.timeline().to(flag, { rotation: -7, duration: 0.16 }).to(flag, { rotation: 0, duration: 0.7, ease: 'elastic.out(1, 0.35)' });
+      waveFlag();
+
+      function flourish(name: CrewChiefMood) {
+        if (RM) return;
+        const excited = name === 'happy' || name === 'thrilled' || name === 'greet';
+        if (name === 'sleep') droopFlag();
+        else waveFlag(excited ? 0.22 : name === 'concerned' || name === 'oops' ? 0.45 : 0.9);
+        if (name === 'happy') checkered(2);
+        if (name === 'thrilled') checkered(2.6);
+        if (excited) { flick(); if (name !== 'greet') gsap.delayedCall(1.4, () => waveFlag(0.9)); }
+        // Cap: tips when pleased, flies on a big bill, slips down asleep.
+        if (name === 'greet') gsap.timeline().to(cap, { rotation: -10, y: -4, duration: 0.2 }, 0.45).to(cap, { rotation: 0, y: 0, duration: 0.6, ease: 'elastic.out(1, 0.4)' });
+        else if (name === 'happy') gsap.timeline().to(cap, { y: -7, rotation: -8, duration: 0.25 }).to(cap, { y: 0, rotation: 0, duration: 0.6, ease: 'bounce.out' });
+        else if (name === 'thrilled') gsap.timeline().to(cap, { y: -16, rotation: -18, duration: 0.3, ease: 'power2.out' }, 0.4).to(cap, { y: 0, rotation: 0, duration: 0.7, ease: 'bounce.out' });
+        else if (name === 'sleep') gsap.to(cap, { y: 5, rotation: 8, duration: 1, ease: 'sine.inOut' });
+        else gsap.to(cap, { y: 0, rotation: 0, duration: 0.4 });
+        // Headset: green "on call" light while it is asking you something.
+        gsap.to(onAir, { opacity: name === 'ask' || name === 'think' ? 1 : 0, duration: D(0.2) });
+      }
 
       const EYES = ['eyesOpen', 'eyesHappy', 'eyesShut'];
       const MOUTHS = ['mSmile', 'mGrin', 'mO', 'mFlat', 'mWavy', 'mSide'];
@@ -225,6 +278,7 @@ const CrewChief = forwardRef<CrewChiefHandle, Props>(function CrewChief({ size =
         if (name === 'thrilled' || name === 'happy') gsap.delayedCall(name === 'thrilled' ? 0.45 : 0.1, shimmer);
         prev = name; current = name;
         moodTl = moods[name](ONE_OFF.includes(name) ? next : undefined);
+        flourish(name);
         if (RM) moodTl.progress(1).pause();
       }
 
@@ -252,6 +306,7 @@ const CrewChief = forwardRef<CrewChiefHandle, Props>(function CrewChief({ size =
       // Hover perks it up; asleep, it opens one eye. Press squishes.
       const onEnter = () => {
         if (busy || RM) return;
+        if (!sleeping) flick();
         if (sleeping) {
           eyes('eyesOpen'); gsap.set(el('eyeL'), { opacity: 0 });
           gsap.delayedCall(0.9, () => { gsap.set(el('eyeL'), { opacity: 1 }); if (sleeping) eyes('eyesShut'); });
@@ -338,6 +393,15 @@ const CrewChief = forwardRef<CrewChiefHandle, Props>(function CrewChief({ size =
           <stop offset="1" stopColor="#fff" stopOpacity="0" />
         </linearGradient>
         <clipPath id="cc-clip"><rect x="10" y="10" width="100" height="100" rx="34" /></clipPath>
+        <linearGradient id="cc-cap" x1="0" y1="0" x2="0.3" y2="1">
+          <stop offset="0" stopColor="#555153" /><stop offset="1" stopColor="#2d2b2c" />
+        </linearGradient>
+        <linearGradient id="cc-pennant" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="#ff8b72" /><stop offset="1" stopColor="#fa634e" />
+        </linearGradient>
+        <pattern id="cc-checker" width="6" height="6" patternUnits="userSpaceOnUse">
+          <rect width="6" height="6" fill="#fff" /><rect width="3" height="3" fill="#2d2b2c" /><rect x="3" y="3" width="3" height="3" fill="#2d2b2c" />
+        </pattern>
       </defs>
       <circle data-cc="ring" cx="60" cy="60" r="50" fill="none" stroke={PAL.idle[1]} strokeWidth="2" opacity="0" />
       <g data-cc="body">
@@ -371,8 +435,41 @@ const CrewChief = forwardRef<CrewChiefHandle, Props>(function CrewChief({ size =
             <path data-cc="mSide" d="M60 79 Q65 81 69 77" strokeWidth="3.5" opacity="0" />
           </g>
         </g>
+        {/* Convoy flag on an antenna */}
+        <g data-cc="flag" style={{ display: look.flag ? undefined : 'none' }}>
+          <line x1="99" y1="22" x2="108" y2="-30" stroke="#3e3c3d" strokeWidth="2.2" strokeLinecap="round" />
+          <path data-cc="pennant" d={WAVE[0]} fill="url(#cc-pennant)" />
+          <path data-cc="stripe" d="M108 -24 Q118 -25 126 -22.5" fill="none" stroke="#fff" strokeWidth="1.6" strokeLinecap="round" opacity=".7" />
+          <circle cx="108" cy="-30.5" r="2.4" fill="#fa634e" />
+        </g>
+        {/* Delivery cap */}
+        <g data-cc="cap" style={{ display: look.cap ? undefined : 'none' }}>
+          <g transform="rotate(-6 60 28)">
+            <ellipse cx="62" cy="33" rx="34" ry="3.5" fill="#000" opacity=".14" />
+            <path d="M27 29 C26 7 41 -5 60 -5 C79 -5 94 7 94 29 Q60 21 27 29 Z" fill="url(#cc-cap)" />
+            <path d="M60 -5 Q49 9 45 27" fill="none" stroke="#fff" strokeWidth="1.2" opacity=".14" />
+            <path d="M60 -5 Q71 9 75 27" fill="none" stroke="#fff" strokeWidth="1.2" opacity=".14" />
+            <path d="M34 9 Q42 1 52 -1" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" opacity=".16" />
+            <rect x="49" y="7" width="22" height="13" rx="4" fill="#fa634e" />
+            <text x="60" y="17.5" textAnchor="middle" fontWeight="800" fontSize="10" fill="#fff">M</text>
+            <circle cx="60" cy="-5" r="2.6" fill="#3e3c3d" />
+            <path d="M22 29 Q60 19 98 29 Q105 35 96 38 Q60 29 24 38 Q15 35 22 29 Z" fill="#3e3c3d" />
+            <path d="M28 31 Q60 23 92 31" fill="none" stroke="#fff" strokeWidth="1.4" strokeLinecap="round" opacity=".16" />
+          </g>
+        </g>
+        {/* Dispatcher headset */}
+        <g style={{ display: look.headset ? undefined : 'none' }}>
+          <path d="M17 54 Q16 6 60 5 Q104 6 103 54" fill="none" stroke="#3e3c3d" strokeWidth="5" strokeLinecap="round" />
+          <rect x="8" y="44" width="13" height="24" rx="6.5" fill="#3e3c3d" />
+          <rect x="99" y="44" width="13" height="24" rx="6.5" fill="#3e3c3d" />
+          <rect x="11" y="49" width="5" height="14" rx="2.5" fill="#fa634e" opacity=".9" />
+          <rect x="104" y="49" width="5" height="14" rx="2.5" fill="#fa634e" opacity=".9" />
+          <path d="M14 66 Q17 86 40 85" fill="none" stroke="#3e3c3d" strokeWidth="3" strokeLinecap="round" />
+          <rect x="38" y="81" width="9" height="7" rx="3.5" fill="#2d2b2c" />
+          <circle data-cc="onAir" cx="105.5" cy="44" r="2" fill="#5ee38f" opacity="0" />
+        </g>
       </g>
-      <g data-cc="dots" fill={PAL.idle[1]}>
+      <g data-cc="dots" fill={PAL.idle[1]} transform={look.flag ? 'matrix(-1 0 0 1 120 0)' : undefined}>
         <circle cx="98" cy="18" r="3.2" /><circle cx="107" cy="12" r="3.2" /><circle cx="116" cy="6" r="3.2" />
       </g>
       <text data-cc="zz" x="102" y="14" fontWeight="700" fontSize="15" fill="#a8a3a5" opacity="0">z</text>

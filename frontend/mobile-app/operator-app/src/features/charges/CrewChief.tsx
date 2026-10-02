@@ -10,7 +10,7 @@ import Animated, {
   Easing, cancelAnimation, useAnimatedStyle, useReducedMotion, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
-import Svg, { Defs, Ellipse, LinearGradient, Path, Rect, Stop, Circle } from 'react-native-svg';
+import Svg, { Defs, Ellipse, LinearGradient, Path, Rect, Stop, Circle, Line, Pattern, G, Text as SvgText } from 'react-native-svg';
 
 export type CrewChiefMood = 'idle' | 'greet' | 'ask' | 'think' | 'happy' | 'thrilled' | 'nod' | 'oops' | 'sleep' | 'concerned';
 
@@ -28,6 +28,7 @@ const PAL: Record<CrewChiefMood, string> = {
   thrilled: '#ffbb4c', nod: '#f86a52', oops: '#ef5350', sleep: '#ab838b', concerned: '#f47a4c',
 };
 const INK = '#2d2b2c';
+const BRAND_DOT = '#FA634E';
 
 const lerpHex = (a: string, b: string, t: number) => {
   const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16));
@@ -47,7 +48,22 @@ function Layer({ style, children }: { style?: any; children: React.ReactNode }) 
   );
 }
 
-const CrewChief = forwardRef<CrewChiefHandle, { size?: number }>(function CrewChief({ size = 56 }, ref) {
+/** Crew details on the character (Settings → Assistant on the web). */
+export interface CrewChiefLook { cap: boolean; flag: boolean; headset: boolean }
+
+/** Accessories reach outside the tile: drawn in a larger box, -4..136 × -40..124 of the tile's 120 space. */
+const ACC = { x: -4, y: -40, w: 140, h: 164 };
+const pct = (v: number, start: number, len: number) => `${((v - start) / len) * 100}%`;
+
+function AccLayer({ k, style, children }: { k: number; style?: any; children: React.ReactNode }) {
+  return (
+    <Animated.View pointerEvents="none" style={[{ position: 'absolute', left: ACC.x * k, top: ACC.y * k, width: ACC.w * k, height: ACC.h * k }, style]}>
+      <Svg width="100%" height="100%" viewBox={`${ACC.x} ${ACC.y} ${ACC.w} ${ACC.h}`}>{children}</Svg>
+    </Animated.View>
+  );
+}
+
+const CrewChief = forwardRef<CrewChiefHandle, { size?: number; look?: CrewChiefLook }>(function CrewChief({ size = 56, look = { cap: true, flag: true, headset: true } }, ref) {
   const k = size / 120;
   const reduced = useReducedMotion();
 
@@ -64,6 +80,10 @@ const CrewChief = forwardRef<CrewChiefHandle, { size?: number }>(function CrewCh
   const ringO = useSharedValue(0), ringS = useSharedValue(1);
   const d1 = useSharedValue(0), d2 = useSharedValue(0), d3 = useSharedValue(0);
   const zO = useSharedValue(0), zY = useSharedValue(0);
+  // Accessories
+  const capY = useSharedValue(0), capR = useSharedValue(0);
+  const poleR = useSharedValue(0), wave = useSharedValue(0), droop = useSharedValue(0), checker = useSharedValue(0);
+  const onAir = useSharedValue(0);
 
   const state = useRef({ current: 'idle' as CrewChiefMood, busy: false, sleeping: false, timers: [] as ReturnType<typeof setTimeout>[] });
   const later = (ms: number, fn: () => void) => { state.current.timers.push(setTimeout(fn, reduced ? 0 : ms)); };
@@ -92,8 +112,32 @@ const CrewChief = forwardRef<CrewChiefHandle, { size?: number }>(function CrewCh
     eyes('open'); eyeSY.value = T(1); eyeS.value = T(1); mouth('smile'); mScale.value = T(1, 200); blush.value = T(0, 300);
   };
 
+  const waveFlag = (speed = 900) => {
+    cancelAnimation(wave);
+    droop.value = T(0, 300);
+    if (reduced) return;
+    wave.value = withRepeat(withTiming(1, { duration: speed, easing: Easing.inOut(Easing.sin) }), -1, true);
+  };
+  const flick = () => { poleR.value = withSequence(T(-7, 160), withSpring(0, { damping: 5, stiffness: 140 })); };
+  const flourish = (name: CrewChiefMood) => {
+    const excited = name === 'happy' || name === 'thrilled' || name === 'greet';
+    if (name === 'sleep') { cancelAnimation(wave); droop.value = T(1, 800); }
+    else waveFlag(excited ? 220 : name === 'concerned' || name === 'oops' ? 450 : 900);
+    if (name === 'happy' || name === 'thrilled') {
+      checker.value = withSequence(T(1, 120), withDelay(name === 'thrilled' ? 2400 : 1800, T(0, 200)));
+    }
+    if (excited && !reduced) { flick(); if (name !== 'greet') later(1400, () => waveFlag(900)); }
+    if (name === 'greet') { capR.value = withDelay(450, withSequence(T(-10, 200), withSpring(0, { damping: 6 }))); capY.value = withDelay(450, withSequence(T(-4 * k, 200), withSpring(0, { damping: 6 }))); }
+    else if (name === 'happy') { capY.value = withSequence(T(-7 * k, 250), withSpring(0, { damping: 6 })); capR.value = withSequence(T(-8, 250), withSpring(0, { damping: 6 })); }
+    else if (name === 'thrilled') { capY.value = withDelay(400, withSequence(T(-16 * k, 300), withSpring(0, { damping: 6 }))); capR.value = withDelay(400, withSequence(T(-18, 300), withSpring(0, { damping: 6 }))); }
+    else if (name === 'sleep') { capY.value = T(5 * k, 1000); capR.value = T(8, 1000); }
+    else { capY.value = T(0, 400); capR.value = T(0, 400); }
+    onAir.value = T(name === 'ask' || name === 'think' ? 1 : 0, 200);
+  };
+
   const setMood = useCallback((name: CrewChiefMood, next?: CrewChiefMood) => {
     neutral();
+    flourish(name);
     state.current.current = name;
     bg.value = withTiming(PAL[name], { duration: name === 'sleep' ? 1200 : 600 });
     const settle = (ms: number) => { state.current.busy = true; later(ms, () => setMood(next || 'idle')); };
@@ -164,6 +208,7 @@ const CrewChief = forwardRef<CrewChiefHandle, { size?: number }>(function CrewCh
   // Breathing, blinking and the odd glance run on their own.
   useEffect(() => {
     startBreathing();
+    waveFlag();
     if (reduced) return;
     let blinkT: ReturnType<typeof setTimeout>;
     let habitT: ReturnType<typeof setTimeout>;
@@ -226,6 +271,13 @@ const CrewChief = forwardRef<CrewChiefHandle, { size?: number }>(function CrewCh
   const ringStyle = useAnimatedStyle(() => ({ opacity: ringO.value, transform: [{ scale: ringS.value }], borderColor: bg.value }));
   const zStyle = useAnimatedStyle(() => ({ opacity: zO.value, transform: [{ translateY: zY.value }] }));
   const dotColor = useAnimatedStyle(() => ({ backgroundColor: bg.value }));
+  const capStyle = useAnimatedStyle(() => ({ transform: [{ translateY: capY.value }, { rotate: `${capR.value}deg` }] }));
+  const poleStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${poleR.value}deg` }] }));
+  const pennantStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${droop.value * 68}deg` }, { skewY: `${(wave.value - 0.5) * 14 * (1 - droop.value)}deg` }, { scaleX: 1 - wave.value * 0.08 - droop.value * 0.35 }],
+  }));
+  const checkerStyle = useAnimatedStyle(() => ({ opacity: checker.value }));
+  const onAirStyle = useAnimatedStyle(() => ({ opacity: onAir.value }));
 
   const tile = 100 * k, inset = 10 * k;
   return (
@@ -271,11 +323,71 @@ const CrewChief = forwardRef<CrewChiefHandle, { size?: number }>(function CrewCh
             <Layer style={sSide}><Path d="M60 79 Q65 81 69 77" stroke={INK} strokeWidth={3.5} strokeLinecap="round" fill="none" /></Layer>
           </Animated.View>
         </Animated.View>
+
+        {look.flag && (
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { transformOrigin: [`${(99 / 120) * 100}%`, `${(22 / 120) * 100}%`, 0] }, poleStyle]}>
+            <AccLayer k={k}>
+              <Line x1="99" y1="22" x2="108" y2="-30" stroke="#3E3C3D" strokeWidth={2.2} strokeLinecap="round" />
+            </AccLayer>
+            <AccLayer k={k} style={[{ transformOrigin: [pct(108, ACC.x, ACC.w), pct(-22, ACC.y, ACC.h), 0] }, pennantStyle]}>
+              <Defs>
+                <LinearGradient id="ccPennant" x1="0" y1="0" x2="1" y2="0">
+                  <Stop offset="0" stopColor="#FF8B72" /><Stop offset="1" stopColor="#FA634E" />
+                </LinearGradient>
+                <Pattern id="ccChecker" width="6" height="6" patternUnits="userSpaceOnUse">
+                  <Rect width="6" height="6" fill="#fff" /><Rect width="3" height="3" fill={INK} /><Rect x="3" y="3" width="3" height="3" fill={INK} />
+                </Pattern>
+              </Defs>
+              <Path d="M108 -29 Q120 -29 133 -22 Q120 -15 108 -15 Z" fill="url(#ccPennant)" />
+              <Path d="M108 -24 Q118 -24.5 126 -22" stroke="#fff" strokeWidth={1.6} strokeLinecap="round" fill="none" opacity={0.7} />
+            </AccLayer>
+            <AccLayer k={k} style={[{ transformOrigin: [pct(108, ACC.x, ACC.w), pct(-22, ACC.y, ACC.h), 0] }, pennantStyle, checkerStyle]}>
+              <Path d="M108 -29 Q120 -29 133 -22 Q120 -15 108 -15 Z" fill="url(#ccChecker)" />
+            </AccLayer>
+            <AccLayer k={k}><Circle cx="108" cy="-30.5" r="2.4" fill={BRAND_DOT} /></AccLayer>
+          </Animated.View>
+        )}
+
+        {look.cap && (
+          <AccLayer k={k} style={[{ transformOrigin: [pct(60, ACC.x, ACC.w), pct(30, ACC.y, ACC.h), 0] }, capStyle]}>
+            <Defs>
+              <LinearGradient id="ccCap" x1="0" y1="0" x2="0.3" y2="1">
+                <Stop offset="0" stopColor="#555153" /><Stop offset="1" stopColor={INK} />
+              </LinearGradient>
+            </Defs>
+            <G rotation={-6} origin="60, 28">
+              <Ellipse cx="62" cy="33" rx="34" ry="3.5" fill="#000" opacity={0.14} />
+              <Path d="M27 29 C26 7 41 -5 60 -5 C79 -5 94 7 94 29 Q60 21 27 29 Z" fill="url(#ccCap)" />
+              <Path d="M60 -5 Q49 9 45 27" stroke="#fff" strokeWidth={1.2} opacity={0.14} fill="none" />
+              <Path d="M60 -5 Q71 9 75 27" stroke="#fff" strokeWidth={1.2} opacity={0.14} fill="none" />
+              <Rect x="49" y="7" width="22" height="13" rx="4" fill={BRAND_DOT} />
+              <SvgText x="60" y="17.5" textAnchor="middle" fontWeight="800" fontSize="10" fill="#fff">M</SvgText>
+              <Circle cx="60" cy="-5" r="2.6" fill="#3E3C3D" />
+              <Path d="M22 29 Q60 19 98 29 Q105 35 96 38 Q60 29 24 38 Q15 35 22 29 Z" fill="#3E3C3D" />
+              <Path d="M28 31 Q60 23 92 31" stroke="#fff" strokeWidth={1.4} strokeLinecap="round" opacity={0.16} fill="none" />
+            </G>
+          </AccLayer>
+        )}
+
+        {look.headset && (
+          <>
+            <AccLayer k={k}>
+              <Path d="M17 54 Q16 6 60 5 Q104 6 103 54" stroke="#3E3C3D" strokeWidth={5} strokeLinecap="round" fill="none" />
+              <Rect x="8" y="44" width="13" height="24" rx="6.5" fill="#3E3C3D" />
+              <Rect x="99" y="44" width="13" height="24" rx="6.5" fill="#3E3C3D" />
+              <Rect x="11" y="49" width="5" height="14" rx="2.5" fill={BRAND_DOT} opacity={0.9} />
+              <Rect x="104" y="49" width="5" height="14" rx="2.5" fill={BRAND_DOT} opacity={0.9} />
+              <Path d="M14 66 Q17 86 40 85" stroke="#3E3C3D" strokeWidth={3} strokeLinecap="round" fill="none" />
+              <Rect x="38" y="81" width="9" height="7" rx="3.5" fill={INK} />
+            </AccLayer>
+            <AccLayer k={k} style={onAirStyle}><Circle cx="105.5" cy="44" r="2" fill="#5EE38F" /></AccLayer>
+          </>
+        )}
       </Animated.View>
       {/* thinking dots + sleepy z, outside the tile's top-right */}
-      <Animated.View style={[styles.dot, { left: 96 * k, top: 16 * k, width: 6 * k, height: 6 * k }, dotColor, sD1]} />
-      <Animated.View style={[styles.dot, { left: 105 * k, top: 10 * k, width: 6 * k, height: 6 * k }, dotColor, sD2]} />
-      <Animated.View style={[styles.dot, { left: 114 * k, top: 4 * k, width: 6 * k, height: 6 * k }, dotColor, sD3]} />
+      <Animated.View style={[styles.dot, { left: (look.flag ? 18 : 96) * k, top: 16 * k, width: 6 * k, height: 6 * k }, dotColor, sD1]} />
+      <Animated.View style={[styles.dot, { left: (look.flag ? 9 : 105) * k, top: 10 * k, width: 6 * k, height: 6 * k }, dotColor, sD2]} />
+      <Animated.View style={[styles.dot, { left: (look.flag ? 0 : 114) * k, top: 4 * k, width: 6 * k, height: 6 * k }, dotColor, sD3]} />
       <Animated.View style={[{ position: 'absolute', left: 100 * k, top: -2 * k }, zStyle]}>
         <Text style={{ fontSize: Math.max(10, 15 * k), fontWeight: '700', color: '#a8a3a5' }}>z</Text>
       </Animated.View>

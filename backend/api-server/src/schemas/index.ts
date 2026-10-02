@@ -460,6 +460,19 @@ export const confirmTripTimesBody = z.object({
   })).max(100),
 });
 
+/** Settings → Assistant (shape: AssistantConfig in @mercon/shared-types). */
+export const assistantConfigBody = z.object({
+  reports: z.object({
+    extraCharges: z.object({
+      enabled: z.boolean(),
+      lookbackDays: z.union([z.literal(7), z.literal(14), z.literal(30)]),
+      peekOnNewTrip: z.boolean(),
+      restlessAfterDays: z.number().int().min(1).max(30),
+    }),
+  }),
+  look: z.object({ cap: z.boolean(), flag: z.boolean(), headset: z.boolean() }),
+});
+
 /** "Any extra charges?" answer for a completed trip — sub-charges billed to the customer; [] = none. */
 export const reviewTripChargesBody = z.object({
   charges: z.array(z.object({

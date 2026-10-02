@@ -40,7 +40,7 @@ export function tripRef(trip: ChargeReviewTrip): string {
   return trip.ref_id || `Trip ${trip.id.slice(0, 8)}`;
 }
 
-export function useChargeReviewQueue() {
+export function useChargeReviewQueue(enabled = true) {
   const queryClient = useQueryClient();
   const [snoozed, setSnoozed] = useState<Record<string, number>>(readSnoozed);
 
@@ -49,6 +49,7 @@ export function useChargeReviewQueue() {
     queryFn: () => tripService.getChargeReviewQueue(),
     refetchInterval: 60_000,
     staleTime: 30_000,
+    enabled,
   });
 
   const now = Date.now();
