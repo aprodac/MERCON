@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { openPhotoEvidenceWhatsapp } from '@/utils/whatsappFormatter';
 import { tripService } from '@/services/tripService';
+import { galleryUrl } from '@/services/trackingService';
+import { useTrackingLink } from '@/hooks/useTrackingLink';
 import { toast } from 'sonner';
 
 export interface LightboxPhotoItem {
@@ -80,6 +82,8 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
   customerName,
   customerPhone,
 }) => {
+  // The gallery link is the trip's secret tracking token, never the trip number.
+  const tracking = useTrackingLink(tripId, isOpen);
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [arrivalInput, setArrivalInput] = useState('');
   const [departureInput, setDepartureInput] = useState('');
@@ -162,7 +166,7 @@ export const EvidenceLightboxModal: React.FC<EvidenceLightboxModalProps> = ({
       evidenceCategory: currentPhoto.title,
       uploadTime: currentPhoto.time,
       geotagCoords,
-      publicGalleryUrl: `${window.location.origin}/trips/evidence-gallery?ref=${encodeURIComponent(tripRef)}`,
+      publicGalleryUrl: galleryUrl(tracking.link) ?? undefined,
     });
   };
 
