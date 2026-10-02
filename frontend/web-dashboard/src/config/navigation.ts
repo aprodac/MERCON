@@ -202,6 +202,7 @@ export const NAV_PAGES: NavPage[] = [
     id: 'documents', label: 'Documents', path: '/documents', icon: Files, section: 'workspace', moduleKey: 'documents', keywords: ['files', 'expiry'],
     match: (p) => p === '/documents' || p.startsWith('/documents/') || p.startsWith('/docs/'),
   },
+  { id: 'users', label: 'Users', path: '/settings/users', icon: UserCog, section: 'workspace', adminOnly: true, keywords: ['user management', 'roles', 'accounts', 'team', 'admins', 'operators', 'driver app password'] },
   { id: 'learning', label: 'Learning', path: '/learning', icon: GraduationCap, section: 'workspace', moduleKey: 'learning', keywords: ['academy', 'tutorials'] },
   { id: 'notifications', label: 'Notifications', path: '/notifications', icon: Bell, section: 'workspace', keywords: ['alerts', 'inbox'], hiddenInSidebar: true },
 ];
@@ -234,7 +235,6 @@ export const SETTINGS_PAGES: SettingsNavPage[] = [
   { id: 'branding', label: 'Branding', path: '/settings/branding', icon: Palette, settingsGroup: 'general', superAdminOnly: true, keywords: ['logo', 'colors', 'theme'] },
   { id: 'assistant', label: 'Assistant', path: '/settings/assistant', icon: Smile, settingsGroup: 'general', adminOnly: true, keywords: ['assistant', 'mascot', 'extra charges', 'reminders', 'cap', 'flag', 'headset'] },
   { id: 'zatca', label: 'ZATCA e-invoicing', path: '/settings/zatca', icon: FileCheck2, settingsGroup: 'general', adminOnly: true, moduleKey: 'zatca', keywords: ['fatoora', 'e-invoice', 'vat', 'tax', 'csid', 'certificate'] },
-  { id: 'users', label: 'Users', path: '/settings/users', icon: UserCog, settingsGroup: 'access', adminOnly: true, keywords: ['user management', 'roles', 'accounts'] },
   { id: 'module-governance', label: 'Modules', path: '/settings/module-governance', icon: ShieldCheck, settingsGroup: 'access', superAdminOnly: true, keywords: ['module governance', 'enable', 'disable', 'features'] },
   {
     id: 'locations', label: 'Locations', path: '/locations', icon: MapPin, settingsGroup: 'master-data', moduleKey: 'locations', permissionKey: 'settings.view', keywords: ['places', 'sites'],
