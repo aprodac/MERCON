@@ -894,16 +894,15 @@ export const operatorService = {
     return data.data as OperatorTripDetail;
   },
 
-  /** Confirm or correct the real time an EXTERNAL_APP evidence screenshot
-   * happened at — same endpoint/columns the web dashboard's time-confirmation
-   * panel uses. Omit a field to leave that timestamp as recorded. */
-  async confirmEvidenceTime(
+  /** Save a customer-app trip's real stop times, copied off the driver's
+   * screenshots, all stops at once — same endpoint as the web's "Check times".
+   * Only changed times are sent; an empty list confirms the tapped times. */
+  async confirmTripTimes(
     tripId: string,
-    stopId: string,
-    payload: { document_id: string; actual_arrival?: string; actual_departure?: string }
-  ): Promise<OperatorTripStop> {
-    const { data } = await api.patch(`/trips/${tripId}/stops/${stopId}/confirm-time`, payload);
-    return data.data as OperatorTripStop;
+    stops: { stop_id: string; actual_arrival?: string; actual_departure?: string }[]
+  ): Promise<{ stops_updated: number; screenshots_verified: number }> {
+    const { data } = await api.patch(`/trips/${tripId}/confirm-times`, { stops });
+    return data.data;
   },
 
   /**

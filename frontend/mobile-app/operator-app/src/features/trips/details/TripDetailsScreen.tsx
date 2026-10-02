@@ -30,7 +30,7 @@ import { StopsTab } from './components/StopsTab';
 import { DetailsTab } from './components/DetailsTab';
 import { ShareSheet, type ShareTarget } from './components/ShareSheet';
 import { MediaViewer, type ViewerItem } from './components/MediaViewer';
-import { TimeConfirmSheet } from './components/TimeConfirmSheet';
+import { TripTimesSheet } from './components/TripTimesSheet';
 import { PinSheet } from './components/PinSheet';
 import { ActivitySheet, ChargesSheet, MoreSheet, UploadSheet } from './components/Sheets';
 import { ACTION, INK, MUTED, PAGE, WA, tap } from './components/parts';
@@ -48,7 +48,7 @@ export default function TripDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // Links from the home's "Needs action" cards can open a tab, a message or a picker straight away.
-  const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; assign?: string }>();
+  const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; assign?: string; times?: string }>();
   const { id } = params;
   const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, renewTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
@@ -57,7 +57,7 @@ export default function TripDetailsScreen() {
   const [busy, setBusy] = useState(false);
   const [share, setShare] = useState<ShareTarget | null>(null);
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string; update?: DriverUpdate } | null>(null);
-  const [timeCheck, setTimeCheck] = useState<{ doc: OperatorTripDocument; stop: Stop; stopLabel: string } | null>(null);
+  const [checkingTimes, setCheckingTimes] = useState(false);
   const [pinTarget, setPinTarget] = useState<{ stop: Stop; label: string } | null>(null);
   const [sheet, setSheet] = useState<'more' | 'upload' | 'activity' | 'charges' | null>(null);
   const [fullMap, setFullMap] = useState(false);
@@ -71,6 +71,7 @@ export default function TripDetailsScreen() {
   if (trip && !linkDone) {
     setLinkDone(true);
     if (params.share === 'delay' || params.share === 'status') setShare({ type: 'quick', kind: params.share });
+    if (params.times === '1') setCheckingTimes(true);
   }
   const assignKind = params.assign === 'driver' || params.assign === 'truck' ? params.assign : null;
   const tripLoaded = !!trip;
@@ -311,7 +312,7 @@ export default function TripDetailsScreen() {
               updates={updates}
               f={f}
               onOpenStopMedia={openStopMedia}
-              onConfirmTime={(doc, st) => setTimeCheck({ doc, stop: st, stopLabel: stopName(st, stops.indexOf(st)) })}
+              onCheckTimes={() => setCheckingTimes(true)}
               onSetPin={(st) => setPinTarget({ stop: st, label: stopName(st, stops.indexOf(st)) })}
             />
           ) : (
@@ -372,7 +373,7 @@ export default function TripDetailsScreen() {
         onSend={viewer?.update ? () => { const u = viewer.update!; setViewer(null); setTimeout(() => setShare({ type: 'update', update: u }), 250); } : undefined}
       />
       <PinSheet target={pinTarget} tripId={trip.id} onClose={() => setPinTarget(null)} onSaved={reload} />
-      <TimeConfirmSheet target={timeCheck} tripId={trip.id} tz={tz} onClose={() => setTimeCheck(null)} onDone={reload} />
+      <TripTimesSheet visible={checkingTimes} trip={trip} tz={tz} onClose={() => setCheckingTimes(false)} onDone={reload} />
       <MoreSheet
         visible={sheet === 'more'}
         trip={trip}

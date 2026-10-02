@@ -59,6 +59,7 @@ export default function DashboardHomeScreen() {
         if (intent.tab) extra.tab = intent.tab;
         if (intent.share) extra.share = intent.share;
         if (intent.assign) extra.assign = intent.assign;
+        if (intent.times) extra.times = '1';
         openTrip(intent.tripId, extra);
         return;
       }

@@ -16,6 +16,7 @@ import { tripService, type Trip, type TripStop } from '@/services/tripService';
 import PinChip, { isExactPin } from '@/components/locations/PinChip';
 import SetPinDialog from '@/components/locations/SetPinDialog';
 import { STAGE_LABEL, minutesLate, timeReviewOf, toLightboxItems } from './stopEvidence';
+import TripTimesReviewDialog, { isAppScreenshot, isPendingScreenshot } from './TripTimesReviewDialog';
 
 /** Arrival within this many minutes of the plan counts as on time. */
 const ON_TIME_GRACE_MIN = 5;
@@ -24,6 +25,8 @@ interface Props {
   trip: Trip;
   phase: TripPhase;
   documents: any[];
+  /** Deployment timezone — typed screenshot times are read in it. */
+  tz: string;
   formatTime: (iso: string) => string;
   formatDateTime: (iso: string) => string;
   onEvidenceUpdated: () => void;
@@ -57,11 +60,12 @@ function stopTitle(s: TripStop, i: number): string {
  * grouped by step (Loaded, Arrived, Delivered · POD, Delay) with a Send button
  * that forwards them on WhatsApp and remembers who already did.
  */
-export default function TripStopsPanel({ trip, phase, documents, formatTime, formatDateTime, onEvidenceUpdated, onPinned, top, bottom }: Props) {
+export default function TripStopsPanel({ trip, phase, documents, tz, formatTime, formatDateTime, onEvidenceUpdated, onPinned, top, bottom }: Props) {
   const [sharing, setSharing] = useState<DriverUpdate | null>(null);
   const [pinning, setPinning] = useState<TripStop | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [viewer, setViewer] = useState<{ items: LightboxPhotoItem[]; index: number } | null>(null);
+  const [checkingTimes, setCheckingTimes] = useState(false);
 
   const { data } = useQuery({
     queryKey: ['operator-inbox', 'trip-driver-updates', trip.id],
@@ -75,6 +79,20 @@ export default function TripStopsPanel({ trip, phase, documents, formatTime, for
   const doneCount = stops.filter((s) => s.actual_arrival).length;
   // A finished trip is a record — its stops can't be re-pinned (the API refuses too).
   const canPin = phase === 'planned' || phase === 'active';
+  // Customer-app trips: the driver's taps are provisional, the screenshots hold the real times.
+  const appShots = documents.filter(isAppScreenshot);
+  const pendingShots = appShots.filter(isPendingScreenshot).length;
+
+  // The dashboard's "Time review" alert links here with ?times=1.
+  const timesParam = searchParams.get('times');
+  useEffect(() => {
+    if (!timesParam) return;
+    if (appShots.length) setCheckingTimes(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('times');
+    setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timesParam, appShots.length]);
 
   // The dashboard's "Pin needed" alert links here with ?pin=<stopId>.
   const pinParam = searchParams.get('pin');
@@ -109,7 +127,24 @@ export default function TripStopsPanel({ trip, phase, documents, formatTime, for
     <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-sm dark:border-white/10 dark:bg-slate-900">
       <div className="flex shrink-0 items-center justify-between border-b border-black/[0.06] px-4 py-3 dark:border-white/10">
         <p className="text-sm font-semibold text-foreground">Stops</p>
-        <p className="text-xs text-muted-foreground">{doneCount} of {stops.length} done</p>
+        <div className="flex items-center gap-2">
+          {appShots.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setCheckingTimes(true)}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold',
+                pendingShots > 0
+                  ? 'bg-amber-500/15 text-amber-800 hover:bg-amber-500/25 dark:text-amber-300'
+                  : 'text-muted-foreground hover:bg-muted',
+              )}
+            >
+              <Clock3 className="size-3.5" />
+              {pendingShots > 0 ? `Check times · ${pendingShots}` : 'Times checked'}
+            </button>
+          )}
+          <p className="text-xs text-muted-foreground">{doneCount} of {stops.length} done</p>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -160,9 +195,13 @@ export default function TripStopsPanel({ trip, phase, documents, formatTime, for
                     </p>
                   )}
                   {needsTimeCheck && (
-                    <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:text-amber-300">
-                      <Clock3 className="size-3" /> Screenshot time needs checking — open the photo
-                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setCheckingTimes(true)}
+                      className="mt-1 inline-flex items-center gap-1 rounded-md bg-amber-500/12 px-2 py-0.5 text-[11px] font-medium text-amber-800 hover:bg-amber-500/20 dark:text-amber-300"
+                    >
+                      <Clock3 className="size-3" /> Screenshot time needs checking — check times
+                    </button>
                   )}
                   {stopUpdates.map((u) => (
                     <MediaRow key={u.key} update={u} onOpen={(idx) => openViewer(u, idx, s, name)} onSend={() => setSharing(u)} />
@@ -192,6 +231,14 @@ export default function TripStopsPanel({ trip, phase, documents, formatTime, for
         lng={pinning && (pinning.location_lat || pinning.location_lng) ? pinning.location_lng : null}
         footnote={pinning && sharesCustomerPin(pinning) ? `Also saved to ${pinning.location!.name}, so other open and future trips use it.` : undefined}
         onSave={(pin) => savePin(pinning!, pin)}
+      />
+      <TripTimesReviewDialog
+        open={checkingTimes}
+        onOpenChange={setCheckingTimes}
+        trip={trip}
+        documents={documents}
+        tz={tz}
+        onSaved={onEvidenceUpdated}
       />
       {sharing && <ShareUpdateDialog update={sharing} apiAvailable={!!data?.whatsapp_api_available} onClose={() => setSharing(null)} />}
       <EvidenceLightboxModal

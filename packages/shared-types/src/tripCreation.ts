@@ -365,7 +365,8 @@ const FALLBACK_TZ_OFFSET_MIN: Record<string, number> = {
   UTC: 0,
 };
 
-function tzOffsetMs(utcMs: number, tz: string): number {
+/** How far `tz` is ahead of UTC at the instant `utcMs`, in ms. */
+export function tzOffsetMs(utcMs: number, tz: string): number {
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: tz,
@@ -387,15 +388,15 @@ function tzOffsetMs(utcMs: number, tz: string): number {
 }
 
 /**
- * A wall-clock date (YYYY-MM-DD) + time (HH:mm) in `tz` as a UTC ISO string —
+ * A wall-clock date (YYYY-MM-DD) + time (HH:mm or HH:mm:ss) in `tz` as a UTC ISO string —
  * the same result as date-fns-tz `fromZonedTime`, without the dependency.
  * Without a time, the date is returned unchanged.
  */
 export function zonedWallTimeToUtcIso(date: string, time: string | undefined, tz: string): string {
   if (!date || !time) return date;
   const [y, m, d] = date.split('-').map(Number);
-  const [hh, mm] = time.split(':').map(Number);
-  const wall = Date.UTC(y, m - 1, d, hh, mm);
+  const [hh, mm, ss = 0] = time.split(':').map(Number);
+  const wall = Date.UTC(y, m - 1, d, hh, mm, ss);
   // Take the offset that round-trips; in a DST gap neither does, so keep the first guess.
   // (In the repeated hour when clocks go back this picks the earlier instant — no DST in the Gulf.)
   const first = tzOffsetMs(wall, tz);

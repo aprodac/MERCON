@@ -165,6 +165,8 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   title_upload_screenshot_caps: { en: 'UPLOAD CUSTOMER APP SCREENSHOT', ur: 'کسٹمر ایپ کا اسکرین شاٹ اپلوڈ کریں' },
   hint_upload_screenshot: { en: "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.", ur: 'کسٹمر ایپ کا اسکرین شاٹ لگائیں جس میں یہ اپڈیٹ نظر آئے۔ کیمرہ استعمال کرنے کے لیے دبائے رکھیں۔' },
   label_screenshot: { en: 'Screenshot', ur: 'اسکرین شاٹ' },
+  // Last step: the customer app's "Completed" screen lists every stop's times, so the office can check them all from one picture.
+  hint_upload_screenshot_final: { en: "Attach a screenshot of the customer app's Completed screen, showing every stop's arrive and departure time. Hold to use the camera instead.", ur: 'کسٹمر ایپ کی Completed اسکرین کا اسکرین شاٹ لگائیں، جس میں ہر اسٹاپ کا پہنچنے اور نکلنے کا وقت نظر آئے۔ کیمرہ استعمال کرنے کے لیے دبائے رکھیں۔' },
   action_take_photo_instead: { en: 'Take a photo instead', ur: 'اس کے بجائے تصویر لیں' },
   title_upload_return_loading_photos: { en: 'UPLOAD RETURN LOADING PHOTOS', ur: 'واپسی لوڈنگ کی تصاویر اپلوڈ کریں' },
   action_loading_complete: { en: 'LOADING COMPLETE', ur: 'لوڈنگ مکمل کریں' },

@@ -3,7 +3,7 @@ import {
   getTrips, getTripById, createTrip, updateTripStatus,
   dispatchTrip, replaceDriver, pickupArrive, pickupVerify, deliveryVerify,
   bulkDeleteTrips, bulkUpdateTripStatus, bulkAssignTrips, getUnsettledCompletedTrips, updateTripFinancials,
-  logStopDelay, confirmEvidenceTime, bulkImportTrips, updateTripStop, pinStop, updateTripStopsRoute, getMonthlyTripBoard, shareTripMediaToWhatsApp
+  logStopDelay, confirmEvidenceTime, confirmTripTimes, bulkImportTrips, updateTripStop, pinStop, updateTripStopsRoute, getMonthlyTripBoard, shareTripMediaToWhatsApp
 } from '../controllers/tripController';
 import { exportTrips } from '../controllers/tripExportController';
 import { getTripTrackingLink, getTripTrackingLinks, trackingLinkBody, trackingLinksBody } from '../controllers/trackingController';
@@ -12,7 +12,7 @@ import { getTripDriverTrail } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
-import { createTripBody, listQuery, logStopDelayBody, confirmEvidenceTimeBody, bulkImportTripsBody, updateTripStopBody, updateTripStopsRouteBody, pinBody } from '../schemas';
+import { createTripBody, listQuery, logStopDelayBody, confirmEvidenceTimeBody, confirmTripTimesBody, bulkImportTripsBody, updateTripStopBody, updateTripStopsRouteBody, pinBody } from '../schemas';
 
 import { getDriverRecommendations, getVehicleRecommendations } from '../controllers/fleetDispatchController';
 
@@ -54,6 +54,8 @@ router.patch('/:id/stops/:stopId/delay', validate({ body: logStopDelayBody }), l
 // Confirm/correct the real time an EXTERNAL_APP evidence screenshot happened
 // at. No frozen-trip restriction — see confirmEvidenceTime's own comment.
 router.patch('/:id/stops/:stopId/confirm-time', validate({ body: confirmEvidenceTimeBody }), confirmEvidenceTime);
+// Same, for every stop of the trip at once (customer apps show all stops on one screen).
+router.patch('/:id/confirm-times', validate({ body: confirmTripTimesBody }), confirmTripTimes);
 
 router.put('/:id/stops', validate({ body: updateTripStopsRouteBody }), updateTripStopsRoute);
 

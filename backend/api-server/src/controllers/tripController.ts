@@ -1910,6 +1910,71 @@ export const confirmEvidenceTime = async (req: Request, res: Response) => {
 };
 
 /**
+ * Confirm a whole EXTERNAL_APP trip's stop times at once. The customer's app
+ * shows every stop's arrive/departure time on one screen, so the operator
+ * copies them all in one pass instead of one screenshot at a time. Saves the
+ * times and marks every pending screenshot on the trip as checked.
+ *
+ * Same post-completion rule as confirmEvidenceTime: no frozen-trip guard.
+ */
+export const confirmTripTimes = async (req: Request, res: Response) => {
+  try {
+    const rawTripId = req.params.id as string;
+    const tripId = isUuid(rawTripId) ? rawTripId : (await resolveTripId(rawTripId));
+    if (!tripId) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+    const input = (req.body.stops ?? []) as { stop_id: string; actual_arrival?: string; actual_departure?: string }[];
+
+    const stops = await prisma.tripStop.findMany({
+      where: { tripId, deletedAt: null },
+      select: { id: true, location_name: true, actual_arrival: true, actual_departure: true },
+    });
+    const byId = new Map(stops.map((s) => [s.id, s]));
+
+    const updates: { id: string; data: { actual_arrival?: Date; actual_departure?: Date } }[] = [];
+    for (const row of input) {
+      const stop = byId.get(row.stop_id);
+      if (!stop) {
+        return res.status(400).json({ success: false, error: { code: 'UNKNOWN_STOP', message: 'A stop does not belong to this trip' } });
+      }
+      const data: { actual_arrival?: Date; actual_departure?: Date } = {};
+      if (row.actual_arrival) data.actual_arrival = new Date(row.actual_arrival);
+      if (row.actual_departure) data.actual_departure = new Date(row.actual_departure);
+      const arrival = data.actual_arrival ?? stop.actual_arrival;
+      const departure = data.actual_departure ?? stop.actual_departure;
+      if (arrival && departure && departure < arrival) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'DEPARTURE_BEFORE_ARRIVAL', message: `${stop.location_name || 'A stop'}: left is before arrived` },
+        });
+      }
+      if (Object.keys(data).length) updates.push({ id: stop.id, data });
+    }
+
+    const verifiedBy = isUuid((req as any).user?.id) ? (req as any).user.id : null;
+    const verified = await prisma.$transaction(async (tx) => {
+      for (const u of updates) await tx.tripStop.update({ where: { id: u.id }, data: u.data });
+      return tx.document.updateMany({
+        where: {
+          entity_type: 'Trip',
+          entity_id: tripId,
+          deletedAt: null,
+          status: DocStatus.PendingReview,
+          ai_extracted_json: { path: ['source'], equals: 'external_app_screenshot' },
+        },
+        data: { status: DocStatus.Verified, verified_by: verifiedBy },
+      });
+    });
+
+    res.json({ success: true, data: { stops_updated: updates.length, screenshots_verified: verified.count } });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to confirm trip times');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to confirm trip times' } });
+  }
+};
+
+/**
  * Correct where a stop actually is — its label, its full address, the lane
  * endpoint it belongs to, and its coordinates.
  *

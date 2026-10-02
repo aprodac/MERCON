@@ -89,6 +89,8 @@ export interface Trip {
   ref_id: string;
   status: TripStatus;
   driver_workflow_state?: string | null;
+  /** EXTERNAL_APP: the driver works in the customer's app and sends screenshots as proof. */
+  driver_workflow?: 'NATIVE' | 'EXTERNAL_APP';
   planned_start: string | null;
   actual_start: string | null;
   planned_end: string | null;
@@ -567,6 +569,19 @@ export const tripService = {
     payload: { document_id: string; actual_arrival?: string; actual_departure?: string }
   ): Promise<TripStop> {
     const res = await api.patch<ApiResponse<TripStop>>(`/trips/${tripId}/stops/${stopId}/confirm-time`, payload);
+    return res.data.data;
+  },
+
+  /**
+   * Save the real stop times copied off the customer app's screenshots, all
+   * stops at once, and mark the trip's screenshots as checked. Only changed
+   * times are sent; an empty list confirms the tapped times are right.
+   */
+  async confirmTripTimes(
+    tripId: string,
+    stops: { stop_id: string; actual_arrival?: string; actual_departure?: string }[]
+  ): Promise<{ stops_updated: number; screenshots_verified: number }> {
+    const res = await api.patch<ApiResponse<{ stops_updated: number; screenshots_verified: number }>>(`/trips/${tripId}/confirm-times`, { stops });
     return res.data.data;
   },
 

@@ -449,6 +449,17 @@ export const confirmEvidenceTimeBody = z.object({
   actual_departure: z.string().min(1).optional(),
 });
 
+/** The whole trip's real stop times, copied by an operator off the customer
+ *  app's screenshots in one go. A stop left out, or a time omitted, keeps
+ *  what is recorded. */
+export const confirmTripTimesBody = z.object({
+  stops: z.array(z.object({
+    stop_id: z.string().uuid(),
+    actual_arrival: z.string().datetime({ offset: true }).optional(),
+    actual_departure: z.string().datetime({ offset: true }).optional(),
+  })).max(100),
+});
+
 /* ─── Drivers ────────────────────────────────────────────────────────────── */
 export const createDriverBody = z.object({
   first_name: nonEmpty('First name'),
