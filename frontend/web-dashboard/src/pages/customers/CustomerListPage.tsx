@@ -1,56 +1,45 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Plus, 
-  Edit2, 
-  FileText, 
-  Download, 
-  RotateCw, 
-  Building2,
-  Search,
-  Eye,
-  Trash2,
-  ChevronDown, 
-  Filter, 
-  CreditCard, 
-  List, 
-  LayoutGrid, 
-  Phone, 
-  User,
-  CheckCircle2, 
-  XCircle, 
-  X,
-  AlertTriangle,
-  Calendar as CalendarIcon,
-  FileSpreadsheet,
-  UploadCloud,
-  MoreVertical,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  ArrowDown,
-  ArrowUp,
+import {
+  Plus, Edit2, FileText, Download, Building2, Search, Eye, Trash2, ChevronDown, Filter, List, LayoutGrid, X,
+  FileSpreadsheet, UploadCloud, MoreHorizontal, ChevronLeft, ChevronRight, Truck, MapPinned, ReceiptText,
+  Navigation, Wallet, CalendarClock, Check, ArrowUpDown, AlertCircle,
 } from 'lucide-react';
-import { CustomerBuilding, CheckBadge } from '@/components/ui/kpi-icons';
 
 import { downloadCSV, exportExcelTable, exportPDFTable } from '@/utils/exportUtils';
 import { CUSTOMER_COLUMNS } from '@/utils/importUtils';
 import ExcelImportDialog from '@/components/fleet/ExcelImportDialog';
 import ExportModal, { ExportColumn, ExportFilter } from '@/components/ui/ExportModal';
-import { SortDropdown, SortOption } from '@/components/ui/SortDropdown';
 import CustomerPreviewModal from '@/components/customers/CustomerPreviewModal';
 import CreateCustomerModal from '@/components/customers/CreateCustomerModal';
 import EditCustomerModal from '@/components/customers/EditCustomerModal';
-import PhoneDisplay from '@/components/ui/PhoneDisplay';
+import DashboardLayout from '@/components/layout/DashboardLayout';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { useModuleEnabled } from '@/components/auth/RequireModule';
+import { Badge, CustomerAvatar, EmptyBlock, PhoneLine, Stat, ui } from '@/components/customers/customerUi';
+import { customerService, Customer, CustomerFilters } from '@/services/customerService';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { cn } from '@/lib/utils';
+import { timeAgo } from '@/lib/fleetLive';
+import { useDeploymentTimezone, formatInDeploymentTz } from '@/lib/datetime';
+import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+const custRef = (c: Customer) => `CUST-${c.id.slice(0, 5).toUpperCase()}`;
+const contactPhone = (c: Customer) => c.primary_contact_phone || c.contact_phone || c.phone || '';
+const money = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 0 });
 
 const CUSTOMER_EXPORT_COLUMNS: ExportColumn<Customer>[] = [
   { id: 'name', label: 'Customer Name', accessor: (c) => c.name },
-  { id: 'contact_phone', label: 'Contact Phone', accessor: (c) => c.contact_phone || c.phone || '—' },
+  { id: 'contact_person', label: 'Primary Contact', accessor: (c) => c.primary_contact_person || '—' },
+  { id: 'contact_phone', label: 'Contact Phone', accessor: (c) => contactPhone(c) || '—' },
   { id: 'status', label: 'Status', accessor: (c) => (c.isActive !== false ? 'Active' : 'Inactive') },
-  { id: 'trips_count', label: 'Total Trips', accessor: (c) => c._count?.trips || c.trips?.length || 0 },
+  { id: 'trips_count', label: 'Total Trips', accessor: (c) => c._count?.trips ?? 0 },
+  { id: 'outstanding', label: 'Outstanding (SAR)', accessor: (c) => c.stats?.outstanding ?? 0 },
   { id: 'created_at', label: 'Created Date', accessor: (c) => (c.createdAt ? new Date(c.createdAt).toLocaleDateString() : '—') },
 ];
 
@@ -66,854 +55,507 @@ const CUSTOMER_EXPORT_FILTERS: ExportFilter<Customer>[] = [
     filterFn: (row, val) => (val === 'Active' ? row.isActive !== false : row.isActive === false),
   },
 ];
-import DashboardLayout from '@/components/layout/DashboardLayout';
-import DataTable from '@/components/ui/DataTable';
-import KpiCard from '@/components/ui/KpiCard';
-import StatusBadge from '@/components/ui/StatusBadge';
-import { customerService, Customer } from '@/services/customerService';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
-import { cn } from '@/lib/utils';
-import ConfirmModal from '@/components/ui/ConfirmModal';
-import { useDeploymentTimezone, formatInDeploymentTz } from '@/lib/datetime';
 
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+/** Quick views across the whole customer list (filtered server-side). */
+type CustomerView = 'all' | 'active' | 'inactive' | 'live' | 'balance';
 
-type CustomerSortOption = 'latest' | 'oldest' | 'name_asc' | 'name_desc' | 'status';
+const VIEW_FILTERS: Record<CustomerView, Partial<CustomerFilters>> = {
+  all: {},
+  active: { is_active: true },
+  inactive: { is_active: false },
+  live: { live: true },
+  balance: { has_balance: true },
+};
 
-const CUSTOMER_SORT_OPTIONS: SortOption<CustomerSortOption>[] = [
-  { value: 'latest', label: 'Newest Added', icon: <ArrowDown className="w-3.5 h-3.5 text-blue-600" /> },
-  { value: 'oldest', label: 'Oldest Added', icon: <ArrowUp className="w-3.5 h-3.5 text-amber-600" /> },
-  { value: 'name_asc', label: 'Company Name (A → Z)', icon: <Building2 className="w-3.5 h-3.5 text-purple-600" /> },
-  { value: 'name_desc', label: 'Company Name (Z → A)', icon: <Building2 className="w-3.5 h-3.5 text-purple-600" /> },
-  { value: 'status', label: 'Account Status', icon: <Filter className="w-3.5 h-3.5 text-slate-500" /> },
+type CustomerSort = 'trips' | 'latest' | 'oldest' | 'name_asc' | 'name_desc';
+
+const SORTS: { value: CustomerSort; label: string; params: Pick<CustomerFilters, 'sort_by' | 'sort_dir'> }[] = [
+  { value: 'trips', label: 'Most trips', params: { sort_by: 'trips', sort_dir: 'desc' } },
+  { value: 'name_asc', label: 'Name A–Z', params: { sort_by: 'name', sort_dir: 'asc' } },
+  { value: 'name_desc', label: 'Name Z–A', params: { sort_by: 'name', sort_dir: 'desc' } },
+  { value: 'latest', label: 'Newest first', params: { sort_by: 'createdAt', sort_dir: 'desc' } },
+  { value: 'oldest', label: 'Oldest first', params: { sort_by: 'createdAt', sort_dir: 'asc' } },
 ];
 
 export default function CustomerListPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const tz = useDeploymentTimezone();
+  const exportsEnabled = useModuleEnabled('company-reports');
+  const financeEnabled = useModuleEnabled('finance');
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [selectedStatus, setSelectedStatus] = useState<'All' | 'Active' | 'Inactive'>('All');
-  const [creditTierFilter, setCreditTierFilter] = useState<'All' | 'High' | 'Standard'>('All');
-  const [sortOrder, setSortOrder] = useState<CustomerSortOption>('latest');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [view, setView] = useState<CustomerView>('all');
+  const [sort, setSort] = useState<CustomerSort>('trips');
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [layout, setLayout] = useState<'list' | 'grid'>('list');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
-  const [selectedCustomersForExport, setSelectedCustomersForExport] = useState<Customer[]>([]);
+  const [exportRowsSelected, setExportRowsSelected] = useState<Customer[]>([]);
   const [previewCustomer, setPreviewCustomer] = useState<Customer | null>(null);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
-  const [isCreateCustomerOpen, setIsCreateCustomerOpen] = useState(false);
-  const [confirmModal, setConfirmModal] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    onConfirm: () => void | Promise<void>;
-  }>({
-    isOpen: false,
-    title: '',
-    message: '',
-    onConfirm: () => {},
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [confirm, setConfirm] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void | Promise<void> }>({
+    open: false, title: '', message: '', onConfirm: () => {},
   });
 
   const debouncedSearch = useDebouncedValue(search, 300);
+  const sortParams = SORTS.find((s) => s.value === sort)!.params;
 
-  // Fetch customers using React Query
-  const { data: customersRes, isLoading, isError, error } = useQuery({
-    queryKey: ['customers', debouncedSearch, currentPage, pageSize],
-    queryFn: () => customerService.getAll({
-      search: debouncedSearch || undefined,
-      page: currentPage,
-      per_page: pageSize,
-    }),
-    // Keep the previous rows on screen while a new search/page loads.
+  const { data: res, isLoading, isFetching, isError, error } = useQuery({
+    queryKey: ['customers', debouncedSearch, page, pageSize, view, sort],
+    queryFn: () => customerService.getAll({ search: debouncedSearch || undefined, page, per_page: pageSize, ...VIEW_FILTERS[view], ...sortParams }),
     placeholderData: keepPreviousData,
   });
+  const { data: summary } = useQuery({ queryKey: ['customers', 'summary'], queryFn: () => customerService.getSummary() });
 
-  const rawCustomers = customersRes?.data || [];
-  const totalPages = customersRes?.meta?.total_pages || 1;
-  const totalCount = customersRes?.meta?.total || rawCustomers.length;
+  const customers = res?.data || [];
+  const totalPages = res?.meta?.total_pages || 1;
+  const totalCount = res?.meta?.total ?? customers.length;
+  const selectedRows = customers.filter((c) => selected.has(c.id));
 
-  // Filter local data based on status and sort order
-  const filteredCustomers = useMemo(() => {
-    return rawCustomers
-      .filter((c) => {
-        if (selectedStatus === 'Active' && !c.isActive) return false;
-        if (selectedStatus === 'Inactive' && c.isActive) return false;
-        return true;
-      })
-      .sort((a, b) => {
-        if (sortOrder === 'name_asc') return (a.name || '').localeCompare(b.name || '');
-        if (sortOrder === 'name_desc') return (b.name || '').localeCompare(a.name || '');
-        if (sortOrder === 'status') return (b.isActive ? 1 : 0) - (a.isActive ? 1 : 0);
-        const dateA = new Date(a.createdAt || 0).getTime();
-        const dateB = new Date(b.createdAt || 0).getTime();
-        return sortOrder === 'oldest' ? dateA - dateB : dateB - dateA;
-      });
-  }, [rawCustomers, selectedStatus, sortOrder]);
+  const resetPaging = () => { setPage(1); setSelected(new Set()); };
+  const changeView = (v: CustomerView) => { setView((prev) => (prev === v && v !== 'all' ? 'all' : v)); resetPaging(); };
+  const openCustomer = (c: Customer, tab?: string) => navigate(`/customers/${c.id}${tab ? `?tab=${tab}` : ''}`);
+  const newTrip = (c: Customer) => navigate(`/trips/new?customer_id=${c.id}`);
 
-  // Calculate real backend metric totals
-  const activeCount = rawCustomers.filter(c => c.isActive).length;
-  const inactiveCount = rawCustomers.filter(c => !c.isActive).length;
-  const activePercentage = totalCount > 0 ? Math.round((activeCount / totalCount) * 100) : 100;
-  
-  const pendingInvoicesCount = rawCustomers.reduce((acc, c) => {
-    return acc + (c.trips ? c.trips.filter(t => t.status === 'Pending' || t.status === 'Dispatched').length : 1);
-  }, 0) || Math.ceil(totalCount * 0.4) || 6;
+  const toggleRow = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const allOnPage = customers.length > 0 && customers.every((c) => selected.has(c.id));
+  const toggleAll = () => setSelected(allOnPage ? new Set() : new Set(customers.map((c) => c.id)));
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await queryClient.invalidateQueries({ queryKey: ['customers'] });
-    setTimeout(() => setIsRefreshing(false), 500);
+  const EXPORT_HEADERS = ['Customer ID', 'Company Name', 'Phone', 'Contact Person', 'Payment Terms', 'Status'];
+  const exportRows = (rows: Customer[]) =>
+    rows.map((c) => [custRef(c), c.name, contactPhone(c) || 'N/A', c.primary_contact_person || '—', c.payment_terms || '—', c.isActive ? 'Active' : 'Inactive']);
+  const stamp = () => new Date().toISOString().slice(0, 10);
+  const exportExcel = (rows: Customer[]) => exportExcelTable('MERCON Customer Accounts', EXPORT_HEADERS, exportRows(rows), `customers_${stamp()}.xlsx`);
+  const exportPdf = (rows: Customer[]) => exportPDFTable('MERCON Customer Accounts', EXPORT_HEADERS, exportRows(rows), `customers_${stamp()}.pdf`);
+  const exportCsv = (rows: Customer[]) =>
+    downloadCSV(
+      rows.map((c) => ({
+        customer_id: custRef(c), customer_name: c.name, phone: contactPhone(c), contact_person: c.primary_contact_person || '',
+        payment_terms: c.payment_terms || '', status: c.isActive ? 'Active' : 'Inactive',
+      })),
+      `customers_${stamp()}.csv`,
+    );
+
+  const askDelete = (rows: Customer[]) => {
+    setConfirm({
+      open: true,
+      title: rows.length === 1 ? 'Delete customer?' : `Delete ${rows.length} customers?`,
+      message: `${rows.length === 1 ? rows[0].name : `These ${rows.length} customers`} will be removed. Their trips and invoices stay, marked as from a deleted customer.`,
+      onConfirm: async () => {
+        try {
+          await Promise.all(rows.map((c) => customerService.delete(c.id)));
+          queryClient.invalidateQueries({ queryKey: ['customers'] });
+          setSelected(new Set());
+          toast.success(rows.length === 1 ? 'Customer deleted' : `${rows.length} customers deleted`);
+        } catch {
+          toast.error('Failed to delete customer');
+        }
+      },
+    });
   };
 
-  const handleExportExcel = async (rowsToExport: Customer[]) => {
-    const headers = [
-      'Customer ID',
-      'Company Name',
-      'Primary Phone',
-      'Contact Person',
-      'Payment Terms',
-      'Status'
-    ];
-
-    const dataRows = rowsToExport.map(c => [
-      `CUST-${c.id.slice(0, 5).toUpperCase()}`,
-      c.name,
-      c.contact_phone || c.phone || 'N/A',
-      c.primary_contact_person || getPrimaryContactPerson(c.name),
-      c.payment_terms || 'Standard',
-      c.isActive ? 'Active' : 'Inactive'
-    ]);
-
-    await exportExcelTable('MERCON Customer Accounts', headers, dataRows, `customers_${new Date().toISOString().slice(0, 10)}.xlsx`);
-  };
-
-  const handleExportPDF = (rowsToExport: Customer[]) => {
-    const headers = [
-      'Customer ID',
-      'Company Name',
-      'Phone',
-      'Contact Person',
-      'Terms',
-      'Status'
-    ];
-
-    const dataRows = rowsToExport.map(c => [
-      `CUST-${c.id.slice(0, 5).toUpperCase()}`,
-      c.name,
-      c.contact_phone || c.phone || 'N/A',
-      c.primary_contact_person || getPrimaryContactPerson(c.name),
-      c.payment_terms || 'Standard',
-      c.isActive ? 'Active' : 'Inactive'
-    ]);
-
-    exportPDFTable('MERCON Customer Accounts', headers, dataRows, `customers_${new Date().toISOString().slice(0, 10)}.pdf`);
-  };
-
-  const handleExportCSV = (rowsToExport: Customer[]) => {
-    const data = rowsToExport.map(c => ({
-      customer_id: `CUST-${c.id.slice(0, 5).toUpperCase()}`,
-      customer_name: c.name,
-      phone: c.contact_phone || c.phone || '',
-      contact_person: c.primary_contact_person || getPrimaryContactPerson(c.name),
-      payment_terms: c.payment_terms || 'Standard',
-      status: c.isActive ? 'Active' : 'Inactive',
-    }));
-    downloadCSV(data, `customers_${new Date().toISOString().slice(0, 10)}.csv`);
-  };
-
-
-
-// Contact helper functions for fallback rendering
-function getPrimaryContactPerson(name: string): string {
-  const hash = (name || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const names = ['Tariq Al-Mansoor', 'Fahad Al-Harbi', 'Noura Al-Otaibi', 'Ahmed Al-Ghamdi', 'Sultan Al-Qahtani', 'Youssef Al-Zahrani'];
-  return names[hash % names.length];
-}
-
-function getSecondaryContactPerson(name: string): string {
-  const hash = (name || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const names = ['Khalid Al-Sayed', 'Omar Al-Shehri', 'Mona Al-Dosari', 'Reem Al-Mutairi', 'Ibrahim Al-Farsi', 'Ziyad Al-Ahmadi'];
-  return names[(hash + 3) % names.length];
-}
-
-function getSecondaryContactPhone(phoneOrId?: string): string {
-  if (phoneOrId && phoneOrId.length >= 7 && phoneOrId.startsWith('+')) {
-    return phoneOrId.slice(0, -2) + '88';
-  }
-  return '+966 55 987 6543';
-}
-
-  const columns = [
-    {
-      header: 'Customer ID',
-      accessor: (row: Customer) => (
-        <div className="flex flex-col">
-          <span className="font-mono text-xs font-bold text-brand">
-            {`CUST-${row.id.slice(0, 5).toUpperCase()}`}
-          </span>
-          <span className="text-[10px] text-slate-400 font-medium">
-            Joined: {formatInDeploymentTz(row.createdAt, tz, 'MM/dd/yyyy')}
-          </span>
-        </div>
-      ),
-    },
-    {
-      header: 'Company Name',
-      accessor: (row: Customer) => (
-        <div className="flex items-center gap-3">
-          {row.logo_url ? (
-            <img
-              src={row.logo_url}
-              alt={row.name}
-              className="w-8 h-8 object-contain shrink-0"
-            />
-          ) : (
-            <div className="w-8 h-8 rounded-lg bg-orange-100/80 dark:bg-orange-950/50 border border-orange-200/80 dark:border-orange-900/50 flex items-center justify-center text-xs font-extrabold text-brand shrink-0">
-              {row.name?.[0]?.toUpperCase() || 'C'}
-            </div>
-          )}
-          <span
-            className="font-bold text-slate-900 dark:text-slate-100 text-xs hover:text-brand transition-colors cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/customers/${row.id}`);
-            }}
-          >
-            {row.name}
-          </span>
-        </div>
-      ),
-    },
-    {
-      header: 'Primary Contact Person',
-      accessor: (row: Customer) => {
-        const primaryPerson = row.primary_contact_person || getPrimaryContactPerson(row.name);
-        return (
-          <div className="flex items-center gap-1.5 text-xs text-slate-800 font-medium">
-            <User className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
-            <span>{primaryPerson}</span>
-          </div>
-        );
-      },
-    },
-    {
-      header: 'Primary Contact Number',
-      accessor: (row: Customer) => {
-        const primaryPhone = row.primary_contact_phone || row.contact_phone || row.phone || '+966 50 123 4567';
-        return <PhoneDisplay phone={primaryPhone} showActions variant="inline" />;
-      },
-    },
-    {
-      header: 'Secondary Contact Person',
-      accessor: (row: Customer) => {
-        const secondaryPerson = row.secondary_contact_person || getSecondaryContactPerson(row.name);
-        return (
-          <div className="flex items-center gap-1.5 text-xs text-slate-600 font-normal">
-            <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-            <span>{secondaryPerson}</span>
-          </div>
-        );
-      },
-    },
-    {
-      header: 'Secondary Contact Number',
-      accessor: (row: Customer) => {
-        const secondaryPhone = row.secondary_contact_phone || getSecondaryContactPhone(row.contact_phone || row.id);
-        return <PhoneDisplay phone={secondaryPhone} showActions variant="inline" />;
-      },
-    },
-    {
-      header: 'Actions',
-      headerClassName: 'text-right',
-      accessor: (row: Customer) => (
-        <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-slate-500 hover:text-slate-900">
-                <MoreVertical size={14} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel className="text-[10px] font-bold uppercase text-slate-400">Customer Options</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setPreviewCustomer(row)} className="text-xs font-semibold">
-                <Eye size={13} className="mr-2 text-brand" /> Quick Preview
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate(`/customers/${row.id}`)} className="text-xs font-semibold">
-                <Eye size={13} className="mr-2 text-indigo-500" /> View Details
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate(`/customers/${row.id}/edit`)} className="text-xs font-semibold">
-                <Edit2 size={13} className="mr-2 text-amber-500" /> Edit Profile
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-[10px] font-bold uppercase text-slate-400">Account Control</DropdownMenuLabel>
-              <DropdownMenuItem
-                onClick={() => {
-                  setConfirmModal({
-                    isOpen: true,
-                    title: 'Delete Customer Account',
-                    message: `Are you sure you want to delete customer ${row.name}? This action cannot be undone.`,
-                    onConfirm: async () => {
-                      await customerService.delete(row.id);
-                      queryClient.invalidateQueries({ queryKey: ['customers'] });
-                    }
-                  });
-                }}
-                className="text-xs font-semibold text-rose-600 focus:text-rose-600 focus:bg-rose-50"
-              >
-                <Trash2 size={13} className="mr-2 text-rose-500" /> Delete Account
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      ),
-    },
-  ];
- 
-  const statusCreditFilters = (
-    <div className="flex items-center gap-3">
-      {/* Segmented View Switcher */}
-      <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200/80 dark:border-slate-700">
-        <button
-          type="button"
-          onClick={() => setViewMode('list')}
-          className={cn(
-            'p-1.5 rounded-md transition-all text-xs flex items-center gap-1 font-semibold cursor-pointer',
-            viewMode === 'list' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
-          )}
-          title="List View"
-        >
-          <List size={14} />
+  const rowMenu = (c: Customer) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" onClick={(e) => e.stopPropagation()} aria-label={`More actions for ${c.name}`} className={ui.iconBtn}>
+          <MoreHorizontal className="size-4" />
         </button>
-        <button
-          type="button"
-          onClick={() => setViewMode('grid')}
-          className={cn(
-            'p-1.5 rounded-md transition-all text-xs flex items-center gap-1 font-semibold cursor-pointer',
-            viewMode === 'grid' ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100'
-          )}
-          title="Grid View"
-        >
-          <LayoutGrid size={14} />
-        </button>
-      </div>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuItem onClick={() => openCustomer(c)} className="text-[13px]"><Eye className="mr-2 size-4 text-slate-500" /> Open customer</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setPreviewCustomer(c)} className="text-[13px]"><Eye className="mr-2 size-4 text-slate-400" /> Quick preview</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => newTrip(c)} className="text-[13px]"><Plus className="mr-2 size-4 text-slate-500" /> New trip</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openCustomer(c, 'trips')} className="text-[13px]"><Truck className="mr-2 size-4 text-slate-500" /> Trips</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openCustomer(c, 'tracking')} className="text-[13px]"><MapPinned className="mr-2 size-4 text-slate-500" /> Live tracking</DropdownMenuItem>
+        {exportsEnabled && (
+          <DropdownMenuItem onClick={() => openCustomer(c, 'exports')} className="text-[13px]"><FileSpreadsheet className="mr-2 size-4 text-slate-500" /> Excel trip sheets</DropdownMenuItem>
+        )}
+        <DropdownMenuItem onClick={() => openCustomer(c, 'financials')} className="text-[13px]"><ReceiptText className="mr-2 size-4 text-slate-500" /> Invoices & balance</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => setEditCustomer(c)} className="text-[13px]"><Edit2 className="mr-2 size-4 text-slate-500" /> Quick edit</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate(`/customers/${c.id}/edit`)} className="text-[13px]"><Edit2 className="mr-2 size-4 text-slate-500" /> Edit full profile</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => askDelete([c])} className="text-[13px] text-rose-600 focus:bg-rose-50 focus:text-rose-600"><Trash2 className="mr-2 size-4" /> Delete</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 
-      <Select
-        value={selectedStatus}
-        onValueChange={(val) => {
-          if (val) {
-            setSelectedStatus(val as any);
-            setCurrentPage(1);
-          }
-        }}
-      >
-        <SelectTrigger className="h-9 px-3 w-40 shrink-0 border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold">
-          <div className="flex items-center gap-2">
-            <Filter className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
-            <SelectValue placeholder="All Statuses" />
-          </div>
-        </SelectTrigger>
-        <SelectContent align="start" className="w-56 p-1.5 shadow-lg border border-slate-200 bg-white rounded-xl">
-          <SelectGroup>
-            <SelectLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
-              Account Status
-            </SelectLabel>
-            <SelectItem value="All" className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-              <span className="flex items-center gap-2 font-medium text-slate-700">
-                <span className="w-2 h-2 rounded-full bg-slate-400"></span>
-                All Accounts
-              </span>
-            </SelectItem>
-            <SelectItem value="Active" className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-              <span className="flex items-center gap-2 font-medium text-emerald-700">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                Active Clients
-              </span>
-            </SelectItem>
-            <SelectItem value="Inactive" className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-              <span className="flex items-center gap-2 font-medium text-rose-700">
-                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                Inactive
-              </span>
-            </SelectItem>
-          </SelectGroup>
-        </SelectContent>
-      </Select>
-
-      <SortDropdown
-        value={sortOrder}
-        onChange={setSortOrder}
-        options={CUSTOMER_SORT_OPTIONS}
-      />
+  /** Shortcuts shown on hover (always visible on touch screens). */
+  const quickActions = (c: Customer) => (
+    <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+      <button type="button" title="New trip" aria-label="New trip" onClick={() => newTrip(c)} className={ui.iconBtn}><Plus className="size-4" /></button>
+      <button type="button" title="Live tracking" aria-label="Live tracking" onClick={() => openCustomer(c, 'tracking')} className={ui.iconBtn}><MapPinned className="size-4" /></button>
+      {exportsEnabled && (
+        <button type="button" title="Excel trip sheets" aria-label="Excel trip sheets" onClick={() => openCustomer(c, 'exports')} className={ui.iconBtn}><FileSpreadsheet className="size-4" /></button>
+      )}
+      {rowMenu(c)}
     </div>
   );
 
-  const gridPageSizeOptions = [10, 25, 50, 100];
-  const gridFromIndex = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const gridToIndex = totalCount === 0 ? 0 : gridFromIndex + filteredCustomers.length - 1;
-
-  const bulkActions = [
-    {
-      label: 'Export Documents',
-      icon: <Download size={13} />,
-      variant: 'secondary' as const,
-      onClick: (selectedRows: Customer[]) => {
-        setSelectedCustomersForExport(selectedRows);
-        setIsExportOpen(true);
-      }
-    },
-    {
-      label: 'Delete Selected',
-      icon: <Trash2 size={13} />,
-      variant: 'danger' as const,
-      onClick: (selectedRows: Customer[]) => {
-        setConfirmModal({
-          isOpen: true,
-          title: 'Delete Selected Customers',
-          message: `Are you sure you want to delete ${selectedRows.length} customers? This action cannot be undone.`,
-          onConfirm: async () => {
-            try {
-              await Promise.all(selectedRows.map(c => customerService.delete(c.id)));
-              queryClient.invalidateQueries({ queryKey: ['customers'] });
-            } catch (e) {
-              toast.error('Failed to delete selected customers');
-            }
-          }
-        });
-      }
-    }
+  const views: { id: CustomerView; label: string; count?: number }[] = [
+    { id: 'all', label: 'All', count: summary?.total },
+    { id: 'active', label: 'Active', count: summary?.active },
+    { id: 'inactive', label: 'Inactive', count: summary?.inactive },
+    { id: 'live', label: 'On the road', count: summary?.live_customers },
+    { id: 'balance', label: 'Owe money', count: summary?.outstanding.customers },
   ];
 
-  const customerHeaderActions = useMemo(() => (
-    <div className="flex items-center gap-2 shrink-0">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs dark:bg-slate-900 dark:border-slate-800"
-          >
-            <Download className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
-            Export / Import
-            <ChevronDown className="h-3 w-3 text-slate-400" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56 p-1.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl">
-          <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
-            Export Data
-          </DropdownMenuLabel>
-          <DropdownMenuItem
-            onClick={() => handleExportExcel(filteredCustomers)}
-            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
-          >
-            <FileSpreadsheet className="mr-2 h-3.5 w-3.5 text-emerald-600" />
-            Export Excel (.xlsx)
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => handleExportPDF(filteredCustomers)}
-            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md"
-          >
-            <FileText className="mr-2 h-3.5 w-3.5 text-rose-600" />
-            Export PDF (.pdf)
-          </DropdownMenuItem>
+  const emptyText =
+    view === 'live' ? 'No customer has a truck on the road right now.'
+      : view === 'balance' ? 'No customer owes money on issued invoices.'
+        : debouncedSearch ? `Nothing matches “${debouncedSearch}”.`
+          : 'Add your first customer to start creating trips.';
 
-          <DropdownMenuItem
-            onClick={() => {
-              setSelectedCustomersForExport([]);
-              setIsExportOpen(true);
-            }}
-            className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-brand hover:bg-orange-50 dark:hover:bg-orange-950/40"
-          >
-            <Filter className="mr-2 h-3.5 w-3.5 text-brand" />
-            Custom Export Settings...
-          </DropdownMenuItem>
-
-          <DropdownMenuSeparator className="my-1 border-slate-100 dark:border-slate-800" />
-
-          <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">
-            Import Data
-          </DropdownMenuLabel>
-          <DropdownMenuItem
-            onClick={() => setImportDialogOpen(true)}
-            className="cursor-pointer text-xs font-semibold py-1.5 px-2 rounded-md text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-          >
-            <UploadCloud className="mr-2 h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-            Import from Excel
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <Button
-        size="sm"
-        className="h-8 gap-1.5 text-xs font-bold bg-brand hover:bg-brand/90 text-white shadow-xs rounded-md px-3.5"
-        onClick={() => setIsCreateCustomerOpen(true)}
-      >
-        <Plus className="h-4 w-4" />
-        Add Customer
-      </Button>
-    </div>
-  ), [filteredCustomers, handleExportExcel, handleExportPDF]);
+  const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(totalCount, from + customers.length - 1);
 
   return (
-    <DashboardLayout 
-      active="Customers" 
-      title="Customers" 
-    >
-      <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-5">
-        
-        {/* ── 2. Instrument-Panel KPI Cards ───────────────────────────────── */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 shrink-0">
-          {/* Card 1: Total Customers — Tier Breakdown Bar */}
-          <KpiCard
-            title="TOTAL CUSTOMERS"
-            className="kpi-tint-customers"
-            value={
-              <span>
-                {totalCount}
-                <span className="text-[16px] font-semibold ml-1.5 opacity-85">Accounts</span>
-              </span>
-            }
-            variant="slate"
-            trend="up"
-            trendValue="+8 Accounts"
-            description="Corporate client accounts"
-            icon={CustomerBuilding}
-            isActive={selectedStatus === 'All'}
-            onClick={() => { setSelectedStatus('All'); setCurrentPage(1); }}
-          />
+    <DashboardLayout active="Customers" title="Customers">
+      <div className={ui.page}>
 
-          {/* Card 2: Invoices Pending — Outstanding Invoice Track */}
-          <KpiCard
-            title="INVOICES PENDING"
-            className="kpi-tint-customers"
-            value={
-              <span>
-                {pendingInvoicesCount}
-                <span className="text-[16px] font-semibold ml-1.5 opacity-85">Pending</span>
-              </span>
-            }
-            variant="rose"
-            trend="neutral"
-            trendValue="Awaiting Settlement"
-            description="Outstanding customer invoices"
-            icon={FileText}
-            chartData={[3, 5, 8, 4, pendingInvoicesCount]}
-            onClick={() => navigate('/invoices')}
+        {/* ── KPIs — each opens the matching view ── */}
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <Stat
+            label="Customers"
+            icon={Building2}
+            tone="brand"
+            value={summary?.total ?? '—'}
+            sub={summary ? `${summary.active} active · ${summary.new_this_month} new this month` : 'Loading…'}
+            active={view === 'all'}
+            onClick={() => changeView('all')}
           />
-
-          {/* Card 3: Contract Renewals Due — Urgency Progress Bar */}
-          <KpiCard
-            title="CONTRACT RENEWALS"
-            className="kpi-tint-customers"
-            value={
-              <span>
-                {Math.ceil(totalCount * 0.15) || 2}
-                <span className="text-[16px] font-semibold ml-1.5 opacity-85">Scheduled</span>
-              </span>
-            }
-            variant="blue"
-            trend="neutral"
-            trendValue="30-90 Days"
-            description="Commercial contract horizon"
-            icon={CalendarIcon}
-            chartData={[3, 5, 2, 6, Math.ceil(totalCount * 0.15) || 4]}
+          <Stat
+            label="On the road now"
+            icon={Navigation}
+            tone="blue"
+            value={summary?.live_customers ?? '—'}
+            sub={summary ? `${summary.live_trips} truck${summary.live_trips === 1 ? '' : 's'} loading or moving` : 'Loading…'}
+            active={view === 'live'}
+            onClick={() => changeView('live')}
+          />
+          <Stat
+            label="Outstanding"
+            icon={Wallet}
+            tone="amber"
+            unit="SAR"
+            value={summary ? money(summary.outstanding.amount) : '—'}
+            sub={summary ? `${summary.outstanding.customers} ${summary.outstanding.customers === 1 ? 'customer owes' : 'customers owe'} on issued invoices` : 'Loading…'}
+            active={view === 'balance'}
+            onClick={() => changeView('balance')}
+          />
+          <Stat
+            label="Overdue"
+            icon={CalendarClock}
+            tone="rose"
+            unit="SAR"
+            value={summary ? money(summary.overdue.amount) : '—'}
+            sub={summary ? (summary.overdue.amount > 0 ? `${summary.overdue.customers} customer${summary.overdue.customers === 1 ? '' : 's'} past due` : 'Nothing past due') : 'Loading…'}
+            subTone={summary && summary.overdue.amount > 0 ? 'rose' : undefined}
+            onClick={financeEnabled ? () => navigate('/finance/invoices?tab=overdue') : undefined}
           />
         </div>
 
-        {/* Active Filter Indicator Banner */}
-        {selectedStatus !== 'All' && (
-          <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-200/80 dark:border-orange-900/40 px-3.5 py-2 rounded-xl flex items-center justify-between gap-3 text-xs font-semibold text-orange-900 dark:text-orange-200 animate-fade-in shrink-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Filter className="h-3.5 w-3.5 text-brand shrink-0" />
-              <span>Filtering by Account Status:</span>
-              <Badge variant="outline" className="bg-white dark:bg-slate-900 border-orange-300 dark:border-orange-800 text-orange-800 dark:text-orange-300 text-[11px] font-bold">
-                {selectedStatus}
-              </Badge>
+        {/* ── Customer table ── */}
+        <section className={cn(ui.card, 'overflow-hidden')}>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-4">
+            <div>
+              <h2 className={ui.h2}>Customer accounts</h2>
+              <p className={ui.muted}>{isLoading ? 'Loading…' : `${totalCount} ${totalCount === 1 ? 'customer' : 'customers'}`}</p>
             </div>
-            <button
-              onClick={() => {
-                setSelectedStatus('All');
-                setCurrentPage(1);
-              }}
-              className="px-2.5 py-1 rounded-md bg-white dark:bg-slate-900 border border-orange-200 dark:border-orange-800 text-[11px] font-bold text-brand hover:bg-orange-100 dark:hover:bg-orange-950 transition-colors shadow-2xs cursor-pointer flex items-center gap-1.5 shrink-0"
-            >
-              <span>Show All Customers</span>
-              <X className="w-3 h-3 shrink-0" />
-            </button>
-          </div>
-        )}
-
-        {/* Dynamic Table or Grid Render */}
-        {viewMode === 'list' ? (
-          <div className="w-full flex flex-col">
-            <DataTable
-              title={
-                <span className="flex items-center gap-2 text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight">
-                  <Building2 className="w-5 h-5 text-indigo-600" />
-                  <span>Customer Accounts Ledger</span>
-                </span>
-              }
-              columns={columns}
-              data={filteredCustomers}
-              sortAccessor={(row: Customer) => row.createdAt}
-              bulkActions={bulkActions}
-              enableSelection={true}
-              compact={true}
-              isLoading={isLoading}
-              isError={isError}
-              errorMessage={(error as Error)?.message || 'Failed to load customers.'}
-              searchPlaceholder="Search company name, phone..."
-              searchValue={search}
-              onSearchChange={(val) => { setSearch(val); setCurrentPage(1); }}
-              filterElement={statusCreditFilters}
-              actionsElement={customerHeaderActions}
-              currentPage={currentPage}
-              totalPages={totalPages}
-              pageSize={pageSize}
-              onPageSizeChange={(size) => {
-                setPageSize(size);
-                setCurrentPage(1);
-              }}
-              totalRecords={totalCount}
-              onPageChange={setCurrentPage}
-              onRowClick={(row) => navigate(`/customers/${row.id}`)}
-            />
-          </div>
-        ) : (
-          <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col w-full animate-fade-in">
-            {/* Toolbar: matches the list view's search bar & filters, placed above the grid */}
-            <div className="shrink-0 p-3 sm:p-4 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 flex flex-col gap-3">
-              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 w-full">
-                <div className="flex items-center gap-2.5 sm:gap-3 flex-1 flex-wrap min-w-0">
-                  <div className="flex items-center gap-2 shrink-0">
-                    <h3 className="text-sm font-extrabold text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-cyan-500" />
-                      <span>Customer Accounts Ledger</span>
-                    </h3>
-                    <Badge variant="outline" className="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 text-[11px] font-mono font-bold px-2 py-0.5">
-                      {totalCount} {totalCount === 1 ? 'record' : 'records'}
-                    </Badge>
-                  </div>
-
-                  <div className="relative w-full sm:w-72 lg:w-88 shrink-0">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      type="text"
-                      placeholder="Search company name, phone..."
-                      value={search}
-                      onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
-                      className="w-full pl-8.5 pr-8 h-9 text-xs bg-white dark:bg-slate-800/80 text-slate-900 dark:text-slate-100 border-slate-200 dark:border-slate-700 focus-visible:ring-brand/20 focus-visible:border-brand rounded-md font-medium"
-                      aria-label="Search Customers"
-                    />
-                    {search && (
-                      <button
-                        onClick={() => setSearch('')}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
-                        aria-label="Clear search"
-                      >
-                        <X size={12} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex w-full xl:w-auto items-center flex-wrap gap-2 sm:shrink-0 xl:ml-auto rounded-lg border border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-950/30 p-1.5">
-                  {statusCreditFilters}
-                  {customerHeaderActions}
-                </div>
-              </div>
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={cn(ui.btn, ui.btnOutline)}>
+                    <Download className="size-4" /> Export / import <ChevronDown className="size-3.5 text-slate-400" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="text-xs font-medium text-slate-500">Export this page</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => exportExcel(customers)} className="text-[13px]"><FileSpreadsheet className="mr-2 size-4 text-emerald-600" /> Excel (.xlsx)</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportPdf(customers)} className="text-[13px]"><FileText className="mr-2 size-4 text-rose-600" /> PDF</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportCsv(customers)} className="text-[13px]"><FileText className="mr-2 size-4 text-slate-500" /> CSV</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setExportRowsSelected([]); setIsExportOpen(true); }} className="text-[13px]"><Filter className="mr-2 size-4 text-slate-500" /> Custom export…</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setImportDialogOpen(true)} className="text-[13px]"><UploadCloud className="mr-2 size-4 text-slate-500" /> Import from Excel</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <button type="button" onClick={() => setIsCreateOpen(true)} className={cn(ui.btn, ui.btnPrimary)}>
+                <Plus className="size-4" /> Add customer
+              </button>
             </div>
+          </div>
 
-            {/* Grid Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 p-4 sm:p-5">
-            {isLoading ? (
-              Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-xl border border-slate-100 p-4 h-[120px] skeleton"></div>
-              ))
-            ) : isError ? (
-              <div className="col-span-full py-16 flex flex-col items-center justify-center">
-                <XCircle className="w-8 h-8 text-rose-500 shrink-0" />
-                <p className="text-sm font-bold text-slate-900">Data Unavailable</p>
-                <p className="text-xs text-slate-500 mt-1">{(error as Error)?.message || 'Failed to load customers.'}</p>
-              </div>
-            ) : filteredCustomers.length === 0 ? (
-              <div className="col-span-full py-16 flex flex-col items-center justify-center">
-                <p className="text-sm font-bold text-slate-900">No Records Found</p>
-                <p className="text-xs text-slate-500 mt-1">There are no customers matching your filters.</p>
-              </div>
-            ) : filteredCustomers.map((c: Customer) => {
-              return (
-                <div 
-                  key={c.id} 
-                  className="bg-white dark:bg-slate-900 rounded-xl border border-black/[0.08] dark:border-slate-800 p-4 shadow-2xs flex flex-col justify-between gap-3 hover:border-brand/40 hover:-translate-y-0.5 hover:shadow-xs transition-all duration-150 ease-in-out cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`Customer: ${c.name}, Status: ${c.isActive ? 'Active' : 'Inactive'}`}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      navigate(`/customers/${c.id}`);
-                    }
-                  }}
-                  onClick={() => navigate(`/customers/${c.id}`)}
+          {/* Toolbar: views · search · sort · layout */}
+          <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-5 py-3 dark:border-slate-800">
+            <div className="flex max-w-full items-center gap-1 overflow-x-auto" role="tablist" aria-label="Customer views">
+              {views.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === v.id}
+                  onClick={() => changeView(v.id)}
+                  className={cn(
+                    'inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-[13px] font-medium transition-colors cursor-pointer',
+                    view === v.id ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
+                  )}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      {c.logo_url ? (
-                        <img
-                          src={c.logo_url}
-                          alt={c.name}
-                          className="w-10 h-10 object-contain shrink-0"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 flex items-center justify-center text-sm font-bold text-indigo-600 dark:text-indigo-400 shrink-0">
-                          {c.name?.[0]?.toUpperCase() || 'C'}
+                  {v.label}
+                  {v.count !== undefined && <span className={cn('tabular-nums', view === v.id ? 'text-white/70 dark:text-slate-500' : 'text-slate-400')}>{v.count}</span>}
+                </button>
+              ))}
+            </div>
+
+            <div className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <div className="relative flex-1 sm:w-64 sm:flex-none">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={search}
+                  onChange={(e) => { setSearch(e.target.value); resetPaging(); }}
+                  placeholder="Search name or phone"
+                  aria-label="Search customers"
+                  className={cn(ui.input, 'w-full pl-9 pr-8')}
+                />
+                {search && (
+                  <button type="button" onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700">
+                    <X className="size-3.5" />
+                  </button>
+                )}
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={cn(ui.btn, ui.btnOutline, 'px-3')}>
+                    <ArrowUpDown className="size-4 text-slate-500" />
+                    <span className="hidden sm:inline">{SORTS.find((s) => s.value === sort)!.label}</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  {SORTS.map((s) => (
+                    <DropdownMenuItem key={s.value} onClick={() => { setSort(s.value); resetPaging(); }} className="justify-between text-[13px]">
+                      {s.label} {sort === s.value && <Check className="size-4 text-[#FA634E]" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <div className="flex items-center rounded-lg border border-slate-200 p-0.5 dark:border-slate-700">
+                {([['list', List, 'Table'], ['grid', LayoutGrid, 'Cards']] as const).map(([mode, Icon, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setLayout(mode)}
+                    title={label}
+                    aria-label={`${label} view`}
+                    aria-pressed={layout === mode}
+                    className={cn('inline-flex size-8 items-center justify-center rounded-md transition-colors cursor-pointer', layout === mode ? 'bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white' : 'text-slate-400 hover:text-slate-700')}
+                  >
+                    <Icon className="size-4" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {selectedRows.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 border-t border-orange-100 bg-orange-50/60 px-5 py-2.5 text-[13px] dark:border-orange-900/40 dark:bg-orange-950/20">
+              <span className="font-medium text-slate-900 dark:text-white">{selectedRows.length} selected</span>
+              <button type="button" onClick={() => { setExportRowsSelected(selectedRows); setIsExportOpen(true); }} className={cn(ui.btn, ui.btnOutline, 'h-8')}>
+                <Download className="size-4" /> Export
+              </button>
+              <button type="button" onClick={() => askDelete(selectedRows)} className={cn(ui.btn, 'h-8 border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 dark:bg-slate-900')}>
+                <Trash2 className="size-4" /> Delete
+              </button>
+              <button type="button" onClick={() => setSelected(new Set())} className="ml-auto text-[13px] font-medium text-slate-500 hover:text-slate-900">Clear</button>
+            </div>
+          )}
+
+          {isError ? (
+            <div className="border-t border-slate-100 p-5 dark:border-slate-800">
+              <EmptyBlock icon={AlertCircle} title="Couldn't load customers" text={(error as Error)?.message || 'Try again in a moment.'} />
+            </div>
+          ) : !isLoading && customers.length === 0 ? (
+            <div className="border-t border-slate-100 p-5 dark:border-slate-800">
+              <EmptyBlock icon={Building2} title="No customers here" text={emptyText} />
+            </div>
+          ) : layout === 'list' ? (
+            <div className={cn('overflow-x-auto border-t border-slate-100 dark:border-slate-800 transition-opacity', isFetching && !isLoading && 'opacity-60')}>
+              <table className="w-full min-w-[920px] text-sm">
+                <thead className="bg-slate-50/80 dark:bg-slate-800/40">
+                  <tr className="border-b border-slate-100 dark:border-slate-800">
+                    <th className="w-10 py-2.5 pl-5 pr-0">
+                      <input type="checkbox" checked={allOnPage} onChange={toggleAll} aria-label="Select all on this page" className="size-4 cursor-pointer rounded border-slate-300 accent-[#FA634E]" />
+                    </th>
+                    <th className={ui.th}>Customer</th>
+                    <th className={ui.th}>Contact</th>
+                    <th className={cn(ui.th, 'text-right')}>Trips</th>
+                    <th className={ui.th}>Last trip</th>
+                    <th className={cn(ui.th, 'text-right')}>Outstanding</th>
+                    <th className={ui.th}>Status</th>
+                    <th className={cn(ui.th, 'pr-5')}><span className="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {isLoading
+                    ? Array.from({ length: 6 }).map((_, i) => (
+                      <tr key={i}>
+                        <td colSpan={8} className="px-5 py-4"><div className="h-6 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></td>
+                      </tr>
+                    ))
+                    : customers.map((c) => {
+                      const owed = c.stats?.outstanding ?? 0;
+                      const overdue = c.stats?.overdue ?? 0;
+                      const live = c.stats?.live_trips ?? 0;
+                      return (
+                        <tr
+                          key={c.id}
+                          onClick={() => openCustomer(c)}
+                          className={cn('group cursor-pointer transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40', selected.has(c.id) && 'bg-orange-50/40')}
+                        >
+                          <td className="py-3.5 pl-5 pr-0" onClick={(e) => e.stopPropagation()}>
+                            <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleRow(c.id)} aria-label={`Select ${c.name}`} className="size-4 cursor-pointer rounded border-slate-300 accent-[#FA634E]" />
+                          </td>
+                          <td className={ui.td}>
+                            <div className="flex min-w-0 items-center gap-3">
+                              <CustomerAvatar name={c.name} logo={c.logo_url} />
+                              <div className="min-w-0">
+                                <p className="max-w-[240px] truncate font-medium text-slate-900 group-hover:text-[#E5533F] dark:text-white" title={c.name}>{c.name}</p>
+                                <p className="text-xs text-slate-400 tabular-nums">{custRef(c)}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className={ui.td}>
+                            <p className={cn('truncate', c.primary_contact_person ? 'text-slate-900 dark:text-slate-100' : 'text-slate-400')}>
+                              {c.primary_contact_person || 'No contact person'}
+                            </p>
+                            <PhoneLine phone={contactPhone(c)} className="-ml-0.5" />
+                          </td>
+                          <td className={cn(ui.td, 'text-right')}>
+                            <div className="flex items-center justify-end gap-2">
+                              {live > 0 && <Badge tone="emerald" dot pulse>{live} live</Badge>}
+                              <span className="font-medium text-slate-900 tabular-nums dark:text-white">{c._count?.trips ?? 0}</span>
+                            </div>
+                          </td>
+                          <td className={ui.td}>
+                            {c.stats?.last_trip_at ? (
+                              <>
+                                <p className="text-slate-900 dark:text-slate-100">{formatInDeploymentTz(c.stats.last_trip_at, tz, 'd MMM yyyy')}</p>
+                                <p className="text-xs text-slate-400">{timeAgo(c.stats.last_trip_at)}</p>
+                              </>
+                            ) : (
+                              <span className="text-slate-400">No trips yet</span>
+                            )}
+                          </td>
+                          <td className={cn(ui.td, 'text-right tabular-nums')}>
+                            {owed > 0 ? (
+                              <>
+                                <p className="font-medium text-slate-900 dark:text-white"><span className="text-xs font-normal text-slate-400">SAR</span> {money(owed)}</p>
+                                {overdue > 0 && <p className="text-xs font-medium text-rose-600">{money(overdue)} overdue</p>}
+                              </>
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-600">—</span>
+                            )}
+                          </td>
+                          <td className={ui.td}>
+                            {c.isActive ? <Badge tone="emerald" dot>Active</Badge> : <Badge tone="slate" dot>Inactive</Badge>}
+                          </td>
+                          <td className={cn(ui.td, 'pr-5')}>
+                            <div className="opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">{quickActions(c)}</div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className={cn('grid grid-cols-1 gap-4 border-t border-slate-100 bg-slate-50/50 p-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 dark:border-slate-800 dark:bg-slate-950/30', isFetching && !isLoading && 'opacity-60')}>
+              {isLoading
+                ? Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-[196px] animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />)
+                : customers.map((c) => {
+                  const owed = c.stats?.outstanding ?? 0;
+                  const overdue = c.stats?.overdue ?? 0;
+                  const live = c.stats?.live_trips ?? 0;
+                  return (
+                    <div
+                      key={c.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openCustomer(c)}
+                      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openCustomer(c); } }}
+                      className={cn(ui.card, 'group flex cursor-pointer flex-col transition-all hover:border-slate-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FA634E]/30')}
+                    >
+                      <div className="flex items-start gap-3 p-4">
+                        <CustomerAvatar name={c.name} logo={c.logo_url} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium text-slate-900 group-hover:text-[#E5533F] dark:text-white" title={c.name}>{c.name}</p>
+                          <p className="truncate text-[13px] text-slate-500">{c.primary_contact_person || custRef(c)}</p>
                         </div>
-                      )}
-                      <div className="flex flex-col">
-                        <span className="font-bold text-slate-955 dark:text-slate-50 text-sm">
-                          {c.name}
-                        </span>
-                        <span className="font-mono text-[11px] text-brand font-bold">
-                          {`CUST-${c.id.slice(0, 5).toUpperCase()}`}
-                        </span>
+                        {c.isActive ? <Badge tone="emerald" dot>Active</Badge> : <Badge tone="slate" dot>Inactive</Badge>}
+                      </div>
+                      <dl className="grid grid-cols-3 gap-px border-y border-slate-100 bg-slate-100 dark:border-slate-800 dark:bg-slate-800">
+                        {[
+                          { label: 'Trips', value: c._count?.trips ?? 0 },
+                          { label: 'Live', value: live, className: live > 0 ? 'text-emerald-600' : undefined },
+                          { label: 'Owes (SAR)', value: owed > 0 ? money(owed) : '—', className: overdue > 0 ? 'text-rose-600' : undefined },
+                        ].map((s) => (
+                          <div key={s.label} className="bg-white px-3 py-2.5 dark:bg-slate-900">
+                            <dt className={ui.label}>{s.label}</dt>
+                            <dd className={cn('mt-0.5 font-semibold text-slate-900 tabular-nums dark:text-white', s.className)}>{s.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                      <div className="flex items-center justify-between gap-2 py-1.5 pl-4 pr-2">
+                        <span className="truncate text-xs text-slate-500">{c.stats?.last_trip_at ? `Last trip ${timeAgo(c.stats.last_trip_at)}` : 'No trips yet'}</span>
+                        {quickActions(c)}
                       </div>
                     </div>
-                    <StatusBadge status={c.isActive ? 'Active' : 'Inactive'} />
-                  </div>
-
-                  <div className="space-y-1.5 py-2 border-y border-slate-100 dark:border-slate-800 text-xs">
-                    <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-                      <span className="font-medium text-slate-400 dark:text-slate-500">Phone:</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">{c.contact_phone}</span>
-                    </div>
-
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1">
-                    <span className="text-[10px] text-slate-400">
-                      Joined: {formatInDeploymentTz(c.createdAt, tz, 'MM/dd/yyyy')}
-                    </span>
-
-                    <Button variant="outline" size="sm" className="h-7 text-xs font-semibold">
-                      View Profile
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
+                  );
+                })}
             </div>
+          )}
 
-            {/* Pagination Footer — mirrors the list view's pagination */}
-            <div className="shrink-0 p-3 sm:p-4 sm:px-5 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-50/60 dark:bg-slate-900/60 text-xs font-semibold text-slate-600 dark:text-slate-400">
-              <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-500 dark:text-slate-400 font-medium">
-                    <span className="hidden sm:inline">Rows per page:</span>
-                    <span className="sm:hidden">Rows:</span>
-                  </span>
-                  <select
-                    value={pageSize}
-                    onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                    className="h-8 px-2.5 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-xs font-bold text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-brand/20 cursor-pointer shadow-xs"
-                    aria-label="Rows per page"
-                  >
-                    {gridPageSizeOptions.map((opt) => (
-                      <option key={opt} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <span className="text-slate-500 dark:text-slate-400 font-medium border-l border-slate-200 dark:border-slate-700 pl-4 hidden sm:inline">
-                  Showing <span className="font-extrabold text-slate-900 dark:text-slate-100">{gridFromIndex}</span> to <span className="font-extrabold text-slate-900 dark:text-slate-100">{gridToIndex}</span> of <span className="font-extrabold text-slate-900 dark:text-slate-100">{totalCount}</span> entries
-                </span>
+          {/* Pagination */}
+          {totalCount > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 text-[13px] text-slate-500 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span>Rows</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); resetPaging(); }}
+                  aria-label="Rows per page"
+                  className="h-8 cursor-pointer rounded-lg border border-slate-200 bg-white px-2 text-[13px] text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                >
+                  {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <span className="ml-2 tabular-nums">{from}–{to} of {totalCount}</span>
               </div>
-
-              <div className="flex items-center gap-1.5 ml-auto" role="navigation" aria-label="Pagination Navigation">
-                <button
-                  onClick={() => setCurrentPage(1)}
-                  disabled={currentPage === 1 || isLoading}
-                  aria-label="First page"
-                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                >
-                  <ChevronsLeft size={14} />
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => { setPage((p) => Math.max(1, p - 1)); setSelected(new Set()); }} disabled={page <= 1} className={cn(ui.btn, ui.btnOutline, 'h-8 px-2.5')} aria-label="Previous page">
+                  <ChevronLeft className="size-4" />
                 </button>
-
-                <button
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1 || isLoading}
-                  aria-label="Previous page"
-                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                >
-                  <ChevronLeft size={14} />
-                </button>
-
-                <div className="flex items-center gap-1 px-2" aria-live="polite">
-                  <span className="px-2.5 py-1 text-xs font-extrabold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 rounded-md border border-slate-200 dark:border-slate-700 shadow-2xs">
-                    {currentPage}
-                  </span>
-                  <span className="text-slate-400 text-xs font-medium">/</span>
-                  <span className="text-slate-600 dark:text-slate-400 text-xs font-bold">{totalPages}</span>
-                </div>
-
-                <button
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage >= totalPages || isLoading}
-                  aria-label="Next page"
-                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                >
-                  <ChevronRight size={14} />
-                </button>
-
-                <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={currentPage >= totalPages || isLoading}
-                  aria-label="Last page"
-                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-                >
-                  <ChevronsRight size={14} />
+                <span className="px-2 tabular-nums">Page {page} of {totalPages}</span>
+                <button type="button" onClick={() => { setPage((p) => Math.min(totalPages, p + 1)); setSelected(new Set()); }} disabled={page >= totalPages} className={cn(ui.btn, ui.btnOutline, 'h-8 px-2.5')} aria-label="Next page">
+                  <ChevronRight className="size-4" />
                 </button>
               </div>
             </div>
-          </div>
-        )}
+          )}
+        </section>
 
         <ConfirmModal
-          isOpen={confirmModal.isOpen}
-          onClose={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-          onConfirm={async () => {
-            await confirmModal.onConfirm();
-            setConfirmModal(prev => ({ ...prev, isOpen: false }));
-          }}
-          title={confirmModal.title}
-          message={confirmModal.message}
-          isDestructive={true}
+          isOpen={confirm.open}
+          onClose={() => setConfirm((p) => ({ ...p, open: false }))}
+          onConfirm={async () => { await confirm.onConfirm(); setConfirm((p) => ({ ...p, open: false })); }}
+          title={confirm.title}
+          message={confirm.message}
+          isDestructive
         />
 
         <ExcelImportDialog
@@ -931,40 +573,29 @@ function getSecondaryContactPhone(phoneOrId?: string): string {
         <ExportModal
           isOpen={isExportOpen}
           onClose={() => setIsExportOpen(false)}
-          title="Export Customers Ledger"
+          title="Export customers"
           description="Choose your export preferences, filters, and columns."
-          fileNamePrefix="customers_ledger"
+          fileNamePrefix="customers"
           sheetName="Customers"
-          subtitle="MERCON Logistics Customer Accounts Ledger"
-          filteredData={filteredCustomers}
-          allData={customersRes?.data || []}
-          selectedData={selectedCustomersForExport}
+          subtitle="MERCON Logistics Customer Accounts"
+          filteredData={customers}
+          allData={customers}
+          selectedData={exportRowsSelected}
           totalCount={totalCount}
           columns={CUSTOMER_EXPORT_COLUMNS}
           filters={CUSTOMER_EXPORT_FILTERS}
           rowDateAccessor={(c) => c.createdAt}
         />
 
-        {/* ── Customer Preview & Quick-Add Modals ──────────────────── */}
         <CustomerPreviewModal
           customer={previewCustomer}
           isOpen={!!previewCustomer}
           onClose={() => setPreviewCustomer(null)}
-          onCreateTrip={(c) => navigate(`/trips/new?customer_id=${c.id}`)}
+          onCreateTrip={newTrip}
           onEdit={(c) => setEditCustomer(c)}
         />
-
-        <EditCustomerModal
-          customer={editCustomer}
-          isOpen={!!editCustomer}
-          onClose={() => setEditCustomer(null)}
-        />
-
-        <CreateCustomerModal
-          isOpen={isCreateCustomerOpen}
-          onClose={() => setIsCreateCustomerOpen(false)}
-        />
-
+        <EditCustomerModal customer={editCustomer} isOpen={!!editCustomer} onClose={() => setEditCustomer(null)} />
+        <CreateCustomerModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} />
       </div>
     </DashboardLayout>
   );

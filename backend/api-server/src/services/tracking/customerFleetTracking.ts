@@ -164,7 +164,7 @@ export type FleetLookup =
 export async function loadCustomerFleetTracking(
   db: PrismaClient,
   token: string,
-  opts: { now?: Date; countView?: boolean } = {},
+  opts: { now?: Date; countView?: boolean; device?: string | null } = {},
 ): Promise<FleetLookup> {
   const now = opts.now ?? new Date();
   if (token.length < 16 || token.length > 64) return { state: 'not_found' };
@@ -180,6 +180,9 @@ export async function loadCustomerFleetTracking(
     db.customerTrackingLink
       .update({ where: { id: link.id }, data: { open_count: { increment: 1 }, last_opened_at: now } })
       .catch((err) => logger.warn({ err }, '[tracking] could not record a customer page open'));
+    db.trackingLinkOpen
+      .create({ data: { customerLinkId: link.id, opened_at: now, device: opts.device ?? null } })
+      .catch((err) => logger.warn({ err }, '[tracking] could not log a customer page open'));
   }
 
   const cached = fleetCache.get(link.customer.id);

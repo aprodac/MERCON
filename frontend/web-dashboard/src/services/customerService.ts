@@ -27,6 +27,33 @@ export interface Customer {
   trips?: { id: string; ref_id: string; status: string; createdAt: string }[];
   /** Present on list responses only — total trip count, used to rank frequent shippers. */
   _count?: { trips: number };
+  /** Present on full list responses only (not `mode=lookup`). */
+  stats?: CustomerRowStats;
+}
+
+/** Trip statuses counted as "on the road" — mirrors LIVE_TRIP_STATUSES in customerController. */
+export const LIVE_TRIP_STATUSES = ['Loading', 'InTransit', 'Delayed'];
+
+export interface CustomerRowStats {
+  /** Trips loading, in transit or delayed right now. */
+  live_trips: number;
+  last_trip_at: string | null;
+  /** Balance on issued, unpaid invoices (SAR). */
+  outstanding: number;
+  /** Part of `outstanding` past its due date. */
+  overdue: number;
+}
+
+/** Headline figures for the Customers page (GET /customers/summary). */
+export interface CustomerSummary {
+  total: number;
+  active: number;
+  inactive: number;
+  new_this_month: number;
+  live_customers: number;
+  live_trips: number;
+  outstanding: { amount: number; customers: number };
+  overdue: { amount: number; customers: number };
 }
 
 export interface CreateCustomerPayload {
@@ -57,6 +84,12 @@ export interface CustomerFilters {
   per_page?: number;
   /** Light "picker" shape — scalars only, no per-row trip count. */
   mode?: 'lookup';
+  /** Only customers with a truck loading / in transit / delayed now. */
+  live?: boolean;
+  /** Only customers owing on issued invoices. */
+  has_balance?: boolean;
+  sort_by?: 'trips' | 'name' | 'createdAt';
+  sort_dir?: 'asc' | 'desc';
 }
 
 export interface CustomerStatementInvoice {
@@ -83,6 +116,11 @@ export const customerService = {
   async getAll(filters: CustomerFilters = {}): Promise<ApiResponse<Customer[]>> {
     const res = await api.get<ApiResponse<Customer[]>>('/customers', { params: filters });
     return res?.data ?? { success: false, data: [] };
+  },
+
+  async getSummary(): Promise<CustomerSummary> {
+    const res = await api.get<ApiResponse<CustomerSummary>>('/customers/summary');
+    return res.data.data;
   },
 
   async getById(id: string): Promise<Customer> {
