@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import MapGL, { Layer, Marker, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { AlertTriangle, Check, Clock, Focus, Hash, Loader2, MapPinOff, RefreshCw, SignalLow, Truck } from 'lucide-react';
+import { AlertTriangle, Check, ChevronLeft, Clock, Focus, Hash, Loader2, MapPinOff, RefreshCw, SignalLow, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resolveFileUrl } from '@/lib/documents';
 import type { StopGroup } from '@/lib/fleetLive';
@@ -13,6 +13,7 @@ import { LIVE_MAP_STYLES, applyMapPalette } from '@/components/maps/live/liveMap
 import { SAUDI_CENTER, DEFAULT_SAUDI_ZOOM } from '@/utils/saudiMapConfig';
 import { trackingService, type PublicTracking, type PublicTrackingStop } from '@/services/trackingService';
 import { useTrackingText, type TrackingText } from './trackingI18n';
+import { SheetHandle, useBottomSheet } from './bottomSheet';
 import { AskButton, BrandMark, Centered, Chip, LangToggle, Photo, PhotoViewer, TRACK_BLUE, TruckPuck, line } from './trackingParts';
 
 /**
@@ -30,6 +31,10 @@ const IDLE_REFRESH_MS = 120_000;
 
 export default function TrackingPage() {
   const { token = '' } = useParams();
+  // Opened from the customer's all-trucks page: its token, for the back button.
+  const [params] = useSearchParams();
+  const fleetToken = backToFleetToken(params.get('c'));
+  const sheet = useBottomSheet(0.46);
   // The first load counts as an open for ops ("customer opened 3 times"); refreshes don't.
   const counted = useRef(false);
   const { data, error, isLoading, dataUpdatedAt, refetch, isFetching } = useQuery({
@@ -80,18 +85,20 @@ export default function TrackingPage() {
 
   return (
     <div dir={text.rtl ? 'rtl' : 'ltr'} className="relative flex h-[100dvh] flex-col overflow-hidden bg-[#f6f4ef] text-slate-900 md:block">
-      <div dir="ltr" className="relative h-[46dvh] shrink-0 md:absolute md:inset-0 md:h-auto">
+      <div dir="ltr" className={cn('relative shrink-0 overflow-hidden md:absolute md:inset-0', sheet.mapBox.className)} style={sheet.mapBox.style}>
         <TrackingMap data={data} text={text} />
-        <MapTopBar data={data} text={text} />
+        <MapTopBar data={data} text={text} fleetToken={fleetToken} />
       </div>
       <section
         className={cn(
-          'relative z-10 -mt-5 flex-1 overflow-y-auto rounded-t-3xl bg-white px-4 pt-3 pb-6 shadow-[0_-8px_30px_rgba(0,0,0,0.10)]',
+          'relative z-10 flex-1 overflow-y-auto bg-white px-4 pt-3 pb-6 shadow-[0_-8px_30px_rgba(0,0,0,0.10)]',
+          sheet.expanded ? 'mt-0' : '-mt-5 rounded-t-3xl',
           'md:absolute md:top-4 md:bottom-4 md:mt-0 md:w-[390px] md:flex-none md:rounded-3xl md:pt-5 md:shadow-[0_8px_30px_rgba(0,0,0,0.15)]',
           text.rtl ? 'md:right-4' : 'md:left-4',
         )}
       >
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200 md:hidden" />
+        <SheetHandle handle={sheet.handle} expanded={sheet.expanded} label={sheet.expanded ? text.t.showMap : text.t.showMore} />
+        {fleetToken && sheet.expanded && <BackToFleet token={fleetToken} text={text} className="mb-3" />}
         <Headline data={data} text={text} />
         <Progress data={data} text={text} />
         <Timeline data={data} text={text} onPhoto={setPhoto} />
@@ -264,14 +271,35 @@ function TrackingMap({ data, text }: { data: PublicTracking; text: TrackingText 
   );
 }
 
-function MapTopBar({ data, text }: { data: PublicTracking; text: TrackingText }) {
+/** The all-trucks page token from `?c=` — only a well-formed token, so the back link can only lead to a /c/ page. */
+function backToFleetToken(raw: string | null): string | null {
+  return raw && /^[A-Za-z0-9_-]{16,64}$/.test(raw) ? raw : null;
+}
+
+/** "‹ All trucks" — back to the customer's page this trip was opened from. */
+function BackToFleet({ token, text, className }: { token: string; text: TrackingText; className?: string }) {
+  return (
+    <Link
+      to={`/c/${token}`}
+      className={cn('pointer-events-auto inline-flex h-9 items-center gap-1 rounded-xl border border-black/5 bg-white/90 px-3 text-xs font-semibold whitespace-nowrap text-slate-800 shadow-sm backdrop-blur', className)}
+    >
+      <ChevronLeft className={cn('size-4', text.rtl && 'rotate-180')} /> {text.t.allTrucks}
+    </Link>
+  );
+}
+
+function MapTopBar({ data, text, fleetToken }: { data: PublicTracking; text: TrackingText; fleetToken: string | null }) {
   const pos = data.position;
   const live = data.trip.phase === 'active' || data.trip.phase === 'planned';
   return (
     <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2 md:top-4 md:right-4 md:left-auto">
-      <span className="pointer-events-auto flex h-9 items-center gap-2 rounded-xl border border-black/5 bg-white/90 px-3 shadow-sm backdrop-blur md:hidden">
-        <BrandMark brand={data.brand} className="block max-w-[150px] truncate whitespace-nowrap" />
-      </span>
+      {fleetToken ? (
+        <BackToFleet token={fleetToken} text={text} />
+      ) : (
+        <span className="pointer-events-auto flex h-9 items-center gap-2 rounded-xl border border-black/5 bg-white/90 px-3 shadow-sm backdrop-blur md:hidden">
+          <BrandMark brand={data.brand} className="block max-w-[150px] truncate whitespace-nowrap" />
+        </span>
+      )}
       <div className="flex items-center gap-2">
         {live && (
           <span className="pointer-events-auto flex h-9 items-center gap-2 rounded-xl border border-black/5 bg-white/90 px-3 text-xs font-medium whitespace-nowrap text-slate-700 shadow-sm backdrop-blur">
