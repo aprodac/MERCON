@@ -1,20 +1,19 @@
 /**
  * Operator Commercial Quotations — rate and lane lookup.
  * Status tiles that also filter (All · Active · Expired · Inactive), search,
- * a sort, then one compact row per quotation. Tap a row for its page; + adds one.
+ * then one compact row per quotation, sorted by origin. Tap a row for its page; + adds one.
  */
 import React, { useMemo, useState } from 'react';
 import { FlatList, RefreshControl, Text, TextInput, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowDownUp, Search, Tag, X } from 'lucide-react-native';
+import { Search, Tag, X } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { EmptyState, ErrorState, SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { QuotationRow, QuotationsHeader } from '../components';
 import { useQuotations } from '../hooks';
 import { sortQuotations } from '../services/quotationsService';
-import type { QuotationSortOption } from '../types';
 
 type Filter = 'all' | 'Active' | 'Expired' | 'Inactive';
 
@@ -28,19 +27,11 @@ const TILES: { id: Filter; label: string; dot?: string }[] = [
   { id: 'Inactive', label: 'Inactive', dot: '#9898A4' },
 ];
 
-const SORTS: { id: QuotationSortOption; label: string }[] = [
-  { id: 'route', label: 'Origin A-Z' },
-  { id: 'customer', label: 'Customer A-Z' },
-  { id: 'rate', label: 'Highest rate' },
-  { id: 'newest', label: 'Newest' },
-];
-
 export default function QuotationsScreen() {
   const router = useRouter();
   const { quotations, loading, error, refresh, isRefreshing } = useQuotations();
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  const [sort, setSort] = useState<QuotationSortOption>('route');
 
   const counts = useMemo(() => ({
     all: quotations.length,
@@ -56,13 +47,8 @@ export default function QuotationsScreen() {
       if (!needle) return true;
       return `${q.firstStop} ${q.lastStop} ${q.customerName} ${q.name} ${q.vehicleClass} ${q.quotationNumber ?? ''}`.toLowerCase().includes(needle);
     });
-    return sortQuotations(list, sort);
-  }, [quotations, query, filter, sort]);
-
-  const cycleSort = () => {
-    Haptics.selectionAsync().catch(() => {});
-    setSort((cur) => SORTS[(SORTS.findIndex((x) => x.id === cur) + 1) % SORTS.length].id);
-  };
+    return sortQuotations(list, 'route');
+  }, [quotations, query, filter]);
 
   const first = loading && quotations.length === 0;
 
@@ -123,15 +109,7 @@ export default function QuotationsScreen() {
                 ) : null}
               </View>
 
-              {!first ? (
-                <View style={s.countRow}>
-                  <Text style={s.count}>{shown.length} {shown.length === 1 ? 'quotation' : 'quotations'}</Text>
-                  <TouchableOpacity style={s.sort} onPress={cycleSort} activeOpacity={0.7} accessibilityLabel="Change sort order">
-                    <ArrowDownUp size={14} color={MUTED} strokeWidth={2.2} />
-                    <Text style={s.sortText}>{SORTS.find((x) => x.id === sort)?.label}</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : null}
+              {!first ? <Text style={s.count}>{shown.length} {shown.length === 1 ? 'quotation' : 'quotations'}</Text> : null}
             </View>
           }
           renderItem={({ item }) => (
@@ -166,8 +144,5 @@ const s = StyleSheet.create({
   dot: { width: 6, height: 6, borderRadius: 3 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E9E9EC', paddingHorizontal: 14 },
   searchInput: { flex: 1, fontSize: 15, color: INK, paddingVertical: 0 },
-  countRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   count: { fontSize: 16, fontWeight: '700', color: INK },
-  sort: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
-  sortText: { fontSize: 13, color: MUTED, fontWeight: '500' },
 });

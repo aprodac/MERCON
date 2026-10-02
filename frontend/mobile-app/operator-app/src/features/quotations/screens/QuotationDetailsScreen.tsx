@@ -1,14 +1,14 @@
 /**
  * Route: /quotation-details?id= — one quotation.
  *
- * A black header (number, customer, route, the rate and
- * what it is for), driver pay and margin as two tiles, the remaining terms,
- * and the stops as a timeline. Reads the same cached list as the
+ * A black header (number, status, route, then three equal cells: the rate
+ * plus driver pay and margin, or truck and line when there is no driver pay),
+ * a Details list, the stops as a timeline, and Edit pinned at the bottom. Reads the same cached list as the
  * quotations page. Each fact appears once.
  */
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, SquarePen, Tag } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -24,13 +24,9 @@ const BORDER = '#E9E9EC';
 /** Secondary text on the black header. */
 const ON_DARK_MUTED = '#A1A1AA';
 
-/** Number only — "SAR" is shown small beside it. */
-function amount(n: number): string {
-  return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
-}
-
 export default function QuotationDetailsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { quotations, loading, error, refresh, isRefreshing } = useQuotations();
   const q = quotations.find((x) => x.id === id);
@@ -47,26 +43,37 @@ export default function QuotationDetailsScreen() {
     // Only meaningful for a per-trip rate; a monthly rate and a per-day pay don't compare.
     const margin = !q.isMonthly && q.driverPayout !== null ? q.rate - q.driverPayout : null;
 
-    const tiles: { label: string; value: string; good?: boolean }[] = [
-      ...(q.driverPayout !== null ? [{ label: 'Driver pay', value: formatCurrency(q.driverPayout, cur) }] : []),
-      ...(margin !== null ? [{ label: 'Margin', value: formatCurrency(margin, cur), good: true }] : []),
-      ...(q.isMonthly && q.dailyEquivalent !== null ? [{ label: 'About per day', value: formatCurrency(q.dailyEquivalent, cur) }] : []),
+    // Three equal cells under the route. Money when the quotation has driver pay,
+    // otherwise the truck and line — so the header is always full width.
+    const cells: { label: string; value: string; sub?: string; good?: boolean }[] = [
+      { label: 'Rate', value: formatCurrency(q.rate, cur), sub: q.isMonthly ? 'per month' : 'per trip' },
+      ...(q.driverPayout !== null
+        ? [
+          { label: 'Driver pay', value: formatCurrency(q.driverPayout, cur) },
+          margin !== null
+            ? { label: 'Margin', value: formatCurrency(margin, cur), good: true }
+            : { label: 'About per day', value: q.dailyEquivalent !== null ? formatCurrency(q.dailyEquivalent, cur) : '—' },
+        ]
+        : [
+          { label: 'Truck', value: q.vehicleClass || '—' },
+          { label: 'Line', value: q.lineType || '—' },
+        ]),
     ];
-    // Truck and line type sit under the rate in the header, so they aren't repeated here.
-    const terms: { label: string; value: string }[] = [
+    const inHeader = new Set(cells.map((c) => c.label));
+    const details: { label: string; value: string }[] = [
+      { label: 'Customer', value: niceName(q.customerName) },
+      ...(!inHeader.has('Truck') ? [{ label: 'Truck type', value: q.vehicleClass }] : []),
+      ...(!inHeader.has('Line') ? [{ label: 'Line type', value: q.lineType }] : []),
       { label: 'Operation', value: q.operationType },
       { label: 'Valid', value: formatValidityRange(q.validFrom, q.validTo) },
     ].filter((r) => !!r.value);
-    const basis = [q.isMonthly ? 'per month' : 'per trip', q.lineType, q.vehicleClass].filter(Boolean).join('  ·  ');
 
     return (
       <>
-        {/* 0 · black header: who, where, how much */}
+        {/* 0 · black header: number, route, then three equal cells */}
         <View style={s.header}>
           <View style={s.headerTop}>
-            <Text style={s.number} numberOfLines={1}>
-              {[q.quotationNumber ? `QT-${q.quotationNumber}` : null, niceName(q.customerName)].filter(Boolean).join('  ·  ')}
-            </Text>
+            <Text style={s.number}>{q.quotationNumber ? `QT-${q.quotationNumber}` : 'Quotation'}</Text>
             <View style={s.status}>
               <View style={[s.statusDot, { backgroundColor: st.dot }]} />
               <Text style={[s.statusText, { color: st.fg }]}>{st.label}</Text>
@@ -77,41 +84,31 @@ export default function QuotationDetailsScreen() {
             <Text style={s.arrow}>{'  →  '}</Text>
             {q.lastStop}
           </Text>
-          <View style={s.rateRow}>
-            <Text style={s.cur}>{cur}</Text>
-            <Text style={s.rate} numberOfLines={1} adjustsFontSizeToFit>{amount(q.rate)}</Text>
-          </View>
-          <Text style={s.basis}>{basis}</Text>
-        </View>
-
-        {/* 1 · what the driver gets and what is left */}
-        {tiles.length > 0 ? (
-          <View style={s.tiles}>
-            {tiles.map((x) => (
-              <View key={x.label} style={s.tile}>
-                <Text style={s.tileLabel}>{x.label}</Text>
-                <Text style={[s.tileValue, x.good && { color: '#146C3C' }]} numberOfLines={1} adjustsFontSizeToFit>{x.value}</Text>
+          <View style={s.cells}>
+            {cells.map((c, i) => (
+              <View key={c.label} style={[s.cell, i > 0 && s.cellBorder]}>
+                <Text style={s.cellLabel} numberOfLines={1}>{c.label}</Text>
+                <Text style={[s.cellValue, c.good && { color: '#4ADE80' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{c.value}</Text>
+                {c.sub ? <Text style={s.cellSub}>{c.sub}</Text> : null}
               </View>
             ))}
           </View>
-        ) : null}
+        </View>
 
-        {/* 2 · terms */}
-        {terms.length > 0 ? (
-          <View style={s.block}>
-            <Text style={s.heading}>Terms</Text>
-            <View style={s.card}>
-              {terms.map((r, i) => (
-                <View key={r.label} style={[s.info, i > 0 && s.border]}>
-                  <Text style={s.infoLabel}>{r.label}</Text>
-                  <Text style={s.infoValue}>{r.value}</Text>
-                </View>
-              ))}
-            </View>
+        {/* 1 · details */}
+        <View style={s.block}>
+          <Text style={s.heading}>Details</Text>
+          <View style={s.card}>
+            {details.map((r, i) => (
+              <View key={r.label} style={[s.info, i > 0 && s.border]}>
+                <Text style={s.infoLabel}>{r.label}</Text>
+                <Text style={s.infoValue} numberOfLines={2}>{r.value}</Text>
+              </View>
+            ))}
           </View>
-        ) : null}
+        </View>
 
-        {/* 3 · stops, in order */}
+        {/* 2 · stops, in order */}
         <View style={s.block}>
           <View style={s.headRow}>
             <Text style={s.heading}>Route</Text>
@@ -154,11 +151,7 @@ export default function QuotationDetailsScreen() {
           <ArrowLeft size={20} color={INK} strokeWidth={2.4} />
         </TouchableOpacity>
         <Text style={s.barTitle}>Quotation</Text>
-        {q ? (
-          <TouchableOpacity style={s.barBtn} onPress={() => router.push({ pathname: '/quotation-edit', params: { id: q.id } })} accessibilityLabel="Edit quotation">
-            <SquarePen size={18} color={INK} strokeWidth={2.2} />
-          </TouchableOpacity>
-        ) : <View style={{ width: 44 }} />}
+        <View style={{ width: 44 }} />
       </View>
       <ScrollView
         contentContainerStyle={s.scroll}
@@ -167,6 +160,14 @@ export default function QuotationDetailsScreen() {
       >
         {body()}
       </ScrollView>
+      {q ? (
+        <View style={[s.foot, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+          <TouchableOpacity style={s.edit} activeOpacity={0.85} onPress={() => router.push({ pathname: '/quotation-edit', params: { id: q.id } })}>
+            <SquarePen size={17} color={Colors.white} strokeWidth={2.2} />
+            <Text style={s.editText}>Edit quotation</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -176,42 +177,42 @@ const s = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 8 },
   barBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: BORDER },
   barTitle: { fontSize: 16, fontWeight: '700', color: INK },
-  scroll: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 48, gap: 20 },
+  scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 24, gap: 18 },
+  foot: { paddingHorizontal: 16, paddingTop: 12, backgroundColor: Colors.white, borderTopWidth: 1, borderTopColor: BORDER },
+  edit: { height: 52, borderRadius: 16, backgroundColor: INK, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  editText: { fontSize: 15, fontWeight: '700', color: Colors.white },
 
-  header: { backgroundColor: INK, borderRadius: 20, padding: 16, gap: 6 },
-  headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 6 },
-  number: { flex: 1, fontSize: 13, fontWeight: '600', color: ON_DARK_MUTED, fontVariant: ['tabular-nums'] },
+  header: { backgroundColor: INK, borderRadius: 20, paddingHorizontal: 16, paddingTop: 16, gap: 10 },
+  headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  number: { fontSize: 13, fontWeight: '700', color: ON_DARK_MUTED, letterSpacing: 0.5, fontVariant: ['tabular-nums'] },
   status: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.white, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   statusText: { fontSize: 12, fontWeight: '700' },
-  route: { fontSize: 20, fontWeight: '700', color: Colors.white, letterSpacing: -0.3, lineHeight: 26 },
+  route: { fontSize: 22, fontWeight: '700', color: Colors.white, letterSpacing: -0.4, lineHeight: 28 },
   arrow: { color: Colors.primary, fontWeight: '400' },
-  rateRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginTop: 6 },
-  cur: { fontSize: 17, fontWeight: '700', color: ON_DARK_MUTED },
-  rate: { flexShrink: 1, fontSize: 40, fontWeight: '800', color: Colors.white, letterSpacing: -1.2, fontVariant: ['tabular-nums'] },
-  basis: { fontSize: 13, color: ON_DARK_MUTED },
+  cells: { flexDirection: 'row', marginTop: 6, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.14)' },
+  cell: { flex: 1, minWidth: 0, paddingVertical: 14, gap: 3 },
+  cellBorder: { borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.14)', paddingLeft: 12 },
+  cellLabel: { fontSize: 12, color: ON_DARK_MUTED },
+  cellValue: { fontSize: 17, fontWeight: '700', color: Colors.white, letterSpacing: -0.2, fontVariant: ['tabular-nums'], paddingRight: 8 },
+  cellSub: { fontSize: 12, color: ON_DARK_MUTED },
 
-  tiles: { flexDirection: 'row', gap: 10 },
-  tile: { flex: 1, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: BORDER, padding: 16, gap: 4 },
-  tileLabel: { fontSize: 12, color: MUTED },
-  tileValue: { fontSize: 20, fontWeight: '700', color: INK, letterSpacing: -0.3, fontVariant: ['tabular-nums'] },
-
-  info: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, paddingVertical: 14 },
+  info: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, paddingVertical: 12 },
   border: { borderTopWidth: 1, borderTopColor: '#F1F1F3' },
   infoLabel: { fontSize: 14, color: MUTED },
   infoValue: { flex: 1, textAlign: 'right', fontSize: 14, fontWeight: '600', color: INK },
 
-  block: { gap: 10 },
+  block: { gap: 8 },
   headRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   heading: { fontSize: 17, fontWeight: '700', color: INK, letterSpacing: -0.2 },
   count: { fontSize: 13, fontWeight: '600', color: MUTED, backgroundColor: '#EAEAED', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
   card: { backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: BORDER, paddingHorizontal: 16 },
-  stop: { flexDirection: 'row', gap: 14, paddingTop: 16 },
+  stop: { flexDirection: 'row', gap: 12, paddingTop: 14 },
   rail: { alignItems: 'center', width: 26 },
   num: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
   numText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
   railLine: { flex: 1, width: 2, backgroundColor: '#E4E4E7', marginTop: 4, marginBottom: -12 },
-  stopText: { flex: 1, minWidth: 0, gap: 3, minHeight: 26, justifyContent: 'center', paddingBottom: 16 },
+  stopText: { flex: 1, minWidth: 0, gap: 3, minHeight: 26, justifyContent: 'center', paddingBottom: 14 },
   stopHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   stopName: { flex: 1, fontSize: 15, fontWeight: '600', color: INK },
   stopKind: { fontSize: 11, fontWeight: '700', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
