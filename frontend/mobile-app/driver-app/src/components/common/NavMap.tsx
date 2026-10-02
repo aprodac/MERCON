@@ -15,6 +15,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { isValidCoordinate, type LatLng } from '../../utils/geo';
+import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 let WebViewComponent: any = null;
 try {
@@ -257,6 +258,7 @@ function buildHtml(center: LatLng): string {
 }
 
 export function NavMap({ pickup, destination, driverPosition, routeCoordinates, follow, tilt, night, onFollowChange, style }: NavMapProps) {
+  const { t } = useLanguage();
   const webViewRef = useRef<any>(null);
   const readyRef = useRef(false);
   const [ready, setReady] = useState(false);
@@ -308,7 +310,7 @@ export function NavMap({ pickup, destination, driverPosition, routeCoordinates, 
   if (!WebViewComponent) {
     return (
       <View style={[styles.container, style, styles.center]}>
-        <Text style={styles.note}>Map unavailable on this build.</Text>
+        <Text style={styles.note}>{t('msg_map_unavailable', 'Map unavailable on this build.')}</Text>
       </View>
     );
   }
@@ -331,11 +333,11 @@ export function NavMap({ pickup, destination, driverPosition, routeCoordinates, 
       {!ready && (
         <View style={[StyleSheet.absoluteFill, styles.center, styles.loading]}>
           {failed ? (
-            <Text style={styles.note}>Map could not load. Check the internet connection.</Text>
+            <Text style={styles.note}>{t('msg_map_load_failed', 'Map could not load. Check the internet connection.')}</Text>
           ) : (
             <>
               <ActivityIndicator size="large" color="#FA634E" />
-              <Text style={styles.note}>Loading map…</Text>
+              <Text style={styles.note}>{t('msg_loading_map', 'Loading map…')}</Text>
             </>
           )}
         </View>

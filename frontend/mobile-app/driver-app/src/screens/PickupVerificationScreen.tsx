@@ -96,7 +96,7 @@ const SideMapTileBox = () => (
 
 const PickupVerificationScreen = () => {
   const router = useRouter();
-  const { t, language } = useLanguage();
+  const { t, language, tr } = useLanguage();
   const { trip, loading, refetch, setTrip } = useCurrentTrip();
   const ws = getEffectiveWorkflowState(trip);
   const isRound = isRoundTrip(trip);
@@ -386,7 +386,7 @@ const PickupVerificationScreen = () => {
       if (failedUploads > 0) {
         Alert.alert(
           t('err_upload_failed_title', 'Upload failed'),
-          t('err_upload_failed_retry', `${failedUploads} photo(s) could not be uploaded. Check your connection and tap the button again.`),
+          t('err_upload_failed_retry', '{count} photo(s) could not be uploaded. Check your connection and tap the button again.').replace('{count}', String(failedUploads)),
         );
         return;
       }
@@ -550,7 +550,7 @@ const PickupVerificationScreen = () => {
               <Text style={styles.galleryLinkText}>
                 {evidence.screenshot
                   ? t('action_take_photo_instead', 'Take a photo instead')
-                  : language === 'ur' ? 'گیلری سے منتخب کریں' : 'Choose from gallery'}
+                  : tr('Choose from gallery', 'گیلری سے منتخب کریں')}
               </Text>
             </TouchableOpacity>
           ) : null}

@@ -209,7 +209,7 @@ export default function ProfileScreen() {
         subText: profile?.license_number ? `DL No. ${profile.license_number}` : (dlDoc ? `DL No. ${dlDoc.id.slice(-8)}` : 'DL No. —'),
         expiry: formatDate(dlDoc?.expiry_date || profile?.license_expiry),
         status: dlDoc ? (docStatus(dlDoc).kind === 'expired' ? 'expired' : docStatus(dlDoc).kind === 'expiring' ? 'expiring' : 'valid') : 'valid',
-        statusLabel: dlDoc ? docStatus(dlDoc).label : 'Valid',
+        statusLabel: dlDoc ? docStatus(dlDoc).label : t('label_valid', 'Valid'),
         Icon: IdCard,
         fileUrl: dlDoc?.file_url ?? null,
       });
@@ -226,7 +226,7 @@ export default function ProfileScreen() {
         subText: vehicle?.insurance_number ? `Policy #${vehicle.insurance_number}` : (insDoc ? `Policy #${insDoc.id.slice(-8)}` : 'Policy #—'),
         expiry: formatDate(insDoc?.expiry_date),
         status: insDoc ? (docStatus(insDoc).kind === 'expired' ? 'expired' : docStatus(insDoc).kind === 'expiring' ? 'expiring' : 'valid') : 'valid',
-        statusLabel: insDoc ? docStatus(insDoc).label : 'Valid',
+        statusLabel: insDoc ? docStatus(insDoc).label : t('label_valid', 'Valid'),
         Icon: ShieldCheck,
         fileUrl: insDoc?.file_url ?? null,
       });
@@ -243,7 +243,7 @@ export default function ProfileScreen() {
         subText: vehicle?.rc_number ? `RC #${vehicle.rc_number}` : (rcDoc ? `RC #${rcDoc.id.slice(-8)}` : 'RC #—'),
         expiry: formatDate(rcDoc?.expiry_date),
         status: rcDoc ? (docStatus(rcDoc).kind === 'expired' ? 'expired' : docStatus(rcDoc).kind === 'expiring' ? 'expiring' : 'valid') : 'valid',
-        statusLabel: rcDoc ? docStatus(rcDoc).label : 'Valid',
+        statusLabel: rcDoc ? docStatus(rcDoc).label : t('label_valid', 'Valid'),
         Icon: FileText,
         fileUrl: rcDoc?.file_url ?? null,
       });
@@ -269,7 +269,7 @@ export default function ProfileScreen() {
     });
 
     return list;
-  }, [profile, vehicle, backendDocs]);
+  }, [profile, vehicle, backendDocs, t]);
 
   return (
     <View style={styles.container}>
@@ -296,7 +296,7 @@ export default function ProfileScreen() {
                 <Avatar initials={initialsOf(name)} imageUri={avatarUrl} size={84} />
               </TouchableOpacity>
               <Text style={styles.driverNameTextCentered} numberOfLines={1}>{name}</Text>
-              <Text style={styles.driverVehicleSubText}>Vehicle: {plateNumber}</Text>
+              <Text style={styles.driverVehicleSubText}>{t('label_vehicle', 'Vehicle')}: {plateNumber}</Text>
             </View>
           </SafeAreaView>
         </View>
@@ -308,7 +308,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.menuTextCol}>
               <Text style={styles.menuItemTitle}>{t('nav_personal_info', 'Personal Information')}</Text>
-              <Text style={styles.menuItemSub}>View your profile details</Text>
+              <Text style={styles.menuItemSub}>{t('sub_personal_info', 'View your profile details')}</Text>
             </View>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
@@ -320,7 +320,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.menuTextCol}>
               <Text style={styles.menuItemTitle}>{t('title_assigned_vehicle', 'Assigned Vehicle')}</Text>
-              <Text style={styles.menuItemSub}>View your current vehicle</Text>
+              <Text style={styles.menuItemSub}>{t('sub_assigned_vehicle', 'View your current vehicle')}</Text>
             </View>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
@@ -332,7 +332,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.menuTextCol}>
               <Text style={styles.menuItemTitle}>{t('title_my_documents', 'My Documents')}</Text>
-              <Text style={styles.menuItemSub}>Manage uploaded documents</Text>
+              <Text style={styles.menuItemSub}>{t('sub_documents', 'Manage uploaded documents')}</Text>
             </View>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
@@ -344,7 +344,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.menuTextCol}>
               <Text style={styles.menuItemTitle}>{t('title_performance_overview', 'Performance Overview')}</Text>
-              <Text style={styles.menuItemSub}>View your trip statistics</Text>
+              <Text style={styles.menuItemSub}>{t('sub_performance', 'View your trip statistics')}</Text>
             </View>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
@@ -356,7 +356,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.menuTextCol}>
               <Text style={styles.menuItemTitle}>{t('title_earnings_charges', 'Earnings & Charges')}</Text>
-              <Text style={styles.menuItemSub}>View driver charges and payouts</Text>
+              <Text style={styles.menuItemSub}>{t('sub_earnings', 'View driver charges and payouts')}</Text>
             </View>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
@@ -368,7 +368,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.menuTextCol}>
               <Text style={styles.menuItemTitle}>{t('action_change_password', 'Change Password')}</Text>
-              <Text style={styles.menuItemSub}>Update your security</Text>
+              <Text style={styles.menuItemSub}>{t('sub_change_password', 'Update your security')}</Text>
             </View>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
@@ -380,7 +380,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.menuTextCol}>
               <Text style={styles.menuItemTitle}>{t('nav_settings', 'App Settings')}</Text>
-              <Text style={styles.menuItemSub}>Language and preferences</Text>
+              <Text style={styles.menuItemSub}>{t('sub_settings', 'Language and preferences')}</Text>
             </View>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
@@ -392,7 +392,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.menuTextCol}>
               <Text style={styles.menuItemTitle}>{t('nav_help_support', 'Help & Support')}</Text>
-              <Text style={styles.menuItemSub}>Get assistance from admin</Text>
+              <Text style={styles.menuItemSub}>{t('sub_help', 'Get assistance from admin')}</Text>
             </View>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>
@@ -411,7 +411,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.menuTextCol}>
               <Text style={styles.menuItemTitle}>{t('action_sign_out', 'Logout')}</Text>
-              <Text style={styles.menuItemSub}>Sign out of your account</Text>
+              <Text style={styles.menuItemSub}>{t('sub_sign_out', 'Sign out of your account')}</Text>
             </View>
             <ChevronRightIcon size={18} color="#A1A1AA" />
           </TouchableOpacity>

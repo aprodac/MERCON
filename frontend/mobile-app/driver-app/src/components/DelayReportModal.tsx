@@ -28,7 +28,7 @@ interface DelayReportModalProps {
 }
 
 export function DelayReportModal({ visible, tripId, onClose, onSuccess }: DelayReportModalProps) {
-  const { t } = useLanguage();
+  const { t, tp } = useLanguage();
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [customNotes, setCustomNotes] = useState('');
   const [media, setMedia] = useState<CapturedMedia | null>(null);
@@ -199,7 +199,7 @@ export function DelayReportModal({ visible, tripId, onClose, onSuccess }: DelayR
                   style={styles.textInput}
                   value={customNotes}
                   onChangeText={setCustomNotes}
-                  placeholder={t('placeholder_delay_notes', 'Type extra notes or custom reason (optional)...')}
+                  placeholder={tp('placeholder_delay_notes', 'Type extra notes or custom reason (optional)...')}
                   placeholderTextColor={Colors.gray400}
                   multiline
                   numberOfLines={3}
