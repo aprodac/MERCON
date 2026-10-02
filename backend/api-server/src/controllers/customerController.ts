@@ -256,6 +256,11 @@ export const createCustomer = async (req: Request, res: Response) => {
       whatsapp_group_link,
       whatsapp_group_name,
       driver_workflow,
+      tracking_enabled,
+      tracking_auto_link,
+      tracking_show_deadline,
+      tracking_show_delay_reason,
+      tracking_show_photos,
       isActive,
     } = req.body;
     
@@ -273,6 +278,11 @@ export const createCustomer = async (req: Request, res: Response) => {
         whatsapp_group_link,
         whatsapp_group_name,
         driver_workflow: driver_workflow || 'NATIVE',
+        tracking_enabled,
+        tracking_auto_link,
+        tracking_show_deadline,
+        tracking_show_delay_reason,
+        tracking_show_photos,
         isActive: isActive ?? true,
         created_by: (req as any).user?.id
       }

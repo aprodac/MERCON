@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, TrendingUp, Sparkles, CreditCard, ArrowRight, Package, Layers, Phone, Mail,
   Trash2, UploadCloud, User, Download, ChevronDown, Car, UserCheck, Copy, PhoneCall,
   MoreVertical, Award, FolderOpen, Banknote, Gauge, Compass, Radio, Plane, Search, Tag,
-  LayoutDashboard, ReceiptText, ArrowUpRight, MessageCircle, FileSpreadsheet
+  LayoutDashboard, ReceiptText, ArrowUpRight, MessageCircle, FileSpreadsheet, MapPinned
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -23,6 +23,7 @@ import LocationFormDialog from '@/components/locations/LocationFormDialog';
 import CustomerQuotationsTab from '@/components/customers/CustomerQuotationsTab';
 import CustomerTripsTab from '@/components/customers/CustomerTripsTab';
 import CustomerTripSheetsTab from '@/components/customers/CustomerTripSheetsTab';
+import CustomerTrackingTab from '@/components/customers/CustomerTrackingTab';
 import { useModuleEnabled } from '@/components/auth/RequireModule';
 import VisualRouteProgress from '@/components/trips/VisualRouteProgress';
 import ExcelImportDialog from '@/components/fleet/ExcelImportDialog';
@@ -186,8 +187,8 @@ export default function CustomerDetailsPage() {
   // Active view tab state: default to 'overview'; ?tab=trip-sheets opens Trip sheets (linked from an invoice)
   const [searchParams] = useSearchParams();
   const tripSheetsEnabled = useModuleEnabled('company-reports');
-  const [activeTab, setActiveTab] = useState<'overview' | 'dispatches' | 'quotations' | 'saved_places' | 'governance' | 'financials' | 'trip_sheets'>(
-    searchParams.get('tab') === 'trip-sheets' ? 'trip_sheets' : 'overview'
+  const [activeTab, setActiveTab] = useState<'overview' | 'dispatches' | 'quotations' | 'saved_places' | 'governance' | 'financials' | 'trip_sheets' | 'tracking'>(
+    searchParams.get('tab') === 'trip-sheets' ? 'trip_sheets' : searchParams.get('tab') === 'tracking' ? 'tracking' : 'overview'
   );
 
   // Fetch Customer details
@@ -474,6 +475,7 @@ export default function CustomerDetailsPage() {
             { id: 'dispatches', label: 'Dispatches', icon: Truck },
             { id: 'quotations', label: 'Quotations', icon: Tag },
             ...(tripSheetsEnabled ? [{ id: 'trip_sheets', label: 'Trip sheets', icon: FileSpreadsheet }] : []),
+            { id: 'tracking', label: 'Tracking', icon: MapPinned },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -681,6 +683,8 @@ export default function CustomerDetailsPage() {
             />
           </div>
         )}
+
+        {activeTab === 'tracking' && <CustomerTrackingTab customer={customer} />}
 
         {activeTab === 'trip_sheets' && tripSheetsEnabled && (
           <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-4 shadow-2xs">

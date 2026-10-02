@@ -492,6 +492,11 @@ export const createCustomerBody = z.object({
   whatsapp_group_link: z.string().trim().optional(),
   whatsapp_group_name: z.string().trim().optional(),
   driver_workflow: z.enum(['NATIVE', 'EXTERNAL_APP']).optional(),
+  tracking_enabled: z.boolean().optional(),
+  tracking_auto_link: z.boolean().optional(),
+  tracking_show_deadline: z.boolean().optional(),
+  tracking_show_delay_reason: z.boolean().optional(),
+  tracking_show_photos: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
 
@@ -508,6 +513,11 @@ export const updateCustomerBody = z.object({
   whatsapp_group_link: z.string().trim().optional(),
   whatsapp_group_name: z.string().trim().optional(),
   driver_workflow: z.enum(['NATIVE', 'EXTERNAL_APP']).optional(),
+  tracking_enabled: z.boolean().optional(),
+  tracking_auto_link: z.boolean().optional(),
+  tracking_show_deadline: z.boolean().optional(),
+  tracking_show_delay_reason: z.boolean().optional(),
+  tracking_show_photos: z.boolean().optional(),
   isActive: z.boolean().optional(),
 });
 

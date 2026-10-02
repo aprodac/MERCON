@@ -10,6 +10,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useTrackingLink } from '@/hooks/useTrackingLink';
 
 interface TripDelayNotificationModalProps {
   isOpen: boolean;
@@ -41,6 +42,8 @@ export default function TripDelayNotificationModal({
 }: TripDelayNotificationModalProps) {
   const [isAcknowledged, setIsAcknowledged] = useState(false);
   const [mediaError, setMediaError] = useState(false);
+  // The trip's customer tracking link, for customers who want it in messages.
+  const tracking = useTrackingLink(trip?.id, isOpen);
 
   React.useEffect(() => {
     setMediaError(false);
@@ -70,7 +73,8 @@ export default function TripDelayNotificationModal({
       `• *Location*: ${locationName}\n` +
       `• *Delay Impact*: ${delayDuration}\n` +
       `• *Reason*: ${delayReason}\n\n` +
-      `Our operations dispatch team is monitoring the route.`
+      `Our operations dispatch team is monitoring the route.` +
+      (tracking.autoUrl ? `\n\nTrack live: ${tracking.autoUrl}` : '')
     );
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };

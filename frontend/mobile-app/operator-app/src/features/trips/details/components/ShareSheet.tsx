@@ -26,6 +26,7 @@ interface Props {
   f: Formatters;
   position: { lat: number; lng: number } | null;
   remaining: Remaining | null;
+  trackingUrl: string | null;
   whatsappApi: boolean;
   onShared: () => void;
 }
@@ -34,7 +35,7 @@ type Who = 'customer_group' | 'customer_contact' | 'driver' | 'internal' | 'othe
 
 const QUICK_TITLE: Record<QuickKind, string> = { status: 'Send status', eta: 'Send ETA', location: 'Send location', delay: 'Send delay notice' };
 
-export function ShareSheet({ target, onClose, trip, phase, f, position, remaining, whatsappApi, onShared }: Props) {
+export function ShareSheet({ target, onClose, trip, phase, f, position, remaining, trackingUrl, whatsappApi, onShared }: Props) {
   const customerPhone = trip.customer?.whatsapp_number || trip.customer?.contact_phone || null;
   const driverPhone = trip.is_third_party ? trip.third_party_driver_phone : trip.driver?.phone_primary;
   const update = target?.type === 'update' ? target.update : null;
@@ -70,7 +71,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
       setChosen(new Set(unsent.length ? unsent : target.update.items.map((m) => m.id)));
       setText('');
     } else {
-      setText(quickMessage(target.kind, { trip, phase, f, position, remaining }));
+      setText(quickMessage(target.kind, { trip, phase, f, position, remaining, trackingUrl }));
     }
   }
 

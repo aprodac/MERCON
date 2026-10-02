@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { getPublicTripEvidence } from '../controllers/publicController';
 import { getPublicShare } from '../controllers/operatorInboxController';
+import { getPublicFleetTracking, getPublicTracking, getTrackingPreviewTags } from '../controllers/trackingController';
+import { createPublicTrackingRateLimit } from '../middlewares/rateLimit';
 
 const router = Router();
 
@@ -8,5 +10,11 @@ const router = Router();
 router.get('/evidence-gallery', getPublicTripEvidence);
 // A forwarded driver update: only the photos chosen for that forward, until the link expires.
 router.get('/shares/:token', getPublicShare);
+// The customer tracking page: live truck position, ETA and stops for one trip.
+router.get('/track/:token', createPublicTrackingRateLimit(), getPublicTracking);
+// The customer-wide tracking page: every truck of one customer on the road.
+router.get('/fleet/:token', createPublicTrackingRateLimit(), getPublicFleetTracking);
+// WhatsApp link-preview tags for /t/ and /c/ pages (read by the web container's nginx).
+router.get('/og/:kind/:token', createPublicTrackingRateLimit(), getTrackingPreviewTags);
 
 export default router;

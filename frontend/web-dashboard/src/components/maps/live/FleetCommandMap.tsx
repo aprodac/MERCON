@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { formatInDeploymentTz, useDeploymentTimezone } from '@/lib/datetime';
 import { whatsAppLink } from '@/lib/share';
+import { useTrackingLink } from '@/hooks/useTrackingLink';
 import {
   LIVE_FILTERS, buildEtaShareText, computeEta, groupStops, groupStopsOf, isOffline, matchesFilter, matchesQuery, nextStop, pickLabels, routeBearing, timeAgo,
   unitPriority, unitTitle, type LiveFilter,
@@ -207,6 +208,8 @@ export default function FleetCommandMap({
   );
 
   const selected = useMemo(() => units.find((u) => u.key === selectedKey) ?? null, [units, selectedKey]);
+  // The selected trip's customer tracking link, ready before Share is clicked.
+  const tracking = useTrackingLink(selected?.trip?.id, !!selected?.trip);
   const stop = selected ? nextStop(selected) : null;
 
   // ── Grouping: nearby units merge into a numbered bubble; the selected one never does ──
@@ -598,7 +601,7 @@ export default function FleetCommandMap({
 
   const share = () => {
     if (!selected) return;
-    const text = buildEtaShareText(selected, eta, formatTime);
+    const text = buildEtaShareText(selected, eta, formatTime, tracking.autoUrl);
     window.open(whatsAppLink(null, text), '_blank', 'noopener');
     toast.success('ETA ready to send in WhatsApp');
   };

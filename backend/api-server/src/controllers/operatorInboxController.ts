@@ -35,7 +35,7 @@ export const getDocumentExpiries = async (_req: Request, res: Response) => {
  * mercon.tech points at mercon.tech and one from dev points at dev — the
  * server's old default sent every environment's links to dev.
  */
-function publicBaseUrl(req: Request): string {
+export function publicBaseUrl(req: Request): string {
   const configured = process.env.PUBLIC_BASE_URL?.trim();
   if (configured) return configured.replace(/\/+$/, '');
   const origin = req.get('origin');

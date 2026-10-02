@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert } from 'react-native';
 import {
-  Camera, CirclePlus, Clock3, FileText, MapPin, TriangleAlert, ListOrdered, Package, ShieldAlert, Trash2, Truck, UserRound, XCircle, type LucideIcon,
+  Camera, CirclePlus, Clock3, FileText, Link2, MapPin, TriangleAlert, ListOrdered, Package, ShieldAlert, Trash2, Truck, UserRound, XCircle, type LucideIcon,
 } from 'lucide-react-native';
 import { SUGGESTED_CHARGE_TYPES, SUGGESTED_UNIT_BY_CHARGE_TYPE } from '@mercon/shared-types';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
@@ -14,7 +14,7 @@ import { ACTION, Divider, INK, MUTED, SheetRow } from './parts';
 // ── More ──────────────────────────────────────────────────────────────────────
 
 export function MoreSheet({
-  visible, trip, active, onClose, onChange, onCharges, onUpload, onActivity, onCancel, onQuick,
+  visible, trip, active, onClose, onChange, onCharges, onUpload, onActivity, onCancel, onQuick, tracking,
 }: {
   visible: boolean;
   trip: OperatorTripDetail;
@@ -26,6 +26,8 @@ export function MoreSheet({
   onUpload: () => void;
   onActivity: () => void;
   onCancel: () => void;
+  /** The customer tracking link row — absent when the trip has no link (draft, cancelled, tracking off). */
+  tracking?: { sub: string; onPress: () => void } | null;
 }) {
   const go = (fn: () => void) => () => { onClose(); setTimeout(fn, 250); };
   const change = canChangeAssignment(trip);
@@ -39,6 +41,9 @@ export function MoreSheet({
           </>
         ) : null}
         <SheetRow icon={Clock3} tint={TONE.violet.bg} fg={TONE.violet.fg} label="Send ETA" sub="WhatsApp the expected arrival" onPress={go(() => onQuick('eta'))} />
+        {tracking ? (
+          <SheetRow icon={Link2} tint={TONE.blue.bg} fg={TONE.blue.fg} label="Customer tracking link" sub={tracking.sub} onPress={go(tracking.onPress)} />
+        ) : null}
         {active ? (
           <>
             <SheetRow icon={MapPin} tint={TONE.red.bg} fg={TONE.red.fg} label="Send location" sub="WhatsApp the truck's live position" onPress={go(() => onQuick('location'))} />

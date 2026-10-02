@@ -128,6 +128,22 @@ export default function SettingsPage() {
     onError: (err) => toast.error(errorMessage(err, 'Failed to save timezone')),
   });
 
+  /* ── Customer tracking ───────────────────────────────────── */
+  const [supportWa, setSupportWa] = useState('');
+  useEffect(() => {
+    if (settings) setSupportWa(settings.supportWhatsapp ?? '');
+  }, [settings]);
+  const supportDigits = supportWa.replace(/[^0-9]/g, '');
+  const supportValid = supportDigits === '' || (supportDigits.length >= 8 && supportDigits.length <= 15);
+  const updateSupportWa = useMutation({
+    mutationFn: () => settingsService.updateSupportWhatsapp(supportDigits || null),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success(supportDigits ? 'Customers can now message ops from their tracking page.' : 'The "Ask us" button is switched off.');
+    },
+    onError: (err) => toast.error(errorMessage(err, 'Failed to save the WhatsApp number')),
+  });
+
   /* ── Driver app ──────────────────────────────────────────── */
   const [minVersion, setMinVersion] = useState('');
   useEffect(() => {
@@ -244,6 +260,36 @@ export default function SettingsPage() {
               ))}
             </SelectContent>
           </Select>
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Customer tracking"
+        description={canEditTimezone
+          ? 'Customers’ tracking pages get an "Ask us" button that opens a WhatsApp chat with this number — your ops team, not the driver. Leave empty to hide the button.'
+          : 'The WhatsApp number on customers’ tracking pages. Only admins can change it.'}
+        action={
+          canEditTimezone ? (
+            <Btn
+              label="Save"
+              size="sm"
+              disabled={!settings || !supportValid || supportDigits === (settings.supportWhatsapp ?? '')}
+              isLoading={updateSupportWa.isPending}
+              onClick={() => updateSupportWa.mutate()}
+            />
+          ) : undefined
+        }
+      >
+        <SettingsRow label="Ops WhatsApp number" description={supportValid ? 'With country code, e.g. 966501234567' : 'Use the full number with country code, 8–15 digits'} htmlFor="support-wa">
+          <Input
+            id="support-wa"
+            value={supportWa}
+            readOnly={!canEditTimezone}
+            placeholder="Off"
+            inputMode="tel"
+            onChange={(e) => setSupportWa(e.target.value)}
+            className={fieldClass}
+          />
         </SettingsRow>
       </SettingsSection>
 

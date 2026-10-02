@@ -80,6 +80,12 @@ export const settingsService = {
     return res.data.data;
   },
 
+  /** Ops WhatsApp number for the customer tracking page's "Ask us" button (Admin). Empty switches the button off. */
+  async updateSupportWhatsapp(supportWhatsapp: string | null): Promise<Settings> {
+    const res = await api.put<ApiResponse<Settings>>('/settings/support-whatsapp', { supportWhatsapp });
+    return res.data.data;
+  },
+
   /** Uploads a logo file via the generic upload endpoint, returning its URL to save via update(). */
   async uploadLogo(file: File): Promise<string> {
     const formData = new FormData();
