@@ -2,21 +2,19 @@
  * Route: /customer-details?id=… — one customer.
  *
  * A black header (name, status, since / payment terms, then three equal
- * cells: outstanding, overdue, paid), then plain sections: contacts (each
- * with call and WhatsApp), open invoices, trips, quotations, saved places
- * and account.
+ * cells: outstanding, overdue, paid), then only what an operator acts on:
+ * contacts (each with call and WhatsApp), open invoices, and open trips.
  * Each fact appears once.
  */
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, ChevronRight, MapPin, MapPinOff, MessageCircle, Phone, SquarePen, Users } from 'lucide-react-native';
+import { ArrowLeft, ChevronRight, MessageCircle, Phone, SquarePen, Users } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { EmptyState, SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { statusChip, TONE } from '../../trips/details/tripDetailsModel';
 import { INK, MUTED, PAGE, WA_INK, WA_LIGHT } from '../../trips/details/components/parts';
-import { QuotationCard } from '../../trips/create/components/StepJob';
 import { fmtSar, niceName } from '../../trips/create/components/ui';
 import { daysOverdue, useCustomerDetail } from './useCustomerDetail';
 import type { CustomerTrip } from './customerDetailApi';
@@ -52,8 +50,6 @@ export default function CustomerDetailsScreen() {
   const [now, setNow] = useState(() => Date.now());
   const c = useCustomerDetail(String(id ?? ''), now);
   const [refreshing, setRefreshing] = useState(false);
-  const [allQuotes, setAllQuotes] = useState(false);
-  const [allPlaces, setAllPlaces] = useState(false);
   const [allInvoices, setAllInvoices] = useState(false);
 
   const refresh = async () => {
@@ -100,9 +96,6 @@ export default function CustomerDetailsScreen() {
 
   const m = c.money;
   const invoices = m ? (allInvoices ? m.open : m.open.slice(0, 3)) : [];
-  const quotes = allQuotes ? c.quotations : c.quotations.slice(0, 3);
-  const places = allPlaces ? c.places : c.places.slice(0, 4);
-  const noPin = c.places.filter((p) => p.lat == null || p.lng == null).length;
   const same = (a?: string | null, b?: string | null) => !!digits(a) && digits(a) === digits(b);
   const people = [
     { key: 'primary', name: niceName(customer.primary_contact_person) || 'Primary contact', phone: customer.primary_contact_phone, role: 'Primary' },
@@ -118,9 +111,9 @@ export default function CustomerDetailsScreen() {
   ];
   const cur = m?.currency ?? 'SAR';
   const cells: { label: string; value: string; bad?: boolean }[] = [
-    { label: 'Outstanding', value: m ? fmtSar(m.outstanding) : '—' },
-    { label: m?.overdueCount ? `Overdue · ${m.overdueCount}` : 'Overdue', value: m ? fmtSar(m.overdue) : '—', bad: !!m && m.overdue > 0 },
-    { label: 'Paid', value: m ? fmtSar(m.paid) : '—' },
+    { label: 'Outstanding', value: m ? `${cur} ${fmtSar(m.outstanding)}` : '—' },
+    { label: m?.overdueCount ? `Overdue · ${m.overdueCount}` : 'Overdue', value: m ? `${cur} ${fmtSar(m.overdue)}` : '—', bad: !!m && m.overdue > 0 },
+    { label: 'Paid', value: m ? `${cur} ${fmtSar(m.paid)}` : '—' },
   ];
   return (
     <SafeAreaView style={s.page} edges={['top']}>
@@ -136,14 +129,13 @@ export default function CustomerDetailsScreen() {
             </View>
           </View>
           <Text style={s.since}>
-            {[`Customer since ${monthYear(customer.createdAt)}`, customer.payment_terms].filter(Boolean).join('  ·  ')}
+            {[`Customer since ${monthYear(customer.createdAt)}`, customer.payment_terms, customer.driver_workflow === 'EXTERNAL_APP' ? 'Own driver app' : null].filter(Boolean).join('  ·  ')}
           </Text>
           <View style={s.cells}>
             {cells.map((x, i) => (
               <View key={x.label} style={[s.cell, i > 0 && s.cellBorder]}>
                 <Text style={s.cellLabel} numberOfLines={1}>{x.label}</Text>
                 <Text style={[s.cellValue, x.bad && { color: '#FCA5A5' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{x.value}</Text>
-                <Text style={s.cellSub}>{cur}</Text>
               </View>
             ))}
           </View>
@@ -203,85 +195,35 @@ export default function CustomerDetailsScreen() {
           </Block>
         ) : null}
 
-        {/* 3 · trips */}
-        <Block
-          title="Trips"
-          action={{ label: 'All trips', onPress: () => router.push({ pathname: '/trips', params: { customerId: customer.id, customerName: niceName(customer.name) } }) }}
-        >
-          {c.tripsLoading ? <Text style={s.empty}>Loading…</Text> : (
-            <>
-              <Text style={s.summary}>
-                {c.trips.live.length} on the road  ·  {c.trips.monthCount} this month  ·  {cur} {fmtSar(c.trips.monthValue)}
-              </Text>
-              {c.trips.shown.map((t) => {
-                const r = routeOf(t);
-                const chip = statusChip(t.status);
-                const driver = t.driver ? niceName(`${t.driver.first_name} ${t.driver.last_name}`) : null;
-                return (
-                  <TouchableOpacity key={t.id} style={[s.line, s.border]} activeOpacity={0.6} onPress={() => router.push({ pathname: '/trip-details', params: { id: t.id } })}>
-                    <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                      <Text style={s.rowTitle} numberOfLines={1}>{r.from} → {r.to}{r.round ? ' ↺' : ''}</Text>
-                      <Text style={s.sub} numberOfLines={1}>{[t.ref_id, driver ?? 'No driver yet'].filter(Boolean).join('  ·  ')}</Text>
-                    </View>
-                    <Text style={[s.state, { color: TONE[chip.tone].fg }]}>{chip.label}</Text>
-                    <ChevronRight size={16} color="#A1A1AA" />
-                  </TouchableOpacity>
-                );
-              })}
-            </>
-          )}
-        </Block>
-
-        {/* 4 · quotations — hidden when there are none */}
-        {c.quotationsLoading || c.quotations.length > 0 ? (
-        <Block title="Quotations" count={c.quotations.length || undefined}>
-          {c.quotationsLoading ? <Text style={s.empty}>Loading…</Text>
-            : (
-              <View style={{ paddingVertical: 12 }}>
-                {quotes.map((q, i) => <QuotationCard key={q.id} q={q} first={i === 0} />)}
-              </View>
-            )}
-          {c.quotations.length > 3 ? <More label={allQuotes ? 'Show less' : `Show all ${c.quotations.length}`} onPress={() => setAllQuotes((x) => !x)} /> : null}
-        </Block>
-        ) : null}
-
-        {/* 5 · saved places — hidden when there are none */}
-        {c.placesLoading || c.places.length > 0 ? (
-        <Block title="Saved places" count={c.places.length || undefined}>
-          {c.placesLoading ? <Text style={s.empty}>Loading…</Text>
-            : places.map((p, i) => {
-              const pinned = p.lat != null && p.lng != null;
-              // A city that just repeats the place name adds nothing.
-              const city = p.city && niceName(p.city).toLowerCase() !== niceName(p.name).toLowerCase() ? niceName(p.city) : null;
+        {/* 3 · open trips; otherwise just the way into the full list */}
+        {!c.tripsLoading && c.trips.shown.length === 0 ? (
+          <TouchableOpacity style={[s.card, s.linkRow]} activeOpacity={0.6} onPress={() => router.push({ pathname: '/trips', params: { customerId: customer.id, customerName: niceName(customer.name) } })}>
+            <Text style={s.rowTitle}>All trips</Text>
+            <ChevronRight size={16} color="#A1A1AA" />
+          </TouchableOpacity>
+        ) : (
+          <Block
+            title="Open trips"
+            count={c.trips.openCount || undefined}
+            action={{ label: 'All trips', onPress: () => router.push({ pathname: '/trips', params: { customerId: customer.id, customerName: niceName(customer.name) } }) }}
+          >
+            {c.tripsLoading ? <Text style={s.empty}>Loading…</Text> : c.trips.shown.map((t, i) => {
+              const r = routeOf(t);
+              const chip = statusChip(t.status);
+              const driver = t.driver ? niceName(`${t.driver.first_name} ${t.driver.last_name}`) : null;
               return (
-                <TouchableOpacity
-                  key={p.id}
-                  style={[s.line, i > 0 && s.border]}
-                  disabled={!pinned}
-                  activeOpacity={0.6}
-                  onPress={() => Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}`).catch(() => {})}
-                >
-                  {pinned ? <MapPin size={17} color="#1F9D55" /> : <MapPinOff size={17} color="#B54708" />}
+                <TouchableOpacity key={t.id} style={[s.line, i > 0 && s.border]} activeOpacity={0.6} onPress={() => router.push({ pathname: '/trip-details', params: { id: t.id } })}>
                   <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                    <Text style={s.rowTitle} numberOfLines={1}>{niceName(p.name)}</Text>
-                    {city || !pinned ? <Text style={[s.sub, !pinned && { color: '#B54708' }]} numberOfLines={1}>{[city, !pinned ? 'No map pin' : null].filter(Boolean).join('  ·  ')}</Text> : null}
+                    <Text style={s.rowTitle} numberOfLines={1}>{r.from} → {r.to}{r.round ? ' ↺' : ''}</Text>
+                    <Text style={s.sub} numberOfLines={1}>{[t.ref_id, driver ?? 'No driver yet'].filter(Boolean).join('  ·  ')}</Text>
                   </View>
-                  {pinned ? <ChevronRight size={16} color="#A1A1AA" /> : null}
+                  <Text style={[s.state, { color: TONE[chip.tone].fg }]}>{chip.label}</Text>
+                  <ChevronRight size={16} color="#A1A1AA" />
                 </TouchableOpacity>
               );
             })}
-          {c.places.length > 4 ? <More label={allPlaces ? 'Show less' : `Show all ${c.places.length}`} onPress={() => setAllPlaces((x) => !x)} /> : null}
-        </Block>
-        ) : null}
-        {noPin > 0 ? <Text style={s.note}>{noPin} place{noPin === 1 ? ' has' : 's have'} no map pin, so trip timing can only guess those stops.</Text> : null}
-
-        {/* 6 · account */}
-        <Block title="Account">
-          <View style={s.info}>
-            <Text style={s.infoLabel}>Driver updates</Text>
-            <Text style={s.infoValue} numberOfLines={1}>{customer.driver_workflow === 'EXTERNAL_APP' ? 'Customer’s own app' : 'MERCON driver app'}</Text>
-          </View>
-        </Block>
+          </Block>
+        )}
       </ScrollView>
 
     </SafeAreaView>
@@ -333,8 +275,7 @@ const s = StyleSheet.create({
   cell: { flex: 1, minWidth: 0, paddingVertical: 14, gap: 3 },
   cellBorder: { borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.14)', paddingLeft: 12 },
   cellLabel: { fontSize: 12, color: ON_DARK_MUTED },
-  cellValue: { fontSize: 18, fontWeight: '700', color: Colors.white, letterSpacing: -0.2, fontVariant: ['tabular-nums'], paddingRight: 8 },
-  cellSub: { fontSize: 11, color: ON_DARK_MUTED },
+  cellValue: { fontSize: 17, fontWeight: '700', color: Colors.white, letterSpacing: -0.2, fontVariant: ['tabular-nums'], paddingRight: 8 },
 
 
   block: { gap: 8 },
@@ -350,14 +291,10 @@ const s = StyleSheet.create({
   sub: { fontSize: 13, color: MUTED },
   amount: { fontSize: 15, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
   state: { fontSize: 13, fontWeight: '600' },
-  summary: { fontSize: 13, color: MUTED, paddingVertical: 12, fontVariant: ['tabular-nums'] },
+  linkRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 14 },
   iconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#F4F4F5', alignItems: 'center', justifyContent: 'center' },
   empty: { fontSize: 14, color: MUTED, paddingVertical: 14 },
   more: { paddingVertical: 12, alignItems: 'center' },
   moreText: { fontSize: 14, fontWeight: '600', color: INK },
-  note: { fontSize: 12, color: MUTED, marginTop: -10 },
-  info: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingVertical: 12 },
-  infoLabel: { fontSize: 14, color: MUTED },
-  infoValue: { flex: 1, textAlign: 'right', fontSize: 14, fontWeight: '600', color: INK },
 
 });
