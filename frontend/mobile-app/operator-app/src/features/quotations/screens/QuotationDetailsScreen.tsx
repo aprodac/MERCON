@@ -1,19 +1,20 @@
 /**
  * Route: /quotation-details?id= — one quotation.
  *
- * A dark summary card (who it is for, from → to, the rate and what the driver
- * gets), the terms as four small tiles, and the stops as a timeline. Reads the
- * same cached list as the quotations page. Each fact appears once.
+ * Same shape as the driver and carrier pages: a centred header (customer,
+ * route, status), number tiles (rate, driver pay, margin), the terms, and the
+ * stops as a timeline. Reads the same cached list as the quotations page.
+ * Each fact appears once.
  */
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, ArrowRight, CalendarDays, Layers, Repeat, SquarePen, Tag, Truck, type LucideIcon } from 'lucide-react-native';
+import { ArrowLeft, SquarePen, Tag } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { EmptyState, ErrorState, SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { niceName } from '@/features/trips/create/components/ui';
-import { INK, MUTED, PAGE } from '@/features/trips/details/components/parts';
+import { Chip, INK, MUTED, PAGE } from '@/features/trips/details/components/parts';
 import { QUOTATION_STATUS } from '../components';
 import { useQuotations } from '../hooks';
 import { formatCurrency, formatValidityRange } from '../services/quotationsService';
@@ -29,78 +30,69 @@ export default function QuotationDetailsScreen() {
   const back = () => (router.canGoBack() ? router.back() : router.replace('/quotations'));
 
   const body = () => {
-    if (loading && !q) return <View style={{ gap: 12 }}><SkeletonBlock height={230} radius={24} /><SkeletonBlock height={150} radius={16} /></View>;
+    if (loading && !q) return <View style={{ gap: 12 }}><SkeletonBlock height={120} radius={16} /><SkeletonBlock height={90} radius={16} /><SkeletonBlock height={150} radius={16} /></View>;
     if (error && !q) return <ErrorState message={error} onRetry={() => refresh()} />;
     if (!q) return <EmptyState Icon={Tag} title="Quotation not found" subtitle="It may have been removed." />;
 
     const st = QUOTATION_STATUS[q.validityStatus] ?? QUOTATION_STATUS.Inactive;
     // Only meaningful for a per-trip rate; a monthly rate and a per-day pay don't compare.
     const margin = !q.isMonthly && q.driverPayout !== null ? q.rate - q.driverPayout : null;
-    const terms: { icon: LucideIcon; label: string; value: string }[] = [
-      { icon: Truck, label: 'Truck type', value: q.vehicleClass },
-      { icon: Repeat, label: 'Line type', value: q.lineType },
-      { icon: Layers, label: 'Operation', value: q.operationType },
-      { icon: CalendarDays, label: 'Valid', value: formatValidityRange(q.validFrom, q.validTo) },
-    ].filter((t) => !!t.value);
-    const via = Math.max(0, q.stops.length - 2);
+    const tiles: { label: string; value: string }[] = [
+      { label: q.isMonthly ? 'Rate / month' : 'Rate / trip', value: formatCurrency(q.rate, q.currency) },
+      ...(q.driverPayout !== null ? [{ label: 'Driver pay', value: formatCurrency(q.driverPayout, q.currency) }] : []),
+      ...(margin !== null ? [{ label: 'Margin', value: formatCurrency(margin, q.currency) }] : []),
+    ];
+    const terms: { label: string; value: string }[] = [
+      { label: 'Truck type', value: q.vehicleClass },
+      { label: 'Line type', value: q.lineType },
+      { label: 'Operation', value: q.operationType },
+      { label: 'Valid', value: formatValidityRange(q.validFrom, q.validTo) },
+    ].filter((r) => !!r.value);
 
     return (
       <>
-        {/* 0 · summary */}
+        {/* 0 · who it is for and where */}
         <View style={s.hero}>
-          <View style={s.heroTop}>
-            <Text style={s.customer} numberOfLines={2}>{niceName(q.customerName)}</Text>
-            <View style={[s.status, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
-              <View style={[s.statusDot, { backgroundColor: st.dot }]} />
-              <Text style={s.statusText}>{st.label}</Text>
-            </View>
-          </View>
+          <Text style={s.customer} numberOfLines={2}>{niceName(q.customerName)}</Text>
+          <Text style={s.route}>
+            {q.firstStop}
+            <Text style={s.arrow}>{'  →  '}</Text>
+            {q.lastStop}
+          </Text>
+          <Chip label={st.label} tone={st.tone} dot style={{ alignSelf: 'center', marginTop: 4 }} />
+        </View>
 
-          <View style={s.fromTo}>
-            <View style={s.place}>
-              <Text style={s.placeLabel}>From</Text>
-              <Text style={s.placeName} numberOfLines={2}>{q.firstStop}</Text>
-            </View>
-            <View style={s.arrow}><ArrowRight size={18} color="#FFFFFF" strokeWidth={2.4} /></View>
-            <View style={[s.place, { alignItems: 'flex-end' }]}>
-              <Text style={s.placeLabel}>To</Text>
-              <Text style={[s.placeName, { textAlign: 'right' }]} numberOfLines={2}>{q.lastStop}</Text>
-            </View>
-          </View>
-          {via > 0 ? <Text style={s.viaText}>via {via} {via === 1 ? 'stop' : 'stops'} in between</Text> : null}
-
-          <View style={s.money}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.moneyLabel}>{q.isMonthly ? 'Rate per month' : 'Rate per trip'}</Text>
-              <Text style={s.rate} numberOfLines={1} adjustsFontSizeToFit>{formatCurrency(q.rate, q.currency)}</Text>
-              {q.isMonthly && q.dailyEquivalent !== null ? <Text style={s.moneySub}>≈ {formatCurrency(q.dailyEquivalent, q.currency)} / day</Text> : null}
-            </View>
-            {q.driverPayout !== null ? (
-              <View style={s.moneySide}>
-                <Text style={s.moneyLabel}>Driver pay</Text>
-                <Text style={s.sideValue} numberOfLines={1}>{formatCurrency(q.driverPayout, q.currency)}</Text>
-                {margin !== null ? <Text style={s.moneySub}>Margin {formatCurrency(margin, q.currency)}</Text> : null}
+        {/* 1 · the money */}
+        <View>
+          <View style={s.tiles}>
+            {tiles.map((t) => (
+              <View key={t.label} style={s.tile}>
+                <Text style={s.tileValue} numberOfLines={1} adjustsFontSizeToFit>{t.value}</Text>
+                <Text style={s.tileLabel}>{t.label}</Text>
               </View>
-            ) : null}
+            ))}
+          </View>
+          {q.isMonthly && q.dailyEquivalent !== null ? <Text style={s.note}>Monthly contract · about {formatCurrency(q.dailyEquivalent, q.currency)} a day</Text> : null}
+        </View>
+
+        {/* 2 · terms */}
+        <View style={s.block}>
+          <Text style={s.heading}>Terms</Text>
+          <View style={s.card}>
+            {terms.map((r, i) => (
+              <View key={r.label} style={[s.info, i > 0 && s.border]}>
+                <Text style={s.infoLabel}>{r.label}</Text>
+                <Text style={s.infoValue}>{r.value}</Text>
+              </View>
+            ))}
           </View>
         </View>
 
-        {/* 1 · terms */}
-        <View style={s.grid}>
-          {terms.map((t) => (
-            <View key={t.label} style={s.term}>
-              <View style={s.termIcon}><t.icon size={17} color={INK} strokeWidth={2.1} /></View>
-              <Text style={s.termLabel}>{t.label}</Text>
-              <Text style={s.termValue} numberOfLines={2}>{t.value}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* 2 · stops, in order */}
+        {/* 3 · stops, in order */}
         <View style={s.block}>
           <View style={s.headRow}>
             <Text style={s.heading}>Route</Text>
-            {q.stops.length > 0 ? <Text style={s.count}>{q.stops.length} stops</Text> : null}
+            {q.stops.length > 0 ? <Text style={s.count}>{q.stops.length}</Text> : null}
           </View>
           <View style={s.card}>
             {q.stops.length === 0 ? (
@@ -163,35 +155,24 @@ const s = StyleSheet.create({
   barTitle: { fontSize: 16, fontWeight: '700', color: INK },
   scroll: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 48, gap: 20 },
 
-  hero: { backgroundColor: INK, borderRadius: 24, padding: 20, gap: 18 },
-  heroTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
-  customer: { flex: 1, fontSize: 13, fontWeight: '600', color: '#A1A1AA', textTransform: 'uppercase', letterSpacing: 0.6, lineHeight: 18 },
-  status: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
-  statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
-  fromTo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  place: { flex: 1, gap: 4 },
-  placeLabel: { fontSize: 11, fontWeight: '600', color: '#A1A1AA', textTransform: 'uppercase', letterSpacing: 0.8 },
-  placeName: { fontSize: 22, fontWeight: '700', color: '#FFFFFF', letterSpacing: -0.4, lineHeight: 27 },
-  arrow: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
-  viaText: { fontSize: 12, color: '#A1A1AA', marginTop: -8 },
-  money: { flexDirection: 'row', alignItems: 'flex-end', gap: 16, paddingTop: 18, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.14)' },
-  moneyLabel: { fontSize: 12, color: '#A1A1AA' },
-  rate: { fontSize: 30, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.8, fontVariant: ['tabular-nums'], marginTop: 2 },
-  moneySub: { fontSize: 12, color: '#A1A1AA', marginTop: 3 },
-  moneySide: { alignItems: 'flex-end' },
-  sideValue: { fontSize: 18, fontWeight: '700', color: '#FFFFFF', fontVariant: ['tabular-nums'], marginTop: 2 },
-
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  term: { width: '48.5%', backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: '#E9E9EC', padding: 14, gap: 4 },
-  termIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: '#F4F4F5', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
-  termLabel: { fontSize: 12, color: MUTED },
-  termValue: { fontSize: 15, fontWeight: '700', color: INK },
+  hero: { alignItems: 'center', gap: 8, paddingHorizontal: 8 },
+  customer: { fontSize: 13, fontWeight: '600', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.6, textAlign: 'center' },
+  route: { fontSize: 24, fontWeight: '700', color: INK, letterSpacing: -0.5, textAlign: 'center', lineHeight: 30 },
+  arrow: { color: '#A1A1AA', fontWeight: '400' },
+  tiles: { flexDirection: 'row', gap: 10 },
+  tile: { flex: 1, backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: '#E9E9EC', paddingVertical: 14, paddingHorizontal: 12, gap: 3 },
+  tileValue: { fontSize: 19, fontWeight: '700', color: INK, letterSpacing: -0.3, fontVariant: ['tabular-nums'] },
+  tileLabel: { fontSize: 12, color: MUTED },
+  note: { fontSize: 12, color: MUTED, marginTop: 10, marginLeft: 2 },
+  info: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, paddingVertical: 14 },
+  border: { borderTopWidth: 1, borderTopColor: '#F1F1F3' },
+  infoLabel: { fontSize: 14, color: MUTED },
+  infoValue: { flex: 1, textAlign: 'right', fontSize: 14, fontWeight: '600', color: INK },
 
   block: { gap: 10 },
-  headRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   heading: { fontSize: 17, fontWeight: '700', color: INK, letterSpacing: -0.2, marginLeft: 2 },
-  count: { fontSize: 13, color: MUTED },
+  count: { fontSize: 13, fontWeight: '600', color: MUTED, backgroundColor: '#EAEAED', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2, overflow: 'hidden' },
   card: { backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: '#E9E9EC', paddingHorizontal: 16, paddingVertical: 8 },
   stop: { flexDirection: 'row', gap: 14, paddingTop: 12 },
   rail: { alignItems: 'center', width: 26 },
