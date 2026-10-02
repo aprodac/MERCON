@@ -1,22 +1,24 @@
 /**
- * Route: /profile — the signed-in operator's own account.
+ * Route: /profile — the last tab: the signed-in operator's own account and
+ * the way into every page that isn't a tab of its own.
  *
- * Who you are (name, role, username), your contact details (editable), then
- * password, user management and sign out. Data is GET /auth/me; edits go to
- * PATCH /auth/me and POST /auth/change-password.
+ * Who you are (name, role), your contact details (editable), the Manage list
+ * (fleet, quotations, customers, users), then password and sign out. Data is
+ * GET /auth/me; edits go to PATCH /auth/me and POST /auth/change-password.
  */
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, TextInput, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
-import { ArrowLeft, Bell, ChevronRight, KeyRound, LogOut, SquarePen, UserCog, type LucideIcon } from 'lucide-react-native';
+import { Building2, CalendarClock, ChevronRight, KeyRound, LogOut, SquarePen, Tag, Truck, UserCog, Users, type LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { ErrorState } from '@mercon/mobile-shared/ui';
+import { AppTopBar } from '@/components/AppTopBar';
 import { ACTION, Chip, INK, MUTED, PAGE, tap } from '../trips/details/components/parts';
 import { initialsOf, niceName } from '../trips/create/components/ui';
 
@@ -33,7 +35,6 @@ const ME_KEY = ['auth', 'me'] as const;
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { profile, role, signOut } = useAuth();
   const [sheet, setSheet] = useState<'edit' | 'password' | null>(null);
@@ -55,25 +56,25 @@ export default function ProfileScreen() {
     ]);
   };
 
-  const links: { icon: LucideIcon; label: string; sub: string; onPress: () => void }[] = [
+  const go = (route: string) => () => router.push(route as never);
+  const manage: Link[] = [
+    { icon: Truck, label: 'Vehicles', sub: 'Fleet trucks and trailers', onPress: go('/vehicles') },
+    { icon: CalendarClock, label: 'Vehicle renewals', sub: 'Expiring vehicle documents', onPress: go('/vehicle-renewals') },
+    { icon: Building2, label: '3rd party fleet', sub: 'Subcontractors and 3PL carriers', onPress: go('/third-party') },
+    { icon: Tag, label: 'Quotations', sub: 'Rates and lanes', onPress: go('/quotations') },
+    { icon: Users, label: 'Customers', sub: 'View, add and edit customers', onPress: go('/customers') },
+    { icon: UserCog, label: 'User management', sub: 'Operators, admins and driver logins', onPress: go('/user-management') },
+  ];
+  const account: Link[] = [
     { icon: KeyRound, label: 'Change password', sub: 'Use at least 8 characters', onPress: () => setSheet('password') },
-    { icon: Bell, label: 'Notifications', sub: 'Delays, renewals and alerts', onPress: () => router.push('/notifications') },
-    { icon: UserCog, label: 'User management', sub: 'Operators, admins and driver logins', onPress: () => router.push('/user-management') },
   ];
 
   return (
-    <View style={{ flex: 1, backgroundColor: PAGE }}>
-      <View style={[s.bar, { paddingTop: insets.top + 8 }]}>
-        <TouchableOpacity style={s.barBtn} onPress={() => (router.canGoBack() ? router.back() : router.replace('/more'))} accessibilityLabel="Back">
-          <ArrowLeft size={20} color={INK} strokeWidth={2.4} />
-        </TouchableOpacity>
-        <TouchableOpacity style={s.barBtn} onPress={() => setSheet('edit')} disabled={!me.data} accessibilityLabel="Edit profile">
-          <SquarePen size={18} color={INK} strokeWidth={2.2} />
-        </TouchableOpacity>
-      </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: PAGE }} edges={['top']}>
+      <AppTopBar title="Profile" actions={me.data ? [{ icon: SquarePen, label: 'Edit profile', onPress: () => setSheet('edit') }] : []} />
 
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 6, paddingBottom: 32 + insets.bottom, gap: 24 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 120, gap: 24 }}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={me.isRefetching} onRefresh={() => me.refetch()} tintColor={Colors.primary} />}
       >
@@ -101,22 +102,11 @@ export default function ProfileScreen() {
           </View>
         </View>
 
-        {/* 2 · account */}
-        <View style={s.block}>
-          <Text style={s.heading}>Account</Text>
-          <View style={s.card}>
-            {links.map((l, i) => (
-              <TouchableOpacity key={l.label} style={[s.line, i > 0 && s.lineBorder]} activeOpacity={0.6} onPress={() => { tap(); l.onPress(); }}>
-                <View style={s.icon}><l.icon size={18} color={INK} strokeWidth={2} /></View>
-                <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-                  <Text style={s.rowTitle}>{l.label}</Text>
-                  <Text style={s.sub} numberOfLines={1}>{l.sub}</Text>
-                </View>
-                <ChevronRight size={18} color="#A1A1AA" />
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+        {/* 2 · every page that isn't a tab */}
+        <LinkList title="Manage" links={manage} />
+
+        {/* 3 · account */}
+        <LinkList title="Account" links={account} />
 
         <TouchableOpacity style={s.signOut} activeOpacity={0.8} onPress={confirmSignOut}>
           <LogOut size={17} color="#B42318" strokeWidth={2.2} />
@@ -133,6 +123,28 @@ export default function ProfileScreen() {
         onSaved={(next) => queryClient.setQueryData(ME_KEY, (old: Me | undefined) => ({ ...(old as Me), ...next }))}
       />
       <PasswordSheet visible={sheet === 'password'} onClose={() => setSheet(null)} />
+    </SafeAreaView>
+  );
+}
+
+type Link = { icon: LucideIcon; label: string; sub: string; onPress: () => void };
+
+function LinkList({ title, links }: { title: string; links: Link[] }) {
+  return (
+    <View style={s.block}>
+      <Text style={s.heading}>{title}</Text>
+      <View style={s.card}>
+        {links.map((l, i) => (
+          <TouchableOpacity key={l.label} style={[s.line, i > 0 && s.lineBorder]} activeOpacity={0.6} onPress={() => { tap(); l.onPress(); }}>
+            <View style={s.icon}><l.icon size={18} color={INK} strokeWidth={2} /></View>
+            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+              <Text style={s.rowTitle}>{l.label}</Text>
+              <Text style={s.sub} numberOfLines={1}>{l.sub}</Text>
+            </View>
+            <ChevronRight size={18} color="#A1A1AA" />
+          </TouchableOpacity>
+        ))}
+      </View>
     </View>
   );
 }
@@ -163,15 +175,19 @@ function SaveButton({ label, busy, disabled, onPress }: { label: string; busy: b
   );
 }
 
+/** The form mounts fresh each time the sheet opens, so it always starts from what's saved. */
 function EditSheet({ visible, me, onClose, onSaved }: { visible: boolean; me?: Me; onClose: () => void; onSaved: (next: Partial<Me>) => void }) {
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
+  return (
+    <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title="Edit profile">
+      {visible && me ? <EditForm me={me} onClose={onClose} onSaved={onSaved} /> : null}
+    </AppModal>
+  );
+}
 
-  // Each time it opens, start from what's saved.
-  useEffect(() => {
-    if (visible && me) { setName(me.name ?? ''); setPhone(me.phone ?? ''); setEmail(me.email ?? ''); }
-  }, [visible, me]);
+function EditForm({ me, onClose, onSaved }: { me: Me; onClose: () => void; onSaved: (next: Partial<Me>) => void }) {
+  const [name, setName] = useState(me.name ?? '');
+  const [phone, setPhone] = useState(me.phone ?? '');
+  const [email, setEmail] = useState(me.email ?? '');
 
   const save = useMutation({
     mutationFn: async () => (await api.patch('/auth/me', { name: name.trim(), phone: phone.trim(), email: email.trim() })).data.data as Partial<Me>,
@@ -180,25 +196,27 @@ function EditSheet({ visible, me, onClose, onSaved }: { visible: boolean; me?: M
   });
 
   return (
-    <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title="Edit profile">
-      <View style={s.form}>
-        <Field label="Name" value={name} onChangeText={setName} autoCapitalize="words" />
-        <Field label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+966…" />
-        <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="name@company.com" />
-        <SaveButton label="Save" busy={save.isPending} disabled={!name.trim()} onPress={() => save.mutate()} />
-      </View>
-    </AppModal>
+    <View style={s.form}>
+      <Field label="Name" value={name} onChangeText={setName} autoCapitalize="words" />
+      <Field label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+966…" />
+      <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="name@company.com" />
+      <SaveButton label="Save" busy={save.isPending} disabled={!name.trim()} onPress={() => save.mutate()} />
+    </View>
   );
 }
 
 function PasswordSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  return (
+    <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title="Change password">
+      {visible ? <PasswordForm onClose={onClose} /> : null}
+    </AppModal>
+  );
+}
+
+function PasswordForm({ onClose }: { onClose: () => void }) {
   const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [again, setAgain] = useState('');
-
-  useEffect(() => {
-    if (visible) { setCurrent(''); setNext(''); setAgain(''); }
-  }, [visible]);
 
   const save = useMutation({
     mutationFn: () => api.post('/auth/change-password', { current_password: current, new_password: next }),
@@ -210,23 +228,19 @@ function PasswordSheet({ visible, onClose }: { visible: boolean; onClose: () => 
   const ready = current.length > 0 && next.length >= 8 && next === again;
 
   return (
-    <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title="Change password">
-      <View style={s.form}>
-        <Field label="Current password" value={current} onChangeText={setCurrent} secureTextEntry autoCapitalize="none" />
-        <Field label="New password" value={next} onChangeText={setNext} secureTextEntry autoCapitalize="none" placeholder="At least 8 characters" />
-        <Field label="New password again" value={again} onChangeText={setAgain} secureTextEntry autoCapitalize="none" />
-        {mismatch ? <Text style={s.error}>The two new passwords don’t match.</Text> : null}
-        <SaveButton label="Change password" busy={save.isPending} disabled={!ready} onPress={() => save.mutate()} />
-      </View>
-    </AppModal>
+    <View style={s.form}>
+      <Field label="Current password" value={current} onChangeText={setCurrent} secureTextEntry autoCapitalize="none" />
+      <Field label="New password" value={next} onChangeText={setNext} secureTextEntry autoCapitalize="none" placeholder="At least 8 characters" />
+      <Field label="New password again" value={again} onChangeText={setAgain} secureTextEntry autoCapitalize="none" />
+      {mismatch ? <Text style={s.error}>The two new passwords don’t match.</Text> : null}
+      <SaveButton label="Change password" busy={save.isPending} disabled={!ready} onPress={() => save.mutate()} />
+    </View>
   );
 }
 
 const s = StyleSheet.create({
-  bar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingBottom: 8 },
-  barBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E9E9EC' },
-  hero: { alignItems: 'center', gap: 6, paddingTop: 4 },
-  avatar: { width: 84, height: 84, borderRadius: 42, backgroundColor: INK, alignItems: 'center', justifyContent: 'center' },
+  hero: { alignItems: 'center', gap: 6, backgroundColor: Colors.white, borderRadius: 20, borderWidth: 1, borderColor: '#E9E9EC', paddingVertical: 22, paddingHorizontal: 16 },
+  avatar: { width: 84, height: 84, borderRadius: 42, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontSize: 28, fontWeight: '700', color: Colors.white, letterSpacing: 0.5 },
   name: { fontSize: 22, fontWeight: '700', color: INK, letterSpacing: -0.4, textAlign: 'center', marginTop: 8 },
   sub: { fontSize: 13, color: MUTED },
