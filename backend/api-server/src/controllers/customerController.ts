@@ -2,12 +2,108 @@ import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { buildSearchAnd } from '../utils/search';
 import { logger } from '../utils/logger';
+import { statusWhere } from '../utils/invoiceQuery';
 
 const CUSTOMER_SEARCH_FIELDS = ['name', 'contact_phone'];
 
+/** Trip statuses that mean a truck is working for the customer right now. */
+const LIVE_TRIP_STATUSES = ['Loading', 'InTransit', 'Delayed'] as const;
+
+/** Sorts the full list (not just the current page) can be ordered by. */
+const CUSTOMER_SORTS: Record<string, (dir: 'asc' | 'desc') => any[]> = {
+  trips: (dir) => [{ trips: { _count: dir } }, { name: 'asc' }],
+  name: (dir) => [{ name: dir }],
+  createdAt: (dir) => [{ createdAt: dir }],
+};
+
+/**
+ * Per-customer figures for the rows on one list page: trucks on the road now,
+ * the latest trip date, and what they owe on issued invoices (overdue split out).
+ */
+async function rowStats(ids: string[]) {
+  if (ids.length === 0) return new Map<string, any>();
+  const now = new Date();
+  const [live, last, unpaid, overdue] = await Promise.all([
+    prisma.trip.groupBy({
+      by: ['customerId'],
+      where: { customerId: { in: ids }, deletedAt: null, status: { in: [...LIVE_TRIP_STATUSES] } },
+      _count: { _all: true },
+    }),
+    prisma.trip.groupBy({
+      by: ['customerId'],
+      where: { customerId: { in: ids }, deletedAt: null, status: { notIn: ['Cancelled', 'Draft'] } },
+      _max: { planned_start: true, createdAt: true },
+    }),
+    prisma.invoice.groupBy({
+      by: ['customerId'],
+      where: { customerId: { in: ids }, ...statusWhere('unpaid', now), balance_due: { gt: 0 } },
+      _sum: { balance_due: true },
+    }),
+    prisma.invoice.groupBy({
+      by: ['customerId'],
+      where: { customerId: { in: ids }, ...statusWhere('overdue', now), balance_due: { gt: 0 } },
+      _sum: { balance_due: true },
+    }),
+  ]);
+  const stats = new Map<string, { live_trips: number; last_trip_at: Date | null; outstanding: number; overdue: number }>();
+  for (const id of ids) stats.set(id, { live_trips: 0, last_trip_at: null, outstanding: 0, overdue: 0 });
+  for (const r of live) stats.get(r.customerId)!.live_trips = r._count._all;
+  for (const r of last) stats.get(r.customerId)!.last_trip_at = r._max.planned_start ?? r._max.createdAt ?? null;
+  for (const r of unpaid) stats.get(r.customerId)!.outstanding = Number(r._sum.balance_due ?? 0);
+  for (const r of overdue) stats.get(r.customerId)!.overdue = Number(r._sum.balance_due ?? 0);
+  return stats;
+}
+
+/**
+ * Headline figures for the Customers page: accounts, who has trucks on the
+ * road right now, and receivables (issued, unpaid; overdue = past due date).
+ */
+export const getCustomerSummary = async (_req: Request, res: Response) => {
+  try {
+    const now = new Date();
+    const base = { deletedAt: null };
+    const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const liveTrip = { deletedAt: null, status: { in: [...LIVE_TRIP_STATUSES] } };
+    const balanceByCustomer = (status: 'unpaid' | 'overdue') =>
+      prisma.invoice.groupBy({
+        by: ['customerId'],
+        where: { ...statusWhere(status, now), balance_due: { gt: 0 }, customer: base },
+        _sum: { balance_due: true },
+      });
+
+    const [total, active, newThisMonth, liveCustomers, liveTrips, unpaid, overdue] = await Promise.all([
+      prisma.customer.count({ where: base }),
+      prisma.customer.count({ where: { ...base, isActive: true } }),
+      prisma.customer.count({ where: { ...base, createdAt: { gte: monthStart } } }),
+      prisma.customer.count({ where: { ...base, trips: { some: liveTrip } } }),
+      prisma.trip.count({ where: { ...liveTrip, customer: base } }),
+      balanceByCustomer('unpaid'),
+      balanceByCustomer('overdue'),
+    ]);
+    const sum = (rows: { _sum: { balance_due: any } }[]) => rows.reduce((acc, r) => acc + Number(r._sum.balance_due ?? 0), 0);
+
+    return res.json({
+      success: true,
+      data: {
+        total,
+        active,
+        inactive: total - active,
+        new_this_month: newThisMonth,
+        live_customers: liveCustomers,
+        live_trips: liveTrips,
+        outstanding: { amount: sum(unpaid), customers: unpaid.length },
+        overdue: { amount: sum(overdue), customers: overdue.length },
+      },
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to fetch customer summary');
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to fetch customer summary' } });
+  }
+};
+
 export const getCustomers = async (req: Request, res: Response) => {
   try {
-    const { is_active, search, page = '1', per_page = '20' } = req.query;
+    const { is_active, search, page = '1', per_page = '20', live, has_balance, sort_by, sort_dir } = req.query;
     
     const pageNumber = parseInt(page as string);
     const limit = parseInt(per_page as string);
@@ -20,6 +116,13 @@ export const getCustomers = async (req: Request, res: Response) => {
     const searchAnd = buildSearchAnd(search, CUSTOMER_SEARCH_FIELDS);
     if (searchAnd.length > 0) {
       whereClause.AND = searchAnd;
+    }
+    // Quick filters on the Customers page
+    if (live === 'true') {
+      whereClause.trips = { some: { deletedAt: null, status: { in: [...LIVE_TRIP_STATUSES] } } };
+    }
+    if (has_balance === 'true') {
+      whereClause.invoices = { some: { ...statusWhere('unpaid'), balance_due: { gt: 0 } } };
     }
 
     // Picker shape — same contract as `mode=lookup` on drivers/vehicles. Drops
@@ -67,23 +170,23 @@ export const getCustomers = async (req: Request, res: Response) => {
       });
     }
 
+    const dir = sort_dir === 'asc' ? 'asc' : 'desc';
+    const orderBy = (CUSTOMER_SORTS[sort_by as string] ?? CUSTOMER_SORTS.trips)(dir);
     const [customers, total] = await Promise.all([
       prisma.customer.findMany({
         where: whereClause,
         skip,
         take: limit,
-        orderBy: [
-          { trips: { _count: 'desc' } },
-          { name: 'asc' },
-        ],
-        include: { _count: { select: { trips: true } } },
+        orderBy,
+        include: { _count: { select: { trips: { where: { deletedAt: null, status: { notIn: ['Cancelled'] } } } } } },
       }),
       prisma.customer.count({ where: whereClause }),
     ]);
+    const stats = await rowStats(customers.map((c) => c.id));
 
     return res.json({
       success: true,
-      data: customers,
+      data: customers.map((c) => ({ ...c, stats: stats.get(c.id) })),
       meta: {
         page: pageNumber,
         per_page: limit,

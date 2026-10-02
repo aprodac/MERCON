@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getCustomers, getCustomerById, getCustomerStatement, createCustomer, updateCustomer, deleteCustomer, bulkImportCustomers } from '../controllers/customerController';
+import { getCustomers, getCustomerSummary, getCustomerById, getCustomerStatement, createCustomer, updateCustomer, deleteCustomer, bulkImportCustomers } from '../controllers/customerController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
@@ -13,6 +13,7 @@ router.use(authenticateJWT);
 router.use(authorizeRoles('Admin', 'Operator'));
 
 router.get('/', validate({ query: listQuery }), getCustomers);
+router.get('/summary', getCustomerSummary);
 router.post('/import', bulkImportCustomers);
 router.post('/', validate({ body: createCustomerBody }), storeInlineImages('logo_url'), createCustomer);
 router.get('/:id/statement', validate({ params: idParam }), getCustomerStatement);
