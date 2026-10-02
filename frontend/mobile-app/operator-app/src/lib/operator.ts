@@ -335,8 +335,81 @@ export interface OperatorThirdPartyProvider {
   contact_person?: string | null;
   phone?: string | null;
   email?: string | null;
+  address?: string | null;
+  tax_id?: string | null;
+  notes?: string | null;
+  rating?: number | null;
   isActive?: boolean;
   _count?: { subcontracts?: number };
+  // Computed by the API (thirdPartyController), not stored columns.
+  total_trips?: number;
+  active_trips?: number;
+  total_cost?: number | string;
+  /** Only on GET /third-party-providers/:id — the provider's 20 most recent trips. */
+  trips?: OperatorTrip[];
+}
+
+export interface ThirdPartyProviderInput {
+  name: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  tax_id?: string;
+  notes?: string;
+  isActive?: boolean;
+}
+
+export interface ThirdPartyStats {
+  total: number;
+  active: number;
+  inactive: number;
+  total_trips: number;
+  total_cost: number;
+}
+
+/** PUT /trips/:id/stops — the whole route is replaced, so every stop is sent. */
+export interface UpdateTripRouteInput {
+  stops: {
+    stop_type: string;
+    leg_index: number;
+    location_id?: string | null;
+    location_name: string;
+    lat?: number | null;
+    lng?: number | null;
+    planned_arrival?: string | null;
+  }[];
+  planned_start?: string;
+  planned_end?: string;
+  isRound?: boolean;
+}
+
+/** A quotation as GET /quotations/:id returns it (the edit form's starting values). */
+export interface OperatorQuotationDetail {
+  id: string;
+  name?: string | null;
+  customerId: string;
+  customer?: { id: string; name: string } | null;
+  rate: number | string;
+  driver_payout?: number | string | null;
+  currency?: string | null;
+  vehicle_class?: string | null;
+  source_vehicle_label?: string | null;
+  line_type?: string | null;
+  operation_type?: string | null;
+  pricing_basis?: string | null;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  is_active: boolean;
+  stops?: {
+    id: string;
+    sequence: number;
+    leg_index?: number | null;
+    stop_type: string;
+    source_label?: string | null;
+    locationId?: string | null;
+    location?: { id: string; name: string } | null;
+  }[];
 }
 
 /** A driver as the create-trip form needs them: status and assigned truck. */
@@ -642,6 +715,26 @@ export const operatorService = {
     return (data.data ?? []) as OperatorThirdPartyProvider[];
   },
 
+  async thirdPartyProviderById(id: string): Promise<OperatorThirdPartyProvider> {
+    const { data } = await api.get(`/third-party-providers/${id}`);
+    return data.data as OperatorThirdPartyProvider;
+  },
+
+  async thirdPartyStats(): Promise<ThirdPartyStats> {
+    const { data } = await api.get('/third-party-providers/stats');
+    return data.data as ThirdPartyStats;
+  },
+
+  async createThirdPartyProvider(payload: ThirdPartyProviderInput): Promise<OperatorThirdPartyProvider> {
+    const { data } = await api.post('/third-party-providers', payload);
+    return data.data as OperatorThirdPartyProvider;
+  },
+
+  async updateThirdPartyProvider(id: string, payload: Partial<ThirdPartyProviderInput>): Promise<OperatorThirdPartyProvider> {
+    const { data } = await api.put(`/third-party-providers/${id}`, payload);
+    return data.data as OperatorThirdPartyProvider;
+  },
+
   /** Same `/quotations` list endpoint the web dashboard's create-trip wizard
    * uses to show a customer's quotations as pickable cards — selecting one
    * fills the whole route + rate in one action, same as the web flow's
@@ -765,6 +858,17 @@ export const operatorService = {
   async createQuotationRaw(payload: Record<string, unknown>): Promise<OperatorQuotation> {
     const { data } = await api.post('/quotations', payload);
     return data.data as OperatorQuotation;
+  },
+
+  async quotationById(id: string): Promise<OperatorQuotationDetail> {
+    const { data } = await api.get(`/quotations/${id}`);
+    return data.data as OperatorQuotationDetail;
+  },
+
+  /** PUT /quotations/:id — same payload shape as create (the web's Edit Quotation page). */
+  async updateQuotation(id: string, payload: Record<string, unknown>): Promise<OperatorQuotationDetail> {
+    const { data } = await api.put(`/quotations/${id}`, payload);
+    return data.data as OperatorQuotationDetail;
   },
 
   async bulkImportTrips(rows: unknown[]): Promise<{ imported: number; failed: number; results: Array<{ row: number; success: boolean; error?: string; created_id?: string }> }> {
@@ -981,6 +1085,21 @@ export const operatorService = {
   }): Promise<ShareResult> {
     const { data } = await api.post('/operator-inbox/driver-updates/share', body);
     return data.data as ShareResult;
+  },
+
+  /** Replaces the trip's route and planned times (PUT /trips/:id/stops, as the web's Edit Trip). Draft / Scheduled trips only. */
+  async updateTripRoute(id: string, payload: UpdateTripRouteInput): Promise<OperatorTripDetail> {
+    const { data } = await api.put(`/trips/${id}/stops`, payload);
+    return data.data as OperatorTripDetail;
+  },
+
+  /** Billing amount and driver payout (PATCH /trips/:id/financials, as the web's Edit Trip). */
+  async updateTripPrice(id: string, payload: { billing_amount?: number; driver_payout?: number }): Promise<OperatorTripDetail> {
+    const { data } = await api.patch(`/trips/${id}/financials`, {
+      ...payload,
+      ...(payload.driver_payout !== undefined ? { trip_charges: payload.driver_payout } : {}),
+    });
+    return data.data as OperatorTripDetail;
   },
 
   /** Replaces the trip's additional charges (PATCH /trips/:id/financials, as the web's charges editor). */

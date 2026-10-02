@@ -1,6 +1,6 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, Text, TouchableOpacity, View } from 'react-native';
-import { ArrowRight, MapPin, X, Wallet, Truck, Building2, Tag, Calendar } from 'lucide-react-native';
+import { ArrowRight, MapPin, Pencil, X, Wallet, Truck, Building2, Tag, Calendar } from 'lucide-react-native';
 import { Colors, Radius, Shadows, Spacing } from '@mercon/mobile-shared/theme/tokens';
 import { QuotationValidityBadge } from './QuotationValidityBadge';
 import { formatCurrency, formatValidityRange } from '../services/quotationsService';
@@ -10,9 +10,11 @@ interface QuotationDetailModalProps {
   visible: boolean;
   quotation: QuotationListItem | null;
   onClose: () => void;
+  /** Shows an Edit button that opens the quotation's edit form. */
+  onEdit?: (quotation: QuotationListItem) => void;
 }
 
-export function QuotationDetailModal({ visible, quotation, onClose }: QuotationDetailModalProps) {
+export function QuotationDetailModal({ visible, quotation, onClose, onEdit }: QuotationDetailModalProps) {
   if (!quotation) return null;
 
   return (
@@ -32,6 +34,18 @@ export function QuotationDetailModal({ visible, quotation, onClose }: QuotationD
                 {quotation.name}
               </Text>
             </View>
+
+            {onEdit ? (
+              <TouchableOpacity
+                onPress={() => onEdit(quotation)}
+                accessibilityRole="button"
+                accessibilityLabel="Edit quotation"
+                className="h-8 flex-row items-center gap-1.5 rounded-full bg-[#18181B] px-3.5 mr-2"
+              >
+                <Pencil size={13} color={Colors.white} strokeWidth={2.4} />
+                <Text className="text-[13px] font-bold text-white">Edit</Text>
+              </TouchableOpacity>
+            ) : null}
 
             <TouchableOpacity
               onPress={onClose}

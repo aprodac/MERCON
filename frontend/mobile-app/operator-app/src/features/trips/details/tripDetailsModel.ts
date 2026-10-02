@@ -84,6 +84,9 @@ export const canChangeAssignment = (t: OperatorTripDetail) =>
 
 export const canCancel = (t: OperatorTripDetail) => !['Completed', 'Invoiced', 'Cancelled'].includes(t.status);
 
+/** Something on the Edit trip page can still be changed (times and route, or the price). */
+export const canEditTrip = (t: OperatorTripDetail) => !['Invoiced', 'Cancelled'].includes(t.status);
+
 const isUuid = (s?: string | null) => !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.trim());
 
 /** A stop's display name, never a raw id or the round-trip marker. */

@@ -2,52 +2,41 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert } from 'react-native';
 import {
-  Camera, CirclePlus, Clock3, FileText, MapPin, TriangleAlert, ListOrdered, Package, ShieldAlert, Trash2, Truck, UserRound, XCircle, type LucideIcon,
+  FileText, MapPin, Pencil, TriangleAlert, Package, ShieldAlert, Trash2, Truck, XCircle, type LucideIcon,
 } from 'lucide-react-native';
 import { SUGGESTED_CHARGE_TYPES, SUGGESTED_UNIT_BY_CHARGE_TYPE } from '@mercon/shared-types';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { operatorService, type OperatorTripCharge, type OperatorTripDetail, type TripDocKind } from '../../../../lib/operator';
-import { TONE, activitySteps, canCancel, canChangeAssignment, sar, type Formatters, type QuickKind } from '../tripDetailsModel';
+import { TONE, activitySteps, canCancel, canEditTrip, sar, type Formatters, type QuickKind } from '../tripDetailsModel';
 import { ACTION, Divider, INK, MUTED, SheetRow } from './parts';
 
 // ── More ──────────────────────────────────────────────────────────────────────
 
 export function MoreSheet({
-  visible, trip, active, onClose, onChange, onCharges, onUpload, onActivity, onCancel, onQuick,
+  visible, trip, active, onClose, onEdit, onCancel, onQuick,
 }: {
   visible: boolean;
   trip: OperatorTripDetail;
   active: boolean;
   onClose: () => void;
+  onEdit: () => void;
   onQuick: (kind: QuickKind) => void;
-  onChange: (w: 'driver' | 'truck') => void;
-  onCharges: () => void;
-  onUpload: () => void;
-  onActivity: () => void;
   onCancel: () => void;
 }) {
   const go = (fn: () => void) => () => { onClose(); setTimeout(fn, 250); };
-  const change = canChangeAssignment(trip);
   return (
     <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title={trip.ref_id ?? 'Trip'}>
       <View>
-        {change ? (
-          <>
-            <SheetRow icon={UserRound} tint={TONE.blue.bg} fg={TONE.blue.fg} label={trip.driver ? 'Change driver' : 'Assign driver'} sub="Pick from available drivers" onPress={go(() => onChange('driver'))} />
-            <SheetRow icon={Truck} tint="#EEF0F4" fg={INK} label={trip.vehicle ? 'Change truck' : 'Assign truck'} sub="Pick from available trucks" onPress={go(() => onChange('truck'))} />
-          </>
+        {canEditTrip(trip) ? (
+          <SheetRow icon={Pencil} tint="#EEF0F4" fg={INK} label="Edit trip" sub="Times, route and price" onPress={go(onEdit)} />
         ) : null}
-        <SheetRow icon={Clock3} tint={TONE.violet.bg} fg={TONE.violet.fg} label="Send ETA" sub="WhatsApp the expected arrival" onPress={go(() => onQuick('eta'))} />
         {active ? (
           <>
             <SheetRow icon={MapPin} tint={TONE.red.bg} fg={TONE.red.fg} label="Send location" sub="WhatsApp the truck's live position" onPress={go(() => onQuick('location'))} />
             <SheetRow icon={TriangleAlert} tint="#FFF3D6" fg="#7A4F00" label="Send delay notice" sub="Tell the customer about a delay" onPress={go(() => onQuick('delay'))} />
           </>
         ) : null}
-        <SheetRow icon={CirclePlus} tint="#FFF3D6" fg="#7A4F00" label="Additional charges" sub="Waiting, labour, extra stops…" onPress={go(onCharges)} />
-        <SheetRow icon={Camera} tint={TONE.green.bg} fg={TONE.green.fg} label="Upload photo or document" sub="POD, cargo, delay evidence, paperwork" onPress={go(onUpload)} />
-        <SheetRow icon={ListOrdered} tint={TONE.violet.bg} fg={TONE.violet.fg} label="Activity log" sub="Everything that happened, in order" onPress={go(onActivity)} />
         {canCancel(trip) ? (
           <>
             <Divider style={{ marginVertical: 6 }} />

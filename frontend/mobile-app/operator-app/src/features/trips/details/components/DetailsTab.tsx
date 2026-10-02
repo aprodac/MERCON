@@ -6,7 +6,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Linking, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import {
-  Check, ChevronRight, FileText, ListOrdered, Phone, Plus, Receipt, Smartphone, Timer, Route, Truck, UploadCloud, X,
+  Check, ChevronRight, FileText, ListOrdered, Phone, Plus, Receipt, Smartphone, Truck, UploadCloud, X,
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -18,7 +18,7 @@ import {
   ON_TIME_GRACE_MIN, TONE, type Tone, ago, billingLabel, canChangeAssignment, formatDuration, lineType, minutesLate, moneyOf, sar, sortedStops,
   type Formatters,
 } from '../tripDetailsModel';
-import { Card, Chip, Divider, Fact, INK, InfoRow, MUTED, SectionHead } from './parts';
+import { Card, Chip, Divider, INK, InfoRow, MUTED, SectionHead } from './parts';
 
 interface Props {
   trip: OperatorTripDetail;

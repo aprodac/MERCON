@@ -99,6 +99,8 @@ export function useTripDetails(id: string | undefined) {
   useFocusEffect(
     useCallback(() => {
       const every = phase === 'active' ? ACTIVE_REFRESH_MS : IDLE_REFRESH_MS;
+      // Coming back from Edit trip shows the change straight away (a no-op while the first load is running).
+      load('silent');
       let timer: ReturnType<typeof setInterval> | null = setInterval(() => load('silent'), every);
       const sub = AppState.addEventListener('change', (s) => {
         if (s === 'active') {

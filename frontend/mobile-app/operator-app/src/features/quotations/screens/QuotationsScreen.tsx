@@ -1,9 +1,10 @@
 /**
  * Operator Commercial Quotations screen. Composes the quotations feature's hooks + components.
- * Read-only rate & lane lookup for mobile operators.
+ * Rate & lane lookup, with add (+ in the top bar) and edit (from a quotation's details).
  */
 import React, { useEffect, useState } from 'react';
 import { FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
+import { useRouter } from 'expo-router';
 
 import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +27,7 @@ import { useQuotationFilters, useQuotationSearch, useQuotationSorting, useQuotat
 import type { QuotationListItem } from '../types';
 
 export default function QuotationsScreen() {
+  const router = useRouter();
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [selectedQuotation, setSelectedQuotation] = useState<QuotationListItem | null>(null);
@@ -65,6 +67,7 @@ export default function QuotationsScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }} edges={['top']}>
       <QuotationsHeader
         onFilterPress={() => setFilterVisible(true)}
+        onAddPress={() => router.push('/quotation-edit')}
         onMenuPress={handleMenuPress}
         filterActive={status !== 'all'}
       />
@@ -161,6 +164,10 @@ export default function QuotationsScreen() {
         visible={Boolean(selectedQuotation)}
         quotation={selectedQuotation}
         onClose={() => setSelectedQuotation(null)}
+        onEdit={(q) => {
+          setSelectedQuotation(null);
+          router.push({ pathname: '/quotation-edit', params: { id: q.id } });
+        }}
       />
       <OperatorSidebarDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </SafeAreaView>

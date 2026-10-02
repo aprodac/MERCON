@@ -39,8 +39,8 @@ const MENU_SECTIONS: MenuSection[] = [
     title: 'Fleet',
     items: [
       { Icon: Truck, label: 'Vehicles', desc: 'Fleet trucks & trailers', route: '/vehicles' },
+      { Icon: Building2, label: '3rd Party Fleet', desc: 'Subcontractors & 3PL carriers', route: '/third-party' },
       // Hidden until these screens can do more than list (owner, 2026-09-26).
-      // { Icon: Building2, label: '3rd Party Fleet', desc: 'Subcontractors & 3PL carriers', route: '/third-party' },
       // { Icon: Wrench, label: 'Maintenance', desc: 'Service & repair records', route: '/maintenance' },
       { Icon: CalendarClock, label: 'Vehicle Renewals', desc: 'Expiring vehicle documents', route: '/vehicle-renewals' },
     ],
@@ -48,7 +48,7 @@ const MENU_SECTIONS: MenuSection[] = [
   {
     title: 'Finance',
     items: [
-      { Icon: Tag, label: 'Quotations', desc: 'Commercial rates & lanes', route: '/quotations' },
+      { Icon: Tag, label: 'Quotations', desc: 'View, add and edit rates & lanes', route: '/quotations' },
       // { Icon: FileText, label: 'Invoices', desc: 'View invoices and record payments', route: '/invoices' },
       // { Icon: CreditCard, label: 'Expenses', desc: 'Operational costs & receipts', route: '/expenses' },
     ],

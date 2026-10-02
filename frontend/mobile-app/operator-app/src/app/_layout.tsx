@@ -87,6 +87,10 @@ function RootNavigator() {
         <Stack.Screen name="customer-edit" />
         <Stack.Screen name="user-management" options={{ animation: 'none' }} />
         <Stack.Screen name="user-edit" />
+        <Stack.Screen name="quotation-edit" />
+        <Stack.Screen name="trip-edit" />
+        <Stack.Screen name="third-party-details" />
+        <Stack.Screen name="third-party-edit" />
       </Stack>
 
       {showBottomNav && (

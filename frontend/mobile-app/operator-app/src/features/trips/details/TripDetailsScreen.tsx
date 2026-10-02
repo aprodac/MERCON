@@ -348,10 +348,7 @@ export default function TripDetailsScreen() {
         visible={sheet === 'more'}
         trip={trip}
         onClose={() => setSheet(null)}
-        onChange={openChange}
-        onCharges={() => setSheet('charges')}
-        onUpload={() => setSheet('upload')}
-        onActivity={() => setSheet('activity')}
+        onEdit={() => router.push({ pathname: '/trip-edit', params: { id: trip.id } })}
         onCancel={cancelTrip}
         onQuick={quick}
         active={phase === 'active'}

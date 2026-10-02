@@ -67,8 +67,8 @@ const GROUPS: MenuGroup[] = [
     items: [
       { Icon: MapIcon, label: 'Fleet map', route: '/fleet-map', keywords: 'live map trucks location gps tracking' },
       { Icon: Truck, label: 'Vehicles', route: '/vehicles', keywords: 'trucks trailers' },
+      { Icon: Building2, label: '3rd party fleet', route: '/third-party', keywords: 'subcontractors providers 3pl' },
       // Hidden until these screens can do more than list (owner, 2026-09-26).
-      // { Icon: Building2, label: '3rd party fleet', route: '/third-party', keywords: 'subcontractors providers 3pl' },
       // { Icon: Wrench, label: 'Maintenance', route: '/maintenance', keywords: 'service repair' },
       { Icon: CalendarClock, label: 'Renewals', route: '/vehicle-renewals', badge: 'renewals', keywords: 'expiring istimara insurance' },
     ],
