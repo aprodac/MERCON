@@ -1,17 +1,17 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowUpRight, CheckCircle2, CreditCard, FileText, ReceiptText, TriangleAlert } from 'lucide-react';
+import { ArrowUpRight, CheckCircle2, FileText, ReceiptText, TriangleAlert, Wallet } from 'lucide-react';
 
 import type { CustomerStatementData, CustomerStatementInvoice } from '@/services/customerService';
-import { Button } from '@/components/ui/button';
 import { useDeploymentTimezone } from '@/lib/datetime';
 import { cn } from '@/lib/utils';
-import { dk, EMPTY, fmtDate, fmtSar, StatusPill, type Tone } from '@/components/details/DetailKit';
+import { fmtDate } from '@/components/details/DetailKit';
+import { Badge, EmptyBlock, Panel, Stat, ui, type UiTone } from '@/components/customers/customerUi';
 
-const STATUS: Record<CustomerStatementInvoice['status'], { tone: Tone; label: string }> = {
-  Draft: { tone: 'amber', label: 'Draft' },
+const STATUS: Record<CustomerStatementInvoice['status'], { tone: UiTone; label: string }> = {
+  Draft: { tone: 'slate', label: 'Draft' },
   Issued: { tone: 'blue', label: 'Issued' },
   PartiallyPaid: { tone: 'amber', label: 'Part paid' },
-  Paid: { tone: 'green', label: 'Paid' },
+  Paid: { tone: 'emerald', label: 'Paid' },
   Void: { tone: 'slate', label: 'Void' },
 };
 
@@ -38,99 +38,82 @@ export default function CustomerFinancialsTab({
   const invoiced = statement?.total_invoiced ?? 0;
   const paid = statement?.total_paid ?? 0;
   const paidPct = invoiced > 0 ? Math.min(100, Math.round((paid / invoiced) * 100)) : 0;
-
-  const figures = [
-    { label: 'Invoiced', value: fmtSar(invoiced, { allowZero: true }), icon: FileText, tone: 'text-slate-900 dark:text-white', iconTone: 'text-blue-600' },
-    { label: 'Paid', value: fmtSar(paid, { allowZero: true }), icon: CheckCircle2, tone: 'text-emerald-600 dark:text-emerald-400', iconTone: 'text-emerald-600' },
-    { label: 'Outstanding', value: fmtSar(statement?.total_outstanding ?? 0, { allowZero: true }), icon: CreditCard, tone: 'text-[#FA634E]', iconTone: 'text-[#FA634E]' },
-    { label: 'Overdue', value: fmtSar(overdueAmount, { allowZero: true }), icon: TriangleAlert, tone: overdueAmount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white', iconTone: overdueAmount > 0 ? 'text-rose-600' : 'text-slate-400' },
-  ];
+  const money = (v: number) => (isLoading ? '—' : v.toLocaleString('en-US', { maximumFractionDigits: 0 }));
+  const status = (inv: CustomerStatementInvoice) => {
+    const isOverdue = (inv.status === 'Issued' || inv.status === 'PartiallyPaid') && !!inv.due_date && inv.due_date.slice(0, 10) < today;
+    return { isOverdue, ...(isOverdue ? { tone: 'rose' as UiTone, label: 'Overdue' } : STATUS[inv.status] ?? { tone: 'slate' as UiTone, label: inv.status }) };
+  };
 
   return (
-    <div className="flex flex-col gap-4">
-      <section className={cn(dk.card, 'p-4 sm:p-5 flex flex-col gap-4')}>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {figures.map((f) => {
-            const Icon = f.icon;
-            return (
-              <div key={f.label} className="rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 px-3.5 py-3 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <span className={dk.label}>{f.label}</span>
-                  <Icon className={cn('w-4 h-4', f.iconTone)} />
-                </div>
-                <p className={cn('mt-1.5 text-lg sm:text-xl font-black font-mono leading-tight truncate', f.tone)}>{isLoading ? EMPTY : f.value}</p>
-              </div>
-            );
-          })}
-        </div>
-        <div>
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500 mb-1.5">
-            <span>Collected</span>
-            <span className="tabular-nums">{paidPct}% of issued invoices</span>
-          </div>
-          <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-            <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${paidPct}%` }} />
-          </div>
-        </div>
-      </section>
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <Stat label="Invoiced" icon={FileText} tone="blue" unit="SAR" value={money(invoiced)} sub="Issued invoices, all time" />
+        <Stat label="Paid" icon={CheckCircle2} tone="emerald" unit="SAR" value={money(paid)} sub={`${paidPct}% collected`} />
+        <Stat label="Outstanding" icon={Wallet} tone="amber" unit="SAR" value={money(statement?.total_outstanding ?? 0)} sub="Still to collect" />
+        <Stat
+          label="Overdue"
+          icon={TriangleAlert}
+          tone="rose"
+          unit="SAR"
+          value={money(overdueAmount)}
+          sub={overdueAmount > 0 ? 'Past the due date' : 'Nothing past due'}
+          subTone={overdueAmount > 0 ? 'rose' : undefined}
+        />
+      </div>
 
-      <section className={cn(dk.card, 'p-4 sm:p-5 flex flex-col gap-3')}>
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <h2 className="flex items-center gap-2 text-sm font-black text-slate-900 dark:text-white">
-            <ReceiptText className="w-4 h-4 text-[#FA634E]" /> Invoices
-          </h2>
-          {financeEnabled && (
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={onOpenStatement} className="h-8 rounded-xl text-xs font-bold">
-                Statement of account
-              </Button>
-              <Button variant="outline" size="sm" onClick={() => navigate(`/finance/invoices?customer=${customerId}`)} className="h-8 rounded-xl text-xs font-bold gap-1.5">
-                Open in Invoices <ArrowUpRight className="w-3.5 h-3.5 text-[#FA634E]" />
-              </Button>
-            </div>
-          )}
+      <Panel
+        title="Invoices"
+        description={statement ? `${statement.invoices.length} invoice${statement.invoices.length === 1 ? '' : 's'} · ${paidPct}% of the invoiced amount collected` : undefined}
+        icon={ReceiptText}
+        tone="indigo"
+        flush
+        action={
+          financeEnabled ? (
+            <>
+              <button type="button" onClick={onOpenStatement} className={cn(ui.btn, ui.btnOutline, 'h-8')}>Statement of account</button>
+              <button type="button" onClick={() => navigate(`/finance/invoices?customer=${customerId}`)} className={cn(ui.btn, ui.btnOutline, 'h-8')}>
+                Open in Invoices <ArrowUpRight className="size-4" />
+              </button>
+            </>
+          ) : undefined
+        }
+      >
+        <div className="h-1 bg-slate-100 dark:bg-slate-800">
+          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${paidPct}%` }} />
         </div>
-
         {isLoading ? (
-          <p className="py-10 text-center text-xs font-bold text-slate-400 animate-pulse">Loading invoices…</p>
+          <div className="space-y-2 p-5">{[0, 1, 2].map((i) => <div key={i} className="h-8 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />)}</div>
         ) : !statement?.invoices?.length ? (
-          <div className="py-10 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
-            <ReceiptText className="w-7 h-7 text-slate-300 mx-auto mb-2" />
-            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">No invoices yet</p>
-            <p className="text-xs text-slate-400 mt-0.5">Invoices raised for this customer show up here.</p>
-          </div>
+          <div className="p-5"><EmptyBlock icon={ReceiptText} title="No invoices yet" text="Invoices raised for this customer show up here." /></div>
         ) : (
-          <div className="overflow-x-auto -mx-1">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 dark:border-slate-800 text-[10px] font-extrabold uppercase text-slate-400 tracking-widest">
-                  <th className="py-2.5 px-2">Invoice</th>
-                  <th className="py-2.5 px-2">Date</th>
-                  <th className="py-2.5 px-2">Due</th>
-                  <th className="py-2.5 px-2">Status</th>
-                  <th className="py-2.5 px-2 text-right">Total</th>
-                  <th className="py-2.5 px-2 text-right">Balance</th>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead className="bg-slate-50/80 dark:bg-slate-800/40">
+                <tr>
+                  <th className={cn(ui.th, 'pl-5')}>Invoice</th>
+                  <th className={ui.th}>Date</th>
+                  <th className={ui.th}>Due</th>
+                  <th className={ui.th}>Status</th>
+                  <th className={cn(ui.th, 'text-right')}>Total (SAR)</th>
+                  <th className={cn(ui.th, 'pr-5 text-right')}>Balance (SAR)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {statement.invoices.map((inv) => {
-                  const s = STATUS[inv.status] ?? { tone: 'slate' as Tone, label: inv.status };
-                  const isOverdue = (inv.status === 'Issued' || inv.status === 'PartiallyPaid') && !!inv.due_date && inv.due_date.slice(0, 10) < today;
+                  const st = status(inv);
                   return (
                     <tr
                       key={inv.id}
                       onClick={financeEnabled ? () => navigate(`/finance/invoices/${inv.id}`) : undefined}
-                      className={cn('group', financeEnabled && 'hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer')}
+                      className={cn('group', financeEnabled && 'cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/40')}
                     >
-                      <td className="py-3 px-2 font-mono font-black text-slate-900 dark:text-white group-hover:text-[#FA634E]">{inv.ref_id || 'Draft'}</td>
-                      <td className="py-3 px-2 text-slate-600 dark:text-slate-400">{fmtDate(inv.invoice_date, tz)}</td>
-                      <td className={cn('py-3 px-2', isOverdue ? 'text-rose-600 font-bold' : 'text-slate-600 dark:text-slate-400')}>{fmtDate(inv.due_date, tz)}</td>
-                      <td className="py-3 px-2">
-                        {isOverdue ? <StatusPill tone="red">Overdue</StatusPill> : <StatusPill tone={s.tone}>{s.label}</StatusPill>}
-                      </td>
-                      <td className="py-3 px-2 text-right font-mono font-bold text-slate-900 dark:text-slate-100">{fmtSar(inv.total_amount, { allowZero: true })}</td>
-                      <td className={cn('py-3 px-2 text-right font-mono font-bold', inv.balance_due > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500')}>
-                        {fmtSar(inv.balance_due, { allowZero: true })}
+                      <td className={cn(ui.td, 'pl-5 font-medium text-slate-900 tabular-nums group-hover:text-[#E5533F] dark:text-white')}>{inv.ref_id || 'Draft'}</td>
+                      <td className={cn(ui.td, 'text-slate-600 dark:text-slate-300')}>{fmtDate(inv.invoice_date, tz)}</td>
+                      <td className={cn(ui.td, st.isOverdue ? 'font-medium text-rose-600' : 'text-slate-600 dark:text-slate-300')}>{fmtDate(inv.due_date, tz)}</td>
+                      <td className={ui.td}><Badge tone={st.tone} dot>{st.label}</Badge></td>
+                      <td className={cn(ui.td, 'text-right text-slate-900 tabular-nums dark:text-white')}>{inv.total_amount.toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                      <td className={cn(ui.td, 'pr-5 text-right font-medium tabular-nums', inv.balance_due > 0 ? 'text-slate-900 dark:text-white' : 'text-slate-400')}>
+                        {inv.balance_due > 0 ? inv.balance_due.toLocaleString('en-US', { maximumFractionDigits: 2 }) : 'Paid'}
                       </td>
                     </tr>
                   );
@@ -139,7 +122,7 @@ export default function CustomerFinancialsTab({
             </table>
           </div>
         )}
-      </section>
+      </Panel>
     </div>
   );
 }

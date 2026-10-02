@@ -3,74 +3,35 @@ import { toast } from 'sonner';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus,
-  Edit2,
-  FileText,
-  Download,
-  Building2,
-  Search,
-  Eye,
-  Trash2,
-  ChevronDown,
-  Filter,
-  List,
-  LayoutGrid,
-  XCircle,
-  X,
-  FileSpreadsheet,
-  UploadCloud,
-  MoreVertical,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  ArrowDown,
-  ArrowUp,
-  Truck,
-  MapPinned,
-  ReceiptText,
-  User,
-  Clock,
+  Plus, Edit2, FileText, Download, Building2, Search, Eye, Trash2, ChevronDown, Filter, List, LayoutGrid, X,
+  FileSpreadsheet, UploadCloud, MoreHorizontal, ChevronLeft, ChevronRight, Truck, MapPinned, ReceiptText,
+  Navigation, Wallet, CalendarClock, Check, ArrowUpDown, AlertCircle,
 } from 'lucide-react';
-import { CustomerBuilding, TruckMotion, MoneyBills, CalendarAlert } from '@/components/ui/kpi-icons';
 
 import { downloadCSV, exportExcelTable, exportPDFTable } from '@/utils/exportUtils';
 import { CUSTOMER_COLUMNS } from '@/utils/importUtils';
 import ExcelImportDialog from '@/components/fleet/ExcelImportDialog';
 import ExportModal, { ExportColumn, ExportFilter } from '@/components/ui/ExportModal';
-import { SortDropdown, SortOption } from '@/components/ui/SortDropdown';
 import CustomerPreviewModal from '@/components/customers/CustomerPreviewModal';
 import CreateCustomerModal from '@/components/customers/CreateCustomerModal';
 import EditCustomerModal from '@/components/customers/EditCustomerModal';
-import PhoneDisplay from '@/components/ui/PhoneDisplay';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import DataTable from '@/components/ui/DataTable';
-import KpiCard from '@/components/ui/KpiCard';
-import StatusBadge from '@/components/ui/StatusBadge';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useModuleEnabled } from '@/components/auth/RequireModule';
+import { Badge, CustomerAvatar, EmptyBlock, PhoneLine, Stat, ui } from '@/components/customers/customerUi';
 import { customerService, Customer, CustomerFilters } from '@/services/customerService';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { cn } from '@/lib/utils';
 import { timeAgo } from '@/lib/fleetLive';
 import { useDeploymentTimezone, formatInDeploymentTz } from '@/lib/datetime';
-
 import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
 const custRef = (c: Customer) => `CUST-${c.id.slice(0, 5).toUpperCase()}`;
 const contactPhone = (c: Customer) => c.primary_contact_phone || c.contact_phone || c.phone || '';
-const sar = (v: number) => `SAR ${v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-const sarCompact = (v: number) =>
-  v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : v >= 10_000 ? `${Math.round(v / 1000)}K` : v.toLocaleString('en-US', { maximumFractionDigits: 0 });
+const money = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 0 });
 
 const CUSTOMER_EXPORT_COLUMNS: ExportColumn<Customer>[] = [
   { id: 'name', label: 'Customer Name', accessor: (c) => c.name },
@@ -106,65 +67,15 @@ const VIEW_FILTERS: Record<CustomerView, Partial<CustomerFilters>> = {
   balance: { has_balance: true },
 };
 
-type CustomerSortOption = 'trips' | 'latest' | 'oldest' | 'name_asc' | 'name_desc';
+type CustomerSort = 'trips' | 'latest' | 'oldest' | 'name_asc' | 'name_desc';
 
-const CUSTOMER_SORT_OPTIONS: SortOption<CustomerSortOption>[] = [
-  { value: 'trips', label: 'Most trips', icon: <Truck className="w-3.5 h-3.5 text-brand" /> },
-  { value: 'latest', label: 'Newest added', icon: <ArrowDown className="w-3.5 h-3.5 text-blue-600" /> },
-  { value: 'oldest', label: 'Oldest added', icon: <ArrowUp className="w-3.5 h-3.5 text-amber-600" /> },
-  { value: 'name_asc', label: 'Name (A → Z)', icon: <Building2 className="w-3.5 h-3.5 text-purple-600" /> },
-  { value: 'name_desc', label: 'Name (Z → A)', icon: <Building2 className="w-3.5 h-3.5 text-purple-600" /> },
+const SORTS: { value: CustomerSort; label: string; params: Pick<CustomerFilters, 'sort_by' | 'sort_dir'> }[] = [
+  { value: 'trips', label: 'Most trips', params: { sort_by: 'trips', sort_dir: 'desc' } },
+  { value: 'name_asc', label: 'Name A–Z', params: { sort_by: 'name', sort_dir: 'asc' } },
+  { value: 'name_desc', label: 'Name Z–A', params: { sort_by: 'name', sort_dir: 'desc' } },
+  { value: 'latest', label: 'Newest first', params: { sort_by: 'createdAt', sort_dir: 'desc' } },
+  { value: 'oldest', label: 'Oldest first', params: { sort_by: 'createdAt', sort_dir: 'asc' } },
 ];
-
-const SORT_PARAMS: Record<CustomerSortOption, Pick<CustomerFilters, 'sort_by' | 'sort_dir'>> = {
-  trips: { sort_by: 'trips', sort_dir: 'desc' },
-  latest: { sort_by: 'createdAt', sort_dir: 'desc' },
-  oldest: { sort_by: 'createdAt', sort_dir: 'asc' },
-  name_asc: { sort_by: 'name', sort_dir: 'asc' },
-  name_desc: { sort_by: 'name', sort_dir: 'desc' },
-};
-
-function CustomerLogo({ customer, size = 'md' }: { customer: Customer; size?: 'md' | 'lg' }) {
-  const box = size === 'lg' ? 'w-11 h-11 text-base' : 'w-9 h-9 text-sm';
-  return customer.logo_url ? (
-    <img
-      src={customer.logo_url}
-      alt=""
-      className={cn(box, 'object-contain shrink-0 rounded-lg bg-white border border-slate-200/80 dark:border-slate-700 p-0.5')}
-    />
-  ) : (
-    <div className={cn(box, 'rounded-lg bg-orange-100/80 dark:bg-orange-950/50 border border-orange-200/80 dark:border-orange-900/50 flex items-center justify-center font-extrabold text-brand shrink-0')}>
-      {customer.name?.[0]?.toUpperCase() || 'C'}
-    </div>
-  );
-}
-
-function LiveBadge({ count }: { count: number }) {
-  if (count <= 0) return null;
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">
-      <span className="relative flex h-1.5 w-1.5">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-      </span>
-      {count} live
-    </span>
-  );
-}
-
-function IconAction({ label, onClick, children }: { label: string; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); onClick(); }}
-      aria-label={label}
-      title={label}
-      className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-slate-500 hover:text-brand hover:bg-orange-50 dark:hover:bg-orange-950/30 transition-colors cursor-pointer"
-    >
-      {children}
-    </button>
-  );
-}
 
 export default function CustomerListPage() {
   const navigate = useNavigate();
@@ -173,99 +84,76 @@ export default function CustomerListPage() {
   const exportsEnabled = useModuleEnabled('company-reports');
   const financeEnabled = useModuleEnabled('finance');
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const [view, setView] = useState<CustomerView>('all');
-  const [sortOrder, setSortOrder] = useState<CustomerSortOption>('trips');
+  const [sort, setSort] = useState<CustomerSort>('trips');
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+  const [layout, setLayout] = useState<'list' | 'grid'>('list');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
-  const [selectedCustomersForExport, setSelectedCustomersForExport] = useState<Customer[]>([]);
+  const [exportRowsSelected, setExportRowsSelected] = useState<Customer[]>([]);
   const [previewCustomer, setPreviewCustomer] = useState<Customer | null>(null);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
-  const [isCreateCustomerOpen, setIsCreateCustomerOpen] = useState(false);
-  const [confirmModal, setConfirmModal] = useState<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    onConfirm: () => void | Promise<void>;
-  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [confirm, setConfirm] = useState<{ open: boolean; title: string; message: string; onConfirm: () => void | Promise<void> }>({
+    open: false, title: '', message: '', onConfirm: () => {},
+  });
 
   const debouncedSearch = useDebouncedValue(search, 300);
+  const sortParams = SORTS.find((s) => s.value === sort)!.params;
 
-  const { data: customersRes, isLoading, isError, error } = useQuery({
-    queryKey: ['customers', debouncedSearch, currentPage, pageSize, view, sortOrder],
-    queryFn: () => customerService.getAll({
-      search: debouncedSearch || undefined,
-      page: currentPage,
-      per_page: pageSize,
-      ...VIEW_FILTERS[view],
-      ...SORT_PARAMS[sortOrder],
-    }),
-    // Keep the previous rows on screen while a new search/page loads.
+  const { data: res, isLoading, isFetching, isError, error } = useQuery({
+    queryKey: ['customers', debouncedSearch, page, pageSize, view, sort],
+    queryFn: () => customerService.getAll({ search: debouncedSearch || undefined, page, per_page: pageSize, ...VIEW_FILTERS[view], ...sortParams }),
     placeholderData: keepPreviousData,
   });
+  const { data: summary } = useQuery({ queryKey: ['customers', 'summary'], queryFn: () => customerService.getSummary() });
 
-  const { data: summary } = useQuery({
-    queryKey: ['customers', 'summary'],
-    queryFn: () => customerService.getSummary(),
-  });
+  const customers = res?.data || [];
+  const totalPages = res?.meta?.total_pages || 1;
+  const totalCount = res?.meta?.total ?? customers.length;
+  const selectedRows = customers.filter((c) => selected.has(c.id));
 
-  const customers = customersRes?.data || [];
-  const totalPages = customersRes?.meta?.total_pages || 1;
-  const totalCount = customersRes?.meta?.total ?? customers.length;
-
-  const changeView = (v: CustomerView) => {
-    setView((prev) => (prev === v && v !== 'all' ? 'all' : v));
-    setCurrentPage(1);
-  };
-
+  const resetPaging = () => { setPage(1); setSelected(new Set()); };
+  const changeView = (v: CustomerView) => { setView((prev) => (prev === v && v !== 'all' ? 'all' : v)); resetPaging(); };
   const openCustomer = (c: Customer, tab?: string) => navigate(`/customers/${c.id}${tab ? `?tab=${tab}` : ''}`);
+  const newTrip = (c: Customer) => navigate(`/trips/new?customer_id=${c.id}`);
 
-  const exportRows = (rows: Customer[]) =>
-    rows.map((c) => [
-      custRef(c),
-      c.name,
-      contactPhone(c) || 'N/A',
-      c.primary_contact_person || '—',
-      c.payment_terms || '—',
-      c.isActive ? 'Active' : 'Inactive',
-    ]);
+  const toggleRow = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const allOnPage = customers.length > 0 && customers.every((c) => selected.has(c.id));
+  const toggleAll = () => setSelected(allOnPage ? new Set() : new Set(customers.map((c) => c.id)));
+
   const EXPORT_HEADERS = ['Customer ID', 'Company Name', 'Phone', 'Contact Person', 'Payment Terms', 'Status'];
-
-  const handleExportExcel = async (rows: Customer[]) => {
-    await exportExcelTable('MERCON Customer Accounts', EXPORT_HEADERS, exportRows(rows), `customers_${new Date().toISOString().slice(0, 10)}.xlsx`);
-  };
-  const handleExportPDF = (rows: Customer[]) => {
-    exportPDFTable('MERCON Customer Accounts', EXPORT_HEADERS, exportRows(rows), `customers_${new Date().toISOString().slice(0, 10)}.pdf`);
-  };
-  const handleExportCSV = (rows: Customer[]) => {
+  const exportRows = (rows: Customer[]) =>
+    rows.map((c) => [custRef(c), c.name, contactPhone(c) || 'N/A', c.primary_contact_person || '—', c.payment_terms || '—', c.isActive ? 'Active' : 'Inactive']);
+  const stamp = () => new Date().toISOString().slice(0, 10);
+  const exportExcel = (rows: Customer[]) => exportExcelTable('MERCON Customer Accounts', EXPORT_HEADERS, exportRows(rows), `customers_${stamp()}.xlsx`);
+  const exportPdf = (rows: Customer[]) => exportPDFTable('MERCON Customer Accounts', EXPORT_HEADERS, exportRows(rows), `customers_${stamp()}.pdf`);
+  const exportCsv = (rows: Customer[]) =>
     downloadCSV(
       rows.map((c) => ({
-        customer_id: custRef(c),
-        customer_name: c.name,
-        phone: contactPhone(c),
-        contact_person: c.primary_contact_person || '',
-        payment_terms: c.payment_terms || '',
-        status: c.isActive ? 'Active' : 'Inactive',
+        customer_id: custRef(c), customer_name: c.name, phone: contactPhone(c), contact_person: c.primary_contact_person || '',
+        payment_terms: c.payment_terms || '', status: c.isActive ? 'Active' : 'Inactive',
       })),
-      `customers_${new Date().toISOString().slice(0, 10)}.csv`,
+      `customers_${stamp()}.csv`,
     );
-  };
 
   const askDelete = (rows: Customer[]) => {
-    setConfirmModal({
-      isOpen: true,
-      title: rows.length === 1 ? 'Delete customer' : 'Delete selected customers',
-      message:
-        rows.length === 1
-          ? `Delete ${rows[0].name}? Their trips and invoices stay, marked as from a deleted customer.`
-          : `Delete ${rows.length} customers? Their trips and invoices stay, marked as from a deleted customer.`,
+    setConfirm({
+      open: true,
+      title: rows.length === 1 ? 'Delete customer?' : `Delete ${rows.length} customers?`,
+      message: `${rows.length === 1 ? rows[0].name : `These ${rows.length} customers`} will be removed. Their trips and invoices stay, marked as from a deleted customer.`,
       onConfirm: async () => {
         try {
           await Promise.all(rows.map((c) => customerService.delete(c.id)));
           queryClient.invalidateQueries({ queryKey: ['customers'] });
+          setSelected(new Set());
           toast.success(rows.length === 1 ? 'Customer deleted' : `${rows.length} customers deleted`);
         } catch {
           toast.error('Failed to delete customer');
@@ -274,544 +162,400 @@ export default function CustomerListPage() {
     });
   };
 
-  /** Everything you can do with a customer, in one menu (row ⋮ and grid card ⋮). */
-  const customerMenu = (c: Customer) => (
-    <DropdownMenuContent align="end" className="w-52" onClick={(e) => e.stopPropagation()}>
-      <DropdownMenuItem onClick={() => openCustomer(c)} className="text-xs font-semibold">
-        <Eye size={13} className="mr-2 text-indigo-500" /> Open customer
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => setPreviewCustomer(c)} className="text-xs font-semibold">
-        <Eye size={13} className="mr-2 text-slate-400" /> Quick preview
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuLabel className="text-[10px] font-bold uppercase text-slate-400">Work</DropdownMenuLabel>
-      <DropdownMenuItem onClick={() => navigate(`/trips/new?customer_id=${c.id}`)} className="text-xs font-semibold">
-        <Plus size={13} className="mr-2 text-brand" /> New trip
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => openCustomer(c, 'trips')} className="text-xs font-semibold">
-        <Truck size={13} className="mr-2 text-blue-600" /> Trips
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => openCustomer(c, 'tracking')} className="text-xs font-semibold">
-        <MapPinned size={13} className="mr-2 text-emerald-600" /> Tracking link
-      </DropdownMenuItem>
-      {exportsEnabled && (
-        <DropdownMenuItem onClick={() => openCustomer(c, 'exports')} className="text-xs font-semibold">
-          <FileSpreadsheet size={13} className="mr-2 text-emerald-700" /> Excel trip sheets
-        </DropdownMenuItem>
-      )}
-      <DropdownMenuItem onClick={() => openCustomer(c, 'financials')} className="text-xs font-semibold">
-        <ReceiptText size={13} className="mr-2 text-indigo-600" /> Invoices & balance
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem onClick={() => setEditCustomer(c)} className="text-xs font-semibold">
-        <Edit2 size={13} className="mr-2 text-amber-500" /> Quick edit
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => navigate(`/customers/${c.id}/edit`)} className="text-xs font-semibold">
-        <Edit2 size={13} className="mr-2 text-amber-600" /> Edit full profile
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => askDelete([c])} className="text-xs font-semibold text-rose-600 focus:text-rose-600 focus:bg-rose-50">
-        <Trash2 size={13} className="mr-2 text-rose-500" /> Delete
-      </DropdownMenuItem>
-    </DropdownMenuContent>
+  const rowMenu = (c: Customer) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button type="button" onClick={(e) => e.stopPropagation()} aria-label={`More actions for ${c.name}`} className={ui.iconBtn}>
+          <MoreHorizontal className="size-4" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56" onClick={(e) => e.stopPropagation()}>
+        <DropdownMenuItem onClick={() => openCustomer(c)} className="text-[13px]"><Eye className="mr-2 size-4 text-slate-500" /> Open customer</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setPreviewCustomer(c)} className="text-[13px]"><Eye className="mr-2 size-4 text-slate-400" /> Quick preview</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => newTrip(c)} className="text-[13px]"><Plus className="mr-2 size-4 text-slate-500" /> New trip</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openCustomer(c, 'trips')} className="text-[13px]"><Truck className="mr-2 size-4 text-slate-500" /> Trips</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => openCustomer(c, 'tracking')} className="text-[13px]"><MapPinned className="mr-2 size-4 text-slate-500" /> Live tracking</DropdownMenuItem>
+        {exportsEnabled && (
+          <DropdownMenuItem onClick={() => openCustomer(c, 'exports')} className="text-[13px]"><FileSpreadsheet className="mr-2 size-4 text-slate-500" /> Excel trip sheets</DropdownMenuItem>
+        )}
+        <DropdownMenuItem onClick={() => openCustomer(c, 'financials')} className="text-[13px]"><ReceiptText className="mr-2 size-4 text-slate-500" /> Invoices & balance</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => setEditCustomer(c)} className="text-[13px]"><Edit2 className="mr-2 size-4 text-slate-500" /> Quick edit</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate(`/customers/${c.id}/edit`)} className="text-[13px]"><Edit2 className="mr-2 size-4 text-slate-500" /> Edit full profile</DropdownMenuItem>
+        <DropdownMenuItem onClick={() => askDelete([c])} className="text-[13px] text-rose-600 focus:bg-rose-50 focus:text-rose-600"><Trash2 className="mr-2 size-4" /> Delete</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 
+  /** Shortcuts shown on hover (always visible on touch screens). */
   const quickActions = (c: Customer) => (
-    <>
-      <IconAction label="New trip" onClick={() => navigate(`/trips/new?customer_id=${c.id}`)}>
-        <Plus size={15} />
-      </IconAction>
-      <IconAction label="Tracking link" onClick={() => openCustomer(c, 'tracking')}>
-        <MapPinned size={15} />
-      </IconAction>
+    <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+      <button type="button" title="New trip" aria-label="New trip" onClick={() => newTrip(c)} className={ui.iconBtn}><Plus className="size-4" /></button>
+      <button type="button" title="Live tracking" aria-label="Live tracking" onClick={() => openCustomer(c, 'tracking')} className={ui.iconBtn}><MapPinned className="size-4" /></button>
       {exportsEnabled && (
-        <IconAction label="Excel trip sheets" onClick={() => openCustomer(c, 'exports')}>
-          <FileSpreadsheet size={15} />
-        </IconAction>
+        <button type="button" title="Excel trip sheets" aria-label="Excel trip sheets" onClick={() => openCustomer(c, 'exports')} className={ui.iconBtn}><FileSpreadsheet className="size-4" /></button>
       )}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            onClick={(e) => e.stopPropagation()}
-            aria-label={`More actions for ${c.name}`}
-            className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            <MoreVertical size={15} />
-          </button>
-        </DropdownMenuTrigger>
-        {customerMenu(c)}
-      </DropdownMenu>
-    </>
-  );
-
-  const columns = [
-    {
-      header: 'Customer',
-      mobilePriority: 'primary' as const,
-      accessor: (row: Customer) => (
-        <div className="flex items-center gap-3 min-w-0">
-          <CustomerLogo customer={row} />
-          <div className="flex flex-col min-w-0">
-            <span className="font-bold text-slate-900 dark:text-slate-100 text-[13px] truncate max-w-[220px]" title={row.name}>
-              {row.name}
-            </span>
-            <span className="font-mono text-[10.5px] font-semibold text-slate-400">{custRef(row)}</span>
-          </div>
-        </div>
-      ),
-    },
-    {
-      header: 'Contact',
-      mobilePriority: 'secondary' as const,
-      accessor: (row: Customer) => {
-        const phone = contactPhone(row);
-        return (
-          <div className="flex flex-col gap-0.5 min-w-0">
-            {row.primary_contact_person ? (
-              <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
-                <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                {row.primary_contact_person}
-              </span>
-            ) : (
-              <span className="text-xs text-slate-400">No contact person</span>
-            )}
-            {phone ? <PhoneDisplay phone={phone} showActions variant="inline" /> : null}
-          </div>
-        );
-      },
-    },
-    {
-      header: 'Trips',
-      mobilePriority: 'meta' as const,
-      accessor: (row: Customer) => (
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-black text-slate-900 dark:text-slate-100 tabular-nums">{row._count?.trips ?? 0}</span>
-          <LiveBadge count={row.stats?.live_trips ?? 0} />
-        </div>
-      ),
-    },
-    {
-      header: 'Last trip',
-      mobilePriority: 'hidden' as const,
-      accessor: (row: Customer) =>
-        row.stats?.last_trip_at ? (
-          <div className="flex flex-col">
-            <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-              {formatInDeploymentTz(row.stats.last_trip_at, tz, 'dd MMM yyyy')}
-            </span>
-            <span className="text-[10.5px] text-slate-400">{timeAgo(row.stats.last_trip_at)}</span>
-          </div>
-        ) : (
-          <span className="text-xs text-slate-400">No trips yet</span>
-        ),
-    },
-    {
-      header: 'Outstanding',
-      headerClassName: 'text-right',
-      className: 'text-right',
-      mobilePriority: 'meta' as const,
-      accessor: (row: Customer) => {
-        const owed = row.stats?.outstanding ?? 0;
-        const overdue = row.stats?.overdue ?? 0;
-        if (owed <= 0) return <span className="text-xs text-slate-400">—</span>;
-        return (
-          <div className="flex flex-col items-end">
-            <span className="text-xs font-bold font-mono text-slate-900 dark:text-slate-100">{sar(owed)}</span>
-            {overdue > 0 && <span className="text-[10.5px] font-semibold text-rose-600 dark:text-rose-400">{sar(overdue)} overdue</span>}
-          </div>
-        );
-      },
-    },
-    {
-      header: 'Status',
-      mobilePriority: 'hidden' as const,
-      accessor: (row: Customer) => <StatusBadge status={row.isActive ? 'Active' : 'Inactive'} />,
-    },
-    {
-      header: <span className="sr-only">Actions</span>,
-      headerClassName: 'text-right',
-      accessor: (row: Customer) => (
-        <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
-          {quickActions(row)}
-        </div>
-      ),
-    },
-  ];
-
-  const viewChips: { id: CustomerView; label: string; count?: number; dot: string }[] = [
-    { id: 'all', label: 'All', count: summary?.total, dot: 'bg-slate-400' },
-    { id: 'active', label: 'Active', count: summary?.active, dot: 'bg-emerald-500' },
-    { id: 'inactive', label: 'Inactive', count: summary?.inactive, dot: 'bg-slate-300' },
-    { id: 'live', label: 'On the road', count: summary?.live_customers, dot: 'bg-blue-500' },
-    { id: 'balance', label: 'Owe money', count: summary?.outstanding.customers, dot: 'bg-amber-500' },
-  ];
-
-  const filterBar = (
-    <div className="flex items-center gap-2 flex-wrap">
-      <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200/80 dark:border-slate-700 overflow-x-auto max-w-full" role="tablist" aria-label="Customer views">
-        {viewChips.map((chip) => (
-          <button
-            key={chip.id}
-            type="button"
-            role="tab"
-            aria-selected={view === chip.id}
-            onClick={() => changeView(chip.id)}
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold whitespace-nowrap transition-all cursor-pointer',
-              view === chip.id
-                ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs'
-                : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100',
-            )}
-          >
-            <span className={cn('w-1.5 h-1.5 rounded-full', chip.dot)} />
-            {chip.label}
-            {chip.count !== undefined && <span className="text-[10.5px] font-bold text-slate-400 tabular-nums">{chip.count}</span>}
-          </button>
-        ))}
-      </div>
-
-      <SortDropdown value={sortOrder} onChange={(v) => { setSortOrder(v); setCurrentPage(1); }} options={CUSTOMER_SORT_OPTIONS} />
-
-      <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-lg border border-slate-200/80 dark:border-slate-700">
-        {([['list', List, 'List view'], ['grid', LayoutGrid, 'Card view']] as const).map(([mode, Icon, label]) => (
-          <button
-            key={mode}
-            type="button"
-            onClick={() => setViewMode(mode)}
-            className={cn(
-              'p-1.5 rounded-md transition-all cursor-pointer',
-              viewMode === mode ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-2xs' : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-100',
-            )}
-            title={label}
-            aria-label={label}
-            aria-pressed={viewMode === mode}
-          >
-            <Icon size={14} />
-          </button>
-        ))}
-      </div>
+      {rowMenu(c)}
     </div>
   );
 
-  const bulkActions = [
-    {
-      label: 'Export',
-      icon: <Download size={13} />,
-      variant: 'secondary' as const,
-      onClick: (rows: Customer[]) => {
-        setSelectedCustomersForExport(rows);
-        setIsExportOpen(true);
-      },
-    },
-    {
-      label: 'Delete Selected',
-      icon: <Trash2 size={13} />,
-      variant: 'danger' as const,
-      onClick: (rows: Customer[]) => askDelete(rows),
-    },
+  const views: { id: CustomerView; label: string; count?: number }[] = [
+    { id: 'all', label: 'All', count: summary?.total },
+    { id: 'active', label: 'Active', count: summary?.active },
+    { id: 'inactive', label: 'Inactive', count: summary?.inactive },
+    { id: 'live', label: 'On the road', count: summary?.live_customers },
+    { id: 'balance', label: 'Owe money', count: summary?.outstanding.customers },
   ];
-
-  const headerActions = (
-    <div className="flex items-center gap-2 shrink-0">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs font-semibold border-slate-200 bg-white hover:bg-slate-50 shadow-2xs dark:bg-slate-900 dark:border-slate-800">
-            <Download className="h-3.5 w-3.5 text-slate-600 dark:text-slate-400" />
-            Export / Import
-            <ChevronDown className="h-3 w-3 text-slate-400" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56 p-1.5 rounded-xl">
-          <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">Export this page</DropdownMenuLabel>
-          <DropdownMenuItem onClick={() => handleExportExcel(customers)} className="cursor-pointer text-xs font-semibold">
-            <FileSpreadsheet className="mr-2 h-3.5 w-3.5 text-emerald-600" /> Excel (.xlsx)
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleExportPDF(customers)} className="cursor-pointer text-xs font-semibold">
-            <FileText className="mr-2 h-3.5 w-3.5 text-rose-600" /> PDF (.pdf)
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => handleExportCSV(customers)} className="cursor-pointer text-xs font-semibold">
-            <FileText className="mr-2 h-3.5 w-3.5 text-slate-500" /> CSV (.csv)
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => { setSelectedCustomersForExport([]); setIsExportOpen(true); }}
-            className="cursor-pointer text-xs font-medium text-brand"
-          >
-            <Filter className="mr-2 h-3.5 w-3.5 text-brand" /> Custom export…
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuLabel className="text-[10px] font-bold tracking-wider uppercase text-slate-400 px-2 py-1">Import</DropdownMenuLabel>
-          <DropdownMenuItem onClick={() => setImportDialogOpen(true)} className="cursor-pointer text-xs font-semibold text-emerald-700 dark:text-emerald-400">
-            <UploadCloud className="mr-2 h-3.5 w-3.5" /> Import from Excel
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <Button size="sm" className="h-8 gap-1.5 text-xs font-bold bg-brand hover:bg-brand/90 text-white shadow-xs rounded-md px-3.5" onClick={() => setIsCreateCustomerOpen(true)}>
-        <Plus className="h-4 w-4" />
-        Add Customer
-      </Button>
-    </div>
-  );
-
-  const gridFromIndex = totalCount === 0 ? 0 : (currentPage - 1) * pageSize + 1;
-  const gridToIndex = totalCount === 0 ? 0 : gridFromIndex + customers.length - 1;
-  const pagerButton = 'p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-2xs';
 
   const emptyText =
     view === 'live' ? 'No customer has a truck on the road right now.'
       : view === 'balance' ? 'No customer owes money on issued invoices.'
-        : debouncedSearch ? `No customers match "${debouncedSearch}".`
-          : 'No customers match this view.';
+        : debouncedSearch ? `Nothing matches “${debouncedSearch}”.`
+          : 'Add your first customer to start creating trips.';
+
+  const from = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(totalCount, from + customers.length - 1);
 
   return (
     <DashboardLayout active="Customers" title="Customers">
-      <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-5">
+      <div className={ui.page}>
 
-        {/* ── KPI cards: real figures from GET /customers/summary; each one opens its view ── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 shrink-0">
-          <KpiCard
-            title="CUSTOMERS"
-            className="kpi-tint-customers"
-            value={
-              <span>
-                {summary?.total ?? '—'}
-                <span className="text-[16px] font-semibold ml-1.5 opacity-85">Accounts</span>
-              </span>
-            }
-            variant="slate"
-            trend={summary && summary.new_this_month > 0 ? 'up' : 'neutral'}
-            trendValue={summary ? `${summary.new_this_month} new this month` : undefined}
-            description={summary ? `${summary.active} active · ${summary.inactive} inactive` : 'Loading…'}
-            icon={CustomerBuilding}
-            isActive={view === 'all'}
+        {/* ── KPIs — each opens the matching view ── */}
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <Stat
+            label="Customers"
+            icon={Building2}
+            tone="brand"
+            value={summary?.total ?? '—'}
+            sub={summary ? `${summary.active} active · ${summary.new_this_month} new this month` : 'Loading…'}
+            active={view === 'all'}
             onClick={() => changeView('all')}
           />
-          <KpiCard
-            title="ON THE ROAD NOW"
-            className="kpi-tint-customers"
-            value={
-              <span>
-                {summary?.live_customers ?? '—'}
-                <span className="text-[16px] font-semibold ml-1.5 opacity-85">Customers</span>
-              </span>
-            }
-            variant="blue"
-            trend="neutral"
-            trendValue={summary ? `${summary.live_trips} truck${summary.live_trips === 1 ? '' : 's'} loading or moving` : undefined}
-            description="Click to see who"
-            icon={TruckMotion}
-            isActive={view === 'live'}
+          <Stat
+            label="On the road now"
+            icon={Navigation}
+            tone="blue"
+            value={summary?.live_customers ?? '—'}
+            sub={summary ? `${summary.live_trips} truck${summary.live_trips === 1 ? '' : 's'} loading or moving` : 'Loading…'}
+            active={view === 'live'}
             onClick={() => changeView('live')}
           />
-          <KpiCard
-            title="OUTSTANDING"
-            className="kpi-tint-customers"
-            value={
-              <span>
-                <span className="text-[16px] font-semibold mr-1 opacity-85">SAR</span>
-                {summary ? sarCompact(summary.outstanding.amount) : '—'}
-              </span>
-            }
-            variant="amber"
-            trend="neutral"
-            trendValue={summary ? `${summary.outstanding.customers} customer${summary.outstanding.customers === 1 ? '' : 's'} owe` : undefined}
-            description="Issued invoices not yet paid"
-            icon={MoneyBills}
-            isActive={view === 'balance'}
+          <Stat
+            label="Outstanding"
+            icon={Wallet}
+            tone="amber"
+            unit="SAR"
+            value={summary ? money(summary.outstanding.amount) : '—'}
+            sub={summary ? `${summary.outstanding.customers} ${summary.outstanding.customers === 1 ? 'customer owes' : 'customers owe'} on issued invoices` : 'Loading…'}
+            active={view === 'balance'}
             onClick={() => changeView('balance')}
           />
-          <KpiCard
-            title="OVERDUE"
-            className="kpi-tint-customers"
-            value={
-              <span>
-                <span className="text-[16px] font-semibold mr-1 opacity-85">SAR</span>
-                {summary ? sarCompact(summary.overdue.amount) : '—'}
-              </span>
-            }
-            variant="rose"
-            trend={summary && summary.overdue.amount > 0 ? 'down' : 'neutral'}
-            trendValue={summary ? `${summary.overdue.customers} customer${summary.overdue.customers === 1 ? '' : 's'} past due` : undefined}
-            description={financeEnabled ? 'Open overdue invoices' : 'Past the invoice due date'}
-            icon={CalendarAlert}
+          <Stat
+            label="Overdue"
+            icon={CalendarClock}
+            tone="rose"
+            unit="SAR"
+            value={summary ? money(summary.overdue.amount) : '—'}
+            sub={summary ? (summary.overdue.amount > 0 ? `${summary.overdue.customers} customer${summary.overdue.customers === 1 ? '' : 's'} past due` : 'Nothing past due') : 'Loading…'}
+            subTone={summary && summary.overdue.amount > 0 ? 'rose' : undefined}
             onClick={financeEnabled ? () => navigate('/finance/invoices?tab=overdue') : undefined}
           />
         </div>
 
-        {viewMode === 'list' ? (
-          <DataTable
-            title={
-              <span className="flex items-center gap-2 text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight">
-                <Building2 className="w-5 h-5 text-indigo-600" />
-                <span>Customers</span>
-              </span>
-            }
-            columns={columns}
-            data={customers}
-            bulkActions={bulkActions}
-            enableSelection={true}
-            compact={true}
-            isLoading={isLoading}
-            isError={isError}
-            errorMessage={(error as Error)?.message || 'Failed to load customers.'}
-            emptyTitle="No customers"
-            emptyMessage={emptyText}
-            searchPlaceholder="Search name or phone…"
-            searchValue={search}
-            onSearchChange={(val) => { setSearch(val); setCurrentPage(1); }}
-            filterElement={filterBar}
-            actionsElement={headerActions}
-            currentPage={currentPage}
-            totalPages={totalPages}
-            pageSize={pageSize}
-            onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
-            totalRecords={totalCount}
-            onPageChange={setCurrentPage}
-            onRowClick={(row) => openCustomer(row)}
-          />
-        ) : (
-          <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200/80 dark:border-slate-800 shadow-xs overflow-hidden flex flex-col w-full animate-fade-in">
-            <div className="shrink-0 p-3 sm:p-4 border-b border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 flex flex-col gap-3">
-              <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-3 w-full">
-                <div className="relative w-full sm:w-72 lg:w-88 shrink-0">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <Input
-                    type="text"
-                    placeholder="Search name or phone…"
-                    value={search}
-                    onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
-                    className="w-full pl-8.5 pr-8 h-9 text-xs bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 rounded-md font-medium"
-                    aria-label="Search customers"
-                  />
-                  {search && (
-                    <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5" aria-label="Clear search">
-                      <X size={12} />
-                    </button>
+        {/* ── Customer table ── */}
+        <section className={cn(ui.card, 'overflow-hidden')}>
+          <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-4">
+            <div>
+              <h2 className={ui.h2}>Customer accounts</h2>
+              <p className={ui.muted}>{isLoading ? 'Loading…' : `${totalCount} ${totalCount === 1 ? 'customer' : 'customers'}`}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={cn(ui.btn, ui.btnOutline)}>
+                    <Download className="size-4" /> Export / import <ChevronDown className="size-3.5 text-slate-400" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="text-xs font-medium text-slate-500">Export this page</DropdownMenuLabel>
+                  <DropdownMenuItem onClick={() => exportExcel(customers)} className="text-[13px]"><FileSpreadsheet className="mr-2 size-4 text-emerald-600" /> Excel (.xlsx)</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportPdf(customers)} className="text-[13px]"><FileText className="mr-2 size-4 text-rose-600" /> PDF</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => exportCsv(customers)} className="text-[13px]"><FileText className="mr-2 size-4 text-slate-500" /> CSV</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setExportRowsSelected([]); setIsExportOpen(true); }} className="text-[13px]"><Filter className="mr-2 size-4 text-slate-500" /> Custom export…</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => setImportDialogOpen(true)} className="text-[13px]"><UploadCloud className="mr-2 size-4 text-slate-500" /> Import from Excel</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <button type="button" onClick={() => setIsCreateOpen(true)} className={cn(ui.btn, ui.btnPrimary)}>
+                <Plus className="size-4" /> Add customer
+              </button>
+            </div>
+          </div>
+
+          {/* Toolbar: views · search · sort · layout */}
+          <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-5 py-3 dark:border-slate-800">
+            <div className="flex max-w-full items-center gap-1 overflow-x-auto" role="tablist" aria-label="Customer views">
+              {views.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={view === v.id}
+                  onClick={() => changeView(v.id)}
+                  className={cn(
+                    'inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-[13px] font-medium transition-colors cursor-pointer',
+                    view === v.id ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
                   )}
-                </div>
-                {headerActions}
-              </div>
-              {filterBar}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 sm:p-5">
-              {isLoading ? (
-                Array.from({ length: 8 }).map((_, i) => <div key={i} className="rounded-xl border border-slate-100 h-[188px] skeleton" />)
-              ) : isError ? (
-                <div className="col-span-full py-16 flex flex-col items-center justify-center gap-1">
-                  <XCircle className="w-8 h-8 text-rose-500" />
-                  <p className="text-sm font-bold text-slate-900 dark:text-slate-100">Data unavailable</p>
-                  <p className="text-xs text-slate-500">{(error as Error)?.message || 'Failed to load customers.'}</p>
-                </div>
-              ) : customers.length === 0 ? (
-                <div className="col-span-full py-16 flex flex-col items-center justify-center gap-1">
-                  <p className="text-sm font-bold text-slate-900 dark:text-slate-100">No customers</p>
-                  <p className="text-xs text-slate-500">{emptyText}</p>
-                </div>
-              ) : customers.map((c) => {
-                const phone = contactPhone(c);
-                const owed = c.stats?.outstanding ?? 0;
-                const overdue = c.stats?.overdue ?? 0;
-                return (
-                  <div
-                    key={c.id}
-                    className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col hover:border-brand/40 hover:shadow-xs transition-all cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
-                    tabIndex={0}
-                    role="button"
-                    aria-label={`Open ${c.name}`}
-                    onKeyDown={(e) => {
-                      if (e.target !== e.currentTarget) return;
-                      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCustomer(c); }
-                    }}
-                    onClick={() => openCustomer(c)}
-                  >
-                    <div className="p-4 flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <CustomerLogo customer={c} size="lg" />
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-bold text-slate-900 dark:text-slate-50 text-sm truncate" title={c.name}>{c.name}</span>
-                          <span className="font-mono text-[10.5px] font-semibold text-slate-400">{custRef(c)}</span>
-                        </div>
-                      </div>
-                      <StatusBadge status={c.isActive ? 'Active' : 'Inactive'} />
-                    </div>
-
-                    <div className="px-4 pb-3 flex flex-col gap-1 min-h-[40px]" onClick={(e) => e.stopPropagation()}>
-                      {c.primary_contact_person && (
-                        <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
-                          <User className="w-3.5 h-3.5 text-slate-400 shrink-0" /> {c.primary_contact_person}
-                        </span>
-                      )}
-                      {phone ? <PhoneDisplay phone={phone} showActions variant="inline" /> : <span className="text-xs text-slate-400">No phone</span>}
-                    </div>
-
-                    <div className="grid grid-cols-3 border-y border-slate-100 dark:border-slate-800 text-center">
-                      <div className="py-2.5 flex flex-col items-center gap-0.5">
-                        <span className="text-sm font-black text-slate-900 dark:text-slate-100 tabular-nums">{c._count?.trips ?? 0}</span>
-                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Trips</span>
-                      </div>
-                      <div className="py-2.5 flex flex-col items-center gap-0.5 border-x border-slate-100 dark:border-slate-800">
-                        <span className={cn('text-sm font-black tabular-nums', (c.stats?.live_trips ?? 0) > 0 ? 'text-emerald-600' : 'text-slate-900 dark:text-slate-100')}>
-                          {c.stats?.live_trips ?? 0}
-                        </span>
-                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Live</span>
-                      </div>
-                      <div className="py-2.5 flex flex-col items-center gap-0.5" title={overdue > 0 ? `${sar(overdue)} overdue` : undefined}>
-                        <span className={cn('text-sm font-black tabular-nums', overdue > 0 ? 'text-rose-600' : 'text-slate-900 dark:text-slate-100')}>
-                          {owed > 0 ? sarCompact(owed) : '—'}
-                        </span>
-                        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Owes (SAR)</span>
-                      </div>
-                    </div>
-
-                    <div className="px-3 py-2 flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-1 text-[10.5px] text-slate-400 truncate">
-                        <Clock className="w-3 h-3 shrink-0" />
-                        {c.stats?.last_trip_at ? `Last trip ${timeAgo(c.stats.last_trip_at)}` : 'No trips yet'}
-                      </span>
-                      <div className="flex items-center" onClick={(e) => e.stopPropagation()}>{quickActions(c)}</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="shrink-0 p-3 sm:px-5 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 bg-slate-50/60 dark:bg-slate-900/60 text-xs font-semibold text-slate-600 dark:text-slate-400">
-              <div className="flex items-center gap-3 flex-wrap">
-                <span className="text-slate-500 font-medium">Rows:</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                  className="h-8 px-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md text-xs font-bold cursor-pointer"
-                  aria-label="Rows per page"
                 >
-                  {[10, 25, 50, 100].map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                </select>
-                <span className="text-slate-500 font-medium hidden sm:inline">
-                  {gridFromIndex}–{gridToIndex} of {totalCount}
-                </span>
+                  {v.label}
+                  {v.count !== undefined && <span className={cn('tabular-nums', view === v.id ? 'text-white/70 dark:text-slate-500' : 'text-slate-400')}>{v.count}</span>}
+                </button>
+              ))}
+            </div>
+
+            <div className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <div className="relative flex-1 sm:w-64 sm:flex-none">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={search}
+                  onChange={(e) => { setSearch(e.target.value); resetPaging(); }}
+                  placeholder="Search name or phone"
+                  aria-label="Search customers"
+                  className={cn(ui.input, 'w-full pl-9 pr-8')}
+                />
+                {search && (
+                  <button type="button" onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700">
+                    <X className="size-3.5" />
+                  </button>
+                )}
               </div>
-              <div className="flex items-center gap-1.5 ml-auto" role="navigation" aria-label="Pagination">
-                <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1 || isLoading} aria-label="First page" className={pagerButton}><ChevronsLeft size={14} /></button>
-                <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1 || isLoading} aria-label="Previous page" className={pagerButton}><ChevronLeft size={14} /></button>
-                <span className="px-2 text-xs" aria-live="polite">{currentPage} / {totalPages}</span>
-                <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage >= totalPages || isLoading} aria-label="Next page" className={pagerButton}><ChevronRight size={14} /></button>
-                <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage >= totalPages || isLoading} aria-label="Last page" className={pagerButton}><ChevronsRight size={14} /></button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button type="button" className={cn(ui.btn, ui.btnOutline, 'px-3')}>
+                    <ArrowUpDown className="size-4 text-slate-500" />
+                    <span className="hidden sm:inline">{SORTS.find((s) => s.value === sort)!.label}</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  {SORTS.map((s) => (
+                    <DropdownMenuItem key={s.value} onClick={() => { setSort(s.value); resetPaging(); }} className="justify-between text-[13px]">
+                      {s.label} {sort === s.value && <Check className="size-4 text-[#FA634E]" />}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <div className="flex items-center rounded-lg border border-slate-200 p-0.5 dark:border-slate-700">
+                {([['list', List, 'Table'], ['grid', LayoutGrid, 'Cards']] as const).map(([mode, Icon, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setLayout(mode)}
+                    title={label}
+                    aria-label={`${label} view`}
+                    aria-pressed={layout === mode}
+                    className={cn('inline-flex size-8 items-center justify-center rounded-md transition-colors cursor-pointer', layout === mode ? 'bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white' : 'text-slate-400 hover:text-slate-700')}
+                  >
+                    <Icon className="size-4" />
+                  </button>
+                ))}
               </div>
             </div>
           </div>
-        )}
+
+          {selectedRows.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 border-t border-orange-100 bg-orange-50/60 px-5 py-2.5 text-[13px] dark:border-orange-900/40 dark:bg-orange-950/20">
+              <span className="font-medium text-slate-900 dark:text-white">{selectedRows.length} selected</span>
+              <button type="button" onClick={() => { setExportRowsSelected(selectedRows); setIsExportOpen(true); }} className={cn(ui.btn, ui.btnOutline, 'h-8')}>
+                <Download className="size-4" /> Export
+              </button>
+              <button type="button" onClick={() => askDelete(selectedRows)} className={cn(ui.btn, 'h-8 border border-rose-200 bg-white text-rose-600 hover:bg-rose-50 dark:bg-slate-900')}>
+                <Trash2 className="size-4" /> Delete
+              </button>
+              <button type="button" onClick={() => setSelected(new Set())} className="ml-auto text-[13px] font-medium text-slate-500 hover:text-slate-900">Clear</button>
+            </div>
+          )}
+
+          {isError ? (
+            <div className="border-t border-slate-100 p-5 dark:border-slate-800">
+              <EmptyBlock icon={AlertCircle} title="Couldn't load customers" text={(error as Error)?.message || 'Try again in a moment.'} />
+            </div>
+          ) : !isLoading && customers.length === 0 ? (
+            <div className="border-t border-slate-100 p-5 dark:border-slate-800">
+              <EmptyBlock icon={Building2} title="No customers here" text={emptyText} />
+            </div>
+          ) : layout === 'list' ? (
+            <div className={cn('overflow-x-auto border-t border-slate-100 dark:border-slate-800 transition-opacity', isFetching && !isLoading && 'opacity-60')}>
+              <table className="w-full min-w-[920px] text-sm">
+                <thead className="bg-slate-50/80 dark:bg-slate-800/40">
+                  <tr className="border-b border-slate-100 dark:border-slate-800">
+                    <th className="w-10 py-2.5 pl-5 pr-0">
+                      <input type="checkbox" checked={allOnPage} onChange={toggleAll} aria-label="Select all on this page" className="size-4 cursor-pointer rounded border-slate-300 accent-[#FA634E]" />
+                    </th>
+                    <th className={ui.th}>Customer</th>
+                    <th className={ui.th}>Contact</th>
+                    <th className={cn(ui.th, 'text-right')}>Trips</th>
+                    <th className={ui.th}>Last trip</th>
+                    <th className={cn(ui.th, 'text-right')}>Outstanding</th>
+                    <th className={ui.th}>Status</th>
+                    <th className={cn(ui.th, 'pr-5')}><span className="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {isLoading
+                    ? Array.from({ length: 6 }).map((_, i) => (
+                      <tr key={i}>
+                        <td colSpan={8} className="px-5 py-4"><div className="h-6 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></td>
+                      </tr>
+                    ))
+                    : customers.map((c) => {
+                      const owed = c.stats?.outstanding ?? 0;
+                      const overdue = c.stats?.overdue ?? 0;
+                      const live = c.stats?.live_trips ?? 0;
+                      return (
+                        <tr
+                          key={c.id}
+                          onClick={() => openCustomer(c)}
+                          className={cn('group cursor-pointer transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40', selected.has(c.id) && 'bg-orange-50/40')}
+                        >
+                          <td className="py-3.5 pl-5 pr-0" onClick={(e) => e.stopPropagation()}>
+                            <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleRow(c.id)} aria-label={`Select ${c.name}`} className="size-4 cursor-pointer rounded border-slate-300 accent-[#FA634E]" />
+                          </td>
+                          <td className={ui.td}>
+                            <div className="flex min-w-0 items-center gap-3">
+                              <CustomerAvatar name={c.name} logo={c.logo_url} />
+                              <div className="min-w-0">
+                                <p className="max-w-[240px] truncate font-medium text-slate-900 group-hover:text-[#E5533F] dark:text-white" title={c.name}>{c.name}</p>
+                                <p className="text-xs text-slate-400 tabular-nums">{custRef(c)}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className={ui.td}>
+                            <p className={cn('truncate', c.primary_contact_person ? 'text-slate-900 dark:text-slate-100' : 'text-slate-400')}>
+                              {c.primary_contact_person || 'No contact person'}
+                            </p>
+                            <PhoneLine phone={contactPhone(c)} className="-ml-0.5" />
+                          </td>
+                          <td className={cn(ui.td, 'text-right')}>
+                            <div className="flex items-center justify-end gap-2">
+                              {live > 0 && <Badge tone="emerald" dot pulse>{live} live</Badge>}
+                              <span className="font-medium text-slate-900 tabular-nums dark:text-white">{c._count?.trips ?? 0}</span>
+                            </div>
+                          </td>
+                          <td className={ui.td}>
+                            {c.stats?.last_trip_at ? (
+                              <>
+                                <p className="text-slate-900 dark:text-slate-100">{formatInDeploymentTz(c.stats.last_trip_at, tz, 'd MMM yyyy')}</p>
+                                <p className="text-xs text-slate-400">{timeAgo(c.stats.last_trip_at)}</p>
+                              </>
+                            ) : (
+                              <span className="text-slate-400">No trips yet</span>
+                            )}
+                          </td>
+                          <td className={cn(ui.td, 'text-right tabular-nums')}>
+                            {owed > 0 ? (
+                              <>
+                                <p className="font-medium text-slate-900 dark:text-white"><span className="text-xs font-normal text-slate-400">SAR</span> {money(owed)}</p>
+                                {overdue > 0 && <p className="text-xs font-medium text-rose-600">{money(overdue)} overdue</p>}
+                              </>
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-600">—</span>
+                            )}
+                          </td>
+                          <td className={ui.td}>
+                            {c.isActive ? <Badge tone="emerald" dot>Active</Badge> : <Badge tone="slate" dot>Inactive</Badge>}
+                          </td>
+                          <td className={cn(ui.td, 'pr-5')}>
+                            <div className="opacity-100 transition-opacity lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">{quickActions(c)}</div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className={cn('grid grid-cols-1 gap-4 border-t border-slate-100 bg-slate-50/50 p-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 dark:border-slate-800 dark:bg-slate-950/30', isFetching && !isLoading && 'opacity-60')}>
+              {isLoading
+                ? Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-[196px] animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />)
+                : customers.map((c) => {
+                  const owed = c.stats?.outstanding ?? 0;
+                  const overdue = c.stats?.overdue ?? 0;
+                  const live = c.stats?.live_trips ?? 0;
+                  return (
+                    <div
+                      key={c.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openCustomer(c)}
+                      onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openCustomer(c); } }}
+                      className={cn(ui.card, 'group flex cursor-pointer flex-col transition-all hover:border-slate-300 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FA634E]/30')}
+                    >
+                      <div className="flex items-start gap-3 p-4">
+                        <CustomerAvatar name={c.name} logo={c.logo_url} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium text-slate-900 group-hover:text-[#E5533F] dark:text-white" title={c.name}>{c.name}</p>
+                          <p className="truncate text-[13px] text-slate-500">{c.primary_contact_person || custRef(c)}</p>
+                        </div>
+                        {c.isActive ? <Badge tone="emerald" dot>Active</Badge> : <Badge tone="slate" dot>Inactive</Badge>}
+                      </div>
+                      <dl className="grid grid-cols-3 gap-px border-y border-slate-100 bg-slate-100 dark:border-slate-800 dark:bg-slate-800">
+                        {[
+                          { label: 'Trips', value: c._count?.trips ?? 0 },
+                          { label: 'Live', value: live, className: live > 0 ? 'text-emerald-600' : undefined },
+                          { label: 'Owes (SAR)', value: owed > 0 ? money(owed) : '—', className: overdue > 0 ? 'text-rose-600' : undefined },
+                        ].map((s) => (
+                          <div key={s.label} className="bg-white px-3 py-2.5 dark:bg-slate-900">
+                            <dt className={ui.label}>{s.label}</dt>
+                            <dd className={cn('mt-0.5 font-semibold text-slate-900 tabular-nums dark:text-white', s.className)}>{s.value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                      <div className="flex items-center justify-between gap-2 py-1.5 pl-4 pr-2">
+                        <span className="truncate text-xs text-slate-500">{c.stats?.last_trip_at ? `Last trip ${timeAgo(c.stats.last_trip_at)}` : 'No trips yet'}</span>
+                        {quickActions(c)}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalCount > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 text-[13px] text-slate-500 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <span>Rows</span>
+                <select
+                  value={pageSize}
+                  onChange={(e) => { setPageSize(Number(e.target.value)); resetPaging(); }}
+                  aria-label="Rows per page"
+                  className="h-8 cursor-pointer rounded-lg border border-slate-200 bg-white px-2 text-[13px] text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                >
+                  {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+                <span className="ml-2 tabular-nums">{from}–{to} of {totalCount}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => { setPage((p) => Math.max(1, p - 1)); setSelected(new Set()); }} disabled={page <= 1} className={cn(ui.btn, ui.btnOutline, 'h-8 px-2.5')} aria-label="Previous page">
+                  <ChevronLeft className="size-4" />
+                </button>
+                <span className="px-2 tabular-nums">Page {page} of {totalPages}</span>
+                <button type="button" onClick={() => { setPage((p) => Math.min(totalPages, p + 1)); setSelected(new Set()); }} disabled={page >= totalPages} className={cn(ui.btn, ui.btnOutline, 'h-8 px-2.5')} aria-label="Next page">
+                  <ChevronRight className="size-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
 
         <ConfirmModal
-          isOpen={confirmModal.isOpen}
-          onClose={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
-          onConfirm={async () => {
-            await confirmModal.onConfirm();
-            setConfirmModal((prev) => ({ ...prev, isOpen: false }));
-          }}
-          title={confirmModal.title}
-          message={confirmModal.message}
-          isDestructive={true}
+          isOpen={confirm.open}
+          onClose={() => setConfirm((p) => ({ ...p, open: false }))}
+          onConfirm={async () => { await confirm.onConfirm(); setConfirm((p) => ({ ...p, open: false })); }}
+          title={confirm.title}
+          message={confirm.message}
+          isDestructive
         />
 
         <ExcelImportDialog
@@ -836,7 +580,7 @@ export default function CustomerListPage() {
           subtitle="MERCON Logistics Customer Accounts"
           filteredData={customers}
           allData={customers}
-          selectedData={selectedCustomersForExport}
+          selectedData={exportRowsSelected}
           totalCount={totalCount}
           columns={CUSTOMER_EXPORT_COLUMNS}
           filters={CUSTOMER_EXPORT_FILTERS}
@@ -847,13 +591,11 @@ export default function CustomerListPage() {
           customer={previewCustomer}
           isOpen={!!previewCustomer}
           onClose={() => setPreviewCustomer(null)}
-          onCreateTrip={(c) => navigate(`/trips/new?customer_id=${c.id}`)}
+          onCreateTrip={newTrip}
           onEdit={(c) => setEditCustomer(c)}
         />
-
         <EditCustomerModal customer={editCustomer} isOpen={!!editCustomer} onClose={() => setEditCustomer(null)} />
-
-        <CreateCustomerModal isOpen={isCreateCustomerOpen} onClose={() => setIsCreateCustomerOpen(false)} />
+        <CreateCustomerModal isOpen={isCreateOpen} onClose={() => setIsCreateOpen(false)} />
       </div>
     </DashboardLayout>
   );

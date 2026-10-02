@@ -1,10 +1,10 @@
-import { useState, useEffect, type ElementType } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  ArrowLeft, Edit2, AlertTriangle, Plus, RotateCw, ShieldCheck, Truck, Download, Trash2, MoreVertical,
-  LayoutDashboard, ReceiptText, Tag, MapPin, MapPinned, FileSpreadsheet, User, CreditCard, Calendar, Radio,
+  ArrowLeft, Edit2, AlertTriangle, Plus, RotateCw, ShieldCheck, Truck, Download, Trash2, MoreHorizontal,
+  ReceiptText, Tag, MapPinned, FileSpreadsheet, User, Navigation, Wallet,
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -21,15 +21,14 @@ import CustomerFinancialsTab from '@/components/customers/CustomerFinancialsTab'
 import CustomerLocationsTab from '@/components/customers/CustomerLocationsTab';
 import { CustomerStatementSheet } from '@/components/finance/receivables';
 import { useModuleEnabled } from '@/components/auth/RequireModule';
-import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
-import PhoneDisplay from '@/components/ui/PhoneDisplay';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import { useDeploymentTimezone, formatInDeploymentTz } from '@/lib/datetime';
 import { exportExcelTable } from '@/utils/exportUtils';
 import { cn } from '@/lib/utils';
-import { dk, EMPTY, fmtDate, fmtSar, StatusPill } from '@/components/details/DetailKit';
+import { fmtDate } from '@/components/details/DetailKit';
+import { Badge, CustomerAvatar, PhoneLine, Stat, ui } from '@/components/customers/customerUi';
 
 type TabId = 'overview' | 'trips' | 'quotations' | 'locations' | 'financials' | 'tracking' | 'exports';
 
@@ -131,13 +130,12 @@ export default function CustomerDetailsPage() {
   if (isLoading) {
     return (
       <DashboardLayout active="Customers" title="Customer Details">
-        <div className={cn(dk.page, 'animate-pulse')}>
-          <div className="h-44 bg-slate-200 dark:bg-slate-800 rounded-2xl" />
-          <div className="h-10 bg-slate-200 dark:bg-slate-800 rounded-xl" />
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            <div className="lg:col-span-8 h-[420px] bg-slate-200 dark:bg-slate-800 rounded-2xl" />
-            <div className="lg:col-span-4 h-[420px] bg-slate-200 dark:bg-slate-800 rounded-2xl" />
+        <div className={cn(ui.page, 'animate-pulse')}>
+          <div className="h-36 rounded-xl bg-slate-100 dark:bg-slate-800" />
+          <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => <div key={i} className="h-32 rounded-xl bg-slate-100 dark:bg-slate-800" />)}
           </div>
+          <div className="h-[420px] rounded-xl bg-slate-100 dark:bg-slate-800" />
         </div>
       </DashboardLayout>
     );
@@ -147,12 +145,12 @@ export default function CustomerDetailsPage() {
     return (
       <DashboardLayout active="Customers" title="Customer Details">
         <div className="px-4 sm:px-6 pb-6 w-full flex flex-col items-center justify-center text-center h-[60vh] gap-3">
-          <AlertTriangle className="w-8 h-8 text-rose-600 shrink-0" />
-          <h2 className="text-xl font-extrabold text-slate-900 dark:text-slate-100">Customer not found</h2>
-          <p className="text-xs text-slate-500 max-w-md">This customer doesn't exist or has been deleted.</p>
-          <Button onClick={() => navigate('/customers')} size="sm" className="mt-2 text-xs font-bold bg-[#FA634E] hover:bg-[#e0523d] text-white shadow-sm">
-            <ArrowLeft className="w-3.5 h-3.5 mr-1.5" /> Back to Customers
-          </Button>
+          <AlertTriangle className="size-7 text-rose-500" />
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Customer not found</h2>
+          <p className={ui.muted}>This customer doesn't exist or has been deleted.</p>
+          <button type="button" onClick={() => navigate('/customers')} className={cn(ui.btn, ui.btnPrimary, 'mt-2')}>
+            <ArrowLeft className="size-4" /> Back to customers
+          </button>
         </div>
       </DashboardLayout>
     );
@@ -173,6 +171,7 @@ export default function CustomerDetailsPage() {
     .reduce((acc, inv) => acc + inv.balance_due, 0);
   const openInvoicesCount = (statement?.invoices || []).filter((inv) => inv.balance_due > 0 && inv.status !== 'Draft' && inv.status !== 'Void').length;
   const trackingOn = customer.tracking_enabled ?? true;
+  const money = (v: number) => v.toLocaleString('en-US', { maximumFractionDigits: 0 });
   const contactPhone = customer.primary_contact_phone || customer.contact_phone;
 
   const newTrip = () => navigate(`/trips/new?customer_id=${customer.id}`);
@@ -217,190 +216,163 @@ export default function CustomerDetailsPage() {
     );
   };
 
-  const tabs: { id: TabId; label: string; icon: ElementType; badge?: React.ReactNode }[] = [
-    { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'trips', label: 'Trips', icon: Truck, badge: totalTripsCount },
-    { id: 'tracking', label: 'Tracking', icon: MapPinned, badge: <span className={cn('w-1.5 h-1.5 rounded-full', trackingOn ? 'bg-emerald-500' : 'bg-slate-300')} /> },
-    ...(exportsEnabled ? [{ id: 'exports' as TabId, label: 'Excel trip sheets', icon: FileSpreadsheet }] : []),
-    { id: 'financials', label: 'Invoices & balance', icon: ReceiptText, badge: openInvoicesCount || undefined },
-    { id: 'quotations', label: 'Quotations', icon: Tag, badge: customerQuotations.length },
-    { id: 'locations', label: 'Locations', icon: MapPin, badge: customerLocations.length },
-  ];
-
-  const kpis: { label: string; value: React.ReactNode; sub: string; icon: ElementType; tone: string; tab: TabId }[] = [
-    { label: 'Total trips', value: totalTripsCount, sub: 'All time, excluding cancelled', icon: Truck, tone: 'text-[#FA634E]', tab: 'trips' },
-    {
-      label: 'On the road now',
-      value: liveTrips.length,
-      sub: liveTrips.length > 0 ? 'Loading, moving or delayed' : 'No trucks out right now',
-      icon: Radio,
-      tone: liveTrips.length > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400',
-      tab: 'overview',
-    },
-    {
-      label: 'On-time delivery',
-      value: finishedTrips.length > 0 ? `${onTimeRatio}%` : EMPTY,
-      sub: finishedTrips.length > 0 ? `${onTimeTripsCount} of ${finishedTrips.length} recent finished trips` : 'No finished trips yet',
-      icon: ShieldCheck,
-      tone: 'text-blue-600 dark:text-blue-400',
-      tab: 'trips',
-    },
-    {
-      label: 'Outstanding',
-      value: statement ? fmtSar(statement.total_outstanding, { allowZero: true }) : EMPTY,
-      sub: !statement ? (isStatementLoading ? 'Loading…' : EMPTY) : overdueAmount > 0 ? `${fmtSar(overdueAmount)} overdue` : `${openInvoicesCount} open invoice${openInvoicesCount === 1 ? '' : 's'}`,
-      icon: CreditCard,
-      tone: overdueAmount > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-indigo-600 dark:text-indigo-400',
-      tab: 'financials',
-    },
+  const tabs: { id: TabId; label: string; count?: number; dot?: boolean }[] = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'trips', label: 'Trips', count: totalTripsCount },
+    { id: 'tracking', label: 'Live tracking', dot: true },
+    ...(exportsEnabled ? [{ id: 'exports' as TabId, label: 'Excel trip sheets' }] : []),
+    { id: 'financials', label: 'Invoices & balance', count: openInvoicesCount || undefined },
+    { id: 'quotations', label: 'Quotations', count: customerQuotations.length },
+    { id: 'locations', label: 'Locations', count: customerLocations.length },
   ];
 
   return (
     <DashboardLayout active="Customers" title={customer.name} breadcrumb="Customers">
-      <div className={dk.page}>
+      <div className={ui.page}>
 
-        {/* ── HEADER: identity, contact, primary actions, KPIs ── */}
-        <section className={cn(dk.card, 'p-4 sm:p-5 flex flex-col gap-4 shrink-0')}>
-          <div className="flex flex-col lg:flex-row lg:items-start gap-4">
-            <div className="flex items-start gap-4 min-w-0 flex-1">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white overflow-hidden flex items-center justify-center shrink-0">
-                {customer.logo_url ? (
-                  <img src={customer.logo_url} alt="" className="w-full h-full object-contain p-1.5" />
-                ) : (
-                  <div className="w-full h-full bg-[#FA634E] text-white flex items-center justify-center font-black text-3xl">
-                    {customer.name?.[0]?.toUpperCase() || 'C'}
-                  </div>
-                )}
-              </div>
-              <div className="min-w-0 flex-1 flex flex-col gap-2">
-                <div className="flex items-center gap-2.5 flex-wrap min-w-0">
-                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight leading-tight truncate">{customer.name}</h1>
-                  <StatusPill tone={customer.isActive !== false ? 'green' : 'slate'}>
-                    {customer.isActive !== false ? 'Active' : 'Inactive'}
-                  </StatusPill>
+        {/* ── Header: who they are, how to reach them, what you can do ── */}
+        <section className={cn(ui.card, 'p-5 sm:p-6')}>
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex min-w-0 items-start gap-4">
+              <CustomerAvatar name={customer.name} logo={customer.logo_url} size="lg" />
+              <div className="min-w-0 space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2.5">
+                  <h1 className={cn(ui.h1, 'truncate')}>{customer.name}</h1>
+                  {customer.isActive !== false ? <Badge tone="emerald" dot>Active</Badge> : <Badge tone="slate" dot>Inactive</Badge>}
                 </div>
-                <div className="flex items-center gap-x-4 gap-y-1 flex-wrap text-xs text-slate-500 dark:text-slate-400">
-                  <span className="font-mono font-semibold">CUST-{customer.id.slice(0, 8).toUpperCase()}</span>
-                  <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" /> Since {fmtDate(customer.createdAt, tz)}</span>
-                  {customer.payment_terms && <span className="flex items-center gap-1"><CreditCard className="w-3.5 h-3.5" /> {customer.payment_terms}</span>}
-                </div>
-                <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap">
+                <p className={cn(ui.muted, 'flex flex-wrap items-center gap-x-2 tabular-nums')}>
+                  <span>CUST-{customer.id.slice(0, 8).toUpperCase()}</span>
+                  <span className="text-slate-300">·</span>
+                  <span>Customer since {fmtDate(customer.createdAt, tz)}</span>
+                  {customer.payment_terms && (<><span className="text-slate-300">·</span><span>{customer.payment_terms}</span></>)}
+                </p>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
                   {customer.primary_contact_person && (
-                    <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-800 dark:text-slate-200">
-                      <User className="w-4 h-4 text-slate-400" /> {customer.primary_contact_person}
+                    <span className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-800 dark:text-slate-100">
+                      <User className="size-4 text-slate-400" /> {customer.primary_contact_person}
                     </span>
                   )}
-                  {contactPhone && <PhoneDisplay phone={contactPhone} showActions variant="inline" />}
+                  <PhoneLine phone={contactPhone} />
                   {customer.whatsapp_group_link && (
                     <a
                       href={customer.whatsapp_group_link}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100"
+                      className="inline-flex items-center gap-1.5 text-[13px] font-medium text-emerald-700 hover:underline dark:text-emerald-400"
                     >
-                      <WhatsAppIcon className="w-3.5 h-3.5" /> {customer.whatsapp_group_name || 'WhatsApp group'}
+                      <WhatsAppIcon className="size-4" /> {customer.whatsapp_group_name || 'WhatsApp group'}
                     </a>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap shrink-0">
-              <Button onClick={newTrip} className="h-9 px-4 bg-[#FA634E] hover:bg-[#e0523d] text-white font-bold rounded-xl text-xs gap-1.5 shadow-2xs">
-                <Plus className="w-4 h-4" /> New trip
-              </Button>
-              <Button variant="outline" onClick={() => setActiveTab('tracking')} className="h-9 px-3.5 rounded-xl text-xs font-bold gap-1.5">
-                <MapPinned className="w-4 h-4 text-emerald-600" /> Tracking link
-              </Button>
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+              <button type="button" onClick={newTrip} className={cn(ui.btn, ui.btnPrimary)}>
+                <Plus className="size-4" /> New trip
+              </button>
+              <button type="button" onClick={() => setActiveTab('tracking')} className={cn(ui.btn, ui.btnOutline)}>
+                <MapPinned className="size-4 text-slate-500" /> Live tracking
+              </button>
               {exportsEnabled && (
-                <Button variant="outline" onClick={() => setActiveTab('exports')} className="h-9 px-3.5 rounded-xl text-xs font-bold gap-1.5">
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-700" /> Trip sheets
-                </Button>
+                <button type="button" onClick={() => setActiveTab('exports')} className={cn(ui.btn, ui.btnOutline)}>
+                  <FileSpreadsheet className="size-4 text-slate-500" /> Trip sheets
+                </button>
               )}
-              <Button variant="outline" onClick={() => navigate(`/customers/${customer.id}/edit`)} className="h-9 px-3.5 rounded-xl text-xs font-bold gap-1.5">
-                <Edit2 className="w-3.5 h-3.5" /> Edit
-              </Button>
+              <button type="button" onClick={() => navigate(`/customers/${customer.id}/edit`)} className={cn(ui.btn, ui.btnOutline)}>
+                <Edit2 className="size-4 text-slate-500" /> Edit
+              </button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <button className={dk.iconButton} aria-label="More actions">
-                    <MoreVertical className="w-4 h-4 text-slate-700 dark:text-slate-300" />
+                  <button type="button" className={cn(ui.btn, ui.btnOutline, 'w-9 px-0')} aria-label="More actions">
+                    <MoreHorizontal className="size-4" />
                   </button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52 rounded-xl z-50">
+                <DropdownMenuContent align="end" className="w-56">
                   {financeEnabled && (
-                    <DropdownMenuItem onClick={() => setIsStatementOpen(true)} className="font-semibold cursor-pointer text-xs">
-                      <ReceiptText className="w-3.5 h-3.5 mr-2 text-indigo-600" /> Statement of account
+                    <DropdownMenuItem onClick={() => setIsStatementOpen(true)} className="text-[13px]">
+                      <ReceiptText className="mr-2 size-4 text-slate-500" /> Statement of account
                     </DropdownMenuItem>
                   )}
-                  <DropdownMenuItem onClick={handleExportLedger} disabled={customerTrips.length === 0} className="font-semibold cursor-pointer text-xs">
-                    <Download className="w-3.5 h-3.5 mr-2 text-slate-500" /> Export trip ledger (Excel)
+                  <DropdownMenuItem onClick={handleExportLedger} disabled={customerTrips.length === 0} className="text-[13px]">
+                    <Download className="mr-2 size-4 text-slate-500" /> Export trip ledger (Excel)
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setIsAddQuotationOpen(true)} className="font-semibold cursor-pointer text-xs">
-                    <Tag className="w-3.5 h-3.5 mr-2 text-[#FA634E]" /> Add quotation
+                  <DropdownMenuItem onClick={() => setIsAddQuotationOpen(true)} className="text-[13px]">
+                    <Tag className="mr-2 size-4 text-slate-500" /> Add quotation
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={refreshCustomer} disabled={isRefreshing} className="font-semibold cursor-pointer text-xs">
-                    <RotateCw className={cn('w-3.5 h-3.5 mr-2', isRefreshing && 'animate-spin text-[#FA634E]')} /> Refresh
+                  <DropdownMenuItem onClick={refreshCustomer} disabled={isRefreshing} className="text-[13px]">
+                    <RotateCw className={cn('mr-2 size-4 text-slate-500', isRefreshing && 'animate-spin')} /> Refresh
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => setIsDeleteModalOpen(true)} className="text-rose-600 font-semibold cursor-pointer text-xs">
-                    <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete customer
+                  <DropdownMenuItem onClick={() => setIsDeleteModalOpen(true)} className="text-[13px] text-rose-600 focus:bg-rose-50 focus:text-rose-600">
+                    <Trash2 className="mr-2 size-4" /> Delete customer
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
           </div>
+        </section>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-            {kpis.map((k) => {
-              const Icon = k.icon;
+        {/* ── KPIs ── */}
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <Stat label="Total trips" icon={Truck} tone="brand" value={totalTripsCount} sub="All time, excluding cancelled" onClick={() => setActiveTab('trips')} />
+          <Stat
+            label="On the road now"
+            icon={Navigation}
+            tone="blue"
+            value={liveTrips.length}
+            sub={liveTrips.length > 0 ? 'Loading, moving or delayed' : 'No trucks out right now'}
+            subTone={liveTrips.length > 0 ? 'emerald' : undefined}
+            onClick={() => setActiveTab(liveTrips.length > 0 ? 'tracking' : 'overview')}
+          />
+          <Stat
+            label="On-time delivery"
+            icon={ShieldCheck}
+            tone="emerald"
+            value={finishedTrips.length > 0 ? `${onTimeRatio}%` : '—'}
+            sub={finishedTrips.length > 0 ? `${onTimeTripsCount} of ${finishedTrips.length} recent finished trips` : 'No finished trips yet'}
+          />
+          <Stat
+            label="Outstanding"
+            icon={Wallet}
+            tone="amber"
+            unit="SAR"
+            value={statement ? money(statement.total_outstanding) : '—'}
+            sub={!statement ? (isStatementLoading ? 'Loading…' : '—') : overdueAmount > 0 ? `SAR ${money(overdueAmount)} overdue` : `${openInvoicesCount} open invoice${openInvoicesCount === 1 ? '' : 's'}`}
+            subTone={overdueAmount > 0 ? 'rose' : undefined}
+            onClick={() => setActiveTab('financials')}
+          />
+        </div>
+
+        {/* ── Tabs (kept in the URL, so ?tab=tracking / ?tab=exports links land here) ── */}
+        <div className="-mb-2 border-b border-slate-200 dark:border-slate-800">
+          <nav className="-mb-px flex gap-6 overflow-x-auto" role="tablist" aria-label="Customer sections">
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.id;
               return (
                 <button
-                  key={k.label}
+                  key={tab.id}
                   type="button"
-                  onClick={() => setActiveTab(k.tab)}
-                  className="text-left rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 px-3.5 py-3 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-white dark:hover:bg-slate-800 transition-colors cursor-pointer min-w-0"
+                  role="tab"
+                  aria-selected={isActive}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    'inline-flex items-center gap-2 whitespace-nowrap border-b-2 pb-3 pt-1 text-sm font-medium transition-colors cursor-pointer',
+                    isActive ? 'border-[#FA634E] text-slate-900 dark:text-white' : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-800 dark:hover:text-slate-200',
+                  )}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className={dk.label}>{k.label}</span>
-                    <Icon className={cn('w-4 h-4 shrink-0', k.tone)} />
-                  </div>
-                  <p className={cn('mt-1.5 text-lg sm:text-xl font-black leading-tight truncate', k.tone === 'text-slate-400' ? 'text-slate-900 dark:text-white' : k.tone)}>{k.value}</p>
-                  <p className={cn(dk.sub, 'mt-0.5')}>{k.sub}</p>
+                  {tab.label}
+                  {tab.count !== undefined && (
+                    <span className={cn('rounded-full px-1.5 py-px text-xs tabular-nums', isActive ? 'bg-orange-50 text-[#C2412D] dark:bg-orange-950/50' : 'bg-slate-100 text-slate-500 dark:bg-slate-800')}>
+                      {tab.count}
+                    </span>
+                  )}
+                  {tab.dot && <span className={cn('size-1.5 rounded-full', trackingOn ? 'bg-emerald-500' : 'bg-slate-300')} title={trackingOn ? 'On' : 'Off'} />}
                 </button>
               );
             })}
-          </div>
-        </section>
-
-        {/* ── TABS (kept in the URL, so ?tab=tracking / ?tab=exports links land here) ── */}
-        <nav className="flex items-center gap-1 overflow-x-auto border-b border-slate-200 dark:border-slate-800 -mb-1 shrink-0" role="tablist" aria-label="Customer sections">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                role="tab"
-                aria-selected={isActive}
-                onClick={() => setActiveTab(tab.id)}
-                className={cn(
-                  'flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold whitespace-nowrap border-b-2 -mb-px transition-colors cursor-pointer',
-                  isActive
-                    ? 'border-[#FA634E] text-slate-900 dark:text-white'
-                    : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-slate-200',
-                )}
-              >
-                <Icon className={cn('w-4 h-4', isActive && 'text-[#FA634E]')} />
-                <span>{tab.label}</span>
-                {tab.badge !== undefined && (
-                  typeof tab.badge === 'number'
-                    ? <span className={cn('rounded-full px-1.5 py-px text-[10px] font-bold tabular-nums', isActive ? 'bg-orange-100 text-[#c2412d] dark:bg-orange-950/50' : 'bg-slate-200/80 text-slate-600 dark:bg-slate-800 dark:text-slate-400')}>{tab.badge}</span>
-                    : tab.badge
-                )}
-              </button>
-            );
-          })}
-        </nav>
+          </nav>
+        </div>
 
         {activeTab === 'overview' && (
           <CustomerOverviewTab
@@ -421,20 +393,16 @@ export default function CustomerDetailsPage() {
         )}
 
         {activeTab === 'trips' && (
-          <div className={cn(dk.card, 'p-4')}>
-            <CustomerTripsTab customerId={customer.id} customerName={customer.name} />
-          </div>
+          <CustomerTripsTab customerId={customer.id} customerName={customer.name} />
         )}
 
         {activeTab === 'quotations' && (
-          <div className={cn(dk.card, 'p-4')}>
-            <CustomerQuotationsTab
-              customerId={customer.id}
-              customerName={customer.name}
-              onOpenAddQuotation={() => setIsAddQuotationOpen(true)}
-              onOpenEditQuotation={(q) => setEditQuotationTarget(q)}
-            />
-          </div>
+          <CustomerQuotationsTab
+            customerId={customer.id}
+            customerName={customer.name}
+            onOpenAddQuotation={() => setIsAddQuotationOpen(true)}
+            onOpenEditQuotation={(q) => setEditQuotationTarget(q)}
+          />
         )}
 
         {activeTab === 'locations' && <CustomerLocationsTab customerId={customer.id} locations={customerLocations} />}
@@ -450,32 +418,23 @@ export default function CustomerDetailsPage() {
           />
         )}
 
-        {activeTab === 'tracking' && <CustomerTrackingTab customer={customer} />}
+        {activeTab === 'tracking' && <CustomerTrackingTab customer={customer} liveTrips={liveTrips} />}
 
-        {activeTab === 'exports' && exportsEnabled && (
-          <div className={dk.card}>
-            <CustomerExportsTab customerId={customer.id} customerName={customer.name} />
-          </div>
-        )}
+        {activeTab === 'exports' && exportsEnabled && <CustomerExportsTab customerId={customer.id} customerName={customer.name} />}
       </div>
 
       {/* ── DELETE CUSTOMER CONFIRMATION ── */}
       <Dialog open={isDeleteModalOpen} onOpenChange={(open) => !open && setIsDeleteModalOpen(false)}>
-        <DialogContent className="max-w-md rounded-2xl p-0 overflow-hidden border-slate-200 dark:border-slate-800">
-          <DialogHeader className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-rose-50/50 dark:bg-rose-950/20">
-            <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
-              <AlertTriangle className="w-5 h-5 shrink-0" />
-              <DialogTitle className="text-base font-black">Delete customer</DialogTitle>
-            </div>
-            <DialogDescription className="text-xs text-slate-500 mt-1">
-              Delete <strong className="text-slate-900 dark:text-slate-100">{customer.name}</strong>? Their trips and invoices stay, marked as from a deleted customer.
+        <DialogContent className="max-w-md overflow-hidden rounded-xl p-0">
+          <DialogHeader className="px-6 pt-6 pb-2">
+            <DialogTitle className="text-base font-semibold">Delete {customer.name}?</DialogTitle>
+            <DialogDescription className="text-[13px] text-slate-500">
+              Their trips and invoices stay, marked as from a deleted customer.
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900 flex justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => setIsDeleteModalOpen(false)} className="text-xs font-bold">Cancel</Button>
-            <Button type="button" size="sm" onClick={handleDeleteCustomer} className="text-xs bg-rose-600 hover:bg-rose-700 text-white font-bold px-4 shadow-xs">
-              Delete
-            </Button>
+          <DialogFooter className="flex justify-end gap-2 px-6 pt-2 pb-5">
+            <button type="button" onClick={() => setIsDeleteModalOpen(false)} className={cn(ui.btn, ui.btnGhost)}>Cancel</button>
+            <button type="button" onClick={handleDeleteCustomer} className={cn(ui.btn, 'bg-rose-600 text-white hover:bg-rose-700')}>Delete customer</button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

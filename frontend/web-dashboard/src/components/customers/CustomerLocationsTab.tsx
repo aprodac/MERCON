@@ -8,15 +8,14 @@ import { locationService, type Location } from '@/services/locationService';
 import LocationFormDialog from '@/components/locations/LocationFormDialog';
 import ExcelImportDialog from '@/components/fleet/ExcelImportDialog';
 import ConfirmModal from '@/components/ui/ConfirmModal';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useModuleEnabled } from '@/components/auth/RequireModule';
 import { LOCATION_COLUMNS } from '@/utils/importUtils';
 import { cn } from '@/lib/utils';
-import { dk, EMPTY, StatusPill, type Tone } from '@/components/details/DetailKit';
+import { Badge, EmptyBlock, Panel, ui, type UiTone } from '@/components/customers/customerUi';
 
-const PRECISION: Record<string, { tone: Tone; label: string }> = {
-  EXACT: { tone: 'green', label: 'Exact GPS' },
+const PRECISION: Record<string, { tone: UiTone; label: string }> = {
+  EXACT: { tone: 'emerald', label: 'Exact GPS' },
   APPROXIMATE: { tone: 'blue', label: 'Area' },
   UNKNOWN: { tone: 'amber', label: 'Not pinned' },
 };
@@ -52,42 +51,41 @@ export default function CustomerLocationsTab({ customerId, locations }: { custom
     : locations;
 
   return (
-    <section className={cn(dk.card, 'p-4 sm:p-5 flex flex-col gap-3')}>
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <h2 className="flex items-center gap-2 text-sm font-black text-slate-900 dark:text-white">
-          <MapPin className="w-4 h-4 text-[#FA634E]" /> Saved locations
-          <span className="text-xs font-semibold text-slate-400">{locations.length}</span>
-        </h2>
-        <div className="flex items-center gap-2 flex-wrap">
+    <Panel
+      title="Saved locations"
+      description="Pickup and delivery places used on this customer's quotations and trips"
+      icon={MapPin}
+      tone="blue"
+      flush
+      action={
+        <>
           <div className="relative w-56">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search locations…" className="h-8 pl-8 text-xs rounded-xl" aria-label="Search locations" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search locations" className={cn(ui.input, 'h-8 pl-9')} aria-label="Search locations" />
           </div>
-          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className="h-8 rounded-xl text-xs font-bold gap-1.5">
-            <UploadCloud className="w-3.5 h-3.5" /> Import
-          </Button>
-          <Button size="sm" onClick={() => { setEditTarget(null); setFormOpen(true); }} className="h-8 rounded-xl text-xs font-bold gap-1.5 bg-[#FA634E] hover:bg-[#e0523d] text-white">
-            <Plus className="w-3.5 h-3.5" /> Add location
-          </Button>
-        </div>
-      </div>
-
+          <button type="button" onClick={() => setImportOpen(true)} className={cn(ui.btn, ui.btnOutline, 'h-8')}>
+            <UploadCloud className="size-4" /> Import
+          </button>
+          <button type="button" onClick={() => { setEditTarget(null); setFormOpen(true); }} className={cn(ui.btn, ui.btnPrimary, 'h-8')}>
+            <Plus className="size-4" /> Add location
+          </button>
+        </>
+      }
+    >
       {shown.length === 0 ? (
-        <div className="py-10 text-center border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
-          <MapPin className="w-7 h-7 text-slate-300 mx-auto mb-2" />
-          <p className="text-sm font-bold text-slate-700 dark:text-slate-300">{q ? 'No locations match' : 'No saved locations yet'}</p>
-          <p className="text-xs text-slate-400 mt-0.5">Saved places fill in pickup and delivery stops on quotations and trips.</p>
+        <div className="px-5 pb-5">
+          <EmptyBlock icon={MapPin} title={q ? 'No locations match' : 'No saved locations yet'} text="Saved places fill in pickup and delivery stops on quotations and trips." />
         </div>
       ) : (
-        <div className="overflow-x-auto -mx-1">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-slate-100 dark:border-slate-800 text-[10px] font-extrabold uppercase text-slate-400 tracking-widest">
-                <th className="py-2.5 px-2">Location</th>
-                <th className="py-2.5 px-2">Address</th>
-                <th className="py-2.5 px-2">Pin</th>
-                <th className="py-2.5 px-2 text-right">Used in trips</th>
-                <th className="py-2.5 px-2"><span className="sr-only">Actions</span></th>
+        <div className="overflow-x-auto border-t border-slate-100 dark:border-slate-800">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="bg-slate-50/80 dark:bg-slate-800/40">
+              <tr>
+                <th className={cn(ui.th, 'pl-5')}>Location</th>
+                <th className={ui.th}>Address</th>
+                <th className={ui.th}>Pin</th>
+                <th className={cn(ui.th, 'text-right')}>Trip stops</th>
+                <th className={cn(ui.th, 'pr-5')}><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -97,24 +95,24 @@ export default function CustomerLocationsTab({ customerId, locations }: { custom
                   <tr
                     key={l.id}
                     onClick={locationsModule ? () => navigate(`/locations/${l.id}`) : undefined}
-                    className={cn('group', locationsModule && 'cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50')}
+                    className={cn('group', locationsModule && 'cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/40')}
                   >
-                    <td className="py-2.5 px-2">
-                      <span className="block font-bold text-slate-900 dark:text-white group-hover:text-[#FA634E]">{l.name}</span>
-                      <span className="block font-mono text-[10.5px] text-slate-400">{l.code}</span>
+                    <td className={cn(ui.td, 'pl-5')}>
+                      <p className="font-medium text-slate-900 group-hover:text-[#E5533F] dark:text-white">{l.name}</p>
+                      <p className="text-xs text-slate-500">{l.code}</p>
                     </td>
-                    <td className="py-2.5 px-2 text-slate-600 dark:text-slate-400 max-w-[320px] truncate" title={l.address || undefined}>
-                      {[l.address, l.city].filter(Boolean).join(', ') || EMPTY}
+                    <td className={cn(ui.td, 'max-w-[320px] truncate text-slate-600 dark:text-slate-300')} title={l.address || undefined}>
+                      {[l.address, l.city].filter(Boolean).join(', ') || <span className="text-slate-400">—</span>}
                     </td>
-                    <td className="py-2.5 px-2"><StatusPill tone={p.tone}>{p.label}</StatusPill></td>
-                    <td className="py-2.5 px-2 text-right font-mono font-bold text-slate-900 dark:text-white">{l._count?.tripStops ?? EMPTY}</td>
-                    <td className="py-2.5 px-2">
-                      <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => { setEditTarget(l); setFormOpen(true); }} className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-slate-500 hover:text-amber-600 hover:bg-amber-50 cursor-pointer" aria-label={`Edit ${l.name}`} title="Edit">
-                          <Edit2 className="w-3.5 h-3.5" />
+                    <td className={ui.td}><Badge tone={p.tone} dot>{p.label}</Badge></td>
+                    <td className={cn(ui.td, 'text-right text-slate-900 tabular-nums dark:text-white')}>{l._count?.tripStops ?? '—'}</td>
+                    <td className={cn(ui.td, 'pr-5')}>
+                      <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
+                        <button type="button" onClick={() => { setEditTarget(l); setFormOpen(true); }} className={ui.iconBtn} aria-label={`Edit ${l.name}`} title="Edit">
+                          <Edit2 className="size-4" />
                         </button>
-                        <button onClick={() => setDeleteTarget(l)} className="w-7 h-7 rounded-lg inline-flex items-center justify-center text-slate-500 hover:text-rose-600 hover:bg-rose-50 cursor-pointer" aria-label={`Delete ${l.name}`} title="Delete">
-                          <Trash2 className="w-3.5 h-3.5" />
+                        <button type="button" onClick={() => setDeleteTarget(l)} className={cn(ui.iconBtn, 'hover:bg-rose-50 hover:text-rose-600')} aria-label={`Delete ${l.name}`} title="Delete">
+                          <Trash2 className="size-4" />
                         </button>
                       </div>
                     </td>
@@ -156,6 +154,6 @@ export default function CustomerLocationsTab({ customerId, locations }: { custom
         confirmLabel="Delete"
         isDestructive
       />
-    </section>
+    </Panel>
   );
 }
