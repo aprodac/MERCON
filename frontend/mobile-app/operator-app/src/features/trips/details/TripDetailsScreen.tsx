@@ -31,6 +31,7 @@ import { DetailsTab } from './components/DetailsTab';
 import { ShareSheet, type ShareTarget } from './components/ShareSheet';
 import { MediaViewer, type ViewerItem } from './components/MediaViewer';
 import { TimeConfirmSheet } from './components/TimeConfirmSheet';
+import { PinSheet } from './components/PinSheet';
 import { ActivitySheet, ChargesSheet, MoreSheet, UploadSheet } from './components/Sheets';
 import { ACTION, INK, MUTED, PAGE, WA, tap } from './components/parts';
 import { shareTextToWhatsApp } from '../../dashboard/components/ActiveTripsSection';
@@ -57,6 +58,7 @@ export default function TripDetailsScreen() {
   const [share, setShare] = useState<ShareTarget | null>(null);
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string; update?: DriverUpdate } | null>(null);
   const [timeCheck, setTimeCheck] = useState<{ doc: OperatorTripDocument; stop: Stop; stopLabel: string } | null>(null);
+  const [pinTarget, setPinTarget] = useState<{ stop: Stop; label: string } | null>(null);
   const [sheet, setSheet] = useState<'more' | 'upload' | 'activity' | 'charges' | null>(null);
   const [fullMap, setFullMap] = useState(false);
   const [picker, setPicker] = useState<{ kind: 'driver' | 'truck'; drivers?: OperatorDriver[]; vehicles?: OperatorVehicle[] } | null>(null);
@@ -310,6 +312,7 @@ export default function TripDetailsScreen() {
               f={f}
               onOpenStopMedia={openStopMedia}
               onConfirmTime={(doc, st) => setTimeCheck({ doc, stop: st, stopLabel: stopName(st, stops.indexOf(st)) })}
+              onSetPin={(st) => setPinTarget({ stop: st, label: stopName(st, stops.indexOf(st)) })}
             />
           ) : (
             <DetailsTab
@@ -368,6 +371,7 @@ export default function TripDetailsScreen() {
         onClose={() => setViewer(null)}
         onSend={viewer?.update ? () => { const u = viewer.update!; setViewer(null); setTimeout(() => setShare({ type: 'update', update: u }), 250); } : undefined}
       />
+      <PinSheet target={pinTarget} tripId={trip.id} onClose={() => setPinTarget(null)} onSaved={reload} />
       <TimeConfirmSheet target={timeCheck} tripId={trip.id} tz={tz} onClose={() => setTimeCheck(null)} onDone={reload} />
       <MoreSheet
         visible={sheet === 'more'}

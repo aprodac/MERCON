@@ -701,6 +701,7 @@ export default function TripDetailsPage() {
                 documents={documents}
                 formatTime={formatTime}
                 formatDateTime={formatDateTime}
+                onPinned={() => refetch()}
                 onEvidenceUpdated={() => {
                   refetch();
                   refetchDocuments();

@@ -4,6 +4,7 @@ import { validateTripStops } from './tripValidationService';
 import { isRoundTripCategory, getLegEndpoints } from '@mercon/shared-types';
 import { parseFullTripStops } from './legacyStopStringParser';
 import { logger } from '../utils/logger';
+import { isSamePlace, pinLocation } from './locationPin';
 
 function parseOptionalFloat(val: any): number | null {
   if (val === undefined || val === null || val === '') return null;
@@ -157,6 +158,24 @@ export async function writeTripStops(
         });
       } catch (uErr) {
         logger.warn({ err: uErr }, 'Failed to update canonical location master data during trip creation');
+      }
+    } else if (
+      locId && resolvedLoc &&
+      (stop.coordinate_precision || stop.location_coordinate_precision) === 'EXACT' &&
+      resolvedLoc.coordinate_precision !== 'EXACT' &&
+      isSamePlace(stopName, resolvedLoc.name)
+    ) {
+      // The stop was pinned exactly and is the customer location itself, which
+      // isn't pinned yet: save the pin there too, so the next trip starts exact
+      // and other open trips still on the old guess are fixed with it.
+      const parsedLat = parseOptionalFloat(stop.lat);
+      const parsedLng = parseOptionalFloat(stop.lng);
+      if (parsedLat != null && parsedLng != null) {
+        try {
+          await pinLocation(tx, locId, { lat: parsedLat, lng: parsedLng, address: stop.location_address || null }, createdBy ?? null);
+        } catch (pErr) {
+          logger.warn({ err: pErr }, 'Failed to pin customer location from an exact trip stop');
+        }
       }
     }
 

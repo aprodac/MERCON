@@ -3,7 +3,7 @@ import {
   getTrips, getTripById, createTrip, updateTripStatus,
   dispatchTrip, replaceDriver, pickupArrive, pickupVerify, deliveryVerify,
   bulkDeleteTrips, bulkUpdateTripStatus, bulkAssignTrips, getUnsettledCompletedTrips, updateTripFinancials,
-  logStopDelay, confirmEvidenceTime, bulkImportTrips, updateTripStop, updateTripStopsRoute, getMonthlyTripBoard, shareTripMediaToWhatsApp
+  logStopDelay, confirmEvidenceTime, bulkImportTrips, updateTripStop, pinStop, updateTripStopsRoute, getMonthlyTripBoard, shareTripMediaToWhatsApp
 } from '../controllers/tripController';
 import { exportTrips } from '../controllers/tripExportController';
 import { getTripTrackingLink, getTripTrackingLinks, trackingLinkBody, trackingLinksBody } from '../controllers/trackingController';
@@ -12,7 +12,7 @@ import { getTripDriverTrail } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
-import { createTripBody, listQuery, logStopDelayBody, confirmEvidenceTimeBody, bulkImportTripsBody, updateTripStopBody, updateTripStopsRouteBody } from '../schemas';
+import { createTripBody, listQuery, logStopDelayBody, confirmEvidenceTimeBody, bulkImportTripsBody, updateTripStopBody, updateTripStopsRouteBody, pinBody } from '../schemas';
 
 import { getDriverRecommendations, getVehicleRecommendations } from '../controllers/fleetDispatchController';
 
@@ -61,6 +61,8 @@ router.put('/:id/stops', validate({ body: updateTripStopsRouteBody }), updateTri
 // the trip is still running — a wrong address is exactly what needs fixing
 // mid-trip — and refused once it's completed, invoiced or cancelled.
 router.patch('/:id/stops/:stopId', validate({ body: updateTripStopBody }), updateTripStop);
+// Pin a stop exactly (and its customer location + other open trips going there).
+router.post('/:id/stops/:stopId/pin', validate({ body: pinBody }), pinStop);
 
 // Phase 2: Driver Workflow
 router.post('/:id/pickup/arrive', pickupArrive);

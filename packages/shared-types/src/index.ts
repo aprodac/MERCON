@@ -1265,3 +1265,4 @@ export * from './tripRoute';
 
 export * from './tripCreation';
 export * from './driverRecommendation';
+export * from './mapsLink';

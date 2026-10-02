@@ -20,7 +20,7 @@ export function phaseOf(status: string): TripPhase {
   return 'active';
 }
 
-export type Tone = 'violet' | 'sky' | 'blue' | 'red' | 'green' | 'gray';
+export type Tone = 'violet' | 'sky' | 'blue' | 'red' | 'green' | 'gray' | 'amber';
 
 export const TONE: Record<Tone, { bg: string; fg: string; dot: string }> = {
   violet: { bg: '#F0EBFC', fg: '#5B34B0', dot: '#7651D6' },
@@ -29,6 +29,7 @@ export const TONE: Record<Tone, { bg: string; fg: string; dot: string }> = {
   red: { bg: '#FDEDEB', fg: '#912018', dot: '#D92D20' },
   green: { bg: '#E8F5EE', fg: '#146C3C', dot: '#1F9D55' },
   gray: { bg: '#F1F1F3', fg: '#52525B', dot: '#9898A4' },
+  amber: { bg: '#FFF6E5', fg: '#8A5200', dot: '#D98E04' },
 };
 
 /** Status chip colours — the same meaning as the web's statusChip. */

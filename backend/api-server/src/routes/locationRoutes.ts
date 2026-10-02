@@ -6,11 +6,12 @@ import {
   updateLocation,
   deleteLocation,
   bulkImportLocations,
+  pinLocationHandler,
 } from '../controllers/locationController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
-import { bulkImportLocationsBody } from '../schemas';
+import { bulkImportLocationsBody, pinBody } from '../schemas';
 
 const router = Router();
 
@@ -25,6 +26,8 @@ router.post('/import', validate({ body: bulkImportLocationsBody }), bulkImportLo
 router.get('/:id', getLocationById);
 router.put('/:id', updateLocation);
 router.patch('/:id', updateLocation);
+// Pin exactly — also re-pins the open trip stops still using the old guess.
+router.post('/:id/pin', validate({ body: pinBody }), pinLocationHandler);
 router.delete('/:id', deleteLocation);
 
 export default router;
