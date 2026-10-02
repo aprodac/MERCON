@@ -146,6 +146,8 @@ export interface TrackingTripMeta {
   vehicle: { id?: string; plate_number: string; asset_type: string; image_url?: string | null } | null;
   driver: { id?: string; first_name: string; avatar_url?: string | null } | null;
   subcontract: { vehiclePlate: string | null; vehicleType: string | null; driverName: string | null } | null;
+  /** Who created the trip — the "Ask" fallback when the customer has no WhatsApp group. */
+  created_by?: string | null;
 }
 
 export interface TrackingCustomerSettings {
@@ -186,8 +188,34 @@ export function lateMinutes(actualOrEta: string | Date | null, due: string | Dat
 
 /** WhatsApp wants digits only, with the country code. */
 export function waDigits(phone: string | null | undefined): string | null {
-  const d = (phone ?? '').replace(/[^0-9]/g, '');
+  let d = (phone ?? '').replace(/[^0-9]/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  // wa.me needs the international form: a local Saudi mobile "05x…" / "5x…" becomes "9665x…".
+  if (/^05\d{8}$/.test(d)) d = `966${d.slice(1)}`;
+  else if (/^5\d{8}$/.test(d)) d = `966${d}`;
   return d.length >= 8 ? d : null;
+}
+
+/**
+ * The WhatsApp number of the team member a customer should ask — the person
+ * who created the trip, when they're an active Admin / Operator with a phone
+ * on their profile (the team answers customers from their own phones).
+ * Cached briefly: every page load asks.
+ */
+const teamPhoneCache = new Map<string, { at: number; value: string | null }>();
+export async function teamWhatsApp(db: PrismaClient, userId: string | null | undefined, nowMs = Date.now()): Promise<string | null> {
+  if (!userId) return null;
+  const hit = teamPhoneCache.get(userId);
+  if (hit && nowMs - hit.at < 10 * 60_000) return hit.value;
+  let value: string | null = null;
+  try {
+    const u = await db.user.findUnique({ where: { id: userId }, select: { phone: true, role: true, isActive: true, deletedAt: true } });
+    value = u && u.isActive && !u.deletedAt && u.role !== 'Driver' ? waDigits(u.phone) : null;
+  } catch {
+    value = null; // not a user id (older rows) — fall back to the company number
+  }
+  teamPhoneCache.set(userId, { at: nowMs, value });
+  return value;
 }
 
 export type LinkState = 'ok' | 'expired' | 'cancelled' | 'not_found' | 'disabled';
@@ -423,6 +451,7 @@ export const CUSTOMER_TRACKING_SELECT = {
 } as const;
 
 const META_SELECT = {
+  created_by: true,
   ref_id: true, status: true, vehicle_type: true, planned_start: true, actual_start: true, actual_end: true, updatedAt: true, is_third_party: true,
   vehicle: { select: { id: true, plate_number: true, asset_type: true, image_url: true } },
   driver: { select: { id: true, first_name: true, avatar_url: true } },
@@ -501,7 +530,12 @@ export async function buildTripTracking(
     vehicle: meta.vehicle ? { ...meta.vehicle, image_url: truckPhoto } : null,
   };
   const customer = meta.customer?.name ? { name: meta.customer.name, logo_url: logo } : null;
-  const brand = { ...ctx.brand, ask_group_url: whatsAppGroupUrl(meta.customer?.whatsapp_group_link) };
+  // "Ask": the customer's WhatsApp group, else whoever created the trip, else the company number.
+  const brand = {
+    ...ctx.brand,
+    ask_group_url: whatsAppGroupUrl(meta.customer?.whatsapp_group_link),
+    support_whatsapp: (await teamWhatsApp(db, meta.created_by)) ?? ctx.brand.support_whatsapp,
+  };
   const data = buildPublicTracking({ overview, meta: linkedMeta, brand, timezone: ctx.timezone, options, ahead, all, media, customer, now });
   remember(payloadCache, tripId, { at: now.getTime(), data });
   return data;

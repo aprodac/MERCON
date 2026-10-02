@@ -73,6 +73,14 @@ const MEDIA: LiveTripMedia = {
   unplaced: [],
 };
 
+test('whatsapp numbers become international for wa.me', () => {
+  assert.equal(waDigits('0546126262'), '966546126262');
+  assert.equal(waDigits('546126262'), '966546126262');
+  assert.equal(waDigits('+966 54 612 6262'), '966546126262');
+  assert.equal(waDigits('00966546126262'), '966546126262');
+  assert.equal(waDigits('12345'), null);
+});
+
 test('whatsapp group link: only real invite links count', () => {
   assert.equal(whatsAppGroupUrl('https://chat.whatsapp.com/AbCdEf1234567890xyz'), 'https://chat.whatsapp.com/AbCdEf1234567890xyz');
   assert.equal(whatsAppGroupUrl(' chat.whatsapp.com/invite/AbCdEf1234567890xyz?mode=r '), 'https://chat.whatsapp.com/AbCdEf1234567890xyz');

@@ -348,7 +348,10 @@ export default function CustomerTrackingTab({ customer, liveTrips = [] }: { cust
             <div className="mt-1.5 rounded-xl bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               <p className="font-semibold">No WhatsApp group link yet</p>
               <p className="mt-0.5 text-amber-900/80 dark:text-amber-200/80">
-                In WhatsApp: open the group, tap its name, then <b>Invite to group via link → Copy link</b> (group admins only). Paste it in the customer's details.
+                Until then, "Ask" messages the team member who created the trip (the phone on their user profile), or the company support number.
+              </p>
+              <p className="mt-1.5 text-amber-900/80 dark:text-amber-200/80">
+                To add the group: in WhatsApp open the group, tap its name, then <b>Invite to group via link → Copy link</b> (group admins only), and paste it in the customer's details.
               </p>
               <button type="button" onClick={() => navigate(`/customers/${customer.id}/edit`)} className="mt-2 rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-100 dark:ring-amber-800">
                 Add group link
