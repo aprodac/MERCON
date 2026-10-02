@@ -37,14 +37,18 @@ test('suggestField rejects a match built entirely from a generic connector word'
   // entirely the generic connector. Old behavior returned driver_name
   // (first field in declaration order with any hit), which put actual
   // driver names in a column meant for the vendor/carrier.
-  assert.equal(suggestField('VENDOR NAME'), null);
+  // "vendor" has since become a carrier alias, so the header now resolves
+  // to the right field instead of nothing. The gate itself still rejects a
+  // header whose content word is unknown:
+  assert.equal(suggestField('VENDOR NAME'), 'carrier_name');
+  assert.equal(suggestField('OWNER NAME'), null);
 
-  // Same mechanism via "number": both of these got wrongly mapped to
-  // driver_phone (via 'mobile number'/'contact number'), producing the
-  // same phone number duplicated across two unrelated columns in a real
-  // generated report.
-  assert.equal(suggestField('Vehcile Number'), null); // template's own typo, "Vehicle" misspelled
-  assert.equal(suggestField('UUID NUMBER'), null);
+  // Same mechanism via "number": these used to land on driver_phone (via
+  // 'mobile number'/'contact number'). Their own spellings are aliases now,
+  // so they resolve to the right field; an unknown "___ number" stays empty.
+  assert.equal(suggestField('Vehcile Number'), 'vehicle_plate'); // template's own typo, "Vehicle" misspelled
+  assert.equal(suggestField('UUID NUMBER'), 'ref_id');
+  assert.equal(suggestField('ACCOUNT NUMBER'), null);
 
   // Regression guard: the generic-token gate must not swallow the
   // "Type of vehicle" fix above — "vehicle" is a non-generic overlapping
@@ -58,6 +62,17 @@ test('suggestField still resolves clean, unambiguous headers correctly', () => {
   assert.equal(suggestField('DESTINATION'), 'destination');
   assert.equal(suggestField('CHARGES'), 'billing_amount');
   assert.equal(suggestField('Vehicle No'), 'vehicle_plate'); // exact alias match
+});
+
+test('iMile bilingual headers map to the right fields', () => {
+  // Headers from an iMile/JDL trip sheet: Chinese label + English, the
+  // Chinese is stripped by normaliseHeader. "Shipment No" used to fall to
+  // the serial alias "no", "start" to the date alias "start date", and the
+  // "Vechicle" typo matched nothing.
+  assert.equal(suggestField('单号 Shipment No'), 'awb_number');
+  assert.equal(suggestField('出发地 start'), 'origin');
+  assert.equal(suggestField('目的地 destination'), 'destination');
+  assert.equal(suggestField('车型Vechicle Type'), 'vehicle_type');
 });
 
 test('a banner sentence containing a generic word does not match at all (word-count too skewed)', () => {
