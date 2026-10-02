@@ -98,6 +98,16 @@ function toPoint(tripId: string, loc: Location.LocationObject): QueuedPoint {
   };
 }
 
+/**
+ * Whether this app run started the service itself. A task registered in an
+ * earlier run is restored by the OS when the app starts — before the app is on
+ * screen, so Android brings it back WITHOUT its foreground service (no
+ * notification, location throttled to a few fixes an hour). "Already running"
+ * from a previous run is therefore not trusted: the first start of each run
+ * restarts it properly. Seen on Android after the app was closed mid-trip.
+ */
+let startedThisRun = false;
+
 /** One task run at a time: a second batch waits instead of sending the queue twice. */
 let sending: Promise<void> = Promise.resolve();
 
@@ -153,10 +163,15 @@ export async function startTripTracking(tripId: string): Promise<boolean> {
 
     const current = await SecureStore.getItemAsync(ACTIVE_TRIP_KEY);
     const running = await Location.hasStartedLocationUpdatesAsync(TRIP_LOCATION_TASK).catch(() => false);
-    if (running && current === tripId) return true;
+    if (running && startedThisRun) {
+      // Same service; a new trip only changes which trip it reports for.
+      if (current !== tripId) await SecureStore.setItemAsync(ACTIVE_TRIP_KEY, tripId);
+      return true;
+    }
 
     await SecureStore.setItemAsync(ACTIVE_TRIP_KEY, tripId);
-    if (running) return true; // same service, now reporting for the new trip
+    // Restored from an earlier run (see startedThisRun): restart it while on screen.
+    if (running) await Location.stopLocationUpdatesAsync(TRIP_LOCATION_TASK).catch(() => {});
 
     await Location.startLocationUpdatesAsync(TRIP_LOCATION_TASK, {
       accuracy: Location.Accuracy.High,
@@ -173,6 +188,7 @@ export async function startTripTracking(tripId: string): Promise<boolean> {
         killServiceOnDestroy: false,
       },
     });
+    startedThisRun = true;
     return true;
   } catch (err) {
     console.warn('[TripLocation] Could not start trip tracking:', err);
@@ -183,6 +199,7 @@ export async function startTripTracking(tripId: string): Promise<boolean> {
 /** Stops sharing location (trip finished, cancelled, reassigned, or logout). */
 export async function stopTripTracking(): Promise<void> {
   if (!isBackgroundTrackingAvailable()) return;
+  startedThisRun = false;
   try {
     await SecureStore.deleteItemAsync(ACTIVE_TRIP_KEY);
     if (await Location.hasStartedLocationUpdatesAsync(TRIP_LOCATION_TASK).catch(() => false)) {
