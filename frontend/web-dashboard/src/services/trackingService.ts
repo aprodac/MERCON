@@ -45,7 +45,7 @@ export interface PublicTracking {
   brand: TrackingBrand;
   timezone: string;
   options: TrackingOptions;
-  trip: { ref: string | null; phase: TrackingPhase; started_at: string | null; finished_at: string | null; planned_start: string | null };
+  trip: { ref: string | null; phase: TrackingPhase; route_label: string | null; started_at: string | null; finished_at: string | null; planned_start: string | null };
   vehicle: { plate: string | null; type: string | null };
   driver_first_name: string | null;
   position: TrackingPosition | null;
@@ -67,6 +67,7 @@ export interface FleetTruck {
   token: string;
   ref: string | null;
   phase: TrackingPhase;
+  route_label: string | null;
   plate: string | null;
   type: string | null;
   driver_first_name: string | null;
@@ -90,7 +91,18 @@ export interface CustomerFleetTracking {
   options: TrackingOptions;
   customer: { name: string };
   trucks: FleetTruck[];
+  delivered: DeliveredTrip[];
   generated_at: string;
+}
+
+export interface DeliveredTrip {
+  token: string;
+  ref: string | null;
+  plate: string | null;
+  type: string | null;
+  route_label: string | null;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 export interface TrackingLink {

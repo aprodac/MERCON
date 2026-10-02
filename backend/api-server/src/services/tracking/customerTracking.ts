@@ -87,6 +87,8 @@ export interface PublicTracking {
   trip: {
     ref: string | null;
     phase: TripPhase;
+    /** "Khamis Mushayt ⇄ Muhayil" — see routeLabel. */
+    route_label: string | null;
     started_at: string | null;
     finished_at: string | null;
     planned_start: string | null;
@@ -198,9 +200,32 @@ export function trackingLinkState(
 const round5 = (n: number) => Math.round(n * 1e5) / 1e5;
 const roundCoords = (pts: [number, number][]) => pts.map(([lng, lat]) => [round5(lng), round5(lat)] as [number, number]);
 
+/**
+ * A place name as customers should read it. Ops often type "khamis mushayt" or
+ * "RIYADH"; names already in mixed case ("iMile CDC") are left exactly as typed.
+ */
+export function placeName(raw: string): string {
+  const s = raw.trim().replace(/\s+/g, ' ');
+  if (s !== s.toLowerCase() && s !== s.toUpperCase()) return s;
+  return s.toLowerCase().replace(/(^|[\s\-/(])(\p{L})/gu, (_, sep: string, ch: string) => sep + ch.toUpperCase());
+}
+
 function stopName(s: LiveStop, i: number): string {
   const n = s.name?.trim() || s.address?.split(',')[0]?.trim();
-  return n || `Stop ${i + 1}`;
+  return n ? placeName(n) : `Stop ${i + 1}`;
+}
+
+/**
+ * The trip's route in a few words: "Riyadh → Dawadmi", "Riyadh → Hail → Qurayyat",
+ * and a round trip as "Khamis Mushayt ⇄ Muhayil" (monthly trips are entered as
+ * out-and-back stops, e.g. Khamis, Muhayil, Muhayil, Khamis).
+ */
+export function routeLabel(names: string[]): string | null {
+  const places = names.filter((n, i) => i === 0 || n !== names[i - 1]);
+  if (places.length === 0) return null;
+  if (places.length === 1) return places[0];
+  if (places.length === 3 && places[0] === places[2]) return `${places[0]} ⇄ ${places[1]}`;
+  return places.join(' → ');
 }
 
 const pointOf = (s: LiveStop): GeoPoint | null => (s.lat != null && s.lng != null ? { lat: s.lat, lng: s.lng } : null);
@@ -300,6 +325,7 @@ export function buildPublicTracking(input: {
     trip: {
       ref: meta.ref_id,
       phase,
+      route_label: routeLabel(stops.map((s) => s.name)),
       started_at: meta.actual_start?.toISOString() ?? null,
       finished_at: meta.actual_end?.toISOString() ?? null,
       planned_start: meta.planned_start?.toISOString() ?? null,

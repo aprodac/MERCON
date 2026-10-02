@@ -4,19 +4,21 @@ import { useQuery } from '@tanstack/react-query';
 import MapGL, { Marker, type MapRef } from 'react-map-gl/maplibre';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { AlertTriangle, Check, ChevronRight, Clock, Loader2, MapPinOff, RefreshCw, Truck } from 'lucide-react';
+import { AlertTriangle, Check, ChevronRight, Clock, Loader2, MapPinOff, RefreshCw, Search, Truck, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LIVE_MAP_STYLES, applyMapPalette } from '@/components/maps/live/liveMapStyle';
 import { SAUDI_CENTER, DEFAULT_SAUDI_ZOOM } from '@/utils/saudiMapConfig';
-import { trackingService, type CustomerFleetTracking, type FleetTruck } from '@/services/trackingService';
+import { trackingService, type CustomerFleetTracking, type DeliveredTrip, type FleetTruck } from '@/services/trackingService';
+import { filterFleet, routesOf } from './fleetFilters';
 import { useTrackingText, type TrackingText } from './trackingI18n';
 import { AskButton, BrandMark, Centered, Chip, LangToggle, TRACK_BLUE, TruckPuck } from './trackingParts';
 
 /**
  * The customer-wide tracking page (/c/:token): every truck of one customer
- * that is on the road, about to load, or just delivered — for monthly
- * contracts, so the customer bookmarks one page. Each card opens that trip's
- * own tracking page. No login: the token is the permission.
+ * that is on the road or about to load, and their deliveries of the last 7
+ * days — for monthly contracts, so the customer pins one link in their
+ * WhatsApp group. Search by plate / trip / place, filter by route; each card
+ * opens that trip's own tracking page. No login: the token is the permission.
  */
 const REFRESH_MS = 60_000;
 
@@ -35,6 +37,8 @@ export default function FleetTrackingPage() {
   });
   const text = useTrackingText(data?.timezone ?? 'Asia/Riyadh');
   const [selected, setSelected] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [route, setRoute] = useState<string | null>(null);
 
   const [, tick] = useState(0);
   useEffect(() => {
@@ -64,14 +68,18 @@ export default function FleetTrackingPage() {
   }
 
   const count = (phase: string) => data.trucks.filter((x) => x.phase === phase).length;
+  const deliveredToday = data.delivered.filter((d) => d.finished_at && Date.now() - new Date(d.finished_at).getTime() < 86_400_000).length;
+  const routes = routesOf(data.trucks);
+  const shown = filterFleet(data.trucks, query, route);
+  const shownDelivered = filterFleet(data.delivered, query, route);
 
   return (
     <div dir={text.rtl ? 'rtl' : 'ltr'} className="relative flex h-[100dvh] flex-col overflow-hidden bg-[#f6f4ef] text-slate-900 md:block">
       <div dir="ltr" className="relative h-[42dvh] shrink-0 md:absolute md:inset-0 md:h-auto">
-        <FleetMap data={data} selected={selected} onSelect={setSelected} text={text} />
+        <FleetMap data={{ ...data, trucks: shown }} selected={selected} onSelect={setSelected} text={text} />
         <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2 md:top-4 md:right-4 md:left-auto">
           <span className="pointer-events-auto flex h-9 items-center rounded-xl border border-black/5 bg-white/90 px-3 shadow-sm backdrop-blur md:hidden">
-            <BrandMark brand={data.brand} />
+            <BrandMark brand={data.brand} className="block max-w-[150px] truncate whitespace-nowrap" />
           </span>
           <LangToggle text={text} />
         </div>
@@ -95,18 +103,24 @@ export default function FleetTrackingPage() {
         <div className="mt-3 flex flex-wrap gap-1.5">
           <Chip tone="blue"><Truck className="size-3.5" /> {text.t.trucksOnRoad(count('active'))}</Chip>
           {count('planned') > 0 && <Chip tone="violet">{text.t.loadingSoon(count('planned'))}</Chip>}
-          {count('done') > 0 && <Chip tone="green"><Check className="size-3.5" strokeWidth={3} /> {text.t.deliveredToday(count('done'))}</Chip>}
+          {deliveredToday > 0 && <Chip tone="green"><Check className="size-3.5" strokeWidth={3} /> {text.t.deliveredToday(deliveredToday)}</Chip>}
         </div>
 
+        <FleetFilters text={text} routes={routes} query={query} onQuery={setQuery} route={route} onRoute={setRoute} />
+
         {data.trucks.length === 0 ? (
-          <p className="mt-6 rounded-2xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">{text.t.noTrucks}</p>
+          <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">{text.t.noTrucks}</p>
+        ) : shown.length === 0 ? (
+          <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">{text.t.noMatch}</p>
         ) : (
-          <ul className="mt-4 space-y-2">
-            {data.trucks.map((x) => (
+          <ul className="mt-3 space-y-2">
+            {shown.map((x) => (
               <TruckCard key={x.token} truck={x} text={text} selected={selected === x.token} onSelect={() => setSelected(x.token)} />
             ))}
           </ul>
         )}
+
+        <DeliveredList trips={shownDelivered} total={data.delivered.length} text={text} />
 
         <div className="mt-4"><AskButton brand={data.brand} text={text} about={data.customer.name} /></div>
 
@@ -146,13 +160,18 @@ function TruckCard({ truck: x, text, selected, onSelect }: { truck: FleetTruck; 
       >
         <button type="button" onClick={onSelect} className="block w-full text-start">
           <div className="flex items-center justify-between gap-2">
-            <span className="truncate text-sm font-semibold text-slate-900" dir="ltr">{[x.plate, x.type].filter(Boolean).join(' · ') || x.ref}</span>
+            <span className="truncate text-sm font-semibold text-slate-900">{x.route_label ?? x.ref}</span>
             {status}
           </div>
-          <p className="mt-1 truncate text-sm text-slate-700">{when}</p>
+          <p className="truncate text-xs text-slate-500" dir="ltr" style={{ textAlign: text.rtl ? 'right' : 'left' }}>
+            {[x.plate, x.type, x.ref].filter(Boolean).join(' · ')}
+          </p>
+          <p className="mt-1.5 truncate text-sm text-slate-700">{when}</p>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
             <span>{t.stopsDone(x.stops_done, x.stops_total)}</span>
             {x.driver_first_name && <span>· {t.driver} {x.driver_first_name}</span>}
+            {/* A quiet truck's card already says "Last seen …"; only live ones need this. */}
+            {x.position?.fresh && <span>· {t.updatedAgo(text.ago(x.position.recorded_at))}</span>}
             {x.punctuality && (x.punctuality.late_min > 0
               ? <span className="inline-flex items-center gap-1 font-medium text-rose-700"><Clock className="size-3" /> {t.expectedLate(duration(x.punctuality.late_min * 60))}</span>
               : <span className="font-medium text-emerald-700">· {t.onTime}</span>)}
@@ -169,6 +188,74 @@ function TruckCard({ truck: x, text, selected, onSelect }: { truck: FleetTruck; 
         </a>
       </div>
     </li>
+  );
+}
+
+/** Search box and route chips — shown once there's enough on the page to need them. */
+function FleetFilters({ text, routes, query, onQuery, route, onRoute }: {
+  text: TrackingText; routes: string[]; query: string; onQuery: (q: string) => void; route: string | null; onRoute: (r: string | null) => void;
+}) {
+  const chip = (active: boolean) => cn(
+    'shrink-0 rounded-full border px-3 py-1 text-xs font-semibold whitespace-nowrap',
+    active ? 'border-[#3E3C3D] bg-[#3E3C3D] text-white' : 'border-slate-200 bg-white text-slate-600',
+  );
+  return (
+    <div className="mt-3 space-y-2">
+      <label className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 focus-within:border-slate-400">
+        <Search className="size-4 shrink-0 text-slate-400" />
+        <input
+          value={query}
+          onChange={(e) => onQuery(e.target.value)}
+          placeholder={text.t.search}
+          className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+        />
+        {query && (
+          <button type="button" onClick={() => onQuery('')} aria-label={text.t.close} className="text-slate-400"><X className="size-4" /></button>
+        )}
+      </label>
+      {routes.length > 1 && (
+        <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button type="button" onClick={() => onRoute(null)} className={chip(route === null)}>{text.t.allRoutes}</button>
+          {routes.map((r) => (
+            <button key={r} type="button" onClick={() => onRoute(route === r ? null : r)} className={chip(route === r)}>{r}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** "Did yesterday's truck reach?" — deliveries of the last 7 days, newest first, each opening its trip page. */
+function DeliveredList({ trips, total, text }: { trips: DeliveredTrip[]; total: number; text: TrackingText }) {
+  const { t, clock } = text;
+  return (
+    <section className="mt-6">
+      <h2 className="text-sm font-semibold text-slate-900">{t.deliveredRecently}</h2>
+      {total === 0 ? (
+        <p className="mt-2 text-sm text-slate-500">{t.noDelivered}</p>
+      ) : trips.length === 0 ? (
+        <p className="mt-2 text-sm text-slate-500">{t.noMatch}</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-slate-100 rounded-2xl border border-slate-200">
+          {trips.map((d) => (
+            <li key={d.token}>
+              <a href={`/t/${d.token}`} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                  <Check className="size-3.5" strokeWidth={3} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">{d.route_label ?? d.ref}</p>
+                  <p className="truncate text-xs text-slate-500">
+                    {[d.finished_at && t.deliveredAt(clock(d.finished_at)), d.plate, d.ref].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
+                <ChevronRight className={cn('size-4 shrink-0 text-slate-400', text.rtl && 'rotate-180')} />
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
