@@ -300,8 +300,7 @@ export default function CreateTripPage() {
                         coDriverSplit={form.coDriverSplit}
                         setCoDriverSplit={form.setCoDriverSplit}
                         basePayout={resolveSlotDriverPayout(form.contractSlots[0] || ({} as any))}
-                        lastCustomerTrip={form.lastCustomerTrip}
-                        onRepeatTrip={form.handleRepeatTrip}
+                        loading={form.loading}
                         lastLaneTime={form.lastLaneTime}
                         handleUpdateSlotIntermediateFee={form.handleUpdateSlotIntermediateFee}
                         handleUpdateSlotReturnIntermediateFee={form.handleUpdateSlotReturnIntermediateFee}
