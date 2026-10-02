@@ -233,8 +233,8 @@ jobs:
           docker compose -p mercon up -d --no-build
 
           echo "Migrating uploads to persistent storage (pass 2, after the swap)..."
-          sudo bash scripts/provision/migrate-uploads.sh /tmp/mercon-uploads "$APP_UPLOADS_DIR"
-          sudo bash scripts/provision/migrate-uploads.sh /tmp/uploads "$TMP_UPLOADS_DIR"
+          sudo bash scripts/provision/migrate-uploads.sh --finalize /tmp/mercon-uploads "$APP_UPLOADS_DIR"
+          sudo bash scripts/provision/migrate-uploads.sh --finalize /tmp/uploads "$TMP_UPLOADS_DIR"
 
           # Give mercon-api a moment to finish starting before polling it.
           sleep 8

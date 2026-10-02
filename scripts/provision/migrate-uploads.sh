@@ -2,7 +2,7 @@
 # Copies uploaded files from an old host directory (under /tmp, which Ubuntu
 # empties at boot) into their persistent home, and proves nothing was lost.
 #
-#   sudo bash scripts/provision/migrate-uploads.sh <source-dir> <dest-dir> [owner-uid]
+#   sudo bash scripts/provision/migrate-uploads.sh [--finalize] <source-dir> <dest-dir> [owner-uid]
 #
 # - Never deletes or changes anything in <source-dir>.
 # - Never overwrites a file that already exists in <dest-dir> (the API may
@@ -12,8 +12,14 @@
 #   different size there. The deploy stops on that.
 # - <owner-uid> (default 1000 = `node` in node:20-alpine, the API's user)
 #   owns <dest-dir> so the API can write to it; mode 770, not 777.
+# - --finalize (the deploy's second pass, after the old container is gone)
+#   records the migration as done once everything verifies. Later runs then
+#   skip that source entirely, so files the API deletes on purpose (trip
+#   media after 60 days) are not copied back from the /tmp originals.
 set -euo pipefail
 
+FINALIZE=0
+[[ "${1:-}" == "--finalize" ]] && { FINALIZE=1; shift; }
 SRC="${1:-}"; DST="${2:-}"; OWNER="${3:-1000}"
 die() { echo "migrate-uploads: $*" >&2; exit 1; }
 
@@ -22,10 +28,24 @@ die() { echo "migrate-uploads: $*" >&2; exit 1; }
 [[ "$DST" == /* && "$DST" != "/" ]] || die "destination must be an absolute path"
 [[ "$OWNER" =~ ^[0-9]+$ ]] || die "owner uid must be numeric"
 
+# Kept beside, not inside, the served directory.
+MARKER="$(dirname "$DST")/.upload-migrations/$(basename "$DST")$(echo "$SRC" | tr '/' '_')"
+if [[ -f "$MARKER" ]]; then
+  echo "migrate-uploads: $SRC → $DST already completed ($(cat "$MARKER")) — skipped"
+  exit 0
+fi
+
 install -d -m 770 -o "$OWNER" -g "$OWNER" "$DST"
+finalize() {
+  [[ "$FINALIZE" -eq 1 ]] || return 0
+  install -d -m 700 "$(dirname "$MARKER")"
+  date -u +%Y-%m-%dT%H:%M:%SZ > "$MARKER"
+  echo "  recorded as complete: later deploys skip $SRC"
+}
 
 if [[ ! -d "$SRC" ]] || [[ -z "$(ls -A "$SRC" 2>/dev/null)" ]]; then
   echo "migrate-uploads: $SRC is missing or empty — nothing to copy ($DST: $(find "$DST" -type f | wc -l) files)"
+  finalize
   exit 0
 fi
 
@@ -61,3 +81,4 @@ if [[ -n "$MISSING" ]]; then
 fi
 
 echo "  after:  destination $(find "$DST" -type f | wc -l) files / $(du -sh "$DST" | cut -f1) — every source file present with the same size"
+finalize

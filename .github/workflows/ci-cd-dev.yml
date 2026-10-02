@@ -148,7 +148,8 @@ jobs:
           echo "Recreating and restarting mercon-dev containers..."
           docker compose -p mercon-dev up -d --no-build
           # Second pass: anything the old container wrote during this deploy.
-          sudo bash scripts/provision/migrate-uploads.sh /tmp/dev-uploads "$APP_UPLOADS_DIR"
+          sudo bash scripts/provision/migrate-uploads.sh --finalize /tmp/dev-uploads "$APP_UPLOADS_DIR"
+          sudo bash scripts/provision/migrate-uploads.sh --finalize /tmp/mercon-dev-tmp-uploads "$TMP_UPLOADS_DIR"
 
           echo "Waiting for mercon-api service container to achieve healthy status (bounded 60s timeout)..."
           HEALTH_STATUS="unknown"

@@ -144,10 +144,16 @@ jobs:
           tar -xzf "$W/age.tgz" -C "$W"
           AGE="$W/age/age"
 
-          # Upload dirs: the persistent ones and, until the first deploy
-          # that moves them, the old /tmp ones.
+          # Upload dirs: the persistent ones once the deploy has created them;
+          # the old /tmp ones only before that (afterwards they are stale
+          # copies that still hold media the API deleted after 60 days).
           DIRS=()
-          for d in /var/lib/mercon/mercon-app-uploads /var/lib/mercon/mercon-uploads /tmp/mercon-uploads /tmp/uploads; do
+          if [ -d /var/lib/mercon/mercon-uploads ]; then
+            CANDIDATES=(/var/lib/mercon/mercon-app-uploads /var/lib/mercon/mercon-uploads)
+          else
+            CANDIDATES=(/tmp/mercon-uploads /tmp/uploads)
+          fi
+          for d in "${CANDIDATES[@]}"; do
             [ -d "$d" ] && DIRS+=("$d")
           done
           UP_MB=0
