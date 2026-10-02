@@ -13,7 +13,7 @@ import type { PrismaClient } from '@prisma/client';
 import { logger } from '../../utils/logger';
 import { newShareToken } from '../operatorInbox';
 import {
-  CUSTOMER_TRACKING_SELECT, TRACKING_META_SELECT, buildTripTracking, ensureTrackingLink, loadTrackingContext,
+  CUSTOMER_TRACKING_SELECT, TRACKING_META_SELECT, buildTripTracking, ensureTrackingLink, loadTrackingContext, teamWhatsApp,
   optionsOf, placeName, routeLabel, type PublicTracking, type TrackingBrand, type TrackingCustomerSettings, type TrackingOptions, type TrackingTripMeta,
 } from './customerTracking';
 import { publicImage } from './publicImages';
@@ -231,8 +231,16 @@ export async function loadCustomerFleetTracking(
     if (tripLink?.token) delivered.push(toDeliveredTrip(tripLink.token, trip));
   }
 
+  // "Ask" on this page: the customer's group, else the team member behind their latest trip, else the company number.
+  let teamPhone: string | null = null;
+  const creators = [...new Set([...finished, ...[...trips].reverse()].map((t) => (t as { created_by?: string | null }).created_by).filter(Boolean))].slice(0, 5);
+  for (const id of creators) {
+    teamPhone = await teamWhatsApp(db, id as string, now.getTime());
+    if (teamPhone) break;
+  }
+
   const data: CustomerFleetTracking = {
-    brand: { ...ctx.brand, ask_group_url: whatsAppGroupUrl(link.customer.whatsapp_group_link) },
+    brand: { ...ctx.brand, ask_group_url: whatsAppGroupUrl(link.customer.whatsapp_group_link), support_whatsapp: teamPhone ?? ctx.brand.support_whatsapp },
     timezone: ctx.timezone,
     options: optionsOf(link.customer),
     customer: { name: link.customer.name, logo_url: await publicImage(db, { table: 'customer', field: 'logo_url' }, link.customer.id, link.customer.logo_url) },
