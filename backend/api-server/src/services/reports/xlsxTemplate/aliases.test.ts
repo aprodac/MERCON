@@ -75,6 +75,18 @@ test('iMile bilingual headers map to the right fields', () => {
   assert.equal(suggestField('车型Vechicle Type'), 'vehicle_type');
 });
 
+test('statement and rates headers match against their own field lists', () => {
+  assert.equal(suggestField('Debit', 'statement'), 'debit');
+  assert.equal(suggestField('Amount Received', 'statement'), 'credit');
+  assert.equal(suggestField('Running Balance', 'statement'), 'balance');
+  assert.equal(suggestField('Invoice No', 'statement'), 'invoice_no');
+  assert.equal(suggestField('Truck Type', 'rates'), 'vehicle_type');
+  assert.equal(suggestField('Rate', 'rates'), 'rate');
+  assert.equal(suggestField('Valid Until', 'rates'), 'valid_to');
+  // A trips-only field never comes back for another type.
+  assert.equal(suggestField('Driver Name', 'rates'), null);
+});
+
 test('a banner sentence containing a generic word does not match at all (word-count too skewed)', () => {
   // The actual banner text that triggered the bug — even though it contains
   // the standalone word "vehicle", the overlap ratio against any single-word

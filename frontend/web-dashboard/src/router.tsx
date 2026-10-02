@@ -392,7 +392,7 @@ export default function AppRouter() {
             <Route path="/reports/*"                element={<Navigate to="/report-builder" replace />} />
             <Route path="/reports"                  element={<Navigate to="/report-builder" replace />} />
 
-            {/* Company Excel reports now live on the customer (Trip sheets tab) and the invoice (Trip sheet button) */}
+            {/* Company Excel reports now live on the customer (Excel exports tab) and the invoice (Trip sheet button) */}
             <Route path="/company-reports"          element={<Navigate to="/customers" replace />} />
 
             {/* Smart Report Builder */}

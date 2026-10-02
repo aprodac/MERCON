@@ -37,7 +37,7 @@
     "test:trip-overview": "node -r ts-node/register --test src/tests/tripOverview.test.ts",
     "test:customer-tracking": "node -r ts-node/register --test src/tests/customerTracking.test.ts src/tests/stopGeofence.test.ts",
     "test:zatca": "node -r ts-node/register --test src/services/zatca/csr.test.ts src/services/secrets/secretBox.test.ts",
-    "test:xlsx": "node -r ts-node/register --test src/services/reports/xlsxTemplate/splice.test.ts src/services/reports/xlsxTemplate/aliases.test.ts src/services/reports/xlsxTemplate/inspect.test.ts",
+    "test:xlsx": "node -r ts-node/register --test src/services/reports/xlsxTemplate/splice.test.ts src/services/reports/xlsxTemplate/aliases.test.ts src/services/reports/xlsxTemplate/inspect.test.ts src/services/reports/xlsxTemplate/statementData.test.ts",
     "migrate:driver-avatars": "ts-node scripts/migrateDriverAvatars.ts"
   },
   "prisma": {

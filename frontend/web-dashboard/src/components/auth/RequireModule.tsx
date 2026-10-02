@@ -31,7 +31,7 @@ const MODULE_PATH_MAP: Record<string, string> = {
   expenses: '/expenses',
   documents: '/documents',
   reports: '/reports',
-  'company-reports': '/customers', // no page of its own — Customer → Trip sheets
+  'company-reports': '/customers', // no page of its own — Customer → Excel exports
   'report-builder': '/report-builder',
   maintenance: '/maintenance',
   'third-party': '/third-party',

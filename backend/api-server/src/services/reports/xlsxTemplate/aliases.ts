@@ -1,4 +1,4 @@
-import type { TripReportFieldKey } from '@mercon/shared-types';
+import type { RateReportFieldKey, ReportFieldKey, ReportSource, StatementReportFieldKey, TripReportFieldKey } from '@mercon/shared-types';
 
 /**
  * Header spellings a customer's own template is likely to use for each
@@ -40,7 +40,43 @@ export const TRIP_FIELD_ALIASES: Record<TripReportFieldKey, string[]> = {
   rate_category: ['rate category', 'category', 'rate type', 'trip type', 'trip category', 'rental method', 'rental', 'method'],
 };
 
-export const normaliseHeader = (header: string): string =>
+export const STATEMENT_FIELD_ALIASES: Record<StatementReportFieldKey, string[]> = {
+  serial: ['s l', 'sl', 'sl no', 'serial', 'sr no', 'no', 'row'],
+  date: ['date', 'transaction date', 'doc date', 'document date', 'posting date', 'invoice date'],
+  doc_type: ['type', 'transaction type', 'doc type', 'document type', 'transaction'],
+  doc_no: ['doc no', 'document no', 'document number', 'voucher no', 'voucher', 'transaction no', 'ref', 'ref no'],
+  invoice_no: ['invoice', 'invoice no', 'invoice number', 'inv no', 'bill no'],
+  reference: ['reference', 'description', 'particulars', 'narration', 'details', 'remarks', 'note'],
+  due_date: ['due date', 'due', 'payment due'],
+  debit: ['debit', 'dr', 'invoiced', 'invoice amount', 'amount', 'charges'],
+  credit: ['credit', 'cr', 'paid', 'payment', 'received', 'amount received', 'payment amount'],
+  balance: ['balance', 'running balance', 'outstanding', 'closing balance', 'balance due'],
+  invoice_status: ['status', 'invoice status'],
+};
+
+export const RATE_FIELD_ALIASES: Record<RateReportFieldKey, string[]> = {
+  serial: ['s l', 'sl', 'sl no', 'serial', 'sr no', 'no', 'row'],
+  quotation_no: ['quotation no', 'quotation number', 'quote no', 'rate id', 'lane id', 'id'],
+  quotation_name: ['quotation', 'quotation name', 'lane', 'lane name', 'name'],
+  origin: ['origin', 'from', 'pickup', 'start', 'loading point', 'origin city', 'from city'],
+  destination: ['destination', 'to', 'dropoff', 'end', 'unloading point', 'destination city', 'to city'],
+  route: ['route', 'lane route', 'stops', 'route details'],
+  vehicle_type: ['vehicle type', 'truck type', 'vehicle', 'truck', 'vehicle class', 'truck size', 'vechicle type', 'vehcile type'],
+  line_type: ['line type', 'trip type', 'service type', 'rental method', 'duty type'],
+  pricing_basis: ['pricing basis', 'basis', 'rate basis', 'billing type', 'per trip per month'],
+  rate: ['rate', 'price', 'amount', 'charges', 'rental charges', 'tariff', 'cost'],
+  currency: ['currency', 'ccy', 'cur'],
+  valid_from: ['valid from', 'effective from', 'start date', 'from date'],
+  valid_to: ['valid to', 'valid until', 'expiry', 'expiry date', 'end date', 'to date'],
+};
+
+const ALIASES_BY_SOURCE: Record<ReportSource, Record<string, string[]>> = {
+  trips: TRIP_FIELD_ALIASES,
+  statement: STATEMENT_FIELD_ALIASES,
+  rates: RATE_FIELD_ALIASES,
+};
+
+export const normaliseHeader =(header: string): string =>
   String(header ?? '')
     .toLowerCase()
     .replace(/\*/g, '')
@@ -69,12 +105,13 @@ const MIN_OVERLAP_RATIO = 0.5;
 const GENERIC_TOKENS = new Set(['name', 'number', 'type', 'amount', 'charges']);
 
 /** Best-guess field for a template header, or null if nothing matches well enough. */
-export function suggestField(header: string): TripReportFieldKey | null {
+export function suggestField(header: string, source: ReportSource = 'trips'): ReportFieldKey | null {
   const norm = normaliseHeader(header);
   if (!norm) return null;
+  const table = ALIASES_BY_SOURCE[source];
 
   // Exact match (the whole header equals a whole alias) always wins outright.
-  for (const [field, aliases] of Object.entries(TRIP_FIELD_ALIASES) as [TripReportFieldKey, string[]][]) {
+  for (const [field, aliases] of Object.entries(table) as [ReportFieldKey, string[]][]) {
     if (aliases.includes(norm)) return field;
   }
 
@@ -85,9 +122,9 @@ export function suggestField(header: string): TripReportFieldKey | null {
   // vehicle_type via its 2-of-3-word match on alias "vehicle type", beating
   // vehicle_plate's 1-of-3-word match on the bare alias "vehicle").
   const headerTokens = new Set(norm.split(/\s+/).filter(Boolean));
-  let best: { field: TripReportFieldKey; ratio: number; aliasTokenCount: number } | null = null;
+  let best: { field: ReportFieldKey; ratio: number; aliasTokenCount: number } | null = null;
 
-  for (const [field, aliases] of Object.entries(TRIP_FIELD_ALIASES) as [TripReportFieldKey, string[]][]) {
+  for (const [field, aliases] of Object.entries(table) as [ReportFieldKey, string[]][]) {
     for (const alias of aliases) {
       const aliasTokens = alias.split(/\s+/).filter(Boolean);
       if (aliasTokens.length === 0) continue;
