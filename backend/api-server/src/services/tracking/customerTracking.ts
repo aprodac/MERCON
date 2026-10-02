@@ -22,6 +22,7 @@ import { getDrivingRouteThrough, MAX_ROUTE_POINTS, RoutingUnavailableError, type
 import { SHARE_LINK_TTL_DAYS, newShareToken } from '../operatorInbox';
 import { loadTripOverview, thinPath, type TripOverview, type TripPhase } from '../tripOverview';
 import { loadTripMedia, type LiveStop, type LiveTripMedia } from '../fleetLiveMap';
+import { publicImage } from './publicImages';
 
 export const TRACKING_UPDATE_KEY = 'tracking';
 export const TRACKING_CHANNEL = 'tracking_link';
@@ -137,8 +138,8 @@ export interface TrackingTripMeta {
   actual_end: Date | null;
   updatedAt: Date;
   is_third_party: boolean;
-  vehicle: { plate_number: string; asset_type: string; image_url?: string | null } | null;
-  driver: { first_name: string; avatar_url?: string | null } | null;
+  vehicle: { id?: string; plate_number: string; asset_type: string; image_url?: string | null } | null;
+  driver: { id?: string; first_name: string; avatar_url?: string | null } | null;
   subcontract: { vehiclePlate: string | null; vehicleType: string | null; driverName: string | null } | null;
 }
 
@@ -413,10 +414,10 @@ export const CUSTOMER_TRACKING_SELECT = {
 
 const META_SELECT = {
   ref_id: true, status: true, vehicle_type: true, planned_start: true, actual_start: true, actual_end: true, updatedAt: true, is_third_party: true,
-  vehicle: { select: { plate_number: true, asset_type: true, image_url: true } },
-  driver: { select: { first_name: true, avatar_url: true } },
+  vehicle: { select: { id: true, plate_number: true, asset_type: true, image_url: true } },
+  driver: { select: { id: true, first_name: true, avatar_url: true } },
   subcontract: { select: { vehiclePlate: true, vehicleType: true, driverName: true } },
-  customer: { select: { ...CUSTOMER_TRACKING_SELECT, name: true, logo_url: true } },
+  customer: { select: { ...CUSTOMER_TRACKING_SELECT, id: true, name: true, logo_url: true } },
 } as const;
 
 export interface TrackingContext {
@@ -446,7 +447,7 @@ export async function loadTrackingContext(db: PrismaClient): Promise<TrackingCon
 export async function buildTripTracking(
   db: PrismaClient,
   tripId: string,
-  meta: TrackingTripMeta & { customer: (TrackingCustomerSettings & { name?: string; logo_url?: string | null }) | null },
+  meta: TrackingTripMeta & { customer: (TrackingCustomerSettings & { id?: string; name?: string; logo_url?: string | null }) | null },
   ctx: TrackingContext,
   now = new Date(),
 ): Promise<PublicTracking | null> {
@@ -475,8 +476,19 @@ export async function buildTripTracking(
     }
   }
 
-  const customer = meta.customer?.name ? { name: meta.customer.name, logo_url: meta.customer.logo_url ?? null } : null;
-  const data = buildPublicTracking({ overview, meta, brand: ctx.brand, timezone: ctx.timezone, options, ahead, all, media, customer, now });
+  // Photos go out as links only — an inline (base64) image is moved to a file first.
+  const [logo, avatar, truckPhoto] = await Promise.all([
+    meta.customer?.id ? publicImage(db, { table: 'customer', field: 'logo_url' }, meta.customer.id, meta.customer.logo_url) : null,
+    meta.driver?.id ? publicImage(db, { table: 'driver', field: 'avatar_url' }, meta.driver.id, meta.driver.avatar_url) : null,
+    meta.vehicle?.id ? publicImage(db, { table: 'vehicle', field: 'image_url' }, meta.vehicle.id, meta.vehicle.image_url) : null,
+  ]);
+  const linkedMeta: TrackingTripMeta = {
+    ...meta,
+    driver: meta.driver ? { ...meta.driver, avatar_url: avatar } : null,
+    vehicle: meta.vehicle ? { ...meta.vehicle, image_url: truckPhoto } : null,
+  };
+  const customer = meta.customer?.name ? { name: meta.customer.name, logo_url: logo } : null;
+  const data = buildPublicTracking({ overview, meta: linkedMeta, brand: ctx.brand, timezone: ctx.timezone, options, ahead, all, media, customer, now });
   remember(payloadCache, tripId, { at: now.getTime(), data });
   return data;
 }
