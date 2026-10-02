@@ -277,6 +277,7 @@ export type BillStatus = 'Draft' | 'Approved' | 'PartiallyPaid' | 'Paid' | 'Void
 export const TRIP_REPORT_FIELDS = [
   { key: 'serial', label: 'Row number', type: 'number' },
   { key: 'ref_id', label: 'Trip / Job No.', type: 'string' },
+  { key: 'awb_number', label: 'AWB / shipment no.', type: 'string' },
   { key: 'date', label: 'Trip date', type: 'date' },
   { key: 'driver_name', label: 'Driver name', type: 'string' },
   { key: 'driver_phone', label: 'Driver mobile', type: 'string' },
