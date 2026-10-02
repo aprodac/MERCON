@@ -1,8 +1,8 @@
 /**
  * Route: /customer-details?id=… — one customer.
  *
- * A black header (name, status, since / payment terms, then three equal
- * cells: outstanding, overdue, paid), then only what an operator acts on:
+ * A black header (name, status, payment terms, and outstanding / overdue
+ * only when money is owed), then only what an operator acts on:
  * contacts (each with call and WhatsApp), open invoices, and open trips.
  * Each fact appears once.
  */
@@ -32,7 +32,6 @@ const waNumber = (p?: string | null) => {
 const call = (p?: string | null) => digits(p) && Linking.openURL(`tel:${digits(p)}`).catch(() => {});
 const whatsapp = (p?: string | null) => digits(p) && Linking.openURL(`https://wa.me/${waNumber(p)}`).catch(() => {});
 
-const monthYear = (iso?: string | null) => (iso ? new Date(iso).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : '');
 
 const routeOf = (t: CustomerTrip) => {
   const stops = [...(t.stops ?? [])].sort((a: any, b: any) => (a.stop_sequence ?? 0) - (b.stop_sequence ?? 0));
@@ -110,16 +109,18 @@ export default function CustomerDetailsScreen() {
       ? [{ key: 'wa', name: 'WhatsApp number', phone: customer.whatsapp_number, role: 'Company' }] : []),
   ];
   const cur = m?.currency ?? 'SAR';
-  const cells: { label: string; value: string; bad?: boolean }[] = [
-    { label: 'Outstanding', value: m ? `${cur} ${fmtSar(m.outstanding)}` : '—' },
-    { label: m?.overdueCount ? `Overdue · ${m.overdueCount}` : 'Overdue', value: m ? `${cur} ${fmtSar(m.overdue)}` : '—', bad: !!m && m.overdue > 0 },
-    { label: 'Paid', value: m ? `${cur} ${fmtSar(m.paid)}` : '—' },
-  ];
+  // Money cells only when something is owed; "Paid" is history, not something to act on.
+  const cells: { label: string; value: string; bad?: boolean }[] = m && m.outstanding > 0
+    ? [
+      { label: 'Outstanding', value: `${cur} ${fmtSar(m.outstanding)}` },
+      ...(m.overdue > 0 ? [{ label: `Overdue · ${m.overdueCount}`, value: `${cur} ${fmtSar(m.overdue)}`, bad: true }] : []),
+    ]
+    : [];
   return (
     <SafeAreaView style={s.page} edges={['top']}>
       {bar}
       <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.primary} />}>
-        {/* 0 · black header: who, and what they owe */}
+        {/* 0 · black header: who, and what they owe (if anything) */}
         <View style={s.header}>
           <View style={s.headerTop}>
             <Text style={s.name} numberOfLines={2}>{niceName(customer.name)}</Text>
@@ -128,17 +129,17 @@ export default function CustomerDetailsScreen() {
               <Text style={[s.statusText, { color: customer.isActive ? '#146C3C' : MUTED }]}>{customer.isActive ? 'Active' : 'Suspended'}</Text>
             </View>
           </View>
-          <Text style={s.since}>
-            {[`Customer since ${monthYear(customer.createdAt)}`, customer.payment_terms, customer.driver_workflow === 'EXTERNAL_APP' ? 'Own driver app' : null].filter(Boolean).join('  ·  ')}
-          </Text>
-          <View style={s.cells}>
-            {cells.map((x, i) => (
-              <View key={x.label} style={[s.cell, i > 0 && s.cellBorder]}>
-                <Text style={s.cellLabel} numberOfLines={1}>{x.label}</Text>
-                <Text style={[s.cellValue, x.bad && { color: '#FCA5A5' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{x.value}</Text>
-              </View>
-            ))}
-          </View>
+          {customer.payment_terms ? <Text style={s.since}>{customer.payment_terms}</Text> : null}
+          {cells.length > 0 ? (
+            <View style={s.cells}>
+              {cells.map((x, i) => (
+                <View key={x.label} style={[s.cell, i > 0 && s.cellBorder]}>
+                  <Text style={s.cellLabel} numberOfLines={1}>{x.label}</Text>
+                  <Text style={[s.cellValue, x.bad && { color: '#FCA5A5' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{x.value}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
 
         {/* 1 · who to reach */}
@@ -264,14 +265,14 @@ const s = StyleSheet.create({
   barTitle: { fontSize: 16, fontWeight: '700', color: INK },
   scroll: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 48, gap: 18 },
 
-  header: { backgroundColor: INK, borderRadius: 20, paddingHorizontal: 16, paddingTop: 16, gap: 8 },
+  header: { backgroundColor: INK, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 16, gap: 8 },
   headerTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   name: { flex: 1, fontSize: 22, fontWeight: '700', color: Colors.white, letterSpacing: -0.4, lineHeight: 28 },
   status: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.white, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, marginTop: 3 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
   statusText: { fontSize: 12, fontWeight: '700' },
   since: { fontSize: 13, color: ON_DARK_MUTED },
-  cells: { flexDirection: 'row', marginTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.14)' },
+  cells: { flexDirection: 'row', marginTop: 8, marginBottom: -16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.14)' },
   cell: { flex: 1, minWidth: 0, paddingVertical: 14, gap: 3 },
   cellBorder: { borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.14)', paddingLeft: 12 },
   cellLabel: { fontSize: 12, color: ON_DARK_MUTED },
