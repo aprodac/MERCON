@@ -9,6 +9,7 @@ import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure
 import type { SignInStrategy } from '@mercon/mobile-shared/lib/auth-context';
 import { registerForPushNotificationsAsync, registerPushDeviceWithBackend } from './notifications';
 import { reportLogout, reportPhoneHealth } from './phoneHealth';
+import { stopTripTracking } from './tripLocationTask';
 
 export const signInDriver: SignInStrategy = async (phone_primary, secret) => {
   const trimmedSecret = secret.trim();
@@ -41,5 +42,7 @@ export async function syncPushToken(): Promise<void> {
 }
 
 export async function unregisterPushToken(): Promise<void> {
+  // A signed-out phone must stop sharing its location.
+  await stopTripTracking().catch(() => {});
   await reportLogout();
 }
