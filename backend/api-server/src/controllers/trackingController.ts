@@ -7,6 +7,7 @@ import { ensureTrackingLink, ensureTrackingLinks, loadPublicTracking, type TripT
 import { ensureCustomerTrackingLink, loadCustomerFleetTracking } from '../services/tracking/customerFleetTracking';
 import { fleetPreview, renderPreviewTags, tripPreview } from '../services/tracking/trackingPreview';
 import { publicBaseUrl } from './operatorInboxController';
+import { deviceLabel } from '../utils/deviceLabel';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -101,7 +102,7 @@ function sendGone(res: Response, state: 'not_found' | 'expired' | 'cancelled' | 
  */
 export const getPublicTracking = async (req: Request, res: Response) => {
   try {
-    const result = await loadPublicTracking(prisma, String(req.params.token || ''), { countView: req.query.view === '1' });
+    const result = await loadPublicTracking(prisma, String(req.params.token || ''), { countView: req.query.view === '1', device: deviceLabel(req.headers['user-agent']) });
     if (result.state !== 'ok') return sendGone(res, result.state);
     res.json({ success: true, data: result.data });
   } catch (error) {
@@ -113,7 +114,7 @@ export const getPublicTracking = async (req: Request, res: Response) => {
 /** GET /public/fleet/:token — the customer-wide page: every truck of theirs on the road. */
 export const getPublicFleetTracking = async (req: Request, res: Response) => {
   try {
-    const result = await loadCustomerFleetTracking(prisma, String(req.params.token || ''), { countView: req.query.view === '1' });
+    const result = await loadCustomerFleetTracking(prisma, String(req.params.token || ''), { countView: req.query.view === '1', device: deviceLabel(req.headers['user-agent']) });
     if (result.state !== 'ok') return sendGone(res, result.state);
     res.json({ success: true, data: result.data });
   } catch (error) {
@@ -147,5 +148,60 @@ export const getTrackingPreviewTags = async (req: Request, res: Response) => {
   } catch (error) {
     logger.warn({ err: error }, 'tracking preview tags failed');
     res.send('');
+  }
+};
+
+/**
+ * GET /customers/:id/tracking-opens — every time this customer opened one of
+ * their tracking links (all-trucks page or a trip link), newest first, with the
+ * device. `earlier_opens` = opens counted before the history was kept.
+ */
+export const getCustomerTrackingOpens = async (req: Request, res: Response) => {
+  try {
+    const customerId = req.params.id as string;
+    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+    const where = {
+      OR: [
+        { customerLink: { customerId } },
+        { tripShare: { trip: { customerId } } },
+      ],
+    };
+    const [rows, logged, fleetCounted, tripCounted] = await Promise.all([
+      prisma.trackingLinkOpen.findMany({
+        where,
+        orderBy: { opened_at: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          opened_at: true,
+          device: true,
+          customerLinkId: true,
+          tripShare: { select: { trip: { select: { id: true, ref_id: true } } } },
+        },
+      }),
+      prisma.trackingLinkOpen.count({ where }),
+      prisma.customerTrackingLink.aggregate({ where: { customerId }, _sum: { open_count: true } }),
+      prisma.tripUpdateShare.aggregate({ where: { trip: { customerId } }, _sum: { open_count: true } }),
+    ]);
+    const counted = (fleetCounted._sum.open_count ?? 0) + (tripCounted._sum.open_count ?? 0);
+
+    res.json({
+      success: true,
+      data: {
+        total: logged,
+        earlier_opens: Math.max(0, counted - logged),
+        opens: rows.map((r) => ({
+          id: r.id,
+          opened_at: r.opened_at.toISOString(),
+          device: r.device,
+          link: r.customerLinkId
+            ? { kind: 'all_trucks' as const }
+            : { kind: 'trip' as const, trip_id: r.tripShare?.trip.id ?? null, ref_id: r.tripShare?.trip.ref_id ?? null },
+        })),
+      },
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'customer tracking opens failed');
+    res.status(500).json({ success: false, error: { message: 'Internal server error' } });
   }
 };

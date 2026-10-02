@@ -493,23 +493,26 @@ async function resolveTripToken(db: PrismaClient, token: string, now: Date) {
 export async function loadPublicTracking(
   db: PrismaClient,
   token: string,
-  opts: { now?: Date; countView?: boolean } = {},
+  opts: { now?: Date; countView?: boolean; device?: string | null } = {},
 ): Promise<TrackingLookup> {
   const now = opts.now ?? new Date();
   const found = await resolveTripToken(db, token, now);
   if (found.state !== 'ok') return { state: found.state };
-  if (opts.countView) recordTripLinkOpen(db, found.share.id, now);
+  if (opts.countView) recordTripLinkOpen(db, found.share.id, now, opts.device ?? null);
   const data = await buildTripTracking(db, found.share.tripId, found.meta as unknown as TrackingTripMeta & { customer: TrackingCustomerSettings | null }, await loadTrackingContext(db), now);
   return data ? { state: 'ok', data } : { state: 'not_found' };
 }
 
-/** Counts a page load (not a refresh). Never holds up or fails the page. */
-function recordTripLinkOpen(db: PrismaClient, shareId: string, now: Date) {
+/** Counts a page load (not a refresh) and logs it in the open history. Never holds up or fails the page. */
+function recordTripLinkOpen(db: PrismaClient, shareId: string, now: Date, device: string | null) {
   db.$executeRaw`
     UPDATE "trip_update_shares"
     SET open_count = open_count + 1, last_opened_at = ${now}, first_opened_at = COALESCE(first_opened_at, ${now})
     WHERE id = ${shareId}::uuid
   `.catch((err) => logger.warn({ err }, '[tracking] could not record a link open'));
+  db.trackingLinkOpen
+    .create({ data: { tripShareId: shareId, opened_at: now, device } })
+    .catch((err) => logger.warn({ err }, '[tracking] could not log a link open'));
 }
 
 // ── Links (ops side) ────────────────────────────────────────────────────────
