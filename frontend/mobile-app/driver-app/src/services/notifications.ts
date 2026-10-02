@@ -26,17 +26,27 @@ export function isNotificationsAvailable(): boolean {
   }
 }
 
+// Pushes the app already handles in-app while foregrounded, so the system
+// banner would only duplicate it. TripAssigned → the "Got it" prompt
+// (AcknowledgeTripsPrompt). Background/closed-app pushes are shown by the OS
+// and never pass through this handler, so they are unaffected.
+const SILENT_IN_FOREGROUND = new Set(['TripAssigned']);
+
 // Configure how notifications are presented when the app is foregrounded
 try {
   if (isNotificationsAvailable()) {
     Notifications?.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
+      handleNotification: async (notification) => {
+        const type = (notification?.request?.content?.data as any)?.type;
+        const show = !SILENT_IN_FOREGROUND.has(type);
+        return {
+          shouldShowAlert: show,
+          shouldPlaySound: show,
+          shouldSetBadge: false,
+          shouldShowBanner: show,
+          shouldShowList: show,
+        };
+      },
     });
   }
 } catch (err) {
