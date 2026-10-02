@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import MapGL, { Marker, type MapRef } from 'react-map-gl/maplibre';
+import { Marker, type MapRef } from 'react-map-gl/maplibre';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import { AlertTriangle, Check, ChevronRight, Clock, Loader2, MapPinOff, RefreshCw, Search, Truck, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { LIVE_MAP_STYLES, applyMapPalette } from '@/components/maps/live/liveMapStyle';
 import { SAUDI_CENTER, DEFAULT_SAUDI_ZOOM } from '@/utils/saudiMapConfig';
 import { trackingService, type CustomerFleetTracking, type DeliveredTrip, type FleetTruck } from '@/services/trackingService';
 import { filterFleet, routesOf } from './fleetFilters';
 import { SheetHandle, useBottomSheet } from './bottomSheet';
+import { PublicMap } from './publicMap';
 import { useTrackingText, type TrackingText } from './trackingI18n';
 import { AskButton, BrandMark, Centered, Chip, LangToggle, Photo, TRACK_BLUE, TruckPuck } from './trackingParts';
 
@@ -337,7 +336,6 @@ function FleetMap({ data, selected, onSelect, text }: {
   const userMoved = useRef(false);
   const onLoad = useCallback((e: { target: MapLibreMap }) => {
     const map = e.target;
-    applyMapPalette(map, 'light');
     fit(false, map);
     // Once more after the page has settled — the map's box can still change size right after load.
     setTimeout(() => { if (!userMoved.current) fit(false, map); }, 400);
@@ -356,43 +354,26 @@ function FleetMap({ data, selected, onSelect, text }: {
   }, [selected, data.trucks]);
 
   return (
-    <div className="absolute inset-0">
-      <MapGL
-        ref={mapRef}
-        mapStyle={LIVE_MAP_STYLES.light}
-        initialViewState={initialView}
-        minZoom={3.5}
-        maxZoom={18}
-        dragRotate={false}
-        pitchWithRotate={false}
-        attributionControl={false}
-        onLoad={onLoad}
-        onResize={onResize}
-        onDragStart={() => { userMoved.current = true; }}
-        onZoomStart={(e) => { if (e.originalEvent) userMoved.current = true; }}
-        style={{ width: '100%', height: '100%' }}
-      >
-        {placed.map((x) => (
-          <Marker
-            key={x.token}
-            longitude={x.position!.lng}
-            latitude={x.position!.lat}
-            anchor="center"
-            style={{ zIndex: selected === x.token ? 30 : 20, cursor: 'pointer' }}
-            onClick={(e) => { e.originalEvent.stopPropagation(); onSelect(x.token); }}
-          >
-            <TruckPuck heading={x.position!.moving ? x.position!.heading_deg : null} live={x.position!.fresh && x.phase !== 'done'} label={x.plate} />
-          </Marker>
-        ))}
-      </MapGL>
-      <a
-        href="https://www.openstreetmap.org/copyright"
-        target="_blank"
-        rel="noreferrer"
-        className="absolute right-3 bottom-8 rounded bg-white/70 px-1.5 text-[10px] text-slate-500 md:bottom-4"
-      >
-        © OpenStreetMap · OpenFreeMap
-      </a>
-    </div>
+    <PublicMap
+      ref={mapRef}
+      initialViewState={initialView}
+      onLoad={onLoad}
+      onResize={onResize}
+      onDragStart={() => { userMoved.current = true; }}
+      onZoomStart={(e) => { if (e.originalEvent) userMoved.current = true; }}
+    >
+      {placed.map((x) => (
+        <Marker
+          key={x.token}
+          longitude={x.position!.lng}
+          latitude={x.position!.lat}
+          anchor="center"
+          style={{ zIndex: selected === x.token ? 30 : 20, cursor: 'pointer' }}
+          onClick={(e) => { e.originalEvent.stopPropagation(); onSelect(x.token); }}
+        >
+          <TruckPuck heading={x.position!.moving ? x.position!.heading_deg : null} live={x.position!.fresh && x.phase !== 'done'} label={x.plate} />
+        </Marker>
+      ))}
+    </PublicMap>
   );
 }

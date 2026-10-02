@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import MapGL, { Layer, Marker, Source, type MapRef } from 'react-map-gl/maplibre';
+import { Layer, Marker, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import { AlertTriangle, Check, ChevronLeft, Clock, Focus, Hash, Loader2, MapPinOff, RefreshCw, SignalLow, Truck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resolveFileUrl } from '@/lib/documents';
 import type { StopGroup } from '@/lib/fleetLive';
 import { StopPin } from '@/components/maps/live/LiveMapBits';
-import { LIVE_MAP_STYLES, applyMapPalette } from '@/components/maps/live/liveMapStyle';
 import { SAUDI_CENTER, DEFAULT_SAUDI_ZOOM } from '@/utils/saudiMapConfig';
 import { trackingService, type PublicTracking, type PublicTrackingStop } from '@/services/trackingService';
 import { useTrackingText, type TrackingText } from './trackingI18n';
 import { SheetHandle, useBottomSheet } from './bottomSheet';
+import { PublicMap } from './publicMap';
 import { AskButton, BrandMark, Centered, Chip, LangToggle, Photo, PhotoViewer, TRACK_BLUE, TruckPuck, line } from './trackingParts';
 
 /**
@@ -180,7 +179,6 @@ function TrackingMap({ data, text }: { data: PublicTracking; text: TrackingText 
   const userMoved = useRef(false);
   const onLoad = useCallback((e: { target: MapLibreMap }) => {
     const map = e.target;
-    applyMapPalette(map, 'light');
     fit(false, map);
     // Once more after the page has settled — the map's box can still change size right after load.
     setTimeout(() => { if (!userMoved.current) fit(false, map); }, 400);
@@ -192,64 +190,14 @@ function TrackingMap({ data, text }: { data: PublicTracking; text: TrackingText 
   const eta = data.eta;
 
   return (
-    <div className="absolute inset-0">
-      <MapGL
-        ref={mapRef}
-        mapStyle={LIVE_MAP_STYLES.light}
-        initialViewState={initialView}
-        minZoom={3.5}
-        maxZoom={18}
-        dragRotate={false}
-        pitchWithRotate={false}
-        attributionControl={false}
-        onLoad={onLoad}
-        onResize={onResize}
-        onDragStart={() => { userMoved.current = true; }}
-        onZoomStart={(e) => { if (e.originalEvent) userMoved.current = true; }}
-        style={{ width: '100%', height: '100%' }}
-      >
-        {data.route && (
-          <Source id="trk-route" type="geojson" data={line(data.route)}>
-            <Layer id="trk-route-line" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-              paint={{
-                'line-color': phase === 'done' ? '#16a34a' : phase === 'cancelled' ? '#a8a29e' : '#7c3aed',
-                'line-width': ['interpolate', ['linear'], ['zoom'], 5, 3, 13, 6],
-                ...(phase === 'done' ? {} : { 'line-dasharray': [2, 1.6] }),
-              }} />
-          </Source>
-        )}
-        {data.path.length >= 2 && (
-          <Source id="trk-path" type="geojson" data={line(data.path)}>
-            <Layer id="trk-path-line" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-              paint={{ 'line-color': phase === 'done' ? '#16a34a' : '#94a3b8', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 3, 13, 6] }} />
-          </Source>
-        )}
-        {data.ahead && (
-          <Source id="trk-ahead" type="geojson" data={line(data.ahead)}>
-            <Layer id="trk-ahead-casing" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-              paint={{ 'line-color': TRACK_BLUE, 'line-width': 12, 'line-opacity': 0.18, 'line-blur': 2 }} />
-            <Layer id="trk-ahead-line" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-              paint={{ 'line-color': TRACK_BLUE, 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 3, 13, 7], ...(pos?.fresh ? {} : { 'line-opacity': 0.5 }) }} />
-          </Source>
-        )}
-
-        {groups.map((g) => (
-          <StopPin
-            key={g.numbers.join('-')}
-            group={g}
-            tone={phase === 'done' ? 'done' : phase === 'planned' ? 'planned' : phase === 'cancelled' ? 'cancelled' : 'live'}
-            eta={g.isNext && eta ? text.clock(eta.arrival) : null}
-          />
-        ))}
-
-        {pos && (
-          <Marker longitude={pos.lng} latitude={pos.lat} anchor="center" style={{ zIndex: 20 }}>
-            <TruckPuck heading={pos.moving ? pos.heading_deg : null} live={pos.fresh} />
-          </Marker>
-        )}
-      </MapGL>
-
-      <div className="pointer-events-none absolute right-3 bottom-8 flex flex-col items-end gap-2 md:bottom-4">
+    <PublicMap
+      ref={mapRef}
+      initialViewState={initialView}
+      onLoad={onLoad}
+      onResize={onResize}
+      onDragStart={() => { userMoved.current = true; }}
+      onZoomStart={(e) => { if (e.originalEvent) userMoved.current = true; }}
+      controls={
         <button
           type="button"
           onClick={() => { userMoved.current = false; fit(true); }}
@@ -258,16 +206,48 @@ function TrackingMap({ data, text }: { data: PublicTracking; text: TrackingText 
         >
           <Focus className="size-4" />
         </button>
-        <a
-          href="https://www.openstreetmap.org/copyright"
-          target="_blank"
-          rel="noreferrer"
-          className="pointer-events-auto rounded bg-white/70 px-1.5 text-[10px] text-slate-500"
-        >
-          © OpenStreetMap · OpenFreeMap
-        </a>
-      </div>
-    </div>
+      }
+    >
+      {data.route && (
+        <Source id="trk-route" type="geojson" data={line(data.route)}>
+          <Layer id="trk-route-line" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{
+              'line-color': phase === 'done' ? '#16a34a' : phase === 'cancelled' ? '#a8a29e' : '#7c3aed',
+              'line-width': ['interpolate', ['linear'], ['zoom'], 5, 3, 13, 6],
+              ...(phase === 'done' ? {} : { 'line-dasharray': [2, 1.6] }),
+            }} />
+        </Source>
+      )}
+      {data.path.length >= 2 && (
+        <Source id="trk-path" type="geojson" data={line(data.path)}>
+          <Layer id="trk-path-line" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{ 'line-color': phase === 'done' ? '#16a34a' : '#94a3b8', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 3, 13, 6] }} />
+        </Source>
+      )}
+      {data.ahead && (
+        <Source id="trk-ahead" type="geojson" data={line(data.ahead)}>
+          <Layer id="trk-ahead-casing" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{ 'line-color': TRACK_BLUE, 'line-width': 12, 'line-opacity': 0.18, 'line-blur': 2 }} />
+          <Layer id="trk-ahead-line" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }}
+            paint={{ 'line-color': TRACK_BLUE, 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 3, 13, 7], ...(pos?.fresh ? {} : { 'line-opacity': 0.5 }) }} />
+        </Source>
+      )}
+
+      {groups.map((g) => (
+        <StopPin
+          key={g.numbers.join('-')}
+          group={g}
+          tone={phase === 'done' ? 'done' : phase === 'planned' ? 'planned' : phase === 'cancelled' ? 'cancelled' : 'live'}
+          eta={g.isNext && eta ? text.clock(eta.arrival) : null}
+        />
+      ))}
+
+      {pos && (
+        <Marker longitude={pos.lng} latitude={pos.lat} anchor="center" style={{ zIndex: 20 }}>
+          <TruckPuck heading={pos.moving ? pos.heading_deg : null} live={pos.fresh} />
+        </Marker>
+      )}
+    </PublicMap>
   );
 }
 
