@@ -421,6 +421,7 @@ export interface User {
   status?: UserStatus;
   lastLogin?: string;
   isSuperAdmin?: boolean;
+  createdAt?: string;
 }
 
 /**
