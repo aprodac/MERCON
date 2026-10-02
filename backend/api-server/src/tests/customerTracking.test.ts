@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { whatsAppGroupUrl } from '@mercon/shared-types';
 import assert from 'node:assert/strict';
 import {
   ETA_STALE_MS, TRACKING_AFTER_END_DAYS, buildPublicTracking, firstName, lateMinutes, optionsOf, placeName, routeLabel, trackingLinkState, truckSeconds, waDigits,
@@ -51,7 +52,7 @@ const route = (distanceMeters: number, durationSeconds: number): RouteResult => 
 });
 
 const DEFAULTS: TrackingOptions = { show_deadline: false, show_delay_reason: false, show_photos: true };
-const BRAND = { name: 'MERCON', logo_url: '/uploads/logo.png', primary_color: null, support_whatsapp: '966500000000' };
+const BRAND = { name: 'MERCON', logo_url: '/uploads/logo.png', primary_color: null, support_whatsapp: '966500000000', ask_group_url: null };
 
 const build = (
   ov: TripOverview, ahead: RouteResult | null, all: RouteResult | null = route(900_000, 30_000), m = meta,
@@ -71,6 +72,14 @@ const MEDIA: LiveTripMedia = {
   ],
   unplaced: [],
 };
+
+test('whatsapp group link: only real invite links count', () => {
+  assert.equal(whatsAppGroupUrl('https://chat.whatsapp.com/AbCdEf1234567890xyz'), 'https://chat.whatsapp.com/AbCdEf1234567890xyz');
+  assert.equal(whatsAppGroupUrl(' chat.whatsapp.com/invite/AbCdEf1234567890xyz?mode=r '), 'https://chat.whatsapp.com/AbCdEf1234567890xyz');
+  assert.equal(whatsAppGroupUrl('iMile ops group'), null);
+  assert.equal(whatsAppGroupUrl('https://evil.example/chat.whatsapp.com/AbCdEf1234567890xyz'), null);
+  assert.equal(whatsAppGroupUrl(null), null);
+});
 
 test('customer tracking', async (t) => {
   await t.test('a truck is never timed faster than the average-speed cap', () => {
@@ -251,9 +260,9 @@ test('customer tracking', async (t) => {
     });
   });
 
-  await t.test('delivered list covers the last 7 days', () => {
+  await t.test('delivered list covers the last 30 days', () => {
     const f = deliveredTripFilter('c1', NOW);
-    assert.equal(f.actual_end.gte.toISOString(), '2026-09-25T12:00:00.000Z');
+    assert.equal(f.actual_end.gte.toISOString(), '2026-09-02T12:00:00.000Z');
   });
 
   await t.test('customer page shows running and soon-to-load trips', () => {

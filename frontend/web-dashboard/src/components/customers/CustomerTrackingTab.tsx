@@ -15,6 +15,7 @@ import { formatInDeploymentTz, useDeploymentTimezone } from '@/lib/datetime';
 import { cn } from '@/lib/utils';
 import { routeOf } from '@/components/details/DetailKit';
 import { Badge, Panel, TripStatusBadge, ui } from '@/components/customers/customerUi';
+import { whatsAppGroupUrl } from '@mercon/shared-types';
 
 type TrackingField = 'tracking_auto_link' | 'tracking_show_deadline' | 'tracking_show_delay_reason' | 'tracking_show_photos';
 
@@ -334,6 +335,26 @@ export default function CustomerTrackingTab({ customer, liveTrips = [] }: { cust
               );
             })}
           </ul>
+        </div>
+        {/* Where the page's "Ask" button sends the customer */}
+        <div className={cn('border-t border-slate-100 px-5 py-4 dark:border-slate-800', !enabled && 'pointer-events-none opacity-50')}>
+          <p className={ui.label}>"Ask" button on the page</p>
+          {whatsAppGroupUrl(customer.whatsapp_group_link) ? (
+            <p className="mt-1.5 flex items-start gap-2 text-sm text-slate-800 dark:text-slate-100">
+              <WhatsAppIcon className="mt-0.5 size-4 shrink-0 text-[#25D366]" />
+              <span>Opens {customer.whatsapp_group_name ? <b className="font-semibold">{customer.whatsapp_group_name}</b> : 'the customer’s WhatsApp group'}. The message is copied for them to paste.</span>
+            </p>
+          ) : (
+            <div className="mt-1.5 rounded-xl bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              <p className="font-semibold">No WhatsApp group link yet</p>
+              <p className="mt-0.5 text-amber-900/80 dark:text-amber-200/80">
+                In WhatsApp: open the group, tap its name, then <b>Invite to group via link → Copy link</b> (group admins only). Paste it in the customer's details.
+              </p>
+              <button type="button" onClick={() => navigate(`/customers/${customer.id}/edit`)} className="mt-2 rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-100 dark:ring-amber-800">
+                Add group link
+              </button>
+            </div>
+          )}
         </div>
       </section>
 

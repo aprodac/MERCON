@@ -23,6 +23,7 @@ import { SHARE_LINK_TTL_DAYS, newShareToken } from '../operatorInbox';
 import { loadTripOverview, thinPath, type TripOverview, type TripPhase } from '../tripOverview';
 import { loadTripMedia, type LiveStop, type LiveTripMedia } from '../fleetLiveMap';
 import { publicImage } from './publicImages';
+import { whatsAppGroupUrl } from '@mercon/shared-types';
 
 export const TRACKING_UPDATE_KEY = 'tracking';
 export const TRACKING_CHANNEL = 'tracking_link';
@@ -55,8 +56,10 @@ export interface TrackingBrand {
   name: string;
   logo_url: string | null;
   primary_color: string | null;
-  /** Ops WhatsApp number (digits) for the page's "Ask us" button. */
+  /** Ops WhatsApp number (digits) for the page's "Ask us" button — the fallback. */
   support_whatsapp: string | null;
+  /** The customer's WhatsApp group (invite link): "Ask" opens it when set. */
+  ask_group_url: string | null;
 }
 
 export interface PublicTrackingPhoto {
@@ -151,6 +154,8 @@ export interface TrackingCustomerSettings {
   tracking_show_deadline: boolean;
   tracking_show_delay_reason: boolean;
   tracking_show_photos: boolean;
+  /** Customer.whatsapp_group_link — where "Ask" sends the customer. */
+  whatsapp_group_link?: string | null;
 }
 
 export const optionsOf = (c: TrackingCustomerSettings | null | undefined): TrackingOptions => ({
@@ -414,7 +419,7 @@ export function clearTrackingCaches(): void {
 
 export const CUSTOMER_TRACKING_SELECT = {
   tracking_enabled: true, tracking_auto_link: true, tracking_show_deadline: true,
-  tracking_show_delay_reason: true, tracking_show_photos: true,
+  tracking_show_delay_reason: true, tracking_show_photos: true, whatsapp_group_link: true,
 } as const;
 
 const META_SELECT = {
@@ -441,6 +446,7 @@ export async function loadTrackingContext(db: PrismaClient): Promise<TrackingCon
       logo_url: s?.logoUrl ?? null,
       primary_color: s?.primaryColor ?? null,
       support_whatsapp: waDigits(s?.supportWhatsapp),
+      ask_group_url: null, // per customer, set by each page
     },
     timezone: s?.timezone || 'Asia/Riyadh',
   };
@@ -495,7 +501,8 @@ export async function buildTripTracking(
     vehicle: meta.vehicle ? { ...meta.vehicle, image_url: truckPhoto } : null,
   };
   const customer = meta.customer?.name ? { name: meta.customer.name, logo_url: logo } : null;
-  const data = buildPublicTracking({ overview, meta: linkedMeta, brand: ctx.brand, timezone: ctx.timezone, options, ahead, all, media, customer, now });
+  const brand = { ...ctx.brand, ask_group_url: whatsAppGroupUrl(meta.customer?.whatsapp_group_link) };
+  const data = buildPublicTracking({ overview, meta: linkedMeta, brand, timezone: ctx.timezone, options, ahead, all, media, customer, now });
   remember(payloadCache, tripId, { at: now.getTime(), data });
   return data;
 }

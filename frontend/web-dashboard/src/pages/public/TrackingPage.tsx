@@ -6,7 +6,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 import { AlertTriangle, BadgeCheck, Check, ChevronLeft, Clock, Clock3, Focus, Hash, Loader2, MapPinOff, Play, RefreshCw, Truck, WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resolveFileUrl } from '@/lib/documents';
-import type { StopGroup } from '@/lib/fleetLive';
+import { mergeNearbyStops, type StopGroup } from '@/lib/fleetLive';
 import { StopPin } from '@/components/maps/live/LiveMapBits';
 import { SAUDI_CENTER, DEFAULT_SAUDI_ZOOM } from '@/utils/saudiMapConfig';
 import { trackingService, type PublicTracking, type PublicTrackingStop } from '@/services/trackingService';
@@ -189,16 +189,29 @@ function TrackingMap({ data, text }: { data: PublicTracking; text: TrackingText 
     if (!userMoved.current) fit(false);
   }, [fit]);
 
+  // Pins that would overlap at this zoom share one pin, and split again when zoomed in.
+  const [shownGroups, setShownGroups] = useState<StopGroup[]>(groups);
+  const remerge = useCallback((target?: MapLibreMap) => {
+    const map = target ?? mapRef.current?.getMap();
+    if (!map) return setShownGroups(groups);
+    setShownGroups(mergeNearbyStops(groups, (lat, lng) => {
+      const p = map.project([lng, lat]);
+      return [p.x, p.y];
+    }));
+  }, [groups]);
+  useEffect(() => { remerge(); }, [remerge]);
+
   const eta = data.eta;
 
   return (
     <PublicMap
       ref={mapRef}
       initialViewState={initialView}
-      onLoad={onLoad}
+      onLoad={(e) => { onLoad(e); remerge(e.target); setTimeout(() => remerge(e.target), 450); }}
       onResize={onResize}
       onDragStart={() => { userMoved.current = true; }}
       onZoomStart={(e) => { if (e.originalEvent) userMoved.current = true; }}
+      onZoomEnd={() => remerge()}
       controls={
         <button
           type="button"
@@ -235,7 +248,7 @@ function TrackingMap({ data, text }: { data: PublicTracking; text: TrackingText 
         </Source>
       )}
 
-      {groups.map((g) => (
+      {shownGroups.map((g) => (
         <StopPin
           key={g.numbers.join('-')}
           group={g}
@@ -423,7 +436,7 @@ function NotReportingCard({ data, text, ago, clock }: {
       <p className="mt-1 text-sm leading-snug text-amber-900/80">
         {pos ? t.notReportingStale(ago(pos.recorded_at), clock(pos.recorded_at)) : t.notReportingNone}
       </p>
-      {data.brand.support_whatsapp && (
+      {(data.brand.support_whatsapp || data.brand.ask_group_url) && (
         <>
           <p className="mt-2 text-xs text-amber-900/70">{t.needUpdate}</p>
           <div className="mt-2"><AskButton brand={data.brand} text={text} about={about} /></div>

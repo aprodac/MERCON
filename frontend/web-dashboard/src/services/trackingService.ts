@@ -7,8 +7,10 @@ export interface TrackingBrand {
   name: string;
   logo_url: string | null;
   primary_color: string | null;
-  /** Ops WhatsApp number (digits) for the "Ask us" button. */
+  /** Ops WhatsApp number (digits) for the "Ask us" button — the fallback. */
   support_whatsapp: string | null;
+  /** The customer's WhatsApp group (invite link): "Ask" opens it when set. */
+  ask_group_url?: string | null;
 }
 
 export interface TrackingOptions {

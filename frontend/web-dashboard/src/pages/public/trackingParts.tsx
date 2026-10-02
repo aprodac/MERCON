@@ -70,7 +70,31 @@ export function LangToggle({ text, className }: { text: TrackingText; className?
 }
 
 /** "Ask MERCON" — a WhatsApp chat with ops (never the driver), when a support number is set. */
+/**
+ * "Ask" — opens the customer's WhatsApp group with us when one is set (a group
+ * link can't carry a message, so the message is copied for pasting), else a
+ * chat with the ops number.
+ */
 export function AskButton({ brand, text, about }: { brand: TrackingBrand; text: TrackingText; about: string }) {
+  const [copied, setCopied] = useState(false);
+  if (brand.ask_group_url) {
+    return (
+      <div>
+        <a
+          href={brand.ask_group_url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => {
+            navigator.clipboard?.writeText(text.t.askText(about)).then(() => setCopied(true), () => {});
+          }}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] text-sm font-semibold text-white shadow-sm hover:bg-[#1ebe5b]"
+        >
+          <WhatsAppIcon className="size-4" /> {text.t.askGroup}
+        </a>
+        {copied && <p className="mt-1.5 text-center text-xs text-slate-500">{text.t.copiedForGroup}</p>}
+      </div>
+    );
+  }
   if (!brand.support_whatsapp) return null;
   const href = `https://wa.me/${brand.support_whatsapp}?text=${encodeURIComponent(text.t.askText(about))}`;
   return (
