@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import MapGL, { Marker, type MapRef } from 'react-map-gl/maplibre';
+import { Marker, type MapRef } from 'react-map-gl/maplibre';
 import type { Map as MapLibreMap } from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
 import { AlertTriangle, Check, ChevronRight, Clock, Loader2, MapPinOff, RefreshCw, Search, Truck, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { LIVE_MAP_STYLES, applyMapPalette } from '@/components/maps/live/liveMapStyle';
 import { SAUDI_CENTER, DEFAULT_SAUDI_ZOOM } from '@/utils/saudiMapConfig';
 import { trackingService, type CustomerFleetTracking, type DeliveredTrip, type FleetTruck } from '@/services/trackingService';
 import { filterFleet, routesOf } from './fleetFilters';
+import { SheetHandle, useBottomSheet } from './bottomSheet';
+import { PublicMap } from './publicMap';
 import { useTrackingText, type TrackingText } from './trackingI18n';
 import { AskButton, BrandMark, Centered, Chip, LangToggle, Photo, TRACK_BLUE, TruckPuck } from './trackingParts';
 
@@ -39,6 +39,12 @@ export default function FleetTrackingPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [route, setRoute] = useState<string | null>(null);
+  const sheet = useBottomSheet(0.42);
+
+  // A truck tapped on the map: bring its card into view.
+  useEffect(() => {
+    if (selected) document.getElementById(`truck-${selected}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [selected]);
 
   const [, tick] = useState(0);
   useEffect(() => {
@@ -75,7 +81,7 @@ export default function FleetTrackingPage() {
 
   return (
     <div dir={text.rtl ? 'rtl' : 'ltr'} className="relative flex h-[100dvh] flex-col overflow-hidden bg-[#f6f4ef] text-slate-900 md:block">
-      <div dir="ltr" className="relative h-[42dvh] shrink-0 md:absolute md:inset-0 md:h-auto">
+      <div dir="ltr" className={cn('relative shrink-0 overflow-hidden md:absolute md:inset-0', sheet.mapBox.className)} style={sheet.mapBox.style}>
         <FleetMap data={{ ...data, trucks: shown }} selected={selected} onSelect={setSelected} text={text} />
         <div className="pointer-events-none absolute inset-x-3 top-3 flex items-start justify-between gap-2 md:top-4 md:right-4 md:left-auto">
           <span className="pointer-events-auto flex h-9 items-center rounded-xl border border-black/5 bg-white/90 px-3 shadow-sm backdrop-blur md:hidden">
@@ -87,12 +93,13 @@ export default function FleetTrackingPage() {
 
       <section
         className={cn(
-          'relative z-10 -mt-5 flex-1 overflow-y-auto rounded-t-3xl bg-white px-4 pt-3 pb-6 shadow-[0_-8px_30px_rgba(0,0,0,0.10)]',
+          'relative z-10 flex-1 overflow-y-auto bg-white px-4 pt-3 pb-6 shadow-[0_-8px_30px_rgba(0,0,0,0.10)]',
+          sheet.expanded ? 'mt-0' : '-mt-5 rounded-t-3xl',
           'md:absolute md:top-4 md:bottom-4 md:mt-0 md:w-[400px] md:flex-none md:rounded-3xl md:pt-5 md:shadow-[0_8px_30px_rgba(0,0,0,0.15)]',
           text.rtl ? 'md:right-4' : 'md:left-4',
         )}
       >
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-slate-200 md:hidden" />
+        <SheetHandle handle={sheet.handle} expanded={sheet.expanded} label={sheet.expanded ? text.t.showMap : text.t.showMore} />
         <header className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 items-center gap-3">
             <Photo url={data.customer.logo_url} name={data.customer.name} kind="logo" size={48} />
@@ -118,12 +125,12 @@ export default function FleetTrackingPage() {
         ) : (
           <ul className="mt-3 space-y-2">
             {shown.map((x) => (
-              <TruckCard key={x.token} truck={x} text={text} selected={selected === x.token} onSelect={() => setSelected(x.token)} />
+              <TruckCard key={x.token} truck={x} text={text} selected={selected === x.token} fleetToken={token} />
             ))}
           </ul>
         )}
 
-        <DeliveredList trips={shownDelivered} total={data.delivered.length} text={text} />
+        <DeliveredList trips={shownDelivered} total={data.delivered.length} text={text} fleetToken={token} />
 
         <div className="mt-4"><AskButton brand={data.brand} text={text} about={data.customer.name} /></div>
 
@@ -139,7 +146,11 @@ export default function FleetTrackingPage() {
   );
 }
 
-function TruckCard({ truck: x, text, selected, onSelect }: { truck: FleetTruck; text: TrackingText; selected: boolean; onSelect: () => void }) {
+/** The trip page for a truck, remembering this page for its back button. */
+const tripLink = (tripToken: string, fleetToken: string) => `/t/${tripToken}?c=${encodeURIComponent(fleetToken)}`;
+
+/** One truck. Tapping anywhere on it opens its trip page. */
+function TruckCard({ truck: x, text, selected, fleetToken }: { truck: FleetTruck; text: TrackingText; selected: boolean; fleetToken: string }) {
   const { t, clock, duration } = text;
   const status = x.phase === 'done' ? <Chip tone="green"><Check className="size-3.5" strokeWidth={3} /> {t.delivered}</Chip>
     : x.phase === 'planned' ? <Chip tone="violet">{t.scheduled}</Chip>
@@ -154,14 +165,15 @@ function TruckCard({ truck: x, text, selected, onSelect }: { truck: FleetTruck; 
   else when = x.next_stop_name ? `${t.to} ${x.next_stop_name}` : t.onTheWay;
 
   return (
-    <li>
-      <div
+    <li id={`truck-${x.token}`}>
+      <Link
+        to={tripLink(x.token, fleetToken)}
         className={cn(
-          'rounded-2xl border p-3 transition-colors',
+          'block rounded-2xl border p-3 transition-colors active:bg-slate-100',
           selected ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 bg-white hover:bg-slate-50',
         )}
       >
-        <button type="button" onClick={onSelect} className="block w-full text-start">
+        <div className="block w-full text-start">
           <div className="flex items-start gap-3">
             <CrewPhoto truck={x} />
             <div className="min-w-0 flex-1">
@@ -190,11 +202,11 @@ function TruckCard({ truck: x, text, selected, onSelect }: { truck: FleetTruck; 
               <div className="h-full rounded-full" style={{ width: `${Math.max(3, x.progress_pct)}%`, backgroundColor: TRACK_BLUE }} />
             </div>
           )}
-        </button>
-        <a href={`/t/${x.token}`} className="mt-2 flex items-center justify-end gap-0.5 text-xs font-semibold text-blue-700">
+        </div>
+        <span className="mt-2 flex items-center justify-end gap-0.5 text-xs font-semibold text-blue-700">
           {t.openTrip} <ChevronRight className={cn('size-3.5', text.rtl && 'rotate-180')} />
-        </a>
-      </div>
+        </span>
+      </Link>
     </li>
   );
 }
@@ -246,7 +258,7 @@ function FleetFilters({ text, routes, query, onQuery, route, onRoute }: {
 }
 
 /** "Did yesterday's truck reach?" — deliveries of the last 7 days, newest first, each opening its trip page. */
-function DeliveredList({ trips, total, text }: { trips: DeliveredTrip[]; total: number; text: TrackingText }) {
+function DeliveredList({ trips, total, text, fleetToken }: { trips: DeliveredTrip[]; total: number; text: TrackingText; fleetToken: string }) {
   const { t, clock } = text;
   return (
     <section className="mt-6">
@@ -259,7 +271,7 @@ function DeliveredList({ trips, total, text }: { trips: DeliveredTrip[]; total: 
         <ul className="mt-2 divide-y divide-slate-100 rounded-2xl border border-slate-200">
           {trips.map((d) => (
             <li key={d.token}>
-              <a href={`/t/${d.token}`} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50">
+              <Link to={tripLink(d.token, fleetToken)} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50">
                 <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
                   <Check className="size-3.5" strokeWidth={3} />
                 </span>
@@ -270,7 +282,7 @@ function DeliveredList({ trips, total, text }: { trips: DeliveredTrip[]; total: 
                   </p>
                 </div>
                 <ChevronRight className={cn('size-4 shrink-0 text-slate-400', text.rtl && 'rotate-180')} />
-              </a>
+              </Link>
             </li>
           ))}
         </ul>
@@ -324,7 +336,6 @@ function FleetMap({ data, selected, onSelect, text }: {
   const userMoved = useRef(false);
   const onLoad = useCallback((e: { target: MapLibreMap }) => {
     const map = e.target;
-    applyMapPalette(map, 'light');
     fit(false, map);
     // Once more after the page has settled — the map's box can still change size right after load.
     setTimeout(() => { if (!userMoved.current) fit(false, map); }, 400);
@@ -343,43 +354,26 @@ function FleetMap({ data, selected, onSelect, text }: {
   }, [selected, data.trucks]);
 
   return (
-    <div className="absolute inset-0">
-      <MapGL
-        ref={mapRef}
-        mapStyle={LIVE_MAP_STYLES.light}
-        initialViewState={initialView}
-        minZoom={3.5}
-        maxZoom={18}
-        dragRotate={false}
-        pitchWithRotate={false}
-        attributionControl={false}
-        onLoad={onLoad}
-        onResize={onResize}
-        onDragStart={() => { userMoved.current = true; }}
-        onZoomStart={(e) => { if (e.originalEvent) userMoved.current = true; }}
-        style={{ width: '100%', height: '100%' }}
-      >
-        {placed.map((x) => (
-          <Marker
-            key={x.token}
-            longitude={x.position!.lng}
-            latitude={x.position!.lat}
-            anchor="center"
-            style={{ zIndex: selected === x.token ? 30 : 20, cursor: 'pointer' }}
-            onClick={(e) => { e.originalEvent.stopPropagation(); onSelect(x.token); }}
-          >
-            <TruckPuck heading={x.position!.moving ? x.position!.heading_deg : null} live={x.position!.fresh && x.phase !== 'done'} label={x.plate} />
-          </Marker>
-        ))}
-      </MapGL>
-      <a
-        href="https://www.openstreetmap.org/copyright"
-        target="_blank"
-        rel="noreferrer"
-        className="absolute right-3 bottom-8 rounded bg-white/70 px-1.5 text-[10px] text-slate-500 md:bottom-4"
-      >
-        © OpenStreetMap · OpenFreeMap
-      </a>
-    </div>
+    <PublicMap
+      ref={mapRef}
+      initialViewState={initialView}
+      onLoad={onLoad}
+      onResize={onResize}
+      onDragStart={() => { userMoved.current = true; }}
+      onZoomStart={(e) => { if (e.originalEvent) userMoved.current = true; }}
+    >
+      {placed.map((x) => (
+        <Marker
+          key={x.token}
+          longitude={x.position!.lng}
+          latitude={x.position!.lat}
+          anchor="center"
+          style={{ zIndex: selected === x.token ? 30 : 20, cursor: 'pointer' }}
+          onClick={(e) => { e.originalEvent.stopPropagation(); onSelect(x.token); }}
+        >
+          <TruckPuck heading={x.position!.moving ? x.position!.heading_deg : null} live={x.position!.fresh && x.phase !== 'done'} label={x.plate} />
+        </Marker>
+      ))}
+    </PublicMap>
   );
 }
