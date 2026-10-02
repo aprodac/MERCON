@@ -11,8 +11,8 @@ jobs:
     steps:
       - name: Inspect DEV database migration ledger and physical schema
         env:
-          POSTGRES_USER: ${{ secrets.DEV_POSTGRES_USER || secrets.POSTGRES_USER || 'mercon_dev_admin' }}
-          POSTGRES_PASSWORD: ${{ secrets.DEV_POSTGRES_PASSWORD || secrets.POSTGRES_PASSWORD || 'mercon_dev_secure_pass_2026' }}
+          POSTGRES_USER: ${{ secrets.DEV_POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.DEV_POSTGRES_PASSWORD }}
           POSTGRES_DB: mercon_dev_db
           DB_TUNNEL_PORT: 15433
         run: |
@@ -153,7 +153,7 @@ jobs:
     steps:
       - name: Inspect PROD database migration ledger
         env:
-          POSTGRES_USER: ${{ secrets.POSTGRES_USER || 'mercon_admin' }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
           POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
           POSTGRES_DB: mercon_db
         run: |
