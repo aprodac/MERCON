@@ -22,7 +22,7 @@ import QuotationFormDialog from '@/components/quotations/QuotationFormDialog';
 import LocationFormDialog from '@/components/locations/LocationFormDialog';
 import CustomerQuotationsTab from '@/components/customers/CustomerQuotationsTab';
 import CustomerTripsTab from '@/components/customers/CustomerTripsTab';
-import CustomerTripSheetsTab from '@/components/customers/CustomerTripSheetsTab';
+import CustomerExportsTab from '@/components/customers/CustomerExportsTab';
 import CustomerTrackingTab from '@/components/customers/CustomerTrackingTab';
 import { useModuleEnabled } from '@/components/auth/RequireModule';
 import VisualRouteProgress from '@/components/trips/VisualRouteProgress';
@@ -184,11 +184,11 @@ export default function CustomerDetailsPage() {
   const [selectedPreviewTrip, setSelectedPreviewTrip] = useState<any | null>(null);
   const [selectedPreviewQuotation, setSelectedPreviewQuotation] = useState<any | null>(null);
 
-  // Active view tab state: default to 'overview'; ?tab=trip-sheets opens Trip sheets (linked from an invoice)
+  // Active view tab state: default to 'overview'; ?tab=exports (or the older ?tab=trip-sheets) opens Excel exports — linked from an invoice
   const [searchParams] = useSearchParams();
   const tripSheetsEnabled = useModuleEnabled('company-reports');
   const [activeTab, setActiveTab] = useState<'overview' | 'dispatches' | 'quotations' | 'saved_places' | 'governance' | 'financials' | 'trip_sheets' | 'tracking'>(
-    searchParams.get('tab') === 'trip-sheets' ? 'trip_sheets' : searchParams.get('tab') === 'tracking' ? 'tracking' : 'overview'
+    ['exports', 'trip-sheets'].includes(searchParams.get('tab') ?? '') ? 'trip_sheets' : searchParams.get('tab') === 'tracking' ? 'tracking' : 'overview'
   );
 
   // Fetch Customer details
@@ -474,7 +474,7 @@ export default function CustomerDetailsPage() {
             { id: 'financials', label: 'Financial Summary', icon: ReceiptText },
             { id: 'dispatches', label: 'Dispatches', icon: Truck },
             { id: 'quotations', label: 'Quotations', icon: Tag },
-            ...(tripSheetsEnabled ? [{ id: 'trip_sheets', label: 'Trip sheets', icon: FileSpreadsheet }] : []),
+            ...(tripSheetsEnabled ? [{ id: 'trip_sheets', label: 'Excel exports', icon: FileSpreadsheet }] : []),
             { id: 'tracking', label: 'Tracking', icon: MapPinned },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -687,8 +687,8 @@ export default function CustomerDetailsPage() {
         {activeTab === 'tracking' && <CustomerTrackingTab customer={customer} />}
 
         {activeTab === 'trip_sheets' && tripSheetsEnabled && (
-          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-4 shadow-2xs">
-            <CustomerTripSheetsTab customerId={id!} customerName={customer.name} />
+          <div className="rounded-2xl bg-white dark:bg-slate-900 shadow-2xs">
+            <CustomerExportsTab customerId={id!} customerName={customer.name} />
           </div>
         )}
 

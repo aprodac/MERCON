@@ -1,14 +1,50 @@
 import { useState } from 'react';
-import type { TemplateLayout } from '@mercon/shared-types';
+import type { ReportSource, TemplateLayout } from '@mercon/shared-types';
 import type { TemplateInspection } from '@/services/reportTemplateService';
 import { FileSearch, RotateCcw, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 
-const MAPPING_OPTIONS: ComboboxOption[] = [
+const SPECIAL_OPTIONS: ComboboxOption[] = [
   { value: 'blank', label: 'Leave empty', group: 'Special' },
   { value: 'formula', label: 'Keep their formula', group: 'Special' },
   { value: 'const', label: 'Same text on every row…', group: 'Special' },
+];
+
+const STATEMENT_OPTIONS: ComboboxOption[] = [
+  ...SPECIAL_OPTIONS,
+  { value: 'field:date', label: 'Date', group: 'Document', keywords: 'date transaction posting' },
+  { value: 'field:doc_type', label: 'Type (invoice, payment…)', group: 'Document', keywords: 'type transaction' },
+  { value: 'field:doc_no', label: 'Document no.', group: 'Document', keywords: 'document voucher number ref' },
+  { value: 'field:invoice_no', label: 'Invoice no.', group: 'Document', keywords: 'invoice number bill' },
+  { value: 'field:reference', label: 'Reference / note', group: 'Document', keywords: 'reference description particulars narration' },
+  { value: 'field:due_date', label: 'Due date', group: 'Document', keywords: 'due payment' },
+  { value: 'field:invoice_status', label: 'Invoice status', group: 'Document', keywords: 'status paid' },
+  { value: 'field:serial', label: 'Row number (1, 2, 3…)', group: 'Document', keywords: 'serial index row number' },
+  { value: 'field:debit', label: 'Debit (invoiced)', group: 'Money', keywords: 'debit dr invoiced amount' },
+  { value: 'field:credit', label: 'Credit (paid / credited)', group: 'Money', keywords: 'credit cr paid received payment' },
+  { value: 'field:balance', label: 'Running balance', group: 'Money', keywords: 'balance outstanding running' },
+];
+
+const RATE_OPTIONS: ComboboxOption[] = [
+  ...SPECIAL_OPTIONS,
+  { value: 'field:quotation_no', label: 'Quotation no.', group: 'Quotation', keywords: 'quotation quote number id' },
+  { value: 'field:quotation_name', label: 'Quotation name', group: 'Quotation', keywords: 'name lane' },
+  { value: 'field:serial', label: 'Row number (1, 2, 3…)', group: 'Quotation', keywords: 'serial index row number' },
+  { value: 'field:origin', label: 'From', group: 'Route', keywords: 'origin from pickup start' },
+  { value: 'field:destination', label: 'To', group: 'Route', keywords: 'destination to dropoff end' },
+  { value: 'field:route', label: 'Full route (all stops)', group: 'Route', keywords: 'route stops lane' },
+  { value: 'field:vehicle_type', label: 'Vehicle type', group: 'Service', keywords: 'vehicle truck type class ton' },
+  { value: 'field:line_type', label: 'Line type', group: 'Service', keywords: 'line type trip type duty rental method' },
+  { value: 'field:pricing_basis', label: 'Per trip / per month', group: 'Service', keywords: 'pricing basis monthly per trip' },
+  { value: 'field:rate', label: 'Rate', group: 'Price', keywords: 'rate price amount tariff charges' },
+  { value: 'field:currency', label: 'Currency', group: 'Price', keywords: 'currency sar' },
+  { value: 'field:valid_from', label: 'Valid from', group: 'Price', keywords: 'valid from effective start' },
+  { value: 'field:valid_to', label: 'Valid to', group: 'Price', keywords: 'valid to until expiry end' },
+];
+
+const TRIP_OPTIONS: ComboboxOption[] = [
+  ...SPECIAL_OPTIONS,
 
   { value: 'field:ref_id', label: 'Trip / job no.', group: 'Trip', keywords: 'waybill trip job reference number ref' },
   { value: 'field:awb_number', label: 'AWB / shipment no.', group: 'Trip', keywords: 'awb shipment waybill tracking consignment' },
@@ -37,6 +73,12 @@ const MAPPING_OPTIONS: ComboboxOption[] = [
   { value: 'field:balance_amount', label: 'Balance (total − extras − payout)', group: 'Internal (MERCON only)', keywords: 'balance margin net' },
 ];
 
+const OPTIONS_BY_SOURCE: Record<ReportSource, ComboboxOption[]> = {
+  trips: TRIP_OPTIONS,
+  statement: STATEMENT_OPTIONS,
+  rates: RATE_OPTIONS,
+};
+
 type Source = TemplateLayout['columns'][number]['source'];
 
 interface TemplateMappingEditorProps {
@@ -45,6 +87,8 @@ interface TemplateMappingEditorProps {
   onChange: (layout: TemplateLayout) => void;
   /** Off when editing a saved format: there's no fresh upload whose detection to fall back to. */
   canAutoMap?: boolean;
+  /** Which data the format is filled with — decides the field list. */
+  source?: ReportSource;
 }
 
 const colLetter = (n: number): string => {
@@ -67,7 +111,8 @@ const rowInput =
  * Which MERCON field fills each of the customer's columns. Built to fill its
  * container: a one-line strip on top, then the column list scrolls on its own.
  */
-export default function TemplateMappingEditor({ inspection, layout, onChange, canAutoMap = true }: TemplateMappingEditorProps) {
+export default function TemplateMappingEditor({ inspection, layout, onChange, canAutoMap = true, source: dataSource = 'trips' }: TemplateMappingEditorProps) {
+  const options = OPTIONS_BY_SOURCE[dataSource];
   const [emptyOnly, setEmptyOnly] = useState(false);
   const sheet = inspection.bestSheet;
 
@@ -199,7 +244,7 @@ export default function TemplateMappingEditor({ inspection, layout, onChange, ca
                     <div className="flex items-center gap-1.5">
                       <div className="min-w-0 flex-1">
                         <Combobox
-                          options={MAPPING_OPTIONS}
+                          options={options}
                           value={sourceValue(source)}
                           onChange={(val) => {
                             if (val === 'blank') updateColumn(col.colIndex, { kind: 'blank' });

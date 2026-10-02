@@ -2,7 +2,15 @@ import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Braces, FileSpreadsheet, RefreshCw, Upload } from 'lucide-react';
-import { LINE_TYPES, TRIP_SHEET_TOKENS, lineTypeLabel, type TemplateLayout } from '@mercon/shared-types';
+import {
+  LINE_TYPES,
+  REPORT_SOURCES,
+  REPORT_SOURCE_LABELS,
+  TRIP_SHEET_TOKENS,
+  lineTypeLabel,
+  type ReportSource,
+  type TemplateLayout,
+} from '@mercon/shared-types';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -12,7 +20,7 @@ import TemplateMappingEditor from '@/components/reports/TemplateMappingEditor';
 import { cn } from '@/lib/utils';
 import { reportTemplateService, type ReportTemplateSummary, type TemplateInspection } from '@/services/reportTemplateService';
 
-export const tripSheetFormatsKey = (customerId: string) => ['report-templates', customerId];
+export const exportFormatsKey = (customerId: string) => ['report-templates', customerId];
 
 const ALL_TRIPS = 'all';
 
@@ -56,15 +64,18 @@ function layoutFromInspection(inspection: TemplateInspection): TemplateLayout | 
 const errorText = (err: any, fallback: string) => err?.response?.data?.error?.message || err?.userMessage || fallback;
 
 /**
- * Add a customer's Excel trip-sheet format (upload → check the column mapping → save),
- * or edit a saved one (name, trip filter, mapping, or swap in a new file).
+ * Add a customer's Excel export format — pick the data (trips, statement, rates),
+ * upload their sheet, check the column mapping, save — or edit a saved one
+ * (name, line-type filter, mapping, or swap in a new file). The data type is
+ * fixed once a format exists.
  */
-export default function TripSheetFormatDialog({
+export default function ExportFormatDialog({
   open,
   onOpenChange,
   customerId,
   customerName,
   template,
+  defaultSource = 'trips',
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -72,10 +83,13 @@ export default function TripSheetFormatDialog({
   customerName: string;
   /** Set to edit a saved format; absent to add one. */
   template?: ReportTemplateSummary | null;
+  /** Data type preselected when adding (e.g. from a group's "upload" link). */
+  defaultSource?: ReportSource;
 }) {
   const queryClient = useQueryClient();
   const isEdit = !!template;
 
+  const [source, setSource] = useState<ReportSource>('trips');
   const [name, setName] = useState('');
   // The API field is `rate_category`, the legacy name for the trip's line type.
   const [lineType, setLineType] = useState<string>(ALL_TRIPS);
@@ -88,6 +102,7 @@ export default function TripSheetFormatDialog({
   useEffect(() => {
     if (!open) return;
     setFile(null);
+    setSource(template?.source ?? defaultSource);
     setName(template?.name ?? '');
     setLineType(template?.rate_category ?? ALL_TRIPS);
     if (template) {
@@ -98,7 +113,7 @@ export default function TripSheetFormatDialog({
       setLayout(null);
       setInspection(null);
     }
-  }, [open, template]);
+  }, [open, template, defaultSource]);
 
   const handleFile = async (picked: File) => {
     if (!/\.xlsx$/i.test(picked.name)) {
@@ -107,10 +122,10 @@ export default function TripSheetFormatDialog({
     }
     setIsInspecting(true);
     try {
-      const result = await reportTemplateService.inspect(picked);
+      const result = await reportTemplateService.inspect(picked, source);
       const detected = layoutFromInspection(result);
       if (!detected) {
-        toast.error('Couldn’t find a header row in this file. Check it has column titles above the trip rows.');
+        toast.error('Couldn’t find a header row in this file. Check it has column titles above the data rows.');
         return;
       }
       setFile(picked);
@@ -130,7 +145,7 @@ export default function TripSheetFormatDialog({
       toast.error('Give the format a name');
       return;
     }
-    const rate_category = lineType === ALL_TRIPS ? null : lineType;
+    const rate_category = lineType === ALL_TRIPS || source === 'statement' ? null : lineType;
     setIsSaving(true);
     try {
       if (template) {
@@ -138,7 +153,7 @@ export default function TripSheetFormatDialog({
         toast.success(`“${name.trim()}” saved`);
       } else {
         if (!file) return;
-        await reportTemplateService.create({ file, name: name.trim(), customerId, rate_category, layout });
+        await reportTemplateService.create({ file, name: name.trim(), customerId, source, rate_category, layout });
         toast.success(`“${name.trim()}” added for ${customerName}`);
       }
       queryClient.invalidateQueries({ queryKey: ['report-templates'] });
@@ -160,41 +175,75 @@ export default function TripSheetFormatDialog({
         <DialogHeader className="shrink-0 border-b border-slate-100 px-4 py-3 pr-12 dark:border-slate-800">
           <DialogTitle className="flex min-w-0 items-center gap-2 text-sm font-bold text-slate-900 dark:text-slate-100">
             <FileSpreadsheet className="h-4 w-4 shrink-0 text-emerald-600" />
-            {isEdit ? 'Edit trip sheet format' : 'Add trip sheet format'}
+            {isEdit ? 'Edit export format' : 'Add export format'}
+            {(isEdit || inspection) && (
+              <span className="rounded bg-slate-100 px-1.5 py-px text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {REPORT_SOURCE_LABELS[source]}
+              </span>
+            )}
             <span className="truncate text-xs font-normal text-slate-400">· {customerName}</span>
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Map {customerName}’s Excel columns to MERCON trip fields.
+            Map {customerName}’s Excel columns to MERCON {REPORT_SOURCE_LABELS[source].toLowerCase()} fields.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-2.5 p-4">
+          {/* Before upload: which data the sheet holds — decides the field list and the header matching. */}
+          {!isEdit && !inspection && (
+            <div className="grid shrink-0 grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1 dark:bg-slate-800">
+              {REPORT_SOURCES.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSource(s)}
+                  className={cn(
+                    'rounded-md px-2 py-1.5 text-xs font-semibold transition-colors',
+                    source === s
+                      ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-white'
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  )}
+                >
+                  {REPORT_SOURCE_LABELS[s]}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Name · line type · file — one row */}
           <div
             className={cn(
               'grid shrink-0 gap-2',
-              inspection ? 'sm:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,1.4fr)]' : 'sm:grid-cols-2'
+              inspection
+                ? source === 'statement'
+                  ? 'sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)]'
+                  : 'sm:grid-cols-[minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,1.4fr)]'
+                : source === 'statement'
+                  ? ''
+                  : 'sm:grid-cols-2'
             )}
           >
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Format name, e.g. Monthly trips"
+              placeholder={source === 'trips' ? 'Format name, e.g. Monthly trips' : source === 'statement' ? 'Format name, e.g. Monthly SOA' : 'Format name, e.g. Rate card 2026'}
               aria-label="Format name"
               className="h-8 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 outline-none focus:border-[#FA634E] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
-            <Select value={lineType} onValueChange={setLineType}>
-              <SelectTrigger aria-label="Line type" className="h-8 rounded-lg border-slate-200 text-xs font-semibold dark:border-slate-700">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={ALL_TRIPS}>All line types</SelectItem>
-                {LINE_TYPES.map((lt) => (
-                  <SelectItem key={lt} value={lt}>{lineTypeLabel(lt)} only</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {source !== 'statement' && (
+              <Select value={lineType} onValueChange={setLineType}>
+                <SelectTrigger aria-label="Line type" className="h-8 rounded-lg border-slate-200 text-xs font-semibold dark:border-slate-700">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_TRIPS}>All line types</SelectItem>
+                  {LINE_TYPES.map((lt) => (
+                    <SelectItem key={lt} value={lt}>{lineTypeLabel(lt)} only</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {inspection && (
               <div className="flex h-8 min-w-0 items-center gap-2 rounded-lg border border-slate-200 px-2.5 text-xs dark:border-slate-700">
                 <span className="truncate font-mono text-[11px] text-slate-600 dark:text-slate-300" title={fileLabel}>{fileLabel}</span>
@@ -214,13 +263,13 @@ export default function TripSheetFormatDialog({
             ) : (
               <label className="group flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-slate-200 py-8 text-xs font-semibold text-slate-500 transition-colors hover:border-[#FA634E] hover:text-[#FA634E] dark:border-slate-700">
                 <Upload className="h-5 w-5 text-slate-400 group-hover:text-[#FA634E]" />
-                Upload their Excel sheet (.xlsx)
+                Upload their {REPORT_SOURCE_LABELS[source].toLowerCase()} sheet (.xlsx)
                 <input type="file" accept=".xlsx" className="hidden" onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])} />
               </label>
             ))}
 
           {inspection && layout && (
-            <TemplateMappingEditor inspection={inspection} layout={layout} onChange={setLayout} canAutoMap={!!file} />
+            <TemplateMappingEditor inspection={inspection} layout={layout} onChange={setLayout} canAutoMap={!!file} source={source} />
           )}
         </div>
 
@@ -233,9 +282,9 @@ export default function TripSheetFormatDialog({
                 </button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-80 p-3 text-xs">
-                <p className="mb-2 text-slate-500">Type one into any cell outside the trip rows in the Excel file; it’s filled on export.</p>
+                <p className="mb-2 text-slate-500">Type one into any cell outside the data rows in the Excel file; it’s filled on export.</p>
                 <div className="space-y-1">
-                  {TRIP_SHEET_TOKENS.map((t) => (
+                  {TRIP_SHEET_TOKENS.filter((t) => t.sources.includes(source)).map((t) => (
                     <div key={t.token} className="flex items-baseline gap-2">
                       <code className="shrink-0 font-mono text-[11px] text-[#FA634E]">{`{{${t.token}}}`}</code>
                       <span className="truncate text-slate-500">{t.label}</span>
