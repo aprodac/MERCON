@@ -2,7 +2,7 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, ArrowRight, ExternalLink, TableProperties } from 'lucide-react';
+import { AlertTriangle, ArrowRight, ChevronDown, ExternalLink } from 'lucide-react';
 
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
@@ -13,12 +13,16 @@ import { tripService, type MonthlyBoardCompany, type MonthlyBoardTrip } from '@/
 import { formatDayHeading, formatMoney, formatTime, initialsOf } from './monthlyBoardUtils';
 import {
   CELL_STYLES,
+  OVERDUE_CELL,
+  OVERDUE_RING,
   daysOfMonth,
   dayCellState,
+  displayPlace,
   driverDayKey,
   isDoubleBooked,
   isOverdue,
   otherBookings,
+  slotOf,
   totalsOf,
   tripCellState,
   vehicleDayKey,
@@ -35,6 +39,8 @@ const STATUS_CHOICES = ['Draft', 'Scheduled', 'Loading', 'InTransit', 'Delayed',
 /** Friday and Saturday — the Saudi weekend, shaded so a gap there isn't mistaken for a missed trip. */
 const isWeekend = (weekday: number) => weekday === 5 || weekday === 6;
 const WEEKDAY_LETTER = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+const CHECKBOX = 'rounded border-slate-300 data-[state=checked]:bg-charcoal data-[state=checked]:border-charcoal';
 
 export interface GridCompany {
   company: MonthlyBoardCompany;
@@ -82,6 +88,15 @@ export default function MonthlyRouteGrid({
   const selected = useMemo(() => new Set(selectedTripIds), [selectedTripIds]);
   const [activeCell, setActiveCell] = useState<string | null>(null);
   const [anchor, setAnchor] = useState<RangeAnchor | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+
+  const toggleCollapsed = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   // Shift-click a day to select it; shift-click another day on the same route
   // to select every trip in between, ready for the bulk bar.
@@ -100,97 +115,111 @@ export default function MonthlyRouteGrid({
     [anchor, onSelectTrips, onToggleTrips],
   );
 
-  const columns = `minmax(220px, 280px) repeat(${days.length}, minmax(18px, 1fr)) 132px`;
+  const columns = `minmax(220px, 260px) repeat(${days.length}, minmax(18px, 1fr)) 168px`;
 
   return (
-    <div className="rounded-2xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xs overflow-x-auto">
-      <div className="min-w-[980px]">
+    <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-x-auto">
+      <div className="min-w-[1000px]">
         {/* Day header */}
-        <div
-          className="grid sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200/80 dark:border-slate-800"
-          style={{ gridTemplateColumns: columns }}
-        >
-          <div className="px-4 py-2 text-[11px] font-semibold text-slate-500">Route</div>
-          {days.map((d) => (
-            <div
-              key={d.date}
-              className={`py-1.5 text-center leading-tight ${isWeekend(d.weekday) ? 'bg-slate-100/80 dark:bg-slate-800/50' : ''} ${
-                d.date === today ? 'bg-purple-100 dark:bg-purple-950/60' : ''
-              }`}
-            >
-              <div className={`text-[9px] ${d.date === today ? 'text-purple-600' : 'text-slate-400'}`}>{WEEKDAY_LETTER[d.weekday]}</div>
-              <div className={`text-[11px] font-semibold ${d.date === today ? 'text-purple-700 dark:text-purple-300' : 'text-slate-600 dark:text-slate-300'}`}>
-                {d.day}
+        <div className="grid border-b border-slate-200 dark:border-slate-800" style={{ gridTemplateColumns: columns }}>
+          <div className="px-4 py-2 text-[11px] font-medium text-slate-400 self-end">Route</div>
+          {days.map((d) => {
+            const isToday = d.date === today;
+            return (
+              <div
+                key={d.date}
+                className={`py-1.5 text-center leading-tight ${isWeekend(d.weekday) ? 'bg-slate-50 dark:bg-slate-800/40' : ''}`}
+              >
+                <div className={`text-[9px] ${isToday ? 'text-slate-900 dark:text-white font-semibold' : 'text-slate-400'}`}>
+                  {WEEKDAY_LETTER[d.weekday]}
+                </div>
+                <div
+                  className={`mx-auto mt-0.5 h-5 w-5 grid place-items-center rounded-full text-[11px] tabular-nums ${
+                    isToday ? 'bg-charcoal text-white font-semibold' : 'text-slate-600 dark:text-slate-300'
+                  }`}
+                >
+                  {d.day}
+                </div>
               </div>
-            </div>
-          ))}
-          <div className="px-3 py-2 text-[11px] font-semibold text-slate-500 text-right">Done · amount</div>
+            );
+          })}
+          <div className="px-4 py-2 text-[11px] font-medium text-slate-400 text-right self-end">Done · billed</div>
         </div>
 
         {rows.map(({ company, groups, totals }) => {
           const companyIds = groups.flatMap((g) => g.trips.map((t) => t.id));
           const allSelected = companyIds.length > 0 && companyIds.every((id) => selected.has(id));
           const someSelected = !allSelected && companyIds.some((id) => selected.has(id));
+          const isCollapsed = collapsed.has(company.customer.id);
           return (
             <div key={company.customer.id}>
               {/* Company header */}
-              <div className="flex items-center justify-between gap-3 px-4 py-2 bg-slate-50 dark:bg-slate-800/40 border-b border-slate-200/80 dark:border-slate-800">
+              <div className="flex items-center justify-between gap-3 px-4 py-2 bg-slate-50/80 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800">
                 <div className="flex items-center gap-2.5 min-w-0">
                   <Checkbox
                     checked={allSelected ? true : someSelected ? 'indeterminate' : false}
                     onCheckedChange={() => onToggleTrips(companyIds)}
                     aria-label={`Select all trips for ${company.customer.name}`}
-                    className="h-4 w-4 rounded border-slate-300 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+                    className={`h-4 w-4 ${CHECKBOX}`}
                   />
-                  {company.customer.logo_url ? (
-                    <img src={company.customer.logo_url} alt="" className="h-6 w-6 rounded-md object-contain border border-slate-200 bg-white p-0.5" />
-                  ) : (
-                    <span className="h-6 w-6 rounded-md bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 grid place-items-center text-[10px] font-bold">
-                      {initialsOf(company.customer.name)}
+                  <button
+                    type="button"
+                    onClick={() => toggleCollapsed(company.customer.id)}
+                    className="flex items-center gap-2 min-w-0 text-left"
+                    aria-expanded={!isCollapsed}
+                  >
+                    <ChevronDown className={`h-3.5 w-3.5 text-slate-400 shrink-0 transition-transform ${isCollapsed ? '-rotate-90' : ''}`} />
+                    {company.customer.logo_url ? (
+                      <img src={company.customer.logo_url} alt="" className="h-5 w-5 rounded-md object-contain border border-slate-200 bg-white p-px" />
+                    ) : (
+                      <span className="h-5 w-5 rounded-md bg-slate-200/80 dark:bg-slate-700 text-slate-700 dark:text-slate-200 grid place-items-center text-[9px] font-semibold">
+                        {initialsOf(company.customer.name)}
+                      </span>
+                    )}
+                    <span className="text-[13px] font-semibold text-slate-900 dark:text-slate-100 truncate">{company.customer.name}</span>
+                    <span className="text-xs text-slate-400 shrink-0">
+                      {groups.length} {groups.length === 1 ? 'route' : 'routes'}
                     </span>
-                  )}
-                  <span className="text-sm font-semibold text-[#3E3C3D] dark:text-slate-100 truncate">{company.customer.name}</span>
-                  <span className="text-xs text-slate-500 shrink-0">
-                    {groups.length} {groups.length === 1 ? 'route' : 'routes'}
-                  </span>
+                  </button>
                   {totals.gaps > 0 && (
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800 shrink-0">
-                      {totals.gaps} need driver or truck
+                    <span className="text-[11px] font-medium px-2 py-px rounded-full bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 shrink-0">
+                      {totals.gaps} no driver or truck
                     </span>
                   )}
                   {totals.overdue > 0 && (
-                    <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800 shrink-0">
-                      {totals.overdue} past, not closed
+                    <span className="text-[11px] font-medium px-2 py-px rounded-full bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 shrink-0">
+                      {totals.overdue} not closed
                     </span>
                   )}
                 </div>
-                <div className="text-xs text-slate-600 dark:text-slate-300 shrink-0">
-                  <span className="font-semibold text-[#3E3C3D] dark:text-slate-100">
+                <div className="text-xs text-slate-500 shrink-0 tabular-nums">
+                  <span className="font-semibold text-slate-900 dark:text-slate-100">
                     {totals.done}/{totals.total}
                   </span>{' '}
-                  done · {formatMoney(totals.earned)} of {formatMoney(totals.expected)}
+                  done · {formatMoney(totals.earned)} <span className="text-slate-400">of {formatMoney(totals.expected)}</span>
                 </div>
               </div>
 
-              {groups.map((group) => (
-                <RouteRow
-                  key={group.key}
-                  group={group}
-                  company={company}
-                  days={days}
-                  columns={columns}
-                  today={today}
-                  soonUntil={soonUntil}
-                  bookings={bookings}
-                  selected={selected}
-                  activeCell={activeCell?.startsWith(group.key + '@') ? activeCell : null}
-                  anchorDate={anchor?.groupKey === group.key ? anchor.date : null}
-                  onActiveCell={setActiveCell}
-                  onShiftSelect={handleShiftSelect}
-                  onToggleTrips={onToggleTrips}
-                  onOpenLedger={onOpenLedger}
-                />
-              ))}
+              {!isCollapsed &&
+                groups.map((group) => (
+                  <RouteRow
+                    key={group.key}
+                    group={group}
+                    company={company}
+                    days={days}
+                    columns={columns}
+                    today={today}
+                    soonUntil={soonUntil}
+                    bookings={bookings}
+                    selected={selected}
+                    activeCell={activeCell?.startsWith(group.key + '@') ? activeCell : null}
+                    anchorDate={anchor?.groupKey === group.key ? anchor.date : null}
+                    onActiveCell={setActiveCell}
+                    onShiftSelect={handleShiftSelect}
+                    onToggleTrips={onToggleTrips}
+                    onOpenLedger={onOpenLedger}
+                  />
+                ))}
             </div>
           );
         })}
@@ -244,19 +273,21 @@ const RouteRow = memo(function RouteRow({
   const ids = group.trips.map((t) => t.id);
   const allSelected = ids.every((id) => selected.has(id));
   const someSelected = !allSelected && ids.some((id) => selected.has(id));
-  const pct = totals.total ? Math.round((totals.done / totals.total) * 100) : 0;
+  const origin = displayPlace(group.origin);
+  const destination = displayPlace(group.destination);
+  const local = group.origin.toLowerCase() === group.destination.toLowerCase();
 
   return (
     <div
-      className="grid items-center border-b border-slate-100 dark:border-slate-800/80 hover:bg-slate-50/60 dark:hover:bg-slate-800/30"
+      className="grid items-center border-b border-slate-100 dark:border-slate-800/80 hover:bg-slate-50/70 dark:hover:bg-slate-800/30"
       style={{ gridTemplateColumns: columns }}
     >
       <div className="flex items-start gap-2.5 px-4 py-2 min-w-0">
         <Checkbox
           checked={allSelected ? true : someSelected ? 'indeterminate' : false}
           onCheckedChange={() => onToggleTrips(ids)}
-          aria-label={`Select trips on ${group.origin} to ${group.destination}`}
-          className="mt-0.5 h-3.5 w-3.5 rounded border-slate-300 data-[state=checked]:bg-purple-600 data-[state=checked]:border-purple-600"
+          aria-label={`Select trips on ${origin} to ${destination}`}
+          className={`mt-0.5 h-3.5 w-3.5 ${CHECKBOX}`}
         />
         <button
           type="button"
@@ -264,28 +295,35 @@ const RouteRow = memo(function RouteRow({
           className="text-left min-w-0 flex-1 group/route"
           title="Open the ledger for this route"
         >
-          <div className="flex items-center gap-1 text-xs font-semibold text-[#3E3C3D] dark:text-slate-100 group-hover/route:text-purple-700">
-            <span className="truncate">{group.origin}</span>
-            <ArrowRight className="h-3 w-3 text-slate-400 shrink-0" />
-            <span className="truncate">{group.destination}</span>
-            <TableProperties className="h-3 w-3 text-slate-300 group-hover/route:text-purple-500 shrink-0 ml-0.5" />
+          <div className="flex items-center gap-1 text-[13px] font-medium text-slate-900 dark:text-slate-100 group-hover/route:underline underline-offset-2">
+            <span className="truncate">{origin}</span>
+            {local ? (
+              <span className="text-[11px] font-normal text-slate-400 shrink-0">local</span>
+            ) : (
+              <>
+                <ArrowRight className="h-3 w-3 text-slate-400 shrink-0" />
+                <span className="truncate">{destination}</span>
+              </>
+            )}
           </div>
-          <div className="text-[11px] text-slate-500 truncate">
-            {group.vehicleClass} · {group.lineType} · {group.rate != null ? `${group.rateStr}/trip` : 'no rate'}
-          </div>
-          <div className="mt-1 h-1 w-full max-w-[200px] rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-            <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }} />
+          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 min-w-0">
+            <span className="shrink-0 rounded border border-slate-200 dark:border-slate-700 px-1 leading-[15px] text-[10px] font-medium text-slate-600 dark:text-slate-300">
+              {group.vehicleClass}
+            </span>
+            <span className="truncate">
+              {group.lineType} · {group.rate != null ? `${group.rateStr}/trip` : 'no rate'}
+            </span>
           </div>
         </button>
       </div>
 
       {days.map((d) => {
         const trips = byDate.get(d.date);
-        const shade = `${isWeekend(d.weekday) ? 'bg-slate-50 dark:bg-slate-800/30' : ''} ${d.date === today ? 'bg-purple-50/80 dark:bg-purple-950/30' : ''}`;
+        const shade = isWeekend(d.weekday) ? 'bg-slate-50 dark:bg-slate-800/30' : '';
         if (!trips) {
           return (
             <div key={d.date} className={`h-full flex items-center justify-center px-px ${shade}`}>
-              <span className="h-6 w-full max-w-[22px] rounded-[3px] border border-dashed border-slate-200 dark:border-slate-700" />
+              <span className="h-5 w-full max-w-[18px] rounded-[4px] bg-slate-100/70 dark:bg-slate-800/50" />
             </div>
           );
         }
@@ -302,20 +340,21 @@ const RouteRow = memo(function RouteRow({
               onShiftClick={() => onShiftSelect(group, d.date)}
               selected={trips.some((t) => selected.has(t.id))}
               isAnchor={anchorDate === d.date}
+              isToday={d.date === today}
             />
           </div>
         );
       })}
 
-      <div className="px-3 py-2 text-right">
-        <div className="text-xs font-semibold text-[#3E3C3D] dark:text-slate-100">
+      <div className="px-4 py-2 text-right tabular-nums">
+        <div className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">
+          {totals.gaps > 0 && <span className="mr-1.5 text-[11px] font-medium text-amber-700">{totals.gaps} gap{totals.gaps === 1 ? '' : 's'} ·</span>}
+          {totals.overdue > 0 && <span className="mr-1.5 text-[11px] font-medium text-rose-600">{totals.overdue} open ·</span>}
           {totals.done}/{totals.total}
-          {totals.gaps > 0 && <span className="ml-1.5 text-amber-600 font-semibold">· {totals.gaps} gap{totals.gaps === 1 ? '' : 's'}</span>}
-          {totals.overdue > 0 && <span className="ml-1.5 text-rose-600 font-semibold">· {totals.overdue} open</span>}
         </div>
         <div className="text-[11px] text-slate-500 whitespace-nowrap">
           {formatMoney(totals.earned, group.currency)}
-          <span className="text-slate-400"> / {formatMoney(totals.expected, group.currency)}</span>
+          <span className="text-slate-400"> / {formatMoney(totals.expected, group.currency).replace(`${group.currency} `, '')}</span>
         </div>
       </div>
     </div>
@@ -332,6 +371,7 @@ function DayCell({
   onShiftClick,
   selected,
   isAnchor,
+  isToday,
 }: {
   trips: MonthlyBoardTrip[];
   group: TemplateGroup;
@@ -342,30 +382,39 @@ function DayCell({
   onShiftClick: () => void;
   selected: boolean;
   isAnchor: boolean;
+  isToday: boolean;
 }) {
   const state = dayCellState(trips);
   const style = CELL_STYLES[state];
   const overdue = trips.some((t) => isOverdue(t, today));
-  const doubleBooked = trips.some((t) => isDoubleBooked(bookings, t));
+  const doubleBooked = trips.some((t) => isDoubleBooked(bookings, group.customerId, t));
   const notes = [
     trips.length > 1 ? `${trips.length} trips` : `${trips[0].ref_id ?? 'Trip'} · ${style.label}`,
     overdue && 'past, not closed',
     doubleBooked && 'driver or truck double-booked',
   ].filter(Boolean);
+
+  // Fill + own ring come from the state; overdue swaps the planned outline for a red one.
+  const look = overdue ? (state === 'planned' ? OVERDUE_CELL : `${style.cell} ${OVERDUE_RING}`) : style.cell;
+  // Selection and focus use outline so they never fight the cell's ring.
+  const focus = open || isAnchor
+    ? 'outline outline-2 outline-offset-1 outline-slate-900 dark:outline-white'
+    : selected
+    ? 'outline outline-2 outline-offset-1 outline-purple-500'
+    : isToday
+    ? 'outline outline-1 outline-offset-1 outline-slate-400'
+    : '';
+
   const cell = (
     <button
       type="button"
       title={`${formatDayHeading(trips[0].date)} · ${notes.join(' · ')}`}
       onClick={(e) => (e.shiftKey ? onShiftClick() : onOpenChange(!open))}
-      className={`relative h-6 w-full max-w-[22px] rounded-[3px] transition-colors grid place-items-center text-[10px] font-bold text-white select-none ${style.cell} ${
-        overdue ? 'shadow-[inset_0_0_0_2px_#e11d48]' : ''
-      } ${selected ? 'ring-2 ring-purple-500 ring-offset-1 dark:ring-offset-slate-900' : ''} ${
-        open || isAnchor ? 'ring-2 ring-[#3E3C3D] dark:ring-white ring-offset-1 dark:ring-offset-slate-900' : ''
-      }`}
+      className={`relative h-5 w-full max-w-[18px] rounded-[4px] transition-colors grid place-items-center text-[10px] font-semibold tabular-nums select-none ${look} ${focus}`}
     >
       {trips.length > 1 ? trips.length : null}
       {doubleBooked && (
-        <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-rose-600 ring-1 ring-white dark:ring-slate-900" />
+        <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-rose-600 ring-2 ring-white dark:ring-slate-900" />
       )}
     </button>
   );
@@ -375,7 +424,7 @@ function DayCell({
   return (
     <Popover open onOpenChange={onOpenChange}>
       <PopoverTrigger asChild>{cell}</PopoverTrigger>
-      <PopoverContent align="center" className="w-[340px] p-0 rounded-xl">
+      <PopoverContent side="right" align="start" sideOffset={8} className="w-[320px] p-0 rounded-xl">
         <QuickEdit trips={trips} group={group} today={today} bookings={bookings} onDone={() => onOpenChange(false)} />
       </PopoverContent>
     </Popover>
@@ -432,35 +481,38 @@ function QuickEdit({
   });
 
   const state = tripCellState(trip);
+  const slot = slotOf(group.customerId, trip);
   const driverClash =
-    driverId && driverId !== 'unassigned' ? otherBookings(bookings, driverDayKey(driverId, trip.date), trip.id) : [];
+    driverId && driverId !== 'unassigned' ? otherBookings(bookings, driverDayKey(driverId, trip.date), slot) : [];
   const vehicleClash =
-    vehicleId && vehicleId !== 'unassigned' ? otherBookings(bookings, vehicleDayKey(vehicleId, trip.date), trip.id) : [];
+    vehicleId && vehicleId !== 'unassigned' ? otherBookings(bookings, vehicleDayKey(vehicleId, trip.date), slot) : [];
+  const local = group.origin.toLowerCase() === group.destination.toLowerCase();
 
   return (
     <div className="flex flex-col">
-      <div className="px-4 pt-3 pb-2 border-b border-slate-100 dark:border-slate-800">
+      <div className="px-4 pt-3 pb-2.5 border-b border-slate-100 dark:border-slate-800">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-sm font-semibold text-[#3E3C3D] dark:text-slate-100">{formatDayHeading(trip.date)}</span>
-          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-            <span className={`h-2 w-2 rounded-full ${CELL_STYLES[state].dot}`} />
+          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{formatDayHeading(trip.date)}</span>
+          <span className="flex items-center gap-1.5 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+            <span className={`h-2.5 w-2.5 rounded-[3px] ${CELL_STYLES[state].dot}`} />
             {CELL_STYLES[state].label}
           </span>
         </div>
         <div className="text-[11px] text-slate-500 truncate">
-          <span className="font-mono">{trip.ref_id ?? 'Trip'}</span> · {formatTime(trip.planned_start)} · {group.origin} → {group.destination}
+          <span className="font-mono">{trip.ref_id ?? 'Trip'}</span> · {formatTime(trip.planned_start)} · {displayPlace(group.origin)}
+          {local ? ' local' : ` → ${displayPlace(group.destination)}`}
         </div>
         {trips.length > 1 && (
-          <div className="flex gap-1 mt-2 flex-wrap">
+          <div className="inline-flex mt-2 flex-wrap gap-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 p-0.5">
             {trips.map((t, i) => (
               <button
                 key={t.id}
                 type="button"
                 onClick={() => pick(i)}
-                className={`text-[11px] font-mono px-2 py-0.5 rounded-md border ${
+                className={`text-[11px] font-mono px-2 py-0.5 rounded-md ${
                   i === index
-                    ? 'bg-purple-50 border-purple-300 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300'
-                    : 'border-slate-200 text-slate-600 dark:border-slate-700 dark:text-slate-300'
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                 }`}
               >
                 {t.ref_id ?? `Trip ${i + 1}`}
@@ -475,7 +527,7 @@ function QuickEdit({
           <Notice tone="rose">This day has passed and the trip is still {trip.status}. Mark it Completed or Cancelled.</Notice>
         )}
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-semibold text-slate-500">Driver</span>
+          <span className="text-[11px] font-medium text-slate-500">Driver</span>
           <Combobox
             options={driverOptions}
             value={driverId}
@@ -487,7 +539,7 @@ function QuickEdit({
           {driverClash.length > 0 && <ClashNotice who="This driver" clashes={driverClash} />}
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-semibold text-slate-500">Truck</span>
+          <span className="text-[11px] font-medium text-slate-500">Truck</span>
           <Combobox
             options={vehicleOptions}
             value={vehicleId}
@@ -499,7 +551,7 @@ function QuickEdit({
           {vehicleClash.length > 0 && <ClashNotice who="This truck" clashes={vehicleClash} />}
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-[11px] font-semibold text-slate-500">Status</span>
+          <span className="text-[11px] font-medium text-slate-500">Status</span>
           <Select value={status} onValueChange={setStatus}>
             <SelectTrigger className="h-8 text-xs">
               <SelectValue />
@@ -519,7 +571,7 @@ function QuickEdit({
         <button
           type="button"
           onClick={() => navigate(`/trips/${trip.id}`)}
-          className="text-xs font-semibold text-slate-600 hover:text-purple-700 dark:text-slate-300 flex items-center gap-1"
+          className="text-xs font-medium text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white flex items-center gap-1"
         >
           Open trip <ExternalLink className="h-3 w-3" />
         </button>
@@ -529,7 +581,7 @@ function QuickEdit({
           </Button>
           <Button
             size="sm"
-            className="h-8 text-xs bg-purple-600 hover:bg-purple-700 text-white"
+            className="h-8 text-xs bg-charcoal hover:bg-charcoal-strong text-white"
             disabled={!dirty || save.isPending}
             onClick={() => save.mutate()}
           >
@@ -554,7 +606,7 @@ function Notice({ tone, children }: { tone: 'rose' | 'amber'; children: React.Re
   );
 }
 
-/** Same driver or truck already on another trip that day — a warning, not a block (two short runs can be fine). */
+/** Driver or truck can't also do another trip that day — a warning, not a block. */
 function ClashNotice({ who, clashes }: { who: string; clashes: Booking[] }) {
   return (
     <Notice tone="amber">

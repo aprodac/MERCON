@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   CalendarRange, ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Download, ChevronDown,
-  Plus, Search, X, Info, Layers, Trash2, Filter, AlertTriangle,
+  Plus, Search, X, Info, Layers, Trash2, Filter, AlertTriangle, CheckCircle2,
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { currentMonthKey, monthLabel, shiftMonth, formatMoney } from '@/components/trips/monthly/monthlyBoardUtils';
 import { computeMonthlyTripSearchRelevance } from '@/components/trips/monthly/monthlySearch';
-import { buildBookings, buildGroups, CELL_STYLES, localDay, totalsOf, type CellState } from '@/components/trips/monthly/monthlyGrid';
+import { buildBookings, buildGroups, CELL_STYLES, OVERDUE_CELL, localDay, totalsOf, type CellState } from '@/components/trips/monthly/monthlyGrid';
 import { useAssignmentLookups } from '@/components/trips/monthly/useAssignmentLookups';
 import { Combobox } from '@/components/ui/combobox';
 import {
@@ -38,6 +38,9 @@ const STATUS_OPTIONS = [
 ];
 
 const LEGEND: CellState[] = ['done', 'active', 'planned', 'gap', 'cancelled'];
+
+/** Companies shown as segments; the rest sit under "N more". */
+const VISIBLE_COMPANIES = 5;
 
 const EXPORT_HEADERS = [
   'Company', 'Date', 'Trip Ref', 'Status', 'Driver', 'Vehicle',
@@ -370,7 +373,7 @@ export default function MonthlyTripsPage() {
                 placeholder="Search route, driver, plate, trip ID"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 text-xs h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 w-full rounded-xl shadow-2xs focus-visible:ring-purple-500/20 focus-visible:border-purple-500"
+                className="pl-9 text-xs h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 w-full rounded-lg shadow-none"
               />
               {search && (
                 <button onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -386,7 +389,7 @@ export default function MonthlyTripsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-1.5 text-xs font-bold border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/80 shadow-2xs rounded-xl transition-colors"
+                  className="h-9 gap-1.5 text-xs font-semibold border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/80 shadow-none rounded-lg transition-colors"
                 >
                   <Download className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
                   Export
@@ -415,9 +418,9 @@ export default function MonthlyTripsPage() {
                     setSelectedMonthlyTripsForExport([]);
                     setIsExportOpen(true);
                   }}
-                  className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-purple-700 hover:bg-purple-50"
+                  className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-slate-700"
                 >
-                  <Filter className="mr-2 h-3.5 w-3.5 text-purple-600" />
+                  <Filter className="mr-2 h-3.5 w-3.5 text-slate-500" />
                   Custom Export Settings...
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -425,7 +428,7 @@ export default function MonthlyTripsPage() {
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="h-9 rounded-xl px-4 text-xs font-extrabold bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-1.5 cursor-pointer shadow-md">
+                <Button className="h-9 rounded-lg px-4 text-xs font-semibold bg-charcoal hover:bg-charcoal-strong text-white flex items-center gap-1.5 cursor-pointer">
                   <span>New Trip</span>
                   <ChevronDown className="h-3.5 w-3.5 text-white/80 ml-0.5" />
                 </Button>
@@ -433,9 +436,9 @@ export default function MonthlyTripsPage() {
               <DropdownMenuContent align="end" className="w-60 p-1.5 rounded-xl shadow-xl border border-slate-200 bg-white">
                 <DropdownMenuItem
                   onClick={() => navigate('/trips/new')}
-                  className="cursor-pointer text-xs font-medium py-2.5 px-3 rounded-lg flex items-center gap-3 hover:bg-purple-50"
+                  className="cursor-pointer text-xs font-medium py-2.5 px-3 rounded-lg flex items-center gap-3"
                 >
-                  <Plus className="w-4 h-4 text-purple-600 shrink-0" />
+                  <Plus className="w-4 h-4 text-slate-500 shrink-0" />
                   <div>
                     <div className="font-bold text-[#3E3C3D]">Daily / Single Local Trip</div>
                     <div className="text-[10px] text-slate-500">Standard single dispatch trip</div>
@@ -443,9 +446,9 @@ export default function MonthlyTripsPage() {
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => navigate(`/trips/new?mode=monthly&month=${month}`)}
-                  className="cursor-pointer text-xs font-medium py-2.5 px-3 rounded-lg flex items-center gap-3 hover:bg-purple-50"
+                  className="cursor-pointer text-xs font-medium py-2.5 px-3 rounded-lg flex items-center gap-3"
                 >
-                  <Layers className="w-4 h-4 text-purple-600 shrink-0" />
+                  <Layers className="w-4 h-4 text-slate-500 shrink-0" />
                   <div>
                     <div className="font-bold text-[#3E3C3D]">Monthly / Bulk Add Trips</div>
                     <div className="text-[10px] text-slate-500">Batch contract generator & import</div>
@@ -458,53 +461,101 @@ export default function MonthlyTripsPage() {
 
         {/* ── KPI strip ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Kpi label="Trips this month" value={kpis.total} />
-          <Kpi
-            label="Completed"
-            value={kpis.done}
-            hint={kpis.total ? `${Math.round((kpis.done / kpis.total) * 100)}% of the month` : undefined}
-            tone="success"
-          />
-          <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-1.5 flex flex-col gap-0.5">
-            <div className="px-2 text-[11px] font-semibold text-slate-500 flex items-center gap-1">
-              <AlertTriangle className="h-3 w-3" />
-              Needs attention
+          <StatCard label="Trips this month">
+            <div className="text-xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">{kpis.total}</div>
+            <div className="text-[11px] text-slate-400">across {gridRows.length} {gridRows.length === 1 ? 'company' : 'companies'}</div>
+          </StatCard>
+          <StatCard label="Completed">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">{kpis.done}</span>
+              <span className="text-xs text-slate-400 tabular-nums">· {kpis.total ? Math.round((kpis.done / kpis.total) * 100) : 0}%</span>
             </div>
-            <AttentionRow
-              count={kpis.gapsSoon}
-              label="no driver or truck · next 3 days"
-              tone="amber"
-              active={focus === 'gaps'}
-              onClick={() => toggleFocus('gaps')}
-            />
-            <AttentionRow
-              count={kpis.overdue}
-              label="past trips not closed"
-              tone="rose"
-              active={focus === 'overdue'}
-              onClick={() => toggleFocus('overdue')}
-            />
-          </div>
-          <Kpi
-            label="Billed so far"
-            value={formatMoney(kpis.earned)}
-            hint={`of ${formatMoney(kpis.expected)} planned`}
-          />
+            <div className="mt-1.5 h-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+              <div className="h-full rounded-full bg-emerald-500" style={{ width: `${kpis.total ? (kpis.done / kpis.total) * 100 : 0}%` }} />
+            </div>
+          </StatCard>
+          <StatCard
+            label="Needs attention"
+            icon={<AlertTriangle className="h-3 w-3" />}
+            tone={kpis.gapsSoon + kpis.overdue > 0 ? 'warn' : undefined}
+          >
+            {kpis.gapsSoon + kpis.overdue === 0 && !focus ? (
+              <div className="flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400 pt-1">
+                <CheckCircle2 className="h-4 w-4" /> All clear
+              </div>
+            ) : (
+              <div className="flex gap-1 -mx-1.5">
+                <AttentionRow
+                  count={kpis.gapsSoon}
+                  label="no driver, next 3d"
+                  tone="amber"
+                  active={focus === 'gaps'}
+                  onClick={() => toggleFocus('gaps')}
+                />
+                <AttentionRow
+                  count={kpis.overdue}
+                  label="not closed"
+                  tone="rose"
+                  active={focus === 'overdue'}
+                  onClick={() => toggleFocus('overdue')}
+                />
+              </div>
+            )}
+          </StatCard>
+          <StatCard label="Billed so far">
+            <div className="text-xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">{formatMoney(kpis.earned)}</div>
+            <div className="text-[11px] text-slate-400 tabular-nums">of {formatMoney(kpis.expected)} planned</div>
+          </StatCard>
         </div>
 
-        {/* ── Company chips ── */}
+        {/* ── Company filter ── */}
         {companyChips.length > 0 && (
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <CompanyChip label="All companies" count={summary?.total_trips ?? 0} active={companyId === 'All'} onClick={() => setCompanyId('All')} />
-            {companyChips.map((c) => (
-              <CompanyChip
-                key={c.customer.id}
-                label={c.customer.name}
-                count={c.total_trips}
-                active={companyId === c.customer.id}
-                onClick={() => setCompanyId(companyId === c.customer.id ? 'All' : c.customer.id)}
-              />
-            ))}
+          <div className="flex items-center">
+            <div className="inline-flex flex-wrap items-center gap-0.5 rounded-lg bg-slate-100 dark:bg-slate-800/70 p-0.5">
+              <SegmentButton label="All" count={summary?.total_trips ?? 0} active={companyId === 'All'} onClick={() => setCompanyId('All')} />
+              {companyChips.slice(0, VISIBLE_COMPANIES).map((c) => (
+                <SegmentButton
+                  key={c.customer.id}
+                  label={c.customer.name}
+                  count={c.total_trips}
+                  active={companyId === c.customer.id}
+                  onClick={() => setCompanyId(c.customer.id)}
+                />
+              ))}
+              {companyChips.length > VISIBLE_COMPANIES && (() => {
+                const hidden = companyChips.slice(VISIBLE_COMPANIES);
+                const picked = hidden.find((c) => c.customer.id === companyId);
+                return (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className={`h-7 px-2.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors ${
+                          picked
+                            ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                            : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        <span className="truncate max-w-[160px]">{picked ? picked.customer.name : `${hidden.length} more`}</span>
+                        <ChevronDown className="h-3 w-3" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-64 max-h-80 overflow-y-auto p-1 rounded-lg">
+                      {hidden.map((c) => (
+                        <DropdownMenuItem
+                          key={c.customer.id}
+                          onClick={() => setCompanyId(c.customer.id)}
+                          className="text-xs cursor-pointer flex justify-between gap-2"
+                        >
+                          <span className="truncate">{c.customer.name}</span>
+                          <span className="text-slate-400 tabular-nums">{c.total_trips}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                );
+              })()}
+            </div>
           </div>
         )}
 
@@ -567,7 +618,7 @@ export default function MonthlyTripsPage() {
                 </Button>
               ) : (
                 <Button
-                  className="h-9 rounded-lg text-xs font-bold bg-purple-600 hover:bg-purple-700 shadow-none text-white"
+                  className="h-9 rounded-lg text-xs font-semibold bg-charcoal hover:bg-charcoal-strong shadow-none text-white"
                   onClick={() => navigate(`/trips/new?mode=monthly&month=${month}`)}
                 >
                   <Plus className="h-3.5 w-3.5 mr-1.5" />
@@ -592,17 +643,17 @@ export default function MonthlyTripsPage() {
             <div className="flex items-center gap-4 flex-wrap text-[11px] text-slate-500">
               {LEGEND.map((s) => (
                 <span key={s} className="flex items-center gap-1.5">
-                  <span className={`h-2.5 w-2.5 rounded-[2px] ${CELL_STYLES[s].dot}`} />
+                  <span className={`h-3 w-2.5 rounded-[3px] ${CELL_STYLES[s].dot}`} />
                   {CELL_STYLES[s].label}
                 </span>
               ))}
               <span className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-[2px] border border-dashed border-slate-300" />
-                No trip
+                <span className={`h-3 w-2.5 rounded-[3px] ${OVERDUE_CELL}`} />
+                Past, not closed
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-[2px] bg-slate-300 shadow-[inset_0_0_0_2px_#e11d48]" />
-                Past, not closed
+                <span className="h-3 w-2.5 rounded-[3px] bg-slate-100 dark:bg-slate-800" />
+                No trip
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-rose-600" />
@@ -620,7 +671,7 @@ export default function MonthlyTripsPage() {
       {selectedTripIds.length > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-5xl w-[96vw] sm:w-auto bg-charcoal text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-800 flex items-center justify-between gap-4 animate-in slide-in-from-bottom-5 duration-200">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs font-extrabold bg-purple-600 text-white px-2.5 py-1 rounded-lg shadow-2xs">
+            <div className="flex items-center gap-1.5 text-xs font-semibold bg-white/15 text-white px-2.5 py-1 rounded-lg">
               <span>{selectedTripIds.length}</span>
               <span>Selected</span>
             </div>
@@ -764,14 +815,32 @@ export default function MonthlyTripsPage() {
   );
 }
 
-function Kpi({ label, value, hint, tone }: { label: string; value: string | number; hint?: string; tone?: 'success' }) {
+function StatCard({
+  label,
+  icon,
+  tone,
+  children,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  tone?: 'warn';
+  children: React.ReactNode;
+}) {
   return (
-    <div className="rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-2.5">
-      <div className="text-[11px] font-semibold text-slate-500">{label}</div>
-      <div className={`text-xl font-bold ${tone === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-[#3E3C3D] dark:text-slate-100'}`}>
-        {value}
-        {hint && <span className="ml-2 text-[11px] font-medium text-slate-400">{hint}</span>}
+    <div
+      className={`rounded-xl border bg-white dark:bg-slate-900 px-4 py-2.5 ${
+        tone === 'warn' ? 'border-amber-300/80 dark:border-amber-800' : 'border-slate-200 dark:border-slate-800'
+      }`}
+    >
+      <div
+        className={`text-[11px] font-medium flex items-center gap-1 ${
+          tone === 'warn' ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500'
+        }`}
+      >
+        {icon}
+        {label}
       </div>
+      <div className="mt-0.5">{children}</div>
     </div>
   );
 }
@@ -790,39 +859,40 @@ function AttentionRow({
   onClick: () => void;
 }) {
   const hot = count > 0;
-  const color = tone === 'amber' ? 'text-amber-700 dark:text-amber-300' : 'text-rose-700 dark:text-rose-300';
-  const bg = tone === 'amber' ? 'bg-amber-50 dark:bg-amber-950/40' : 'bg-rose-50 dark:bg-rose-950/40';
-  const hover = tone === 'amber' ? 'hover:bg-amber-50 dark:hover:bg-amber-950/40' : 'hover:bg-rose-50 dark:hover:bg-rose-950/40';
+  const color = tone === 'amber' ? 'text-amber-700 dark:text-amber-300' : 'text-rose-600 dark:text-rose-400';
+  const activeBg = tone === 'amber' ? 'bg-amber-100 dark:bg-amber-950/50' : 'bg-rose-100 dark:bg-rose-950/50';
+  const hover = tone === 'amber' ? 'hover:bg-amber-50 dark:hover:bg-amber-950/30' : 'hover:bg-rose-50 dark:hover:bg-rose-950/30';
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={!hot && !active}
       title={active ? 'Show all routes' : 'Show only these routes'}
-      className={`flex items-center gap-2 rounded-lg px-2 py-0.5 text-left transition-colors ${
-        active ? `${bg} ring-1 ring-current ${color}` : hot ? `${hover} ${color}` : 'text-slate-400 cursor-default'
+      className={`flex items-baseline gap-1.5 rounded-md px-1.5 py-0.5 text-left transition-colors ${
+        active ? `${activeBg} ${color}` : hot ? `${hover} ${color}` : 'text-slate-400 cursor-default'
       }`}
     >
-      <span className="text-base font-bold tabular-nums w-6">{count}</span>
-      <span className="text-[11px] font-semibold">{label}</span>
-      {active && <span className="ml-auto text-[10px] font-semibold">showing · clear</span>}
+      <span className="text-xl font-semibold tabular-nums">{count}</span>
+      <span className="text-[11px] font-medium whitespace-nowrap">{label}</span>
+      {active && <X className="h-3 w-3 self-center" />}
     </button>
   );
 }
 
-function CompanyChip({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
+function SegmentButton({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`h-7 px-3 rounded-full border text-xs font-semibold flex items-center gap-1.5 transition-colors ${
+      title={label}
+      className={`h-7 px-2.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
         active
-          ? 'bg-purple-50 border-purple-300 text-purple-700 dark:bg-purple-950/50 dark:border-purple-700 dark:text-purple-300'
-          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-300'
+          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+          : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
       }`}
     >
-      <span className="truncate max-w-[180px]">{label}</span>
-      <span className={`text-[10px] ${active ? 'text-purple-500' : 'text-slate-400'}`}>{count}</span>
+      <span className="truncate max-w-[160px]">{label}</span>
+      <span className="text-[10px] text-slate-400 tabular-nums">{count}</span>
     </button>
   );
 }
@@ -830,20 +900,16 @@ function CompanyChip({ label, count, active, onClick }: { label: string; count: 
 /** Month Stepper Control */
 function MonthStepper({ month, onChange }: { month: string; onChange: (month: string) => void }) {
   const isCurrent = month === currentMonthKey();
+  const step = 'h-9 w-8 grid place-items-center text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white transition-colors';
 
   return (
-    <div className="flex items-center rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden divide-x divide-slate-200 dark:divide-slate-800 shadow-2xs h-9">
-      <button
-        type="button"
-        onClick={() => onChange(shiftMonth(month, -1))}
-        aria-label="Previous month"
-        className="h-9 w-8 grid place-items-center text-slate-500 hover:bg-purple-50 dark:hover:bg-purple-950/40 hover:text-purple-600 transition-colors"
-      >
+    <div className="flex items-center rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden divide-x divide-slate-200 dark:divide-slate-800 h-9">
+      <button type="button" onClick={() => onChange(shiftMonth(month, -1))} aria-label="Previous month" className={step}>
         <ChevronLeft className="h-3.5 w-3.5" />
       </button>
 
       <div className="relative h-9 flex items-center">
-        <span className="px-3 text-xs font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap min-w-[100px] text-center">
+        <span className="px-3 text-xs font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap min-w-[110px] text-center">
           {monthLabel(month)}
         </span>
         <input
@@ -855,12 +921,7 @@ function MonthStepper({ month, onChange }: { month: string; onChange: (month: st
         />
       </div>
 
-      <button
-        type="button"
-        onClick={() => onChange(shiftMonth(month, 1))}
-        aria-label="Next month"
-        className="h-9 w-8 grid place-items-center text-slate-500 hover:bg-purple-50 dark:hover:bg-purple-950/40 hover:text-purple-600 transition-colors"
-      >
+      <button type="button" onClick={() => onChange(shiftMonth(month, 1))} aria-label="Next month" className={step}>
         <ChevronRight className="h-3.5 w-3.5" />
       </button>
 
@@ -868,9 +929,9 @@ function MonthStepper({ month, onChange }: { month: string; onChange: (month: st
         <button
           type="button"
           onClick={() => onChange(currentMonthKey())}
-          className="h-9 px-2.5 text-[11px] font-bold text-purple-600 hover:bg-purple-50 transition-colors whitespace-nowrap"
+          className="h-9 px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
         >
-          Today
+          This month
         </button>
       )}
     </div>
