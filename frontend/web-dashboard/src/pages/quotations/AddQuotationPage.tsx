@@ -32,6 +32,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import LocationCombobox from '@/components/quotations/LocationCombobox';
 import { CustomerSelectionCard } from '@/components/quotations/CustomerSelectionCard';
 import { QuotationPrintModal } from '@/components/quotations/QuotationPrintModal';
+import { QuotationReviewDialog } from '@/components/quotations/QuotationReviewDialog';
 import { TaxonomySelect } from '@/components/common/TaxonomySelect';
 import { quotationService, surchargeRuleService, CreateQuotationPayload } from '@/services/quotationService';
 import { customerService } from '@/services/customerService';
@@ -189,6 +190,12 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
     queryKey: ['locations-lookup-all'],
     queryFn: () => locationService.getAll(),
   });
+
+  const locationNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (locationsRes?.data || []).forEach((l) => map.set(l.id, l.name));
+    return map;
+  }, [locationsRes?.data]);
 
   const locationMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -1283,183 +1290,21 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
 
       </form>
 
-      {/* Agreement Confirmation & Rate Matrix Preview Modal */}
-      <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-        <DialogContent className="max-w-3xl rounded-2xl p-0 overflow-hidden border-slate-200 dark:border-slate-800 shadow-2xl z-[9999]">
-          <DialogHeader className="bg-[#2D2B2C] text-white dark:bg-slate-950 p-4 border-b border-slate-800 flex flex-row items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <FileCheck2 className="w-5 h-5 text-[#FA634E]" />
-                <DialogTitle className="text-base font-black text-white uppercase tracking-wider">
-                  Review quotation
-                </DialogTitle>
-              </div>
-              <DialogDescription className="text-xs text-slate-400 mt-0.5">
-                Review contract parameters and commercial rate lines matrix before final submission.
-              </DialogDescription>
-            </div>
-            
-            <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-800 rounded-lg text-white font-mono font-black text-xs border border-slate-700">
-              <Hash className="w-3.5 h-3.5 text-[#FA634E]" />
-              <span>{quotationRefId}</span>
-            </div>
-          </DialogHeader>
-
-          <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
-            {/* Master Parameters Summary Card */}
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200/80 dark:border-slate-700/60 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase">Customer Company</div>
-                <div className="font-extrabold text-slate-900 dark:text-white truncate">
-                  {customers.find((c) => c.id === customerId)?.name || customerId}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase">Operation Type</div>
-                <Badge className={cn('text-[10px] font-bold border-0 mt-0.5', operationType === 'MONTHLY' ? 'bg-emerald-100 text-emerald-800' : 'bg-blue-100 text-blue-800')}>
-                  {operationType}
-                </Badge>
-              </div>
-
-              <div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase">Validity Period</div>
-                <div className="font-semibold text-slate-700 dark:text-slate-300">
-                  {validFrom || 'Immediate'} → {validTo || 'Open-ended'}
-                </div>
-              </div>
-
-              <div>
-                <div className="text-[10px] font-bold text-slate-400 uppercase">Vehicle Classes</div>
-                <div className="font-extrabold text-[#FA634E] text-xs truncate">
-                  {agreementSummaryMetrics.vehicleClassesLabel}
-                </div>
-              </div>
-            </div>
-
-            {/* Commercial Rate Lines Summary List */}
-            <div className="space-y-2">
-              <div className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-slate-100 flex items-center justify-between">
-                <span>Routes ({lineItems.length})</span>
-              </div>
-
-              {lineItems.length > 0 ? (
-                <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-[#2D2B2C]">
-                  {lineItems.map((line, idx) => (
-                    <div key={line.id} className="p-3 text-xs space-y-1.5 hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <span className="font-mono font-black px-1.5 py-0.5 bg-[#2D2B2C] text-white rounded text-[10px] shrink-0">
-                            #{idx + 1}
-                          </span>
-                          <span className="font-extrabold text-slate-900 dark:text-white truncate">
-                            {locationMap.get(line.originLocationId) || 'Origin'} → {locationMap.get(line.destinationLocationId) || 'Destination'}
-                          </span>
-                        </div>
-
-                        <div className="font-mono font-black text-[#FA634E] text-sm shrink-0 ml-2">
-                          {line.currency} {parseFloat(line.rate || '0').toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </div>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-                        <Badge variant="outline" className="text-[10px] font-semibold">
-                          Vehicle: {line.vehicleClass}
-                        </Badge>
-                        <Badge variant="outline" className="text-[10px] font-semibold">
-                          Line: {resolveTaxonomyOption('LINE_TYPE', line.lineType)?.label || line.lineType}
-                        </Badge>
-                        {line.driverPayout && (
-                          <span className="text-slate-600 dark:text-slate-400 font-medium">
-                            Driver Payout: SAR {parseFloat(line.driverPayout).toLocaleString()}
-                          </span>
-                        )}
-                        {line.viaStops.length > 0 && (
-                          <span className="text-[#FA634E] font-bold">
-                            +{line.viaStops.length} Intermediate Stop{line.viaStops.length > 1 ? 's' : ''}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200/80 dark:border-slate-800 text-xs text-slate-500 font-medium text-center">
-                  No routes — surcharges only.
-                </div>
-              )}
-            </div>
-
-            {/* Commercial Surcharges Summary List */}
-            {surchargeRules.length > 0 && (
-              <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <div className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-slate-100 flex items-center justify-between">
-                  <span>Configured Commercial Surcharges ({surchargeRules.length} Rules)</span>
-                </div>
-
-                <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-[#2D2B2C]">
-                  {surchargeRules.map((rule, idx) => (
-                    <div key={rule.id} className="p-3 text-xs flex items-center justify-between hover:bg-slate-50/50 dark:hover:bg-slate-800/30">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span className="font-mono font-black px-1.5 py-0.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded text-[10px] shrink-0">
-                          #{idx + 1}
-                        </span>
-                        <span className="font-extrabold text-slate-900 dark:text-white truncate">
-                          {rule.name}
-                        </span>
-                        <Badge variant="outline" className="text-[10px] font-medium text-slate-600 dark:text-slate-300">
-                          {rule.unit}
-                        </Badge>
-                      </div>
-
-                      <div className="font-mono font-black text-amber-600 dark:text-amber-400 text-sm shrink-0 ml-2">
-                        SAR {parseFloat(rule.amount || '0').toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="p-3.5 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-200 dark:border-slate-800 flex flex-row items-center justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsPreviewOpen(false)}
-              className="h-9 px-4 text-xs font-bold rounded-xl border-slate-200 dark:border-slate-700"
-            >
-              Back to Edit
-            </Button>
-
-            <Button
-              type="button"
-              disabled={saveMutation.isPending}
-              onClick={() => saveMutation.mutate()}
-              className="h-9 px-5 text-xs font-black text-white bg-[#FA634E] hover:bg-[#DF4834] shadow-md shadow-[#FA634E]/25 rounded-xl gap-1.5 border-0 cursor-pointer"
-            >
-              {saveMutation.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <CheckCircle2 className="w-4 h-4" />
-              )}
-              <span>
-                {saveMutation.isPending
-                  ? 'Saving Record...'
-                  : `Save quotation (${
-                      lineItems.length > 0 && surchargeRules.length > 0
-                        ? `${lineItems.length} Lines, ${surchargeRules.length} Surcharges`
-                        : lineItems.length > 0
-                        ? `${lineItems.length} Line${lineItems.length > 1 ? 's' : ''}`
-                        : surchargeRules.length > 0
-                        ? `${surchargeRules.length} Surcharge${surchargeRules.length > 1 ? 's' : ''}`
-                        : '0 Items'
-                    })`}
-              </span>
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <QuotationReviewDialog
+        open={isPreviewOpen}
+        onOpenChange={setIsPreviewOpen}
+        customerId={customerId}
+        customerName={selectedCustomerObj?.name || ''}
+        operationType={operationType}
+        validFrom={validFrom}
+        validTo={validTo}
+        lineItems={lineItems}
+        surchargeRules={surchargeRules}
+        locationNames={locationNameMap}
+        editingId={isEdit ? id : undefined}
+        saving={saveMutation.isPending}
+        onSave={() => saveMutation.mutate()}
+      />
 
       {/* Official MERCON Commercial Quotation Printable Document Modal */}
       <QuotationPrintModal
