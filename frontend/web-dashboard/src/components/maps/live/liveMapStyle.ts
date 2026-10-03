@@ -1,4 +1,4 @@
-import type { Map as MapLibreMap } from 'maplibre-gl';
+import type { Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
 import type { LiveUnit } from '@/services/fleetLiveService';
 
 /**
@@ -93,6 +93,39 @@ export function applyMapPalette(map: MapLibreMap, theme: LiveMapTheme) {
   for (const id of HIDDEN[theme]) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'none');
   }
+}
+
+const styleCache = new Map<LiveMapTheme, Promise<StyleSpecification>>();
+
+/**
+ * The base style with our palette already baked in. Handing MapLibre a
+ * finished style (instead of recolouring after load) means the map never
+ * flashes the stock colours first. Fetched once per theme per page load.
+ */
+export function loadLiveMapStyle(theme: LiveMapTheme): Promise<StyleSpecification> {
+  let p = styleCache.get(theme);
+  if (!p) {
+    p = fetch(LIVE_MAP_STYLES[theme])
+      .then((r) => {
+        if (!r.ok) throw new Error(`Map style ${r.status}`);
+        return r.json() as Promise<StyleSpecification>;
+      })
+      .then((style) => {
+        const palette = PALETTE[theme];
+        const hidden = new Set(HIDDEN[theme]);
+        style.layers = style.layers.map((layer) => {
+          const l = { ...layer } as StyleSpecification['layers'][number] & { paint?: Paint; layout?: Record<string, unknown> };
+          if (palette[l.id]) l.paint = { ...(l.paint ?? {}), ...palette[l.id] };
+          if (hidden.has(l.id)) l.layout = { ...(l.layout ?? {}), visibility: 'none' };
+          return l;
+        });
+        return style;
+      });
+    // A failed fetch must not stick — the next mount tries again.
+    p.catch(() => styleCache.delete(theme));
+    styleCache.set(theme, p);
+  }
+  return p;
 }
 
 /** Route colours per theme — the CarPlay blue reads on both. */

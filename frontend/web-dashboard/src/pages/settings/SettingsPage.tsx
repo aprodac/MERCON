@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import PhoneInput from '@/components/ui/PhoneInput';
 import { authService } from '@/services/authService';
 import { settingsService } from '@/services/settingsService';
+import { driverPhoneService } from '@/services/driverPhoneService';
 import { COMMON_TIMEZONES, COUNTRY_CODES } from '@mercon/shared-types';
 
 /**
@@ -29,6 +30,9 @@ function useLocalTime(timezone: string) {
     return now.toLocaleString();
   }
 }
+
+/** "1.2.0" — same rule the API enforces. */
+const VERSION_RE = /^[0-9]{1,4}([.][0-9]{1,4}){0,3}$/;
 
 const errorMessage = (err: any, fallback: string) => err?.response?.data?.error?.message || err?.message || fallback;
 
@@ -122,6 +126,37 @@ export default function SettingsPage() {
       toast.success('Timezone saved. Dates across the app now use it.');
     },
     onError: (err) => toast.error(errorMessage(err, 'Failed to save timezone')),
+  });
+
+  /* ── Customer tracking ───────────────────────────────────── */
+  const [supportWa, setSupportWa] = useState('');
+  useEffect(() => {
+    if (settings) setSupportWa(settings.supportWhatsapp ?? '');
+  }, [settings]);
+  const supportDigits = supportWa.replace(/[^0-9]/g, '');
+  const supportValid = supportDigits === '' || (supportDigits.length >= 8 && supportDigits.length <= 15);
+  const updateSupportWa = useMutation({
+    mutationFn: () => settingsService.updateSupportWhatsapp(supportDigits || null),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success(supportDigits ? 'Customers can now message ops from their tracking page.' : 'The "Ask us" button is switched off.');
+    },
+    onError: (err) => toast.error(errorMessage(err, 'Failed to save the WhatsApp number')),
+  });
+
+  /* ── Driver app ──────────────────────────────────────────── */
+  const [minVersion, setMinVersion] = useState('');
+  useEffect(() => {
+    if (settings) setMinVersion(settings.driverAppMinVersion ?? '');
+  }, [settings]);
+  const minVersionValid = minVersion.trim() === '' || VERSION_RE.test(minVersion.trim());
+  const updateMinVersion = useMutation({
+    mutationFn: () => driverPhoneService.setMinVersion(minVersion.trim() || null),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['settings'] });
+      toast.success(minVersion.trim() ? `Drivers on an app older than ${minVersion.trim()} will be asked to update.` : 'Version check switched off.');
+    },
+    onError: (err) => toast.error(errorMessage(err, 'Failed to save the minimum app version')),
   });
 
   const fieldClass = 'h-9 w-full sm:w-[280px]';
@@ -225,6 +260,65 @@ export default function SettingsPage() {
               ))}
             </SelectContent>
           </Select>
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Customer tracking"
+        description={canEditTimezone
+          ? 'Customers’ tracking pages get an "Ask us" button that opens a WhatsApp chat with this number — your ops team, not the driver. Leave empty to hide the button.'
+          : 'The WhatsApp number on customers’ tracking pages. Only admins can change it.'}
+        action={
+          canEditTimezone ? (
+            <Btn
+              label="Save"
+              size="sm"
+              disabled={!settings || !supportValid || supportDigits === (settings.supportWhatsapp ?? '')}
+              isLoading={updateSupportWa.isPending}
+              onClick={() => updateSupportWa.mutate()}
+            />
+          ) : undefined
+        }
+      >
+        <SettingsRow label="Ops WhatsApp number" description={supportValid ? 'With country code, e.g. 966501234567' : 'Use the full number with country code, 8–15 digits'} htmlFor="support-wa">
+          <Input
+            id="support-wa"
+            value={supportWa}
+            readOnly={!canEditTimezone}
+            placeholder="Off"
+            inputMode="tel"
+            onChange={(e) => setSupportWa(e.target.value)}
+            className={fieldClass}
+          />
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
+        title="Driver app"
+        description={canEditTimezone
+          ? 'Drivers on an older app see an "update required" screen until they install the new version. Leave empty to switch the check off.'
+          : 'Drivers on an older app are asked to update. Only admins can change this.'}
+        action={
+          canEditTimezone ? (
+            <Btn
+              label="Save"
+              size="sm"
+              disabled={!settings || !minVersionValid || minVersion.trim() === (settings.driverAppMinVersion ?? '')}
+              isLoading={updateMinVersion.isPending}
+              onClick={() => updateMinVersion.mutate()}
+            />
+          ) : undefined
+        }
+      >
+        <SettingsRow label="Minimum app version" description={minVersionValid ? 'For example 1.2.0' : 'Use numbers and dots, like 1.2.0'} htmlFor="drv-min-version">
+          <Input
+            id="drv-min-version"
+            value={minVersion}
+            readOnly={!canEditTimezone}
+            placeholder="Off"
+            onChange={(e) => setMinVersion(e.target.value)}
+            className={fieldClass}
+          />
         </SettingsRow>
       </SettingsSection>
     </SettingsShell>

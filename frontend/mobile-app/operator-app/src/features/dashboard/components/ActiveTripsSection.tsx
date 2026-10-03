@@ -8,6 +8,7 @@ import { CarouselPagination } from './CarouselPagination';
 import { useActiveTrips } from '../hooks';
 import type { Trip } from '../types';
 import { deriveVehicleCardStatus } from '../services/dashboardService';
+import { autoTrackingUrl, operatorService } from '../../../lib/operator';
 
 interface ActiveTripsSectionProps {
   onViewAll?: () => void;
@@ -15,7 +16,7 @@ interface ActiveTripsSectionProps {
   className?: string;
 }
 
-export function formatWhatsAppMessage(trip: Trip): string {
+export function formatWhatsAppMessage(trip: Trip, trackingUrl?: string | null): string {
   const truck = (trip.vehicle?.ref_id || trip.vehicle?.plate_number || 'N/A').toUpperCase();
   const driverName = trip.driver
     ? `${trip.driver.first_name} ${trip.driver.last_name}`.toUpperCase()
@@ -57,7 +58,18 @@ export function formatWhatsAppMessage(trip: Trip): string {
     trip.status === 'AtDelivery' ? 'At Delivery' :
     trip.status;
 
-  return `🚛 Vehicle Status Update\n\nTruck: ${truck}\nDriver: ${driverName}\nRoute: ${routeStr}\nDistance left: ${distanceStr}  TO ${destination}\nETA: ${etaStr}\nStatus: ${statusLabel}`;
+  const text = `🚛 Vehicle Status Update\n\nTruck: ${truck}\nDriver: ${driverName}\nRoute: ${routeStr}\nDistance left: ${distanceStr}  TO ${destination}\nETA: ${etaStr}\nStatus: ${statusLabel}`;
+  return trackingUrl ? `${text}\n\nTrack live: ${trackingUrl}` : text;
+}
+
+/** Customer tracking links for these trips (only customers who want them in messages). Never blocks a share. */
+async function statusLinks(trips: Trip[]): Promise<Record<string, string | null>> {
+  try {
+    const links = await operatorService.trackingLinks(trips.map((t) => t.id));
+    return Object.fromEntries(Object.entries(links).map(([id, l]) => [id, autoTrackingUrl(l)]));
+  } catch {
+    return {};
+  }
 }
 
 export async function shareTextToWhatsApp(text: string, title = 'Vehicle Status Update') {
@@ -105,14 +117,16 @@ export async function shareTextToWhatsApp(text: string, title = 'Vehicle Status 
 }
 
 export async function shareTripToWhatsApp(trip: Trip) {
-  const singleText = formatWhatsAppMessage(trip);
+  const links = await statusLinks([trip]);
+  const singleText = formatWhatsAppMessage(trip, links[trip.id]);
   await shareTextToWhatsApp(singleText);
 }
 
 export async function shareMultipleCombinedToWhatsApp(trips: Trip[]) {
   if (trips.length === 0) return;
+  const links = await statusLinks(trips);
   const itemsFormatted = trips
-    .map((t, idx) => `[TRIP ${idx + 1}/${trips.length}]\n` + formatWhatsAppMessage(t))
+    .map((t, idx) => `[TRIP ${idx + 1}/${trips.length}]\n` + formatWhatsAppMessage(t, links[t.id]))
     .join('\n\n───────────────────\n\n');
 
   const bulkText = `🚛 Vehicle Status Updates (${trips.length} Trips)\n\n${itemsFormatted}`;

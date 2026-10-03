@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { formatInDeploymentTz, useDeploymentTimezone } from '@/lib/datetime';
 import { whatsAppLink } from '@/lib/share';
+import { useTrackingLink } from '@/hooks/useTrackingLink';
 import {
   LIVE_FILTERS, buildEtaShareText, computeEta, groupStops, groupStopsOf, isOffline, matchesFilter, matchesQuery, nextStop, pickLabels, routeBearing, timeAgo,
   unitPriority, unitTitle, type LiveFilter,
@@ -19,9 +20,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { LiveUnitMarker } from './LiveUnitMarker';
 import { ClusterMarker, ControlGroup, CtlButton, HoverPeek, MapLegend, StopPin, type StopPinTone } from './LiveMapBits';
 import { EtaStrip, GLASS, LiveUnitPanel, NextStopCard } from './LiveUnitPanel';
-import { BUILDING_EXTRUSION_COLOR, LIVE_MAP_STYLES, ROUTE_COLOR, TONE, applyMapPalette, type LiveMapTheme, type UnitTone } from './liveMapStyle';
+import { BUILDING_EXTRUSION_COLOR, LIVE_MAP_STYLES, ROUTE_COLOR, TONE, applyMapPalette, loadLiveMapStyle, type LiveMapTheme, type UnitTone } from './liveMapStyle';
 
 const REFRESH_MS = 15_000;
+/** How long the map waits for the fleet before opening on Saudi Arabia instead of on the trucks. */
+const FIRST_DATA_WAIT_MS = 1500;
+/** Page colour behind the map while it fades in — the basemap's own land colour. */
+const MAP_BG: Record<LiveMapTheme, string> = { light: '#f6f4ef', dark: '#1a2230' };
 /** Below this width the map uses one bottom card instead of the CarPlay layout. */
 const COMPACT_BELOW_PX = 760;
 /** Units closer than this many pixels merge into a numbered group. */
@@ -170,6 +175,27 @@ export default function FleetCommandMap({
   });
   const units = useMemo(() => data?.units ?? [], [data]);
 
+  // The style arrives pre-coloured (no flash of stock colours). On a theme
+  // switch the old style stays up until the new one is ready.
+  const [mapStyle, setMapStyle] = useState<{ theme: LiveMapTheme; style: StyleSpecification | string } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    loadLiveMapStyle(theme)
+      .then((style) => alive && setMapStyle({ theme, style }))
+      .catch(() => alive && setMapStyle({ theme, style: LIVE_MAP_STYLES[theme] })); // recoloured on load instead
+    return () => { alive = false; };
+  }, [theme]);
+  const shownTheme = mapStyle?.theme ?? theme;
+
+  // Open the map once the fleet is known, so it starts framed on the trucks
+  // rather than jumping there (and loading tiles twice). Don't wait forever.
+  const [waitedEnough, setWaitedEnough] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setWaitedEnough(true), FIRST_DATA_WAIT_MS);
+    return () => clearTimeout(t);
+  }, []);
+  const canMount = !!mapStyle && (!!data || isError || waitedEnough);
+
   const onMap = useMemo(() => units.filter((u) => u.position), [units]);
   const visible = useMemo(
     () => onMap.filter((u) => (onlyKeys ? onlyKeys.has(u.key) : matchesFilter(u, filter) && matchesQuery(u, query))),
@@ -182,6 +208,8 @@ export default function FleetCommandMap({
   );
 
   const selected = useMemo(() => units.find((u) => u.key === selectedKey) ?? null, [units, selectedKey]);
+  // The selected trip's customer tracking link, ready before Share is clicked.
+  const tracking = useTrackingLink(selected?.trip?.id, !!selected?.trip);
   const stop = selected ? nextStop(selected) : null;
 
   // ── Grouping: nearby units merge into a numbered bubble; the selected one never does ──
@@ -501,13 +529,28 @@ export default function FleetCommandMap({
     if (b) mapRef.current?.fitBounds(b, { padding: { top: 90, bottom: 60, left: 60 + insetLeftRef.current, right: 60 }, maxZoom: 12, pitch: 0, bearing: 0, duration: 1100 });
   }, [areasKey, areas]);
 
-  // First data: frame everything once — after the map has loaded, or the
-  // padding (which keeps clear of a floating panel) is dropped.
+  // Where the map opens: on the fleet when it is already known, else Saudi Arabia.
+  const initialView = useRef<React.ComponentProps<typeof MapGL>['initialViewState'] | null>(null);
+  if (canMount && !initialView.current) {
+    const b = boundsOf(visible.map((u) => u.position!));
+    if (b) {
+      fittedOnce.current = true;
+      initialView.current = {
+        bounds: b,
+        fitBoundsOptions: { padding: { top: 70, bottom: 70, right: 70, left: 70 + insetLeft }, maxZoom: 11 },
+      };
+    } else {
+      initialView.current = { longitude: SAUDI_CENTER[1], latitude: SAUDI_CENTER[0], zoom: DEFAULT_SAUDI_ZOOM };
+    }
+  }
+
+  // The fleet arrived after the map opened: glide to it once — after the map
+  // has loaded, or the padding (which keeps clear of a floating panel) is dropped.
   const [mapLoaded, setMapLoaded] = useState(false);
   useEffect(() => {
     if (!fittedOnce.current && data && mapLoaded && mapRef.current) {
       fittedOnce.current = true;
-      fitAll(false);
+      fitAll(true);
     }
   }, [data, fitAll, mapLoaded]);
 
@@ -558,29 +601,45 @@ export default function FleetCommandMap({
 
   const share = () => {
     if (!selected) return;
-    const text = buildEtaShareText(selected, eta, formatTime);
+    const text = buildEtaShareText(selected, eta, formatTime, tracking.autoUrl);
     window.open(whatsAppLink(null, text), '_blank', 'noopener');
     toast.success('ETA ready to send in WhatsApp');
   };
-
-  // Bearing lives in CSS so markers don't re-render on every rotate frame.
-  const syncCamera = useCallback(() => {
-    const map = mapRef.current;
-    const el = wrapRef.current;
-    if (!map || !el) return;
-    el.style.setProperty('--map-bearing', `${map.getBearing()}deg`);
-  }, []);
 
   const snapshotView = useCallback(() => {
     const map = mapRef.current;
     if (!map) return;
     const b = map.getBounds();
-    setView({
+    // Group a margin around the screen too, so trucks just off-screen are
+    // already placed when a pan brings them in (instead of popping in after).
+    const padLng = (b.getEast() - b.getWest()) / 2;
+    const padLat = (b.getNorth() - b.getSouth()) / 2;
+    const next = {
       zoom: map.getZoom(),
-      bbox: [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()],
+      bbox: [
+        Math.max(-180, b.getWest() - padLng), Math.max(-85, b.getSouth() - padLat),
+        Math.min(180, b.getEast() + padLng), Math.min(85, b.getNorth() + padLat),
+      ] as [number, number, number, number],
       tilted: Math.abs(map.getBearing()) > 1 || map.getPitch() > 1,
-    });
+    };
+    zoomBucket.current = Math.floor(next.zoom);
+    // Style events fire this repeatedly with nothing changed — don't re-render for those.
+    setView((prev) => (
+      prev && prev.zoom === next.zoom && prev.tilted === next.tilted && prev.bbox.every((v, i) => v === next.bbox[i]) ? prev : next
+    ));
   }, []);
+
+  // Bearing lives in CSS so markers don't re-render on every rotate frame.
+  // Grouping is redone mid-zoom whenever a whole zoom level is crossed, so
+  // trucks merge and split while zooming rather than all at once at the end.
+  const zoomBucket = useRef<number | null>(null);
+  const syncCamera = useCallback(() => {
+    const map = mapRef.current;
+    const el = wrapRef.current;
+    if (!map || !el) return;
+    el.style.setProperty('--map-bearing', `${map.getBearing()}deg`);
+    if (zoomBucket.current !== null && Math.floor(map.getZoom()) !== zoomBucket.current) snapshotView();
+  }, [snapshotView]);
 
   const paintedFor = useRef<LiveMapTheme | null>(null);
   const onStyleLoad = useCallback(() => {
@@ -591,13 +650,14 @@ export default function FleetCommandMap({
     // (Liberty puts one-way arrows mid-stack, so "first symbol" would be too low).
     const lastDrawn = layers.reduce((i, l, idx) => (l.type !== 'symbol' ? idx : i), -1);
     setFirstSymbolId(layers.slice(lastDrawn + 1).find((l) => l.type === 'symbol')?.id);
-    if (paintedFor.current !== theme && map.isStyleLoaded()) {
-      paintedFor.current = theme;
-      applyMapPalette(map, theme);
+    // Only the fallback (style URL, pre-colouring failed) still needs recolouring here.
+    if (typeof mapStyle?.style === 'string' && paintedFor.current !== shownTheme && map.isStyleLoaded()) {
+      paintedFor.current = shownTheme;
+      applyMapPalette(map, shownTheme);
     }
     syncCamera();
     snapshotView();
-  }, [syncCamera, snapshotView, theme]);
+  }, [syncCamera, snapshotView, mapStyle, shownTheme]);
 
   // ── Route geometry ──
   const routeLine = useMemo(() => {
@@ -613,7 +673,7 @@ export default function FleetCommandMap({
   }, [restRoute, restStops]);
   const stopGroups = useMemo(() => (selected ? groupStops(selected) : []), [selected]);
 
-  const colors = ROUTE_COLOR[theme];
+  const colors = ROUTE_COLOR[shownTheme];
   const lastUpdate = dataUpdatedAt ? timeAgo(new Date(dataUpdatedAt).toISOString()) : null;
 
   return (
@@ -626,11 +686,16 @@ export default function FleetCommandMap({
     >
       {expanded && <div className="fixed inset-0 -z-10 bg-charcoal-strong/40 backdrop-blur-sm" onClick={() => setExpanded(false)} />}
 
-      <div ref={wrapRef} className="absolute inset-0 isolate">
+      <div
+        ref={wrapRef}
+        className={cn('absolute inset-0 isolate transition-opacity duration-500 ease-out', mapLoaded ? 'opacity-100' : 'opacity-0')}
+        style={{ backgroundColor: MAP_BG[shownTheme] }}
+      >
+        {canMount && mapStyle && (
         <MapGL
           ref={mapRef}
-          mapStyle={LIVE_MAP_STYLES[theme]}
-          initialViewState={{ longitude: SAUDI_CENTER[1], latitude: SAUDI_CENTER[0], zoom: DEFAULT_SAUDI_ZOOM }}
+          mapStyle={mapStyle.style}
+          initialViewState={initialView.current ?? undefined}
           maxBounds={MAX_BOUNDS}
           minZoom={3.5}
           maxZoom={19}
@@ -657,7 +722,7 @@ export default function FleetCommandMap({
             minzoom={14}
             beforeId={firstSymbolId}
             paint={{
-              'fill-extrusion-color': BUILDING_EXTRUSION_COLOR[theme],
+              'fill-extrusion-color': BUILDING_EXTRUSION_COLOR[shownTheme],
               'fill-extrusion-height': ['coalesce', ['get', 'render_height'], 8],
               'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
               'fill-extrusion-opacity': 0.75,
@@ -755,6 +820,7 @@ export default function FleetCommandMap({
 
           {hovered && <HoverPeek unit={hovered} />}
         </MapGL>
+        )}
       </div>
 
       {/* ── Overlays ── */}
@@ -921,7 +987,7 @@ export default function FleetCommandMap({
           </div>
         )}
 
-        {!data && !isError && (
+        {(!mapLoaded || (!data && !isError)) && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className={cn('rounded-xl px-3 py-2 text-xs text-muted-foreground', GLASS)}>Loading live fleet…</div>
           </div>

@@ -2,10 +2,16 @@ import { Trip } from '@/services/tripService';
 import { calculateRoadDistanceKm, resolveCityCoords } from '@/services/travelTimeService';
 import { toast } from 'sonner';
 
+/** Ends a message with the customer tracking link, when there is one. */
+function withTrackingLink(text: string, url: string | null | undefined): string {
+  return url ? `${text}\n\nTrack live: ${url}` : text;
+}
+
 /**
  * Formats a single trip message for WhatsApp dispatch.
  */
-export function formatSingleTripWhatsappMessage(trip: Trip, withTailgate = false): string {
+
+export function formatSingleTripWhatsappMessage(trip: Trip, withTailgate = false, trackingUrl?: string | null): string {
   const customerName = trip.customer?.name || 'Unassigned';
   const driverName = trip.is_third_party
     ? (trip.third_party_driver_name || trip.thirdPartyProvider?.name || '3PL Driver')
@@ -36,7 +42,7 @@ export function formatSingleTripWhatsappMessage(trip: Trip, withTailgate = false
     if (withTailgate) {
       text += `\n\nWITH TAILGATE`;
     }
-    return text;
+    return withTrackingLink(text, trackingUrl);
   } else {
     let distanceText = 'Unavailable';
     let etaText = 'Unavailable';
@@ -67,19 +73,19 @@ export function formatSingleTripWhatsappMessage(trip: Trip, withTailgate = false
     else if (trip.status === 'AtDelivery') statusDisplay = 'At Delivery';
     else if (trip.status === 'InTransit') statusDisplay = 'In Transit';
 
-    return `🚛 Vehicle Status Update\n\n` +
+    return withTrackingLink(`🚛 Vehicle Status Update\n\n` +
            `Truck: *${plate}*\n` +
            `Driver: ${driverName}\n` +
            `Route: ${pickupName}>>>${dropoffName}\n` +
            `Distance left: ${distanceText}\n` +
            `ETA: ${etaText}\n` +
-           `Status: ${statusDisplay}`;
+           `Status: ${statusDisplay}`, trackingUrl);
   }
 }
 
-export function formatMultipleTripsWhatsappMessage(trips: Trip[]): string {
+export function formatMultipleTripsWhatsappMessage(trips: Trip[], links: Record<string, string | null> = {}): string {
   if (!trips || trips.length === 0) return '';
-  if (trips.length === 1) return formatSingleTripWhatsappMessage(trips[0]);
+  if (trips.length === 1) return formatSingleTripWhatsappMessage(trips[0], false, links[trips[0].id]);
 
   const firstTrip = trips[0];
   const customerName = firstTrip.customer?.name || 'LOGISTICS DISPATCH';
@@ -109,7 +115,8 @@ export function formatMultipleTripsWhatsappMessage(trips: Trip[]): string {
 
       return `${idx + 1}. *${trip.ref_id || 'TRIP'}* | ${pickupName}>>>${dropoffName} ${vClass} (${lType})\n` +
              `   • Driver: ${driverName} (${driverPhone})\n` +
-             `   • Truck: ${plate}`;
+             `   • Truck: ${plate}` +
+             (links[trip.id] ? `\n   • Track live: ${links[trip.id]}` : '');
     });
 
     return text + items.join('\n\n');
@@ -161,7 +168,8 @@ export function formatMultipleTripsWhatsappMessage(trips: Trip[]): string {
              `   • Driver: ${driverName}\n` +
              `   • Route: ${pickupName}>>>${dropoffName}\n` +
              `   • Status: *${statusDisplay}*\n` +
-             `   • ETA: ${etaText} | Dist: ${distanceText}`;
+             `   • ETA: ${etaText} | Dist: ${distanceText}` +
+             (links[trip.id] ? `\n   • Track live: ${links[trip.id]}` : '');
     });
 
     return text + items.join('\n\n');
@@ -173,11 +181,11 @@ export function formatMultipleTripsWhatsappMessage(trips: Trip[]): string {
  * Supports combined mode (recommended: 1 window with formatted summary)
  * or separate mode (opens windows synchronously within single user gesture to avoid popup blocking).
  */
-export function openMultipleWhatsappMessages(trips: Trip[], mode: 'combined' | 'separate' = 'combined') {
+export function openMultipleWhatsappMessages(trips: Trip[], mode: 'combined' | 'separate' = 'combined', links: Record<string, string | null> = {}) {
   if (!trips || trips.length === 0) return;
 
   if (trips.length === 1 || mode === 'combined') {
-    const text = trips.length === 1 ? formatSingleTripWhatsappMessage(trips[0]) : formatMultipleTripsWhatsappMessage(trips);
+    const text = trips.length === 1 ? formatSingleTripWhatsappMessage(trips[0], false, links[trips[0].id]) : formatMultipleTripsWhatsappMessage(trips, links);
 
     // Pick customer phone if available
     const commonCustomer = trips[0].customer;
@@ -204,7 +212,7 @@ export function openMultipleWhatsappMessages(trips: Trip[], mode: 'combined' | '
     // Separate mode: Open windows synchronously in loop without setTimeout
     let opened = 0;
     trips.forEach((trip) => {
-      const text = formatSingleTripWhatsappMessage(trip);
+      const text = formatSingleTripWhatsappMessage(trip, false, links[trip.id]);
       let phone = '';
       if (!trip.is_third_party && trip.driver?.phone_primary) {
         phone = trip.driver.phone_primary;
@@ -223,7 +231,7 @@ export function openMultipleWhatsappMessages(trips: Trip[], mode: 'combined' | '
     });
 
     if (navigator.clipboard) {
-      const allText = formatMultipleTripsWhatsappMessage(trips);
+      const allText = formatMultipleTripsWhatsappMessage(trips, links);
       navigator.clipboard.writeText(allText).catch(() => {});
     }
 

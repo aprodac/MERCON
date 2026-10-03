@@ -1,5 +1,5 @@
 import { api, ApiResponse } from '@/lib/api';
-import type { PublicSettings, Settings } from '@mercon/shared-types';
+import type { AssistantConfig, PublicSettings, Settings } from '@mercon/shared-types';
 
 export const settingsService = {
   async getPublic(): Promise<PublicSettings> {
@@ -77,6 +77,18 @@ export const settingsService = {
    */
   async updateTimezone(timezone: string): Promise<Settings> {
     const res = await api.put<ApiResponse<Settings>>('/settings/timezone', { timezone });
+    return res.data.data;
+  },
+
+  /** Ops WhatsApp number for the customer tracking page's "Ask us" button (Admin). Empty switches the button off. */
+  async updateSupportWhatsapp(supportWhatsapp: string | null): Promise<Settings> {
+    const res = await api.put<ApiResponse<Settings>>('/settings/support-whatsapp', { supportWhatsapp });
+    return res.data.data;
+  },
+
+  /** Settings → Assistant: what the floating assistant reports and how it looks (Admin only). */
+  async updateAssistant(config: AssistantConfig): Promise<Settings> {
+    const res = await api.put<ApiResponse<Settings>>('/settings/assistant', config);
     return res.data.data;
   },
 

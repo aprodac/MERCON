@@ -26,7 +26,7 @@ export function useTripAccelerators(
 ) {
   const { data: recentTripsRes } = useQuery({
     queryKey: ['recent-trips-accelerators', contractCustomer],
-    queryFn: () => tripService.getAll({ per_page: 100 }),
+    queryFn: () => tripService.getAll({ per_page: 100, lite: true }),
     staleTime: 60000,
   });
   const recentTrips: Trip[] = recentTripsRes?.data ?? [];

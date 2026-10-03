@@ -51,6 +51,11 @@ interface LocationPickerMapProps {
   compact?: boolean;
   /** Compact only — height of the map once it is unfolded. */
   mapHeight?: number;
+  /**
+   * Pin only: the search box and an always-open map, no name or address
+   * inputs. Used by the "Set pin" box, whose one job is to place the pin.
+   */
+  pinOnly?: boolean;
 }
 
 function ClickToPlacePin({ onPick }: { onPick: (lat: number, lng: number) => void }) {
@@ -72,7 +77,17 @@ function FlyToPin({ lat, lng }: { lat: number; lng: number }) {
   return null;
 }
 
-export default function LocationPickerMap({ label, lat, lng, onChange, name, onNameChange, address, onAddressChange, defaultCenter = [24.7136, 46.6753], compact = false, mapHeight = 200 }: LocationPickerMapProps) {
+/** Leaflet measures its box once; inside a dialog that box is still animating in. */
+function MapResizer() {
+  const map = useMap();
+  useEffect(() => {
+    const timer = setTimeout(() => map.invalidateSize(), 200);
+    return () => clearTimeout(timer);
+  }, [map]);
+  return null;
+}
+
+export default function LocationPickerMap({ label, lat, lng, onChange, name, onNameChange, address, onAddressChange, defaultCenter = [24.7136, 46.6753], compact = false, mapHeight = 200, pinOnly = false }: LocationPickerMapProps) {
   const [query, setQuery] = useState('');
   /** Compact only — the map and the manual fields start folded. */
   const [mapOpen, setMapOpen] = useState(false);
@@ -281,7 +296,7 @@ export default function LocationPickerMap({ label, lat, lng, onChange, name, onN
   const mapBlock = (
     <div
       className="rounded-xl overflow-hidden border relative z-0"
-      style={{ height: compact ? mapHeight : 220 }}
+      style={{ height: compact || pinOnly ? mapHeight : 220 }}
     >
       <MapContainer 
         center={center} 
@@ -301,6 +316,7 @@ export default function LocationPickerMap({ label, lat, lng, onChange, name, onN
         <TileLayer
           url="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}"
         />
+        <MapResizer />
         <ClickToPlacePin onPick={onChange} />
         {lat != null && lng != null && (
           <>
@@ -322,6 +338,17 @@ export default function LocationPickerMap({ label, lat, lng, onChange, name, onN
       </MapContainer>
     </div>
   );
+
+  if (pinOnly) {
+    return (
+      <div className="flex flex-col gap-2">
+        {searchField}
+        {languagePicker}
+        {mapBlock}
+        <span className="text-[11px] text-muted-foreground">Drag the pin or click the map to put it on the gate.</span>
+      </div>
+    );
+  }
 
   if (compact) {
     return (

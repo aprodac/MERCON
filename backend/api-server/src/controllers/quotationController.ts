@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { resolveLocation } from './locationController';
 import { findQuotationForLane, quotationInclude } from '../services/rateLookup';
+import { billingTypeVariants, lineTypeVariants } from '@mercon/shared-types';
 import { getValidUuid } from '../utils/uuid';
 import { logger } from '../utils/logger';
 import { vehicleTypeField, rateCategoryField, billingTypeField } from '../schemas';
@@ -224,8 +225,11 @@ export const getQuotations = async (req: Request, res: Response) => {
       });
     }
 
-    if (line_type || rate_category) whereClause.line_type = (line_type || rate_category) as string;
-    if (billing_type || req.query.operation_type) whereClause.operation_type = (billing_type || req.query.operation_type) as string;
+    // Stored values are a mix of labels ("Extra", "Single Trip") and codes ("EXTRA", "SINGLE_TRIP").
+    const ltFilter = lineTypeVariants((line_type || rate_category) as string | undefined);
+    if (ltFilter.length > 0) whereClause.line_type = { in: ltFilter };
+    const btFilter = billingTypeVariants((billing_type || req.query.operation_type) as string | undefined);
+    if (btFilter.length > 0) whereClause.operation_type = { in: btFilter };
 
     if (search && typeof search === 'string' && search.trim()) {
       const term = search.trim();

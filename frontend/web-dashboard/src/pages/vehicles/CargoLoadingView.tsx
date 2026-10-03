@@ -2,8 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { vehicleService } from '@/services/vehicleService';
-import { resolveFileUrl } from '@/lib/documents';
-import { getDriverAvatar } from '@/lib/driverAvatarMap';
+import { driverPhotoUrl, resolveFileUrl } from '@/lib/documents';
 import truckNewImg from '@/assets/truck-new.png';
 import { maintenanceService } from '@/services/maintenanceService';
 import { documentService } from '@/services/documentService';
@@ -493,7 +492,7 @@ export default function CargoLoadingView() {
   const driverName = personName(assignedDriver) || 'Unassigned';
   const driverPhone: string = assignedDriver?.phone_primary || assignedDriver?.phone || '';
   const rawAvatarUrl = assignedDriver?.avatar_url || assignedDriver?.photo_url || assignedDriver?.image_url || (assignedDriver as any)?.avatar || null;
-  const driverAvatar = getDriverAvatar(rawAvatarUrl, driverName) || (rawAvatarUrl ? resolveFileUrl(rawAvatarUrl) : '');
+  const driverAvatar = driverPhotoUrl(rawAvatarUrl) || '';
   const capacityFormatted = vehicle?.capacity_kg ? `${(vehicle.capacity_kg / 1000).toLocaleString()} Ton` : '—';
 
   // Telemetry strip: real readings only, "—" when nothing has been recorded.

@@ -1,39 +1,43 @@
 import { Request, Response } from 'express';
-import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
+import { firstName, resolveTripToken } from '../services/tracking/customerTracking';
 
+const GALLERY_GONE = {
+  replaced: 'This link is no longer valid. Ask MERCON for a new one.',
+  expired: 'This link has expired. Ask MERCON for a new one.',
+  cancelled: 'This trip was cancelled.',
+  disabled: "Photos aren't available for this shipment.",
+} as const;
+
+/**
+ * GET /public/evidence-gallery?t=<token> — the trip's photo and video page.
+ *
+ * Opened by the trip's tracking-link token (unguessable, one per trip, retired
+ * by "New link"), never by trip number: trip numbers run in sequence, so the
+ * old `?ref=TRP-0252` links let anyone page through every customer's trips.
+ * Old ref links now answer 410 "no longer valid".
+ */
 export const getPublicTripEvidence = async (req: Request, res: Response) => {
   try {
-    const ref = (req.query.ref as string) || (req.query.token as string);
-    if (!ref) {
-      return res.status(400).json({ success: false, error: { message: 'Missing trip reference parameter (ref)' } });
+    const token = typeof req.query.t === 'string' ? req.query.t.trim() : '';
+    if (!token) {
+      return res.status(410).json({ success: false, error: { code: 'LINK_REPLACED', message: GALLERY_GONE.replaced } });
+    }
+    const found = await resolveTripToken(prisma, token, new Date());
+    if (found.state === 'not_found') {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'This link is not valid.' } });
+    }
+    if (found.state !== 'ok') {
+      return res.status(410).json({ success: false, error: { code: found.state.toUpperCase(), message: GALLERY_GONE[found.state] } });
     }
 
-    const cleanRef = String(ref).trim();
-    const rawNumber = cleanRef.replace(/^TRP-?/i, '').trim();
-    const mode = 'insensitive' as Prisma.QueryMode;
-
-    const isUuid = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(cleanRef);
-
-    // Query trip by ref_id (case-insensitive & variant tolerant) or ID
     const trip = await prisma.trip.findFirst({
-      where: {
-        OR: [
-          ...(isUuid ? [{ id: cleanRef }] : []),
-          { ref_id: { equals: cleanRef, mode } },
-          { ref_id: { contains: cleanRef, mode } },
-          ...(rawNumber ? [
-            { ref_id: { equals: `TRP-${rawNumber}`, mode } },
-            { ref_id: { equals: `TRP-${rawNumber.padStart(4, '0')}`, mode } },
-            { ref_id: { endsWith: rawNumber, mode } }
-          ] : [])
-        ],
-        deletedAt: null
-      },
+      where: { id: found.share.tripId, deletedAt: null },
       include: {
         customer: { select: { name: true } },
-        driver: { select: { first_name: true, last_name: true, phone_primary: true } },
+        driver: { select: { first_name: true } },
+        subcontract: { select: { driverName: true, vehiclePlate: true } },
         vehicle: { select: { plate_number: true, asset_type: true } },
         stops: {
           orderBy: { stop_sequence: 'asc' },
@@ -43,7 +47,7 @@ export const getPublicTripEvidence = async (req: Request, res: Response) => {
     });
 
     if (!trip) {
-      return res.status(404).json({ success: false, error: { message: 'Trip evidence gallery not found or link expired.' } });
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'This link is not valid.' } });
     }
 
     const stopIds = trip.stops.map(s => s.id);
@@ -69,12 +73,11 @@ export const getPublicTripEvidence = async (req: Request, res: Response) => {
       orderBy: { createdAt: 'asc' }
     });
 
-    const driverName = trip.is_third_party
-      ? ((trip as any).third_party_driver_name || '3PL Driver')
-      : (trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name || ''}`.trim() : 'Driver');
+    // First name only, same as the tracking page — customers don't need more.
+    const driverName = firstName(trip.is_third_party ? trip.subcontract?.driverName : trip.driver?.first_name) || 'Driver';
 
     const vehiclePlate = trip.is_third_party
-      ? ((trip as any).third_party_vehicle_plate || '3PL Vehicle')
+      ? (trip.subcontract?.vehiclePlate || '3PL Vehicle')
       : (trip.vehicle?.plate_number || 'Unassigned');
 
     const pickupStop = trip.stops.find(s => s.stop_type === 'Pickup') || trip.stops[0];

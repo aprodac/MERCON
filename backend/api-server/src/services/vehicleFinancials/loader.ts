@@ -235,7 +235,8 @@ async function load(db: Db, range: Range, scope: Scope) {
   for (const m of maintenance) {
     costs.push({
       id: m.id, refId: m.ref_id, source: 'maintenance', vehicleId: m.vehicleId, day: localDay(m.start_date || m.service_date, tz),
-      amount: num(m.cost), line: 'maintenance', category: m.maintenance_type, description: m.work_done || m.workshop_name,
+      // Net of reclaimable VAT, like every other cost
+      amount: num(m.cost) - num(m.vat_amount), line: 'maintenance', category: m.maintenance_type, description: m.work_done || m.workshop_name,
     });
   }
   for (const l of billLines) {

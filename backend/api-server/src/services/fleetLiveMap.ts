@@ -16,7 +16,17 @@
  * `position: null` so the map can list it as "no signal" rather than drop a
  * pin on a city centre.
  */
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
+
+interface LatestTripFix {
+  tripId: string;
+  lat: number;
+  lng: number;
+  speed_kph: number | null;
+  heading: number | null;
+  accuracy_m: number | null;
+  recordedAt: Date;
+}
 
 export const DRIVER_GPS_FRESH_MS = 120_000;
 export const VEHICLE_GPS_FRESH_MS = 180_000;
@@ -420,13 +430,21 @@ export async function loadLiveUnits(db: PrismaClient): Promise<LiveUnit[]> {
   ]);
 
   const tripIds = trips.map((t) => t.id);
+  // Latest phone fix per trip. Prisma's `distinct` runs in memory — it read every
+  // GPS ping of every live trip (thousands per multi-day trip) on each 15 s map
+  // refresh. One index-backed LIMIT 1 per trip instead.
   const tripLocations = tripIds.length
-    ? await db.tripLocation.findMany({
-        where: { tripId: { in: tripIds } },
-        orderBy: [{ tripId: 'asc' }, { recordedAt: 'desc' }],
-        distinct: ['tripId'],
-        select: { tripId: true, lat: true, lng: true, speed_kph: true, heading: true, accuracy_m: true, recordedAt: true },
-      })
+    ? await db.$queryRaw<LatestTripFix[]>(Prisma.sql`
+        SELECT l."tripId", l.lat, l.lng, l.speed_kph, l.heading, l.accuracy_m, l."recordedAt"
+        FROM unnest(${tripIds}::uuid[]) AS t(id)
+        CROSS JOIN LATERAL (
+          SELECT "tripId", lat, lng, speed_kph, heading, accuracy_m, "recordedAt"
+          FROM "TripLocation"
+          WHERE "tripId" = t.id
+          ORDER BY "recordedAt" DESC
+          LIMIT 1
+        ) l
+      `)
     : [];
 
   return buildLiveUnits({

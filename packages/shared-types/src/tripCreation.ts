@@ -365,7 +365,8 @@ const FALLBACK_TZ_OFFSET_MIN: Record<string, number> = {
   UTC: 0,
 };
 
-function tzOffsetMs(utcMs: number, tz: string): number {
+/** How far `tz` is ahead of UTC at the instant `utcMs`, in ms. */
+export function tzOffsetMs(utcMs: number, tz: string): number {
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: tz,
@@ -387,15 +388,15 @@ function tzOffsetMs(utcMs: number, tz: string): number {
 }
 
 /**
- * A wall-clock date (YYYY-MM-DD) + time (HH:mm) in `tz` as a UTC ISO string —
+ * A wall-clock date (YYYY-MM-DD) + time (HH:mm or HH:mm:ss) in `tz` as a UTC ISO string —
  * the same result as date-fns-tz `fromZonedTime`, without the dependency.
  * Without a time, the date is returned unchanged.
  */
 export function zonedWallTimeToUtcIso(date: string, time: string | undefined, tz: string): string {
   if (!date || !time) return date;
   const [y, m, d] = date.split('-').map(Number);
-  const [hh, mm] = time.split(':').map(Number);
-  const wall = Date.UTC(y, m - 1, d, hh, mm);
+  const [hh, mm, ss = 0] = time.split(':').map(Number);
+  const wall = Date.UTC(y, m - 1, d, hh, mm, ss);
   // Take the offset that round-trips; in a DST gap neither does, so keep the first guess.
   // (In the repeated hour when clocks go back this picks the earlier instant — no DST in the Gulf.)
   const first = tzOffsetMs(wall, tz);
@@ -421,6 +422,12 @@ export interface TripSlotDraft extends QuotationSlotInput {
   dropoffDate?: string;
   dropoffTime: string;
   isOvernight?: boolean;
+  /**
+   * Minutes after pickup at which the truck reaches each outbound intermediate
+   * stop (same order as the stops), from the travel-time estimate. Without it
+   * the stops are spaced evenly between pickup and arrival.
+   */
+  intermediateArrivalOffsets?: number[];
   tripCharges: string;
   driverPayoutModified?: boolean;
   updateQuotationPayout?: boolean;
@@ -610,6 +617,35 @@ export function summarizeTripRows(rows: TripImportRow[]): {
 }
 
 /**
+ * Gives the stops between a leg's first and last stop a planned time. With
+ * `offsetsMinutes` (minutes after `startIso`, one per middle stop) those are
+ * used — clamped inside the leg; otherwise the stops are spaced evenly.
+ * Exported for tests.
+ */
+export function fillIntermediateStopTimes(
+  leg: Array<{ planned_arrival?: Date | string | null }>,
+  startIso?: string,
+  endIso?: string,
+  offsetsMinutes?: number[],
+): void {
+  const middle = leg.slice(1, -1);
+  if (middle.length === 0 || !startIso || !endIso) return;
+  const start = new Date(startIso).getTime();
+  const end = new Date(endIso).getTime();
+  if (isNaN(start) || isNaN(end) || end <= start) return;
+  const useOffsets =
+    Array.isArray(offsetsMinutes) &&
+    offsetsMinutes.length === middle.length &&
+    offsetsMinutes.every((m) => Number.isFinite(m) && m > 0);
+  middle.forEach((stop, i) => {
+    const at = useOffsets
+      ? Math.min(start + offsetsMinutes![i] * 60000, end)
+      : start + ((end - start) * (i + 1)) / (middle.length + 1);
+    stop.planned_arrival = new Date(Math.round(at / 60000) * 60000).toISOString();
+  });
+}
+
+/**
  * The bulk-import rows for the form: one per slot, or one per slot per
  * operating date for a monthly contract.
  */
@@ -662,6 +698,9 @@ export function buildTripRows(input: TripRowsInput): TripImportRow[] {
       if (leg0.length > 1 && outboundArrival) leg0[leg0.length - 1].planned_arrival = outboundArrival;
       if (leg1[0] && ret.pickup) leg1[0].planned_arrival = ret.pickup;
       if (leg1.length > 1 && ret.arrival) leg1[leg1.length - 1].planned_arrival = ret.arrival;
+      // Stops in between: from the estimate's per-stop times, else spaced evenly.
+      fillIntermediateStopTimes(leg0, plannedStart, outboundArrival, slot.intermediateArrivalOffsets);
+      fillIntermediateStopTimes(leg1, ret.pickup, ret.arrival);
 
       const common = {
         customer_id: customerId,
@@ -711,7 +750,9 @@ export function buildTripRows(input: TripRowsInput): TripImportRow[] {
       const coDriverId = pick(assignment.coDriverId, masterCoDriver);
 
       const baseRateCardPayout = resolveSlotDriverPayout(slot);
-      const shouldUpdateQuotation = Boolean(slot.updateQuotationPayout || slot.driverPayoutModified);
+      // An explicit updateQuotationPayout (e.g. "Save it on the quotation too" unticked) wins;
+      // otherwise an edited payout is written back to the quotation.
+      const shouldUpdateQuotation = Boolean(slot.updateQuotationPayout ?? slot.driverPayoutModified);
 
       let finalDriverPayout = baseRateCardPayout;
       let finalCoDriverPayout = 0;

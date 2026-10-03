@@ -49,6 +49,15 @@ FROM nginx:alpine
 COPY frontend/web-dashboard/nginx.conf /etc/nginx/conf.d/default.conf
 # Copy the built assets from the build stage
 COPY --from=build /app/frontend/web-dashboard/dist /usr/share/nginx/html
+# track.html: index.html plus the SSI include that nginx fills with a tracking
+# link's WhatsApp preview tags (see the /t/ and /c/ locations in nginx.conf).
+# Right after <meta charset> — the charset must stay first in <head>.
+# The customer page never shows the login background: connect early to the map
+# tile server instead.
+RUN sed -e 's|<meta charset="UTF-8" />|&<!--# include virtual="/__og$request_uri" -->|' \
+        -e 's|<link rel="preload" href="/login-bg.webp"[^>]*>|<link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />|' \
+      /usr/share/nginx/html/index.html > /usr/share/nginx/html/track.html \
+ && grep -q '__og' /usr/share/nginx/html/track.html
 # Expose port 80
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

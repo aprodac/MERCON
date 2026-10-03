@@ -99,10 +99,31 @@ interface CommercialSectionProps {
   fieldErrors?: Record<string, boolean>;
   assignmentType?: string;
   isEditMode?: boolean;
-  /** The customer's latest trip, offered as a one-click repeat. */
-  lastCustomerTrip?: any | null;
-  onRepeatTrip?: (trip: any) => void;
+  /** Customers / quotations still loading — skeletons instead of empty states. */
+  loading?: { customers?: boolean; rateCards?: boolean };
 }
+
+/** Placeholder cards shaped like the quotation / customer cards while data loads. */
+const CardSkeletons: React.FC<{ label: string; height: string }> = ({ label, height }) => (
+  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full" aria-busy="true" aria-label={label}>
+    {[0, 1, 2].map((i) => (
+      <div
+        key={i}
+        className={cn('rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-3 flex flex-col justify-between', height, i > 0 && 'hidden sm:flex')}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <div className="h-4 w-12 rounded bg-slate-200/80 dark:bg-slate-700/70 animate-pulse" />
+          <div className="h-5 w-20 rounded-md bg-slate-100 dark:bg-slate-700/50 animate-pulse" />
+        </div>
+        <div className="h-7 w-full rounded-lg bg-slate-100 dark:bg-slate-700/50 animate-pulse" />
+        <div className="flex items-center justify-between">
+          <div className="h-3 w-24 rounded bg-slate-200/70 dark:bg-slate-700/60 animate-pulse" />
+          <div className="h-3 w-10 rounded bg-slate-100 dark:bg-slate-700/50 animate-pulse" />
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
 export const CommercialSection: React.FC<CommercialSectionProps> = ({
   contractSlots,
@@ -124,9 +145,10 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
   fieldErrors = {},
   assignmentType = 'own',
   isEditMode = false,
-  lastCustomerTrip = null,
-  onRepeatTrip,
+  loading = {},
 }) => {
+  const rateCardsLoading = Boolean(loading.rateCards) && customerRateCards.length === 0;
+  const customersLoading = Boolean(loading.customers) && customers.length === 0;
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const [isInlineMode, setIsInlineMode] = React.useState(false);
@@ -228,7 +250,8 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
   const isLaneUnmatched = hasLocationsEntered && !hasMatchingCardsForLane && !isMatchedQuotation;
 
   // Show inline form if explicitly toggled, if lane is unmatched, or if customer has 0 cards
-  const showInlineForm = isInlineMode || isLaneUnmatched || (effectiveRateCards.length === 0 && !quotationSearchQuery);
+  // Never while quotations are still loading — it flashed the form before the cards arrived.
+  const showInlineForm = !rateCardsLoading && (isInlineMode || isLaneUnmatched || (effectiveRateCards.length === 0 && !quotationSearchQuery));
 
   const derivedCustomerOptions = React.useMemo(() => {
     if (customerOptions && customerOptions.length > 0) return customerOptions;
@@ -434,7 +457,7 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
                 value={contractCustomer}
                 hasError={Boolean(fieldErrors?.['customer'])}
                 onChange={(val) => setContractCustomer?.(val)}
-                placeholder="Select customer account..."
+                placeholder={customersLoading ? 'Loading customers…' : 'Select customer account...'}
                 searchPlaceholder="Search customer name or code..."
                 triggerClassName="h-8.5 rounded-xl border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-bold text-slate-800 dark:text-slate-200 shadow-2xs w-full focus:ring-2 focus:ring-brand"
               />
@@ -446,54 +469,6 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
               )}
             </div>
           ) : null}
-        </div>
-
-        {/* RIGHT: REPEAT LAST TRIP + CREATE / EDIT QUOTATION BUTTON TOGGLE */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {!isEditMode && contractCustomer && lastCustomerTrip && onRepeatTrip && !isSelectedQuotation && (() => {
-            const stops = lastCustomerTrip.stops || [];
-            const from = stops[0]?.source_label || stops[0]?.location?.name || '';
-            const to = stops[stops.length - 1]?.source_label || stops[stops.length - 1]?.location?.name || '';
-            const when = lastCustomerTrip.planned_start
-              ? new Date(lastCustomerTrip.planned_start).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-              : '';
-            return (
-              <button
-                type="button"
-                onClick={() => onRepeatTrip(lastCustomerTrip)}
-                title={`Same route and crew as ${from} → ${to}${when ? ` on ${when}` : ''} — you set the new date and time`}
-                className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-[#FA634E]/60 hover:text-[#c2410c] cursor-pointer"
-              >
-                Repeat last trip{from && to ? ` · ${from} → ${to}` : ''}
-              </button>
-            );
-          })()}
-          {!isEditMode && contractCustomer && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setIsInlineMode(!showInlineForm)}
-              className="h-8 text-xs font-bold border-brand text-brand hover:bg-orange-50 dark:hover:bg-orange-950/40 gap-1.5 cursor-pointer shrink-0 rounded-lg px-2.5"
-            >
-              {showInlineForm ? (
-                <>
-                  <Layers className="w-3.5 h-3.5" />
-                  {effectiveRateCards.length > 0 ? `Saved Cards (${effectiveRateCards.length})` : 'View Cards'}
-                </>
-              ) : isSelectedQuotation ? (
-                <>
-                  <Pencil className="w-3.5 h-3.5" />
-                  Edit Quotation
-                </>
-              ) : (
-                <>
-                  <Plus className="w-3.5 h-3.5" />
-                  Define Quotation
-                </>
-              )}
-            </Button>
-          )}
         </div>
       </div>
 
@@ -518,6 +493,8 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
             </div>
           </div>
         </div>
+      ) : !contractCustomer && customersLoading ? (
+        <CardSkeletons label="Loading customers" height="h-[104px]" />
       ) : !contractCustomer ? (
         <CustomerCardCarousel
           customers={sortedCustomers}
@@ -551,14 +528,30 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
                         active ? 'bg-orange-50 text-[#c2410c] dark:bg-orange-950/50 dark:text-orange-300' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
                       )}
                     >
-                      {billingCounts[b]}
+                      {rateCardsLoading ? <span className="inline-block h-2 w-3 rounded-sm bg-current opacity-30 animate-pulse align-middle" /> : billingCounts[b]}
                     </span>
                   </button>
                 );
               })}
             </div>
+          <div className="flex items-center gap-2 pb-1.5 min-w-0 ml-auto">
+          {!rateCardsLoading && !(showInlineForm && effectiveRateCards.length === 0) && (
+            <button
+              type="button"
+              onClick={() => setIsInlineMode(!showInlineForm)}
+              className="flex items-center gap-1 rounded-lg px-2 h-8 text-xs font-semibold text-slate-500 hover:text-[#c2410c] hover:bg-orange-50 dark:text-slate-400 dark:hover:bg-orange-950/30 cursor-pointer shrink-0 transition-colors"
+            >
+              {showInlineForm ? (
+                <><Layers className="w-3.5 h-3.5" /> Saved quotations ({effectiveRateCards.length})</>
+              ) : isSelectedQuotation ? (
+                <><Pencil className="w-3.5 h-3.5" /> Edit quotation</>
+              ) : (
+                <><Plus className="w-3.5 h-3.5" /> New quotation</>
+              )}
+            </button>
+          )}
           {!showInlineForm && (
-            <div className="flex items-center gap-2 pb-1.5 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
               <div className="relative w-[240px] max-w-full shrink-0 flex items-center">
                 <Search className="absolute left-2.5 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                 <input
@@ -594,8 +587,11 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
             </div>
           )}
           </div>
+          </div>
 
-          {showInlineForm ? (
+          {rateCardsLoading ? (
+            <CardSkeletons label="Loading quotations" height="h-[124px]" />
+          ) : showInlineForm ? (
             <DefineQuotationInlineForm
               primarySlot={primarySlot}
               selectedCustName={selectedCust?.name}
@@ -613,6 +609,7 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
               assignmentType={assignmentType}
             />
           ) : displayedRateCards.length > 0 ? (
+            <div key={activeBilling} className="animate-fade-in">
             <QuotationCardCarousel
               rateCards={displayedRateCards}
               activeSelectedId={activeSelectedId}
@@ -687,6 +684,10 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
                     driverPayout: rc.driver_payout != null ? String(rc.driver_payout) : '0',
                     driverPayoutModified: false,
                     updateQuotationPayout: false,
+                    // An existing quotation is being used — not a new one to save.
+                    // Left on (from an earlier "Define Quotation"), submit saved a copy.
+                    saveAsQuotation: false,
+                    saveAsRateCard: false,
                     rateCategory: targetCategory,
                     vehicleType: targetVehicleClass,
                     pricingBasis: rc.pricing_basis || (normalizeBillingType(rc.operation_type || rc.billing_type) === 'Monthly' ? 'Per Month' : 'Per Trip'),
@@ -704,6 +705,7 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
                 });
               }}
             />
+            </div>
           ) : (
             <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700 text-center space-y-1.5">
               {quotationSearchQuery ? (

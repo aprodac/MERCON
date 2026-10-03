@@ -7,6 +7,7 @@ import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { api } from '@mercon/mobile-shared/lib/api';
+import { getInstallId } from '@mercon/mobile-shared/lib/install-id';
 import type { AppNotification } from '@mercon/mobile-shared/lib/notifications';
 
 let Notifications: typeof import('expo-notifications') | null = null;
@@ -51,6 +52,11 @@ export const notificationService = {
 
   async markRead(id: string): Promise<void> {
     await api.post(`/mobile/notifications/${id}/read`);
+  },
+
+  /** The driver tapped the push itself (shown to the office as "opened"). */
+  async markOpened(id: string): Promise<void> {
+    await api.post(`/mobile/notifications/${id}/opened`);
   },
 };
 
@@ -120,16 +126,9 @@ export async function registerPushDeviceWithBackend(token: string): Promise<void
     await api.post('/mobile/devices', {
       token,
       platform: Platform.OS,
+      install_id: await getInstallId(),
     });
   } catch (error) {
     console.warn('[Push] Failed to register device token with backend:', error);
-  }
-}
-
-export async function unregisterPushDeviceWithBackend(token: string): Promise<void> {
-  try {
-    await api.delete(`/mobile/devices/${encodeURIComponent(token)}`);
-  } catch (error) {
-    console.warn('[Push] Failed to unregister device token with backend:', error);
   }
 }

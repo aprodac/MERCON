@@ -2,8 +2,8 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Home, Truck, CalendarRange, Calculator, Building2, Car, Users, Wrench, Handshake,
   ReceiptText, Clock, CreditCard, Wallet, Landmark, Scale, HandCoins, BookOpen, BookOpenText,
-  FolderTree, CalendarCheck, BarChart3, FileBarChart, Coins, TrendingUp, FileSpreadsheet,
-  SlidersHorizontal, Files, GraduationCap, Bell, Settings, Palette, UserCog, ShieldCheck,
+  FolderTree, CalendarCheck, BarChart3, FileBarChart, Coins, TrendingUp,
+  SlidersHorizontal, Files, GraduationCap, Bell, Settings, Palette, UserCog, ShieldCheck, Smile,
   Map as MapIcon, MapPin, Layers, Tags, FileType, Trash2, ScrollText, AlertTriangle, Activity, FolderArchive, FileCheck2,
   ArrowLeftRight, Percent, Banknote,
 } from 'lucide-react';
@@ -197,12 +197,12 @@ export const NAV_PAGES: NavPage[] = [
   },
 
   // Workspace
-  { id: 'company-reports', label: 'Reports', path: '/company-reports', icon: FileSpreadsheet, section: 'workspace', moduleKey: 'company-reports', permissionKey: 'reports.view', keywords: ['company reports', 'export'] },
   { id: 'report-builder', label: 'Report builder', path: '/report-builder', icon: SlidersHorizontal, section: 'workspace', moduleKey: 'report-builder', permissionKey: 'reports.view', keywords: ['quick report', 'advanced builder', 'custom report'] },
   {
     id: 'documents', label: 'Documents', path: '/documents', icon: Files, section: 'workspace', moduleKey: 'documents', keywords: ['files', 'expiry'],
     match: (p) => p === '/documents' || p.startsWith('/documents/') || p.startsWith('/docs/'),
   },
+  { id: 'users', label: 'Users', path: '/settings/users', icon: UserCog, section: 'workspace', adminOnly: true, keywords: ['user management', 'roles', 'accounts', 'team', 'admins', 'operators', 'driver app password'] },
   { id: 'learning', label: 'Learning', path: '/learning', icon: GraduationCap, section: 'workspace', moduleKey: 'learning', keywords: ['academy', 'tutorials'] },
   { id: 'notifications', label: 'Notifications', path: '/notifications', icon: Bell, section: 'workspace', keywords: ['alerts', 'inbox'], hiddenInSidebar: true },
 ];
@@ -233,8 +233,8 @@ export const NAV_ACTION_SECTIONS: { id: NavAction['section']; label: string }[] 
 export const SETTINGS_PAGES: SettingsNavPage[] = [
   { id: 'system-settings', label: 'Account & company', path: '/settings', icon: Settings, settingsGroup: 'general', keywords: ['system settings', 'company', 'profile', 'password', 'timezone', 'vat'], match: (p) => p === '/settings' || p === '/settings/profile' },
   { id: 'branding', label: 'Branding', path: '/settings/branding', icon: Palette, settingsGroup: 'general', superAdminOnly: true, keywords: ['logo', 'colors', 'theme'] },
+  { id: 'assistant', label: 'Assistant', path: '/settings/assistant', icon: Smile, settingsGroup: 'general', adminOnly: true, keywords: ['assistant', 'mascot', 'extra charges', 'reminders', 'cap', 'flag', 'headset'] },
   { id: 'zatca', label: 'ZATCA e-invoicing', path: '/settings/zatca', icon: FileCheck2, settingsGroup: 'general', adminOnly: true, moduleKey: 'zatca', keywords: ['fatoora', 'e-invoice', 'vat', 'tax', 'csid', 'certificate'] },
-  { id: 'users', label: 'Users', path: '/settings/users', icon: UserCog, settingsGroup: 'access', adminOnly: true, keywords: ['user management', 'roles', 'accounts'] },
   { id: 'module-governance', label: 'Modules', path: '/settings/module-governance', icon: ShieldCheck, settingsGroup: 'access', superAdminOnly: true, keywords: ['module governance', 'enable', 'disable', 'features'] },
   {
     id: 'locations', label: 'Locations', path: '/locations', icon: MapPin, settingsGroup: 'master-data', moduleKey: 'locations', permissionKey: 'settings.view', keywords: ['places', 'sites'],

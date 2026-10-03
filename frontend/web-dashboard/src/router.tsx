@@ -43,6 +43,8 @@ const TripTrackingPage        = lazyWithRetry(() => import('@/pages/trips/TripTr
 const TripCompletionPage      = lazyWithRetry(() => import('@/pages/trips/TripCompletionPage'));
 const TripEvidencePublicGalleryPage = lazyWithRetry(() => import('@/pages/public/TripEvidencePublicGalleryPage'));
 const SharedUpdatePage = lazyWithRetry(() => import('@/pages/public/SharedUpdatePage'));
+const TrackingPage = lazyWithRetry(() => import('@/pages/public/TrackingPage'));
+const FleetTrackingPage = lazyWithRetry(() => import('@/pages/public/FleetTrackingPage'));
 const ThirdPartyListPage      = lazyWithRetry(() => import('@/pages/third-party/ThirdPartyListPage'));
 const ThirdPartyDetailsPage   = lazyWithRetry(() => import('@/pages/third-party/ThirdPartyDetailsPage'));
 
@@ -64,8 +66,7 @@ const VehicleSingleFinancialsPage = lazyWithRetry(() => import('@/pages/vehicles
 const VehicleCostSetupPage    = lazyWithRetry(() => import('@/pages/vehicles/VehicleCostSetupPage'));
 const MaintenanceListPage     = lazyWithRetry(() => import('@/pages/maintenance/MaintenanceListPage'));
 const MaintenanceDetailsPage  = lazyWithRetry(() => import('@/pages/maintenance/MaintenanceDetailsPage'));
-const AddMaintenancePage      = lazyWithRetry(() => import('@/pages/maintenance/AddMaintenancePage'));
-const EditMaintenancePage     = lazyWithRetry(() => import('@/pages/maintenance/EditMaintenancePage'));
+const MaintenanceEditorPage   = lazyWithRetry(() => import('@/pages/maintenance/MaintenanceEditorPage'));
 
 // Customers
 const CustomerListPage        = lazyWithRetry(() => import('@/pages/customers/CustomerListPage'));
@@ -133,7 +134,6 @@ const ReportsDashboardPage        = lazyWithRetry(() => import('@/pages/reports/
 const FleetPerformancePage        = lazyWithRetry(() => import('@/pages/reports/FleetPerformancePage'));
 const RevenueReportsPage          = lazyWithRetry(() => import('@/pages/reports/RevenueReportsPage'));
 const CustomReportPage            = lazyWithRetry(() => import('@/pages/reports/CustomReportPage'));
-const CompanyReportsGeneratorPage = lazyWithRetry(() => import('@/pages/reports/CompanyReportsGeneratorPage'));
 const DelayReportPage             = lazyWithRetry(() => import('@/pages/reports/DelayReportPage'));
 
 // Smart Report Builder
@@ -149,6 +149,7 @@ const OperatorProfilePage     = lazyWithRetry(() => import('@/pages/settings/Ope
 const SettingsPage            = lazyWithRetry(() => import('@/pages/settings/SettingsPage'));
 const UserManagementPage      = lazyWithRetry(() => import('@/pages/settings/UserManagementPage'));
 const DocumentTypeAdminPage   = lazyWithRetry(() => import('@/pages/settings/DocumentTypeAdminPage'));
+const AssistantSettingsPage   = lazyWithRetry(() => import('@/pages/settings/AssistantSettingsPage'));
 const TaxonomySettingsPage    = lazyWithRetry(() => import('@/pages/settings/TaxonomySettingsPage'));
 const BrandingSettingsPage    = lazyWithRetry(() => import('@/pages/settings/BrandingSettingsPage'));
 const SystemHealthPage        = lazyWithRetry(() => import('@/pages/settings/SystemHealthPage'));
@@ -221,6 +222,24 @@ export default function AppRouter() {
               </Suspense>
             }
           />
+          {/* Public customer tracking page behind a trip's tracking link (WhatsApp). */}
+          <Route
+            path="/t/:token"
+            element={
+              <Suspense fallback={<FullPageSpinner />}>
+                <TrackingPage />
+              </Suspense>
+            }
+          />
+          {/* Public customer-wide tracking page: all of one customer's trucks on the road. */}
+          <Route
+            path="/c/:token"
+            element={
+              <Suspense fallback={<FullPageSpinner />}>
+                <FleetTrackingPage />
+              </Suspense>
+            }
+          />
 
           {/* Live map — full screen, outside the app shell: no app sidebar or
               header, the operations panel floats inside the map. */}
@@ -284,9 +303,9 @@ export default function AppRouter() {
             <Route path="/vehicles/:id/documents"   element={<RequireModule moduleKey="vehicles"><VehicleDocumentsPage /></RequireModule>} />
             <Route path="/vehicles/:id/financials"  element={<RequireModule moduleKey="vehicles"><VehicleSingleFinancialsPage /></RequireModule>} />
             <Route path="/maintenance"              element={<RequireModule moduleKey="maintenance"><MaintenanceListPage /></RequireModule>} />
-            <Route path="/maintenance/new"          element={<RequireModule moduleKey="maintenance"><AddMaintenancePage /></RequireModule>} />
+            <Route path="/maintenance/new"          element={<RequireModule moduleKey="maintenance"><MaintenanceEditorPage /></RequireModule>} />
             <Route path="/maintenance/:id"          element={<RequireModule moduleKey="maintenance"><MaintenanceDetailsPage /></RequireModule>} />
-            <Route path="/maintenance/:id/edit"     element={<RequireModule moduleKey="maintenance"><EditMaintenancePage /></RequireModule>} />
+            <Route path="/maintenance/:id/edit"     element={<RequireModule moduleKey="maintenance"><MaintenanceEditorPage /></RequireModule>} />
 
             {/* Customers */}
             <Route path="/customers"                          element={<RequireModule moduleKey="customers"><CustomerListPage /></RequireModule>} />
@@ -370,12 +389,12 @@ export default function AppRouter() {
             <Route path="/custom-report"            element={<RequireModule moduleKey="reports"><CustomReportPage /></RequireModule>} />
             <Route path="/reports/custom"          element={<RequireModule moduleKey="reports"><CustomReportPage /></RequireModule>} />
 
-            {/* Reports (Legacy -> Redirect to Company Reports) */}
-            <Route path="/reports/*"                element={<Navigate to="/company-reports" replace />} />
-            <Route path="/reports"                  element={<Navigate to="/company-reports" replace />} />
+            {/* Reports (legacy) -> Report builder */}
+            <Route path="/reports/*"                element={<Navigate to="/report-builder" replace />} />
+            <Route path="/reports"                  element={<Navigate to="/report-builder" replace />} />
 
-            {/* Custom Company Reports Generator */}
-            <Route path="/company-reports"          element={<RequireModule moduleKey="company-reports"><CompanyReportsGeneratorPage /></RequireModule>} />
+            {/* Company Excel reports now live on the customer (Excel exports tab) and the invoice (Trip sheet button) */}
+            <Route path="/company-reports"          element={<Navigate to="/customers" replace />} />
 
             {/* Smart Report Builder */}
             <Route path="/report-builder"          element={<RequireModule moduleKey="report-builder"><ReportBuilderLandingPage /></RequireModule>} />
@@ -385,13 +404,16 @@ export default function AppRouter() {
             {/* Learning & Academy */}
             <Route path="/learning"                element={<RequireModule moduleKey="learning"><LearningPage /></RequireModule>} />
 
+            {/* Users — its own sidebar entry, outside the Settings inner nav (URL kept for existing links) */}
+            <Route path="/settings/users"           element={<RequireRole roles={['Admin']}><UserManagementPage /></RequireRole>} />
+
             {/* Settings area — shared inner navigation (SettingsLayout); URLs and guards unchanged */}
             <Route element={<SettingsLayout />}>
               {/* Settings & Governance */}
               <Route path="/settings"                 element={<SettingsPage />} />
               <Route path="/settings/profile"         element={<Navigate to="/settings" replace />} />
-              <Route path="/settings/users"           element={<RequireRole roles={['Admin']}><UserManagementPage /></RequireRole>} />
               <Route path="/settings/document-types"  element={<RequireRole roles={['Admin']}><DocumentTypeAdminPage /></RequireRole>} />
+              <Route path="/settings/assistant"  element={<RequireRole roles={['Admin']}><AssistantSettingsPage /></RequireRole>} />
               <Route path="/settings/taxonomy"        element={<RequireRole roles={['SuperAdmin']}><TaxonomySettingsPage /></RequireRole>} />
               <Route path="/settings/branding"        element={<RequireRole roles={['SuperAdmin']}><BrandingSettingsPage /></RequireRole>} />
               <Route path="/settings/system-health"   element={<RequireRole roles={['SuperAdmin']}><SystemHealthPage /></RequireRole>} />

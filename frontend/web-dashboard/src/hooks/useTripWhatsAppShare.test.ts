@@ -1,7 +1,20 @@
+import { createElement, type ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook as rtlRenderHook } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useTripWhatsAppShare } from './useTripWhatsAppShare';
 import type { Trip } from '@/services/tripService';
+
+// The share dialog asks for customer tracking links; no customer here wants them added.
+vi.mock('@/services/trackingService', () => ({
+  trackingService: { getTripLinks: vi.fn().mockResolvedValue({}) },
+  autoTrackingUrl: () => null,
+}));
+
+function renderHook<T>(hook: () => T) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return rtlRenderHook(hook, { wrapper: ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children) });
+}
 
 function makeTrip(overrides: Partial<Trip> = {}): Trip {
   return {

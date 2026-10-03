@@ -30,11 +30,15 @@ export const GoogleMapsGeotagPreview: React.FC<GoogleMapsGeotagProps> = ({
   bottomPadding = 16,
 }) => {
   const { t } = useLanguage();
-  const displayLocation = locationName ?? address ?? 'Up Hill, Malappuram, India';
-  const displayFullAddress = fullAddress ?? (address && address !== locationName ? address : 'Up Hill, Malappuram,\nKerala 676519, India');
-  const displayCompany = companyName ?? customerName ?? 'Horizon Distributors Co.';
+  // No made-up fallbacks: this stamp ends up on evidence the driver shares with
+  // the customer, so a missing address shows the real coordinates and a missing
+  // customer shows our own name — never sample data.
+  const coordsLabel = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+  const displayLocation = locationName ?? address ?? coordsLabel;
+  const displayFullAddress = fullAddress ?? (address && address !== locationName ? address : coordsLabel);
+  const displayCompany = companyName ?? customerName ?? 'MERCON Logistics';
 
-  const dateObj = timestamp ? new Date(timestamp) : new Date('2026-08-28T09:23:00');
+  const dateObj = timestamp ? new Date(timestamp) : new Date();
   
   const formattedDate = dateObj.toLocaleDateString('en-US', {
     month: 'short',

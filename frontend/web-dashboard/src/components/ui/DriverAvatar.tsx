@@ -9,6 +9,8 @@ interface DriverAvatarProps {
   lastName?: string;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   className?: string;
+  /** Extra classes for the photo, e.g. object-top for a large portrait. */
+  imgClassName?: string;
   status?: DriverStatus;
   showStatusDot?: boolean;
   previewable?: boolean;
@@ -31,7 +33,7 @@ const STATUS_DOT_COLORS: Record<DriverStatus, string> = {
   Inactive: 'bg-slate-400 ring-white dark:ring-slate-900',
 };
 
-import { getDriverAvatar } from '@/lib/driverAvatarMap';
+import { driverPhotoUrl } from '@/lib/documents';
 
 export default function DriverAvatar({
   src,
@@ -39,13 +41,13 @@ export default function DriverAvatar({
   lastName = '',
   size = 'md',
   className,
+  imgClassName,
   status,
   showStatusDot = false,
   previewable = false,
   onPreview,
 }: DriverAvatarProps) {
   const [imageError, setImageError] = React.useState(false);
-  const fullName = `${firstName} ${lastName}`.trim();
   const initials = `${firstName?.[0] || ''}${lastName?.[0] || ''}`.toUpperCase() || 'DR';
 
   const sizeClass = SIZE_MAP[size] || SIZE_MAP.md;
@@ -58,7 +60,7 @@ export default function DriverAvatar({
     }
   };
 
-  const avatarSrc = getDriverAvatar(src, fullName);
+  const avatarSrc = driverPhotoUrl(src);
 
   return (
     <div
@@ -76,7 +78,7 @@ export default function DriverAvatar({
           src={avatarSrc}
           alt={`${firstName} ${lastName}`.trim() || 'Driver avatar'}
           onError={() => setImageError(true)}
-          className="w-full h-full object-cover rounded-full"
+          className={cn('w-full h-full object-cover rounded-full', imgClassName)}
         />
       ) : (
         <div

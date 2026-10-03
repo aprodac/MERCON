@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Marker } from 'react-map-gl/maplibre';
 import { Truck, UserRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -27,8 +27,46 @@ interface Props {
  * the parent) so it keeps pointing the true heading while the map spins,
  * without re-rendering every marker on each rotate frame.
  */
+/** Matches the camera's follow animation, so a followed truck and the map move together. */
+const GLIDE_MS = 1200;
+/** Further than this (≈5 km) is a jump — a tracker back online — not driving: snap. */
+const GLIDE_MAX_DEG = 0.05;
+
+/**
+ * The marker's drawn position, eased from the last fix to the new one, so
+ * trucks drive across the map on each refresh instead of teleporting.
+ */
+function useGlide(lng: number, lat: number): { lng: number; lat: number } {
+  const [shown, setShown] = useState({ lng, lat });
+  const shownRef = useRef(shown);
+  useEffect(() => {
+    const from = shownRef.current;
+    if (from.lng === lng && from.lat === lat) return;
+    const far = Math.abs(from.lng - lng) > GLIDE_MAX_DEG || Math.abs(from.lat - lat) > GLIDE_MAX_DEG;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (far || reduced || document.hidden) {
+      shownRef.current = { lng, lat };
+      setShown(shownRef.current);
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / GLIDE_MS);
+      const e = t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2; // ease-in-out
+      shownRef.current = { lng: from.lng + (lng - from.lng) * e, lat: from.lat + (lat - from.lat) * e };
+      setShown(shownRef.current);
+      if (t < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [lng, lat]);
+  return shown;
+}
+
 function LiveUnitMarkerImpl({ unit, selected, dimmed, showLabel, onSelect, onHover }: Props) {
   const pos = unit.position!;
+  const at = useGlide(pos.lng, pos.lat);
   const tone = TONE[unitTone(unit)];
   const offline = unit.motion === 'stale';
   const moving = unit.motion === 'moving' && pos.heading_deg != null;
@@ -36,8 +74,8 @@ function LiveUnitMarkerImpl({ unit, selected, dimmed, showLabel, onSelect, onHov
 
   return (
     <Marker
-      longitude={pos.lng}
-      latitude={pos.lat}
+      longitude={at.lng}
+      latitude={at.lat}
       anchor="top"
       offset={[0, -16]}
       style={{ zIndex: selected ? 30 : unit.motion === 'moving' ? 20 : 10 }}

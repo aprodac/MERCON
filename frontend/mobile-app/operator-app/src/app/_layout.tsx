@@ -9,6 +9,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { queryClient } from '@mercon/mobile-shared/lib/query-client';
 import { OperatorBottomNav } from '@/navigation/OperatorBottomNav';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { LanguageProvider } from '@mercon/mobile-shared/lib/language-context';
 import { ThemeProvider } from '@mercon/mobile-shared/lib/theme-context';
@@ -77,6 +78,7 @@ function RootNavigator() {
         <Stack.Screen name="expenses" options={{ animation: 'none' }} />
         <Stack.Screen name="documents" options={{ animation: 'none' }} />
         <Stack.Screen name="notifications" options={{ animation: 'none' }} />
+        <Stack.Screen name="fleet-map" />
         <Stack.Screen name="driver-details" />
         <Stack.Screen name="driver-edit" />
         <Stack.Screen name="vehicle-details" />
@@ -98,15 +100,17 @@ function RootNavigator() {
 
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider signIn={signInOperator} allowedRoles={OPERATOR_APP_ROLES}>
-        <LanguageProvider>
-          <ThemeProvider>
-            <RootNavigator />
-          </ThemeProvider>
-        </LanguageProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider signIn={signInOperator} allowedRoles={OPERATOR_APP_ROLES}>
+          <LanguageProvider>
+            <ThemeProvider>
+              <RootNavigator />
+            </ThemeProvider>
+          </LanguageProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }
 

@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import { prisma } from '../db';
 import { env } from '../config/env';
+import { recordDriverActivity } from '../services/driverPhone/activity';
 
 export const mobileLogin = async (req: Request, res: Response) => {
   const { phone_primary, password, license_number } = req.body;
@@ -83,6 +84,8 @@ export const mobileLogin = async (req: Request, res: Response) => {
       env.JWT_SECRET,
       { expiresIn: '30d' }
     );
+
+    void recordDriverActivity(driver.id, 'Login', { metadata: { ip: req.ip } });
 
     res.json({
       success: true,

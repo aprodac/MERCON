@@ -23,7 +23,7 @@ import { useCurrentTrip } from '../hooks/use-current-trip';
 import { useScheduledTrips } from '../hooks/use-scheduled-trips';
 import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, parseStopWorkflowState, getTripChargeValue, getMonthlyDriverPayout, DRIVER_WORKFLOW_STATES, type TripStatus, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
-import { useLanguage, getLocalizedStatus } from '@mercon/mobile-shared/lib/language-context';
+import { useLanguage, getLocalizedStatus, bilingual, translate } from '@mercon/mobile-shared/lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, targetFromWorkflowState, type TimelineStop } from '../utils/routeParser';
 
 
@@ -152,7 +152,7 @@ const HomeScreen = () => {
   const { trip, loading, error, refetch, setTrip } = useCurrentTrip();
   const { language, openLanguageModal, t } = useLanguage();
   /** Short UI text in the driver's language (bilingual mode shows both). */
-  const L = (en: string, ur: string) => (language === 'ur' ? ur : language === 'ur-en' ? `${ur} / ${en}` : en);
+  const L = (en: string, ur: string) => (language === 'ur' ? ur : language === 'ur-en' ? bilingual(ur, en) : en);
   /** Same, but one language only — for small pills where both would not fit. */
   const LS = (en: string, ur: string) => (language === 'ur' ? ur : en);
   const [activeTab, setActiveTab] = useState('Home');
@@ -417,7 +417,18 @@ const HomeScreen = () => {
             {/* Welcome back / Greeting below Language on the Left */}
             <View style={styles.greetingBox}>
               <Text style={styles.greetingSub} adjustsFontSizeToFit numberOfLines={1}>{t(timeOfDay.key, timeOfDay.fallback)}</Text>
-              <Text style={styles.greetingMain} adjustsFontSizeToFit numberOfLines={1}>{t('msg_drive_safe', 'Drive Safe Today')}</Text>
+              {language === 'ur-en' ? (
+                <BilingualText
+                  ur={translate('msg_drive_safe', 'Drive Safe Today', 'ur')}
+                  en={translate('msg_drive_safe', 'Drive Safe Today', 'en')}
+                  primaryStyle={styles.greetingMain}
+                  subStyle={styles.greetingMainSub}
+                  align="center"
+                  numberOfLines={1}
+                />
+              ) : (
+                <Text style={styles.greetingMain} adjustsFontSizeToFit numberOfLines={1}>{t('msg_drive_safe', 'Drive Safe Today')}</Text>
+              )}
             </View>
           </View>
         </View>
@@ -483,7 +494,7 @@ const HomeScreen = () => {
                           badgeStr = language === 'ur'
                             ? `روانگی: ${num}/${outboundStops.length}`
                             : language === 'ur-en'
-                            ? `روانگی / Outbound: ${num}/${outboundStops.length}`
+                            ? `${bilingual('روانگی', 'Outbound')}: ${num}/${outboundStops.length}`
                             : `Outbound: ${num}/${outboundStops.length}`;
                         } else {
                           const activeRetIdx = returnStops.findIndex((s) => !s.actual_departure);
@@ -491,7 +502,7 @@ const HomeScreen = () => {
                           badgeStr = language === 'ur'
                             ? `واپسی: ${num}/${returnStops.length}`
                             : language === 'ur-en'
-                            ? `واپسی / Return: ${num}/${returnStops.length}`
+                            ? `${bilingual('واپسی', 'Return')}: ${num}/${returnStops.length}`
                             : `Return: ${num}/${returnStops.length}`;
                         }
                       } else {
@@ -898,6 +909,12 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginTop: 2,
     textAlign: 'center',
+  },
+  greetingMainSub: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.85)',
+    lineHeight: 16,
   },
   mainScroll: {
     flex: 1,
@@ -1508,6 +1525,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   nextStopType: {
+    // Urdu labels line up with their values (numbers, English names) instead of floating right.
+    textAlign: 'left',
     fontSize: 12,
     fontWeight: '700',
     color: '#57534E',

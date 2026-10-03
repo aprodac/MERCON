@@ -16,7 +16,7 @@ export function useTripRateLookup(
 ) {
   const navigate = useNavigate();
 
-  const { data: rateCardsRes } = useQuery({
+  const { data: rateCardsRes, isLoading: rateCardsLoading } = useQuery({
     queryKey: ['quotations', 'select-all'],
     queryFn: () => quotationService.getAll({ active_only: true }),
     staleTime: 0,
@@ -274,6 +274,7 @@ export function useTripRateLookup(
 
   return {
     customerRateCards,
+    rateCardsLoading,
     handleOpenCreateQuotation,
     getMatchingRateCard,
     getAvailableRateCardsForLane,

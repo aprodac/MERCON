@@ -96,7 +96,7 @@ function toCard(t: MobileTrip, isCompletedTab: boolean, lang: LanguageMode = 'en
   return {
     key: t.id,
     tripId: t.id,
-    displayId: t.ref_id ?? t.id.slice(0, 8),
+    displayId: t.ref_id ?? `TRP-${t.id.slice(0, 8)}`,
     title: t.customer?.name ?? 'Mercon Logistics',
     logoUrl,
     fromCity,
@@ -139,7 +139,7 @@ const TripCard = ({ item, onPress, t, language }: { item: CardData; onPress: () 
               {item.title}
             </Text>
             <Text style={styles.tripIdSubtext} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
-              {t('label_trip_id', 'Trip ID')} · <Text style={{ writingDirection: 'ltr' }}>TRP-{item.displayId}</Text>
+              {t('label_trip_id', 'Trip ID')} · <Text style={{ writingDirection: 'ltr' }}>{item.displayId}</Text>
             </Text>
           </View>
         </View>
@@ -223,7 +223,7 @@ const TripsScreen = ({ navigation }: any) => {
     }
   }, [tab]);
   const [search, setSearch] = useState('');
-  const { t, language } = useLanguage();
+  const { t, tp, language } = useLanguage();
 
   const { trip: currentTrip, loading: loadingCurrent, refetch: refetchCurrent } = useCurrentTrip();
   const { trips: scheduledList, loading: loadingScheduled, error: errorScheduled, refetch: refetchScheduled, refetchIfStale: refreshScheduledIfStale } = useScheduledTrips();
@@ -298,7 +298,7 @@ const TripsScreen = ({ navigation }: any) => {
       <SearchInput
         value={search}
         onChangeText={setSearch}
-        placeholder={t('label_search_trips', 'Search trips by ID, city, customer...')}
+        placeholder={tp('label_search_trips', 'Search trips by ID, city, customer...')}
         style={styles.searchContainer}
       />
 

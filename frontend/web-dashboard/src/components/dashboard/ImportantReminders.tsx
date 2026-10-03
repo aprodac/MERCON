@@ -259,17 +259,24 @@ export default function ImportantReminders({
       if (t.ref_id) tripById.set(t.ref_id, t);
     }
 
-    const alerts: TimeReviewAlertItem[] = [];
+    // One alert per trip: the operator checks all of a trip's stop times in one go.
+    const byTrip = new Map<string, any[]>();
     for (const doc of docs as any[]) {
       if (doc.ai_extracted_json?.source !== 'external_app_screenshot') continue;
       if (doc.status !== 'PendingReview') continue;
+      byTrip.set(doc.entity_id, [...(byTrip.get(doc.entity_id) ?? []), doc]);
+    }
 
-      const trip = tripById.get(doc.entity_id);
-      const stopId = doc.ai_extracted_json?.stop_id;
-      const stop = trip?.stops?.find((s: any) => s.id === stopId);
-      const stopLabel = stop?.location_name || stop?.location?.name || 'Trip Stop';
+    const alerts: TimeReviewAlertItem[] = [];
+    for (const [entityId, tripDocs] of byTrip) {
+      const trip = tripById.get(entityId);
+      const newest = tripDocs.reduce((a, b) => (Date.parse(b.createdAt) > Date.parse(a.createdAt) ? b : a));
+      const stopNames = Array.from(new Set(tripDocs.map((d) => {
+        const stop = trip?.stops?.find((s: any) => s.id === d.ai_extracted_json?.stop_id);
+        return stop?.location_name || stop?.location?.name || null;
+      }).filter(Boolean)));
 
-      const diffMs = Date.now() - new Date(doc.createdAt).getTime();
+      const diffMs = Date.now() - new Date(newest.createdAt).getTime();
       const mins = Math.floor(diffMs / (60 * 1000));
       let timeAgo = 'Just now';
       if (mins >= 1 && mins < 60) timeAgo = `${mins}m ago`;
@@ -279,12 +286,12 @@ export default function ImportantReminders({
       }
 
       alerts.push({
-        id: `time-review-${doc.id}`,
-        tripId: trip?.id || doc.entity_id,
-        tripRef: trip?.ref_id || doc.entity_id,
+        id: `time-review-${entityId}`,
+        tripId: trip?.id || entityId,
+        tripRef: trip?.ref_id || entityId,
         customerName: trip?.customer?.name || 'Customer',
         driverName: trip?.driver ? `${trip.driver.first_name || ''} ${trip.driver.last_name || ''}`.trim() : 'Driver',
-        stopLabel,
+        stopLabel: `${tripDocs.length} screenshot${tripDocs.length === 1 ? '' : 's'}${stopNames.length ? ` · ${stopNames.join(', ')}` : ''}`,
         timeAgo,
         severity: 'time_review',
       });
@@ -834,7 +841,7 @@ export default function ImportantReminders({
                   {timeReviewAlerts.map((item) => (
                     <div
                       key={item.id}
-                      onClick={() => navigate(`/trips/${item.tripId}`)}
+                      onClick={() => navigate(`/trips/${item.tripId}?times=1`)}
                       className="group relative p-2.5 rounded-xl border border-amber-200/90 dark:border-amber-900/60 bg-gradient-to-r from-amber-50/80 via-white to-amber-50/30 dark:from-amber-950/30 dark:to-slate-900 shadow-2xs hover:shadow-xs hover:border-amber-300 dark:hover:border-amber-800 transition-all duration-150 cursor-pointer space-y-1.5"
                     >
                       <div className="flex items-center justify-between gap-1.5">
@@ -858,8 +865,7 @@ export default function ImportantReminders({
                       </div>
 
                       <div className="text-[10.5px] font-semibold text-amber-950 dark:text-amber-200 bg-amber-50/90 dark:bg-amber-900/20 px-2 py-1 rounded-md border border-amber-200/60 dark:border-amber-900/40 line-clamp-2">
-                        <span className="font-bold text-amber-700 dark:text-amber-400 mr-1">Stop:</span>
-                        {item.stopLabel} — confirm the real arrival/departure time from the screenshot
+                        {item.stopLabel} — check the stop times against the customer app
                       </div>
 
                       <div className="flex items-center justify-between text-[9.5px] text-slate-500 dark:text-slate-400 pt-0.5 gap-2">

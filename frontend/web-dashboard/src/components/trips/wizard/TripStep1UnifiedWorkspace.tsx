@@ -88,8 +88,8 @@ interface TripStep1UnifiedWorkspaceProps {
   coDriverSplit?: { driverPayoutOverride?: number; coDriverPayoutOverride?: number };
   setCoDriverSplit?: (v: { driverPayoutOverride?: number; coDriverPayoutOverride?: number }) => void;
   basePayout?: number;
-  lastCustomerTrip?: any | null;
-  onRepeatTrip?: (trip: any) => void;
+  /** Master data still loading — shown as skeletons instead of empty states. */
+  loading?: { customers?: boolean; rateCards?: boolean; drivers?: boolean; vehicles?: boolean };
   lastLaneTime?: { date: string; time: string; label: string } | null;
   handleUpdateSlotIntermediateFee?: (slotId: string, index: number, fee: string) => void;
   handleUpdateSlotReturnIntermediateFee?: (slotId: string, index: number, fee: string) => void;
@@ -170,8 +170,7 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
   coDriverSplit = {},
   setCoDriverSplit,
   basePayout = 0,
-  lastCustomerTrip = null,
-  onRepeatTrip,
+  loading = {},
   lastLaneTime = null,
   handleUpdateSlotIntermediateFee,
   handleUpdateSlotReturnIntermediateFee,
@@ -214,8 +213,7 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
             fieldErrors={fieldErrors}
             assignmentType={assignmentType}
             isEditMode={isEditMode}
-            lastCustomerTrip={lastCustomerTrip}
-            onRepeatTrip={onRepeatTrip}
+            loading={loading}
           />
 
           {/* WHEN: right under the price — the next thing people fill */}
@@ -326,6 +324,8 @@ export const TripStep1UnifiedWorkspace: React.FC<TripStep1UnifiedWorkspaceProps>
                   status={status}
                   awbNumber={awbNumber}
                   setAwbNumber={setAwbNumber}
+                  loadingDrivers={loading.drivers}
+                  loadingVehicles={loading.vehicles}
                 />
               )}
 
