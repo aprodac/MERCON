@@ -1,6 +1,7 @@
 import '../global.css';
 
 import { Stack, usePathname, useRouter } from 'expo-router';
+export { ErrorBoundary } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { View, StyleSheet, Image } from 'react-native';

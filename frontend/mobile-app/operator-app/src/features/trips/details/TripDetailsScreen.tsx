@@ -50,7 +50,7 @@ export default function TripDetailsScreen() {
   // Links from the home's "Needs action" cards can open a tab, a message or a picker straight away.
   const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; assign?: string; times?: string }>();
   const { id } = params;
-  const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, renewTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
+  const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, renewTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
 
   const [tab, setTab] = useState<Tab>(params.tab === 'stops' ? params.tab : 'details');
@@ -364,7 +364,7 @@ export default function TripDetailsScreen() {
       ) : null}
 
       {/* Sheets */}
-      <ShareSheet target={share} onClose={() => setShare(null)} trip={trip} phase={phase} f={f} position={position} remaining={remaining} trackingUrl={trackingUrl} whatsappApi={whatsappApi} onShared={reload} />
+      <ShareSheet target={share} onClose={() => setShare(null)} trip={trip} phase={phase} f={f} position={position} remaining={remaining} trackingUrl={trackingUrl} onNeedTracking={refreshTracking} whatsappApi={whatsappApi} onShared={reload} />
       <MediaViewer
         items={viewer?.items ?? null}
         startIndex={viewer?.index ?? 0}

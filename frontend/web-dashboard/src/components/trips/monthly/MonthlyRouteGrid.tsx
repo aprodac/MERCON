@@ -269,6 +269,21 @@ const RouteRow = memo(function RouteRow({
     return map;
   }, [group.trips]);
 
+  // The route's normal number of trips a day; cells only print a count when a day differs from it.
+  const usual = useMemo(() => {
+    const freq = new Map<number, number>();
+    byDate.forEach((list) => freq.set(list.length, (freq.get(list.length) ?? 0) + 1));
+    let best = 1;
+    let bestSeen = 0;
+    freq.forEach((seen, n) => {
+      if (seen > bestSeen || (seen === bestSeen && n < best)) {
+        best = n;
+        bestSeen = seen;
+      }
+    });
+    return best;
+  }, [byDate]);
+
   const totals = useMemo(() => totalsOf(group.trips, today, soonUntil), [group.trips, today, soonUntil]);
   const ids = group.trips.map((t) => t.id);
   const allSelected = ids.every((id) => selected.has(id));
@@ -312,6 +327,7 @@ const RouteRow = memo(function RouteRow({
             </span>
             <span className="truncate">
               {group.lineType} · {group.rate != null ? `${group.rateStr}/trip` : 'no rate'}
+              {usual > 1 && <span className="font-medium text-slate-700 dark:text-slate-200"> · {usual} trips a day</span>}
             </span>
           </div>
         </button>
@@ -341,6 +357,7 @@ const RouteRow = memo(function RouteRow({
               selected={trips.some((t) => selected.has(t.id))}
               isAnchor={anchorDate === d.date}
               isToday={d.date === today}
+              usual={usual}
             />
           </div>
         );
@@ -372,6 +389,7 @@ function DayCell({
   selected,
   isAnchor,
   isToday,
+  usual,
 }: {
   trips: MonthlyBoardTrip[];
   group: TemplateGroup;
@@ -383,6 +401,8 @@ function DayCell({
   selected: boolean;
   isAnchor: boolean;
   isToday: boolean;
+  /** The route's normal trips per day. */
+  usual: number;
 }) {
   const state = dayCellState(trips);
   const style = CELL_STYLES[state];
@@ -412,7 +432,7 @@ function DayCell({
       onClick={(e) => (e.shiftKey ? onShiftClick() : onOpenChange(!open))}
       className={`relative h-5 w-full max-w-[18px] rounded-[4px] transition-colors grid place-items-center text-[10px] font-semibold tabular-nums select-none ${look} ${focus}`}
     >
-      {trips.length > 1 ? trips.length : null}
+      {trips.length !== usual ? trips.length : null}
       {doubleBooked && (
         <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-rose-600 ring-2 ring-white dark:ring-slate-900" />
       )}

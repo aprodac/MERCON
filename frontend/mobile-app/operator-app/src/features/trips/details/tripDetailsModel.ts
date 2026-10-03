@@ -392,8 +392,14 @@ export function quickMessage(kind: QuickKind, { trip, phase, f, position, remain
     lines.push(`Driver: ${(driver || '—').toUpperCase()}`);
     if (codeRoute) lines.push(`Route: ${codeRoute}`);
     if (phase === 'active') {
-      lines.push(remaining ? `Distance left: ${remaining.approx ? '~' : ''}${Math.round(remaining.km)} KM TO ${dest}` : `Distance left: [KM] TO ${dest}`);
-      lines.push(`ETA: ${remaining ? hoursText(remaining.sec) : '[HRS]'}`);
+      // Unknown distance (no fresh position yet): say where it's heading — the
+      // tracking link below carries the live distance and ETA.
+      if (remaining) {
+        lines.push(`Distance left: ${remaining.approx ? '~' : ''}${Math.round(remaining.km)} KM TO ${dest}`);
+        lines.push(`ETA: ${hoursText(remaining.sec)}`);
+      } else if (dest) {
+        lines.push(`Heading to: ${dest}`);
+      }
     } else if (phase === 'planned' && trip.planned_start) {
       lines.push(`Starts: ${f.dayTime(trip.planned_start)}`);
     } else if (phase === 'done' && trip.actual_end) {

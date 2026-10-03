@@ -4,7 +4,7 @@ import MapGL, { Layer, Marker, Source, type MapRef } from 'react-map-gl/maplibre
 import type { StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import Supercluster from 'supercluster';
-import { Compass, Focus, Map as MapIcon, Navigation, Maximize2, Minimize2, Minus, Moon, Plus, Search, SignalLow, Sun, X } from 'lucide-react';
+import { ArrowLeft, Compass, Focus, Map as MapIcon, Navigation, Maximize2, Minimize2, Minus, Moon, Plus, Search, SignalLow, Sun, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { formatInDeploymentTz, useDeploymentTimezone } from '@/lib/datetime';
@@ -18,9 +18,10 @@ import { fleetLiveService, type LiveStop, type LiveUnit } from '@/services/fleet
 import { SAUDI_BOUNDS_COORDS, SAUDI_CENTER, DEFAULT_SAUDI_ZOOM } from '@/utils/saudiMapConfig';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { LiveUnitMarker } from './LiveUnitMarker';
-import { ClusterMarker, ControlGroup, CtlButton, HoverPeek, MapLegend, StopPin, type StopPinTone } from './LiveMapBits';
+import { ClusterMarker, ControlGroup, CtlButton, HoverPeek, MapLegend, StopPin, type StopPinTone, type ToneMix } from './LiveMapBits';
+import { ClusterListPanel } from './ClusterListPanel';
 import { EtaStrip, GLASS, LiveUnitPanel, NextStopCard } from './LiveUnitPanel';
-import { BUILDING_EXTRUSION_COLOR, LIVE_MAP_STYLES, ROUTE_COLOR, TONE, applyMapPalette, loadLiveMapStyle, type LiveMapTheme, type UnitTone } from './liveMapStyle';
+import { BUILDING_EXTRUSION_COLOR, LIVE_MAP_STYLES, ROUTE_COLOR, TONE, applyMapPalette, loadLiveMapStyle, unitTone, type LiveMapTheme } from './liveMapStyle';
 
 const REFRESH_MS = 15_000;
 /** How long the map waits for the fleet before opening on Saudi Arabia instead of on the trucks. */
@@ -49,11 +50,8 @@ function readTheme(): LiveMapTheme {
   return document.documentElement.classList.contains('dark') ? 'dark' : 'light';
 }
 
-function toneForPriority(p: number): UnitTone {
-  return p >= 40 ? 'delayed' : p >= 30 ? 'active' : p >= 20 ? 'upcoming' : 'free';
-}
-
-type ClusterProps = { key: string; priority: number };
+type ClusterProps = { key: string } & ToneMix;
+type CameraState = { center: [number, number]; zoom: number; pitch: number; bearing: number };
 
 function boundsOf(points: { lat: number; lng: number }[]): [[number, number], [number, number]] | null {
   if (points.length === 0) return null;
@@ -163,6 +161,10 @@ export default function FleetCommandMap({
   const focusView = pov || overview;
   const [firstSymbolId, setFirstSymbolId] = useState<string | undefined>();
   const [hoverKey, setHoverKey] = useState<string | null>(null);
+  /** The units of a clicked bubble, listed in a side panel (keys, so refreshes keep the list). */
+  const [groupKeys, setGroupKeys] = useState<string[] | null>(null);
+  /** Where the camera was when a unit was opened from the list — "Back" returns here. */
+  const groupCamera = useRef<CameraState | null>(null);
   /** Camera snapshot taken when movement ends — drives grouping and label placement. */
   const [view, setView] = useState<{ zoom: number; bbox: [number, number, number, number]; tilted: boolean } | null>(null);
   const fittedOnce = useRef(false);
@@ -212,29 +214,33 @@ export default function FleetCommandMap({
   const tracking = useTrackingLink(selected?.trip?.id, !!selected?.trip);
   const stop = selected ? nextStop(selected) : null;
 
-  // ── Grouping: nearby units merge into a numbered bubble; the selected one never does ──
+  // ── Grouping: nearby units merge into a numbered bubble. The selected unit and
+  // delayed ones never do — a late truck is what this map is looked at for. ──
   const clusterIndex = useMemo(() => {
-    const index = new Supercluster<ClusterProps, { priority: number }>({
+    const index = new Supercluster<ClusterProps, ToneMix>({
       radius: CLUSTER_RADIUS_PX,
       maxZoom: CLUSTER_MAX_ZOOM,
-      map: (p) => ({ priority: p.priority }),
-      reduce: (acc, p) => { acc.priority = Math.max(acc.priority, p.priority); },
+      map: (p) => ({ delayed: p.delayed, active: p.active, upcoming: p.upcoming, free: p.free }),
+      reduce: (acc, p) => { acc.delayed += p.delayed; acc.active += p.active; acc.upcoming += p.upcoming; acc.free += p.free; },
     });
     index.load(
       visible
-        .filter((u) => u.key !== selectedKey)
-        .map((u) => ({
-          type: 'Feature' as const,
-          properties: { key: u.key, priority: unitPriority(u) },
-          geometry: { type: 'Point' as const, coordinates: [u.position!.lng, u.position!.lat] },
-        })),
+        .filter((u) => u.key !== selectedKey && unitTone(u) !== 'delayed')
+        .map((u) => {
+          const t = unitTone(u);
+          return {
+            type: 'Feature' as const,
+            properties: { key: u.key, delayed: 0, active: +(t === 'active'), upcoming: +(t === 'upcoming'), free: +(t === 'free') },
+            geometry: { type: 'Point' as const, coordinates: [u.position!.lng, u.position!.lat] },
+          };
+        }),
     );
     return index;
   }, [visible, selectedKey]);
 
   const { clusters, singles } = useMemo(() => {
     const byKey = new Map(visible.map((u) => [u.key, u]));
-    const out = { clusters: [] as { id: number; lng: number; lat: number; count: number; tone: UnitTone }[], singles: [] as LiveUnit[] };
+    const out = { clusters: [] as { id: number; lng: number; lat: number; count: number; mix: ToneMix }[], singles: [] as LiveUnit[] };
     if (!view) {
       out.singles = visible;
       return out;
@@ -243,15 +249,40 @@ export default function FleetCommandMap({
       const [lng, lat] = f.geometry.coordinates;
       const p = f.properties as Record<string, unknown>;
       if (p.cluster) {
-        out.clusters.push({ id: p.cluster_id as number, lng, lat, count: p.point_count as number, tone: toneForPriority(p.priority as number) });
+        const mix = { delayed: p.delayed, active: p.active, upcoming: p.upcoming, free: p.free } as ToneMix;
+        out.clusters.push({ id: p.cluster_id as number, lng, lat, count: p.point_count as number, mix });
       } else {
         const u = byKey.get(p.key as string);
         if (u) out.singles.push(u);
       }
     }
+    for (const u of visible) if (unitTone(u) === 'delayed' && u.key !== selectedKey) out.singles.push(u);
     if (selected?.position) out.singles.push(selected);
     return out;
-  }, [clusterIndex, view, visible, selected]);
+  }, [clusterIndex, view, visible, selected, selectedKey]);
+
+  // ── Bubble list: the units of a clicked bubble, most urgent first ──
+  const groupUnits = useMemo(() => {
+    if (!groupKeys) return [];
+    const keys = new Set(groupKeys);
+    return visible
+      .filter((u) => keys.has(u.key))
+      .sort((a, b) => unitPriority(b) - unitPriority(a) || unitTitle(a).localeCompare(unitTitle(b)));
+  }, [groupKeys, visible]);
+  const groupKeySet = useMemo(() => (groupKeys ? new Set(groupKeys) : null), [groupKeys]);
+  // Which units each bubble on screen holds — to dim bubbles outside the list and light up the hovered row's bubble.
+  const clusterKeys = useMemo(() => {
+    const m = new Map<number, Set<string>>();
+    if (!groupKeySet) return m;
+    for (const c of clusters) {
+      m.set(c.id, new Set(clusterIndex.getLeaves(c.id, Infinity).map((f) => (f.properties as ClusterProps).key)));
+    }
+    return m;
+  }, [clusters, clusterIndex, groupKeySet]);
+  // A filter or search change can empty the list — close it then.
+  useEffect(() => {
+    if (groupKeys && groupUnits.length === 0) setGroupKeys(null);
+  }, [groupKeys, groupUnits.length]);
 
   // ── Labels: highest-priority first, dropped where they would overlap ──
   const labelled = useMemo(() => {
@@ -392,8 +423,66 @@ export default function FleetCommandMap({
     setSelectedKey(null);
     setPov(false);
     setOverview(false);
+    setGroupKeys(null);
+    groupCamera.current = null;
     fitAll();
   }, [fitAll]);
+
+  /** A bubble was clicked: list its units — plus delayed ones drawn just beside it — without moving the map. */
+  const openGroup = useCallback(
+    (c: { id: number; lng: number; lat: number }) => {
+      const map = mapRef.current;
+      const keys = clusterIndex.getLeaves(c.id, Infinity).map((f) => (f.properties as ClusterProps).key);
+      if (map) {
+        const centre = map.project([c.lng, c.lat]);
+        for (const u of visible) {
+          if (unitTone(u) !== 'delayed' || u.key === selectedKey) continue;
+          const pt = map.project([u.position!.lng, u.position!.lat]);
+          if (Math.hypot(pt.x - centre.x, pt.y - centre.y) <= CLUSTER_RADIUS_PX) keys.push(u.key);
+        }
+      }
+      onPreviewCloseRef.current?.();
+      setSelectedKey(null);
+      setPov(false);
+      setOverview(false);
+      groupCamera.current = null;
+      setGroupKeys(keys);
+    },
+    [clusterIndex, visible, selectedKey],
+  );
+
+  const closeGroup = useCallback(() => {
+    setGroupKeys(null);
+    groupCamera.current = null;
+  }, []);
+
+  /** Open one unit from the list, remembering the view so "Back" can return to it. */
+  const selectFromGroup = useCallback(
+    (key: string) => {
+      const map = mapRef.current;
+      if (map && !groupCamera.current) {
+        const c = map.getCenter();
+        groupCamera.current = { center: [c.lng, c.lat], zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() };
+      }
+      setHoverKey(null);
+      select(key);
+    },
+    [select],
+  );
+
+  const backToGroup = useCallback(() => {
+    setSelectedKey(null);
+    setPov(false);
+    setOverview(false);
+    const cam = groupCamera.current;
+    groupCamera.current = null;
+    if (cam) mapRef.current?.easeTo({ ...cam, padding: { top: 0, bottom: 0, left: 0, right: 0 }, duration: 1000 });
+  }, []);
+
+  const zoomToGroup = useCallback(() => {
+    const b = boundsOf(groupUnits.map((u) => u.position!));
+    if (b) mapRef.current?.fitBounds(b, { padding: panelPadding(), maxZoom: 14, pitch: 0, bearing: 0, duration: 1000 });
+  }, [groupUnits, panelPadding]);
 
   /** Top-down trip overview: every stop — done ones ticked, the rest numbered — and where the truck is now. */
   const showRoute = useCallback(() => {
@@ -586,12 +675,14 @@ export default function FleetCommandMap({
       // An open photo/video viewer handles its own Escape.
       if (document.querySelector('[role="dialog"][data-state="open"]')) return;
       if (focusView) exitPov();
+      else if (selectedKey && groupKeys) backToGroup();
       else if (selectedKey) deselect();
+      else if (groupKeys) closeGroup();
       else if (expanded) setExpanded(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [selectedKey, expanded, deselect, focusView, exitPov]);
+  }, [selectedKey, expanded, deselect, focusView, exitPov, groupKeys, backToGroup, closeGroup]);
 
   const toggleTheme = () => {
     const next = theme === 'light' ? 'dark' : 'light';
@@ -709,7 +800,7 @@ export default function FleetCommandMap({
           onMoveEnd={snapshotView}
           onResize={snapshotView}
           onDragStart={() => setFollow(false)}
-          onClick={() => (selectedKey ? deselect() : previewTrip && onPreviewClose?.())}
+          onClick={() => (selectedKey ? deselect() : groupKeys ? closeGroup() : previewTrip && onPreviewClose?.())}
           cursor="grab"
           style={{ width: '100%', height: '100%' }}
         >
@@ -792,26 +883,30 @@ export default function FleetCommandMap({
           ))}
 
           {/* Driver view is about one truck — the others step aside. */}
-          {!focusView && clusters.map((c) => (
-            <ClusterMarker
-              key={`cluster-${c.id}`}
-              lng={c.lng}
-              lat={c.lat}
-              count={c.count}
-              tone={c.tone}
-              onClick={() => {
-                const zoom = Math.min(clusterIndex.getClusterExpansionZoom(c.id), 16);
-                mapRef.current?.easeTo({ center: [c.lng, c.lat], zoom, duration: 800 });
-              }}
-            />
-          ))}
+          {!focusView && clusters.map((c) => {
+            const keys = clusterKeys.get(c.id);
+            const inList = !groupKeySet || (!!keys && [...keys].some((k) => groupKeySet.has(k)));
+            return (
+              <ClusterMarker
+                key={`cluster-${c.id}`}
+                lng={c.lng}
+                lat={c.lat}
+                count={c.count}
+                mix={c.mix}
+                open={!!groupKeySet && !selectedKey && inList}
+                highlighted={!!hoverKey && !!keys?.has(hoverKey)}
+                dimmed={!!selectedKey || !inList}
+                onClick={() => openGroup(c)}
+              />
+            );
+          })}
 
           {(focusView ? singles.filter((u) => u.key === selectedKey) : singles).map((u) => (
             <LiveUnitMarker
               key={u.key}
               unit={u}
               selected={u.key === selectedKey}
-              dimmed={!!selectedKey && u.key !== selectedKey}
+              dimmed={selectedKey ? u.key !== selectedKey : !!groupKeySet && !groupKeySet.has(u.key)}
               showLabel={labelled.has(u.key)}
               onSelect={select}
               onHover={setHoverKey}
@@ -940,8 +1035,24 @@ export default function FleetCommandMap({
 
         {/* Right: details panel (full layout) */}
         {selected && !compact && (
-          <div className="absolute top-16 right-3 bottom-3 flex items-start">
-            <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact={false} onClose={deselect} onShare={share} onShowRoute={showRoute} expanded={expanded} onToggleExpand={hideExpand ? undefined : () => setExpanded((v) => !v)} pov={pov} onTogglePov={pov ? exitPov : enterPov} />
+          <div className="absolute top-16 right-3 bottom-3 flex flex-col items-end gap-2">
+            {groupKeys && <BackToList count={groupUnits.length} onClick={backToGroup} />}
+            <div className="flex min-h-0 flex-1 items-start">
+              <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact={false} onClose={deselect} onShare={share} onShowRoute={showRoute} expanded={expanded} onToggleExpand={hideExpand ? undefined : () => setExpanded((v) => !v)} pov={pov} onTogglePov={pov ? exitPov : enterPov} />
+            </div>
+          </div>
+        )}
+        {!selected && groupKeys && groupUnits.length > 0 && (
+          <div className={cn('absolute flex', compact ? 'top-16 right-3 bottom-3 left-3 items-end' : 'top-16 right-3 bottom-3 items-start')}>
+            <ClusterListPanel
+              units={groupUnits}
+              compact={compact}
+              hoverKey={hoverKey}
+              onHover={setHoverKey}
+              onSelect={selectFromGroup}
+              onZoom={zoomToGroup}
+              onClose={closeGroup}
+            />
           </div>
         )}
 
@@ -949,13 +1060,13 @@ export default function FleetCommandMap({
         <div className="absolute bottom-3 left-3 flex items-end gap-2">
           {selected && !compact && eta && selected.trip ? (
             <EtaStrip eta={eta} formatTime={formatTime} />
-          ) : !selected && !hideFinder && offlineUnits.length > 0 ? (
+          ) : !selected && !groupKeys && !hideFinder && offlineUnits.length > 0 ? (
             <OfflineList units={offlineUnits} onSelect={select} />
           ) : null}
         </div>
 
         {/* Map controls */}
-        <div className={cn('absolute bottom-3 flex flex-col gap-2', !selected ? 'right-3' : compact ? 'hidden' : 'right-[324px]')}>
+        <div className={cn('absolute bottom-3 flex flex-col gap-2', !selected && !groupKeys ? 'right-3' : compact ? 'hidden' : 'right-[324px]')}>
           <ControlGroup>
             <CtlButton label="Zoom in" onClick={() => mapRef.current?.zoomIn()}><Plus /></CtlButton>
             <CtlButton label="Zoom out" onClick={() => mapRef.current?.zoomOut()}><Minus /></CtlButton>
@@ -982,7 +1093,8 @@ export default function FleetCommandMap({
 
         {/* Compact: one bottom card */}
         {selected && compact && (
-          <div className="absolute right-3 bottom-3 left-3">
+          <div className="absolute right-3 bottom-3 left-3 flex flex-col gap-2">
+            {groupKeys && <div className="self-start"><BackToList count={groupUnits.length} onClick={backToGroup} /></div>}
             <LiveUnitPanel unit={selected} eta={eta} formatTime={formatTime} compact onClose={deselect} onShare={share} onShowRoute={showRoute} expanded={expanded} onToggleExpand={hideExpand ? undefined : () => setExpanded((v) => !v)} pov={pov} onTogglePov={pov ? exitPov : enterPov} />
           </div>
         )}
@@ -1001,6 +1113,18 @@ export default function FleetCommandMap({
         )}
       </div>
     </div>
+  );
+}
+
+function BackToList({ count, onClick }: { count: number; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn('pointer-events-auto flex h-8 shrink-0 items-center gap-1.5 rounded-xl px-3 text-xs font-medium text-foreground', GLASS)}
+    >
+      <ArrowLeft className="size-3.5" /> Back to {count} trucks
+    </button>
   );
 }
 

@@ -4,14 +4,35 @@
     {
       "name": "web-dashboard",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:web"],
+      "runtimeArgs": [
+        "run",
+        "dev:web"
+      ],
       "port": 5174
     },
     {
       "name": "api-server",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev:api"],
+      "runtimeArgs": [
+        "run",
+        "dev:api"
+      ],
       "port": 3050
+    },
+    {
+      "name": "web-dashboard-alt",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "-w",
+        "@mercon/web-dashboard",
+        "--",
+        "--port",
+        "5175",
+        "--strictPort"
+      ],
+      "port": 5175
     }
   ]
 }

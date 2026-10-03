@@ -100,7 +100,21 @@ export interface CustomerFleetTracking {
   customer: { name: string; logo_url: string | null };
   trucks: FleetTruck[];
   delivered: DeliveredTrip[];
+  /** This month so far (null when it couldn't be worked out). */
+  month?: MonthSummary | null;
   generated_at: string;
+}
+
+export interface MonthSummary {
+  /** "2026-10" */
+  month: string;
+  trips: number;
+  /** Trips with planned + actual times (only when the customer sees planned times). */
+  measured: number | null;
+  on_time: number | null;
+  /** Trips with a delay reason (only when the customer sees delay reasons). */
+  delayed: number | null;
+  top_reason: string | null;
 }
 
 export interface DeliveredTrip {
@@ -111,6 +125,9 @@ export interface DeliveredTrip {
   route_label: string | null;
   started_at: string | null;
   finished_at: string | null;
+  /** First delivery photo, when the customer's settings show photos. */
+  pod_url?: string | null;
+  pod_count?: number;
 }
 
 export interface TrackingLink {

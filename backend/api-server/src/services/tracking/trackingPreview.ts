@@ -39,8 +39,10 @@ export function tripPreview(t: PublicTracking): PreviewTags {
 }
 
 export function fleetPreview(f: CustomerFleetTracking): PreviewTags {
-  const onRoad = f.trucks.filter((x) => x.phase === 'active').length;
-  const upcoming = f.trucks.filter((x) => x.phase === 'planned').length;
+  // Count trucks, not trips — a truck can carry several queued trips (same as the card).
+  const trucks = (phase: string) => new Set(f.trucks.filter((x) => x.phase === phase).map((x) => x.plate || x.token)).size;
+  const onRoad = trucks('active');
+  const upcoming = trucks('planned');
   const parts = [`${onRoad} on the road`];
   if (upcoming) parts.push(`${upcoming} loading soon`);
   return {
