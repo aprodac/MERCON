@@ -222,293 +222,193 @@ export default function MaintenanceDetailsPage() {
       : null;
 
   return (
-    <DashboardLayout
-      active="Vehicles"
-      title={`Maintenance - ${orderNo}`}
-      breadcrumb="Maintenance"
-      actions={
-        <div className="flex items-center gap-2">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-xl w-8 h-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs hover:bg-slate-100">
-                <MoreVertical className="w-4 h-4 text-slate-700 dark:text-slate-300" />
+    <DashboardLayout active="Vehicles" title={`Service Order ${orderNo}`}>
+      <div className="px-4 sm:px-6 pb-6 space-y-4 animate-fade-in max-w-[1400px] mx-auto w-full">
+
+        {/* ── HERO: Header, Actions, Sleek Timeline & Integrated Metrics ─── */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
+          
+          {/* Header Row */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-3.5 min-w-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/maintenance')}
+                className="h-9 w-9 p-0 shrink-0 rounded-xl border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-2xs"
+                title="Back to maintenance list"
+              >
+                <ArrowLeft className="w-4 h-4" />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48 rounded-xl z-50">
-              <DropdownMenuItem onClick={() => window.print()} className="font-semibold cursor-pointer text-xs">
-                <Printer className="w-3.5 h-3.5 mr-2 text-slate-500" /> Print Order
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => exportToCSV([record], `maintenance_${orderNo}.csv`)} className="font-semibold cursor-pointer text-xs">
-                <Download className="w-3.5 h-3.5 mr-2 text-slate-500" /> Export CSV
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setIsDeleteModalOpen(true)} className="text-rose-600 font-semibold cursor-pointer text-xs">
-                <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Record
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
 
-          <Button
-            onClick={handleOpenEditModal}
-            className="bg-[#FA634E] hover:bg-[#e0523d] text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-2xs transition-colors"
-          >
-            <Edit2 className="w-3.5 h-3.5" /> Edit Order
-          </Button>
-        </div>
-      }
-    >
-      <div className="p-4 max-w-[1600px] mx-auto w-full flex flex-col gap-4 bg-[#EEF1F6]/40 dark:bg-slate-950">
-
-        {/* ── TOP HEADER & METRICS SECTION (Matches Driver & Customer Details Page Layout) ── */}
-        <div className="flex items-stretch gap-4 shrink-0 mt-1">
-
-          {/* LEFT: ICON / MAINTENANCE BADGE CARD */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-2xs shrink-0 w-32 h-32 sm:w-36 sm:h-36 overflow-hidden flex items-center justify-center p-2.5">
-            <div className="w-full h-full bg-[#FA634E] text-white flex items-center justify-center rounded-xl shadow-xs">
-              <Wrench className="w-12 h-12 stroke-[1.75]" />
-            </div>
-          </div>
-
-          {/* RIGHT: SERVICE ORDER TITLE ABOVE + 3 KPI CARDS BELOW IN THE SAME ROW */}
-          <div className="flex-1 flex flex-col justify-end gap-2 min-w-0">
-
-            {/* Service Order Title Bar */}
-            <div className="flex items-center justify-between gap-3 pt-0">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white font-mono uppercase tracking-tight leading-none">
-                  {orderNo}
-                </h1>
-                <Badge className={cn('font-bold text-xs uppercase tracking-wider px-3 py-1 rounded-full border shadow-2xs', typeMeta.className)}>
-                  {typeMeta.label}
-                </Badge>
-                <Badge className={cn('font-bold text-xs uppercase tracking-wider px-3 py-1 rounded-full border shadow-2xs flex items-center gap-1.5', statusMeta.className)}>
-                  <span className={cn(
-                    "w-2 h-2 rounded-full",
-                    (record.status as string) === 'Completed' ? "bg-emerald-500" :
-                    (record.status as string) === 'In_Progress' || (record.status as string) === 'In Progress' ? "bg-amber-500" : "bg-blue-500"
-                  )}></span>
-                  {statusMeta.label}
-                </Badge>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {/* Status Quick Dropdown */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8.5 px-3 rounded-xl border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 text-xs font-bold gap-1 shadow-2xs"
-                    >
-                      <span>Status</span>
-                      <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44 text-xs font-semibold rounded-xl z-50">
-                    <DropdownMenuLabel className="text-[10px] text-slate-400 uppercase">Set status</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => handleQuickStatusChange('Scheduled')}>
-                      <Clock className="w-3.5 h-3.5 mr-2 text-blue-500" /> Scheduled
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleQuickStatusChange('In_Progress')}>
-                      <RotateCw className="w-3.5 h-3.5 mr-2 text-amber-500" /> In Progress
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleQuickStatusChange('Completed')}>
-                      <CheckCircle2 className="w-3.5 h-3.5 mr-2 text-emerald-500" /> Completed
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => handleQuickStatusChange('Cancelled')}>
-                      <XCircle className="w-3.5 h-3.5 mr-2 text-rose-500" /> Cancelled
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="rounded-xl w-8 h-8 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-2xs hover:bg-slate-100">
-                      <MoreVertical className="w-4 h-4 text-slate-700 dark:text-slate-300" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48 rounded-xl z-50">
-                    <DropdownMenuItem onClick={() => window.print()} className="font-semibold cursor-pointer text-xs">
-                      <Printer className="w-3.5 h-3.5 mr-2 text-slate-500" /> Print Order
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => exportToCSV([record], `maintenance_${orderNo}.csv`)} className="font-semibold cursor-pointer text-xs">
-                      <Download className="w-3.5 h-3.5 mr-2 text-slate-500" /> Export CSV
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setIsDeleteModalOpen(true)} className="text-rose-600 font-semibold cursor-pointer text-xs">
-                      <Trash2 className="w-3.5 h-3.5 mr-2" /> Delete Record
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                <Button
-                  onClick={handleOpenEditModal}
-                  className="bg-[#FA634E] hover:bg-[#e0523d] text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-2xs transition-colors"
-                >
-                  <Edit2 className="w-3.5 h-3.5" /> Edit Order
-                </Button>
-              </div>
-            </div>
-
-            {/* 3 KPI CARDS ROW (Matching Driver & Customer Details Page exact layout!) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 shrink-0">
-
-              {/* KPI Card 1: TOTAL SERVICE COST */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center justify-between min-h-[96px] gap-3">
-                <Banknote className="w-10 h-10 sm:w-11 sm:h-11 text-emerald-600 dark:text-emerald-400 stroke-[1.75] shrink-0" />
-                <div className="flex flex-col items-end justify-center min-w-0 text-right">
-                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none mb-1.5 truncate">
-                    TOTAL SERVICE COST
-                  </p>
-                  <p className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-none font-mono">
-                    {formatSAR(record.cost)}
-                  </p>
-                  <p className="text-xs font-semibold text-slate-400 mt-1 truncate">
-                    Invoice {record.invoice_number || EMPTY}
-                  </p>
+              <div className="min-w-0 space-y-0.5">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight font-mono">
+                    {orderNo}
+                  </h1>
+                  <Badge className={cn('font-bold text-[10px] uppercase tracking-wide px-2.5 py-0.5 rounded-full', typeMeta.className)}>
+                    {typeMeta.label}
+                  </Badge>
+                  <Badge className={cn('font-bold text-[10px] uppercase tracking-wide px-2.5 py-0.5 rounded-full', statusMeta.className)}>
+                    {statusMeta.label}
+                  </Badge>
                 </div>
-              </div>
 
-              {/* KPI Card 2: DOWNTIME DURATION */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center justify-between min-h-[96px] gap-3">
-                <Clock className="w-10 h-10 sm:w-11 sm:h-11 text-amber-500 stroke-[1.75] shrink-0" />
-                <div className="flex flex-col items-end justify-center min-w-0 text-right">
-                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none mb-1.5 truncate">
-                    DOWNTIME DURATION
-                  </p>
-                  <p className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-none font-mono">
-                    {durationDays !== null ? `${durationDays} ${durationDays === 1 ? 'day' : 'days'}` : EMPTY}
-                  </p>
-                  <p className="text-xs font-semibold text-slate-400 mt-1 truncate">
-                    {record.end_date ? `Closed ${formatDate(record.end_date, tz)}` : 'In Workshop / Pending'}
-                  </p>
-                </div>
-              </div>
-
-              {/* KPI Card 3: SERVICE ODOMETER */}
-              <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-2xs flex items-center justify-between min-h-[96px] gap-3">
-                <Gauge className="w-10 h-10 sm:w-11 sm:h-11 text-indigo-600 dark:text-indigo-400 stroke-[1.75] shrink-0" />
-                <div className="flex flex-col items-end justify-center min-w-0 text-right">
-                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none mb-1.5 truncate">
-                    SERVICE ODOMETER
-                  </p>
-                  <p className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-none font-mono">
-                    {record.odometer_reading ? `${record.odometer_reading.toLocaleString()} km` : EMPTY}
-                  </p>
-                  <p className="text-xs font-semibold text-slate-400 mt-1 truncate">
-                    {odoSinceService !== null ? `+${odoSinceService.toLocaleString()} km driven since` : 'Vehicle odometer N/A'}
-                  </p>
-                </div>
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* Clean Lifecycle Step Bar Banner */}
-        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 shadow-2xs">
-          {isCancelled ? (
-            <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-300 text-xs font-bold">
-              <XCircle className="w-4 h-4 shrink-0" />
-              <span>Service order cancelled</span>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="relative h-2 rounded-full bg-slate-200/80 dark:bg-slate-800 overflow-hidden">
-                <div
-                  className="h-full bg-[#FA634E] rounded-full transition-all duration-500"
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
-              <div className="flex justify-between items-center text-xs">
-                {LIFECYCLE.map((step, index) => (
-                  <div
-                    key={step}
-                    className={cn(
-                      'flex items-center gap-1.5 font-bold',
-                      index <= currentStep ? 'text-slate-900 dark:text-slate-100' : 'text-slate-400'
-                    )}
+                {vehicle && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/vehicles/${vehicle.id}`)}
+                    className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-slate-600 dark:text-slate-300 hover:text-[#FA634E] transition-colors"
                   >
-                    <span className={cn('w-2 h-2 rounded-full', index <= currentStep ? 'bg-[#FA634E]' : 'bg-slate-300')} />
-                    <span>{STATUS_META[step].label}</span>
-                    {step === 'Scheduled' && record.start_date && (
-                      <span className="text-[10px] font-mono text-slate-400 font-normal">({formatDate(record.start_date, tz)})</span>
-                    )}
-                    {step === 'Completed' && record.end_date && (
-                      <span className="text-[10px] font-mono text-slate-400 font-normal">({formatDate(record.end_date, tz)})</span>
-                    )}
-                  </div>
-                ))}
+                    <Truck className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Plate: {vehicle.plate_number}</span>
+                    <ExternalLink className="w-3 h-3 text-slate-400" />
+                  </button>
+                )}
               </div>
             </div>
-          )}
+
+            {/* Top Right Action Group */}
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleOpenEditModal}
+                className="h-9 px-3 rounded-xl border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 text-xs font-bold gap-1.5 shadow-2xs"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                <span>Edit</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.print()}
+                className="h-9 px-3 rounded-xl border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 text-xs font-bold gap-1.5 shadow-2xs"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print</span>
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => exportToCSV([record], `maintenance_${orderNo}.csv`)}
+                className="h-9 px-3 rounded-xl border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 text-xs font-bold gap-1.5 shadow-2xs"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Export</span>
+              </Button>
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9 px-3 rounded-xl border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 text-xs font-extrabold gap-1 shadow-2xs"
+                  >
+                    <span>Status</span>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44 text-xs font-semibold rounded-xl">
+                  <DropdownMenuLabel className="text-[10px] text-slate-400 uppercase">Set status</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => handleQuickStatusChange('Scheduled')}>
+                    <Clock className="w-3.5 h-3.5 mr-2 text-blue-500" /> Scheduled
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleQuickStatusChange('In_Progress')}>
+                    <RotateCw className="w-3.5 h-3.5 mr-2 text-amber-500" /> In Progress
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleQuickStatusChange('Completed')}>
+                    <CheckCircle2 className="w-3.5 h-3.5 mr-2 text-emerald-500" /> Completed
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleQuickStatusChange('Cancelled')}>
+                    <XCircle className="w-3.5 h-3.5 mr-2 text-rose-500" /> Cancelled
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+
+          {/* Clean Lifecycle Step Bar */}
+          <div className="px-5 py-3.5 bg-slate-50/50 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800">
+            {isCancelled ? (
+              <div className="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-300 text-xs font-bold">
+                <XCircle className="w-4 h-4 shrink-0" />
+                <span>Service order cancelled</span>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="relative h-2 rounded-full bg-slate-200/80 dark:bg-slate-800 overflow-hidden">
+                  <div
+                    className="h-full bg-[#FA634E] rounded-full transition-all duration-500"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                </div>
+                <div className="flex justify-between items-center text-xs">
+                  {LIFECYCLE.map((step, index) => (
+                    <div
+                      key={step}
+                      className={cn(
+                        'flex items-center gap-1.5 font-bold',
+                        index <= currentStep ? 'text-slate-900 dark:text-slate-100' : 'text-slate-400'
+                      )}
+                    >
+                      <span className={cn('w-2 h-2 rounded-full', index <= currentStep ? 'bg-[#FA634E]' : 'bg-slate-300')} />
+                      <span>{STATUS_META[step].label}</span>
+                      {step === 'Scheduled' && record.start_date && (
+                        <span className="text-[10px] font-mono text-slate-400 font-normal">({formatDate(record.start_date, tz)})</span>
+                      )}
+                      {step === 'Completed' && record.end_date && (
+                        <span className="text-[10px] font-mono text-slate-400 font-normal">({formatDate(record.end_date, tz)})</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Integrated 4 Stat Strip */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 divide-y sm:divide-y-0 sm:divide-x divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 text-xs">
+            <HeroStat
+              icon={Banknote}
+              label="Cost"
+              value={formatSAR(record.cost)}
+              hint={`Invoice ${record.invoice_number || EMPTY}`}
+              tone="bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400"
+            />
+            <HeroStat
+              icon={Gauge}
+              label="Odometer at service"
+              value={record.odometer_reading ? `${record.odometer_reading.toLocaleString()} km` : EMPTY}
+              hint={odoSinceService !== null ? `+${odoSinceService.toLocaleString()} km driven since` : 'Vehicle odometer unavailable'}
+              tone="bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-400"
+            />
+            <HeroStat
+              icon={Clock}
+              label="Downtime"
+              value={durationDays !== null ? `${durationDays} ${durationDays === 1 ? 'day' : 'days'}` : EMPTY}
+              hint={record.end_date ? `Closed ${formatDate(record.end_date, tz)}` : 'Not closed yet'}
+              tone="bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400"
+            />
+            <HeroStat
+              icon={CalendarClock}
+              label="Next service due"
+              value={formatDate(record.next_service_due, tz)}
+              hint={record.next_service_due ? 'Scheduled follow-up' : 'No follow-up recorded'}
+              tone="bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400"
+            />
+          </div>
         </div>
 
-        {/* ── Body: 3 Window Cards Aligned in 1 Row with Same Height & Content-based Wideness ── */}
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch w-full">
+        {/* ── Body: 2 Column Layout ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
 
-          {/* Card 1 (Medium wideness, 4/12 cols): Billing & Invoice */}
-          <Card className="xl:col-span-4 border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl shadow-xs p-0 gap-0 overflow-hidden h-full flex flex-col justify-between">
-            <div>
-              <div className="flex items-center justify-between gap-3 px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60">
-                <div className="flex items-center gap-2.5">
-                  <Receipt className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <div>
-                    <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-emerald-600 dark:text-emerald-400 block">
-                      Billing &amp; Invoice
-                    </span>
-                    <span className="text-base font-black text-slate-900 dark:text-slate-100 font-mono mt-0.5">
-                      {formatSAR(record.cost)}
-                    </span>
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => setIsCostModalOpen(true)}
-                  className="h-8.5 text-xs font-bold bg-[#FA634E] hover:bg-[#e0523d] text-white rounded-xl gap-1.5 shadow-xs border-none"
-                >
-                  <Banknote className="w-3.5 h-3.5" />
-                  Enter / Update Cost
-                </Button>
-              </div>
-
-              <div className="px-5 sm:px-6 py-5">
-                <h3 className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400 mb-2">
-                  Billing details
-                </h3>
-                <div className="space-y-1">
-                  <Field label="Total billed" value={formatSAR(record.cost)} mono />
-                  <Field label="Invoice number" value={record.invoice_number || EMPTY} mono />
-                  <Field
-                    label="Payment Status"
-                    value={
-                      record.cost > 0 || record.status === 'Completed' ? (
-                        <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-[10px] font-bold">
-                          <CheckCircle2 className="w-3 h-3 mr-1" /> Paid
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-[10px] font-bold">
-                          Unpaid
-                        </Badge>
-                      )
-                    }
-                  />
-                  <Field label="Workshop" value={record.workshop_name || EMPTY} />
-                  <Field label="Maintenance type" value={typeMeta.label} />
-                  <Field label="Status" value={statusMeta.label} />
-                  <Field label="Recorded on" value={formatDate(record.createdAt, tz)} mono />
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          {/* Card 2 (Widest, 5/12 cols): Workshop Work Report */}
-          <Card className="xl:col-span-5 border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl shadow-xs p-0 gap-0 overflow-hidden h-full flex flex-col justify-between">
-            <div>
+          {/* Left Column (2/3): Workshop Work Report */}
+          <div className="lg:col-span-2 space-y-4">
+            <Card className="border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl shadow-xs p-0 gap-0 overflow-hidden">
               <div className="flex items-center justify-between gap-3 px-5 sm:px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/60">
                 <div className="flex items-center gap-2">
                   <ClipboardList className="w-4 h-4 text-[#FA634E]" />
@@ -555,7 +455,7 @@ export default function MaintenanceDetailsPage() {
                   <h3 className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400 mb-1">
                     Service record
                   </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
                     <Field label="Start date" value={formatDate(record.start_date, tz)} mono />
                     <Field label="Completion date" value={formatDate(record.end_date, tz)} mono />
                     <Field label="Service date" value={formatDate(record.service_date, tz)} mono />
@@ -569,92 +469,144 @@ export default function MaintenanceDetailsPage() {
                   </div>
                 </section>
               </div>
-            </div>
-          </Card>
+            </Card>
 
-          {/* Card 3 (Compact wideness, 3/12 cols): Vehicle Details */}
-          <Card className="xl:col-span-3 border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl shadow-xs p-0 gap-0 overflow-hidden h-full flex flex-col justify-between">
-            <div>
-              <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20">
-                <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                  <Wrench className="w-4 h-4 text-brand" /> Vehicle Details
-                </h3>
+            {/* Card 2: Billing & Invoice */}
+            <Card className="border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl shadow-[0_1px_2px_rgba(16,24,40,0.04),0_8px_24px_-16px_rgba(16,24,40,0.14)] p-0 gap-0 ring-0 overflow-hidden">
+              <div className="flex items-center justify-between gap-3 px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/60">
+                <div className="flex items-center gap-2.5">
+                  <Receipt className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <div>
+                    <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-emerald-600 dark:text-emerald-400 block">
+                      Billing &amp; Invoice
+                    </span>
+                    <span className="text-base font-black text-slate-900 dark:text-slate-100 font-mono mt-0.5">
+                      {formatSAR(record.cost)}
+                    </span>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => setIsCostModalOpen(true)}
+                  className="h-8.5 text-xs font-bold bg-[#FA634E] hover:bg-[#e0523d] text-white rounded-xl gap-1.5 shadow-xs border-none"
+                >
+                  <Banknote className="w-3.5 h-3.5" />
+                  Enter / Update Cost
+                </Button>
               </div>
 
-              <CardContent className="p-5 divide-y divide-slate-100 dark:divide-slate-800 space-y-4">
-                {/* Vehicle Section */}
-                <div className="pb-2">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                      <Truck className="w-3.5 h-3.5 text-brand" /> Vehicle
-                    </span>
-                    {vehicle && (
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/vehicles/${vehicle.id}`)}
-                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-0.5"
-                      >
-                        View <ExternalLink className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-
-                  {vehicle ? (
-                    <>
-                      <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 px-3.5 py-3 mb-2">
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Plate number</div>
-                        <div className="text-lg font-mono font-black text-slate-900 dark:text-slate-100 tracking-wider">
-                          {vehicle.plate_number}
-                        </div>
-                      </div>
-                      <Field label="Reference ID" value={vehicle.ref_id || EMPTY} mono />
-                      <Field label="Asset type" value={vehicle.asset_type} />
-                      <Field label="Vehicle status" value={vehicle.status} />
-                      <Field
-                        label="Current odometer"
-                        value={`${(vehicle.current_odometer || 0).toLocaleString()} km`}
-                        mono
-                      />
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-2 text-xs text-slate-500 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-3 py-3">
-                      <Truck className="w-4 h-4 text-slate-300 shrink-0" /> No vehicle is linked to this record.
-                    </div>
-                  )}
+              <div className="px-5 sm:px-6 py-5">
+                <h3 className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-slate-400 mb-2">
+                  Billing details
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8">
+                  <Field label="Total billed" value={formatSAR(record.cost)} mono />
+                  <Field label="Invoice number" value={record.invoice_number || EMPTY} mono />
+                  <Field
+                    label="Payment Status"
+                    value={
+                      record.cost > 0 || record.status === 'Completed' ? (
+                        <Badge className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 text-[10px] font-bold">
+                          <CheckCircle2 className="w-3 h-3 mr-1" /> Paid
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-[10px] font-bold">
+                          Unpaid
+                        </Badge>
+                      )
+                    }
+                  />
+                  <Field label="Workshop" value={record.workshop_name || EMPTY} />
+                  <Field label="Maintenance type" value={typeMeta.label} />
+                  <Field label="Status" value={statusMeta.label} />
+                  <Field label="Recorded on" value={formatDate(record.createdAt, tz)} mono />
                 </div>
+              </div>
+            </Card>
+          </div>
 
-                {/* Workshop Section */}
-                <div className="pt-4">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-2">
-                    <Building2 className="w-3.5 h-3.5 text-indigo-500" /> Workshop
-                  </span>
-
-                  <div className="text-sm font-extrabold text-slate-900 dark:text-slate-100 mb-2">
-                    {record.workshop_name || EMPTY}
-                  </div>
-
-                  {record.workshop_contact ? (
-                    <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-[10px] font-bold text-slate-400 uppercase">Contact</div>
-                        <div className="text-xs font-mono font-extrabold text-slate-900 dark:text-slate-100 mt-0.5 truncate">
-                          {record.workshop_contact}
-                        </div>
-                      </div>
-                      <a
-                        href={`tel:${record.workshop_contact}`}
-                        className="p-2 rounded-lg bg-indigo-500/10 text-indigo-600 hover:bg-indigo-500/20 dark:text-indigo-300 shrink-0"
-                        title="Call workshop"
-                      >
-                        <Phone className="w-4 h-4" />
-                      </a>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-500">No contact number on file.</p>
-                  )}
-                </div>
-              </CardContent>
+          {/* Service provider: vehicle + workshop, joined into one card */}
+          <Card className="border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl shadow-[0_1px_2px_rgba(16,24,40,0.04),0_8px_24px_-16px_rgba(16,24,40,0.14)] p-0 gap-0 ring-0 overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20">
+              <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                <Wrench className="w-4 h-4 text-brand" /> Vehicle Details
+              </h3>
             </div>
+
+            <CardContent className="p-4 divide-y divide-slate-100 dark:divide-slate-800">
+              {/* Vehicle */}
+              <div className="pb-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <Truck className="w-3.5 h-3.5 text-brand" /> Vehicle
+                  </span>
+                  {vehicle && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/vehicles/${vehicle.id}`)}
+                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-0.5"
+                    >
+                      View <ExternalLink className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+
+                {vehicle ? (
+                  <>
+                    <div className="rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 px-3.5 py-3 mb-1">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Plate number</div>
+                      <div className="text-lg font-mono font-black text-slate-900 dark:text-slate-100 tracking-wider">
+                        {vehicle.plate_number}
+                      </div>
+                    </div>
+                    <Field label="Reference ID" value={vehicle.ref_id || EMPTY} mono />
+                    <Field label="Asset type" value={vehicle.asset_type} />
+                    <Field label="Vehicle status" value={vehicle.status} />
+                    <Field
+                      label="Current odometer"
+                      value={`${(vehicle.current_odometer || 0).toLocaleString()} km`}
+                      mono
+                    />
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2 text-xs text-slate-500 rounded-xl border border-dashed border-slate-200 dark:border-slate-700 px-3 py-3">
+                    <Truck className="w-4 h-4 text-slate-300 shrink-0" /> No vehicle is linked to this record.
+                  </div>
+                )}
+              </div>
+
+              {/* Workshop */}
+              <div className="pt-3">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5 mb-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-indigo-500" /> Workshop
+                </span>
+
+                <div className="text-sm font-extrabold text-slate-900 dark:text-slate-100 mb-2">
+                  {record.workshop_name || EMPTY}
+                </div>
+
+                {record.workshop_contact ? (
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase">Contact</div>
+                      <div className="text-xs font-mono font-extrabold text-slate-900 dark:text-slate-100 mt-0.5 truncate">
+                        {record.workshop_contact}
+                      </div>
+                    </div>
+                    <a
+                      href={`tel:${record.workshop_contact}`}
+                      className="p-2 rounded-lg bg-indigo-500/10 text-indigo-600 hover:bg-indigo-500/20 dark:text-indigo-300 shrink-0"
+                      title="Call workshop"
+                    >
+                      <Phone className="w-4 h-4" />
+                    </a>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500">No contact number on file.</p>
+                )}
+              </div>
+            </CardContent>
           </Card>
         </div>
       </div>
