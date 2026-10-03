@@ -4,14 +4,15 @@ import { prisma } from '../db';
 import bcrypt from 'bcrypt';
 import { logAuditEvent } from '../services/auditService';
 
-// Get all users (except drivers if we only want dashboard users, but let's just return all non-drivers for now, or all)
+// Dashboard / operator-app staff only. Drivers (role Driver, or any account linked to a Driver
+// record) are listed by the Drivers module, never here.
 export const getUsers = async (req: Request, res: Response) => {
   try {
     const requesterId = (req as any).user?.id;
     const requester = requesterId ? await prisma.user.findUnique({ where: { id: requesterId }, select: { role: true, isSuperAdmin: true } }) : null;
     const isRequesterSuperAdmin = Boolean(requester?.isSuperAdmin || requester?.role === 'SuperAdmin');
 
-    const whereClause: any = { role: { not: 'Driver' } };
+    const whereClause: any = { role: { not: 'Driver' }, driver: { is: null } };
     if (!isRequesterSuperAdmin) {
       whereClause.isSuperAdmin = false;
       whereClause.role = { notIn: ['Driver', 'SuperAdmin'] };
@@ -37,7 +38,6 @@ export const getUsers = async (req: Request, res: Response) => {
     const formattedUsers = users.map(u => ({
       ...u,
       status: u.isActive ? 'Active' : 'Inactive',
-      lastLogin: u.createdAt.toISOString(), // Placeholder since lastLogin is missing
     }));
 
     res.json({ success: true, data: formattedUsers });

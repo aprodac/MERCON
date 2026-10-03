@@ -29,12 +29,12 @@ export const dk = {
   page: 'px-5 sm:px-6 lg:px-7 pt-5 pb-5 w-full flex flex-col gap-4 bg-[#EEF1F6] dark:bg-slate-950',
   card: 'bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-2xs',
   panel: 'bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl shadow-2xs p-4 sm:p-5 flex flex-col min-h-[460px] overflow-hidden',
-  title: 'text-2xl sm:text-3xl font-black text-slate-900 dark:text-white uppercase tracking-tight leading-none truncate',
-  label: 'text-[10px] font-extrabold text-slate-400 uppercase tracking-widest leading-none',
-  micro: 'text-[9px] font-extrabold text-slate-400 uppercase tracking-widest leading-none',
-  kpiValue: 'text-lg font-black text-slate-900 dark:text-white leading-tight truncate',
+  title: 'text-xl sm:text-2xl xl:text-[28px] font-black text-slate-900 dark:text-white uppercase tracking-tight leading-tight truncate',
+  label: 'text-[10.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider leading-none',
+  micro: 'text-[9.5px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider leading-none',
+  kpiValue: 'text-lg font-extrabold text-slate-900 dark:text-white leading-tight truncate tabular-nums whitespace-nowrap',
   value: 'text-sm font-bold text-slate-900 dark:text-white truncate',
-  sub: 'text-xs font-medium text-slate-400 truncate',
+  sub: 'text-xs font-medium text-slate-500 dark:text-slate-400 truncate',
   // Round avatar/logo holder on the left of the header
   avatar: 'bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-full shadow-2xs shrink-0 w-28 h-28 sm:w-32 sm:h-32 overflow-hidden flex items-center justify-center self-end',
   iconButton: 'w-9 h-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center shadow-2xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0',
@@ -74,6 +74,31 @@ export function fmtTons(kg: unknown): string {
   const n = toNum(kg);
   if (!n) return EMPTY;
   return `${(n / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 })} Ton`;
+}
+
+/** Saudi number in international form, digits only: "0546126262" / "+966 546126262" → "966546126262". */
+export function saPhoneDigits(raw?: string | null): string {
+  const d = (raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('966')) return d;
+  if (d.startsWith('00')) return d.slice(2);
+  if (d.startsWith('0')) return `966${d.slice(1)}`;
+  if (d.length === 9 && d.startsWith('5')) return `966${d}`;
+  return (raw || '').trim().startsWith('+') ? d : `966${d}`;
+}
+
+/** Readable phone: "+966 54 612 6262" for Saudi mobiles, spaced country code otherwise. */
+export function fmtPhone(raw?: string | null): string {
+  const d = saPhoneDigits(raw);
+  if (!d) return EMPTY;
+  if (d.startsWith('966')) {
+    const n = d.slice(3);
+    if (n.length === 9 && n.startsWith('5')) return `+966 ${n.slice(0, 2)} ${n.slice(2, 5)} ${n.slice(5)}`;
+    if (n.length === 8) return `+966 ${n.slice(0, 2)} ${n.slice(2, 5)} ${n.slice(5)}`;
+    return `+966 ${n}`;
+  }
+  if (d.startsWith('91') && d.length === 12) return `+91 ${d.slice(2, 7)} ${d.slice(7)}`;
+  return `+${d}`;
 }
 
 export function personName(p?: { first_name?: string | null; last_name?: string | null; name?: string | null } | null): string {
@@ -226,7 +251,7 @@ export function DetailTitleRow({
   return (
     <div className="flex items-center justify-between gap-3 min-w-0">
       <div className="flex items-center gap-3 min-w-0">
-        <h1 className={dk.title}>{title}</h1>
+        <h1 className={dk.title} title={typeof title === 'string' ? title : undefined}>{title}</h1>
         {status}
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -284,14 +309,14 @@ export function KpiCard({
     <div
       onClick={onClick}
       title={title}
-      className={cn(dk.card, 'p-4 sm:p-5 flex items-center justify-between gap-3 min-h-[92px] min-w-0', onClick && 'cursor-pointer group hover:border-slate-300 dark:hover:border-slate-700 transition-colors')}
+      className={cn(dk.card, 'px-4 py-3.5 flex items-center justify-between gap-2.5 min-h-[88px] min-w-0', onClick && 'cursor-pointer group hover:border-slate-300 dark:hover:border-slate-700 transition-colors')}
     >
-      <div className="flex items-center gap-3.5 min-w-0 flex-1">
-        {leading ?? (Icon && <Icon className={cn('w-6 h-6 stroke-[1.75] shrink-0', iconClass)} />)}
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        {leading ?? (Icon && <Icon className={cn('w-[22px] h-[22px] stroke-[1.75] shrink-0', iconClass)} />)}
         <div className="min-w-0 flex-1">
           <p className={cn(dk.label, 'mb-1.5 truncate')}>{label}</p>
-          <p className={cn(dk.kpiValue, mono && 'font-mono')}>{value}</p>
-          {sub && <p className={cn(dk.sub, 'mt-0.5')}>{sub}</p>}
+          <p className={cn(dk.kpiValue, mono && 'font-mono tracking-tight')} title={typeof value === 'string' || typeof value === 'number' ? String(value) : undefined}>{value}</p>
+          {sub && <p className={cn(dk.sub, 'mt-1')} title={typeof sub === 'string' ? sub : undefined}>{sub}</p>}
         </div>
       </div>
       {trailing}

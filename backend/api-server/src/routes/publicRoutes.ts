@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getPublicTripEvidence } from '../controllers/publicController';
 import { getPublicShare } from '../controllers/operatorInboxController';
-import { getPublicFleetTracking, getPublicTracking, getTrackingPreviewTags } from '../controllers/trackingController';
+import { getPublicFleetTracking, getPublicTracking, getTrackingPreviewTags, getTrackingPreviewCard } from '../controllers/trackingController';
 import { createPublicTrackingRateLimit } from '../middlewares/rateLimit';
 
 const router = Router();
@@ -16,5 +16,7 @@ router.get('/track/:token', createPublicTrackingRateLimit(), getPublicTracking);
 router.get('/fleet/:token', createPublicTrackingRateLimit(), getPublicFleetTracking);
 // WhatsApp link-preview tags for /t/ and /c/ pages (read by the web container's nginx).
 router.get('/og/:kind/:token', createPublicTrackingRateLimit(), getTrackingPreviewTags);
+// The white preview card image those tags point at.
+router.get('/og/:kind/:token/card.png', createPublicTrackingRateLimit(), getTrackingPreviewCard);
 
 export default router;

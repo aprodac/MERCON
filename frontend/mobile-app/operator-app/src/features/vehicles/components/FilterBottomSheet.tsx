@@ -31,7 +31,7 @@ export function FilterBottomSheet({ visible, value, onChange, onClose }: FilterB
       <Pressable className="flex-1 justify-end bg-black/30" onPress={onClose}>
         <Pressable className="gap-1 rounded-t-3xl bg-white p-5 pb-8" onPress={(e) => e.stopPropagation()}>
           <View className="mb-2 flex-row items-center justify-between">
-            <Text className="text-lg font-bold text-gray-900">Filter by Status</Text>
+            <Text className="text-lg font-bold text-[#3E3C3D]">Filter by Status</Text>
             <TouchableOpacity onPress={onClose} className="h-8 w-8 items-center justify-center rounded-full bg-gray-100">
               <X size={16} color="#3B3B44" strokeWidth={2} />
             </TouchableOpacity>

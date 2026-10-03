@@ -39,7 +39,7 @@ function arrivalClock(secondsLeft: number): string {
 const LiveNavigationScreen = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { t, language } = useLanguage();
+  const { t, language, tr } = useLanguage();
   const { trip, loading, refetch } = useCurrentTrip();
   const [position, setPosition] = useState<{ lat: number; lng: number; heading?: number | null; speedKph?: number | null } | null>(null);
   // Map camera: follow the truck in a tilted driver view by default; night map after dark.
@@ -386,7 +386,7 @@ const LiveNavigationScreen = () => {
               <Text style={styles.floatingEtaDivider}>•</Text>
             ) : null}
             {displayEta ? (
-              <Text style={styles.floatingEtaText}>{displayEta} {language === 'ur' ? 'باقی' : 'remaining'}</Text>
+              <Text style={styles.floatingEtaText}>{displayEta} {tr('remaining', 'باقی')}</Text>
             ) : null}
             {displayArrival ? (
               <>

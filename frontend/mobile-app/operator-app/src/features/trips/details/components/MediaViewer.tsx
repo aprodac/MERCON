@@ -96,12 +96,12 @@ export function MediaViewer({ items, startIndex, title, onClose, onSend }: Props
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0E0E12' },
+  root: { flex: 1, backgroundColor: '#3E3C3D' },
   top: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16 },
   title: { color: Colors.white, fontSize: 15, fontWeight: '800' },
   sub: { color: '#C9C9D2', fontSize: 12, marginTop: 1 },
   close: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' },
-  video: { height: 260, borderRadius: 20, backgroundColor: '#2B2A2B', alignItems: 'center', justifyContent: 'center', gap: 14 },
+  video: { height: 260, borderRadius: 20, backgroundColor: '#3E3C3D', alignItems: 'center', justifyContent: 'center', gap: 14 },
   play: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#E0503B', alignItems: 'center', justifyContent: 'center', paddingLeft: 4 },
   openRow: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 7 },
   openText: { color: Colors.white, fontSize: 13, fontWeight: '700' },

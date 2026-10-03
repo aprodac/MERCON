@@ -1,33 +1,72 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArrowLeft, Download, Trash2, ExternalLink, Sparkles, FolderOpen,
-  Loader2, FileText, Hash, Building2, Calendar, Plus, ZoomIn, ZoomOut,
-  RotateCw, RefreshCw, Maximize2, CheckCircle2, AlertTriangle, XCircle,
-  Files as FilesIcon, ShieldAlert, Truck, User, ArrowUpRight, Eye, ChevronRight,
-  Clock, ShieldCheck, Lock, Unlock, Info
+  ArrowLeft, Download, Trash2, Sparkles, Loader2, Plus, XCircle, CheckCircle2, MoreHorizontal,
+  Pencil, RefreshCw, Lock, Truck, User as UserIcon, Building2, ArrowUpRight, X, History, Activity,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import { documentService } from '@/services/documentService';
+import DocumentCanvasViewer from '@/components/ui/DocumentCanvasViewer';
+import UploadDocumentModal from '@/components/ui/UploadDocumentModal';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
+import { DatePicker } from '@/components/ui/date-picker';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { documentService, type DocStatus, type DocumentActivityEntry } from '@/services/documentService';
+import { documentTypeService, type DocOwnerType } from '@/services/documentTypeService';
 import { vehicleService } from '@/services/vehicleService';
 import { driverService } from '@/services/driverService';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { documentDisplayName, getExpiryStatus, formatBilingualAuthority, resolveFileUrl } from '@/lib/documents';
-import { isImageFile, isPdfFile } from '@/components/ui/DocumentViewerModal';
+import { customerService } from '@/services/customerService';
+import { documentDisplayName, daysUntil, formatDocDate, formatBilingualAuthority, resolveFileUrl } from '@/lib/documents';
+import { ROW_STATE_STYLE, VERIFICATION_STYLE, docState, relativeExpiry } from '@/lib/documentLibrary';
 import { cn } from '@/lib/utils';
 import { useDeploymentTimezone, formatInDeploymentTz } from '@/lib/datetime';
 
-const STATUS_CONFIG: Record<string, { label: string; className: string; icon: any }> = {
-  expired:  { label: 'Expired',        className: 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-450', icon: XCircle },
-  critical: { label: 'Expiring Soon',  className: 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-950/30 dark:text-rose-455', icon: AlertTriangle },
-  warning:  { label: 'Expiring Soon',  className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400', icon: AlertTriangle },
-  valid:    { label: 'Valid & Verified', className: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-450', icon: CheckCircle2 },
-  none:     { label: 'No Expiry',     className: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400', icon: FileText },
+const TYPED_OWNERS: DocOwnerType[] = ['Driver', 'Vehicle', 'Trip', 'Customer', 'Company', 'Other'];
+
+const STATE_PILL: Record<string, string> = {
+  expired: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300',
+  expiring: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300',
+  valid: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300',
+  none: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+  missing: 'bg-slate-100 text-slate-600',
 };
+
+const FIELD_LABEL: Record<string, string> = {
+  type: 'type', issue_date: 'issue date', expiry_date: 'expiry date', document_number: 'number',
+  is_confidential: 'confidentiality', folder: 'folder',
+};
+
+function describeActivity(e: DocumentActivityEntry): string {
+  switch (e.action) {
+    case 'DOCUMENT_UPLOADED': return 'Uploaded';
+    case 'DOCUMENT_UPDATED': {
+      const keys = Object.keys(e.details?.changes || {});
+      if (keys.length === 1 && keys[0] === 'expiry_date') {
+        const c = e.details.changes.expiry_date;
+        return `Changed expiry ${c.from ? formatDocDate(c.from) : 'none'} → ${c.to ? formatDocDate(c.to) : 'none'}`;
+      }
+      return keys.length ? `Changed ${keys.map((k) => FIELD_LABEL[k] || k).join(', ')}` : 'Edited';
+    }
+    case 'DOCUMENT_STATUS_CHANGED': {
+      const s = e.details?.status as DocStatus | undefined;
+      return s === 'Verified' ? 'Marked verified' : s === 'Rejected' ? 'Rejected' : 'Marked not verified';
+    }
+    case 'DOCUMENT_TRASHED': return 'Deleted';
+    case 'DOCUMENT_RESTORED': return 'Restored';
+    case 'DOCUMENT_PAGE_ADDED': return 'Added a page';
+    case 'DOCUMENT_PAGE_REMOVED': return 'Removed a page';
+    default: return e.action.replace(/^DOCUMENT_/, '').replace(/_/g, ' ').toLowerCase();
+  }
+}
+
+const toDay = (iso: string | null | undefined) => (iso ? iso.slice(0, 10) : '');
 
 export default function DocumentDetailPage() {
   const { docId } = useParams<{ docId: string }>();
@@ -35,728 +74,498 @@ export default function DocumentDetailPage() {
   const queryClient = useQueryClient();
   const tz = useDeploymentTimezone();
 
-  const [activeFileIdx, setActiveFileIdx] = useState(0);
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [rotation, setRotation] = useState(0);
-  const [isRescanning, setIsRescanning] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [form, setForm] = useState({ typeId: '', number: '', issue: '', expiry: '', confidential: false });
+  const [saving, setSaving] = useState(false);
+  const [isRenewOpen, setIsRenewOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const addFileInputId = 'detail-add-file-input';
-
-  const { data: document, isLoading, isError } = useQuery({
+  const { data: doc, isLoading, isError } = useQuery({
     queryKey: ['documents', 'detail', docId],
     queryFn: () => documentService.getById(docId!),
     enabled: !!docId,
   });
-
+  const { data: versions = [] } = useQuery({
+    queryKey: ['documents', 'versions', docId],
+    queryFn: () => documentService.getVersions(docId!),
+    enabled: !!doc,
+  });
+  const { data: activity = [] } = useQuery({
+    queryKey: ['documents', 'activity', docId],
+    queryFn: () => documentService.getActivity(docId!),
+    enabled: !!doc,
+  });
+  const ownerTypeForTypes = doc && (TYPED_OWNERS as string[]).includes(doc.entity_type) ? (doc.entity_type as DocOwnerType) : null;
+  const { data: types = [] } = useQuery({
+    queryKey: ['document-types', ownerTypeForTypes],
+    queryFn: async () => (await documentTypeService.getAll({ ownerType: ownerTypeForTypes! })).data,
+    enabled: !!ownerTypeForTypes,
+  });
   const { data: vehicle } = useQuery({
-    queryKey: ['vehicle', document?.entity_id],
-    queryFn: () => vehicleService.getById(document!.entity_id),
-    enabled: !!document && document.entity_type === 'Vehicle',
+    queryKey: ['vehicle', doc?.entity_id, 'lookup'],
+    queryFn: () => vehicleService.getById(doc!.entity_id, { lookup: true }),
+    enabled: doc?.entity_type === 'Vehicle',
   });
-
   const { data: driver } = useQuery({
-    queryKey: ['driver', document?.entity_id],
-    queryFn: () => driverService.getById(document!.entity_id),
-    enabled: !!document && document.entity_type === 'Driver',
+    queryKey: ['driver', doc?.entity_id, 'lookup'],
+    queryFn: () => driverService.getById(doc!.entity_id, { lookup: true }),
+    enabled: doc?.entity_type === 'Driver',
+  });
+  const { data: customer } = useQuery({
+    queryKey: ['customer', doc?.entity_id],
+    queryFn: () => customerService.getById(doc!.entity_id),
+    enabled: doc?.entity_type === 'Customer',
   });
 
-  const refresh = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['documents', 'detail', docId] });
-    await queryClient.invalidateQueries({ queryKey: ['documents'] });
-  };
+  useEffect(() => setEditing(false), [docId]);
 
-  const files = document?.files && document.files.length > 0
-    ? document.files
-    : document ? [{ id: 'primary', file_url: document.file_url, mime_type: document.mime_type, label: 'Primary File' }] : [];
-  const activeFile = files[activeFileIdx] || files[0];
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['documents'] });
 
-  const handleZoomIn = () => setZoomLevel((z) => Math.min(z + 0.25, 3));
-  const handleZoomOut = () => setZoomLevel((z) => Math.max(z - 0.25, 0.5));
-  const handleRotate = () => setRotation((r) => (r + 90) % 360);
-  const handleResetView = () => {
-    setZoomLevel(1);
-    setRotation(0);
-  };
-
-  const handleAddFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file || !document) return;
-    try {
-      toast.loading('Adding file attachment...', { id: 'add-file' });
-      await documentService.addFile(document.id, file);
-      toast.success('Attachment added successfully', { id: 'add-file' });
-      await refresh();
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message || 'Failed to add file attachment', { id: 'add-file' });
-    }
-  };
-
-  const handleDeleteFile = async (fileId: string) => {
-    if (!document || files.length <= 1) {
-      toast.error('Cannot delete the last remaining file attachment');
-      return;
-    }
-    if (!confirm('Remove this file attachment?')) return;
-    try {
-      toast.loading('Removing file...', { id: 'del-file' });
-      await documentService.deleteFile(document.id, fileId);
-      toast.success('File removed', { id: 'del-file' });
-      setActiveFileIdx(0);
-      await refresh();
-    } catch {
-      toast.error('Failed to remove file', { id: 'del-file' });
-    }
-  };
-
-  const handleRescan = async () => {
-    if (!document) return;
-    setIsRescanning(true);
-    try {
-      toast.loading('Running AI Vision OCR extraction...', { id: 'rescan' });
-      await documentService.extractDocumentOcr(document.id);
-      toast.success('AI Metadata updated', { id: 'rescan' });
-      await refresh();
-    } catch (err: any) {
-      toast.error(err.response?.data?.error?.message || 'AI Vision scan failed', { id: 'rescan' });
-    } finally {
-      setIsRescanning(false);
-    }
-  };
-
-  const handleDeleteDocument = async () => {
-    if (!document) return;
-    if (!confirm('Are you sure you want to delete this document? This action cannot be undone.')) return;
-    setIsDeleting(true);
-    try {
-      await documentService.delete(document.id);
-      toast.success('Document deleted successfully');
-      await queryClient.invalidateQueries({ queryKey: ['documents'] });
-      navigate(document.entity_type === 'Vehicle' ? `/documents/vehicles/${document.entity_id}` : `/documents/drivers/${document.entity_id}`);
-    } catch {
-      toast.error('Failed to delete document');
-      setIsDeleting(false);
-    }
-  };
+  const owner = useMemo(() => {
+    if (!doc) return null;
+    if (doc.entity_type === 'Vehicle') return {
+      icon: Truck, name: vehicle?.plate_number || vehicle?.ref_id || 'Vehicle', sub: vehicle?.ref_id || null,
+      folder: `/documents/vehicles/${doc.entity_id}`, folderLabel: `${vehicle?.plate_number || 'Vehicle'} folder`,
+    };
+    if (doc.entity_type === 'Driver') return {
+      icon: UserIcon, name: driver ? `${driver.first_name} ${driver.last_name}`.trim() : 'Driver', sub: driver?.ref_id || null,
+      folder: `/documents/drivers/${doc.entity_id}`, folderLabel: `${driver ? driver.first_name : 'Driver'}'s folder`,
+    };
+    return {
+      icon: Building2,
+      name: doc.entity_type === 'Customer' ? customer?.name || 'Customer' : doc.entity_type === 'MaintenanceRecord' ? 'Maintenance record' : 'Company',
+      sub: doc.entity_type === 'Customer' ? 'Customer' : null,
+      folder: '/documents?tab=Company', folderLabel: 'Company documents',
+    };
+  }, [doc, vehicle, driver, customer]);
 
   if (isLoading) {
     return (
-      <DashboardLayout active="Documents" title="Loading Document...">
-        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-slate-450">
-          <Loader2 className="w-8 h-8 animate-spin text-brand" />
-          <p className="text-sm font-semibold">Loading document details...</p>
+      <DashboardLayout active="Documents" title="Document">
+        <div className="flex items-center justify-center min-h-[60vh] gap-2 text-slate-400 text-sm">
+          <Loader2 className="w-5 h-5 animate-spin" /> Loading document…
         </div>
       </DashboardLayout>
     );
   }
 
-  if (isError || !document) {
+  if (isError || !doc || !owner) {
     return (
-      <DashboardLayout active="Documents" title="Document Not Found">
-        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center">
-          <div className="w-16 h-16 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center">
-            <XCircle className="w-8 h-8" />
+      <DashboardLayout active="Documents" title="Document not found">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3 text-center">
+          <XCircle className="w-10 h-10 text-rose-400" />
+          <h2 className="text-base font-bold text-slate-900 dark:text-slate-100">This document isn't available</h2>
+          <p className="text-xs text-slate-500 max-w-sm">It may have been deleted. Deleted documents can be restored from Recently deleted for 30 days.</p>
+          <div className="flex gap-2">
+            <Button onClick={() => navigate('/documents')} variant="outline" size="sm" className="gap-1.5"><ArrowLeft className="w-4 h-4" /> Documents</Button>
+            <Button onClick={() => navigate('/documents?tab=Deleted')} variant="outline" size="sm" className="gap-1.5"><Trash2 className="w-4 h-4" /> Recently deleted</Button>
           </div>
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Document Not Found</h2>
-          <p className="text-xs text-slate-500 max-w-sm">The document you are trying to view does not exist or has been removed.</p>
-          <Button onClick={() => navigate('/documents')} variant="outline" className="gap-2">
-            <ArrowLeft className="w-4 h-4" /> Back to Documents Center
-          </Button>
         </div>
       </DashboardLayout>
     );
   }
 
-  const expStatus = getExpiryStatus(document.expiry_date);
-  const statusCfg = STATUS_CONFIG[expStatus] || STATUS_CONFIG.none;
-  const StatusIcon = statusCfg.icon;
-  const resolvedUrl = activeFile ? resolveFileUrl(activeFile.file_url) : '';
-  const isImg = activeFile ? isImageFile(activeFile.file_url, activeFile.mime_type) : false;
-  const isPdf = activeFile ? isPdfFile(activeFile.file_url, activeFile.mime_type) : false;
+  const files = doc.files && doc.files.length > 0
+    ? doc.files
+    : [{ id: 'primary', file_url: doc.file_url, mime_type: doc.mime_type, label: null }];
+  const realFiles = (doc.files || []).filter((f) => f.id !== 'primary');
+  const canAddPages = doc.documentType?.allowsMultipleFiles !== false;
+  const state = docState(doc);
+  const days = daysUntil(doc.expiry_date);
+  const ai = doc.ai_extracted_json || null;
+  const isCurrent = versions.length === 0 || versions[0]?.id === doc.id;
+  const confidence = typeof ai?.confidence === 'number' ? Math.round((ai.confidence > 1 ? ai.confidence / 100 : ai.confidence) * 100) : null;
+  const OwnerIcon = owner.icon;
 
-  const ownerFolderUrl = document.entity_type === 'Vehicle'
-    ? `/documents/vehicles/${document.entity_id}`
-    : `/documents/drivers/${document.entity_id}`;
+  const startEdit = () => {
+    setForm({
+      typeId: doc.documentTypeId || '',
+      number: ai?.document_number || '',
+      issue: toDay(doc.issue_date),
+      expiry: toDay(doc.expiry_date),
+      confidential: doc.is_confidential,
+    });
+    setEditing(true);
+  };
 
-  const ownerDisplayName = document.entity_type === 'Vehicle'
-    ? (vehicle?.plate_number || vehicle?.ref_id || `Vehicle #${document.entity_id.slice(0, 8)}`)
-    : (driver ? `${driver.first_name} ${driver.last_name}` : `Driver #${document.entity_id.slice(0, 8)}`);
+  const save = async () => {
+    setSaving(true);
+    try {
+      await documentService.update(doc.id, {
+        ...(ownerTypeForTypes && form.typeId ? { document_type_id: form.typeId } : {}),
+        document_number: form.number || null,
+        issue_date: form.issue || null,
+        expiry_date: form.expiry || null,
+        is_confidential: form.confidential,
+      });
+      toast.success('Saved');
+      setEditing(false);
+      await refresh();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error?.message || "Couldn't save the changes");
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  // Document Lifespan & Timeline Calculations
-  const daysRemaining = document.expiry_date
-    ? Math.ceil((new Date(document.expiry_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-    : null;
+  const setVerification = async (status: DocStatus) => {
+    setBusy('verify');
+    try {
+      await documentService.updateStatus(doc.id, status);
+      await refresh();
+    } catch {
+      toast.error("Couldn't update");
+    } finally {
+      setBusy(null);
+    }
+  };
 
-  const isExpired = daysRemaining !== null && daysRemaining <= 0;
-  const isExpiringSoon = daysRemaining !== null && daysRemaining > 0 && daysRemaining <= 30;
-  const progressPercent = daysRemaining !== null
-    ? Math.max(0, Math.min(100, (daysRemaining / 365) * 100))
-    : 100;
+  const rescan = async () => {
+    setBusy('scan');
+    try {
+      await documentService.extractDocumentOcr(doc.id);
+      toast.success('Read again with AI');
+      await refresh();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error?.message || "AI couldn't read this file");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const addPage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setBusy('page');
+    try {
+      await documentService.addFile(doc.id, file);
+      toast.success('Page added');
+      await refresh();
+    } catch (err: any) {
+      toast.error(err.response?.data?.error?.message || "Couldn't add the page");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const removePage = async (fileId: string) => {
+    if (realFiles.length <= 1) return;
+    try {
+      await documentService.deleteFile(doc.id, fileId);
+      toast.success('Page removed');
+      await refresh();
+    } catch {
+      toast.error("Couldn't remove the page");
+    }
+  };
+
+  const remove = async () => {
+    setBusy('delete');
+    try {
+      await documentService.delete(doc.id);
+      const id = doc.id;
+      toast.success('Moved to Recently deleted', {
+        action: { label: 'Undo', onClick: async () => { await documentService.restore([id]); refresh(); navigate(`/documents/doc/${id}`); } },
+      });
+      await refresh();
+      navigate(owner.folder);
+    } catch {
+      toast.error("Couldn't delete");
+      setBusy(null);
+    }
+  };
+
+  const onRenewed = async () => {
+    setIsRenewOpen(false);
+    await refresh();
+    const latest = await documentService.getVersions(doc.id).catch(() => []);
+    if (latest[0] && latest[0].id !== doc.id) {
+      toast.success('New version uploaded — the old one is kept in Versions');
+      navigate(`/documents/doc/${latest[0].id}`, { replace: true });
+    }
+  };
+
+  const verification = doc.status;
 
   return (
-    <DashboardLayout active="Documents" title={documentDisplayName(document)}>
-      <div className="px-4 sm:px-6 pb-10 space-y-6 max-w-[1600px] mx-auto">
-        
-        {/* Header and Breadcrumbs Row */}
-        <div className="flex flex-col gap-3 pb-5 border-b border-slate-200 dark:border-slate-800">
-          {/* Breadcrumbs */}
-          <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-            <button onClick={() => navigate('/documents')} className="hover:text-brand transition-colors cursor-pointer">
-              Documents Vault
-            </button>
-            <ChevronRight className="w-3 h-3 text-slate-300 dark:text-slate-700" />
-            <button onClick={() => navigate(ownerFolderUrl)} className="hover:text-brand transition-colors cursor-pointer">
-              {ownerDisplayName}
-            </button>
-            <ChevronRight className="w-3 h-3 text-slate-300 dark:text-slate-700" />
-            <span className="text-slate-700 dark:text-slate-300 font-black">{documentDisplayName(document)}</span>
-          </div>
+    <DashboardLayout active="Documents" title={documentDisplayName(doc)}>
+      <div className="px-4 sm:px-6 pb-10 w-full max-w-[1600px] mx-auto flex flex-col gap-4">
 
-          {/* Main Title & Action Row */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-brand/10 dark:bg-brand/20 text-brand flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
-                <FileText className="w-5.5 h-5.5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-slate-100 tracking-tight leading-none">
-                    {documentDisplayName(document)}
-                  </h1>
-                  <Badge variant="outline" className={cn('text-[11px] font-bold px-2.5 py-0.5 border gap-1 shadow-2xs', statusCfg.className)}>
-                    <StatusIcon className="w-3.5 h-3.5" />
-                    {statusCfg.label}
-                  </Badge>
-                  {document.ai_extracted_json && (
-                    <Badge className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 text-[10px] font-extrabold gap-1.5 shadow-2xs border">
-                      <Sparkles className="w-3 h-3 text-amber-600 dark:text-amber-400 animate-pulse" /> AI Extracted
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-xs text-slate-400 mt-1 flex items-center gap-2 font-medium">
-                  <span>Owner: <strong className="text-slate-700 dark:text-slate-200">{ownerDisplayName}</strong> ({document.entity_type})</span>
-                  <span>•</span>
-                  <span>Uploaded {formatInDeploymentTz(document.createdAt, tz, 'MMM dd, yyyy')}</span>
-                </p>
-              </div>
-            </div>
+        {/* ── Header ─────────────────────────────────────────────────────── */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <button onClick={() => navigate(owner.folder)} className="flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-slate-100 cursor-pointer">
+            <ArrowLeft className="w-3.5 h-3.5" /> {owner.folderLabel}
+          </button>
+          <span className="text-slate-300 dark:text-slate-700">/</span>
+          <h1 className="text-lg font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">{documentDisplayName(doc)}</h1>
+          <span className={cn('px-2 py-0.5 rounded-full text-[11px] font-semibold', STATE_PILL[state])}>
+            {state === 'none' ? 'No expiry' : relativeExpiry(days) || ROW_STATE_STYLE[state].label}
+          </span>
+          <span className={cn('px-2 py-0.5 rounded-full text-[11px] font-semibold', VERIFICATION_STYLE[verification].className)}>
+            {VERIFICATION_STYLE[verification].label}
+          </span>
+          {doc.is_confidential && (
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 flex items-center gap-1">
+              <Lock className="w-3 h-3" /> Confidential
+            </span>
+          )}
+          {!isCurrent && (
+            <button onClick={() => navigate(`/documents/doc/${versions[0].id}`)} className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 cursor-pointer">
+              Older version — open current
+            </button>
+          )}
 
-            {/* Actions Panel */}
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => navigate(ownerFolderUrl)}
-                className="h-9 px-3.5 text-xs font-semibold gap-1.5 border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800 cursor-pointer"
-              >
-                <FolderOpen className="w-3.5 h-3.5 text-slate-400" /> Back to Folder
-              </Button>
-              <a
-                href={resolvedUrl}
-                download
-                className="h-9 px-3.5 rounded-lg border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5 transition-colors shadow-2xs"
-              >
-                <Download className="w-3.5 h-3.5 text-slate-400" /> Download
-              </a>
-              {document.documentType?.allowsMultipleFiles !== false && (
-                <>
-                  <label
-                    htmlFor={addFileInputId}
-                    className="h-9 px-3.5 rounded-lg bg-brand hover:bg-brand/90 text-white text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
-                  >
-                    <Plus className="w-3.5 h-3.5" /> Add Page
-                  </label>
-                  <input id={addFileInputId} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.gif,.doc,.docx,.xls,.xlsx,.txt,.rtf,.csv" className="hidden" onChange={handleAddFile} />
-                </>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 px-3.5 text-xs font-semibold gap-1.5 border-rose-200 text-rose-600 hover:bg-rose-50 dark:border-rose-900/50 dark:text-rose-450 dark:hover:bg-rose-950/30 shadow-2xs cursor-pointer"
-                onClick={handleDeleteDocument}
-                disabled={isDeleting}
-              >
-                {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />} Delete
-              </Button>
-            </div>
+          <div className="ml-auto flex items-center gap-2">
+            <a href={resolveFileUrl(doc.file_url)} download target="_blank" rel="noreferrer"
+              className="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5">
+              <Download className="w-3.5 h-3.5" /> Download
+            </a>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" className="h-9 w-9 rounded-xl" aria-label="More actions">
+                  <MoreHorizontal className="w-4 h-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem onClick={startEdit} className="text-xs gap-2"><Pencil className="w-3.5 h-3.5" /> Edit details</DropdownMenuItem>
+                <DropdownMenuItem onClick={rescan} className="text-xs gap-2"><Sparkles className="w-3.5 h-3.5 text-amber-500" /> Read again with AI</DropdownMenuItem>
+                {owner.folder.startsWith('/documents/') && !owner.folder.includes('?') && (
+                  <DropdownMenuItem onClick={() => navigate(owner.folder)} className="text-xs gap-2"><ArrowUpRight className="w-3.5 h-3.5" /> Open folder</DropdownMenuItem>
+                )}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setIsDeleteOpen(true)} className="text-xs gap-2 text-rose-600 focus:text-rose-600"><Trash2 className="w-3.5 h-3.5" /> Delete</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <Button size="sm" onClick={() => setIsRenewOpen(true)} className="h-9 gap-1.5 text-xs bg-[#FA634E] hover:bg-[#FA634E]/90 text-white font-bold rounded-xl px-4 border-none">
+              <RefreshCw className="w-3.5 h-3.5" /> Renew
+            </Button>
           </div>
         </div>
 
-        {/* Main Content Grid: 2 Columns */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Left Column (Metadata & Details - 5/12 width) */}
-          <div className="lg:col-span-5 space-y-6">
-            
-            {/* Owner Details Card */}
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Owner Entity</h3>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 text-[11px] font-bold text-brand hover:text-brand-hover gap-1 p-0 hover:bg-transparent cursor-pointer"
-                  onClick={() => navigate(ownerFolderUrl)}
-                >
-                  View Owner Vault <ArrowUpRight className="w-3.5 h-3.5" />
-                </Button>
-              </div>
-
-              <div className="flex items-center gap-3.5 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-850/50 border border-slate-100 dark:border-slate-800/80">
-                <div className="w-12 h-12 rounded-xl bg-brand/10 dark:bg-brand/20 text-brand flex items-center justify-center shrink-0 shadow-2xs">
-                  {document.entity_type === 'Vehicle' ? <Truck className="w-6 h-6" /> : <User className="w-6 h-6" />}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h4 className="text-sm font-black text-slate-900 dark:text-slate-100 truncate">{ownerDisplayName}</h4>
-                  <p className="text-xs font-semibold text-slate-400 mt-0.5">
-                    {document.entity_type === 'Vehicle' ? `Plate: ${vehicle?.plate_number || 'N/A'}` : `Driver ID: ${document.entity_id.slice(0, 8)}`}
-                  </p>
-                </div>
-              </div>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+          {/* ── File ───────────────────────────────────────────────────── */}
+          <div className="lg:col-span-7 flex flex-col gap-2">
+            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
+              <DocumentCanvasViewer files={files} title={documentDisplayName(doc)} canvasHeightClassName="h-[62vh] min-h-[420px]" />
             </div>
-
-            {/* Visual Compliance & Lifespan Card */}
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-5 space-y-4">
-              <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider">Compliance Status</h3>
-              
-              <div className="space-y-4">
-                {/* Lifespan progress / gauge */}
-                {document.expiry_date ? (
-                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-850/50 border border-slate-100 dark:border-slate-800/80 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-slate-500">Document Validity</span>
-                      <span className={cn(
-                        'font-black',
-                        isExpired ? 'text-rose-600 dark:text-rose-400' :
-                        isExpiringSoon ? 'text-amber-600 dark:text-amber-400' :
-                        'text-emerald-600 dark:text-emerald-400'
-                      )}>
-                        {isExpired ? 'Expired' : 
-                         daysRemaining === 1 ? '1 Day Remaining' :
-                         `${daysRemaining} Days Remaining`}
-                      </span>
-                    </div>
-                    {/* Visual Progress Bar */}
-                    <div className="h-2 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                      <div 
-                        className={cn(
-                          'h-full rounded-full transition-all duration-500',
-                          isExpired ? 'bg-rose-500' :
-                          isExpiringSoon ? 'bg-amber-500' :
-                          'bg-emerald-500'
-                        )} 
-                        style={{ width: `${progressPercent}%` }}
-                      />
-                    </div>
-                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                      <span>Uploaded</span>
-                      <span>Expires: {formatInDeploymentTz(document.expiry_date, tz, 'MMM dd, yyyy')}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="p-4 rounded-xl bg-emerald-50/10 dark:bg-emerald-950/10 border border-emerald-100/50 dark:border-emerald-900/20 flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600 flex items-center justify-center shrink-0">
-                      <ShieldCheck className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-xs font-black text-emerald-800 dark:text-emerald-300">Indefinite Validity</p>
-                      <p className="text-[10px] text-slate-400 mt-0.5">This document has no configured expiration date and stays active indefinitely.</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Compliance Milestone Checkpoints */}
-                <div className="relative pl-6 border-l border-slate-100 dark:border-slate-800 space-y-4 pt-1">
-                  
-                  {/* Node 1: Upload */}
-                  <div className="relative">
-                    <span className="absolute -left-[31px] top-0.5 w-4 h-4 rounded-full border-2 border-white dark:border-slate-900 bg-emerald-500 flex items-center justify-center shadow-xs">
-                      <CheckCircle2 className="w-2.5 h-2.5 text-white" />
-                    </span>
-                    <div className="text-xs">
-                      <p className="font-black text-slate-800 dark:text-slate-200">Document Uploaded</p>
-                      <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                        Received on {formatInDeploymentTz(document.createdAt, tz, 'MMM dd, yyyy · hh:mm a')}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Node 2: AI OCR Vision Scan */}
-                  <div className="relative">
-                    <span className={cn(
-                      'absolute -left-[31px] top-0.5 w-4 h-4 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center shadow-xs',
-                      document.ai_extracted_json ? 'bg-amber-500' : 'bg-slate-350'
-                    )}>
-                      {document.ai_extracted_json ? (
-                        <Sparkles className="w-2.5 h-2.5 text-white" />
-                      ) : (
-                        <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                      )}
-                    </span>
-                    <div className="text-xs">
-                      <p className="font-black text-slate-800 dark:text-slate-200">AI Vision OCR Check</p>
-                      <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                        {document.ai_extracted_json ? (
-                          `Completed with ${Math.round((document.ai_extracted_json.confidence || 0.9) * 100)}% extraction confidence`
-                        ) : (
-                          'OCR extraction not executed'
-                        )}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Node 3: Expiry Status */}
-                  <div className="relative">
-                    <span className={cn(
-                      'absolute -left-[31px] top-0.5 w-4 h-4 rounded-full border-2 border-white dark:border-slate-900 flex items-center justify-center shadow-xs',
-                      isExpired ? 'bg-rose-500' :
-                      isExpiringSoon ? 'bg-amber-500' :
-                      'bg-emerald-500'
-                    )}>
-                      {isExpired ? (
-                        <XCircle className="w-2.5 h-2.5 text-white" />
-                      ) : (
-                        <CheckCircle2 className="w-2.5 h-2.5 text-white" />
-                      )}
-                    </span>
-                    <div className="text-xs">
-                      <p className="font-black text-slate-800 dark:text-slate-200">Operational Compliance</p>
-                      <p className="text-[10px] text-slate-400 font-semibold mt-0.5">
-                        {isExpired ? 'Blocked - Document expired' :
-                         isExpiringSoon ? 'Attention - Nearing expiration' :
-                         'Approved - Active and compliant'}
-                      </p>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-            </div>
-
-            {/* AI Vision OCR Passport Card */}
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" /> AI OCR Passport
-                </h3>
-                {document.ai_extracted_json && typeof document.ai_extracted_json.confidence === 'number' && (
-                  <Badge className="bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 text-[10px] font-mono font-black border border-emerald-200/50 shadow-2xs">
-                    {Math.round(document.ai_extracted_json.confidence * 100)}% CONFIDENCE
-                  </Badge>
+            {(canAddPages || realFiles.length > 1) && (
+              <div className="flex items-center gap-2 flex-wrap text-[11px]">
+                <span className="font-semibold text-slate-500">{realFiles.length || 1} page{(realFiles.length || 1) === 1 ? '' : 's'}</span>
+                {realFiles.length > 1 && realFiles.map((f, i) => (
+                  <span key={f.id} className="flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300">
+                    {f.label || `Page ${i + 1}`}
+                    <button onClick={() => removePage(f.id)} className="p-0.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer" aria-label={`Remove ${f.label || `page ${i + 1}`}`}>
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                {canAddPages && (
+                  <label className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 hover:text-slate-800 cursor-pointer">
+                    {busy === 'page' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plus className="w-3 h-3" />} Add page
+                    <input type="file" className="hidden" accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.gif" onChange={addPage} />
+                  </label>
                 )}
               </div>
-
-              {document.ai_extracted_json ? (
-                <div className="space-y-4">
-                  {/* Simulated Chip/Passport layout */}
-                  <div className="relative overflow-hidden rounded-xl border border-amber-200/60 dark:border-amber-900/30 bg-gradient-to-br from-amber-50/40 via-amber-50/10 to-amber-100/10 dark:from-slate-800/40 dark:to-amber-950/15 p-4 shadow-3xs">
-                    
-                    {/* Simulated smart chip icon in top-right */}
-                    <div className="absolute top-4 right-4 w-8 h-6 rounded-md bg-gradient-to-tr from-amber-200 to-amber-300 dark:from-amber-600 dark:to-amber-500 opacity-60 flex flex-col justify-between p-1">
-                      <div className="h-[1px] w-full bg-amber-400/50" />
-                      <div className="h-[1px] w-full bg-amber-400/50" />
-                      <div className="h-[1px] w-full bg-amber-400/50" />
-                    </div>
-
-                    <div className="space-y-3">
-                      {document.ai_extracted_json.document_number && (
-                        <div>
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">DOCUMENT NUMBER</span>
-                          <span className="font-mono text-base font-black text-slate-900 dark:text-slate-100 tracking-wider">
-                            {document.ai_extracted_json.document_number}
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="grid grid-cols-2 gap-4">
-                        {document.ai_extracted_json.vehicle_plate && (
-                          <div>
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">DETECTED PLATE</span>
-                            <span className="text-xs font-mono font-black text-slate-800 dark:text-slate-200 flex items-center gap-1 mt-0.5">
-                              <Truck className="w-3.5 h-3.5 text-amber-500" />
-                              {document.ai_extracted_json.vehicle_plate}
-                            </span>
-                          </div>
-                        )}
-                        {document.ai_extracted_json.issuing_authority && (
-                          <div>
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">AUTHORITY</span>
-                            <span className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1 mt-0.5 truncate max-w-full">
-                              <Building2 className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                              <span className="truncate">{formatBilingualAuthority(document.ai_extracted_json.issuing_authority)}</span>
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {document.ai_extracted_json.notes && (
-                        <div className="pt-2.5 border-t border-amber-250/20 dark:border-amber-900/20">
-                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block mb-0.5">VISION EXTRACTION NOTES</span>
-                          <p className="text-[11px] text-amber-900/90 dark:text-amber-400 font-mono bg-white/50 dark:bg-slate-950/40 p-2 rounded-lg border border-amber-100/50 dark:border-amber-900/10 italic">
-                            "{document.ai_extracted_json.notes}"
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full text-xs font-bold gap-1.5 border-amber-300 text-amber-800 dark:border-amber-900 dark:text-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-955/20 shadow-3xs cursor-pointer"
-                    onClick={handleRescan}
-                    disabled={isRescanning}
-                  >
-                    {isRescanning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                    Re-Scan Document with AI Vision
-                  </Button>
-                </div>
-              ) : (
-                <div className="p-5 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-center space-y-4 bg-slate-50/30 dark:bg-slate-950/10">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center mx-auto">
-                    <Sparkles className="w-5 h-5 animate-pulse" />
-                  </div>
-                  <div className="max-w-xs mx-auto">
-                    <p className="text-xs font-black text-slate-800 dark:text-slate-200">Vision Analysis Missing</p>
-                    <p className="text-[10px] text-slate-500 mt-1">This document has not been processed by Gemini Vision OCR. Run a scan to automatically extract official metadata.</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full text-xs font-bold gap-1.5 border-amber-300 text-amber-800 dark:border-amber-900 dark:text-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-955/20 shadow-2xs cursor-pointer"
-                    onClick={handleRescan}
-                    disabled={isRescanning}
-                  >
-                    {isRescanning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-                    Scan with AI Vision
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            {/* Technical Attributes Grid */}
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm p-5 space-y-4">
-              <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Info className="w-3.5 h-3.5 text-slate-400" /> Technical Details
-              </h3>
-              
-              <div className="grid grid-cols-2 gap-3.5">
-                <div className="p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-950/10 space-y-1">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Requirement</span>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    {document.documentType?.requirementStatus === 'MANDATORY' ? (
-                      <>
-                        <ShieldAlert className="w-4 h-4 text-rose-500 shrink-0" />
-                        <span className="text-xs font-black text-rose-700 dark:text-rose-455 font-black">Mandatory</span>
-                      </>
-                    ) : (
-                      <>
-                        <ShieldCheck className="w-4 h-4 text-slate-400 shrink-0" />
-                        <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Optional</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-950/10 space-y-1">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Privacy Access</span>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    {document.is_confidential ? (
-                      <>
-                        <Lock className="w-3.5 h-3.5 text-rose-500 shrink-0" />
-                        <span className="text-xs font-black text-rose-750 dark:text-rose-450 font-black">Confidential</span>
-                      </>
-                    ) : (
-                      <>
-                        <Unlock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Standard Access</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-950/10 space-y-1">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Configured Type</span>
-                  <span className="text-xs font-black text-slate-800 dark:text-slate-200 block truncate mt-0.5">
-                    {document.documentType?.name || document.doc_type}
-                  </span>
-                </div>
-
-                <div className="p-3.5 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/40 dark:bg-slate-950/10 space-y-1">
-                  <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">Page Count</span>
-                  <span className="text-xs font-black text-slate-800 dark:text-slate-200 block mt-0.5">
-                    {files.length === 1 ? '1 attached page' : `${files.length} attached pages`}
-                  </span>
-                </div>
-              </div>
-            </div>
-
+            )}
           </div>
 
-          {/* Right Column (Viewer Canvas - 7/12 width) */}
-          <div className="lg:col-span-7 space-y-4">
-            <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-xs flex flex-col min-h-[580px]">
-              
-              {/* Canvas Toolbar */}
-              <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 text-slate-700 dark:text-slate-300">
-                <div className="flex items-center gap-2 text-xs font-semibold">
-                  <span className="text-slate-500">File {activeFileIdx + 1} of {files.length}</span>
-                  {activeFile?.label && (
-                    <Badge variant="outline" className="text-[10px] border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400 font-bold">
-                      {activeFile.label}
-                    </Badge>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1">
-                  {isImg && (
-                    <>
-                      <Button 
-                        size="icon" 
-                        variant="ghost" 
-                        className="h-7 w-7 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer" 
-                        onClick={handleZoomOut} 
-                        title="Zoom Out"
-                      >
-                        <ZoomOut className="w-3.5 h-3.5" />
-                      </Button>
-                      <span className="text-[11px] font-mono font-bold w-10 text-center text-slate-500">{Math.round(zoomLevel * 100)}%</span>
-                      <Button 
-                        size="icon" 
-                        variant="ghost" 
-                        className="h-7 w-7 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer" 
-                        onClick={handleZoomIn} 
-                        title="Zoom In"
-                      >
-                        <ZoomIn className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button 
-                        size="icon" 
-                        variant="ghost" 
-                        className="h-7 w-7 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer" 
-                        onClick={handleRotate} 
-                        title="Rotate 90°"
-                      >
-                        <RotateCw className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button 
-                        size="icon" 
-                        variant="ghost" 
-                        className="h-7 w-7 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer" 
-                        onClick={handleResetView} 
-                        title="Reset View"
-                      >
-                        <RefreshCw className="w-3.5 h-3.5" />
-                      </Button>
-                    </>
-                  )}
-                  <a
-                    href={resolvedUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="h-7 px-2 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 rounded flex items-center gap-1 font-semibold transition-colors"
-                    title="Open Fullscreen External"
-                  >
-                    <Maximize2 className="w-3.5 h-3.5" /> External
-                  </a>
-                </div>
-              </div>
-
-              {/* Viewport Canvas */}
-              <div className="flex-1 flex items-center justify-center p-4 min-h-[480px] relative overflow-auto bg-slate-100/50 dark:bg-slate-950/20">
-                {isImg ? (
-                  <div className="transition-transform duration-150 flex items-center justify-center max-w-full max-h-full shadow-2xs" style={{ transform: `scale(${zoomLevel}) rotate(${rotation}deg)` }}>
-                    <img src={resolvedUrl} alt={documentDisplayName(document)} className="max-h-[520px] object-contain rounded-xl shadow-md border border-slate-200/50 dark:border-slate-800/80" />
-                  </div>
-                ) : isPdf ? (
-                  <iframe src={resolvedUrl} title={documentDisplayName(document)} className="w-full h-[540px] rounded-xl border border-slate-200/60 dark:border-slate-800 bg-white" />
+          {/* ── Details, check, versions, activity ────────────────────── */}
+          <div className="lg:col-span-5 flex flex-col gap-3">
+            <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Details</h2>
+                {!editing ? (
+                  <button onClick={startEdit} className="text-xs font-semibold text-[#FA634E] hover:underline flex items-center gap-1 cursor-pointer">
+                    <Pencil className="w-3 h-3" /> Edit
+                  </button>
                 ) : (
-                  <div className="flex flex-col items-center justify-center p-8 text-center gap-3 text-slate-400">
-                    <FileText className="w-12 h-12 text-slate-400/80" />
-                    <p className="text-sm font-semibold text-slate-500">Preview not supported for this file type</p>
-                    <a
-                      href={resolvedUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-4 py-2 rounded-lg bg-brand hover:bg-brand/90 text-white text-xs font-bold flex items-center gap-2 shadow-2xs cursor-pointer"
-                    >
-                      <ExternalLink className="w-3.5 h-3.5" /> Open File Externally
-                    </a>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setEditing(false)} className="h-7 text-xs">Cancel</Button>
+                    <Button size="sm" onClick={save} disabled={saving} className="h-7 text-xs bg-charcoal hover:bg-charcoal-strong text-white">
+                      {saving && <Loader2 className="w-3 h-3 animate-spin mr-1" />} Save
+                    </Button>
                   </div>
                 )}
               </div>
 
-              {/* Multi-file Carousel Thumbnails */}
-              {files.length > 0 && (
-                <div className="p-3 bg-slate-50 dark:bg-slate-955 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2.5 overflow-x-auto">
-                  {files.map((f, idx) => (
-                    <div
-                      key={f.id}
-                      onClick={() => { setActiveFileIdx(idx); handleResetView(); }}
-                      className={cn(
-                        'group relative w-16 h-16 rounded-xl border-2 shrink-0 cursor-pointer overflow-hidden bg-white dark:bg-slate-900 flex items-center justify-center transition-all',
-                        idx === activeFileIdx ? 'border-brand shadow-xs ring-2 ring-brand/20' : 'border-slate-200 dark:border-slate-800 opacity-60 hover:opacity-100 hover:border-slate-400'
-                      )}
-                    >
-                      {isImageFile(f.file_url, f.mime_type) ? (
-                        <img src={resolveFileUrl(f.file_url)} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <FileText className="w-6 h-6 text-slate-400" />
-                      )}
-                      {files.length > 1 && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeleteFile(f.id); }}
-                          className="absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity font-bold shadow-xs text-xs"
-                          title="Remove attachment"
-                        >
-                          ×
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  {document.documentType?.allowsMultipleFiles !== false && (
-                    <label
-                      htmlFor={addFileInputId}
-                      className="w-16 h-16 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-brand shrink-0 flex flex-col items-center justify-center cursor-pointer text-slate-400 hover:text-brand transition-colors"
-                      title="Add File Page"
-                    >
-                      <Plus className="w-5 h-5" />
-                      <span className="text-[9px] font-black mt-0.5">Add Page</span>
+              {!editing ? (
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                  <Field label="Type" value={documentDisplayName(doc)} sub={doc.documentType?.requirementStatus === 'MANDATORY' ? 'Mandatory' : undefined} />
+                  <Field label="Number" value={ai?.document_number || '—'} mono />
+                  <Field label="Issued" value={doc.issue_date ? formatDocDate(doc.issue_date) : '—'} />
+                  <Field label="Expires" value={doc.expiry_date ? formatDocDate(doc.expiry_date) : 'No expiry'} valueClass={ROW_STATE_STYLE[state].text} />
+                  <div>
+                    <dt className="text-[11px] text-slate-400">Belongs to</dt>
+                    <dd>
+                      <button onClick={() => navigate(owner.folder)} className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200 hover:text-[#FA634E] cursor-pointer">
+                        <OwnerIcon className="w-3.5 h-3.5 text-slate-400" /> {owner.name}
+                      </button>
+                      {owner.sub && <span className="text-[11px] text-slate-400">{owner.sub}</span>}
+                    </dd>
+                  </div>
+                  <Field label="Issued by" value={ai?.issuing_authority ? formatBilingualAuthority(ai.issuing_authority) : '—'} />
+                </dl>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  {ownerTypeForTypes && (
+                    <label className="col-span-2 flex flex-col gap-1">
+                      <span className="text-[11px] text-slate-500">Type</span>
+                      <Select value={form.typeId} onValueChange={(v) => setForm((f) => ({ ...f, typeId: v }))}>
+                        <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Pick a type" /></SelectTrigger>
+                        <SelectContent>
+                          {types.filter((t) => t.requirementStatus !== 'DISABLED' || t.id === doc.documentTypeId).map((t) => (
+                            <SelectItem key={t.id} value={t.id} className="text-xs">{t.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </label>
                   )}
+                  <label className="col-span-2 flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Number</span>
+                    <input
+                      value={form.number}
+                      onChange={(e) => setForm((f) => ({ ...f, number: e.target.value }))}
+                      placeholder="POL-88213"
+                      className="h-9 px-3 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-[#FA634E]/30"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Issued</span>
+                    <DatePicker value={form.issue || null} onChange={(_, s) => setForm((f) => ({ ...f, issue: s }))} clearable placeholder="No date" />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] text-slate-500">Expires</span>
+                    <DatePicker value={form.expiry || null} onChange={(_, s) => setForm((f) => ({ ...f, expiry: s }))} clearable placeholder="No expiry" />
+                  </label>
+                  <label className="col-span-2 flex items-center justify-between gap-2 pt-1">
+                    <span className="text-[11px] text-slate-500 flex items-center gap-1"><Lock className="w-3 h-3" /> Confidential</span>
+                    <Switch checked={form.confidential} onCheckedChange={(v) => setForm((f) => ({ ...f, confidential: v }))} />
+                  </label>
                 </div>
               )}
-            </div>
-          </div>
 
+              {ai && !editing && (
+                <p className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3 text-amber-500" />
+                  Read by AI{confidence !== null ? ` · ${confidence}% sure` : ''}{ai && (ai as any).document_number_edited ? ' · number corrected by hand' : ''}
+                  <button onClick={rescan} disabled={busy === 'scan'} className="ml-auto font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer flex items-center gap-1">
+                    {busy === 'scan' && <Loader2 className="w-3 h-3 animate-spin" />} Read again
+                  </button>
+                </p>
+              )}
+            </section>
+
+            <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex items-center gap-3">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100">Check</h2>
+                <p className="text-[11px] text-slate-500">
+                  {verification === 'Verified' ? 'Checked against the original.' : verification === 'Rejected' ? 'Marked as wrong or unreadable — renew it.' : 'Has someone checked this against the original?'}
+                </p>
+              </div>
+              {verification === 'Verified' || verification === 'Rejected' ? (
+                <Button size="sm" variant="ghost" disabled={busy === 'verify'} onClick={() => setVerification('PendingReview')} className="h-8 text-xs">Undo</Button>
+              ) : (
+                <>
+                  <Button size="sm" variant="outline" disabled={busy === 'verify'} onClick={() => setVerification('Verified')} className="h-8 text-xs gap-1 text-emerald-700 border-emerald-200 hover:bg-emerald-50 dark:text-emerald-400 dark:border-emerald-900">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Verify
+                  </Button>
+                  <Button size="sm" variant="outline" disabled={busy === 'verify'} onClick={() => setVerification('Rejected')} className="h-8 text-xs gap-1 text-rose-700 border-rose-200 hover:bg-rose-50 dark:text-rose-400 dark:border-rose-900">
+                    <XCircle className="w-3.5 h-3.5" /> Reject
+                  </Button>
+                </>
+              )}
+            </section>
+
+            {versions.length > 0 && (
+              <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5 mb-2">
+                  <History className="w-3.5 h-3.5 text-slate-400" /> Versions
+                </h2>
+                <ul className="flex flex-col">
+                  {versions.map((v, i) => (
+                    <li key={v.id}>
+                      <button
+                        onClick={() => v.id !== doc.id && navigate(`/documents/doc/${v.id}`)}
+                        className={cn(
+                          'w-full flex items-center justify-between gap-2 py-1.5 px-2 -mx-2 rounded-md text-xs text-left',
+                          v.id === doc.id ? 'bg-slate-50 dark:bg-slate-800/60' : 'hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer',
+                        )}
+                      >
+                        <span className="font-semibold text-slate-800 dark:text-slate-200">
+                          v{versions.length - i}
+                          <span className="font-normal text-slate-400"> · {v.isCurrent ? 'current' : 'replaced'}</span>
+                        </span>
+                        <span className="text-[11px] text-slate-500">
+                          {v.issue_date ? formatDocDate(v.issue_date) : formatDocDate(v.createdAt)} – {v.expiry_date ? formatDocDate(v.expiry_date) : 'no expiry'}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {versions.length === 1 && <p className="text-[11px] text-slate-400 mt-1">Renewing keeps this copy here as history.</p>}
+              </section>
+            )}
+
+            <section className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+              <h2 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5 mb-2">
+                <Activity className="w-3.5 h-3.5 text-slate-400" /> Activity
+              </h2>
+              {activity.length === 0 ? (
+                <p className="text-[11px] text-slate-400">No activity yet.</p>
+              ) : (
+                <ol className="flex flex-col gap-1.5 max-h-56 overflow-y-auto custom-scrollbar">
+                  {activity.map((e) => (
+                    <li key={e.id} className="flex items-start justify-between gap-3 text-xs">
+                      <span className="text-slate-700 dark:text-slate-300">
+                        {describeActivity(e)}
+                        {e.by && <span className="text-slate-400"> · {e.by}</span>}
+                      </span>
+                      <span className="text-[11px] text-slate-400 whitespace-nowrap">{formatInDeploymentTz(e.at, tz, 'd MMM yyyy, HH:mm')}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+          </div>
         </div>
       </div>
+
+      {isRenewOpen && (
+        <UploadDocumentModal
+          isOpen
+          onClose={() => setIsRenewOpen(false)}
+          entityType={doc.entity_type}
+          entityId={doc.entity_id}
+          documentTypeId={doc.documentTypeId || undefined}
+          documentTypeName={documentDisplayName(doc)}
+          lockOwner
+          ownerDisplayName={owner.name}
+          onUploadSuccess={onRenewed}
+        />
+      )}
+
+      <ConfirmModal
+        isOpen={isDeleteOpen}
+        onClose={() => setIsDeleteOpen(false)}
+        onConfirm={remove}
+        isLoading={busy === 'delete'}
+        isDestructive
+        title="Delete this document?"
+        message="It'll move to Recently deleted. You can restore it for 30 days."
+        confirmLabel="Delete"
+      />
     </DashboardLayout>
   );
 }
 
-function DetailRow({ label, value, highlight }: { label: string; value: React.ReactNode; highlight?: boolean }) {
+function Field({ label, value, sub, mono, valueClass }: { label: string; value: React.ReactNode; sub?: string; mono?: boolean; valueClass?: string }) {
   return (
-    <div className="flex items-center justify-between px-3.5 py-2.5">
-      <span className="text-slate-500 dark:text-slate-400 font-semibold">{label}</span>
-      <span className={cn('font-bold text-slate-900 dark:text-slate-100 text-right', highlight && 'text-brand')}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function AiDetailRow({ icon: Icon, label, value }: { icon: any; label: string; value: string }) {
-  return (
-    <div className="flex items-start gap-2.5">
-      <div className="w-5 h-5 rounded-lg bg-amber-500/10 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
-        <Icon className="w-3.5 h-3.5" />
-      </div>
-      <div>
-        <span className="text-[10px] font-black text-amber-800/70 dark:text-amber-500 block uppercase tracking-wider">{label}</span>
-        <span className="font-mono font-black text-slate-900 dark:text-slate-100 text-xs">{value}</span>
-      </div>
+    <div className="min-w-0">
+      <dt className="text-[11px] text-slate-400">{label}</dt>
+      <dd className={cn('font-semibold text-slate-800 dark:text-slate-200 truncate', mono && 'font-mono', valueClass)}>{value}</dd>
+      {sub && <span className="text-[11px] text-slate-400">{sub}</span>}
     </div>
   );
 }

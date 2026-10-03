@@ -861,6 +861,14 @@ export const setDriverPassword = async (req: Request, res: Response) => {
           })
         : null;
 
+      // Never turn a staff login (Admin/Operator) that shares this phone into a driver account.
+      if (existingUser && (existingUser.role !== 'Driver' || existingUser.isSuperAdmin)) {
+        return res.status(409).json({
+          success: false,
+          error: { code: 'PHONE_IN_USE', message: `This phone belongs to the ${existingUser.role} account @${existingUser.username}. Give the driver a different phone.` },
+        });
+      }
+
       if (existingUser) {
         await prisma.user.update({
           where: { id: existingUser.id },

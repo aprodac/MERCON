@@ -5,6 +5,8 @@
 import Constants from 'expo-constants';
 
 const extra = Constants.expoConfig?.extra ?? {};
+/** Per-app override for the darkest neutral (operator app: brand charcoal, same as the web). Unset = each token's own default. */
+const ink = (extra.inkColor as string | undefined) || undefined;
 
 // ─── Brand Colors ────────────────────────────────────────────────────────────
 export const Colors = {
@@ -25,10 +27,10 @@ export const Colors = {
   accentLight:    '#FFF0EB',
 
   // Neutrals
-  black:          '#111111',
-  dark:           '#1A1A1A',
-  darkCard:       '#000000',
-  gray900:        '#111111',
+  black:          ink ?? '#111111',
+  dark:           ink ?? '#1A1A1A',
+  darkCard:       ink ?? '#000000',
+  gray900:        ink ?? '#111111',
   gray700:        '#3B3B44',
   gray500:        '#6E6E80',
   gray400:        '#9898A4',
@@ -72,7 +74,7 @@ export const Colors = {
   statusPendingBg:   '#F5F5F7',
 
   // Aliases used by screens (kept for compatibility with the generated UI)
-  gray800:        '#27272A',
+  gray800:        ink ?? '#27272A',
   gray600:        '#52525B',
   error:          '#DC2626',
   errorLight:     '#FEF2F2',

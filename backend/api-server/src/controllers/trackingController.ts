@@ -6,7 +6,9 @@ import { logAuditEvent } from '../services/auditService';
 import { ensureTrackingLink, ensureTrackingLinks, loadPublicTracking, type TripTrackingLinkInfo } from '../services/tracking/customerTracking';
 import { ensureCustomerTrackingLink, loadCustomerFleetTracking } from '../services/tracking/customerFleetTracking';
 import { fleetPreview, renderPreviewTags, tripPreview } from '../services/tracking/trackingPreview';
+import { fleetPreviewImage, tripPreviewImage } from '../services/tracking/trackingPreviewImage';
 import { publicBaseUrl } from './operatorInboxController';
+import { deviceLabel } from '../utils/deviceLabel';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -101,7 +103,7 @@ function sendGone(res: Response, state: 'not_found' | 'expired' | 'cancelled' | 
  */
 export const getPublicTracking = async (req: Request, res: Response) => {
   try {
-    const result = await loadPublicTracking(prisma, String(req.params.token || ''), { countView: req.query.view === '1' });
+    const result = await loadPublicTracking(prisma, String(req.params.token || ''), { countView: req.query.view === '1', device: deviceLabel(req.headers['user-agent']) });
     if (result.state !== 'ok') return sendGone(res, result.state);
     res.json({ success: true, data: result.data });
   } catch (error) {
@@ -113,7 +115,7 @@ export const getPublicTracking = async (req: Request, res: Response) => {
 /** GET /public/fleet/:token — the customer-wide page: every truck of theirs on the road. */
 export const getPublicFleetTracking = async (req: Request, res: Response) => {
   try {
-    const result = await loadCustomerFleetTracking(prisma, String(req.params.token || ''), { countView: req.query.view === '1' });
+    const result = await loadCustomerFleetTracking(prisma, String(req.params.token || ''), { countView: req.query.view === '1', device: deviceLabel(req.headers['user-agent']) });
     if (result.state !== 'ok') return sendGone(res, result.state);
     res.json({ success: true, data: result.data });
   } catch (error) {
@@ -135,17 +137,102 @@ export const getTrackingPreviewTags = async (req: Request, res: Response) => {
     const proto = String(req.get('x-forwarded-proto') || 'https').split(',')[0].trim();
     const host = req.get('x-public-host');
     const base = process.env.PUBLIC_BASE_URL?.trim().replace(/\/+$/, '') || (host ? `${proto}://${host}` : null);
+    // The generated card; the version changes every 10 minutes so a re-shared link gets a fresh picture.
+    const card = (kind: string) => (base ? `${base}/api/public/og/${kind}/${encodeURIComponent(token)}/card.png?v=${Math.floor(Date.now() / 600_000)}` : null);
     if (req.params.kind === 't') {
       const r = await loadPublicTracking(prisma, token);
-      return res.send(r.state === 'ok' ? renderPreviewTags(tripPreview(r.data), base) : '');
+      return res.send(r.state === 'ok' ? renderPreviewTags(tripPreview(r.data), base, card('t')) : '');
     }
     if (req.params.kind === 'c') {
       const r = await loadCustomerFleetTracking(prisma, token);
-      return res.send(r.state === 'ok' ? renderPreviewTags(fleetPreview(r.data), base) : '');
+      return res.send(r.state === 'ok' ? renderPreviewTags(fleetPreview(r.data), base, card('c')) : '');
     }
     res.send('');
   } catch (error) {
     logger.warn({ err: error }, 'tracking preview tags failed');
     res.send('');
+  }
+};
+
+/**
+ * GET /public/og/:kind/:token/card.png — the white preview card WhatsApp shows
+ * above a tracking link (see trackingPreviewImage). Same link checks as the
+ * page; never counts as an open. 404 when the link isn't valid.
+ */
+export const getTrackingPreviewCard = async (req: Request, res: Response) => {
+  try {
+    const token = String(req.params.token || '');
+    const proto = String(req.get('x-forwarded-proto') || 'https').split(',')[0].trim();
+    const host = req.get('x-public-host') || req.get('host');
+    const base = process.env.PUBLIC_BASE_URL?.trim().replace(/\/+$/, '') || (host ? `${proto}://${host}` : null);
+    let png: Buffer | null = null;
+    if (req.params.kind === 't') {
+      const r = await loadPublicTracking(prisma, token);
+      if (r.state === 'ok') png = await tripPreviewImage(r.data, base);
+    } else if (req.params.kind === 'c') {
+      const r = await loadCustomerFleetTracking(prisma, token);
+      if (r.state === 'ok') png = await fleetPreviewImage(r.data, base);
+    }
+    if (!png) return res.status(404).end();
+    res.set('Cache-Control', 'public, max-age=600');
+    res.type('png').send(png);
+  } catch (error) {
+    logger.warn({ err: error }, 'tracking preview card failed');
+    res.status(500).end();
+  }
+};
+
+/**
+ * GET /customers/:id/tracking-opens — every time this customer opened one of
+ * their tracking links (all-trucks page or a trip link), newest first, with the
+ * device. `earlier_opens` = opens counted before the history was kept.
+ */
+export const getCustomerTrackingOpens = async (req: Request, res: Response) => {
+  try {
+    const customerId = req.params.id as string;
+    const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+    const where = {
+      OR: [
+        { customerLink: { customerId } },
+        { tripShare: { trip: { customerId } } },
+      ],
+    };
+    const [rows, logged, fleetCounted, tripCounted] = await Promise.all([
+      prisma.trackingLinkOpen.findMany({
+        where,
+        orderBy: { opened_at: 'desc' },
+        take: limit,
+        select: {
+          id: true,
+          opened_at: true,
+          device: true,
+          customerLinkId: true,
+          tripShare: { select: { trip: { select: { id: true, ref_id: true } } } },
+        },
+      }),
+      prisma.trackingLinkOpen.count({ where }),
+      prisma.customerTrackingLink.aggregate({ where: { customerId }, _sum: { open_count: true } }),
+      prisma.tripUpdateShare.aggregate({ where: { trip: { customerId } }, _sum: { open_count: true } }),
+    ]);
+    const counted = (fleetCounted._sum.open_count ?? 0) + (tripCounted._sum.open_count ?? 0);
+
+    res.json({
+      success: true,
+      data: {
+        total: logged,
+        earlier_opens: Math.max(0, counted - logged),
+        opens: rows.map((r) => ({
+          id: r.id,
+          opened_at: r.opened_at.toISOString(),
+          device: r.device,
+          link: r.customerLinkId
+            ? { kind: 'all_trucks' as const }
+            : { kind: 'trip' as const, trip_id: r.tripShare?.trip.id ?? null, ref_id: r.tripShare?.trip.ref_id ?? null },
+        })),
+      },
+    });
+  } catch (error) {
+    logger.error({ err: error }, 'customer tracking opens failed');
+    res.status(500).json({ success: false, error: { message: 'Internal server error' } });
   }
 };

@@ -421,6 +421,7 @@ export interface User {
   status?: UserStatus;
   lastLogin?: string;
   isSuperAdmin?: boolean;
+  createdAt?: string;
 }
 
 /**
@@ -548,6 +549,8 @@ export interface Settings {
   driverAppMinVersion?: string | null;
   /** Ops WhatsApp number (digits) for the customer tracking page's "Ask us" button. */
   supportWhatsapp?: string | null;
+  /** Settings → Assistant (raw JSON; read it through normalizeAssistantConfig). */
+  assistantConfig?: unknown;
   /** Default country code (e.g. "SA") for phone number fields across the deployment. */
   defaultCountryCode?: string;
   /** Default dial code (e.g. "+966") for phone number fields across the deployment. */
@@ -1265,3 +1268,7 @@ export * from './tripRoute';
 
 export * from './tripCreation';
 export * from './driverRecommendation';
+export * from './mapsLink';
+export * from './evidenceTimes';
+export * from './chargeReview';
+export * from './assistantConfig';

@@ -103,19 +103,19 @@ export function useCreateTripForm() {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
 
   // Master Data Queries
-  const { data: customersRes } = useQuery({
+  const { data: customersRes, isLoading: customersLoading } = useQuery({
     queryKey: ['customers-select'],
     queryFn: () => customerService.getAll({ per_page: 150 }),
     refetchOnMount: 'always',
   });
 
-  const { data: driversRes } = useQuery({
+  const { data: driversRes, isLoading: driversLoading } = useQuery({
     queryKey: ['drivers-select'],
     queryFn: () => driverService.getAll({ per_page: 1000, mode: 'lookup' }),
     refetchOnMount: 'always',
   });
 
-  const { data: vehiclesRes } = useQuery({
+  const { data: vehiclesRes, isLoading: vehiclesLoading } = useQuery({
     queryKey: ['vehicles-select'],
     queryFn: () => vehicleService.getAll({ per_page: 1000, mode: 'lookup' }),
     refetchOnMount: 'always',
@@ -216,7 +216,8 @@ export function useCreateTripForm() {
   const destinationName = primarySlot.destination || '';
 
   // Declared up here: the driver ranking below needs the customer.
-  const [contractCustomer, setContractCustomerRaw] = useState('');
+  // ?customer_id= (e.g. "New trip" from a customer page) preselects the customer.
+  const [contractCustomer, setContractCustomerRaw] = useState(() => searchParams.get('customer_id') || '');
   const contractCustomerForRec = contractCustomer;
 
   // The trip's window, route and customer — the ranking checks clashes (1 h gap),
@@ -236,7 +237,7 @@ export function useCreateTripForm() {
     }
   }, [recSlot.date, recSlot.pickupTime, recSlot.dropoffDate, recSlot.dropoffTime, recSlot.returnDropoffDate, recSlot.returnDropoffTime, tz]);
 
-  const { data: recommendedDriversRes } = useQuery({
+  const { data: recommendedDriversRes, isLoading: recommendedDriversLoading } = useQuery({
     queryKey: [
       'recommendedDrivers',
       originName,
@@ -400,6 +401,7 @@ export function useCreateTripForm() {
 
   const {
     customerRateCards,
+    rateCardsLoading,
     handleOpenCreateQuotation,
     getMatchingRateCard,
     getAvailableRateCardsForLane,
@@ -1198,12 +1200,6 @@ export function useCreateTripForm() {
       masterDriver
   );
 
-  /** This customer's latest trip — offered as "Repeat last trip". */
-  const lastCustomerTrip = useMemo(
-    () => (contractCustomer ? (recentTrips || []).find((t: any) => (t.customer_id || t.customer?.id) === contractCustomer) || null : null),
-    [recentTrips, contractCustomer]
-  );
-
   /* ── Guidance: what's done on step 1, and what to fill next ── */
   const is3plAssignment = assignmentType === 'third_party';
   const guideSlot: any = contractSlots[0] || {};
@@ -1298,118 +1294,6 @@ export function useCreateTripForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recentTrips, contractCustomer, contractSlots, tz]);
 
-  const handleRepeatTrip = useCallback(
-    (historicalTrip: Trip) => {
-      if (!historicalTrip) return;
-
-      const custId = historicalTrip.customer_id || historicalTrip.customer?.id;
-      if (custId) {
-        setContractCustomer(custId);
-      }
-
-      const stops = historicalTrip.stops || [];
-      const pickupStop = stops.find((s: any) => s.stop_type === 'Pickup' || s.sequence === 1) || stops[0];
-      const dropoffStops = stops.filter((s: any) => s.stop_type === 'Dropoff');
-      const dropoffStop =
-        dropoffStops.length > 0
-          ? dropoffStops[dropoffStops.length - 1]
-          : stops.length > 1
-          ? stops[stops.length - 1]
-          : null;
-
-      const origName =
-        (pickupStop as any)?.source_label ||
-        pickupStop?.location?.name ||
-        historicalTrip.rateCard?.route_origin ||
-        '';
-      const destName =
-        (dropoffStop as any)?.source_label ||
-        dropoffStop?.location?.name ||
-        historicalTrip.rateCard?.route_destination ||
-        '';
-
-      const origLocId = pickupStop?.locationId || pickupStop?.location?.id || null;
-      const destLocId = dropoffStop?.locationId || dropoffStop?.location?.id || null;
-
-      const intermediateStops = stops.filter(
-        (s: any) => s.stop_type === 'Intermediate' || (s.sequence > 1 && s !== dropoffStop)
-      );
-      const intermediateNames = intermediateStops.map((s: any) => s.source_label || s.location?.name || '');
-      const intermediateIds = intermediateStops.map((s: any) => s.locationId || s.location?.id || null);
-
-      const billingType =
-        historicalTrip.quotation_billing_type || (historicalTrip as any).billing_type || 'Extra';
-      const lineType =
-        historicalTrip.quotation_line_type ||
-        (historicalTrip as any).line_type ||
-        (historicalTrip.rateCard as any)?.line_type ||
-        'Single Trip';
-      const vehicleClass =
-        historicalTrip.quotation_vehicle_class ||
-        (historicalTrip as any).vehicle_class ||
-        (historicalTrip.vehicle ? getVehicleTypeFromCapacity(historicalTrip.vehicle.capacity_kg) : '10 TON');
-
-      setContractBillingType(normalizeBillingType(billingType));
-      setContractRateCategory(normalizeRateCategory(lineType));
-      setContractVehicleType(normalizeVehicleClass(vehicleClass));
-
-      const todayStr = new Date().toISOString().slice(0, 10);
-      setContractSlots([
-        {
-          id: `slot-${Date.now()}`,
-          origin: origName,
-          destination: destName,
-          originLocationId: origLocId,
-          destinationLocationId: destLocId,
-          pickupTime: '',
-          dropoffTime: '',
-          date: todayStr,
-          dropoffDate: '',
-          billingAmount: '',
-          tripCharges: '',
-          isOvernight: false,
-          intermediateLocations: intermediateNames,
-          intermediateLocationIds: intermediateIds,
-          intermediateStopFees: intermediateNames.map(() => ''),
-          originLat: (pickupStop?.location as any)?.lat ?? null,
-          originLng: (pickupStop?.location as any)?.lng ?? null,
-          destinationLat: (dropoffStop?.location as any)?.lat ?? null,
-          destinationLng: (dropoffStop?.location as any)?.lng ?? null,
-        },
-      ]);
-
-      const histDriver = historicalTrip.driver;
-      const histVehicle = historicalTrip.vehicle;
-
-      if (histDriver && histDriver.id) {
-        setMasterDriver(histDriver.id);
-      }
-      if (histVehicle && histVehicle.id) {
-        setMasterVehicle(histVehicle.id);
-      }
-
-      // Same route, same crew — the date and times are the next thing to set.
-      setContractStep(1);
-
-      const formattedDate = historicalTrip.createdAt
-        ? new Date(historicalTrip.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        : 'recent';
-      toast.success(
-        `Trip configuration copied from ${formattedDate} trip (${origName || 'Origin'} → ${destName || 'Destination'})`
-      );
-    },
-    [
-      setContractCustomer,
-      setContractBillingType,
-      setContractRateCategory,
-      setContractVehicleType,
-      setContractSlots,
-      setMasterDriver,
-      setMasterVehicle,
-      setContractStep,
-    ]
-  );
-
   return {
     navigate,
     queryClient,
@@ -1479,8 +1363,6 @@ export function useCreateTripForm() {
     setEditThirdParty,
     editDriver,
     setEditDriver,
-    handleRepeatTrip,
-    lastCustomerTrip,
     recentRoutesList,
     recentDriversList,
     handleApplyRecentRoute,
@@ -1540,6 +1422,12 @@ export function useCreateTripForm() {
     discardDraft,
     marginMetrics,
     customerRateCards,
+    loading: {
+      customers: customersLoading,
+      rateCards: rateCardsLoading,
+      drivers: driversLoading || recommendedDriversLoading,
+      vehicles: vehiclesLoading,
+    },
     selectedMonth,
     setSelectedMonth,
     selectedDates,

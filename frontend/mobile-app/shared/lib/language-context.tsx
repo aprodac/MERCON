@@ -13,6 +13,10 @@ interface LanguageContextType {
   language: LanguageMode;
   setLanguage: (mode: LanguageMode) => Promise<void>;
   t: (key: string, fallback?: string) => string;
+  /** Inline text that isn't in the translation table: English and Urdu given at the call site. */
+  tr: (en: string, ur: string) => string;
+  /** For input placeholders: one line, so bilingual mode shows the Urdu only. */
+  tp: (key: string, fallback?: string) => string;
   formatCurrency: (amount: number | string | null | undefined) => string;
   isLanguageModalOpen: boolean;
   openLanguageModal: () => void;
@@ -23,6 +27,8 @@ const LanguageContext = createContext<LanguageContextType>({
   language: 'en',
   setLanguage: async () => {},
   t: (key: string, fallback?: string) => fallback || key,
+  tp: (key: string, fallback?: string) => fallback || key,
+  tr: (en: string) => en,
   formatCurrency: (amount: number | string | null | undefined) => formatCurrency(amount, 'en'),
   isLanguageModalOpen: false,
   openLanguageModal: () => {},
@@ -63,6 +69,24 @@ const STATUS_BADGE_MAP: Record<string, { en: string; ur: string }> = {
   Cancelled: { en: 'Cancelled', ur: 'منسوخ' },
 };
 
+/** Short labels ("ٹرپس / Trips") stay on one line; longer text stacks. */
+const BILINGUAL_INLINE_MAX = 30;
+
+/**
+ * "اردو / English" on one line, always in that order. A line that starts with
+ * Urdu is laid out right-to-left as a whole, which flips the English half to the
+ * front and scatters the slash ("/ Homeہوم"). The leading left-to-right mark pins
+ * the line to left-to-right; the Urdu inside it still reads right-to-left, and
+ * the right-to-left mark after it keeps its trailing punctuation (،) with it.
+ * Longer text goes on two lines instead (Urdu, then English).
+ */
+export function bilingual(ur: string, en: string): string {
+  // Sentences don't fit side by side on a phone — stack them, Urdu first.
+  if (ur.length + en.length > BILINGUAL_INLINE_MAX) return `${ur}\n${en}`;
+  return `\u200E${ur}\u200F / ${en}`;
+}
+
+
 export function getLocalizedStatus(rawStatus?: string | null, mode?: LanguageMode): string {
   if (!rawStatus) return '';
   const item = STATUS_BADGE_MAP[rawStatus] || STATUS_BADGE_MAP[rawStatus.toUpperCase()] || STATUS_BADGE_MAP[rawStatus.replace(/\s+/g, '_').toUpperCase()];
@@ -71,7 +95,7 @@ export function getLocalizedStatus(rawStatus?: string | null, mode?: LanguageMod
   }
   const targetMode = mode || currentAppLanguage;
   if (targetMode === 'ur') return item.ur;
-  if (targetMode === 'ur-en') return `${item.ur}\u200E / ${item.en}`;
+  if (targetMode === 'ur-en') return bilingual(item.ur, item.en);
   return item.en;
 }
 
@@ -92,7 +116,7 @@ export function translate(key: string, fallback?: string, mode?: LanguageMode): 
   if (!item) return fallback || key;
   const targetMode = mode || currentAppLanguage;
   if (targetMode === 'ur') return item.ur;
-  if (targetMode === 'ur-en') return `${item.ur}\u200E / ${item.en}`;
+  if (targetMode === 'ur-en') return bilingual(item.ur, item.en);
   return item.en;
 }
 
@@ -143,11 +167,19 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
       return item.ur;
     } else if (language === 'ur-en') {
       // Format requested: "urdu and english both should come with urdu written/ english written"
-      return `${item.ur}\u200E / ${item.en}`;
+      return bilingual(item.ur, item.en);
     }
 
     return item.en;
   };
+
+  const tp = (key: string, fallback?: string): string => {
+    const item: TranslationItem | undefined = TRANSLATIONS[key];
+    if (!item) return fallback || key;
+    return language === 'en' ? item.en : item.ur;
+  };
+
+  const tr = (en: string, ur: string): string => (language === 'en' ? en : language === 'ur' ? ur : bilingual(ur, en));
 
   const openLanguageModal = () => setIsModalOpen(true);
   const closeLanguageModal = () => setIsModalOpen(false);
@@ -158,6 +190,8 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
         language,
         setLanguage,
         t,
+        tp,
+        tr,
         formatCurrency: (amount) => formatCurrency(amount, language),
         isLanguageModalOpen: isModalOpen,
         openLanguageModal,

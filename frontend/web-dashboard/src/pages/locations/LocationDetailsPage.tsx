@@ -23,7 +23,6 @@ import {
   FileText,
   Truck,
   ChevronRight,
-  ShieldCheck,
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -52,6 +51,8 @@ import {
 import { isGoogleMapsUrl } from '@/utils/googleMapsLink';
 import { usePastedLocation } from '@/hooks/usePastedLocation';
 import { cn } from '@/lib/utils';
+import PinChip from '@/components/locations/PinChip';
+import SetPinDialog from '@/components/locations/SetPinDialog';
 
 const customPinIcon = L.divIcon({
   html: `
@@ -128,6 +129,7 @@ export default function LocationDetailsPage() {
   const [lng, setLng] = useState('');
   const [precision, setPrecision] = useState<CoordinatePrecision>('UNKNOWN');
   const [formError, setFormError] = useState<string | null>(null);
+  const [pinOpen, setPinOpen] = useState(false);
 
   // Resolution State
   const [searchQuery, setSearchQuery] = useState('');
@@ -824,21 +826,10 @@ export default function LocationDetailsPage() {
               {/* MAP FOOTER & CONTROLS */}
               <div className="p-2.5 bg-slate-50/80 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2 shrink-0">
                 <div className="flex items-center gap-1.5">
-                  {precision === 'EXACT' && (
-                    <Badge className="bg-emerald-600 text-white text-[10px] font-bold gap-1">
-                      <CheckCircle2 size={11} /> EXACT
-                    </Badge>
-                  )}
-                  {precision === 'APPROXIMATE' && (
-                    <Badge className="bg-indigo-600 text-white text-[10px] font-bold gap-1">
-                      <ShieldCheck size={11} /> APPROXIMATE
-                    </Badge>
-                  )}
-                  {precision === 'UNKNOWN' && (
-                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px] font-bold">
-                      UNPINNED
-                    </Badge>
-                  )}
+                  <PinChip
+                    exact={precision === 'EXACT' && hasValidCoords}
+                    onClick={!isEditing && location ? () => setPinOpen(true) : undefined}
+                  />
                   {hasValidCoords && (
                     <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400">
                       {numericLat.toFixed(4)}, {numericLng.toFixed(4)}
@@ -872,19 +863,14 @@ export default function LocationDetailsPage() {
                     </>
                   )}
 
-                  {precision === 'APPROXIMATE' && (
+                  {!isEditing && location && !(precision === 'EXACT' && hasValidCoords) && (
                     <Button
                       type="button"
                       size="sm"
-                      onClick={() => {
-                        setPrecision('EXACT');
-                        if (!isEditing) {
-                          updateMutation.mutate({ coordinate_precision: 'EXACT' });
-                        }
-                      }}
-                      className="h-6 px-2 text-[10px] font-extrabold bg-emerald-600 hover:bg-emerald-700 text-white gap-1"
+                      onClick={() => setPinOpen(true)}
+                      className="h-6 px-2 text-[10px] font-bold bg-charcoal hover:bg-charcoal-strong text-white gap-1"
                     >
-                      Confirm Exact
+                      <MapPin size={11} /> Set pin
                     </Button>
                   )}
                 </div>
@@ -898,6 +884,23 @@ export default function LocationDetailsPage() {
       </div>
 
       {/* ── Confirm Deactivate Modal ── */}
+      {location && (
+        <SetPinDialog
+          open={pinOpen}
+          onOpenChange={setPinOpen}
+          placeName={location.name}
+          lat={location.lat}
+          lng={location.lng}
+          footnote="Open trips still on the old guess are updated too."
+          onSave={async (pin) => {
+            const r = await locationService.pin(location.id, pin);
+            const n = r.updated_trip_count;
+            toast.success(`Pin saved${n > 0 ? ` · ${n} open trip${n === 1 ? '' : 's'} updated` : ''}`);
+            queryClient.invalidateQueries({ queryKey: ['location-detail', id] });
+            queryClient.invalidateQueries({ queryKey: ['locations'] });
+          }}
+        />
+      )}
       <ConfirmModal
         isOpen={isDeactivateModalOpen}
         onClose={() => setIsDeactivateModalOpen(false)}

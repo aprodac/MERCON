@@ -49,6 +49,9 @@ interface ExecutionAssignmentSectionProps {
   status?: string;
   awbNumber?: string;
   setAwbNumber?: (val: string) => void;
+  /** Drivers / route picks still loading — skeleton rows instead of "No free drivers". */
+  loadingDrivers?: boolean;
+  loadingVehicles?: boolean;
 }
 
 export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProps> = ({
@@ -88,6 +91,8 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
   status = '',
   awbNumber = '',
   setAwbNumber,
+  loadingDrivers = false,
+  loadingVehicles = false,
 }) => {
   // The co-driver lives in the form (it was local here and never reached the saved trip).
   const [localCoDriver, setLocalCoDriver] = useState('');
@@ -289,7 +294,7 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 value={masterDriver}
                 onChange={handleDriverChange}
                 disabled={isAssignmentLocked}
-                placeholder="Search all drivers"
+                placeholder={loadingDrivers ? 'Loading drivers…' : 'Search all drivers'}
                 searchPlaceholder="Name, phone or plate"
                 popoverClassName="min-w-[380px]"
                 triggerClassName={cn(
@@ -304,7 +309,7 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 value={masterVehicle}
                 onChange={handleVehicleChange}
                 disabled={isAssignmentLocked}
-                placeholder="Choose a truck"
+                placeholder={loadingVehicles ? 'Loading trucks…' : 'Choose a truck'}
                 searchPlaceholder="Plate or asset code"
                 popoverClassName="min-w-[340px]"
                 triggerClassName={cn(
@@ -334,7 +339,22 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                 <>
                   <div className="space-y-1.5">
                     <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Top picks for this route</span>
-                    {picks.length === 0 ? (
+                    {loadingDrivers ? (
+                      <div className="space-y-1.5" aria-busy="true" aria-label="Finding the best drivers">
+                        {[0, 1, 2].map((i) => (
+                          <div key={i} className="flex items-center gap-2.5 rounded-xl border border-slate-200 dark:border-slate-700 px-2.5 py-2" style={{ opacity: 1 - i * 0.25 }}>
+                            <div className="h-9 w-9 shrink-0 rounded-full bg-slate-200/80 dark:bg-slate-700/70 animate-pulse" />
+                            <div className="min-w-0 flex-1 space-y-1.5">
+                              <div className="h-3 w-2/5 rounded bg-slate-200/80 dark:bg-slate-700/70 animate-pulse" />
+                              <div className="flex gap-1">
+                                <div className="h-4 w-14 rounded-full bg-slate-100 dark:bg-slate-800 animate-pulse" />
+                                <div className="h-4 w-24 rounded-full bg-slate-100 dark:bg-slate-800 animate-pulse" />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : picks.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-slate-200 dark:border-slate-700 py-3 text-center text-xs text-slate-400">No free drivers for this trip — search below</div>
                     ) : (
                       picks.map((p) => {

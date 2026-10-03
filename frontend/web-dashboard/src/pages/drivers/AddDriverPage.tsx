@@ -32,7 +32,7 @@ import { Label } from '@/components/ui/label';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Combobox } from '@/components/ui/combobox';
 import DriverImageUploader from '@/components/ui/DriverImageUploader';
-import { getDriverAvatar } from '@/lib/driverAvatarMap';
+import { driverPhotoUrl } from '@/lib/documents';
 import { useFormKeyboardShortcuts } from '@/hooks/useFormKeyboardShortcuts';
 import { KbdBadge } from '@/components/ui/KbdBadge';
 
@@ -482,7 +482,7 @@ export default function AddDriverPage() {
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center font-bold text-xs text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 overflow-hidden shrink-0">
                     {(() => {
-                      const avatarSrc = getDriverAvatar(formData.avatar_url, `${formData.first_name} ${formData.last_name}`);
+                      const avatarSrc = driverPhotoUrl(formData.avatar_url);
                       return avatarSrc ? (
                         <img src={avatarSrc} alt="Driver Avatar" className="w-full h-full object-cover" />
                       ) : (

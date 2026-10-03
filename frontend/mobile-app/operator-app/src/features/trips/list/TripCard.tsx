@@ -20,7 +20,7 @@ import {
   type TimeFmt,
 } from './tripListModel';
 
-const INK = '#18181B';
+const INK = '#3E3C3D';
 const MUTED = '#71717A';
 const RED = '#B42318';
 
@@ -148,7 +148,7 @@ const s = StyleSheet.create({
   railLine: { flex: 1, width: 2, backgroundColor: '#D4D4D8', marginVertical: 3, minHeight: 12 },
   pin: { width: 10, height: 10, borderRadius: 5 },
   places: { flex: 1, justifyContent: 'space-between', gap: 10 },
-  place: { fontSize: 15, fontWeight: '600', color: '#27272A', lineHeight: 20 },
+  place: { fontSize: 15, fontWeight: '600', color: '#3E3C3D', lineHeight: 20 },
   via: { alignSelf: 'center', backgroundColor: Colors.white, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#E4E4E7' },
   viaText: { fontSize: 11, fontWeight: '700', color: MUTED },
 

@@ -31,14 +31,16 @@ import {
   matchesFilter, matchesQuery, nextStop, onTrip, placeFromQuery, punctuality, unitPriority, type FleetFilter,
 } from './fleetModel';
 
-const INK = '#18181B';
+const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
 const LINE = '#E9E9EC';
+const BRAND = '#FA634E';
+const BRAND_LIGHT = '#FFF0EB';
 
 const FILTERS: { id: FleetFilter; label: string; dot?: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'on_trip', label: 'On trip', dot: INK },
-  { id: 'delayed', label: 'Delayed', dot: '#D92D20' },
+  { id: 'delayed', label: 'Delayed', dot: BRAND },
   { id: 'free', label: 'Free', dot: '#FFFFFF' },
   { id: 'silent', label: 'No GPS', dot: '#9898A4' },
 ];
@@ -170,7 +172,7 @@ export default function FleetMapScreen() {
           {/* Top-left: live status (and speed while a picked truck is moving) */}
           <View style={s.topLeft} pointerEvents="none">
             <View style={s.live}>
-              <View style={[s.liveDot, { backgroundColor: live.isError ? '#D92D20' : '#16A34A' }]} />
+              <View style={[s.liveDot, { backgroundColor: live.isError ? '#9898A4' : BRAND }]} />
               <Text style={s.liveText}>{live.isError ? 'Connection lost' : 'Live'}</Text>
               {lastUpdate && !live.isError ? <Text style={s.liveAgo}>· {lastUpdate}</Text> : null}
             </View>
@@ -196,27 +198,31 @@ export default function FleetMapScreen() {
             </View>
           ) : null}
 
-          {/* Right: map controls */}
-          <View style={[s.ctlCol, unit && focusMode === 'none' ? { top: 12 } : { bottom: unit ? 84 : 80 }]}>
+          {/* Right: map controls, one compact column */}
+          <View style={[s.ctlCol, unit && focusMode === 'none' ? { top: 12 } : { bottom: 84 }]}>
             <View style={s.ctlGroup}>
+              <Ctl icon={Plus} label="Zoom in" onPress={() => mapRef.current?.zoomBy(1)} />
+              <View style={s.ctlRule} />
+              <Ctl icon={Minus} label="Zoom out" onPress={() => mapRef.current?.zoomBy(-1)} />
+            </View>
+            <View style={s.ctlGroup}>
+              <Ctl icon={Focus} label="Show all trucks" onPress={() => { pick(null); mapRef.current?.fitAll(); }} />
+              <View style={s.ctlRule} />
               <TouchableOpacity
-                style={[s.ctl, s.ctl3d, is3D && s.ctlOn]}
+                style={[s.ctl, is3D && s.ctlOn]}
                 onPress={() => { const v = !is3D; setIs3D(v); mapRef.current?.set3D(v); }}
                 accessibilityLabel={is3D ? 'Switch to 2D' : 'Switch to 3D'}
               >
                 <Text style={[s.ctl3dText, is3D && { color: '#FFFFFF' }]}>{is3D ? '3D' : '2D'}</Text>
               </TouchableOpacity>
               {turned ? (
-                <Ctl icon={Compass} label="Face north and flatten" onPress={() => { setIs3D(false); setFocusMode('none'); mapRef.current?.faceNorth(); }} rotate={-camera.bearing - 45} />
+                <>
+                  <View style={s.ctlRule} />
+                  <Ctl icon={Compass} label="Face north and flatten" onPress={() => { setIs3D(false); setFocusMode('none'); mapRef.current?.faceNorth(); }} rotate={-camera.bearing - 45} />
+                </>
               ) : null}
-              <Ctl icon={Focus} label="Show all trucks" onPress={() => { pick(null); mapRef.current?.fitAll(); }} />
-            </View>
-            <View style={s.ctlGroup}>
+              <View style={s.ctlRule} />
               <Ctl icon={theme === 'light' ? Moon : Sun} label={theme === 'light' ? 'Dark map' : 'Light map'} onPress={() => setTheme(theme === 'light' ? 'dark' : 'light')} />
-            </View>
-            <View style={s.ctlGroup}>
-              <Ctl icon={Plus} label="Zoom in" onPress={() => mapRef.current?.zoomBy(1)} />
-              <Ctl icon={Minus} label="Zoom out" onPress={() => mapRef.current?.zoomBy(-1)} />
             </View>
           </View>
 
@@ -224,9 +230,10 @@ export default function FleetMapScreen() {
             <UnitCard unit={unit} eta={eta} routeLoading={routeQ.isLoading} now={now} f={f} onClose={() => pick(null)} onOpen={(id) => router.push({ pathname: '/trip-details', params: { id } })} />
           ) : unit ? null : (
             <View style={s.hint} pointerEvents="none">
+              <Truck size={15} color="#FFFFFF" strokeWidth={2.3} />
               <Text style={s.hintText}>
-                {live.isLoading ? 'Loading trucks…' : `${shown.length} ${shown.length === 1 ? 'truck' : 'trucks'} · tap one for details`}
-                {shown.filter((u) => !u.position).length ? ` · ${shown.filter((u) => !u.position).length} not on the map` : ''}
+                {live.isLoading ? 'Loading trucks…' : `${shown.filter((u) => u.position).length} on the map`}
+                {!live.isLoading && shown.filter((u) => !u.position).length ? `  ·  ${shown.filter((u) => !u.position).length} without location` : ''}
               </Text>
             </View>
           )}
@@ -238,8 +245,8 @@ export default function FleetMapScreen() {
 
 function stateChip(u: LiveUnit, now: number) {
   const st = unitState(u, now);
-  const bg = st === 'delayed' ? '#FEE4E2' : '#F1F1F3';
-  const fg = st === 'delayed' ? '#B42318' : '#3F3F46';
+  const bg = st === 'delayed' ? BRAND_LIGHT : '#F1F1F3';
+  const fg = st === 'delayed' ? BRAND : INK;
   return (
     <View style={[s.state, { backgroundColor: bg }]}>
       <View style={[s.dot, { backgroundColor: STATE_STYLE[st].color }, st === 'free' && { borderWidth: 1.5, borderColor: INK }]} />
@@ -325,7 +332,7 @@ function UnitCard({ unit: u, eta, routeLoading, now, f, onClose, onOpen }: {
         <>
           <Text style={s.nextLine}>
             Next: <Text style={s.nextName}>{niceName(next?.name) || `Stop ${next?.sequence ?? ''}`}</Text>
-            {p ? <Text style={{ color: p.good ? '#15803D' : '#B42318', fontWeight: '600' }}>{`  ·  ${p.label}`}</Text> : null}
+            {p ? <Text style={{ color: p.good ? INK : BRAND, fontWeight: '600' }}>{`  ·  ${p.label}`}</Text> : null}
           </Text>
           <View style={s.eta}>
             <Metric value={eta.arrival ? f.time(eta.arrival.toISOString()) : '—'} label="arrives" />
@@ -340,7 +347,7 @@ function UnitCard({ unit: u, eta, routeLoading, now, f, onClose, onOpen }: {
         <Feed icon={Truck} label="Tracker" iso={u.vehicle_gps?.recorded_at} missing={!u.vehicle ? 'No truck' : !u.vehicle.has_tracker ? 'None fitted' : 'No fix yet'} now={now} />
         <Feed icon={Smartphone} label="Phone" iso={u.driver_gps?.recorded_at} missing={!u.driver ? 'No driver' : isFree(u) ? 'Off trip' : 'Silent'} now={now} />
       </View>
-      {u.feeds_gap_m != null && u.feeds_gap_m > 1000 ? <Text style={[s.note, { color: '#B54708' }]}>Tracker and phone are {formatKm(u.feeds_gap_m / 1000)} apart</Text> : null}
+      {u.feeds_gap_m != null && u.feeds_gap_m > 1000 ? <Text style={[s.note, { color: BRAND, fontWeight: '600' }]}>Tracker and phone are {formatKm(u.feeds_gap_m / 1000)} apart</Text> : null}
 
       <View style={s.actions}>
         {phone ? (
@@ -379,7 +386,7 @@ function Feed({ icon: Icon, label, iso, missing, now }: { icon: typeof Truck; la
     <View style={s.feed}>
       <Icon size={14} color={MUTED} />
       <Text style={s.feedLabel}>{label}</Text>
-      <View style={[s.feedDot, { backgroundColor: iso ? (fresh ? '#16A34A' : '#F79009') : '#D4D4D8' }]} />
+      <View style={[s.feedDot, { backgroundColor: iso ? (fresh ? INK : BRAND) : '#D4D4D8' }]} />
       <Text style={s.feedVal} numberOfLines={1}>{iso ? agoText(iso, now) : missing}</Text>
     </View>
   );
@@ -407,12 +414,12 @@ const s = StyleSheet.create({
   rowSeen: { fontSize: 12, color: '#9898A4' },
   empty: { textAlign: 'center', color: MUTED, paddingTop: 40, fontSize: 14 },
 
-  hint: { position: 'absolute', bottom: 24, alignSelf: 'center', backgroundColor: '#FFFFFF', borderRadius: 18, paddingHorizontal: 14, paddingVertical: 9, ...shadow },
-  hintText: { fontSize: 13, fontWeight: '500', color: '#3F3F46' },
+  hint: { position: 'absolute', bottom: 24, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: INK, borderRadius: 20, paddingHorizontal: 14, height: 40, ...shadow },
+  hintText: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
 
   card: { position: 'absolute', left: 12, right: 12, bottom: 20, backgroundColor: '#FFFFFF', borderRadius: 20, padding: 16, gap: 10, ...shadow },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
-  plate: { fontSize: 18, fontWeight: '700', color: INK, fontFamily: 'monospace' },
+  plate: { fontSize: 19, fontWeight: '800', color: INK, letterSpacing: 0.3 },
   driver: { fontSize: 14, fontWeight: '500', color: '#3F3F46' },
   close: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F1F1F3', alignItems: 'center', justifyContent: 'center' },
   state: { flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
@@ -446,7 +453,7 @@ const s = StyleSheet.create({
   speedUnit: { fontSize: 10, color: MUTED },
   viewBar: {
     position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 4,
-    backgroundColor: 'rgba(24,24,27,0.92)', borderRadius: 20, padding: 4, paddingLeft: 12, ...shadow,
+    backgroundColor: INK, borderRadius: 20, padding: 4, paddingLeft: 12, ...shadow,
   },
   viewPlate: { fontSize: 12, fontWeight: '700', color: '#FFFFFF', fontFamily: 'monospace', marginRight: 4, maxWidth: 90 },
   vchip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.12)' },
@@ -455,9 +462,9 @@ const s = StyleSheet.create({
   exit: { borderRadius: 16, paddingHorizontal: 10, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.18)' },
   exitText: { fontSize: 12, fontWeight: '600', color: '#FFFFFF' },
   ctlCol: { position: 'absolute', right: 12, gap: 8 },
-  ctlGroup: { backgroundColor: 'rgba(255,255,255,0.97)', borderRadius: 14, overflow: 'hidden', ...shadow },
-  ctl: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  ctl3d: { borderBottomWidth: 1, borderBottomColor: '#F1F1F3' },
+  ctlGroup: { backgroundColor: '#FFFFFF', borderRadius: 14, ...shadow },
+  ctl: { width: 42, height: 42, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  ctlRule: { height: 1, marginHorizontal: 9, backgroundColor: '#F1F1F3' },
   ctlOn: { backgroundColor: INK },
-  ctl3dText: { fontSize: 14, fontWeight: '800', color: INK },
+  ctl3dText: { fontSize: 13, fontWeight: '800', color: INK },
 });

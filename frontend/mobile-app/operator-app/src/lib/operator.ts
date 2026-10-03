@@ -49,9 +49,11 @@ export interface OperatorTripStop {
   stop_type: string;
   location_lat: number;
   location_lng: number;
+  /** EXACT, or a guess (APPROXIMATE / UNKNOWN / null) that still needs a pin. */
+  location_coordinate_precision?: 'EXACT' | 'APPROXIMATE' | 'UNKNOWN' | null;
   location_name: string | null;
   /** The saved place, when the stop was picked from Locations. */
-  location?: { name?: string | null; code?: string | null; city?: string | null } | null;
+  location?: { id?: string; name?: string | null; code?: string | null; city?: string | null } | null;
   planned_arrival: string | null;
   actual_arrival: string | null;
   actual_departure: string | null;
@@ -337,8 +339,81 @@ export interface OperatorThirdPartyProvider {
   contact_person?: string | null;
   phone?: string | null;
   email?: string | null;
+  address?: string | null;
+  tax_id?: string | null;
+  notes?: string | null;
+  rating?: number | null;
   isActive?: boolean;
   _count?: { subcontracts?: number };
+  // Computed by the API (thirdPartyController), not stored columns.
+  total_trips?: number;
+  active_trips?: number;
+  total_cost?: number | string;
+  /** Only on GET /third-party-providers/:id — the provider's 20 most recent trips. */
+  trips?: OperatorTrip[];
+}
+
+export interface ThirdPartyProviderInput {
+  name: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  tax_id?: string;
+  notes?: string;
+  isActive?: boolean;
+}
+
+export interface ThirdPartyStats {
+  total: number;
+  active: number;
+  inactive: number;
+  total_trips: number;
+  total_cost: number;
+}
+
+/** PUT /trips/:id/stops — the whole route is replaced, so every stop is sent. */
+export interface UpdateTripRouteInput {
+  stops: {
+    stop_type: string;
+    leg_index: number;
+    location_id?: string | null;
+    location_name: string;
+    lat?: number | null;
+    lng?: number | null;
+    planned_arrival?: string | null;
+  }[];
+  planned_start?: string;
+  planned_end?: string;
+  isRound?: boolean;
+}
+
+/** A quotation as GET /quotations/:id returns it (the edit form's starting values). */
+export interface OperatorQuotationDetail {
+  id: string;
+  name?: string | null;
+  customerId: string;
+  customer?: { id: string; name: string } | null;
+  rate: number | string;
+  driver_payout?: number | string | null;
+  currency?: string | null;
+  vehicle_class?: string | null;
+  source_vehicle_label?: string | null;
+  line_type?: string | null;
+  operation_type?: string | null;
+  pricing_basis?: string | null;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  is_active: boolean;
+  stops?: {
+    id: string;
+    sequence: number;
+    leg_index?: number | null;
+    stop_type: string;
+    source_label?: string | null;
+    locationId?: string | null;
+    location?: { id: string; name: string } | null;
+  }[];
 }
 
 /** A driver as the create-trip form needs them: status and assigned truck. */
@@ -632,6 +707,26 @@ export const operatorService = {
     return (data.data ?? []) as OperatorThirdPartyProvider[];
   },
 
+  async thirdPartyProviderById(id: string): Promise<OperatorThirdPartyProvider> {
+    const { data } = await api.get(`/third-party-providers/${id}`);
+    return data.data as OperatorThirdPartyProvider;
+  },
+
+  async thirdPartyStats(): Promise<ThirdPartyStats> {
+    const { data } = await api.get('/third-party-providers/stats');
+    return data.data as ThirdPartyStats;
+  },
+
+  async createThirdPartyProvider(payload: ThirdPartyProviderInput): Promise<OperatorThirdPartyProvider> {
+    const { data } = await api.post('/third-party-providers', payload);
+    return data.data as OperatorThirdPartyProvider;
+  },
+
+  async updateThirdPartyProvider(id: string, payload: Partial<ThirdPartyProviderInput>): Promise<OperatorThirdPartyProvider> {
+    const { data } = await api.put(`/third-party-providers/${id}`, payload);
+    return data.data as OperatorThirdPartyProvider;
+  },
+
   /** Same `/quotations` list endpoint the web dashboard's create-trip wizard
    * uses to show a customer's quotations as pickable cards — selecting one
    * fills the whole route + rate in one action, same as the web flow's
@@ -763,6 +858,17 @@ export const operatorService = {
     return data.data as OperatorQuotation;
   },
 
+  async quotationById(id: string): Promise<OperatorQuotationDetail> {
+    const { data } = await api.get(`/quotations/${id}`);
+    return data.data as OperatorQuotationDetail;
+  },
+
+  /** PUT /quotations/:id — same payload shape as create (the web's Edit Quotation page). */
+  async updateQuotation(id: string, payload: Record<string, unknown>): Promise<OperatorQuotationDetail> {
+    const { data } = await api.put(`/quotations/${id}`, payload);
+    return data.data as OperatorQuotationDetail;
+  },
+
   async bulkImportTrips(rows: unknown[]): Promise<{ imported: number; failed: number; results: Array<{ row: number; success: boolean; error?: string; created_id?: string }> }> {
     const { data } = await api.post('/trips/bulk-import', { rows });
     return data.data;
@@ -892,16 +998,42 @@ export const operatorService = {
     return data.data as OperatorTripDetail;
   },
 
-  /** Confirm or correct the real time an EXTERNAL_APP evidence screenshot
-   * happened at — same endpoint/columns the web dashboard's time-confirmation
-   * panel uses. Omit a field to leave that timestamp as recorded. */
-  async confirmEvidenceTime(
+  /** Save a customer-app trip's real stop times, copied off the driver's
+   * screenshots, all stops at once — same endpoint as the web's "Check times".
+   * Only changed times are sent; an empty list confirms the tapped times. */
+  async confirmTripTimes(
+    tripId: string,
+    stops: { stop_id: string; actual_arrival?: string; actual_departure?: string }[]
+  ): Promise<{ stops_updated: number; screenshots_verified: number }> {
+    const { data } = await api.patch(`/trips/${tripId}/confirm-times`, { stops });
+    return data.data;
+  },
+
+  /**
+   * Pin a stop exactly — same endpoint as the web's "Set pin" box. When the
+   * stop is its customer location (not pinned yet), that location and its
+   * other open trips are pinned too.
+   */
+  async pinStop(
     tripId: string,
     stopId: string,
-    payload: { document_id: string; actual_arrival?: string; actual_departure?: string }
-  ): Promise<OperatorTripStop> {
-    const { data } = await api.patch(`/trips/${tripId}/stops/${stopId}/confirm-time`, payload);
-    return data.data as OperatorTripStop;
+    pin: { lat: number; lng: number; address?: string | null }
+  ): Promise<{ location_pinned: boolean; other_trip_count: number }> {
+    const { data } = await api.post(`/trips/${tripId}/stops/${stopId}/pin`, pin);
+    return data.data;
+  },
+
+  /** A pasted Google Maps / WhatsApp link or "lat, lng" → a pin (resolved by the API). */
+  async resolveLocationText(text: string): Promise<{ lat: number; lng: number; address?: string }> {
+    const { data } = await api.get('/geocoding/resolve-location', { params: { text } });
+    return data;
+  },
+
+  /** Place search (Saudi Arabia). */
+  async searchPlaces(q: string): Promise<{ id: string; label: string; lat: number; lng: number }[]> {
+    const { data } = await api.get('/geocoding/search', { params: { q } });
+    return ((data?.suggestions ?? []) as { id: string; display_name: string; lat: number; lon: number }[])
+      .map((r) => ({ id: r.id, label: r.display_name, lat: r.lat, lng: r.lon }));
   },
 
   /** Every truck/driver with a running or scheduled trip and its GPS — the web's live map. */
@@ -990,6 +1122,21 @@ export const operatorService = {
   }): Promise<ShareResult> {
     const { data } = await api.post('/operator-inbox/driver-updates/share', body);
     return data.data as ShareResult;
+  },
+
+  /** Replaces the trip's route and planned times (PUT /trips/:id/stops, as the web's Edit Trip). Draft / Scheduled trips only. */
+  async updateTripRoute(id: string, payload: UpdateTripRouteInput): Promise<OperatorTripDetail> {
+    const { data } = await api.put(`/trips/${id}/stops`, payload);
+    return data.data as OperatorTripDetail;
+  },
+
+  /** Billing amount and driver payout (PATCH /trips/:id/financials, as the web's Edit Trip). */
+  async updateTripPrice(id: string, payload: { billing_amount?: number; driver_payout?: number }): Promise<OperatorTripDetail> {
+    const { data } = await api.patch(`/trips/${id}/financials`, {
+      ...payload,
+      ...(payload.driver_payout !== undefined ? { trip_charges: payload.driver_payout } : {}),
+    });
+    return data.data as OperatorTripDetail;
   },
 
   /** Replaces the trip's additional charges (PATCH /trips/:id/financials, as the web's charges editor). */
@@ -1232,62 +1379,6 @@ export function useOperatorVehicles() {
   useEffect(() => { refetch(); }, [refetch]);
 
   return { vehicles, loading, error, refetch };
-}
-
-export interface VehicleRenewal {
-  documentId: string;
-  vehiclePlate: string;
-  docType: string;
-  status: string;
-  expiryDate: string | null;
-  daysLeft: number | null;
-}
-
-/** Joins vehicle documents with their vehicle's plate number for the renewals screen. */
-export function useOperatorVehicleRenewals() {
-  const [renewals, setRenewals] = useState<VehicleRenewal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [documents, vehicles] = await Promise.all([
-        operatorService.vehicleDocuments(),
-        operatorService.vehicles(),
-      ]);
-      const vehicleById = new Map(vehicles.map((v) => [v.id, v]));
-      const now = Date.now();
-      // Documents whose vehicle no longer exists (e.g. deleted from the fleet)
-      // are dropped — there's nothing to renew for a vehicle that's gone.
-      const joined = documents
-        .filter((doc) => vehicleById.has(doc.entity_id))
-        .map((doc): VehicleRenewal => {
-          const vehicle = vehicleById.get(doc.entity_id)!;
-          const daysLeft = doc.expiry_date
-            ? Math.ceil((new Date(doc.expiry_date).getTime() - now) / (1000 * 60 * 60 * 24))
-            : null;
-          return {
-            documentId: doc.id,
-            vehiclePlate: vehicle.plate_number,
-            docType: doc.doc_type,
-            status: doc.status,
-            expiryDate: doc.expiry_date,
-            daysLeft,
-          };
-        });
-      setRenewals(joined);
-    } catch (e) {
-      setError(getApiErrorMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { refetch(); }, [refetch]);
-
-  return { renewals, loading, error, refetch };
 }
 
 let cacheOperatorInvoices: OperatorInvoice[] = [];

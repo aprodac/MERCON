@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Languages, Truck, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resolveFileUrl } from '@/lib/documents';
@@ -49,13 +49,12 @@ export function Chip({ tone, children }: { tone: 'blue' | 'violet' | 'green' | '
     amber: 'bg-amber-50 text-amber-800',
     red: 'bg-rose-50 text-rose-700',
   } as const;
-  return <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', tones[tone])}>{children}</span>;
+  return <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap', tones[tone])}>{children}</span>;
 }
 
+/** The company's logo — Settings' logo, else the web app's own logo file. */
 export function BrandMark({ brand, className }: { brand: TrackingBrand; className?: string }) {
-  return brand.logo_url
-    ? <img src={resolveFileUrl(brand.logo_url)} alt={brand.name} className={cn('h-5 w-auto max-w-[120px] object-contain', className)} />
-    : <span className={cn('text-sm font-bold tracking-wide text-[#3E3C3D]', className)}>{brand.name}</span>;
+  return <img src={brand.logo_url ? resolveFileUrl(brand.logo_url) : '/mercon-logo.webp'} alt={brand.name} className={cn('h-5 w-auto max-w-[120px] object-contain', className)} />;
 }
 
 export function LangToggle({ text, className }: { text: TrackingText; className?: string }) {
@@ -71,7 +70,31 @@ export function LangToggle({ text, className }: { text: TrackingText; className?
 }
 
 /** "Ask MERCON" — a WhatsApp chat with ops (never the driver), when a support number is set. */
+/**
+ * "Ask" — opens the customer's WhatsApp group with us when one is set (a group
+ * link can't carry a message, so the message is copied for pasting), else a
+ * chat with the ops number.
+ */
 export function AskButton({ brand, text, about }: { brand: TrackingBrand; text: TrackingText; about: string }) {
+  const [copied, setCopied] = useState(false);
+  if (brand.ask_group_url) {
+    return (
+      <div>
+        <a
+          href={brand.ask_group_url}
+          target="_blank"
+          rel="noreferrer"
+          onClick={() => {
+            navigator.clipboard?.writeText(text.t.askText(about)).then(() => setCopied(true), () => {});
+          }}
+          className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#25D366] text-sm font-semibold text-white shadow-sm hover:bg-[#1ebe5b]"
+        >
+          <WhatsAppIcon className="size-4" /> {text.t.askGroup}
+        </a>
+        {copied && <p className="mt-1.5 text-center text-xs text-slate-500">{text.t.copiedForGroup}</p>}
+      </div>
+    );
+  }
   if (!brand.support_whatsapp) return null;
   const href = `https://wa.me/${brand.support_whatsapp}?text=${encodeURIComponent(text.t.askText(about))}`;
   return (
@@ -87,6 +110,9 @@ export function AskButton({ brand, text, about }: { brand: TrackingBrand; text: 
 }
 
 /** Full-screen photo viewer. */
+/** Videos are told apart by their file type — the viewer plays them instead of showing an image. */
+export const isVideoUrl = (url: string) => /\.(mp4|mov|m4v|webm|3gp|mkv)(\?|$)/i.test(url);
+
 export function PhotoViewer({ url, onClose, closeLabel }: { url: string | null; onClose: () => void; closeLabel: string }) {
   useEffect(() => {
     if (!url) return;
@@ -100,8 +126,55 @@ export function PhotoViewer({ url, onClose, closeLabel }: { url: string | null; 
       <button type="button" className="absolute top-4 right-4 rounded-full bg-white/15 p-2 text-white" aria-label={closeLabel}>
         <X className="size-5" />
       </button>
-      <img src={resolveFileUrl(url)} alt="" className="max-h-full max-w-full rounded-xl object-contain" />
+      {isVideoUrl(url) ? (
+        <video src={resolveFileUrl(url)} controls autoPlay playsInline className="max-h-full max-w-full rounded-xl" onClick={(e) => e.stopPropagation()} />
+      ) : (
+        <img src={resolveFileUrl(url)} alt="" className="max-h-full max-w-full rounded-xl object-contain" />
+      )}
     </div>
+  );
+}
+
+const INITIAL_TONES = ['bg-blue-100 text-blue-700', 'bg-emerald-100 text-emerald-700', 'bg-violet-100 text-violet-700', 'bg-amber-100 text-amber-800', 'bg-rose-100 text-rose-700'];
+
+/**
+ * A round photo — driver, truck or customer logo — with a quiet fallback:
+ * initials (a person or company) or an icon (a truck). Falls back too when the
+ * image fails to load, e.g. a photo deleted from the server.
+ */
+export function Photo({ url, name, kind = 'person', size = 40, className }: {
+  url: string | null | undefined;
+  name?: string | null;
+  kind?: 'person' | 'truck' | 'logo';
+  size?: number;
+  className?: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const box = { width: size, height: size };
+  if (url && !failed) {
+    return (
+      <img
+        src={resolveFileUrl(url)}
+        alt={name ?? ''}
+        onError={() => setFailed(true)}
+        style={box}
+        className={cn('shrink-0 rounded-full bg-white ring-1 ring-black/5', kind === 'logo' ? 'object-contain p-0.5' : 'object-cover', className)}
+      />
+    );
+  }
+  if (kind === 'truck' || !name) {
+    return (
+      <span style={box} className={cn('flex shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500', className)}>
+        <Truck style={{ width: size * 0.45, height: size * 0.45 }} />
+      </span>
+    );
+  }
+  const initials = name.trim().split(/\s+/).slice(0, 2).map((w) => w[0]?.toUpperCase() ?? '').join('');
+  const tone = INITIAL_TONES[[...name].reduce((h, c) => h + c.charCodeAt(0), 0) % INITIAL_TONES.length];
+  return (
+    <span style={{ ...box, fontSize: size * 0.38 }} className={cn('flex shrink-0 items-center justify-center rounded-full font-semibold', tone, className)}>
+      {initials}
+    </span>
   );
 }
 

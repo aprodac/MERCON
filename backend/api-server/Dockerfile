@@ -4,6 +4,10 @@ FROM node:20-alpine
 # ffmpeg: shrinks driver videos after upload (services/media/videoCompressor.ts)
 RUN apk add --no-cache openssl curl ffmpeg
 
+# Fonts for the tracking-link preview card's text (services/tracking/trackingPreviewImage.ts).
+# Falls back to DejaVu so the build never fails on a font package.
+RUN apk add --no-cache fontconfig font-noto font-noto-arabic || apk add --no-cache fontconfig ttf-dejavu || true
+
 WORKDIR /app
 
 # Workspace manifests first (for layer caching)

@@ -44,9 +44,9 @@ export type MapTheme = keyof typeof MAP_STYLES;
 export type UnitState = 'delayed' | 'silent' | 'moving' | 'free';
 
 export const STATE_STYLE: Record<UnitState, { color: string; label: string }> = {
-  delayed: { color: '#D92D20', label: 'Delayed' },
+  delayed: { color: '#FA634E', label: 'Delayed' },
   silent: { color: '#9898A4', label: 'No GPS' },
-  moving: { color: '#18181B', label: 'On a trip' },
+  moving: { color: '#3E3C3D', label: 'On a trip' },
   free: { color: '#FFFFFF', label: 'Free' },
 };
 
@@ -225,7 +225,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       logo={false}
       compass={false}
       scaleBar={false}
-      attributionPosition={{ bottom: padding.bottom + 4, right: 8 }}
+      attribution={false}
       dragPan={interactive}
       touchZoom={interactive}
       doubleTapZoom={interactive}
@@ -247,12 +247,12 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
 
       {toNext ? (
         <GeoJSONSource id="to-next" data={toNext}>
-          <Layer id="to-next-casing" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': dark ? '#3FA9FF' : '#1A73E8', 'line-width': 12, 'line-opacity': 0.2, 'line-blur': 2 }} />
+          <Layer id="to-next-casing" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': dark ? '#FF8A78' : '#FA634E', 'line-width': 12, 'line-opacity': 0.2, 'line-blur': 2 }} />
           {/* Separate layers, not a toggled prop: a dash set once on a native layer isn't cleared by dropping it. */}
           {routeLine && routeLine.length > 1 ? (
-            <Layer key="road" id="to-next-road" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': dark ? '#3FA9FF' : '#1A73E8', 'line-width': 5 }} />
+            <Layer key="road" id="to-next-road" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': dark ? '#FF8A78' : '#FA634E', 'line-width': 5 }} />
           ) : (
-            <Layer key="straight" id="to-next-straight" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': dark ? '#3FA9FF' : '#1A73E8', 'line-width': 4, 'line-dasharray': [2, 1.5] }} />
+            <Layer key="straight" id="to-next-straight" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': dark ? '#FF8A78' : '#FA634E', 'line-width': 4, 'line-dasharray': [2, 1.5] }} />
           )}
         </GeoJSONSource>
       ) : null}
@@ -272,19 +272,21 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       {drawn.map((u) => {
         const free = isFree(u);
         const color = isDelayed(u) ? STATE_STYLE.delayed.color : free ? '#FFFFFF' : STATE_STYLE.moving.color;
-        const fg = free ? '#18181B' : '#FFFFFF';
+        const fg = free ? '#3E3C3D' : '#FFFFFF';
         const on = selected === u.key;
         const silent = isSilent(u, now);
         const heading = u.position?.heading_deg;
         const moving = u.motion === 'moving' && heading != null && !silent;
         const marker = (
           <View style={{ alignItems: 'center' }}>
-            <View style={[st.pin, { backgroundColor: color }, free && st.pinFree, silent && !on && { opacity: 0.45 }, on && st.pinOn]}>
+            <View style={[st.pin, { backgroundColor: color }, free && st.pinFree, on && st.pinOn]}>
               {moving ? (
-                <Navigation size={on ? 15 : 12} color={fg} fill={fg} strokeWidth={2} style={{ transform: [{ rotate: `${heading! - mapBearing}deg` }] }} />
+                <Navigation size={on ? 17 : 14} color={fg} fill={fg} strokeWidth={2} style={{ transform: [{ rotate: `${heading! - mapBearing}deg` }] }} />
               ) : (
-                <Truck size={on ? 16 : 13} color={fg} strokeWidth={2.3} />
+                <Truck size={on ? 18 : 15} color={fg} strokeWidth={2.3} />
               )}
+              {/* No signal: a small grey badge, so the pin itself stays readable */}
+              {silent ? <View style={st.silent} /> : null}
             </View>
             {on && u.vehicle?.plate_number ? <View style={st.label}><Text style={st.labelText}>{u.vehicle.plate_number}</Text></View> : null}
           </View>
@@ -304,13 +306,17 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
 const st = StyleSheet.create({
   fallback: { backgroundColor: '#EFEFF1', alignItems: 'center', justifyContent: 'center', gap: 8 },
   fallbackText: { fontSize: 13, fontWeight: '600', color: '#52525B' },
-  pin: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFFFFF' },
-  pinFree: { borderColor: '#18181B', borderWidth: 1.5 },
-  pinOn: { width: 36, height: 36, borderRadius: 18, borderWidth: 3 },
-  label: { marginTop: 3, backgroundColor: '#18181B', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  pin: {
+    width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, borderColor: '#FFFFFF',
+    shadowColor: '#000', shadowOpacity: 0.22, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 3,
+  },
+  pinFree: { borderColor: '#3E3C3D', borderWidth: 2 },
+  pinOn: { width: 42, height: 42, borderRadius: 21, borderWidth: 3 },
+  silent: { position: 'absolute', top: -3, right: -3, width: 11, height: 11, borderRadius: 6, backgroundColor: '#9898A4', borderWidth: 2, borderColor: '#FFFFFF' },
+  label: { marginTop: 3, backgroundColor: '#3E3C3D', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   labelText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF', fontFamily: 'monospace' },
   stop: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#71717A', alignItems: 'center', justifyContent: 'center' },
-  stopDone: { backgroundColor: '#16A34A', borderColor: '#FFFFFF' },
-  stopNext: { backgroundColor: '#1A73E8', borderColor: '#FFFFFF' },
+  stopDone: { backgroundColor: '#3E3C3D', borderColor: '#FFFFFF' },
+  stopNext: { backgroundColor: '#FA634E', borderColor: '#FFFFFF' },
   stopText: { fontSize: 10, fontWeight: '800', color: '#3F3F46' },
 });

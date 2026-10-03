@@ -88,7 +88,7 @@ const RedCameraPlusIcon = () => (
 export default function StopVerificationScreen() {
   const router = useRouter();
   const { stopIndex: paramStopIndex, legIndex: paramLegIndex } = useLocalSearchParams<{ stopIndex?: string; legIndex?: string }>();
-  const { t, language } = useLanguage();
+  const { t, language, tr } = useLanguage();
   const { trip, loading, refetch, setTrip } = useCurrentTrip();
 
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
@@ -258,7 +258,7 @@ export default function StopVerificationScreen() {
     }
   };
 
-  const stopName = activeStop?.name || (isReturnLeg ? (language === 'ur' ? 'واپسی کا درمیانی اسٹاپ' : 'Return Intermediate Stop') : (language === 'ur' ? 'درمیانی اسٹاپ' : 'Intermediate Stop'));
+  const stopName = activeStop?.name || (isReturnLeg ? (tr('Return Intermediate Stop', 'واپسی کا درمیانی اسٹاپ')) : (tr('Intermediate Stop', 'درمیانی اسٹاپ')));
   const stopHeaderTitle = language === 'ur'
     ? (isReturnLeg ? `واپسی کا درمیانی اسٹاپ #${parsedIndex + 1}` : `درمیانی اسٹاپ #${parsedIndex + 1}`)
     : (isReturnLeg ? `Return Stop ${parsedIndex + 1}` : `Stop ${parsedIndex + 1}`);

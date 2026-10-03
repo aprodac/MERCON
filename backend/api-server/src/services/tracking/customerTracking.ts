@@ -22,6 +22,8 @@ import { getDrivingRouteThrough, MAX_ROUTE_POINTS, RoutingUnavailableError, type
 import { SHARE_LINK_TTL_DAYS, newShareToken } from '../operatorInbox';
 import { loadTripOverview, thinPath, type TripOverview, type TripPhase } from '../tripOverview';
 import { loadTripMedia, type LiveStop, type LiveTripMedia } from '../fleetLiveMap';
+import { publicImage } from './publicImages';
+import { whatsAppGroupUrl } from '@mercon/shared-types';
 
 export const TRACKING_UPDATE_KEY = 'tracking';
 export const TRACKING_CHANNEL = 'tracking_link';
@@ -54,13 +56,17 @@ export interface TrackingBrand {
   name: string;
   logo_url: string | null;
   primary_color: string | null;
-  /** Ops WhatsApp number (digits) for the page's "Ask us" button. */
+  /** Ops WhatsApp number (digits) for the page's "Ask us" button — the fallback. */
   support_whatsapp: string | null;
+  /** The customer's WhatsApp group (invite link): "Ask" opens it when set. */
+  ask_group_url: string | null;
 }
 
 export interface PublicTrackingPhoto {
   url: string;
-  kind: 'pod' | 'photo';
+  kind: 'pod' | 'photo' | 'video';
+  /** Sent by the driver to explain a delay (often a video). */
+  delay: boolean;
   captured_at: string;
 }
 
@@ -93,8 +99,12 @@ export interface PublicTracking {
     finished_at: string | null;
     planned_start: string | null;
   };
-  vehicle: { plate: string | null; type: string | null };
+  /** Whose shipment this is — shown as their logo and name on the page. */
+  customer: { name: string; logo_url: string | null } | null;
+  vehicle: { plate: string | null; type: string | null; photo_url: string | null };
   driver_first_name: string | null;
+  /** The driver's profile photo (MERCON drivers only — none for subcontracted trucks). */
+  driver_photo_url: string | null;
   position: {
     lat: number;
     lng: number;
@@ -133,9 +143,11 @@ export interface TrackingTripMeta {
   actual_end: Date | null;
   updatedAt: Date;
   is_third_party: boolean;
-  vehicle: { plate_number: string; asset_type: string } | null;
-  driver: { first_name: string } | null;
+  vehicle: { id?: string; plate_number: string; asset_type: string; image_url?: string | null } | null;
+  driver: { id?: string; first_name: string; avatar_url?: string | null } | null;
   subcontract: { vehiclePlate: string | null; vehicleType: string | null; driverName: string | null } | null;
+  /** Who created the trip — the "Ask" fallback when the customer has no WhatsApp group. */
+  created_by?: string | null;
 }
 
 export interface TrackingCustomerSettings {
@@ -144,6 +156,8 @@ export interface TrackingCustomerSettings {
   tracking_show_deadline: boolean;
   tracking_show_delay_reason: boolean;
   tracking_show_photos: boolean;
+  /** Customer.whatsapp_group_link — where "Ask" sends the customer. */
+  whatsapp_group_link?: string | null;
 }
 
 export const optionsOf = (c: TrackingCustomerSettings | null | undefined): TrackingOptions => ({
@@ -174,8 +188,34 @@ export function lateMinutes(actualOrEta: string | Date | null, due: string | Dat
 
 /** WhatsApp wants digits only, with the country code. */
 export function waDigits(phone: string | null | undefined): string | null {
-  const d = (phone ?? '').replace(/[^0-9]/g, '');
+  let d = (phone ?? '').replace(/[^0-9]/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  // wa.me needs the international form: a local Saudi mobile "05x…" / "5x…" becomes "9665x…".
+  if (/^05\d{8}$/.test(d)) d = `966${d.slice(1)}`;
+  else if (/^5\d{8}$/.test(d)) d = `966${d}`;
   return d.length >= 8 ? d : null;
+}
+
+/**
+ * The WhatsApp number of the team member a customer should ask — the person
+ * who created the trip, when they're an active Admin / Operator with a phone
+ * on their profile (the team answers customers from their own phones).
+ * Cached briefly: every page load asks.
+ */
+const teamPhoneCache = new Map<string, { at: number; value: string | null }>();
+export async function teamWhatsApp(db: PrismaClient, userId: string | null | undefined, nowMs = Date.now()): Promise<string | null> {
+  if (!userId) return null;
+  const hit = teamPhoneCache.get(userId);
+  if (hit && nowMs - hit.at < 10 * 60_000) return hit.value;
+  let value: string | null = null;
+  try {
+    const u = await db.user.findUnique({ where: { id: userId }, select: { phone: true, role: true, isActive: true, deletedAt: true } });
+    value = u && u.isActive && !u.deletedAt && u.role !== 'Driver' ? waDigits(u.phone) : null;
+  } catch {
+    value = null; // not a user id (older rows) — fall back to the company number
+  }
+  teamPhoneCache.set(userId, { at: nowMs, value });
+  return value;
 }
 
 export type LinkState = 'ok' | 'expired' | 'cancelled' | 'not_found' | 'disabled';
@@ -230,13 +270,16 @@ export function routeLabel(names: string[]): string | null {
 
 const pointOf = (s: LiveStop): GeoPoint | null => (s.lat != null && s.lng != null ? { lat: s.lat, lng: s.lng } : null);
 
-/** Photos a customer may see for one stop: POD and cargo photos, never delay videos or anything else. */
+/**
+ * Media a customer may see for one stop: proof of delivery, cargo photos, and
+ * the driver's delay photos / videos (owner decision 2026-10-03: customers see
+ * why a truck was held up). All behind the customer's "show photos" setting.
+ */
 function stopPhotos(media: LiveTripMedia | null, stopId: string): PublicTrackingPhoto[] {
   const items = media?.stops.find((m) => m.stop_id === stopId)?.media ?? [];
   return items
-    .filter((m) => (m.kind === 'pod' || m.kind === 'photo') && m.stage !== 'delay')
     .slice(0, MAX_PHOTOS_PER_STOP)
-    .map((m) => ({ url: m.url, kind: m.kind as 'pod' | 'photo', captured_at: m.captured_at }));
+    .map((m) => ({ url: m.url, kind: m.kind, delay: m.stage === 'delay', captured_at: m.captured_at }));
 }
 
 /**
@@ -254,6 +297,7 @@ export function buildPublicTracking(input: {
   ahead: RouteResult | null;
   all: RouteResult | null;
   media?: LiveTripMedia | null;
+  customer?: { name: string; logo_url: string | null } | null;
   now: Date;
 }): PublicTracking {
   const { overview, meta, ahead, all, now, options } = input;
@@ -330,11 +374,14 @@ export function buildPublicTracking(input: {
       finished_at: meta.actual_end?.toISOString() ?? null,
       planned_start: meta.planned_start?.toISOString() ?? null,
     },
+    customer: input.customer ?? null,
     vehicle: {
       plate: third ? third.vehiclePlate : meta.vehicle?.plate_number ?? null,
       type: (third ? third.vehicleType : null) || meta.vehicle_type || meta.vehicle?.asset_type || null,
+      photo_url: third ? null : meta.vehicle?.image_url ?? null,
     },
     driver_first_name: firstName(third ? third.driverName : meta.driver?.first_name),
+    driver_photo_url: third ? null : meta.driver?.avatar_url ?? null,
     position: pos ? {
       lat: round5(pos.lat),
       lng: round5(pos.lng),
@@ -400,15 +447,16 @@ export function clearTrackingCaches(): void {
 
 export const CUSTOMER_TRACKING_SELECT = {
   tracking_enabled: true, tracking_auto_link: true, tracking_show_deadline: true,
-  tracking_show_delay_reason: true, tracking_show_photos: true,
+  tracking_show_delay_reason: true, tracking_show_photos: true, whatsapp_group_link: true,
 } as const;
 
 const META_SELECT = {
+  created_by: true,
   ref_id: true, status: true, vehicle_type: true, planned_start: true, actual_start: true, actual_end: true, updatedAt: true, is_third_party: true,
-  vehicle: { select: { plate_number: true, asset_type: true } },
-  driver: { select: { first_name: true } },
+  vehicle: { select: { id: true, plate_number: true, asset_type: true, image_url: true } },
+  driver: { select: { id: true, first_name: true, avatar_url: true } },
   subcontract: { select: { vehiclePlate: true, vehicleType: true, driverName: true } },
-  customer: { select: CUSTOMER_TRACKING_SELECT },
+  customer: { select: { ...CUSTOMER_TRACKING_SELECT, id: true, name: true, logo_url: true } },
 } as const;
 
 export interface TrackingContext {
@@ -418,13 +466,16 @@ export interface TrackingContext {
 
 /** Branding and timezone for a tracking page — the same for every trip. */
 export async function loadTrackingContext(db: PrismaClient): Promise<TrackingContext> {
-  const s = await db.settings.findFirst({ select: { appName: true, logoUrl: true, primaryColor: true, timezone: true, supportWhatsapp: true } });
+  const s = await db.settings.findFirst({ select: { companyLegalName: true, logoUrl: true, primaryColor: true, timezone: true, supportWhatsapp: true } });
   return {
     brand: {
-      name: s?.appName || 'MERCON',
+      // Customers see the company, never the internal app name ("MERCON Operator Platform").
+      // The schema's placeholder legal name counts as unset.
+      name: (s?.companyLegalName && s.companyLegalName !== 'MERCON Operations Ltd.' ? s.companyLegalName : null) || 'MERCON',
       logo_url: s?.logoUrl ?? null,
       primary_color: s?.primaryColor ?? null,
       support_whatsapp: waDigits(s?.supportWhatsapp),
+      ask_group_url: null, // per customer, set by each page
     },
     timezone: s?.timezone || 'Asia/Riyadh',
   };
@@ -438,7 +489,7 @@ export async function loadTrackingContext(db: PrismaClient): Promise<TrackingCon
 export async function buildTripTracking(
   db: PrismaClient,
   tripId: string,
-  meta: TrackingTripMeta & { customer: TrackingCustomerSettings | null },
+  meta: TrackingTripMeta & { customer: (TrackingCustomerSettings & { id?: string; name?: string; logo_url?: string | null }) | null },
   ctx: TrackingContext,
   now = new Date(),
 ): Promise<PublicTracking | null> {
@@ -467,7 +518,25 @@ export async function buildTripTracking(
     }
   }
 
-  const data = buildPublicTracking({ overview, meta, brand: ctx.brand, timezone: ctx.timezone, options, ahead, all, media, now });
+  // Photos go out as links only — an inline (base64) image is moved to a file first.
+  const [logo, avatar, truckPhoto] = await Promise.all([
+    meta.customer?.id ? publicImage(db, { table: 'customer', field: 'logo_url' }, meta.customer.id, meta.customer.logo_url) : null,
+    meta.driver?.id ? publicImage(db, { table: 'driver', field: 'avatar_url' }, meta.driver.id, meta.driver.avatar_url) : null,
+    meta.vehicle?.id ? publicImage(db, { table: 'vehicle', field: 'image_url' }, meta.vehicle.id, meta.vehicle.image_url) : null,
+  ]);
+  const linkedMeta: TrackingTripMeta = {
+    ...meta,
+    driver: meta.driver ? { ...meta.driver, avatar_url: avatar } : null,
+    vehicle: meta.vehicle ? { ...meta.vehicle, image_url: truckPhoto } : null,
+  };
+  const customer = meta.customer?.name ? { name: meta.customer.name, logo_url: logo } : null;
+  // "Ask": the customer's WhatsApp group, else whoever created the trip, else the company number.
+  const brand = {
+    ...ctx.brand,
+    ask_group_url: whatsAppGroupUrl(meta.customer?.whatsapp_group_link),
+    support_whatsapp: (await teamWhatsApp(db, meta.created_by)) ?? ctx.brand.support_whatsapp,
+  };
+  const data = buildPublicTracking({ overview, meta: linkedMeta, brand, timezone: ctx.timezone, options, ahead, all, media, customer, now });
   remember(payloadCache, tripId, { at: now.getTime(), data });
   return data;
 }
@@ -493,23 +562,26 @@ async function resolveTripToken(db: PrismaClient, token: string, now: Date) {
 export async function loadPublicTracking(
   db: PrismaClient,
   token: string,
-  opts: { now?: Date; countView?: boolean } = {},
+  opts: { now?: Date; countView?: boolean; device?: string | null } = {},
 ): Promise<TrackingLookup> {
   const now = opts.now ?? new Date();
   const found = await resolveTripToken(db, token, now);
   if (found.state !== 'ok') return { state: found.state };
-  if (opts.countView) recordTripLinkOpen(db, found.share.id, now);
+  if (opts.countView) recordTripLinkOpen(db, found.share.id, now, opts.device ?? null);
   const data = await buildTripTracking(db, found.share.tripId, found.meta as unknown as TrackingTripMeta & { customer: TrackingCustomerSettings | null }, await loadTrackingContext(db), now);
   return data ? { state: 'ok', data } : { state: 'not_found' };
 }
 
-/** Counts a page load (not a refresh). Never holds up or fails the page. */
-function recordTripLinkOpen(db: PrismaClient, shareId: string, now: Date) {
+/** Counts a page load (not a refresh) and logs it in the open history. Never holds up or fails the page. */
+function recordTripLinkOpen(db: PrismaClient, shareId: string, now: Date, device: string | null) {
   db.$executeRaw`
     UPDATE "trip_update_shares"
     SET open_count = open_count + 1, last_opened_at = ${now}, first_opened_at = COALESCE(first_opened_at, ${now})
     WHERE id = ${shareId}::uuid
   `.catch((err) => logger.warn({ err }, '[tracking] could not record a link open'));
+  db.trackingLinkOpen
+    .create({ data: { tripShareId: shareId, opened_at: now, device } })
+    .catch((err) => logger.warn({ err }, '[tracking] could not log a link open'));
 }
 
 // ── Links (ops side) ────────────────────────────────────────────────────────

@@ -15,7 +15,7 @@ import { driverFullName, driverInitials } from '../services/driversService';
 import { niceName } from '../../trips/create/components/ui';
 import type { DriverListItem, DriverStatus } from '../types';
 
-const INK = '#18181B';
+const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
 const RED = '#B42318';
 const AMBER = '#B54708';

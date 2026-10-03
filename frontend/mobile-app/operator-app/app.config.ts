@@ -32,6 +32,8 @@ const CLIENT_PROFILES = {
     brandColor: '#FA634E',
     brandColorLight: '#FFF0EB',
     brandColorDark: '#D94E38',
+    // Darkest neutral — the web's brand charcoal, used instead of black across the operator app.
+    inkColor: '#3E3C3D',
   },
   // mtl: { ... } — add once MTL's mobile assets and bundle IDs exist.
 } as const;
@@ -155,6 +157,7 @@ export default (): ExpoConfig => ({
     brandColor: client.brandColor,
     brandColorLight: client.brandColorLight,
     brandColorDark: client.brandColorDark,
+    inkColor: client.inkColor,
   },
   owner: 'alan32',
 });

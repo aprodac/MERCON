@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { normalizeAssistantConfig } from '@mercon/shared-types';
 import { prisma } from '../db';
 import { generateRefId } from '../utils/refId';
 import { createDriverNotification, notifyOperatorsOfDelay } from './notificationController';
@@ -18,6 +19,7 @@ import { recordAssignmentEvent } from '../services/fleetDispatchService';
 import { buildTripRouteTimeline, isRouteLocked, buildTripStops } from '../services/tripRouteTimeline';
 import { parseFullTripStops } from '../services/legacyStopStringParser';
 import { writeTripStops } from '../services/tripStopWriter';
+import { pinTripStop, PinError } from '../services/locationPin';
 import { whatsappService } from '../services/whatsappService';
 import { getTripMediaPurge } from '../services/media/tripMediaRetention';
 
@@ -1914,6 +1916,71 @@ export const confirmEvidenceTime = async (req: Request, res: Response) => {
 };
 
 /**
+ * Confirm a whole EXTERNAL_APP trip's stop times at once. The customer's app
+ * shows every stop's arrive/departure time on one screen, so the operator
+ * copies them all in one pass instead of one screenshot at a time. Saves the
+ * times and marks every pending screenshot on the trip as checked.
+ *
+ * Same post-completion rule as confirmEvidenceTime: no frozen-trip guard.
+ */
+export const confirmTripTimes = async (req: Request, res: Response) => {
+  try {
+    const rawTripId = req.params.id as string;
+    const tripId = isUuid(rawTripId) ? rawTripId : (await resolveTripId(rawTripId));
+    if (!tripId) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+    const input = (req.body.stops ?? []) as { stop_id: string; actual_arrival?: string; actual_departure?: string }[];
+
+    const stops = await prisma.tripStop.findMany({
+      where: { tripId, deletedAt: null },
+      select: { id: true, location_name: true, actual_arrival: true, actual_departure: true },
+    });
+    const byId = new Map(stops.map((s) => [s.id, s]));
+
+    const updates: { id: string; data: { actual_arrival?: Date; actual_departure?: Date } }[] = [];
+    for (const row of input) {
+      const stop = byId.get(row.stop_id);
+      if (!stop) {
+        return res.status(400).json({ success: false, error: { code: 'UNKNOWN_STOP', message: 'A stop does not belong to this trip' } });
+      }
+      const data: { actual_arrival?: Date; actual_departure?: Date } = {};
+      if (row.actual_arrival) data.actual_arrival = new Date(row.actual_arrival);
+      if (row.actual_departure) data.actual_departure = new Date(row.actual_departure);
+      const arrival = data.actual_arrival ?? stop.actual_arrival;
+      const departure = data.actual_departure ?? stop.actual_departure;
+      if (arrival && departure && departure < arrival) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'DEPARTURE_BEFORE_ARRIVAL', message: `${stop.location_name || 'A stop'}: left is before arrived` },
+        });
+      }
+      if (Object.keys(data).length) updates.push({ id: stop.id, data });
+    }
+
+    const verifiedBy = isUuid((req as any).user?.id) ? (req as any).user.id : null;
+    const verified = await prisma.$transaction(async (tx) => {
+      for (const u of updates) await tx.tripStop.update({ where: { id: u.id }, data: u.data });
+      return tx.document.updateMany({
+        where: {
+          entity_type: 'Trip',
+          entity_id: tripId,
+          deletedAt: null,
+          status: DocStatus.PendingReview,
+          ai_extracted_json: { path: ['source'], equals: 'external_app_screenshot' },
+        },
+        data: { status: DocStatus.Verified, verified_by: verifiedBy },
+      });
+    });
+
+    res.json({ success: true, data: { stops_updated: updates.length, screenshots_verified: verified.count } });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to confirm trip times');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to confirm trip times' } });
+  }
+};
+
+/**
  * Correct where a stop actually is — its label, its full address, the lane
  * endpoint it belongs to, and its coordinates.
  *
@@ -2000,6 +2067,34 @@ export const updateTripStop = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error({ err: error }, 'Failed to update trip stop');
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to update this stop' } });
+  }
+};
+
+/**
+ * POST /trips/:id/stops/:stopId/pin — the "Set pin" box on a stop. Allowed
+ * while the trip is running (that is when a wrong pin costs the most: ETA and
+ * arrival detection both read it); refused once the trip is closed.
+ */
+export const pinStop = async (req: Request, res: Response) => {
+  try {
+    const { id: rawTripId, stopId } = req.params as { id: string; stopId: string };
+    const tripId = isUuid(rawTripId) ? rawTripId : (await resolveTripId(rawTripId));
+    if (!tripId) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+    const userId = getValidUuid((req as any).user?.id);
+    const { lat, lng, address } = req.body;
+    const result = await prisma.$transaction((tx) => pinTripStop(tx, tripId, stopId, { lat, lng, address }, userId));
+    res.json({
+      success: true,
+      data: { stop: result.stop, location_pinned: result.locationPinned, other_trip_count: result.otherTripIds.length },
+    });
+  } catch (error) {
+    if (error instanceof PinError) {
+      return res.status(error.status).json({ success: false, error: { code: error.code, message: error.message } });
+    }
+    logger.error({ err: error }, 'Failed to pin trip stop');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to save the pin' } });
   }
 };
 
@@ -2515,30 +2610,155 @@ export const bulkAssignTrips = async (req: Request, res: Response) => {
 /**
  * Get all completed trips pending post-trip financial settlement / waiting-labor check
  */
+
+/**
+ * Completed trips nobody has answered "any extra charges?" for yet — the
+ * Operations Assistant's queue. One operator's answer clears a trip for
+ * everyone (`is_post_trip_settled`). Invoiced trips are left out: a charge
+ * added after the invoice would never be billed. Slim select (no base64
+ * customer logos) because the assistant polls this.
+ */
 export const getUnsettledCompletedTrips = async (req: Request, res: Response) => {
   try {
-    const trips = await prisma.trip.findMany({
-      where: {
-        deletedAt: null,
-        status: { in: [TripStatus.Completed, TripStatus.Invoiced] },
-        is_post_trip_settled: false,
-      },
-      include: {
-        customer: true,
-        driver: true,
-        vehicle: true,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    // How far back it looks is set in Settings → Assistant (older trips are left to the trip pages).
+    const settingsRow = await prisma.settings.findUnique({ where: { id: 'singleton' }, select: { assistantConfig: true } });
+    const { lookbackDays } = normalizeAssistantConfig(settingsRow?.assistantConfig).reports.extraCharges;
+    const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
+    const where: Prisma.TripWhereInput = {
+      deletedAt: null,
+      status: TripStatus.Completed,
+      is_post_trip_settled: false,
+      OR: [{ actual_end: { gte: since } }, { actual_end: null, planned_start: { gte: since } }],
+    };
+    const [trips, count] = await Promise.all([
+      prisma.trip.findMany({
+        where,
+        select: {
+          id: true,
+          ref_id: true,
+          status: true,
+          customerId: true,
+          quotationId: true,
+          billing_amount: true,
+          planned_start: true,
+          actual_end: true,
+          is_third_party: true,
+          subcontract: { select: { driverName: true, vehiclePlate: true, provider: { select: { name: true } } } },
+          customer: { select: { id: true, name: true } },
+          driver: { select: { id: true, first_name: true, last_name: true, avatar_url: true } },
+          vehicle: { select: { id: true, plate_number: true } },
+          stops: {
+            select: {
+              stop_type: true, stop_sequence: true, location_name: true, location: { select: { name: true } },
+              // Arrival → departure is how long the truck waited — the assistant's waiting-time hint.
+              actual_arrival: true, actual_departure: true,
+            },
+            orderBy: { stop_sequence: 'asc' },
+          },
+          charges: { select: { id: true, charge_type: true, amount: true } },
+        },
+        orderBy: [{ actual_end: { sort: 'desc', nulls: 'last' } }, { planned_start: 'desc' }],
+        take: 100,
+      }),
+      prisma.trip.count({ where }),
+    ]);
 
-    res.json({
-      success: true,
-      data: trips,
-      count: trips.length,
-    });
+    // What each customer in the queue usually gets charged extra (last 120 days),
+    // so the assistant can put the likely charges first.
+    const customerIds = [...new Set(trips.map((t) => t.customerId).filter((id): id is string => Boolean(id)))];
+    const habits: Record<string, { charge_type: string; times: number; last_rate: number }[]> = {};
+    if (customerIds.length > 0) {
+      const recent = await prisma.tripCharge.findMany({
+        where: {
+          createdAt: { gte: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000) },
+          trip: { customerId: { in: customerIds }, deletedAt: null },
+        },
+        select: { charge_type: true, rate: true, createdAt: true, trip: { select: { customerId: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 3000,
+      });
+      const byCustomer = new Map<string, Map<string, { times: number; last_rate: number }>>();
+      for (const c of recent) {
+        const cid = c.trip.customerId;
+        if (!cid) continue;
+        const types = byCustomer.get(cid) ?? new Map();
+        const seen = types.get(c.charge_type);
+        // Newest first, so the first rate seen is the latest one used.
+        types.set(c.charge_type, { times: (seen?.times ?? 0) + 1, last_rate: seen?.last_rate ?? Number(c.rate) });
+        byCustomer.set(cid, types);
+      }
+      for (const [cid, types] of byCustomer) {
+        habits[cid] = [...types.entries()]
+          .map(([charge_type, v]) => ({ charge_type, ...v }))
+          .sort((a, b) => b.times - a.times)
+          .slice(0, 5);
+      }
+    }
+
+    res.json({ success: true, data: trips, count, habits });
   } catch (error) {
     logger.error({ err: error }, 'Failed to fetch unsettled completed trips');
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to fetch unsettled trips' } });
+  }
+};
+
+/**
+ * Answer "any extra charges?" for one completed trip: ADDS the given sub-charges
+ * (billed to the customer) to whatever the trip already has, and marks the trip
+ * reviewed. An empty list means "no extra charges". If another operator already
+ * answered, nothing is added (409) — one answer per trip is enough.
+ */
+export const reviewTripCharges = async (req: Request, res: Response) => {
+  try {
+    const rawId = req.params.id as string;
+    const tripId = isUuid(rawId) ? rawId : (await resolveTripId(rawId));
+    if (!tripId) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+    const charges = (req.body.charges || []) as { surchargeRuleId?: string | null; charge_type: string; unit?: string | null; rate: number; quantity: number }[];
+    const userId = (req as any).user?.id;
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Claim the trip first so two operators answering at once can't both add charges.
+      const claimed = await tx.trip.updateMany({
+        where: { id: tripId, deletedAt: null, status: TripStatus.Completed, is_post_trip_settled: false },
+        data: { is_post_trip_settled: true, updated_by: userId },
+      });
+      if (claimed.count === 0) {
+        const trip = await tx.trip.findUnique({ where: { id: tripId }, select: { status: true, is_post_trip_settled: true, deletedAt: true } });
+        if (!trip || trip.deletedAt) throw new Error('NOT_FOUND');
+        throw new Error(trip.is_post_trip_settled ? 'ALREADY_REVIEWED' : 'NOT_COMPLETED');
+      }
+      for (const c of charges) {
+        await tx.tripCharge.create({
+          data: {
+            tripId,
+            surchargeRuleId: getValidUuid(c.surchargeRuleId) || null,
+            charge_type: c.charge_type.trim(),
+            unit: c.unit ? c.unit.trim() || null : null,
+            rate: c.rate,
+            quantity: c.quantity,
+            amount: Math.round(c.rate * c.quantity * 100) / 100,
+            created_by: userId,
+          },
+        });
+      }
+      return tx.trip.findUnique({ where: { id: tripId }, select: { id: true, ref_id: true, is_post_trip_settled: true, charges: true } });
+    });
+
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    if (error.message === 'NOT_FOUND') {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Trip not found' } });
+    }
+    if (error.message === 'ALREADY_REVIEWED') {
+      return res.status(409).json({ success: false, error: { code: 'ALREADY_REVIEWED', message: 'Another operator already answered for this trip' } });
+    }
+    if (error.message === 'NOT_COMPLETED') {
+      return res.status(409).json({ success: false, error: { code: 'NOT_COMPLETED', message: 'Only completed (not yet invoiced) trips take extra charges here' } });
+    }
+    logger.error({ err: error }, 'Failed to review trip charges');
+    res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to save the extra charges' } });
   }
 };
 

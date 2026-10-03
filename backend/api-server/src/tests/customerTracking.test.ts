@@ -1,10 +1,11 @@
 import test from 'node:test';
+import { whatsAppGroupUrl } from '@mercon/shared-types';
 import assert from 'node:assert/strict';
 import {
   ETA_STALE_MS, TRACKING_AFTER_END_DAYS, buildPublicTracking, firstName, lateMinutes, optionsOf, placeName, routeLabel, trackingLinkState, truckSeconds, waDigits,
   type TrackingOptions, type TrackingTripMeta,
 } from '../services/tracking/customerTracking';
-import { deliveredTripFilter, fleetTripFilter, sortFleet, toDeliveredTrip, toFleetTruck } from '../services/tracking/customerFleetTracking';
+import { deliveredTripFilter, fleetTripFilter, sortFleet, summarizeMonth, toDeliveredTrip, toFleetTruck } from '../services/tracking/customerFleetTracking';
 import { renderPreviewTags, tripPreview } from '../services/tracking/trackingPreview';
 import type { LiveTripMedia } from '../services/fleetLiveMap';
 import type { TripOverview } from '../services/tripOverview';
@@ -51,7 +52,7 @@ const route = (distanceMeters: number, durationSeconds: number): RouteResult => 
 });
 
 const DEFAULTS: TrackingOptions = { show_deadline: false, show_delay_reason: false, show_photos: true };
-const BRAND = { name: 'MERCON', logo_url: '/uploads/logo.png', primary_color: null, support_whatsapp: '966500000000' };
+const BRAND = { name: 'MERCON', logo_url: '/uploads/logo.png', primary_color: null, support_whatsapp: '966500000000', ask_group_url: null };
 
 const build = (
   ov: TripOverview, ahead: RouteResult | null, all: RouteResult | null = route(900_000, 30_000), m = meta,
@@ -71,6 +72,36 @@ const MEDIA: LiveTripMedia = {
   ],
   unplaced: [],
 };
+
+test('month summary: on time and delay reasons only when the customer sees them', () => {
+  const d = (iso: string) => new Date(iso);
+  const trips = [
+    { stops: [{ planned_arrival: d('2026-10-01T08:00:00Z'), actual_arrival: d('2026-10-01T08:03:00Z'), delay_reason: null }] }, // on time (within grace)
+    { stops: [{ planned_arrival: d('2026-10-02T08:00:00Z'), actual_arrival: d('2026-10-02T08:40:00Z'), delay_reason: 'CustomerNotReady' }] }, // late
+    { stops: [{ planned_arrival: null, actual_arrival: d('2026-10-03T08:00:00Z'), delay_reason: 'CustomerNotReady' }] }, // not measured
+    { stops: [{ planned_arrival: null, actual_arrival: null, delay_reason: 'Traffic' }] },
+  ];
+  const all = summarizeMonth('2026-10', trips, { show_deadline: true, show_delay_reason: true, show_photos: true });
+  assert.deepEqual(all, { month: '2026-10', trips: 4, measured: 2, on_time: 1, delayed: 3, top_reason: 'CustomerNotReady' });
+  const hidden = summarizeMonth('2026-10', trips, { show_deadline: false, show_delay_reason: false, show_photos: true });
+  assert.deepEqual(hidden, { month: '2026-10', trips: 4, measured: null, on_time: null, delayed: null, top_reason: null });
+});
+
+test('whatsapp numbers become international for wa.me', () => {
+  assert.equal(waDigits('0546126262'), '966546126262');
+  assert.equal(waDigits('546126262'), '966546126262');
+  assert.equal(waDigits('+966 54 612 6262'), '966546126262');
+  assert.equal(waDigits('00966546126262'), '966546126262');
+  assert.equal(waDigits('12345'), null);
+});
+
+test('whatsapp group link: only real invite links count', () => {
+  assert.equal(whatsAppGroupUrl('https://chat.whatsapp.com/AbCdEf1234567890xyz'), 'https://chat.whatsapp.com/AbCdEf1234567890xyz');
+  assert.equal(whatsAppGroupUrl(' chat.whatsapp.com/invite/AbCdEf1234567890xyz?mode=r '), 'https://chat.whatsapp.com/AbCdEf1234567890xyz');
+  assert.equal(whatsAppGroupUrl('iMile ops group'), null);
+  assert.equal(whatsAppGroupUrl('https://evil.example/chat.whatsapp.com/AbCdEf1234567890xyz'), null);
+  assert.equal(whatsAppGroupUrl(null), null);
+});
 
 test('customer tracking', async (t) => {
   await t.test('a truck is never timed faster than the average-speed cap', () => {
@@ -175,9 +206,11 @@ test('customer tracking', async (t) => {
     assert.ok(!JSON.stringify(on).includes('angry'));
   });
 
-  await t.test('photos: done stops only, no delay videos, and only when switched on', () => {
+  await t.test('photos: done stops only, delay videos included and marked, and only when switched on', () => {
     const on = build(overview(), route(300_000, 9_000), undefined, meta, DEFAULTS, MEDIA);
-    assert.deepEqual(on.stops[0].photos.map((p) => p.url), ['/uploads/load.jpg']);
+    assert.deepEqual(on.stops[0].photos.map((p) => [p.url, p.kind, p.delay]), [['/uploads/load.jpg', 'photo', false], ['/uploads/delay.mp4', 'video', true]]);
+    // The driver's typed note never reaches the customer.
+    assert.ok(!JSON.stringify(on).includes('very angry'));
     assert.deepEqual(on.stops[1].photos, []);
     const off = build(overview(), route(300_000, 9_000), undefined, meta, { ...DEFAULTS, show_photos: false }, MEDIA);
     assert.deepEqual(off.stops[0].photos, []);
@@ -249,9 +282,9 @@ test('customer tracking', async (t) => {
     });
   });
 
-  await t.test('delivered list covers the last 7 days', () => {
+  await t.test('delivered list covers the last 30 days', () => {
     const f = deliveredTripFilter('c1', NOW);
-    assert.equal(f.actual_end.gte.toISOString(), '2026-09-25T12:00:00.000Z');
+    assert.equal(f.actual_end.gte.toISOString(), '2026-09-02T12:00:00.000Z');
   });
 
   await t.test('customer page shows running and soon-to-load trips', () => {
@@ -260,6 +293,25 @@ test('customer tracking', async (t) => {
     assert.equal(f.OR.length, 2);
     const soon = (f.OR[1] as unknown as { OR: Array<{ planned_start?: { lte: Date } | null }> }).OR[1].planned_start as { lte: Date };
     assert.equal(soon.lte.toISOString(), '2026-10-03T12:00:00.000Z');
+  });
+
+  await t.test('photos: driver and truck for our own trucks, none for subcontracted ones; customer logo passed through', () => {
+    const own = buildPublicTracking({
+      overview: overview(), brand: BRAND, timezone: 'Asia/Riyadh', options: DEFAULTS, ahead: null, all: null, now: NOW,
+      meta: { ...meta, vehicle: { ...meta.vehicle!, image_url: '/uploads/truck.jpg' }, driver: { first_name: 'Umar', avatar_url: '/uploads/umar.jpg' } },
+      customer: { name: 'iMile', logo_url: '/uploads/imile.png' },
+    });
+    assert.equal(own.driver_photo_url, '/uploads/umar.jpg');
+    assert.equal(own.vehicle.photo_url, '/uploads/truck.jpg');
+    assert.deepEqual(own.customer, { name: 'iMile', logo_url: '/uploads/imile.png' });
+    assert.equal(toFleetTruck('tok', own).driver_photo_url, '/uploads/umar.jpg');
+
+    const third = build(overview(), null, null, {
+      ...meta, is_third_party: true, vehicle: { ...meta.vehicle!, image_url: '/uploads/truck.jpg' }, driver: { first_name: 'Umar', avatar_url: '/uploads/umar.jpg' },
+      subcontract: { vehiclePlate: 'ABC-1234', vehicleType: '5 TON', driverName: 'ali' },
+    });
+    assert.equal(third.driver_photo_url, null);
+    assert.equal(third.vehicle.photo_url, null);
   });
 
   await t.test('link lifetime', () => {

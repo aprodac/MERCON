@@ -79,7 +79,7 @@ export default function DriversScreen() {
                 placeholder="Search name or phone"
                 isLoading={isFetching && !isRefreshing}
               />
-              <Text style={{ fontSize: 16, fontWeight: '700', color: '#18181B' }}>{total} {total === 1 ? 'driver' : 'drivers'}</Text>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: '#3E3C3D' }}>{total} {total === 1 ? 'driver' : 'drivers'}</Text>
             </View>
           }
           renderItem={({ item }) => (

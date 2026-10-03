@@ -9,7 +9,7 @@ import {
   View, Text, TextInput, TouchableOpacity, Switch, StyleSheet, ActivityIndicator,
   type TextInputProps,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
+import { setStringAsync } from '@/lib/clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Check, Copy, Eye, EyeOff, Sparkles, type LucideIcon } from 'lucide-react-native';
 import { Colors, Radius, Spacing, Typography } from '@mercon/mobile-shared/theme/tokens';
@@ -18,7 +18,7 @@ export function FormHeader({ title, subtitle, onBack }: { title: string; subtitl
   return (
     <View style={styles.header}>
       <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={onBack}>
-        <ArrowLeft size={20} color={Colors.gray900} strokeWidth={2.2} />
+        <ArrowLeft size={20} color={Colors.charcoal} strokeWidth={2.2} />
       </TouchableOpacity>
       <View style={{ flex: 1 }}>
         <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
@@ -54,7 +54,7 @@ interface FieldProps extends Omit<TextInputProps, 'style'> {
 
 export function Field({ label, required, hint, error, prefix, right, onPressBox, ...input }: FieldProps) {
   const [focused, setFocused] = useState(false);
-  const border = error ? Colors.error : focused ? Colors.gray900 : Colors.gray200;
+  const border = error ? Colors.error : focused ? Colors.charcoal : Colors.gray200;
   return (
     <View>
       <Text style={styles.label}>
@@ -100,8 +100,8 @@ export function PasswordField({
   };
   const copy = async () => {
     if (!value) return;
-    await Clipboard.setStringAsync(value);
-    setCopied(true);
+    const ok = await setStringAsync(value);
+    if (ok) setCopied(true);
   };
 
   return (
@@ -125,12 +125,12 @@ export function PasswordField({
       />
       <View style={{ flexDirection: 'row', gap: Spacing.sm }}>
         <TouchableOpacity style={styles.smallBtn} activeOpacity={0.75} onPress={generate}>
-          <Sparkles size={14} color={Colors.gray800} />
+          <Sparkles size={14} color={Colors.charcoal} />
           <Text style={styles.smallBtnText}>Generate</Text>
         </TouchableOpacity>
         {value ? (
           <TouchableOpacity style={styles.smallBtn} activeOpacity={0.75} onPress={copy}>
-            {copied ? <Check size={14} color={Colors.success} /> : <Copy size={14} color={Colors.gray800} />}
+            {copied ? <Check size={14} color={Colors.success} /> : <Copy size={14} color={Colors.charcoal} />}
             <Text style={[styles.smallBtnText, copied && { color: Colors.success }]}>{copied ? 'Copied' : 'Copy'}</Text>
           </TouchableOpacity>
         ) : null}
@@ -153,7 +153,7 @@ export function ChoiceCards<T extends string>({
             onPress={() => onChange(o.value)}
             style={[styles.choice, active && styles.choiceActive]}
           >
-            <View style={[styles.choiceIcon, active && { backgroundColor: Colors.gray900 }]}>
+            <View style={[styles.choiceIcon, active && { backgroundColor: Colors.charcoal }]}>
               <o.Icon size={16} color={active ? Colors.white : Colors.gray700} />
             </View>
             <View style={{ flex: 1 }}>
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: { fontSize: Typography.lg, fontWeight: '800', color: Colors.gray900 },
+  headerTitle: { fontSize: Typography.lg, fontWeight: '800', color: Colors.charcoal },
   headerSub: { fontSize: Typography.xs, color: Colors.gray500 },
   section: {
     backgroundColor: Colors.white,
@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sectionTitle: { fontSize: Typography.base, fontWeight: '700', color: Colors.gray900 },
+  sectionTitle: { fontSize: Typography.base, fontWeight: '700', color: Colors.charcoal },
   sectionNote: { fontSize: 12, color: Colors.gray500, marginTop: -6 },
   label: { fontSize: 13, fontWeight: '600', color: Colors.gray700, marginBottom: 6 },
   inputBox: {
@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
     minHeight: 46,
   },
   prefix: { fontSize: Typography.base, color: Colors.gray500, marginRight: 6 },
-  input: { flex: 1, fontSize: Typography.base, color: Colors.gray900, paddingVertical: 10 },
+  input: { flex: 1, fontSize: Typography.base, color: Colors.charcoal, paddingVertical: 10 },
   error: { fontSize: 12, color: Colors.error, marginTop: 4 },
   hint: { fontSize: 12, color: Colors.gray500, marginTop: 4 },
   smallBtn: {
@@ -278,7 +278,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.gray200,
     backgroundColor: Colors.gray50,
   },
-  smallBtnText: { fontSize: 12, fontWeight: '600', color: Colors.gray800 },
+  smallBtnText: { fontSize: 12, fontWeight: '600', color: Colors.charcoal },
   choice: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.gray200,
   },
-  choiceActive: { borderColor: Colors.gray900, backgroundColor: Colors.gray50 },
+  choiceActive: { borderColor: Colors.charcoal, backgroundColor: Colors.gray50 },
   choiceIcon: {
     width: 34,
     height: 34,
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  choiceTitle: { fontSize: Typography.sm, fontWeight: '700', color: Colors.gray900 },
+  choiceTitle: { fontSize: Typography.sm, fontWeight: '700', color: Colors.charcoal },
   choiceDesc: { fontSize: 12, color: Colors.gray500, marginTop: 1 },
   radio: {
     width: 20,
@@ -308,8 +308,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  radioActive: { borderColor: Colors.gray900 },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.gray900 },
+  radioActive: { borderColor: Colors.charcoal },
+  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.charcoal },
   switchRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   saveBar: {
     backgroundColor: Colors.white,
@@ -321,7 +321,7 @@ const styles = StyleSheet.create({
   saveBtn: {
     height: 50,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.gray900,
+    backgroundColor: Colors.charcoal,
     alignItems: 'center',
     justifyContent: 'center',
   },

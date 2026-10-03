@@ -16,7 +16,7 @@ export function InfoRow({ label, value, Icon, className }: InfoRowProps) {
         {Icon && <Icon size={12} color="#9898A4" strokeWidth={2} />}
         <Text className="text-[11px] text-gray-400">{label}</Text>
       </View>
-      <Text className="text-xs font-semibold text-gray-800">{value}</Text>
+      <Text className="text-xs font-semibold text-[#3E3C3D]">{value}</Text>
     </View>
   );
 }

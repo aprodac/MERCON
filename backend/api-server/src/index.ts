@@ -99,6 +99,7 @@ import { normalizeMobileLocationUpdate } from './services/tracking/locationUpdat
 import { initTripDelayMonitor } from './services/tracking/tripDelayMonitor';
 import { initDriverWatch } from './services/tracking/driverWatch';
 import { initTripMediaRetention } from './services/media/tripMediaRetention';
+import { initDocumentTrashPurge } from './services/documentTrash';
 import { driverSocketConnected, driverSocketDisconnected } from './services/driverPhone/presence';
 
 import helmet from 'helmet';
@@ -317,6 +318,7 @@ initFleetTracking();
 initTripDelayMonitor();
 initDriverWatch();
 initTripMediaRetention();
+initDocumentTrashPurge();
 
 /**
  * Integration secrets key (docs/CLIENT_SECRETS.md). The deploy refuses to run

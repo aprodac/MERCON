@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, StatusBar, Image, TouchableOpacity, ScrollView, Share, Animated,
+  View, Text, StyleSheet, StatusBar, Image, TouchableOpacity, ScrollView, Share, Animated, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -35,7 +35,7 @@ const getPhotoUri = (item: any): string | null => {
 
 const TripCompletedScreen = () => {
   const router = useRouter();
-  const { t, language } = useLanguage();
+  const { t, language, formatCurrency, tr } = useLanguage();
   const { trip, refetch } = useCurrentTrip();
   const { trips: scheduledTrips } = useScheduledTrips();
   const { tripId: paramTripId } = useLocalSearchParams<{ tripId?: string }>();
@@ -44,6 +44,8 @@ const TripCompletedScreen = () => {
   
   const [selectedPhoto, setSelectedPhoto] = useState<any>(null);
   const [showDetails, setShowDetails] = useState<boolean>(false);
+  const [isSharing, setIsSharing] = useState<boolean>(false);
+  const summaryCardRef = useRef<View>(null);
   const [completedTrip, setCompletedTrip] = useState<MobileTrip | null>(null);
   const [localPickupPhotos, setLocalPickupPhotos] = useState<any[]>([]);
   const [localDeliveryPhotos, setLocalDeliveryPhotos] = useState<any[]>([]);
@@ -213,7 +215,7 @@ const TripCompletedScreen = () => {
     ? (endIsToday
       ? (language === 'ur' ? `آج ${endTime} پر مکمل` : `Completed today at ${endTime}`)
       : (language === 'ur' ? `${dayText} کو مکمل` : `Completed ${dayText} at ${endTime}`))
-    : (language === 'ur' ? 'مکمل' : 'Completed');
+    : (tr('Completed', 'مکمل'));
 
   const photoCount = polList.length + podList.length + (isRound ? returnPolList.length + returnPodList.length : 0);
   const charge = activeTrip ? getTripChargeValue(activeTrip) : 0;
@@ -234,15 +236,61 @@ const TripCompletedScreen = () => {
   })();
 
   const handleShare = async () => {
+    if (isSharing) return;
+    setIsSharing(true);
     try {
-      const lines = [
-        `Trip ${tripIdDisplay} delivered${customerName ? ` to ${activeTrip?.customer?.name}` : ''}.`,
-        routeText ? `Route: ${routeText}` : null,
-        endIso ? `Completed: ${formattedDeliveryDate}` : null,
-      ].filter(Boolean);
-      await Share.share({ title: `MERCON Trip ${tripIdDisplay}`, message: lines.join('\n') });
+      let snapshotUri: string | null = null;
+      try {
+        const viewShot = require('react-native-view-shot');
+        if (viewShot && typeof viewShot.captureRef === 'function' && summaryCardRef.current) {
+          snapshotUri = await viewShot.captureRef(summaryCardRef, {
+            format: 'png',
+            quality: 0.95,
+            result: 'tmpfile',
+          });
+        }
+      } catch (shotErr) {
+        console.warn('captureRef error:', shotErr);
+      }
+
+      if (snapshotUri) {
+        let sharedViaExpo = false;
+        try {
+          const expoSharing = require('expo-sharing');
+          if (expoSharing && typeof expoSharing.isAvailableAsync === 'function') {
+            const available = await expoSharing.isAvailableAsync();
+            if (available && typeof expoSharing.shareAsync === 'function') {
+              await expoSharing.shareAsync(snapshotUri, {
+                mimeType: 'image/png',
+                dialogTitle: `MERCON Trip ${tripIdDisplay}`,
+                UTI: 'public.png',
+              });
+              sharedViaExpo = true;
+            }
+          }
+        } catch (shareErr) {
+          console.warn('expoSharing error:', shareErr);
+        }
+
+        if (!sharedViaExpo) {
+          await Share.share({
+            title: `MERCON Trip ${tripIdDisplay}`,
+            url: snapshotUri,
+            message: `Trip ${tripIdDisplay} delivered${customerName ? ` to ${activeTrip?.customer?.name}` : ''}.${routeText ? ` Route: ${routeText}` : ''}`,
+          });
+        }
+      } else {
+        const lines = [
+          `Trip ${tripIdDisplay} delivered${customerName ? ` to ${activeTrip?.customer?.name}` : ''}.`,
+          routeText ? `Route: ${routeText}` : null,
+          endIso ? `Completed: ${formattedDeliveryDate}` : null,
+        ].filter(Boolean);
+        await Share.share({ title: `MERCON Trip ${tripIdDisplay}`, message: lines.join('\n') });
+      }
     } catch {
       // silent
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -258,72 +306,79 @@ const TripCompletedScreen = () => {
       <SafeAreaView style={styles.cleanContainer}>
         <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <ScrollView contentContainerStyle={styles.cleanScroll} showsVerticalScrollIndicator={false}>
-          {/* Result */}
-          <View style={styles.cleanCheckWrapper}>
-            <View style={styles.checkRing}>
-              <View style={styles.cleanCheckCircle}>
-                <Check size={40} color="#FFFFFF" strokeWidth={3.8} />
-              </View>
-            </View>
-          </View>
-          <View style={styles.cleanHeaderGroup}>
-            <Text style={styles.cleanSubtitle}>{t('title_delivered_to', 'Delivered to')}</Text>
-            {customerName ? <Text style={styles.cleanCustomerName}>{customerName}</Text> : null}
-            <View style={styles.completedPill}>
-              <View style={styles.completedPillDot} />
-              <Text style={styles.completedPillText}>{completedPill}</Text>
-            </View>
-          </View>
-
-          {/* Trip details, grouped: label over value */}
-          <View style={styles.detailCard}>
-            {routeText ? (
-              <View style={styles.detailRow}>
-                <View style={styles.detailIcon}><MapPin size={17} color="#16A34A" strokeWidth={2.2} /></View>
-                <View style={styles.detailCol}>
-                  <Text style={styles.detailLabel}>{language === 'ur' ? 'راستہ' : 'Route'}</Text>
-                  <Text style={styles.detailValue} numberOfLines={1}>{routeText}</Text>
+          {/* Shareable summary card — "Share screenshot" captures exactly this */}
+          <View
+            ref={summaryCardRef}
+            collapsable={false}
+            style={styles.shareableSummaryCard}
+          >
+            {/* Result */}
+            <View style={styles.cleanCheckWrapper}>
+              <View style={styles.checkRing}>
+                <View style={styles.cleanCheckCircle}>
+                  <Check size={40} color="#FFFFFF" strokeWidth={3.8} />
                 </View>
               </View>
-            ) : null}
-            <View style={styles.detailRow}>
-              <View style={styles.detailIcon}><Calendar size={17} color="#16A34A" strokeWidth={2.2} /></View>
-              <View style={styles.detailCol}>
-                <Text style={styles.detailLabel}>{language === 'ur' ? 'تاریخ' : 'Date'}</Text>
-                <Text style={styles.detailValue}>{dayText ?? '—'}</Text>
+            </View>
+            <View style={styles.cleanHeaderGroup}>
+              <Text style={styles.cleanSubtitle}>{t('title_delivered_to', 'Delivered to')}</Text>
+              {customerName ? <Text style={styles.cleanCustomerName}>{customerName}</Text> : null}
+              <View style={styles.completedPill}>
+                <View style={styles.completedPillDot} />
+                <Text style={styles.completedPillText}>{completedPill}</Text>
               </View>
-              {durationText ? (
-                <View style={styles.detailColRight}>
-                  <Text style={styles.detailLabel}>{t('label_duration', 'Duration')}</Text>
-                  <Text style={styles.detailValue}>{durationText}</Text>
+            </View>
+
+            {/* Trip details, grouped: label over value */}
+            <View style={styles.detailCard}>
+              {routeText ? (
+                <View style={styles.detailRow}>
+                  <View style={styles.detailIcon}><MapPin size={17} color="#16A34A" strokeWidth={2.2} /></View>
+                  <View style={styles.detailCol}>
+                    <Text style={styles.detailLabel}>{tr('Route', 'راستہ')}</Text>
+                    <Text style={styles.detailValue} numberOfLines={1}>{routeText}</Text>
+                  </View>
                 </View>
               ) : null}
-            </View>
-            <View style={[styles.detailRow, styles.detailRowLast]}>
-              <View style={styles.detailIcon}><FileText size={17} color="#16A34A" strokeWidth={2.2} /></View>
-              <View style={styles.detailCol}>
-                <Text style={styles.detailLabel}>{t('label_trip_id', 'Trip ID')}</Text>
-                <Text style={styles.detailValue}>{tripIdDisplay}</Text>
+              <View style={styles.detailRow}>
+                <View style={styles.detailIcon}><Calendar size={17} color="#16A34A" strokeWidth={2.2} /></View>
+                <View style={styles.detailCol}>
+                  <Text style={styles.detailLabel}>{tr('Date', 'تاریخ')}</Text>
+                  <Text style={styles.detailValue}>{dayText ?? '—'}</Text>
+                </View>
+                {durationText ? (
+                  <View style={styles.detailColRight}>
+                    <Text style={styles.detailLabel}>{t('label_duration', 'Duration')}</Text>
+                    <Text style={styles.detailValue}>{durationText}</Text>
+                  </View>
+                ) : null}
               </View>
-              <View style={styles.detailColRight}>
-                <Text style={styles.detailLabel}>{language === 'ur' ? 'تصاویر' : 'Photos'}</Text>
-                <Text style={styles.detailValue}>{language === 'ur' ? `${photoCount} محفوظ` : `${photoCount} saved`}</Text>
+              <View style={[styles.detailRow, styles.detailRowLast]}>
+                <View style={styles.detailIcon}><FileText size={17} color="#16A34A" strokeWidth={2.2} /></View>
+                <View style={styles.detailCol}>
+                  <Text style={styles.detailLabel}>{t('label_trip_id', 'Trip ID')}</Text>
+                  <Text style={styles.detailValue}>{tripIdDisplay}</Text>
+                </View>
+                <View style={styles.detailColRight}>
+                  <Text style={styles.detailLabel}>{tr('Photos', 'تصاویر')}</Text>
+                  <Text style={styles.detailValue}>{language === 'ur' ? `${photoCount} محفوظ` : `${photoCount} saved`}</Text>
+                </View>
               </View>
             </View>
-          </View>
 
-          {/* Earnings */}
-          {charge > 0 ? (
-            <View style={styles.chargeBox}>
-              <View>
-                <Text style={styles.chargeLabel}>{t('label_driver_charge', 'Driver charge')}</Text>
-                <Text style={styles.chargeSub}>{language === 'ur' ? 'آپ کی آمدنی میں شامل' : 'Added to your earnings'}</Text>
+            {/* Earnings */}
+            {charge > 0 ? (
+              <View style={styles.chargeBox}>
+                <View>
+                  <Text style={styles.chargeLabel}>{t('label_driver_charge', 'Driver charge')}</Text>
+                  <Text style={styles.chargeSub}>{tr('Added to your earnings', 'آپ کی آمدنی میں شامل')}</Text>
+                </View>
+                <Text style={styles.chargeValue}>
+                  {formatCurrency(charge)}
+                </Text>
               </View>
-              <Text style={styles.chargeValue}>
-                SAR {charge.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </Text>
-            </View>
-          ) : null}
+            ) : null}
+          </View>
 
           {/* What's next */}
           {nextTrip && nextTripText ? (
@@ -333,7 +388,7 @@ const TripCompletedScreen = () => {
               onPress={() => router.replace({ pathname: '/trip/details', params: { tripId: nextTrip.id } } as any)}
             >
               <View style={styles.detailCol}>
-                <Text style={styles.detailLabel}>{language === 'ur' ? 'اگلا ٹرپ' : 'Next trip'}</Text>
+                <Text style={styles.detailLabel}>{tr('Next trip', 'اگلا ٹرپ')}</Text>
                 <Text style={styles.nextTripText} numberOfLines={1}>{nextTripText}</Text>
               </View>
               <ChevronRight size={18} color="#64748B" strokeWidth={2.2} />
@@ -345,9 +400,22 @@ const TripCompletedScreen = () => {
         {/* Actions: two secondary side by side, Done full width */}
         <View style={styles.cleanActionBar}>
           <View style={styles.secondaryActionRow}>
-            <TouchableOpacity style={styles.cleanBtnShare} activeOpacity={0.8} onPress={handleShare}>
-              <Share2 size={15} color="#16A34A" strokeWidth={2.2} />
-              <Text style={styles.cleanBtnShareText} numberOfLines={1}>{t('action_share_screenshot', 'Share screenshot')}</Text>
+            <TouchableOpacity
+              style={[styles.cleanBtnShare, isSharing && { opacity: 0.7 }]}
+              activeOpacity={0.8}
+              onPress={handleShare}
+              disabled={isSharing}
+            >
+              {isSharing ? (
+                <ActivityIndicator size="small" color="#16A34A" />
+              ) : (
+                <Share2 size={15} color="#16A34A" strokeWidth={2.2} />
+              )}
+              <Text style={styles.cleanBtnShareText} numberOfLines={1}>
+                {isSharing
+                  ? (language === 'ur' ? 'تیار ہو رہا ہے...' : 'Preparing...')
+                  : t('action_share_screenshot', 'Share screenshot')}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.cleanBtnDetails} activeOpacity={0.8} onPress={() => setShowDetails(true)}>
               <FileText size={16} color="#2563EB" strokeWidth={2.2} />
@@ -577,7 +645,7 @@ const TripCompletedScreen = () => {
               <View style={styles.mediaSectionHeader}>
                 <View style={styles.mediaSectionTitleGroup}>
                   <PackageCheck size={18} color="#FA634E" strokeWidth={2.2} />
-                  <Text style={styles.mediaSectionTitle}>{language === 'ur' ? 'واپسی لوڈنگ کا ثبوت (Return POL)' : 'Return Proof of Loading (Return POL)'}</Text>
+                  <Text style={styles.mediaSectionTitle}>{tr('Return Proof of Loading (Return POL)', 'واپسی لوڈنگ کا ثبوت (Return POL)')}</Text>
                 </View>
                 {returnPolList.length > 0 && (
                   <TouchableOpacity style={styles.viewAllBtn} activeOpacity={0.7} onPress={() => router.push('/cargo-pod-photos')}>
@@ -589,7 +657,7 @@ const TripCompletedScreen = () => {
               {returnPolList.length === 0 ? (
                 <View style={styles.emptyPhotoBox}>
                   <PackageCheck size={18} color="#94A3B8" />
-                  <Text style={styles.emptyPhotoText}>{language === 'ur' ? 'واپسی لوڈنگ کی کوئی تصویر منسلک نہیں ہے' : 'No return loading photo attached'}</Text>
+                  <Text style={styles.emptyPhotoText}>{tr('No return loading photo attached', 'واپسی لوڈنگ کی کوئی تصویر منسلک نہیں ہے')}</Text>
                 </View>
               ) : (
                 <View style={styles.mediaGrid}>
@@ -601,7 +669,7 @@ const TripCompletedScreen = () => {
                         key={idx}
                         style={styles.mediaThumbFrame}
                         activeOpacity={0.8}
-                        onPress={() => setSelectedPhoto({ uri: photoUri, title: `${language === 'ur' ? 'واپسی لوڈنگ کا ثبوت' : 'Return Proof of Loading'} #${idx + 1}` })}
+                        onPress={() => setSelectedPhoto({ uri: photoUri, title: `${tr('Return Proof of Loading', 'واپسی لوڈنگ کا ثبوت')} #${idx + 1}` })}
                       >
                         <Image
                           source={{ uri: photoUri }}
@@ -623,7 +691,7 @@ const TripCompletedScreen = () => {
               <View style={styles.mediaSectionHeader}>
                 <View style={styles.mediaSectionTitleGroup}>
                   <CheckCircle2 size={18} color="#FA634E" strokeWidth={2.2} />
-                  <Text style={styles.mediaSectionTitle}>{language === 'ur' ? 'واپسی ڈلیوری کا ثبوت (Return POD)' : 'Return Proof of Delivery (Return POD)'}</Text>
+                  <Text style={styles.mediaSectionTitle}>{tr('Return Proof of Delivery (Return POD)', 'واپسی ڈلیوری کا ثبوت (Return POD)')}</Text>
                 </View>
                 {returnPodList.length > 0 && (
                   <TouchableOpacity style={styles.viewAllBtn} activeOpacity={0.7} onPress={() => router.push('/cargo-pod-photos')}>
@@ -635,7 +703,7 @@ const TripCompletedScreen = () => {
               {returnPodList.length === 0 ? (
                 <View style={styles.emptyPhotoBox}>
                   <CheckCircle2 size={18} color="#94A3B8" />
-                  <Text style={styles.emptyPhotoText}>{language === 'ur' ? 'واپسی ڈلیوری کی کوئی تصویر منسلک نہیں ہے' : 'No return delivery photo attached'}</Text>
+                  <Text style={styles.emptyPhotoText}>{tr('No return delivery photo attached', 'واپسی ڈلیوری کی کوئی تصویر منسلک نہیں ہے')}</Text>
                 </View>
               ) : (
                 <View style={styles.mediaGrid}>
@@ -647,7 +715,7 @@ const TripCompletedScreen = () => {
                         key={idx}
                         style={styles.mediaThumbFrame}
                         activeOpacity={0.8}
-                        onPress={() => setSelectedPhoto({ uri: photoUri, title: `${language === 'ur' ? 'واپسی ڈلیوری کا ثبوت' : 'Return Proof of Delivery'} #${idx + 1}` })}
+                        onPress={() => setSelectedPhoto({ uri: photoUri, title: `${tr('Return Proof of Delivery', 'واپسی ڈلیوری کا ثبوت')} #${idx + 1}` })}
                       >
                         <Image
                           source={{ uri: photoUri }}
@@ -672,7 +740,7 @@ const TripCompletedScreen = () => {
 
           <TouchableOpacity style={styles.homeBtn} activeOpacity={0.85} onPress={handleBackHome}>
             <Home size={16} color="#FFFFFF" strokeWidth={2.2} />
-            <Text style={styles.homeBtnText}>{language === 'ur' ? 'ہوم اسکرین پر جائیں' : 'BACK TO HOME'}</Text>
+            <Text style={styles.homeBtnText}>{tr('BACK TO HOME', 'ہوم اسکرین پر جائیں')}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -764,6 +832,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#166534',
+  },
+  shareableSummaryCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    gap: 20,
   },
   detailCard: {
     backgroundColor: '#F8FAFC',
@@ -1013,6 +1088,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cellLabel: {
+    // Urdu labels line up with their values (numbers, English names) instead of floating right.
+    textAlign: 'left',
     fontSize: 10,
     fontWeight: '600',
     color: '#64748B',

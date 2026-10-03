@@ -13,15 +13,18 @@ import type { PrismaClient } from '@prisma/client';
 import { logger } from '../../utils/logger';
 import { newShareToken } from '../operatorInbox';
 import {
-  CUSTOMER_TRACKING_SELECT, TRACKING_META_SELECT, buildTripTracking, ensureTrackingLink, loadTrackingContext,
+  CUSTOMER_TRACKING_SELECT, TRACKING_META_SELECT, buildTripTracking, ensureTrackingLink, lateMinutes, loadTrackingContext, teamWhatsApp,
   optionsOf, placeName, routeLabel, type PublicTracking, type TrackingBrand, type TrackingCustomerSettings, type TrackingOptions, type TrackingTripMeta,
 } from './customerTracking';
+import { publicImage } from './publicImages';
+import { whatsAppGroupUrl } from '@mercon/shared-types';
+import { localDateToUtc } from '../../controllers/financeReportsController';
 
 /** Scheduled trips show up this long before they're due to start. */
 export const UPCOMING_WINDOW_MS = 24 * 60 * 60_000;
 /** Delivered trips listed on the page — today's and the past few days'. */
-export const DELIVERED_WINDOW_MS = 7 * 24 * 60 * 60_000;
-export const MAX_DELIVERED = 60;
+export const DELIVERED_WINDOW_MS = 30 * 24 * 60 * 60_000;
+export const MAX_DELIVERED = 200;
 /** Cap on trucks per page — keeps the page and the routing behind it bounded. */
 export const MAX_FLEET_TRUCKS = 40;
 const FLEET_TTL_MS = 30_000;
@@ -36,7 +39,9 @@ export interface FleetTruck {
   route_label: string | null;
   plate: string | null;
   type: string | null;
+  vehicle_photo_url: string | null;
   driver_first_name: string | null;
+  driver_photo_url: string | null;
   position: PublicTracking['position'];
   next_stop_name: string | null;
   last_stop_name: string | null;
@@ -55,11 +60,12 @@ export interface CustomerFleetTracking {
   brand: TrackingBrand;
   timezone: string;
   options: TrackingOptions;
-  customer: { name: string };
+  customer: { name: string; logo_url: string | null };
   /** On the road or loading soon. */
   trucks: FleetTruck[];
   /** Delivered in the last DELIVERED_WINDOW_MS, newest first. */
   delivered: DeliveredTrip[];
+  month: MonthSummary | null;
   generated_at: string;
 }
 
@@ -72,6 +78,28 @@ export interface DeliveredTrip {
   route_label: string | null;
   started_at: string | null;
   finished_at: string | null;
+  /** First delivery photo (POD), when the customer's settings show photos. */
+  pod_url?: string | null;
+  /** How many delivery photos the trip has (same condition). */
+  pod_count?: number;
+}
+
+/**
+ * This month so far, for contract customers: trips delivered, how many arrived
+ * on time (only when the customer sees planned times), how many were delayed
+ * and the most common reason (only when they see delay reasons).
+ */
+export interface MonthSummary {
+  /** "2026-10" in the deployment's timezone. */
+  month: string;
+  trips: number;
+  /** Trips with planned and actual times at every timed stop… */
+  measured: number | null;
+  /** …and how many of those were on time at every stop. */
+  on_time: number | null;
+  delayed: number | null;
+  /** Delay reason category (e.g. "CustomerNotReady") seen most this month. */
+  top_reason: string | null;
 }
 
 /** Which of a customer's trips belong on the page right now. */
@@ -107,7 +135,9 @@ export function toFleetTruck(token: string, t: PublicTracking): FleetTruck {
     route_label: t.trip.route_label,
     plate: t.vehicle.plate,
     type: t.vehicle.type,
+    vehicle_photo_url: t.vehicle.photo_url,
     driver_first_name: t.driver_first_name,
+    driver_photo_url: t.driver_photo_url,
     position: t.position,
     next_stop_name: next?.name ?? null,
     last_stop_name: t.stops.length ? t.stops[t.stops.length - 1].name : null,
@@ -153,6 +183,81 @@ export function sortFleet(trucks: FleetTruck[]): FleetTruck[] {
 
 const fleetCache = new Map<string, { at: number; data: CustomerFleetTracking }>();
 
+/** The first delivery photo and the photo count of each delivered trip — one query for the page. */
+async function deliveryPhotos(db: PrismaClient, tripIds: string[]): Promise<Map<string, { url: string; count: number }>> {
+  const out = new Map<string, { url: string; count: number }>();
+  if (tripIds.length === 0) return out;
+  const docs = await db.document.findMany({
+    where: { entity_type: 'Trip', entity_id: { in: tripIds }, deletedAt: null, doc_type: 'POD' },
+    select: {
+      entity_id: true, file_url: true, mime_type: true,
+      files: { where: { deletedAt: null }, orderBy: { displayOrder: 'asc' }, select: { file_url: true, mime_type: true } },
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+  const isImage = (url: string, mime: string | null) => !(mime ?? '').startsWith('video/') && !/\.(mp4|mov|m4v|webm|3gp|mkv)(\?|$)/i.test(url);
+  for (const d of docs) {
+    if (!d.entity_id) continue;
+    const images = [{ file_url: d.file_url, mime_type: d.mime_type }, ...d.files].filter((f) => f.file_url && isImage(f.file_url, f.mime_type));
+    if (images.length === 0) continue;
+    const seen = out.get(d.entity_id);
+    out.set(d.entity_id, { url: seen?.url ?? images[0].file_url, count: (seen?.count ?? 0) + images.length });
+  }
+  return out;
+}
+
+const monthCache = new Map<string, { at: number; data: MonthSummary }>();
+const MONTH_TTL_MS = 10 * 60_000;
+
+/** This month so far for one customer — see MonthSummary. Cached 10 minutes. */
+export async function loadMonthSummary(db: PrismaClient, customerId: string, tz: string, options: TrackingOptions, now: Date): Promise<MonthSummary> {
+  const month = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit' }).format(now).slice(0, 7);
+  const key = `${customerId}:${month}:${options.show_deadline}:${options.show_delay_reason}`;
+  const hit = monthCache.get(key);
+  if (hit && now.getTime() - hit.at < MONTH_TTL_MS) return hit.data;
+
+  const trips = await db.trip.findMany({
+    where: { customerId, deletedAt: null, status: { in: ['Completed', 'Invoiced'] as never[] }, actual_end: { gte: localDateToUtc(`${month}-01`, tz, false) } },
+    select: { stops: { where: { deletedAt: null }, select: { planned_arrival: true, actual_arrival: true, delay_reason: true } } },
+    take: 5000,
+  });
+  const data = summarizeMonth(month, trips, options);
+  if (monthCache.size > 500) monthCache.clear();
+  monthCache.set(key, { at: now.getTime(), data });
+  return data;
+}
+
+/** Pure part of loadMonthSummary, for tests. */
+export function summarizeMonth(
+  month: string,
+  trips: Array<{ stops: Array<{ planned_arrival: Date | null; actual_arrival: Date | null; delay_reason: string | null }> }>,
+  options: TrackingOptions,
+): MonthSummary {
+  let measured = 0, onTime = 0, delayed = 0;
+  const reasons = new Map<string, number>();
+  for (const t of trips) {
+    const timed = t.stops.filter((s) => s.planned_arrival && s.actual_arrival);
+    if (timed.length > 0) {
+      measured++;
+      if (timed.every((s) => (lateMinutes(s.actual_arrival, s.planned_arrival) ?? 0) === 0)) onTime++;
+    }
+    const tripReasons = t.stops.map((s) => s.delay_reason).filter((r): r is string => Boolean(r));
+    if (tripReasons.length > 0) {
+      delayed++;
+      for (const r of new Set(tripReasons)) reasons.set(r, (reasons.get(r) ?? 0) + 1);
+    }
+  }
+  const top = [...reasons.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  return {
+    month,
+    trips: trips.length,
+    measured: options.show_deadline && measured > 0 ? measured : null,
+    on_time: options.show_deadline && measured > 0 ? onTime : null,
+    delayed: options.show_delay_reason ? delayed : null,
+    top_reason: options.show_delay_reason ? top : null,
+  };
+}
+
 export type FleetLookup =
   | { state: 'ok'; data: CustomerFleetTracking }
   | { state: 'not_found' | 'expired' | 'disabled' };
@@ -160,13 +265,13 @@ export type FleetLookup =
 export async function loadCustomerFleetTracking(
   db: PrismaClient,
   token: string,
-  opts: { now?: Date; countView?: boolean } = {},
+  opts: { now?: Date; countView?: boolean; device?: string | null } = {},
 ): Promise<FleetLookup> {
   const now = opts.now ?? new Date();
   if (token.length < 16 || token.length > 64) return { state: 'not_found' };
   const link = await db.customerTrackingLink.findUnique({
     where: { token },
-    select: { id: true, revokedAt: true, customer: { select: { id: true, name: true, deletedAt: true, ...CUSTOMER_TRACKING_SELECT } } },
+    select: { id: true, revokedAt: true, customer: { select: { id: true, name: true, logo_url: true, deletedAt: true, ...CUSTOMER_TRACKING_SELECT } } },
   });
   if (!link || link.customer.deletedAt) return { state: 'not_found' };
   if (link.revokedAt) return { state: 'expired' };
@@ -176,6 +281,9 @@ export async function loadCustomerFleetTracking(
     db.customerTrackingLink
       .update({ where: { id: link.id }, data: { open_count: { increment: 1 }, last_opened_at: now } })
       .catch((err) => logger.warn({ err }, '[tracking] could not record a customer page open'));
+    db.trackingLinkOpen
+      .create({ data: { customerLinkId: link.id, opened_at: now, device: opts.device ?? null } })
+      .catch((err) => logger.warn({ err }, '[tracking] could not log a customer page open'));
   }
 
   const cached = fleetCache.get(link.customer.id);
@@ -215,20 +323,39 @@ export async function loadCustomerFleetTracking(
   };
   await Promise.all(Array.from({ length: FLEET_CONCURRENCY }, worker));
 
-  // Delivered trips need no live data or routing — just their link and when.
+  // Delivered trips need no live data or routing — just their link, when, and the delivery photo.
+  const options = optionsOf(link.customer);
+  const [photos, month] = await Promise.all([
+    options.show_photos ? deliveryPhotos(db, finished.map((t) => t.id)) : Promise.resolve(new Map<string, { url: string; count: number }>()),
+    loadMonthSummary(db, link.customer.id, ctx.timezone, options, now).catch((err) => {
+      logger.warn({ err }, '[tracking] month summary failed');
+      return null;
+    }),
+  ]);
   const delivered: DeliveredTrip[] = [];
   for (const trip of finished) {
     const tripLink = await ensureTrackingLink(db, trip.id, { userId: null, now });
-    if (tripLink?.token) delivered.push(toDeliveredTrip(tripLink.token, trip));
+    if (!tripLink?.token) continue;
+    const pod = photos.get(trip.id);
+    delivered.push({ ...toDeliveredTrip(tripLink.token, trip), pod_url: pod?.url ?? null, pod_count: pod?.count ?? 0 });
+  }
+
+  // "Ask" on this page: the customer's group, else the team member behind their latest trip, else the company number.
+  let teamPhone: string | null = null;
+  const creators = [...new Set([...finished, ...[...trips].reverse()].map((t) => (t as { created_by?: string | null }).created_by).filter(Boolean))].slice(0, 5);
+  for (const id of creators) {
+    teamPhone = await teamWhatsApp(db, id as string, now.getTime());
+    if (teamPhone) break;
   }
 
   const data: CustomerFleetTracking = {
-    brand: ctx.brand,
+    brand: { ...ctx.brand, ask_group_url: whatsAppGroupUrl(link.customer.whatsapp_group_link), support_whatsapp: teamPhone ?? ctx.brand.support_whatsapp },
     timezone: ctx.timezone,
-    options: optionsOf(link.customer),
-    customer: { name: link.customer.name },
+    options,
+    customer: { name: link.customer.name, logo_url: await publicImage(db, { table: 'customer', field: 'logo_url' }, link.customer.id, link.customer.logo_url) },
     trucks: sortFleet(trucks),
     delivered,
+    month,
     generated_at: now.toISOString(),
   };
   if (fleetCache.size > 200) fleetCache.clear();

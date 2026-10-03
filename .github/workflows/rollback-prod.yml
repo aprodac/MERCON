@@ -1,0 +1,86 @@
+name: Rollback Production
+
+# Puts back the API and web dashboard images that were serving production
+# before the latest deploy. ci-cd.yml tags them :previous just before it
+# builds, so this takes seconds and builds nothing.
+#
+# It does NOT touch the database. Migrations are additive by policy
+# (docs/RELEASE_PROCESS.md), so the previous code runs against the migrated
+# schema. If a release changed data destructively, restore the pre-deploy
+# dump that ci-cd.yml printed first (/var/backups/mercon/mercon-db-predeploy-*).
+#
+# Manual only. Then revert the release on main so the next deploy doesn't
+# bring the bad build back.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type ROLLBACK to swap production back to the previous release images'
+        required: true
+        type: string
+
+# Same group as ci-cd.yml: never runs alongside a deploy.
+concurrency:
+  group: ci-cd-main
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Roll back to :previous images
+    runs-on: [self-hosted, prod]
+    permissions: {}
+    env:
+      DEPLOY_DIR: /opt/mercon/prod
+      CLIENT_NAME: mercon
+      COMPOSE_PROJECT_NAME: mercon
+      APP_UPLOADS_DIR: /var/lib/mercon/mercon-app-uploads
+      TMP_UPLOADS_DIR: /var/lib/mercon/mercon-uploads
+      # docker compose interpolates every variable in the file, so the same
+      # values as the deploy are needed even though nothing is rebuilt.
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+      POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+      SEED_ADMIN_PASSWORD: ${{ secrets.SEED_ADMIN_PASSWORD }}
+      ICCES_USER: ${{ secrets.ICCES_USER }}
+      ICCES_PASS: ${{ secrets.ICCES_PASS }}
+      ICCES_ACCT: ${{ secrets.ICCES_ACCT }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-flash-latest' }}
+    steps:
+      - name: Roll back
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirm }}" != "ROLLBACK" ]; then
+            echo "::error::Confirmation text did not match ROLLBACK. Nothing changed." >&2
+            exit 1
+          fi
+          cd "$DEPLOY_DIR"
+
+          for IMG in mercon-mercon-api mercon-mercon-frontend; do
+            if ! docker image inspect "$IMG:previous" >/dev/null 2>&1; then
+              echo "::error::$IMG:previous does not exist (no deploy has kept one yet). Nothing changed." >&2
+              exit 1
+            fi
+          done
+
+          eval "$(sudo bash scripts/provision/client-secrets.sh export "$CLIENT_NAME")"
+          echo "::add-mask::$DATA_ENCRYPTION_KEY"
+          [ -n "${DATA_ENCRYPTION_KEY_PREVIOUS:-}" ] && echo "::add-mask::$DATA_ENCRYPTION_KEY_PREVIOUS"
+
+          for IMG in mercon-mercon-api mercon-mercon-frontend; do
+            docker tag "$IMG:previous" "$IMG:latest"
+            echo "$IMG:latest → $(docker image inspect -f '{{.Id}}' "$IMG:latest" | cut -c8-19)"
+          done
+          docker compose -p mercon up -d --no-build mercon-api mercon-frontend
+
+          for i in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:3050/health >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:3050/health
+          echo
+          curl -fsS http://127.0.0.1:3060/healthz
+          echo
+          docker compose -p mercon ps
+          echo "Rolled back. Now revert the release on main so the next deploy doesn't redeploy it."

@@ -272,6 +272,13 @@ export const updateTripStopBody = z.object({
   lng: z.coerce.number().min(-180).max(180).optional(),
 });
 
+/** Pinning a stop or customer location exactly — the "Set pin" box. */
+export const pinBody = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  lng: z.coerce.number().min(-180).max(180),
+  address: z.string().trim().max(500).nullable().optional(),
+}).refine((b) => b.lat !== 0 || b.lng !== 0, { message: 'Pick a point on the map', path: ['lat'] });
+
 /* ─── Fleet bulk import ───────────────────────────────────────────────────── */
 
 /** Drivers workbook — one driver per row. Columns are mapped to these names by
@@ -440,6 +447,41 @@ export const confirmEvidenceTimeBody = z.object({
   // offset; the controller parses with `new Date(...)`.
   actual_arrival: z.string().min(1).optional(),
   actual_departure: z.string().min(1).optional(),
+});
+
+/** The whole trip's real stop times, copied by an operator off the customer
+ *  app's screenshots in one go. A stop left out, or a time omitted, keeps
+ *  what is recorded. */
+export const confirmTripTimesBody = z.object({
+  stops: z.array(z.object({
+    stop_id: z.string().uuid(),
+    actual_arrival: z.string().datetime({ offset: true }).optional(),
+    actual_departure: z.string().datetime({ offset: true }).optional(),
+  })).max(100),
+});
+
+/** Settings → Assistant (shape: AssistantConfig in @mercon/shared-types). */
+export const assistantConfigBody = z.object({
+  reports: z.object({
+    extraCharges: z.object({
+      enabled: z.boolean(),
+      lookbackDays: z.union([z.literal(7), z.literal(14), z.literal(30)]),
+      peekOnNewTrip: z.boolean(),
+      restlessAfterDays: z.number().int().min(1).max(30),
+    }),
+  }),
+  look: z.object({ cap: z.boolean(), flag: z.boolean(), headset: z.boolean() }),
+});
+
+/** "Any extra charges?" answer for a completed trip — sub-charges billed to the customer; [] = none. */
+export const reviewTripChargesBody = z.object({
+  charges: z.array(z.object({
+    surchargeRuleId: z.string().uuid().nullish(),
+    charge_type: z.string().trim().min(1, 'Charge type is required').max(120),
+    unit: z.string().trim().max(40).nullish(),
+    rate: z.number().positive().max(1_000_000),
+    quantity: z.number().positive().max(10_000),
+  })).max(20),
 });
 
 /* ─── Drivers ────────────────────────────────────────────────────────────── */

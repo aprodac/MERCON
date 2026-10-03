@@ -96,7 +96,7 @@ const SideMapTileBox = () => (
 
 const DeliveryVerificationScreen = () => {
   const router = useRouter();
-  const { t, language } = useLanguage();
+  const { t, language, tr } = useLanguage();
   const { trip, loading, refetch, setTrip } = useCurrentTrip();
   const ws = getEffectiveWorkflowState(trip);
   const isRound = isRoundTrip(trip);
@@ -114,6 +114,8 @@ const DeliveryVerificationScreen = () => {
   // Khalid Airport placeholder, since there's no real next pickup) in a
   // loop instead of landing on the completed screen.
   const isReturnDelivery = isRound && (ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'FINAL_DELIVERY_VERIFICATION' || ws === 'IN_TRANSIT_RETURN' || ws === 'COMPLETED');
+  // This delivery completes the trip (one-way, or the return leg of a round trip).
+  const isFinalDelivery = !isRound || isReturnDelivery;
 
   const legIndex = isReturnDelivery ? 1 : 0;
   const dropoffStop = getLegEndpoints(trip, legIndex).delivery;
@@ -359,7 +361,7 @@ const DeliveryVerificationScreen = () => {
       if (failedUploads > 0) {
         Alert.alert(
           t('err_upload_failed_title', 'Upload failed'),
-          t('err_upload_failed_retry', `${failedUploads} photo(s) could not be uploaded. Check your connection and tap the button again.`),
+          t('err_upload_failed_retry', '{count} photo(s) could not be uploaded. Check your connection and tap the button again.').replace('{count}', String(failedUploads)),
         );
         return;
       }
@@ -477,7 +479,11 @@ const DeliveryVerificationScreen = () => {
           </View>
 
           {evidence.screenshot && (
-            <Text style={styles.screenshotHint}>{t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")}</Text>
+            <Text style={styles.screenshotHint}>
+              {isFinalDelivery
+                ? t('hint_upload_screenshot_final', "Attach a screenshot of the customer app's Completed screen, showing every stop's arrive and departure time. Hold to use the camera instead.")
+                : t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")}
+            </Text>
           )}
 
           {/* Photo slots: 3, or 1 wide slot for a screenshot */}
@@ -523,7 +529,7 @@ const DeliveryVerificationScreen = () => {
               <Text style={styles.galleryLinkText}>
                 {evidence.screenshot
                   ? t('action_take_photo_instead', 'Take a photo instead')
-                  : language === 'ur' ? 'گیلری سے منتخب کریں' : 'Choose from gallery'}
+                  : tr('Choose from gallery', 'گیلری سے منتخب کریں')}
               </Text>
             </TouchableOpacity>
           ) : null}

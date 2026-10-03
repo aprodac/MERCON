@@ -39,8 +39,10 @@ export function tripPreview(t: PublicTracking): PreviewTags {
 }
 
 export function fleetPreview(f: CustomerFleetTracking): PreviewTags {
-  const onRoad = f.trucks.filter((x) => x.phase === 'active').length;
-  const upcoming = f.trucks.filter((x) => x.phase === 'planned').length;
+  // Count trucks, not trips — a truck can carry several queued trips (same as the card).
+  const trucks = (phase: string) => new Set(f.trucks.filter((x) => x.phase === phase).map((x) => x.plate || x.token)).size;
+  const onRoad = trucks('active');
+  const upcoming = trucks('planned');
   const parts = [`${onRoad} on the road`];
   if (upcoming) parts.push(`${upcoming} loading soon`);
   return {
@@ -53,16 +55,21 @@ export function fleetPreview(f: CustomerFleetTracking): PreviewTags {
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-/** The <meta> tags nginx inserts into <head>. `baseUrl` turns a relative logo path into the absolute URL WhatsApp needs. */
-export function renderPreviewTags(p: PreviewTags, baseUrl: string | null): string {
-  const image = p.image && /^https?:\/\//.test(p.image) ? p.image : p.image && baseUrl ? `${baseUrl}${p.image.startsWith('/') ? '' : '/'}${p.image}` : null;
+/**
+ * The <meta> tags nginx inserts into <head>. `baseUrl` turns a relative logo path into the absolute URL WhatsApp needs.
+ * `cardUrl`, when given, is the generated preview card (see trackingPreviewImage) and replaces the plain logo.
+ */
+export function renderPreviewTags(p: PreviewTags, baseUrl: string | null, cardUrl?: string | null): string {
+  const logo = p.image && /^https?:\/\//.test(p.image) ? p.image : p.image && baseUrl ? `${baseUrl}${p.image.startsWith('/') ? '' : '/'}${p.image}` : null;
+  const image = cardUrl || logo;
   return [
     `<meta property="og:type" content="website">`,
     `<meta property="og:site_name" content="${esc(p.site_name)}">`,
     `<meta property="og:title" content="${esc(p.title)}">`,
     `<meta property="og:description" content="${esc(p.description)}">`,
     ...(image ? [`<meta property="og:image" content="${esc(image)}">`] : []),
-    `<meta name="twitter:card" content="summary">`,
+    ...(cardUrl ? [`<meta property="og:image:type" content="image/png">`, `<meta property="og:image:width" content="1200">`, `<meta property="og:image:height" content="630">`] : []),
+    `<meta name="twitter:card" content="${cardUrl ? 'summary_large_image' : 'summary'}">`,
     `<meta name="robots" content="noindex, nofollow">`,
   ].join('\n');
 }

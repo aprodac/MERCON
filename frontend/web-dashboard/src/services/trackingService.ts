@@ -7,8 +7,10 @@ export interface TrackingBrand {
   name: string;
   logo_url: string | null;
   primary_color: string | null;
-  /** Ops WhatsApp number (digits) for the "Ask us" button. */
+  /** Ops WhatsApp number (digits) for the "Ask us" button — the fallback. */
   support_whatsapp: string | null;
+  /** The customer's WhatsApp group (invite link): "Ask" opens it when set. */
+  ask_group_url?: string | null;
 }
 
 export interface TrackingOptions {
@@ -19,7 +21,9 @@ export interface TrackingOptions {
 
 export interface PublicTrackingPhoto {
   url: string;
-  kind: 'pod' | 'photo';
+  kind: 'pod' | 'photo' | 'video';
+  /** Sent by the driver to explain a delay (often a video). */
+  delay: boolean;
   captured_at: string;
 }
 
@@ -46,8 +50,10 @@ export interface PublicTracking {
   timezone: string;
   options: TrackingOptions;
   trip: { ref: string | null; phase: TrackingPhase; route_label: string | null; started_at: string | null; finished_at: string | null; planned_start: string | null };
-  vehicle: { plate: string | null; type: string | null };
+  customer: { name: string; logo_url: string | null } | null;
+  vehicle: { plate: string | null; type: string | null; photo_url: string | null };
   driver_first_name: string | null;
+  driver_photo_url: string | null;
   position: TrackingPosition | null;
   eta: { stop_index: number; arrival: string; seconds: number; distance_m: number } | null;
   eta_gap: 'no_position' | 'stale' | 'no_route' | null;
@@ -70,7 +76,9 @@ export interface FleetTruck {
   route_label: string | null;
   plate: string | null;
   type: string | null;
+  vehicle_photo_url: string | null;
   driver_first_name: string | null;
+  driver_photo_url: string | null;
   position: TrackingPosition | null;
   next_stop_name: string | null;
   last_stop_name: string | null;
@@ -89,10 +97,24 @@ export interface CustomerFleetTracking {
   brand: TrackingBrand;
   timezone: string;
   options: TrackingOptions;
-  customer: { name: string };
+  customer: { name: string; logo_url: string | null };
   trucks: FleetTruck[];
   delivered: DeliveredTrip[];
+  /** This month so far (null when it couldn't be worked out). */
+  month?: MonthSummary | null;
   generated_at: string;
+}
+
+export interface MonthSummary {
+  /** "2026-10" */
+  month: string;
+  trips: number;
+  /** Trips with planned + actual times (only when the customer sees planned times). */
+  measured: number | null;
+  on_time: number | null;
+  /** Trips with a delay reason (only when the customer sees delay reasons). */
+  delayed: number | null;
+  top_reason: string | null;
 }
 
 export interface DeliveredTrip {
@@ -103,6 +125,9 @@ export interface DeliveredTrip {
   route_label: string | null;
   started_at: string | null;
   finished_at: string | null;
+  /** First delivery photo, when the customer's settings show photos. */
+  pod_url?: string | null;
+  pod_count?: number;
 }
 
 export interface TrackingLink {
@@ -117,6 +142,23 @@ export interface TrackingLink {
   open_count: number;
   first_opened_at: string | null;
   last_opened_at: string | null;
+}
+
+/** One time a customer opened a tracking link (GET /customers/:id/tracking-opens). */
+export interface TrackingOpen {
+  id: string;
+  opened_at: string;
+  /** e.g. "iPhone · Safari"; null when the browser didn't say. */
+  device: string | null;
+  link: { kind: 'all_trucks' } | { kind: 'trip'; trip_id: string | null; ref_id: string | null };
+}
+
+export interface CustomerTrackingOpens {
+  /** Opens in the history (the list holds the newest ones). */
+  total: number;
+  /** Opens counted before the history was kept — known only as a number. */
+  earlier_opens: number;
+  opens: TrackingOpen[];
 }
 
 export interface CustomerTrackingLink {
@@ -151,6 +193,12 @@ export const trackingService = {
   async getTripLinks(tripIds: string[]): Promise<Record<string, TrackingLink>> {
     if (tripIds.length === 0) return {};
     const res = await api.post<ApiResponse<Record<string, TrackingLink>>>('/trips/tracking-links', { trip_ids: tripIds.slice(0, 100) });
+    return res.data.data;
+  },
+
+  /** Every open of this customer's tracking links, newest first. */
+  async getCustomerOpens(customerId: string, limit = 200): Promise<CustomerTrackingOpens> {
+    const res = await api.get<ApiResponse<CustomerTrackingOpens>>(`/customers/${customerId}/tracking-opens`, { params: { limit } });
     return res.data.data;
   },
 

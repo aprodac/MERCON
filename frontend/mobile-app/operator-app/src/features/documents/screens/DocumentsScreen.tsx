@@ -26,7 +26,7 @@ export default function DocumentsScreen() {
       }}
     >
       <View className="flex-row items-center justify-between">
-        <Text style={{ fontSize: Typography.base, fontWeight: '700', color: Colors.gray900 }}>
+        <Text style={{ fontSize: Typography.base, fontWeight: '700', color: Colors.charcoal }}>
           {item.doc_type ?? 'Document'}
         </Text>
         <View
@@ -50,7 +50,7 @@ export default function DocumentsScreen() {
       {item.expiry_date && (
         <View className="mt-3 pt-2 border-t border-gray-100 flex-row items-center justify-between">
           <Text style={{ fontSize: 11, color: Colors.gray400 }}>Expiry Date</Text>
-          <Text style={{ fontSize: Typography.xs, fontWeight: '700', color: Colors.gray800 }}>
+          <Text style={{ fontSize: Typography.xs, fontWeight: '700', color: Colors.charcoal }}>
             {new Date(item.expiry_date).toLocaleDateString()}
           </Text>
         </View>

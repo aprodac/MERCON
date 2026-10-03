@@ -32,7 +32,7 @@ export function PerformanceMetricCard({
       >
         <Icon size={16} color={tone} strokeWidth={2.25} />
       </View>
-      <Text numberOfLines={1} className="mt-2.5 text-[20px] font-bold leading-[24px] text-gray-900">
+      <Text numberOfLines={1} className="mt-2.5 text-[20px] font-bold leading-[24px] text-[#3E3C3D]">
         {value}
       </Text>
       <Text numberOfLines={1} className="mt-0.5 text-[12px] font-semibold text-gray-700">

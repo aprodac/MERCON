@@ -98,11 +98,14 @@ export default function DocumentPreviewSheet({ documentId, onClose, showOpenFold
 
   const handleDelete = async () => {
     if (!document) return;
-    if (!confirm('Delete this document? This cannot be undone.')) return;
+    if (!confirm('Delete this document? It moves to Recently deleted, where you can restore it for 30 days.')) return;
     setIsDeleting(true);
     try {
-      await documentService.delete(document.id);
-      toast.success('Document deleted');
+      const id = document.id;
+      await documentService.delete(id);
+      toast.success('Moved to Recently deleted', {
+        action: { label: 'Undo', onClick: async () => { await documentService.restore([id]); queryClient.invalidateQueries({ queryKey: ['documents'] }); } },
+      });
       await queryClient.invalidateQueries({ queryKey: ['documents'] });
       onDeleted?.();
       onClose();
