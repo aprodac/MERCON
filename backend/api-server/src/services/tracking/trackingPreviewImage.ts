@@ -275,7 +275,7 @@ export async function fleetPreviewImage(f: CustomerFleetTracking, baseUrl: strin
     top.forEach(([label, n], i) => {
       const y = py + 96 + i * 64;
       body += `<circle cx="${px + 40}" cy="${y - 8}" r="8" fill="${i === 0 ? BRAND : INK}"/>`;
-      body += `<text x="${px + 64}" y="${y}" font-family="${FONT}" font-weight="600" font-size="26" fill="${INK}">${esc(fit(label, 26, pw - 200))}</text>`;
+      body += `<text x="${px + 64}" y="${y}" font-family="${FONT}" font-weight="600" font-size="26" fill="${INK}">${esc(fit(label, 26, pw - 250))}</text>`;
       body += `<text x="${px + pw - 32}" y="${y}" text-anchor="end" font-family="${FONT}" font-size="24" fill="${MUTED}">${n} ${n === 1 ? 'truck' : 'trucks'}</text>`;
     });
   }
