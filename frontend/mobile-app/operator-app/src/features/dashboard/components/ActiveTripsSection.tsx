@@ -58,7 +58,9 @@ export function formatWhatsAppMessage(trip: Trip, trackingUrl?: string | null): 
     trip.status === 'AtDelivery' ? 'At Delivery' :
     trip.status;
 
-  const text = `🚛 Vehicle Status Update\n\nTruck: ${truck}\nDriver: ${driverName}\nRoute: ${routeStr}\nDistance left: ${distanceStr}  TO ${destination}\nETA: ${etaStr}\nStatus: ${statusLabel}`;
+  // Planned figures, labelled as such — the live distance and ETA are on the tracking link.
+  const arrival = etaStr === '—' || etaStr === 'ARRIVING SOON' ? etaStr : `in ${etaStr}`;
+  const text = `🚛 Vehicle Status Update\n\nTruck: ${truck}\nDriver: ${driverName}\nRoute: ${routeStr}\nTrip distance: ${distanceStr}\nPlanned arrival: ${arrival}\nStatus: ${statusLabel}`;
   return trackingUrl ? `${text}\n\nTrack live: ${trackingUrl}` : text;
 }
 
