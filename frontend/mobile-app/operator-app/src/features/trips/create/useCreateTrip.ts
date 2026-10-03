@@ -593,10 +593,11 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
         thirdPartyProviderId,
         thirdPartyDriverName,
         thirdPartyCost,
+        thirdPartyVehiclePlate,
         selectedDates,
         toUtcIso,
       }),
-    [customerId, slot, billingType, rateCategory, assignmentType, driverId, vehicleId, thirdPartyProviderId, thirdPartyDriverName, thirdPartyCost, selectedDates, toUtcIso, rotationActive, rotationDrivers],
+    [customerId, slot, billingType, rateCategory, assignmentType, driverId, vehicleId, thirdPartyProviderId, thirdPartyDriverName, thirdPartyCost, thirdPartyVehiclePlate, selectedDates, toUtcIso, rotationActive, rotationDrivers],
   );
 
   const stepIssues = useCallback(

@@ -395,7 +395,7 @@ export default function AddDriverPage() {
                       value={formData.assigned_vehicle_id}
                       onChange={(val) => handleChange('assigned_vehicle_id', val)}
                       options={[
-                        { value: '', label: '-- No default vehicle (Float Driver) --' },
+                        { value: '', label: 'No usual truck' },
                         ...vehicleOptions,
                       ]}
                       placeholder="Select default vehicle (optional)..."
@@ -519,7 +519,7 @@ export default function AddDriverPage() {
                 <div className="space-y-1 pt-1.5 border-t border-slate-100 dark:border-slate-800">
                   <span className="text-[9px] text-slate-400 uppercase font-bold block">Assigned Vehicle</span>
                   <p className="text-[11px] font-medium text-slate-800 dark:text-slate-200 truncate">
-                    {assignedVehicle ? `${assignedVehicle.plate_number} (${assignedVehicle.asset_type})` : 'Float Driver (No assigned vehicle)'}
+                    {assignedVehicle ? `${assignedVehicle.plate_number} (${assignedVehicle.asset_type})` : 'No usual truck'}
                   </p>
                 </div>
 

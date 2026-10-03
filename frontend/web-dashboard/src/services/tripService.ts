@@ -369,8 +369,12 @@ export interface TripFilters {
   rate_card_id?: string;
   search?: string;
   date_filter?: string;
+  /** With a date filter: also list unfinished trips from outside the window. */
+  include_open?: boolean;
   start_date?: string;
   end_date?: string;
+  /** Finished (actual_end) on or after this ISO time — unlike start_date, which filters on the plan. */
+  ended_since?: string;
   page?: number;
   per_page?: number;
   /** Leave out the customer logo on each row (for callers that don't show it). */

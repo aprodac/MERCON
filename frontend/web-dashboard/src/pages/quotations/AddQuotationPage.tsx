@@ -1,3 +1,5 @@
+import { DatePicker } from '@/components/ui/date-picker';
+import { resolveTaxonomyOption } from '@/utils/taxonomyRegistry';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -224,9 +226,12 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
   // Quotation Reference ID (Auto-generated or existing)
   const quotationRefId = useMemo(() => {
     if (isEdit && existingQuotation) {
-      return existingQuotation.agreement_ref || `QT-${existingQuotation.id.substring(0, 8).toUpperCase()}`;
+      const no = (existingQuotation as any).quotation_number;
+      return no != null ? `QT-${no}` : existingQuotation.agreement_ref || `QT-${existingQuotation.id.substring(0, 8).toUpperCase()}`;
     }
-    return `QT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    // The number is given when it's saved (QT-526 …); a made-up one here
+    // (QT-2026-5527) never matched the saved quotation.
+    return 'New';
   }, [isEdit, existingQuotation]);
 
   // Populate state from existing quotation when editing
@@ -447,7 +452,7 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
     }
 
     if (lineItems.length === 0 && surchargeRules.length === 0) {
-      setFormError('Please add at least one commercial route line or commercial surcharge rule.');
+      setFormError('Add at least one route or one surcharge.');
       return false;
     }
 
@@ -608,7 +613,7 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
 
       if (isReturnToTrip) {
         const returnStep = searchParams.get('return_step') || '3';
-        toast.success('Commercial Quotation created successfully! Returning to Trip creation...');
+        toast.success('Quotation saved. Back to the trip…');
         setTimeout(() => {
           navigate(`/trips/new?step=${returnStep}`);
         }, 500);
@@ -665,7 +670,7 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
   }, [customerId, operationType, lineItems, validFrom, validTo]);
 
   return (
-    <DashboardLayout active="Quotations" title={isEdit ? 'Edit Quotation' : 'New Commercial Agreement'} hideBackButton={true}>
+    <DashboardLayout active="Quotations" title={isEdit ? 'Edit quotation' : 'New quotation'} hideBackButton={true}>
       <form onSubmit={handleSubmit} className="px-3 sm:px-6 pb-10 w-full max-w-[1600px] mx-auto animate-fade-in space-y-3.5">
         
         {/* Page Top Header Bar */}
@@ -673,7 +678,7 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
           <div className="flex items-center gap-2.5">
             <h1 className="text-lg sm:text-xl font-black text-slate-900 dark:text-slate-100 tracking-tight flex items-center gap-2">
               <Calculator className="w-6 h-6 text-[#FA634E] shrink-0" />
-              <span>{isEdit ? 'Edit Commercial Quotation' : 'Create Commercial Agreement'}</span>
+              <span>{isEdit ? 'Edit quotation' : 'New quotation'}</span>
             </h1>
 
             <div className="flex items-center gap-1.5 px-2.5 py-0.5 bg-[#2D2B2C] text-white dark:bg-slate-100 dark:text-slate-900 rounded-lg font-mono font-black text-xs shadow-2xs">
@@ -711,7 +716,7 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
             >
               <CheckCircle2 className="h-3.5 w-3.5" />
               <span>
-                {isReturnToTrip ? 'Save Quotation & Return to Trip →' : 'Save Agreement'}
+                {isReturnToTrip ? 'Save quotation & back to trip →' : 'Save quotation'}
               </span>
             </Button>
           </div>
@@ -769,22 +774,12 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
 
                   <div className="space-y-1">
                     <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Valid From</Label>
-                    <Input
-                      type="date"
-                      value={validFrom}
-                      onChange={(e) => setValidFrom(e.target.value)}
-                      className="h-8.5 text-xs bg-white dark:bg-[#2D2B2C] font-medium rounded-xl border-slate-200 dark:border-slate-800 px-2.5"
-                    />
+                    <DatePicker value={validFrom || null} onChange={(_, str) => setValidFrom(str)} clearable placeholder="Today" formatString="d MMM yyyy" />
                   </div>
 
                   <div className="space-y-1">
                     <Label className="text-[11px] font-bold text-slate-700 dark:text-slate-300">Valid Until</Label>
-                    <Input
-                      type="date"
-                      value={validTo}
-                      onChange={(e) => setValidTo(e.target.value)}
-                      className="h-8.5 text-xs bg-white dark:bg-[#2D2B2C] font-medium rounded-xl border-slate-200 dark:border-slate-800 px-2.5"
-                    />
+                    <DatePicker value={validTo || null} onChange={(_, str) => setValidTo(str)} clearable placeholder="No end date" formatString="d MMM yyyy" />
                   </div>
                 </div>
 
@@ -1296,7 +1291,7 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
               <div className="flex items-center gap-2">
                 <FileCheck2 className="w-5 h-5 text-[#FA634E]" />
                 <DialogTitle className="text-base font-black text-white uppercase tracking-wider">
-                  Commercial Agreement Summary &amp; Preview
+                  Review quotation
                 </DialogTitle>
               </div>
               <DialogDescription className="text-xs text-slate-400 mt-0.5">
@@ -1345,7 +1340,7 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
             {/* Commercial Rate Lines Summary List */}
             <div className="space-y-2">
               <div className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-slate-100 flex items-center justify-between">
-                <span>Defined Commercial Routes ({lineItems.length} Lines)</span>
+                <span>Routes ({lineItems.length})</span>
               </div>
 
               {lineItems.length > 0 ? (
@@ -1372,7 +1367,7 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
                           Vehicle: {line.vehicleClass}
                         </Badge>
                         <Badge variant="outline" className="text-[10px] font-semibold">
-                          Line: {line.lineType}
+                          Line: {resolveTaxonomyOption('LINE_TYPE', line.lineType)?.label || line.lineType}
                         </Badge>
                         {line.driverPayout && (
                           <span className="text-slate-600 dark:text-slate-400 font-medium">
@@ -1390,7 +1385,7 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
                 </div>
               ) : (
                 <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200/80 dark:border-slate-800 text-xs text-slate-500 font-medium text-center">
-                  No commercial route lines defined (Surcharges-only agreement).
+                  No routes — surcharges only.
                 </div>
               )}
             </div>
@@ -1451,7 +1446,7 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
               <span>
                 {saveMutation.isPending
                   ? 'Saving Record...'
-                  : `Confirm & Save Agreement (${
+                  : `Save quotation (${
                       lineItems.length > 0 && surchargeRules.length > 0
                         ? `${lineItems.length} Lines, ${surchargeRules.length} Surcharges`
                         : lineItems.length > 0

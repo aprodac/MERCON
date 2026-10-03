@@ -1064,7 +1064,7 @@ export default function VehicleListPage() {
                 <Eye size={13} className="mr-2 text-indigo-500" /> View Details
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate(`/vehicles/${row.id}/edit`)} className="text-xs font-semibold">
-                <Edit2 size={13} className="mr-2 text-slate-500" /> Edit Vehicle
+                <Edit2 size={13} className="mr-2 text-slate-500" /> Edit truck
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate(`/vehicles/${row.id}/documents`)} className="text-xs font-semibold">
                 <FileText size={13} className="mr-2 text-slate-500" /> Documents Vault
@@ -1135,13 +1135,13 @@ export default function VehicleListPage() {
                   }
                   setConfirmModal({
                     isOpen: true,
-                    title: 'Delete Vehicle Record',
+                    title: 'Delete truck',
                     message,
                     isDestructive: true,
                     onConfirm: async () => {
                       try {
                         await vehicleService.bulkDelete([row.id]);
-                        toast.success(`Vehicle ${row.plate_number} deleted successfully`);
+                        toast.success(`${row.plate_number} moved to the Recycle bin`);
                         queryClient.invalidateQueries({ queryKey: ['vehicles'] });
                       } catch (err: any) {
                         toast.error(err?.response?.data?.error?.message || 'Failed to delete vehicle');
@@ -1151,7 +1151,7 @@ export default function VehicleListPage() {
                 }}
                 className="text-xs font-semibold text-rose-600 dark:text-rose-400 cursor-pointer"
               >
-                <Trash2 size={13} className="mr-2 text-rose-500" /> Delete Vehicle
+                <Trash2 size={13} className="mr-2 text-rose-500" /> Delete truck
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1332,7 +1332,7 @@ export default function VehicleListPage() {
   ), [viewMode, mapThemeId, vehicles, handleExportExcel, handleExportPDF]);
 
   return (
-    <DashboardLayout active="Vehicles" title="Vehicles">
+    <DashboardLayout active="Vehicles" title="Trucks">
       <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-5">
 
         {/* ── Standard Full-Width 4-Column Grid: 4 KPI Cards ── */}
@@ -1757,7 +1757,7 @@ export default function VehicleListPage() {
               title={
                 <span className="flex items-center gap-2 text-base sm:text-lg font-black text-slate-900 dark:text-slate-100 tracking-tight">
                   <Truck className="w-5 h-5 text-blue-500" />
-                  <span>Fleet Vehicles Ledger</span>
+                  <span>Trucks</span>
                 </span>
               }
               columns={columns}
@@ -1877,7 +1877,7 @@ export default function VehicleListPage() {
                             className="flex-1 h-8 bg-brand hover:bg-[#D94800] text-white text-xs font-bold gap-1 border-0"
                           >
                             <Edit2 size={12} />
-                            <span>Edit Vehicle</span>
+                            <span>Edit truck</span>
                           </Button>
                         </div>
                       </div>
@@ -2044,7 +2044,7 @@ export default function VehicleListPage() {
           description="Choose your export preferences, filters, and columns."
           fileNamePrefix="vehicles_roster"
           sheetName="Vehicles"
-          subtitle="MERCON Logistics Fleet Vehicles Ledger"
+          subtitle="MERCON trucks"
           filteredData={vehicles}
           allData={fleetRosterRes?.data || []}
           selectedData={selectedVehiclesForExport}

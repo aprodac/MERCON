@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
-  Copy, Check, CheckCircle2, Smartphone, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
+  Copy, Check, CornerUpLeft, Smartphone, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
   CalendarClock, Repeat, Receipt, FileText, Clock, ChevronDown, Navigation, Image as ImageIcon,
   User as UserIcon, Truck, UploadCloud, SquarePen, X, Coins, ListOrdered, Link2, ExternalLink, RefreshCw, Eye,
 } from 'lucide-react';
@@ -12,12 +12,14 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import ConfirmModal from '@/components/ui/ConfirmModal';
-import UploadDocumentModal from '@/components/ui/UploadDocumentModal';
+import TripUploadDialog from '@/components/trips/details/TripUploadDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import PostTripSettlementModal from '@/components/trips/PostTripSettlementModal';
+import { STATUS_LABEL, nextStatuses, needsConfirm, statusChangeCopy } from '@/lib/liveOps';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { useTripWhatsAppShare } from '@/hooks/useTripWhatsAppShare';
 import { useTrackingLink } from '@/hooks/useTrackingLink';
@@ -37,6 +39,7 @@ import TripStopsPanel from '@/components/trips/details/TripStopsPanel';
 import { DriverPhoneLine, TripDriverTrailList, currentAcknowledgement } from '@/components/trips/details/TripDriverTrail';
 import { driverPhoneKey } from '@/components/drivers/phone/DriverPhoneSheet';
 import { driverPhoneService } from '@/services/driverPhoneService';
+import { useModuleEnabled } from '@/components/auth/RequireModule';
 import { Banner, FinancialSummary, PaperworkSection, PreTripChecks, TripSummary, TruckDriverOverlay } from '@/components/trips/details/TripDetailsBits';
 import { statusChip, tripPhaseOf } from '@/components/trips/details/tripStatus';
 import { fleetLiveService } from '@/services/fleetLiveService';
@@ -109,12 +112,15 @@ function deriveTripType(trip: any): string {
 export default function TripDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  // Trip costs are Expenses records; with that module off its pages bounce to the landing page.
+  const expensesEnabled = useModuleEnabled('expenses');
   const queryClient = useQueryClient();
   const tz = useDeploymentTimezone();
 
   // Modal States
   const [isStatusModalOpen, setIsStatusModalOpen] = useState(false);
   const [nextStatus, setNextStatus] = useState<TripStatus>('Draft');
+  const [settlementOpen, setSettlementOpen] = useState(false);
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadDocType, setUploadDocType] = useState<DocType | undefined>(undefined);
@@ -204,11 +210,17 @@ export default function TripDetailsPage() {
   // Mutations
   const updateStatusMutation = useMutation({
     mutationFn: (status: TripStatus) => tripService.updateStatus(tripEntityId!, status),
-    onSuccess: () => {
+    onSuccess: (_updated, status) => {
       queryClient.invalidateQueries({ queryKey: ['trip', tripEntityId] });
       queryClient.invalidateQueries({ queryKey: ['trips'] });
       setIsStatusModalOpen(false);
       setIsCancelModalOpen(false);
+      toast.success(`${trip?.ref_id ?? 'Trip'} → ${STATUS_LABEL[status] ?? status}`);
+      // Same as the live map: a completed trip asks about extra charges straight away.
+      if (status === 'Completed') setSettlementOpen(true);
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error?.message || "Couldn't change the status.");
     },
   });
 
@@ -287,19 +299,17 @@ export default function TripDetailsPage() {
   }
 
   // Helpers
-  const getNextStatus = (current: TripStatus): TripStatus | null => {
-    switch (current) {
-      case 'Draft': return 'Dispatched';
-      case 'Dispatched': return 'AtPickup';
-      case 'AtPickup': return 'InTransit';
-      case 'InTransit': return 'AtDelivery';
-      case 'AtDelivery': return 'Completed';
-      case 'Completed': return 'Invoiced';
-      default: return null;
+
+  const statusMoves = nextStatuses(trip.status);
+  const requestStatus = (to: string) => {
+    if (needsConfirm(trip.status, to)) {
+      setNextStatus(to as TripStatus);
+      setIsStatusModalOpen(true);
+    } else {
+      updateStatusMutation.mutate(to as TripStatus);
     }
   };
-
-  const nextStatusOption = getNextStatus(trip.status) || 'AtDelivery';
+  const statusConfirm = statusChangeCopy(trip.ref_id ?? 'this trip', trip.status, nextStatus);
   const canCancel = !['Completed', 'Invoiced', 'Cancelled'].includes(trip.status);
 
   // Financials & Economics (Single Source of Truth)
@@ -508,10 +518,54 @@ export default function TripDetailsPage() {
                       <button type="button" onClick={handleCopyId} aria-label="Copy trip number" className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
                         {copied ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
                       </button>
-                      <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', chip.className)}>
-                        <span className={cn('size-1.5 rounded-full', chip.dot)} />
-                        {chip.label}
-                      </span>
+                      {/* The status chip is also the menu that moves the trip on (same moves as the live map). */}
+                      {statusMoves.forward.length + statusMoves.back.length > 0 || statusMoves.cancel ? (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild disabled={updateStatusMutation.isPending}>
+                            <button
+                              type="button"
+                              aria-label={`Status: ${chip.label}. Change status`}
+                              className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring', chip.className)}
+                            >
+                              <span className={cn('size-1.5 rounded-full', chip.dot)} />
+                              {chip.label}
+                              <ChevronDown className="size-3 opacity-70" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="w-52">
+                            {statusMoves.forward.length > 0 && <DropdownMenuLabel className="text-[11px] text-muted-foreground">Move to</DropdownMenuLabel>}
+                            {statusMoves.forward.map((st) => (
+                              <DropdownMenuItem key={st} onSelect={() => requestStatus(st)} className="gap-2 text-sm">
+                                <ArrowRight className="size-3.5 text-muted-foreground" /> {STATUS_LABEL[st] ?? st}
+                              </DropdownMenuItem>
+                            ))}
+                            {statusMoves.back.length > 0 && (
+                              <>
+                                {statusMoves.forward.length > 0 && <DropdownMenuSeparator />}
+                                <DropdownMenuLabel className="text-[11px] text-muted-foreground">Send back to</DropdownMenuLabel>
+                                {statusMoves.back.map((st) => (
+                                  <DropdownMenuItem key={st} onSelect={() => requestStatus(st)} className="gap-2 text-sm">
+                                    <CornerUpLeft className="size-3.5 text-muted-foreground" /> {STATUS_LABEL[st] ?? st}
+                                  </DropdownMenuItem>
+                                ))}
+                              </>
+                            )}
+                            {statusMoves.cancel && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onSelect={() => setIsCancelModalOpen(true)} className="gap-2 text-sm text-rose-600 focus:text-rose-700">
+                                  <XCircle className="size-3.5" /> Cancel trip
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      ) : (
+                        <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold', chip.className)}>
+                          <span className={cn('size-1.5 rounded-full', chip.dot)} />
+                          {chip.label}
+                        </span>
+                      )}
                       {statePhrase && <span className="text-sm text-muted-foreground">{statePhrase}</span>}
                     </div>
                     <p className="mt-0.5 truncate text-sm font-medium text-foreground">{trip.customer?.name ?? 'No customer'}</p>
@@ -593,11 +647,6 @@ export default function TripDetailsPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-56">
-                      {getNextStatus(trip.status) && (
-                        <DropdownMenuItem onClick={() => { setNextStatus(nextStatusOption); setIsStatusModalOpen(true); }}>
-                          <CheckCircle2 size={14} className="mr-2 text-emerald-600" /> Advance to {nextStatusOption}
-                        </DropdownMenuItem>
-                      )}
                       {/* A finished trip keeps its driver and truck — the server refuses a change too. */}
                       {canCancel && (
                         <>
@@ -662,6 +711,7 @@ export default function TripDetailsPage() {
                 onCharges={() => setIsLaborModalOpen(true)}
                 onTripCosts={() => navigate(tripExpensesCount > 0 ? `/expenses?trip=${trip.id}&preset=any` : `/expenses/new?trip=${trip.id}&back=${encodeURIComponent(`/trips/${trip.id}`)}`)}
                 addTripCostHref={is3PL ? undefined : `/expenses/new?trip=${trip.id}&back=${encodeURIComponent(`/trips/${trip.id}`)}`}
+                costsEnabled={expensesEnabled}
               />
             </div>
           </div>
@@ -801,9 +851,10 @@ export default function TripDetailsPage() {
       <ConfirmModal
         isOpen={isStatusModalOpen}
         onClose={() => setIsStatusModalOpen(false)}
-        title="Update Trip Status"
-        message={`Are you sure you want to transition this trip status to ${nextStatus}?`}
-        confirmLabel="Yes, Update"
+        title={statusConfirm.title}
+        message={statusConfirm.message}
+        confirmLabel={statusConfirm.label}
+        isDestructive={statusConfirm.destructive}
         isLoading={updateStatusMutation.isPending}
         onConfirm={() => {
           updateStatusMutation.mutate(nextStatus);
@@ -815,25 +866,33 @@ export default function TripDetailsPage() {
         isOpen={isCancelModalOpen}
         onClose={() => setIsCancelModalOpen(false)}
         title="Cancel This Trip?"
-        message="This releases the assigned driver and vehicle back to Available. This cannot be undone."
-        confirmLabel="Yes, Cancel Trip"
+        message="The driver and truck are freed for other trips. A cancelled trip can be brought back to Draft or Scheduled later."
+        confirmLabel="Cancel trip"
         isDestructive
         isLoading={updateStatusMutation.isPending}
         onConfirm={() => updateStatusMutation.mutate('Cancelled')}
       />
 
+      <PostTripSettlementModal
+        isOpen={settlementOpen}
+        onClose={() => setSettlementOpen(false)}
+        trip={settlementOpen ? ({ ...trip, status: 'Completed' } as any) : null}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['trip', tripEntityId] });
+          queryClient.invalidateQueries({ queryKey: ['trips'] });
+          toast.success('Charges saved');
+        }}
+      />
+
       {/* ── Upload Document Modal ── */}
       {trip && (
-        <UploadDocumentModal
-          isOpen={isUploadModalOpen}
-          onClose={() => setIsUploadModalOpen(false)}
-          entityType="Trip"
-          entityId={trip.id}
-          docType={uploadDocType}
-          onUploadSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['trip', id] });
-            queryClient.invalidateQueries({ queryKey: ['documents', 'Trip', id] });
-          }}
+        // Trip uploads: one step, filed under the right stop (the full document
+        // vault form asked for owner, type and expiry dates and lost POD photos).
+        <TripUploadDialog
+          open={isUploadModalOpen}
+          onOpenChange={setIsUploadModalOpen}
+          trip={trip as any}
+          defaultKind={trip.status === 'Completed' || trip.status === 'Invoiced' ? 'POD' : uploadDocType === 'Waybill' ? 'Waybill' : 'POD'}
         />
       )}
 

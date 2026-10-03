@@ -1,3 +1,4 @@
+import { normalizeSaudiPlate } from '@mercon/shared-types';
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -68,6 +69,8 @@ export default function EditVehiclePage() {
     queryFn: () => vehicleService.getById(id!),
     enabled: !!id,
   });
+  // The status the truck has now — set by trips and service orders, not by this form.
+  const originalStatus = (vehicle?.status || 'Available') as AssetStatus;
 
   const [formData, setFormData] = useState({
     plate_number: '',
@@ -177,14 +180,13 @@ export default function EditVehiclePage() {
     },
   });
 
+  // One rule for every plate in the app (shared with the API): "dra 6484" → "DRA-6484".
   const cleanSaudiPlate = (plate: string) => {
-    return plate.trim().toUpperCase();
+    const checked = normalizeSaudiPlate(plate);
+    return checked.ok ? checked.plate : plate.trim().toUpperCase();
   };
 
-  const validateSaudiPlate = (plate: string) => {
-    const clean = cleanSaudiPlate(plate);
-    return clean.length >= 2 && /^[A-Z0-9\s_-]{2,20}$/i.test(clean);
-  };
+  const validateSaudiPlate = (plate: string) => normalizeSaudiPlate(plate).ok;
 
   const tractorCap = Number(formData.capacity_kg) || 0;
   const trailerCap = hasTrailer ? (Number(formData.trailer_capacity_kg) || 0) : 0;
@@ -193,15 +195,16 @@ export default function EditVehiclePage() {
   const isPlateValid = validateSaudiPlate(formData.plate_number);
   const isTrailerValid = !hasTrailer || validateSaudiPlate(formData.trailer_number);
 
-  const isFormValid = isPlateValid && tractorCap > 0 && isTrailerValid;
+  const isFormValid = isPlateValid && tractorCap > 0 && tractorCap <= 60000 && isTrailerValid;
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     setError(null);
 
     if (!formData.plate_number.trim()) return setError('Plate number is required');
-    if (!isPlateValid) return setError('Invalid vehicle plate number (e.g. DRA-6484 or 1234 ABC).');
+    if (!isPlateValid) return setError((normalizeSaudiPlate(formData.plate_number) as { reason?: string }).reason || 'Check the plate number, like DRA-6484.');
     if (!formData.capacity_kg || tractorCap <= 0) return setError('Valid tractor capacity (kg) is required');
+    if (tractorCap > 60000) return setError('Payload is in kilograms and can be at most 60,000 (e.g. 20000 for a 20-ton truck).');
     if (hasTrailer && !formData.trailer_number.trim()) return setError('Trailer plate number is required when trailer is attached');
     if (hasTrailer && !isTrailerValid) return setError('Invalid trailer plate number.');
 
@@ -209,7 +212,8 @@ export default function EditVehiclePage() {
       plate_number: cleanSaudiPlate(formData.plate_number),
       asset_type: formData.asset_type,
       capacity_kg: tractorCap,
-      status: formData.status,
+      // Only send a status when "in service" was switched; otherwise trips / service orders own it.
+      ...(formData.status !== originalStatus ? { status: formData.status } : {}),
       icces_device_id: formData.icces_device_id || null,
       image_url: formData.image_url || null,
       trailer_number: hasTrailer && formData.trailer_number ? cleanSaudiPlate(formData.trailer_number) : null,
@@ -232,7 +236,7 @@ export default function EditVehiclePage() {
 
   if (isLoading) {
     return (
-      <DashboardLayout active="Vehicles" title="Edit Vehicle">
+      <DashboardLayout active="Vehicles" title="Edit truck">
         <div className="p-12 flex flex-col items-center justify-center gap-3">
           <div className="h-8 w-8 border-2 border-brand border-t-transparent rounded-full animate-spin"></div>
           <p className="text-xs text-muted-foreground font-medium">Loading vehicle details...</p>
@@ -241,7 +245,7 @@ export default function EditVehiclePage() {
     );
   }
 
-  const plateTitle = vehicle?.plate_number || 'Edit Vehicle';
+  const plateTitle = vehicle?.plate_number || 'Edit truck';
 
   // Completion Tracking
   const completionFields = [
@@ -254,14 +258,14 @@ export default function EditVehiclePage() {
   const completionPct = Math.round((filledCount / completionFields.length) * 100);
 
   return (
-    <DashboardLayout active="Vehicles" title={`Edit Vehicle ${plateTitle}`}>
+    <DashboardLayout active="Vehicles" title={`Edit truck ${plateTitle}`}>
       <div className="px-3 sm:px-5 pb-4 space-y-3 animate-fade-in max-w-[1350px] mx-auto">
         
         {/* Slim Top Action Strip */}
         <div className="flex items-center justify-between gap-3 pb-2 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-950/50 dark:text-amber-400 font-bold border-none text-[11px] px-2 py-0.5">
-              <Truck className="w-3 h-3 mr-1 inline text-amber-600" /> Edit Vehicle
+              <Truck className="w-3 h-3 mr-1 inline text-amber-600" /> Edit truck
             </Badge>
             <span className="text-xs text-slate-400 font-mono font-medium hidden sm:inline">
               Plate: {plateTitle}
@@ -324,7 +328,7 @@ export default function EditVehiclePage() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <Truck className="w-3.5 h-3.5 text-brand" /> Primary Asset Identifier
+                      <Truck className="w-3.5 h-3.5 text-brand" /> Truck
                     </h2>
                     <span className="text-[10px] text-slate-400 font-mono">* Required fields</span>
                   </div>
@@ -356,7 +360,7 @@ export default function EditVehiclePage() {
 
                     <div className="space-y-1">
                       <Label htmlFor="asset_type" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        Asset Classification <span className="text-rose-500">*</span>
+                        Body type <span className="text-rose-500">*</span>
                       </Label>
                       <Select
                         value={formData.asset_type}
@@ -376,22 +380,29 @@ export default function EditVehiclePage() {
 
                     <div className="space-y-1">
                       <Label htmlFor="status" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        Operational Status
+                        In service
                       </Label>
+                      {/* Available / On trip / Maintenance come from trips and service orders;
+                          setting them by hand made the truck's status drift. Only "out of service" is a choice. */}
                       <Select
-                        value={formData.status}
-                        onValueChange={(val) => handleChange('status', val as AssetStatus)}
+                        value={formData.status === 'Inactive' ? 'Inactive' : 'InService'}
+                        onValueChange={(val) =>
+                          handleChange('status', (val === 'Inactive' ? 'Inactive' : originalStatus === 'Inactive' ? 'Available' : originalStatus) as AssetStatus)
+                        }
                       >
                         <SelectTrigger id="status" className="h-8 text-xs">
-                          <SelectValue placeholder="Select status..." />
+                          <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="Available" className="text-xs">Available (Fleet Ready)</SelectItem>
-                          <SelectItem value="OnTrip" className="text-xs">On Trip (In Transit)</SelectItem>
-                          <SelectItem value="Maintenance" className="text-xs">Maintenance (Garage)</SelectItem>
-                          <SelectItem value="Inactive" className="text-xs">Inactive (Decommissioned)</SelectItem>
+                          <SelectItem value="InService" className="text-xs">In service</SelectItem>
+                          <SelectItem value="Inactive" className="text-xs">Out of service (sold or parked)</SelectItem>
                         </SelectContent>
                       </Select>
+                      {formData.status !== 'Inactive' && (
+                        <p className="text-[10px] text-slate-500">
+                          Now {originalStatus === 'OnTrip' ? 'on a trip' : originalStatus === 'Maintenance' ? 'in the workshop' : 'available'} — set by its trips and service orders.
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -440,14 +451,14 @@ export default function EditVehiclePage() {
                 <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                   <div className="flex items-center justify-between">
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <Package className="w-3.5 h-3.5 text-blue-500" /> Payload & Telematics
+                      <Package className="w-3.5 h-3.5 text-blue-500" /> Load & GPS tracker
                     </h2>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div className="space-y-1">
                       <Label htmlFor="capacity_kg" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        Tractor Payload (kg) <span className="text-rose-500">*</span>
+                        Payload (kg) <span className="text-rose-500">*</span>
                       </Label>
                       <Input
                         id="capacity_kg"
@@ -609,7 +620,7 @@ export default function EditVehiclePage() {
           <div className="lg:col-span-4 space-y-3 sticky top-2">
             <Card className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl p-3.5 space-y-3 shadow-2xs">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Vehicle Summary</span>
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Summary</span>
                 <Badge variant="outline" className="text-[10px] font-mono text-brand border-orange-200">
                   {completionPct}% Complete
                 </Badge>

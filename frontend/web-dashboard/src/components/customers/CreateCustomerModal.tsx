@@ -55,11 +55,17 @@ export default function CreateCustomerModal({ isOpen, onClose, onSuccess }: Crea
       setError('Company / Customer name is required');
       return;
     }
+    // The customer record needs a phone (drivers and the office call it); it
+    // used to be saved as the text "N/A", which showed dead call buttons.
+    if (contactPhone.replace(/\D/g, '').length < 6) {
+      setError('Contact phone is required');
+      return;
+    }
     setError(null);
 
     createMutation.mutate({
       name: name.trim(),
-      contact_phone: contactPhone.trim() || 'N/A',
+      contact_phone: contactPhone.trim(),
       primary_contact_person: primaryContactPerson.trim() || undefined,
       whatsapp_group_link: whatsappGroupLink.trim() || undefined,
       driver_workflow: driverWorkflow,
@@ -72,7 +78,7 @@ export default function CreateCustomerModal({ isOpen, onClose, onSuccess }: Crea
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-slate-900 dark:text-slate-100">
             <Building2 className="w-5 h-5 text-brand" />
-            Add New Client Company / Customer Profile
+            Add customer
           </DialogTitle>
         </DialogHeader>
 
@@ -127,7 +133,7 @@ export default function CreateCustomerModal({ isOpen, onClose, onSuccess }: Crea
 
           <div className="space-y-1.5">
             <Label htmlFor="driver_workflow" className="text-xs font-bold flex items-center gap-1.5">
-              Driver Workflow Configuration
+              Drivers report trips with
             </Label>
             <select
               id="driver_workflow"
@@ -135,8 +141,8 @@ export default function CreateCustomerModal({ isOpen, onClose, onSuccess }: Crea
               onChange={(e) => setDriverWorkflow(e.target.value as 'NATIVE' | 'EXTERNAL_APP')}
               className="w-full h-9 px-3 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand"
             >
-              <option value="NATIVE">Native CargoPod App (Standard Driver Stepper)</option>
-              <option value="EXTERNAL_APP">External Customer App (Screenshot AI Ingestion)</option>
+              <option value="NATIVE">MERCON Driver app</option>
+              <option value="EXTERNAL_APP">Customer's own app (drivers send screenshots)</option>
             </select>
           </div>
 
@@ -169,7 +175,7 @@ export default function CreateCustomerModal({ isOpen, onClose, onSuccess }: Crea
                   <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Saving...
                 </>
               ) : (
-                'Save Customer Profile'
+                'Add customer'
               )}
             </Button>
           </DialogFooter>
