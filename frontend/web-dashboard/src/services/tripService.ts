@@ -537,6 +537,8 @@ export const tripService = {
     reasons?: DriverReason[];
     truckFit?: 'exact' | 'bigger' | 'smaller' | 'none';
     clashStart?: string;
+    /** Other trips this driver is still running (any date) — warn, don't block. */
+    openTrips?: Array<{ ref: string | null; status: string }>;
   }>> {
     try {
       const res = await api.get<ApiResponse<any[]>>('/trips/recommendations/drivers', { params });
@@ -759,7 +761,7 @@ export interface BulkImportTripRow {
 export interface BulkImportResult {
   imported: number;
   failed: number;
-  results: Array<{ row: number; success: boolean; ref_id?: string; error?: string }>;
+  results: Array<{ row: number; success: boolean; ref_id?: string; created_id?: string; error?: string }>;
   imported_count?: number;
   created_count?: number;
   errors?: any[];

@@ -336,7 +336,7 @@ export default function LocationFormDialog({
           </DialogTitle>
           <DialogDescription className="text-xs text-slate-500">
             {isFromGoogleMaps
-              ? 'Found on Google Maps. Check the name, then save it as one of this customer's places.'
+              ? "Found on Google Maps. Check the name, then save it as one of this customer's places."
               : 'A pickup or delivery place of this customer, used on its quotations and trips.'}
           </DialogDescription>
         </DialogHeader>
