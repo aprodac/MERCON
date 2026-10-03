@@ -21,6 +21,15 @@ const EXPO_HEADERS = {
   'Content-Type': 'application/json',
 };
 
+/**
+ * The text a driver sees. The delay monitor tags its prompt with "[stop:<id>]"
+ * so it can tell which stop it already asked about; that tag stays in the
+ * database but never reaches the phone or the office trail.
+ */
+export function visibleNotificationMessage(message: string): string {
+  return message.replace(/\s*\[stop:[^\]]*\]/g, '');
+}
+
 export function isExpoPushToken(token: string | null | undefined): token is string {
   return !!token && (token.startsWith('ExponentPushToken[') || token.startsWith('ExpoPushToken['));
 }
@@ -174,7 +183,7 @@ export async function retryPushDelivery(deliveryId: string): Promise<void> {
     {
       sound: 'default',
       title: n.title,
-      body: n.message,
+      body: visibleNotificationMessage(n.message),
       data: {
         type: n.type,
         entity_type: n.entity_type,

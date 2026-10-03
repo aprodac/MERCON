@@ -1,20 +1,13 @@
 import React from 'react';
-import { SlidersHorizontal } from 'lucide-react-native';
+import { Plus } from 'lucide-react-native';
 import { AppTopBar } from '@/components/AppTopBar';
 
-interface QuotationsHeaderProps {
-  onFilterPress?: () => void;
-  onMenuPress?: () => void;
-  filterActive?: boolean;
-  className?: string;
-}
-
-/** The page's top bar: the shared AppTopBar with this page's filter button. */
-export function QuotationsHeader({ onFilterPress, filterActive }: QuotationsHeaderProps) {
+/** The page's top bar: the shared AppTopBar with the add button. */
+export function QuotationsHeader({ onAddPress }: { onAddPress?: () => void }) {
   return (
     <AppTopBar
       title="Quotations"
-      actions={onFilterPress ? [{ icon: SlidersHorizontal, label: 'Filter', onPress: onFilterPress, active: filterActive }] : []}
+      actions={onAddPress ? [{ icon: Plus, label: 'New quotation', onPress: onAddPress }] : []}
     />
   );
 }

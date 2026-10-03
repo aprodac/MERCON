@@ -105,7 +105,7 @@ const InvoiceListScreen = () => {
   const count = (status: string) => invoices.filter((i) => i.status === status).length;
 
   const STAT_CARDS: { label: string; value: string; Icon: LucideIcon; color: string }[] = [
-    { label: 'Total Invoices', value: String(invoices.length), Icon: FileText, color: Colors.gray900 },
+    { label: 'Total Invoices', value: String(invoices.length), Icon: FileText, color: Colors.charcoal },
     { label: 'Pending', value: String(count('Pending')), Icon: Hourglass, color: Colors.warning },
     { label: 'Overdue', value: String(count('Overdue')), Icon: Siren, color: Colors.error },
     { label: 'Total Value', value: `SAR ${(totalValue / 1000).toFixed(0)}K`, Icon: Wallet, color: Colors.success },
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: Typography.xl,
     fontWeight: '800',
-    color: Colors.gray900,
+    color: Colors.charcoal,
   },
   statsRow: {
     paddingHorizontal: Spacing.lg,
@@ -247,7 +247,7 @@ const styles = StyleSheet.create({
   invoiceId: {
     fontSize: Typography.sm,
     fontWeight: '800',
-    color: Colors.gray900,
+    color: Colors.charcoal,
   },
   customer: {
     fontSize: Typography.xs,
@@ -261,7 +261,7 @@ const styles = StyleSheet.create({
   amount: {
     fontSize: Typography.base,
     fontWeight: '800',
-    color: Colors.gray900,
+    color: Colors.charcoal,
   },
   cardMeta: {
     flexDirection: 'row',

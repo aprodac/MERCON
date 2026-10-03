@@ -3,7 +3,6 @@
  *   GET  /mobile/notifications        → the driver's recent notifications
  *   POST /mobile/notifications/:id/read → mark one as read
  */
-import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { api } from '@mercon/mobile-shared/lib/api';
@@ -92,10 +91,10 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     }
     await setupNotificationChannelAsync();
 
-    if (!Device.isDevice) {
-      console.log('[Push] Must use physical device for push notifications');
-      return null;
-    }
+    // No "physical device only" gate: an Android emulator with Google Play
+    // services gets a real push token, which is how pushes are tested without
+    // a phone. Where no token can be had (iOS simulator) the call below throws
+    // and is caught like any other failure.
 
     const existingStatus = (await Notifications?.getPermissionsAsync())?.status ?? 'undetermined';
     let finalStatus: string = existingStatus;

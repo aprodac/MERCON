@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import Constants from 'expo-constants';
 import { safeSecureStore } from './secure-store';
 
 const DARK_MODE_KEY = 'mercon_dark_mode';
@@ -13,7 +14,7 @@ const LIGHT = {
   bg: '#F4F4F5',
   surface: '#FFFFFF',
   border: '#E4E4E7',
-  textPrimary: '#18181B',
+  textPrimary: (Constants.expoConfig?.extra?.inkColor as string | undefined) || '#18181B',
   textSecondary: '#71717A',
   textMuted: '#A1A1AA',
   iconBg: '#F4F4F5',

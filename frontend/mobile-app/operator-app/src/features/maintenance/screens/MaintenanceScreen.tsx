@@ -28,7 +28,7 @@ export default function MaintenanceScreen() {
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center gap-2">
           <Truck size={16} color={Colors.primary} strokeWidth={2.2} />
-          <Text style={{ fontSize: Typography.base, fontWeight: '700', color: Colors.gray900 }}>
+          <Text style={{ fontSize: Typography.base, fontWeight: '700', color: Colors.charcoal }}>
             {item.vehicle?.plate_number ?? item.vehicle_plate ?? 'Vehicle'}
           </Text>
         </View>

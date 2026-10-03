@@ -23,9 +23,9 @@ export function DriverHeader({ title = 'Driver Details', onBack, onEdit }: Drive
           activeOpacity={0.7}
           className="h-9 w-9 items-center justify-center rounded-full border border-[#EDEDF0] bg-white"
         >
-          <ArrowLeft size={18} color={Colors.gray900} strokeWidth={2.25} />
+          <ArrowLeft size={18} color={Colors.charcoal} strokeWidth={2.25} />
         </TouchableOpacity>
-        <Text numberOfLines={1} className="ml-3 flex-1 text-[17px] font-bold text-gray-900">
+        <Text numberOfLines={1} className="ml-3 flex-1 text-[17px] font-bold text-[#3E3C3D]">
           {title}
         </Text>
       </View>
@@ -39,7 +39,7 @@ export function DriverHeader({ title = 'Driver Details', onBack, onEdit }: Drive
           activeOpacity={0.7}
           className="ml-3 h-9 w-9 items-center justify-center rounded-full border border-[#EDEDF0] bg-white"
         >
-          <SquarePen size={16} color={Colors.gray900} strokeWidth={2.25} />
+          <SquarePen size={16} color={Colors.charcoal} strokeWidth={2.25} />
         </TouchableOpacity>
       )}
     </View>

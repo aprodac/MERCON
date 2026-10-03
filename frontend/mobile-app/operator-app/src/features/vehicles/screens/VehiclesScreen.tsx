@@ -3,11 +3,11 @@
  * Presentation only: network requests, transforms, and state management live in the feature layer.
  */
 import React, { useEffect, useState } from 'react';
-import { FlatList, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, RefreshControl, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Truck, X } from 'lucide-react-native';
+import { Truck } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 
 import { SearchBar } from '@/features/dashboard/components';
@@ -20,7 +20,7 @@ import {
   VehiclePagination,
   VehiclesHeader,
   VehiclesListHeader,
-  VehicleStatsSection,
+  VehicleStatusTabs,
 } from '../components';
 import { useVehicleFilters, useVehicleSearch, useVehicleSorting, useVehicles } from '../hooks';
 import type { VehicleListItem } from '../types';
@@ -70,7 +70,7 @@ export default function VehiclesScreen() {
   const handleMenuPress = () => setDrawerVisible(true);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }} edges={['top']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
       <VehiclesHeader
         onFilterPress={() => setFilterVisible(true)}
         onMenuPress={handleMenuPress}
@@ -83,34 +83,18 @@ export default function VehiclesScreen() {
         <FlatList
           data={vehicles}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 110 }}
-          ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 110 }}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={Colors.primary} />}
           ListHeaderComponent={
-            <View className="gap-4 pb-3">
-              <VehicleStatsSection />
+            <View className="gap-3 pb-2">
+              <VehicleStatusTabs value={status} onChange={setStatus} />
               <SearchBar
                 value={query}
                 onChangeText={setQuery}
                 placeholder="Search vehicles by plate or asset type…"
                 isLoading={isFetching && !isRefreshing}
               />
-              {status !== null && (
-                <View className="flex-row items-center">
-                  <TouchableOpacity
-                    onPress={() => setStatus(null)}
-                    activeOpacity={0.75}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Clear ${status} status filter`}
-                    className="flex-row items-center gap-1.5 rounded-full bg-[#FFF0EB] px-3 py-1 border border-[#FDE3DF]"
-                  >
-                    <Text style={{ color: Colors.primary }} className="text-[12px] font-bold">
-                      Status: {status === 'OnTrip' ? 'On Trip' : status}
-                    </Text>
-                    <X size={12} color={Colors.primary} strokeWidth={2.5} />
-                  </TouchableOpacity>
-                </View>
-              )}
               <VehiclesListHeader total={total} sort={sort} onSortChange={setSort} />
             </View>
           }

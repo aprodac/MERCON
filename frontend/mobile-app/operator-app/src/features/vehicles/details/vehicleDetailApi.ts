@@ -94,7 +94,19 @@ export interface VehicleMaintenance {
   next_service_due?: string | null;
 }
 
+/** One document type the fleet tracks for a truck, with the current document filed under it (or none). Same data the web's vehicle documents page shows. */
+export interface VehicleDocSlot {
+  documentType: { id: string; code: string; name: string; requirementStatus?: string; displayOrder?: number };
+  document: { id: string; file_url: string | null; expiry_date: string | null; files?: { id: string; file_url: string }[] } | null;
+}
+
 export const vehicleDetailApi = {
+  /** GET /documents/owner-folder — the web's per-vehicle document folder: one slot per document type. */
+  async docSlots(id: string): Promise<VehicleDocSlot[]> {
+    const { data } = await api.get('/documents/owner-folder', { params: { ownerType: 'Vehicle', ownerId: id } });
+    return data?.data?.slots ?? [];
+  },
+
   async vehicle(id: string): Promise<VehicleDetail> {
     const { data } = await api.get(`/vehicles/${id}`);
     return data.data as VehicleDetail;

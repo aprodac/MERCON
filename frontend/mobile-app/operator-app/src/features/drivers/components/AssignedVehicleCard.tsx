@@ -40,7 +40,7 @@ export function AssignedVehicleCard({ vehicle, onViewVehicle }: AssignedVehicleC
       activeOpacity={0.9}
       accessibilityRole="button"
       accessibilityLabel={`View vehicle ${vehicle.plateNumber}`}
-      style={{ padding: 18, backgroundColor: Colors.darkCard, ...CARD_SHADOW }}
+      style={{ padding: 18, backgroundColor: Colors.charcoal, ...CARD_SHADOW }}
       className="flex-row items-center rounded-3xl"
     >
       <View

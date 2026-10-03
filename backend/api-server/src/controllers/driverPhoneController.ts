@@ -12,6 +12,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { createDriverNotification } from './notificationController';
+import { visibleNotificationMessage } from '../services/pushNotificationService';
 import { logAuditEvent } from '../services/auditService';
 import { computePhoneStatus } from '../services/driverPhone/rules';
 import {
@@ -96,7 +97,7 @@ function trailRow(n: {
   return {
     id: n.id,
     title: n.title,
-    message: n.message,
+    message: visibleNotificationMessage(n.message),
     type: n.type,
     entity_type: n.entity_type,
     entity_id: n.entity_id,

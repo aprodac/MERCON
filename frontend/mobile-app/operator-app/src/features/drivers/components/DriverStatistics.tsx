@@ -14,7 +14,7 @@ function Stat({ Icon, value, label }: StatProps) {
   return (
     <View className="flex-1 items-center">
       <Icon size={15} color={Colors.accent} strokeWidth={2.25} />
-      <Text numberOfLines={1} className="mt-2 text-[20px] font-bold leading-[24px] text-gray-900">
+      <Text numberOfLines={1} className="mt-2 text-[20px] font-bold leading-[24px] text-[#3E3C3D]">
         {value}
       </Text>
       <Text numberOfLines={1} className="mt-1 text-[11px] font-medium text-gray-400">

@@ -331,6 +331,21 @@ export const tripService = {
     return data.data as TripRoute;
   },
 
+  /** Like sendLocationUpdate, but throws so the caller can keep a point that didn't go out. */
+  async postLocation(
+    tripId: string,
+    coords: {
+      latitude: number;
+      longitude: number;
+      speed_kph?: number | null;
+      heading_deg?: number | null;
+      accuracy_m?: number | null;
+      recorded_at?: string;
+    }
+  ): Promise<void> {
+    await api.post(`/mobile/trips/${tripId}/location`, coords);
+  },
+
   async sendLocationUpdate(
     tripId: string,
     coords: {

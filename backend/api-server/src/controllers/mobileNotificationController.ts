@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { parseHealth, upsertDriverDevice } from './mobilePhoneController';
+import { visibleNotificationMessage } from '../services/pushNotificationService';
 
 export const getMobileNotifications = async (req: Request, res: Response) => {
   const driverId = (req as any).user?.driver_id;
@@ -13,7 +14,7 @@ export const getMobileNotifications = async (req: Request, res: Response) => {
       take: 50,
     });
 
-    res.json({ success: true, data: notifications });
+    res.json({ success: true, data: notifications.map((n) => ({ ...n, message: visibleNotificationMessage(n.message) })) });
   } catch (error) {
     res.status(500).json({ success: false, error: { message: 'Internal server error' } });
   }

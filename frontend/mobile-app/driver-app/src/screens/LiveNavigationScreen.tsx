@@ -164,7 +164,6 @@ const LiveNavigationScreen = () => {
 
 
 
-  const lastPostTimeRef = useRef<number>(0);
 
   // Stream live position to backend and track distance to the destination.
   useEffect(() => {
@@ -228,19 +227,9 @@ const LiveNavigationScreen = () => {
             speedKph: speedMs != null ? Math.round(speedMs * 3.6) : null,
           }));
 
-          // Send throttled location update to backend every 15 seconds
-          const now = Date.now();
-          if (trip?.id && now - lastPostTimeRef.current >= 15000) {
-            lastPostTimeRef.current = now;
-            tripService.sendLocationUpdate(trip.id, {
-              latitude: lat,
-              longitude: lng,
-              speed_kph: loc.coords.speed != null && loc.coords.speed >= 0 ? loc.coords.speed * 3.6 : null,
-              heading_deg: loc.coords.heading != null && loc.coords.heading >= 0 ? loc.coords.heading : null,
-              accuracy_m: loc.coords.accuracy != null ? loc.coords.accuracy : null,
-              recorded_at: new Date(loc.timestamp).toISOString(),
-            });
-          }
+          // This watch only moves the map. GPS goes to the server from the
+          // trip location service (DriverLiveTracking), which keeps running
+          // when the driver leaves this screen or the app.
 
           if (activeStop && isValidCoordinate(activeStop.location_lat, activeStop.location_lng)) {
             setDistanceToTarget(distanceMeters(lat, lng, activeStop.location_lat, activeStop.location_lng));

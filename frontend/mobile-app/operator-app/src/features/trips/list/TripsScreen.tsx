@@ -28,7 +28,7 @@ import {
   dayLabel, dayRange, driverNameOf, driverPhoneOf, groupByDay, needsAttention, phaseOf, tripDayIso, type TimeFmt,
 } from './tripListModel';
 
-const INK = '#2B2A2B';
+const INK = '#3E3C3D';
 const MUTED = '#5F5F6E';
 const PAGE = '#F4F5F8';
 

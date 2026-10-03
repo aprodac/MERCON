@@ -18,7 +18,7 @@ export function FleetUtilizationCard({ category, className }: FleetUtilizationCa
       </View>
 
       <View className="items-center">
-        <Text className="text-sm font-bold text-gray-900">{category.assetType}</Text>
+        <Text className="text-sm font-bold text-[#3E3C3D]">{category.assetType}</Text>
         <Text className="text-[11px] text-gray-500">{category.totalTrucks} trucks total</Text>
       </View>
 

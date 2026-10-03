@@ -103,7 +103,7 @@ export function toQuotationListItem(raw: RawQuotation): QuotationListItem {
 
 export function formatCurrency(amount: number | null | undefined, currency = 'SAR'): string {
   if (amount === null || amount === undefined || isNaN(amount)) return '—';
-  return `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `${currency} ${amount.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
 export function formatValidityRange(validFrom: string | null, validTo: string | null): string {

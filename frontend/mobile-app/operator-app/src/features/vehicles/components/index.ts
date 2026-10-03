@@ -8,3 +8,4 @@ export * from './VehiclePagination';
 export * from './FilterBottomSheet';
 export * from './SortDropdown';
 export * from './LoadingSkeleton';
+export * from './VehicleStatusTabs';

@@ -48,7 +48,7 @@ export function DashboardMetricCard({
     >
       {/* Left — title, value, view all */}
       <View className={`justify-start gap-2 ${image ? 'w-[52%] pr-1.5' : 'w-full'}`}>
-        <Text numberOfLines={2} className="text-[15px] font-semibold leading-[19px] text-gray-900">
+        <Text numberOfLines={2} className="text-[15px] font-semibold leading-[19px] text-[#3E3C3D]">
           {title}
         </Text>
 
