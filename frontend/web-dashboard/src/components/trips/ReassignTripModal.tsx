@@ -26,6 +26,14 @@ interface ReassignTripModalProps {
   initialMode?: ReassignMode;
 }
 
+/** The API's codes, in words. */
+const REASSIGN_ERRORS: Record<string, string> = {
+  NEW_DRIVER_UNAVAILABLE: 'That driver is on another trip right now. Pick a free driver.',
+  DRIVER_UNAVAILABLE: 'That driver is on another trip right now. Pick a free driver.',
+  VEHICLE_UNAVAILABLE: 'That truck is on another trip or in the workshop. Pick a free truck.',
+  TRIP_OR_DRIVER_NOT_FOUND: 'This trip has no driver yet — use Assign instead.',
+};
+
 export function ReassignTripModal({
   isOpen,
   onClose,
@@ -146,7 +154,8 @@ export function ReassignTripModal({
       onClose();
     },
     onError: (err: any) => {
-      const msg = err.response?.data?.error?.message || err.message || 'Failed to reassign trip asset';
+      const raw = err.response?.data?.error?.message || err.message || 'Failed to reassign trip asset';
+      const msg = REASSIGN_ERRORS[raw] || raw;
       setErrorMsg(msg);
       toast.error(msg);
     },
@@ -174,6 +183,26 @@ export function ReassignTripModal({
         return;
       }
       payload.vehicle_id = selectedVehicleId;
+    }
+
+    // Picking who is already on the trip changes nothing (and used to be logged as a swap).
+    const sameDriver = payload.driver_id && payload.driver_id === trip?.driver?.id;
+    const sameTruck = payload.vehicle_id && payload.vehicle_id === trip?.vehicle?.id;
+    if (mode === 'driver' && sameDriver) {
+      setErrorMsg('This driver is already on the trip — pick a different driver.');
+      return;
+    }
+    if (mode === 'truck' && sameTruck) {
+      setErrorMsg('This truck is already on the trip — pick a different truck.');
+      return;
+    }
+    if (mode === 'both') {
+      if (sameDriver && sameTruck) {
+        setErrorMsg('Both are already on the trip — pick a different driver or truck.');
+        return;
+      }
+      if (sameDriver) delete payload.driver_id;
+      if (sameTruck) delete payload.vehicle_id;
     }
 
     if (!payload.driver_id && !payload.vehicle_id) {

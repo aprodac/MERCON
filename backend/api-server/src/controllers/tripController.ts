@@ -328,6 +328,13 @@ export const getTrips = async (req: Request, res: Response) => {
       }
     }
 
+    // Finished on or after this time — a late trip completed today counts as
+    // done today, whatever day it was planned for (start_date filters on the plan).
+    const endedSince = typeof req.query.ended_since === 'string' ? new Date(req.query.ended_since) : null;
+    if (endedSince && !isNaN(endedSince.getTime())) {
+      whereClause.actual_end = { gte: endedSince };
+    }
+
     // Search conditions live in AND alongside the date window — one entry per
     // typed word, so every word has to match something on the trip.
     if (searchAnd.length > 0) {

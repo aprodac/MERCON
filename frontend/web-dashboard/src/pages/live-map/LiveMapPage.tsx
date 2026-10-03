@@ -174,7 +174,9 @@ export default function LiveMapPage() {
     queryFn: async () =>
       (await tripService.getAll({
         status: 'Completed,Invoiced',
-        start_date: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+        // Finished in the last 3 days. Filtering on the planned start hid a late trip
+        // completed today (planned last week), so "Completed" looked like it hadn't saved.
+        ended_since: new Date(Date.now() - 3 * 86_400_000).toISOString(),
         per_page: 500,
       })).data ?? [],
     refetchInterval: 60_000,

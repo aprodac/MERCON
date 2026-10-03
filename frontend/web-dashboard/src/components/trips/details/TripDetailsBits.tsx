@@ -351,6 +351,7 @@ export function FinancialSummary({
   onCharges,
   onTripCosts,
   addTripCostHref,
+  costsEnabled = true,
 }: {
   f: FinancialFigures;
   onCharges: () => void;
@@ -358,10 +359,12 @@ export function FinancialSummary({
   onTripCosts?: () => void;
   /** Record an expense against this trip; absent for subcontracted trips. */
   addTripCostHref?: string;
+  /** Costs come from the Expenses module — with it switched off there is nothing to show or add. */
+  costsEnabled?: boolean;
 }) {
   const payout = f.driverPayout + f.coDriverPayout;
   const tripCosts = f.tripCosts ?? 0;
-  const showCosts = !f.is3PL;
+  const showCosts = !f.is3PL && costsEnabled;
   const total = Math.max(payout + f.charges + (showCosts ? tripCosts : 0) + Math.max(f.margin, 0), 1);
   const settled = f.balanceDue <= 0;
   const parts = [
@@ -404,7 +407,7 @@ export function FinancialSummary({
                   {p.label}
                 </button>
               ) : (
-                <span className="truncate">{p.label}</span>
+                <span className="truncate" title={p.key === 'costs' ? 'Fuel, tolls and other expenses recorded against this trip' : undefined}>{p.label}</span>
               )}
               {p.key === 'costs' && addTripCostHref && (
                 <Link

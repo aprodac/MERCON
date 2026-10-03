@@ -371,6 +371,8 @@ export interface TripFilters {
   date_filter?: string;
   start_date?: string;
   end_date?: string;
+  /** Finished (actual_end) on or after this ISO time — unlike start_date, which filters on the plan. */
+  ended_since?: string;
   page?: number;
   per_page?: number;
   /** Leave out the customer logo on each row (for callers that don't show it). */

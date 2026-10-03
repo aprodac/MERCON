@@ -37,6 +37,7 @@ import TripStopsPanel from '@/components/trips/details/TripStopsPanel';
 import { DriverPhoneLine, TripDriverTrailList, currentAcknowledgement } from '@/components/trips/details/TripDriverTrail';
 import { driverPhoneKey } from '@/components/drivers/phone/DriverPhoneSheet';
 import { driverPhoneService } from '@/services/driverPhoneService';
+import { useModuleEnabled } from '@/components/auth/RequireModule';
 import { Banner, FinancialSummary, PaperworkSection, PreTripChecks, TripSummary, TruckDriverOverlay } from '@/components/trips/details/TripDetailsBits';
 import { statusChip, tripPhaseOf } from '@/components/trips/details/tripStatus';
 import { fleetLiveService } from '@/services/fleetLiveService';
@@ -109,6 +110,8 @@ function deriveTripType(trip: any): string {
 export default function TripDetailsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  // Trip costs are Expenses records; with that module off its pages bounce to the landing page.
+  const expensesEnabled = useModuleEnabled('expenses');
   const queryClient = useQueryClient();
   const tz = useDeploymentTimezone();
 
@@ -662,6 +665,7 @@ export default function TripDetailsPage() {
                 onCharges={() => setIsLaborModalOpen(true)}
                 onTripCosts={() => navigate(tripExpensesCount > 0 ? `/expenses?trip=${trip.id}&preset=any` : `/expenses/new?trip=${trip.id}&back=${encodeURIComponent(`/trips/${trip.id}`)}`)}
                 addTripCostHref={is3PL ? undefined : `/expenses/new?trip=${trip.id}&back=${encodeURIComponent(`/trips/${trip.id}`)}`}
+                costsEnabled={expensesEnabled}
               />
             </div>
           </div>
