@@ -270,6 +270,7 @@ export function useTripSubmission(
       thirdPartyProviderId,
       thirdPartyDriverName,
       thirdPartyCost,
+      thirdPartyVehiclePlate,
       selectedDates,
       toUtcIso,
     })
@@ -326,6 +327,7 @@ export function useTripSubmission(
       thirdPartyProviderId,
       thirdPartyDriverName,
       thirdPartyCost,
+      thirdPartyVehiclePlate,
       selectedDates,
       toUtcIso,
     });
@@ -334,6 +336,15 @@ export function useTripSubmission(
       const onStep2 = isMonthly && (first.field === 'selectedDates' || (first.section === 'assignment' && first.field !== 'thirdPartyCost'));
       setContractStep(onStep2 ? 2 : 1);
       toast.error(first.message);
+      if (first.field === 'thirdPartyVehiclePlate') {
+        // Point at the field, not just a toast.
+        setFieldErrors((prev) => ({ ...prev, thirdPartyVehiclePlate: true }));
+        setTimeout(() => {
+          const el = document.getElementById('third-party-vehicle-plate');
+          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          (el as HTMLInputElement | null)?.focus();
+        }, 100);
+      }
       return false;
     }
 

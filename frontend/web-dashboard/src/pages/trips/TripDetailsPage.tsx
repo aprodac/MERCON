@@ -12,7 +12,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/button';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import ConfirmModal from '@/components/ui/ConfirmModal';
-import UploadDocumentModal from '@/components/ui/UploadDocumentModal';
+import TripUploadDialog from '@/components/trips/details/TripUploadDialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import {
@@ -886,16 +886,13 @@ export default function TripDetailsPage() {
 
       {/* ── Upload Document Modal ── */}
       {trip && (
-        <UploadDocumentModal
-          isOpen={isUploadModalOpen}
-          onClose={() => setIsUploadModalOpen(false)}
-          entityType="Trip"
-          entityId={trip.id}
-          docType={uploadDocType}
-          onUploadSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['trip', id] });
-            queryClient.invalidateQueries({ queryKey: ['documents', 'Trip', id] });
-          }}
+        // Trip uploads: one step, filed under the right stop (the full document
+        // vault form asked for owner, type and expiry dates and lost POD photos).
+        <TripUploadDialog
+          open={isUploadModalOpen}
+          onOpenChange={setIsUploadModalOpen}
+          trip={trip as any}
+          defaultKind={trip.status === 'Completed' || trip.status === 'Invoiced' ? 'POD' : uploadDocType === 'Waybill' ? 'Waybill' : 'POD'}
         />
       )}
 

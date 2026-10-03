@@ -57,7 +57,7 @@ const CUSTOMER_EXPORT_FILTERS: ExportFilter<Customer>[] = [
 ];
 
 /** Quick views across the whole customer list (filtered server-side). */
-type CustomerView = 'all' | 'active' | 'inactive' | 'live' | 'balance';
+type CustomerView = 'all' | 'active' | 'inactive' | 'live' | 'balance' | 'overdue';
 
 const VIEW_FILTERS: Record<CustomerView, Partial<CustomerFilters>> = {
   all: {},
@@ -65,6 +65,7 @@ const VIEW_FILTERS: Record<CustomerView, Partial<CustomerFilters>> = {
   inactive: { is_active: false },
   live: { live: true },
   balance: { has_balance: true },
+  overdue: { overdue: true },
 };
 
 type CustomerSort = 'trips' | 'latest' | 'oldest' | 'name_asc' | 'name_desc';
@@ -207,12 +208,16 @@ export default function CustomerListPage() {
     { id: 'inactive', label: 'Inactive', count: summary?.inactive },
     { id: 'live', label: 'On the road', count: summary?.live_customers },
     // Invoices live in Finance; with it off there's nothing to owe on.
-    ...(financeEnabled ? [{ id: 'balance' as CustomerView, label: 'Owe money', count: summary?.outstanding.customers }] : []),
+    ...(financeEnabled ? [
+      { id: 'balance' as CustomerView, label: 'Owe money', count: summary?.outstanding.customers },
+      { id: 'overdue' as CustomerView, label: 'Overdue', count: summary?.overdue.customers },
+    ] : []),
   ];
 
   const emptyText =
     view === 'live' ? 'No customer has a truck on the road right now.'
       : view === 'balance' ? 'No customer owes money on issued invoices.'
+      : view === 'overdue' ? 'Nothing is past due. Every issued invoice is within its terms.'
         : debouncedSearch ? `Nothing matches “${debouncedSearch}”.`
           : 'Add your first customer to start creating trips.';
 
@@ -262,7 +267,8 @@ export default function CustomerListPage() {
             value={summary ? money(summary.overdue.amount) : '—'}
             sub={summary ? (summary.overdue.amount > 0 ? `${summary.overdue.customers} customer${summary.overdue.customers === 1 ? '' : 's'} past due` : 'Nothing past due') : 'Loading…'}
             subTone={summary && summary.overdue.amount > 0 ? 'rose' : undefined}
-            onClick={financeEnabled ? () => navigate('/finance/invoices?tab=overdue') : undefined}
+            active={view === 'overdue'}
+            onClick={() => changeView('overdue')}
           />
           </>}
         </div>

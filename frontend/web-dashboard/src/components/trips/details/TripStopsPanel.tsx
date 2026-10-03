@@ -15,6 +15,7 @@ import type { TripPhase } from '@/services/fleetLiveService';
 import { tripService, type Trip, type TripStop } from '@/services/tripService';
 import PinChip, { isExactPin } from '@/components/locations/PinChip';
 import SetPinDialog from '@/components/locations/SetPinDialog';
+import { FileThumb } from './TripDetailsBits';
 import { STAGE_LABEL, minutesLate, timeReviewOf, toLightboxItems } from './stopEvidence';
 import TripTimesReviewDialog, { isAppScreenshot, isPendingScreenshot } from './TripTimesReviewDialog';
 
@@ -277,7 +278,7 @@ function MediaRow({ update, onOpen, onSend }: { update: DriverUpdate; onOpen: (i
             {m.kind === 'video' ? (
               <span className="flex size-full items-center justify-center bg-charcoal-strong text-white"><Play className="size-3.5 fill-current" /></span>
             ) : (
-              <img src={resolveFileUrl(m.url)} alt="" loading="lazy" className="size-full object-cover" />
+              <FileThumb url={resolveFileUrl(m.url)} mime={m.mime ?? 'image/jpeg'} />
             )}
             {i === 3 && update.items.length > 4 && (
               <span className="absolute inset-0 flex items-center justify-center bg-charcoal-strong/60 text-[11px] font-semibold text-white">+{update.items.length - 3}</span>

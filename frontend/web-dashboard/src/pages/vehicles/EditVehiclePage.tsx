@@ -1,3 +1,4 @@
+import { normalizeSaudiPlate } from '@mercon/shared-types';
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -179,14 +180,13 @@ export default function EditVehiclePage() {
     },
   });
 
+  // One rule for every plate in the app (shared with the API): "dra 6484" → "DRA-6484".
   const cleanSaudiPlate = (plate: string) => {
-    return plate.trim().toUpperCase();
+    const checked = normalizeSaudiPlate(plate);
+    return checked.ok ? checked.plate : plate.trim().toUpperCase();
   };
 
-  const validateSaudiPlate = (plate: string) => {
-    const clean = cleanSaudiPlate(plate);
-    return clean.length >= 2 && /^[A-Z0-9\s_-]{2,20}$/i.test(clean);
-  };
+  const validateSaudiPlate = (plate: string) => normalizeSaudiPlate(plate).ok;
 
   const tractorCap = Number(formData.capacity_kg) || 0;
   const trailerCap = hasTrailer ? (Number(formData.trailer_capacity_kg) || 0) : 0;
@@ -202,7 +202,7 @@ export default function EditVehiclePage() {
     setError(null);
 
     if (!formData.plate_number.trim()) return setError('Plate number is required');
-    if (!isPlateValid) return setError('Invalid vehicle plate number (e.g. DRA-6484 or 1234 ABC).');
+    if (!isPlateValid) return setError((normalizeSaudiPlate(formData.plate_number) as { reason?: string }).reason || 'Check the plate number, like DRA-6484.');
     if (!formData.capacity_kg || tractorCap <= 0) return setError('Valid tractor capacity (kg) is required');
     if (tractorCap > 60000) return setError('Payload is in kilograms and can be at most 60,000 (e.g. 20000 for a 20-ton truck).');
     if (hasTrailer && !formData.trailer_number.trim()) return setError('Trailer plate number is required when trailer is attached');

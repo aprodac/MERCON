@@ -982,6 +982,7 @@ export function useCreateTripForm() {
       thirdPartyProviderId,
       thirdPartyDriverName,
       thirdPartyCost,
+      thirdPartyVehiclePlate,
       selectedDates,
       toUtcIso: (date, time) => localDateTimeToUtcIso(date, time, tz),
     });

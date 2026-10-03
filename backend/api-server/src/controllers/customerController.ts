@@ -104,7 +104,7 @@ export const getCustomerSummary = async (_req: Request, res: Response) => {
 
 export const getCustomers = async (req: Request, res: Response) => {
   try {
-    const { is_active, search, page = '1', per_page = '20', live, has_balance, sort_by, sort_dir } = req.query;
+    const { is_active, search, page = '1', per_page = '20', live, has_balance, overdue, sort_by, sort_dir } = req.query;
     
     const pageNumber = parseInt(page as string);
     const limit = parseInt(per_page as string);
@@ -124,6 +124,10 @@ export const getCustomers = async (req: Request, res: Response) => {
     }
     if (has_balance === 'true') {
       whereClause.invoices = { some: { ...statusWhere('unpaid'), balance_due: { gt: 0 } } };
+    }
+    // The Overdue card: customers with an issued invoice past its due date.
+    if (overdue === 'true') {
+      whereClause.invoices = { some: { ...statusWhere('overdue', new Date()), balance_due: { gt: 0 } } };
     }
 
     // Picker shape — same contract as `mode=lookup` on drivers/vehicles. Drops
