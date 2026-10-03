@@ -47,13 +47,34 @@ export function dayCellState(trips: MonthlyBoardTrip[]): CellState {
   return PRIORITY.find((s) => states.has(s)) ?? 'planned';
 }
 
+/**
+ * Strong colour only where someone has to act (gap, in progress); finished
+ * days stay soft so a completed month doesn't drown the exceptions.
+ * Cells use `ring` for their own outline — selection uses `outline`.
+ */
 export const CELL_STYLES: Record<CellState, { cell: string; dot: string; label: string }> = {
-  done: { cell: 'bg-emerald-500 hover:bg-emerald-600', dot: 'bg-emerald-500', label: 'Completed' },
-  active: { cell: 'bg-blue-500 hover:bg-blue-600', dot: 'bg-blue-500', label: 'In progress' },
-  planned: { cell: 'bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-500', dot: 'bg-slate-300 dark:bg-slate-600', label: 'Planned' },
-  gap: { cell: 'bg-amber-400 hover:bg-amber-500', dot: 'bg-amber-400', label: 'No driver or truck' },
-  cancelled: { cell: 'bg-rose-400 hover:bg-rose-500', dot: 'bg-rose-400', label: 'Cancelled' },
+  done: {
+    cell: 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-200 dark:hover:bg-emerald-900',
+    dot: 'bg-emerald-100 ring-1 ring-inset ring-emerald-300 dark:bg-emerald-900/50 dark:ring-emerald-700',
+    label: 'Completed',
+  },
+  active: { cell: 'bg-blue-500 text-white hover:bg-blue-600', dot: 'bg-blue-500', label: 'In progress' },
+  planned: {
+    cell: 'bg-white text-slate-600 ring-1 ring-inset ring-slate-300 hover:ring-slate-500 dark:bg-transparent dark:text-slate-300 dark:ring-slate-600',
+    dot: 'bg-white ring-1 ring-inset ring-slate-300 dark:bg-transparent dark:ring-slate-600',
+    label: 'Planned',
+  },
+  gap: { cell: 'bg-amber-400 text-amber-950 hover:bg-amber-500', dot: 'bg-amber-400', label: 'No driver or truck' },
+  cancelled: {
+    cell: 'text-rose-700 bg-[repeating-linear-gradient(45deg,#fecdd3_0_2px,transparent_2px_5px)] hover:bg-rose-100',
+    dot: 'bg-[repeating-linear-gradient(45deg,#fecdd3_0_2px,transparent_2px_4px)] ring-1 ring-inset ring-rose-200',
+    label: 'Cancelled',
+  },
 };
+
+/** Past day still Draft/Scheduled: a red frame on top of (or instead of) the planned outline. */
+export const OVERDUE_CELL = 'bg-white text-rose-700 ring-2 ring-inset ring-rose-500 dark:bg-transparent';
+export const OVERDUE_RING = 'ring-2 ring-inset ring-rose-500';
 
 export function groupKeyOf(customerId: string, trip: MonthlyBoardTrip): string {
   const lineType = trip.rate_category || trip.billing_type || 'Single Trip';
@@ -151,12 +172,46 @@ export interface Booking {
   ref: string;
   customer: string;
   route: string;
+  /** Customer + origin → destination: repeat runs of one line share it. */
+  lineKey: string;
+  start: string | null;
+  end: string | null;
+}
+
+/** The bits of a trip needed to test it against other bookings. */
+export interface Slot {
+  tripId: string;
+  lineKey: string;
+  start: string | null;
+  end: string | null;
 }
 
 export type BookingIndex = Map<string, Booking[]>;
 
 export const driverDayKey = (driverId: string, date: string) => `d:${driverId}|${date}`;
 export const vehicleDayKey = (vehicleId: string, date: string) => `v:${vehicleId}|${date}`;
+
+const lineKeyOf = (customerId: string, trip: MonthlyBoardTrip) =>
+  `${customerId}|${formatLocationClean(trip.origin)}|${formatLocationClean(trip.destination)}`;
+
+export const slotOf = (customerId: string, trip: MonthlyBoardTrip): Slot => ({
+  tripId: trip.id,
+  lineKey: lineKeyOf(customerId, trip),
+  start: trip.planned_start,
+  end: trip.planned_end,
+});
+
+/**
+ * Same driver or truck on two trips the same day is only a problem when the
+ * trips can't both happen: their planned windows overlap, or (without times)
+ * they're for different lines of work. Several runs of one line a day — 3–4
+ * Riyadh locals for the same customer — are normal and not flagged.
+ */
+function clashes(a: Slot, b: Booking): boolean {
+  if (a.tripId === b.tripId) return false;
+  if (a.start && a.end && b.start && b.end) return a.start < b.end && b.start < a.end;
+  return a.lineKey !== b.lineKey;
+}
 
 /** Every non-cancelled trip in the month, indexed by driver-day and truck-day. */
 export function buildBookings(companies: MonthlyBoardCompany[]): BookingIndex {
@@ -174,7 +229,10 @@ export function buildBookings(companies: MonthlyBoardCompany[]): BookingIndex {
           tripId: trip.id,
           ref: trip.ref_id ?? 'Trip',
           customer: company.customer.name,
-          route: `${formatLocationClean(trip.origin)} → ${formatLocationClean(trip.destination)}`,
+          route: `${displayPlace(formatLocationClean(trip.origin))} → ${displayPlace(formatLocationClean(trip.destination))}`,
+          lineKey: lineKeyOf(company.customer.id, trip),
+          start: trip.planned_start,
+          end: trip.planned_end,
         };
         if (trip.driver) add(driverDayKey(trip.driver.id, trip.date), b);
         if (trip.vehicle) add(vehicleDayKey(trip.vehicle.id, trip.date), b);
@@ -184,16 +242,23 @@ export function buildBookings(companies: MonthlyBoardCompany[]): BookingIndex {
   return index;
 }
 
-/** Other trips the same driver / truck is on that day. */
-export function otherBookings(index: BookingIndex, key: string, tripId: string): Booking[] {
-  return (index.get(key) ?? []).filter((b) => b.tripId !== tripId);
+/** Other trips that day the driver / truck under `key` can't also do. */
+export function otherBookings(index: BookingIndex, key: string, slot: Slot): Booking[] {
+  return (index.get(key) ?? []).filter((b) => clashes(slot, b));
 }
 
-/** True when this trip shares its driver or truck with another trip on the same day. */
-export function isDoubleBooked(index: BookingIndex, trip: MonthlyBoardTrip): boolean {
+/** True when this trip's driver or truck is genuinely double-booked that day. */
+export function isDoubleBooked(index: BookingIndex, customerId: string, trip: MonthlyBoardTrip): boolean {
   if (trip.status === 'Cancelled') return false;
+  const slot = slotOf(customerId, trip);
   return (
-    (!!trip.driver && otherBookings(index, driverDayKey(trip.driver.id, trip.date), trip.id).length > 0) ||
-    (!!trip.vehicle && otherBookings(index, vehicleDayKey(trip.vehicle.id, trip.date), trip.id).length > 0)
+    (!!trip.driver && otherBookings(index, driverDayKey(trip.driver.id, trip.date), slot).length > 0) ||
+    (!!trip.vehicle && otherBookings(index, vehicleDayKey(trip.vehicle.id, trip.date), slot).length > 0)
   );
+}
+
+/** "khamis mushayt" → "Khamis Mushayt"; anything already cased (JED DC, Riyadh) is left alone. */
+export function displayPlace(place: string): string {
+  if (!place || place !== place.toLowerCase()) return place;
+  return place.replace(/(^|[\s\-/(])(\p{L})/gu, (_, sep: string, c: string) => sep + c.toUpperCase());
 }
