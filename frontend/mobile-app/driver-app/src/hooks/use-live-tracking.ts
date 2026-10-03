@@ -15,10 +15,12 @@ import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import * as Location from 'expo-location';
 import { tripService, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
-import { isBackgroundTrackingAvailable, startTripTracking, stopTripTracking } from '../services/tripLocationTask';
+import { isBackgroundTrackingAvailable, rearmIfStale, startTripTracking, stopTripTracking } from '../services/tripLocationTask';
 
 const UPDATE_INTERVAL_MS = 15_000;
 const MIN_DISTANCE_M = 10;
+/** How often a trip under way checks that locations are still arriving. */
+const WATCHDOG_MS = 60_000;
 
 /** Tracking runs from Start Trip until the trip is done. */
 export function isTripUnderWay(trip: MobileTrip | null): boolean {
@@ -52,7 +54,14 @@ export function useLiveTracking(trip: MobileTrip | null, driverId: string | null
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') startTripTracking(tripId).catch(() => {});
     });
-    return () => sub.remove();
+    // The location request can die without the service stopping (the phone
+    // killed Google Play services mid-trip); the JS timer keeps running in the
+    // background while the service holds the app alive.
+    const watchdog = setInterval(() => { rearmIfStale().catch(() => {}); }, WATCHDOG_MS);
+    return () => {
+      sub.remove();
+      clearInterval(watchdog);
+    };
   }, [background, active, tripId, tripKnown]);
 
   // Web / no native module: foreground-only watch.

@@ -32,6 +32,8 @@ const QUEUE_FILE = 'trip-location-queue.json';
 const MAX_QUEUED = 1000;
 const UPDATE_INTERVAL_MS = 15_000;
 const MIN_DISTANCE_M = 10;
+/** No fix for this long during a trip → ask for locations again (see rearmIfStale). */
+const STALE_AFTER_MS = 3 * 60_000;
 
 type TaskManagerModule = typeof import('expo-task-manager');
 type FileSystemModule = typeof import('expo-file-system/legacy');
@@ -108,6 +110,15 @@ function toPoint(tripId: string, loc: Location.LocationObject): QueuedPoint {
  */
 let startedThisRun = false;
 
+/**
+ * When the last fix arrived. On a real phone (Realme, Android 10) the system
+ * killed Google Play services ~15 min into a trip; the location request died
+ * with it, the "sharing your trip location" notice stayed up, and no fix ever
+ * came again — not even after reopening the app, because the service still
+ * counted as running. A stale clock is how that is noticed.
+ */
+let lastFixAt = 0;
+
 /** One task run at a time: a second batch waits instead of sending the queue twice. */
 let sending: Promise<void> = Promise.resolve();
 
@@ -143,10 +154,51 @@ if (isBackgroundTrackingAvailable()) {
     if (error) return;
     const locations = (data as { locations?: Location.LocationObject[] } | undefined)?.locations;
     if (!locations?.length) return;
+    lastFixAt = Date.now();
     const tripId = await SecureStore.getItemAsync(ACTIVE_TRIP_KEY);
     if (!tripId) return;
     await sendPoints(locations.map((l) => toPoint(tripId, l)));
   });
+}
+
+function locationOptions(): Location.LocationTaskOptions {
+  return {
+    accuracy: Location.Accuracy.High,
+    timeInterval: UPDATE_INTERVAL_MS,
+    distanceInterval: MIN_DISTANCE_M,
+    deferredUpdatesInterval: UPDATE_INTERVAL_MS,
+    pausesUpdatesAutomatically: false,
+    activityType: Location.ActivityType.AutomotiveNavigation,
+    showsBackgroundLocationIndicator: true,
+    foregroundService: {
+      notificationTitle: 'MERCON is sharing your trip location',
+      notificationBody: 'Your operator can see where you are until you finish the trip.',
+      notificationColor: '#FA634E',
+      killServiceOnDestroy: false,
+    },
+  };
+}
+
+/**
+ * Asks for locations again when none arrived for STALE_AFTER_MS while this
+ * run's service is up. Registering the running task again makes expo-location
+ * drop and re-send its request to the phone's location provider; from the
+ * background it leaves the foreground service alone (it may not be restarted
+ * there), so this is safe to call from a timer. A parked truck also goes quiet
+ * (updates need 10 m of movement) — re-asking then is cheap and harmless.
+ */
+export async function rearmIfStale(): Promise<void> {
+  if (!isBackgroundTrackingAvailable() || !startedThisRun) return;
+  if (Date.now() - lastFixAt < STALE_AFTER_MS) return;
+  try {
+    if (!(await SecureStore.getItemAsync(ACTIVE_TRIP_KEY))) return;
+    if (!(await Location.hasStartedLocationUpdatesAsync(TRIP_LOCATION_TASK).catch(() => false))) return;
+    lastFixAt = Date.now(); // one attempt per stale period, not one per tick
+    await Location.startLocationUpdatesAsync(TRIP_LOCATION_TASK, locationOptions());
+    console.warn('[TripLocation] No location for a while — asked the phone for locations again');
+  } catch (err) {
+    console.warn('[TripLocation] Could not re-arm trip tracking:', err);
+  }
 }
 
 /**
@@ -168,6 +220,7 @@ export async function startTripTracking(tripId: string, { ask = false }: { ask?:
     if (running && startedThisRun) {
       // Same service; a new trip only changes which trip it reports for.
       if (current !== tripId) await SecureStore.setItemAsync(ACTIVE_TRIP_KEY, tripId);
+      await rearmIfStale();
       return true;
     }
 
@@ -179,22 +232,9 @@ export async function startTripTracking(tripId: string, { ask = false }: { ask?:
     // Restored from an earlier run (see startedThisRun): restart it while on screen.
     if (running) await Location.stopLocationUpdatesAsync(TRIP_LOCATION_TASK).catch(() => {});
 
-    await Location.startLocationUpdatesAsync(TRIP_LOCATION_TASK, {
-      accuracy: Location.Accuracy.High,
-      timeInterval: UPDATE_INTERVAL_MS,
-      distanceInterval: MIN_DISTANCE_M,
-      deferredUpdatesInterval: UPDATE_INTERVAL_MS,
-      pausesUpdatesAutomatically: false,
-      activityType: Location.ActivityType.AutomotiveNavigation,
-      showsBackgroundLocationIndicator: true,
-      foregroundService: {
-        notificationTitle: 'MERCON is sharing your trip location',
-        notificationBody: 'Your operator can see where you are until you finish the trip.',
-        notificationColor: '#FA634E',
-        killServiceOnDestroy: false,
-      },
-    });
+    await Location.startLocationUpdatesAsync(TRIP_LOCATION_TASK, locationOptions());
     startedThisRun = true;
+    lastFixAt = Date.now();
     return true;
   } catch (err) {
     console.warn('[TripLocation] Could not start trip tracking:', err);

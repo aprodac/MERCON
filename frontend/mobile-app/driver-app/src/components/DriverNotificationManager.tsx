@@ -220,6 +220,10 @@ export function DriverNotificationManager() {
     const appStateSub = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
         connectAndListen();
+        // Alerts sent while away (cancelled, reassigned) only arrive as pushes;
+        // refetch so the screen matches the office without a manual refresh.
+        // Not after 'inactive' alone — system dialogs cause that.
+        if (appStateRef.current === 'background') queryClient.invalidateQueries();
       } else if (nextAppState.match(/inactive|background/)) {
         cleanupSocket();
       }
