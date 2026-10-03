@@ -21,8 +21,13 @@ const CLIENT_PROFILES = {
     // Slug stays 'mercon-app': it is bound to the existing EAS project (projectId below).
     slug: 'mercon-app',
     scheme: 'mercondriver',
+    // iOS and Android IDs differ on purpose:
+    // - iOS uses the new App Store record (the old tech.mercon.driver record is not ours to use).
+    // - Android must stay tech.mercon.driver: the Play Console app, its upload key (EAS keystore,
+    //   SHA-1 E9:F7:09:B1…) and the Firebase/FCM config (google-services.json) are all on it.
+    //   A new package = a new Play listing, a new signing key and no push. See docs/ANDROID_PLAY_RELEASE.md.
     iosBundleIdentifier: 'tech.merconapp.driver',
-    androidPackage: 'tech.merconapp.driver',
+    androidPackage: 'tech.mercon.driver',
     icon: '../shared/assets/images/driver-icon.png',
     splashImage: '../shared/assets/images/merconclosed.png',
     androidAdaptiveForeground: '../shared/assets/images/driver-adaptive-icon.png',
