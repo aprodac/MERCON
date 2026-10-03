@@ -1,30 +1,31 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowRightLeft, Building2, Wallet, AlertTriangle, CheckCircle2, Lock } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AlertCircle, ArrowDownUp, Circle, Loader2, Plus, Wallet, X } from 'lucide-react';
 import { toast } from 'sonner';
+import type { Account, AccountingPeriod, BankAccount } from '@mercon/shared-types';
 
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetFooter,
-} from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { Chip } from '@/components/ui/chip';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import { JournalLinesTable } from '@/components/finance/kit';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { TONE_CLASSES } from '@/components/finance/kit/tones';
 import { formatMoney } from '@/lib/finance';
+import {
+  CONTRA_META, balancesAfter, chargedSide, contraProblems, contraTypeOf, lastChargesAccount, rememberChargesAccount, suggestChargesAccount,
+} from '@/lib/finance/contra';
 import { financeService } from '@/services/financeService';
-import type { BankAccount, AccountingPeriod } from '@mercon/shared-types';
+import { todayIso } from '@/lib/expenses/expenseMeta';
+import { cn } from '@/lib/utils';
 
 interface TransferSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialFromBankAccountId?: string;
   initialToBankAccountId?: string;
+  /** Called after each contra is posted. */
+  onPosted?: () => void;
 }
 
 // Stable tint background per bank name hash
@@ -68,372 +69,356 @@ export function maskAccountNumber(num?: string | null) {
   return `••••${clean.slice(-4)}`;
 }
 
-export const TransferSheet: React.FC<TransferSheetProps> = ({
-  open,
-  onOpenChange,
-  initialFromBankAccountId,
-  initialToBankAccountId,
-}) => {
+/** Small bank / cash avatar used across the contra screens. */
+export function BankAvatar({ bankName, isCash, className }: { bankName?: string | null; isCash?: boolean; className?: string }) {
+  const tint = getBankTint(bankName, isCash);
+  return (
+    <span className={cn('flex size-6 shrink-0 items-center justify-center rounded-md text-[9px] font-bold', tint.bg, tint.text, className)}>
+      {isCash ? <Wallet className="size-3.5" /> : getBankInitials(bankName)}
+    </span>
+  );
+}
+
+const bankLabel = (b: BankAccount) => (b.is_cash ? b.bank_name || 'Cash' : b.bank_name || b.account?.name || 'Bank');
+const balanceOf = (b: BankAccount | null) => Number(b?.book_balance ?? b?.opening_balance ?? 0);
+const label = 'text-[11px] font-medium text-muted-foreground';
+
+/** One side of the contra: the account picker with its balance before → after. */
+function SideCard({
+  title, value, onChange, accounts, exclude, after, warn,
+}: {
+  title: string;
+  value: string;
+  onChange: (id: string) => void;
+  accounts: BankAccount[];
+  exclude?: string;
+  after: number | null;
+  warn?: string | null;
+}) {
+  const acc = accounts.find((a) => a.id === value) ?? null;
+  const before = balanceOf(acc);
+  return (
+    <div className="min-w-0 space-y-1.5 rounded-lg border bg-background p-3">
+      <p className={label}>{title}</p>
+      <Select value={value || undefined} onValueChange={(v) => v && onChange(v)}>
+        <SelectTrigger className="h-10 text-sm" aria-label={title}>
+          <SelectValue placeholder="Choose an account…">
+            {acc && (
+              <span className="flex min-w-0 items-center gap-2">
+                <BankAvatar bankName={acc.bank_name} isCash={acc.is_cash} />
+                <span className="truncate font-medium">{bankLabel(acc)}</span>
+              </span>
+            )}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {accounts.map((a) => (
+            <SelectItem key={a.id} value={a.id} disabled={a.id === exclude} className="text-xs">
+              <span className="flex w-full items-center gap-2">
+                <BankAvatar bankName={a.bank_name} isCash={a.is_cash} />
+                <span className="truncate">{bankLabel(a)}</span>
+                <span className="text-muted-foreground">{a.is_cash ? 'cash' : maskAccountNumber(a.account_number)}</span>
+                <span className="fin-num ml-auto pl-3 text-muted-foreground">{formatMoney(balanceOf(a))}</span>
+              </span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {acc && (
+        <p className="fin-num flex flex-wrap items-center gap-1 text-[11px] text-muted-foreground">
+          {formatMoney(before)}
+          {after !== null && Math.abs(after - before) > 0.005 && (
+            <>
+              <span>→</span>
+              <span className={cn('font-semibold', after < -0.005 ? TONE_CLASSES.negative.fg : after > before ? TONE_CLASSES.positive.fg : 'text-foreground')}>{formatMoney(after)}</span>
+            </>
+          )}
+        </p>
+      )}
+      {warn && <p className={cn('text-[11px]', TONE_CLASSES.warning.fg)}>{warn}</p>}
+    </div>
+  );
+}
+
+/**
+ * New contra entry: money moved between cash and bank or between banks. The type follows from the
+ * two accounts; an optional bank fee posts to an expense account. Posts a journal entry at once.
+ */
+export const TransferSheet: React.FC<TransferSheetProps> = ({ open, onOpenChange, initialFromBankAccountId, initialToBankAccountId, onPosted }) => {
   const queryClient = useQueryClient();
+  const [fromId, setFromId] = useState('');
+  const [toId, setToId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState(todayIso());
+  const [reference, setReference] = useState('');
+  const [memo, setMemo] = useState('');
+  const [showCharges, setShowCharges] = useState(false);
+  const [charges, setCharges] = useState('');
+  const [chargesAccountId, setChargesAccountId] = useState('');
+  const [tried, setTried] = useState(false);
 
-  const [fromBankAccId, setFromBankAccId] = useState<string>('');
-  const [toBankAccId, setToBankAccId] = useState<string>('');
-  const [amount, setAmount] = useState<string>('');
-  const [date, setDate] = useState<string>(new Date().toISOString().split('T')[0]);
-  const [memo, setMemo] = useState<string>('');
+  const { data: bankAccountsRes } = useQuery({ queryKey: ['bankAccounts'], queryFn: financeService.getBankAccounts, enabled: open });
+  const accounts: BankAccount[] = useMemo(() => (bankAccountsRes?.data || []).filter((b) => b.isActive && !b.deletedAt), [bankAccountsRes]);
+  const { data: periodsRes } = useQuery({ queryKey: ['accountingPeriods'], queryFn: () => financeService.getAccountingPeriods(), enabled: open });
+  const openPeriods: AccountingPeriod[] = useMemo(() => (periodsRes?.data || []).filter((p: AccountingPeriod) => p.status === 'Open'), [periodsRes]);
+  const { data: glRes } = useQuery({ queryKey: ['accounts', 'all-active'], queryFn: () => financeService.getAccounts({ include_inactive: false }), enabled: open && showCharges });
+  const expenseAccounts = useMemo(() => ((glRes?.data ?? []) as Account[]).filter((a) => a.account_type === 'Expense' && a.is_postable && a.isActive), [glRes]);
 
-  // Fetch active bank accounts
-  const { data: bankAccountsRes } = useQuery({
-    queryKey: ['bankAccounts'],
-    queryFn: financeService.getBankAccounts,
-  });
-
-  const activeAccounts: BankAccount[] = useMemo(() => {
-    return (bankAccountsRes?.data || []).filter((b) => b.isActive && !b.deletedAt);
-  }, [bankAccountsRes]);
-
-  // Fetch open accounting periods
-  const { data: periodsRes } = useQuery({
-    queryKey: ['accountingPeriods'],
-    queryFn: () => financeService.getAccountingPeriods(),
-  });
-
-  const openPeriods: AccountingPeriod[] = useMemo(() => {
-    return (periodsRes?.data || []).filter((p: AccountingPeriod) => p.status === 'Open');
-  }, [periodsRes]);
-
-  // Set default selections when sheet opens
+  // Starting accounts: the ones asked for, else a cash till and a bank (the usual deposit)
   useEffect(() => {
-    if (open && activeAccounts.length > 0) {
-      if (initialFromBankAccountId) {
-        setFromBankAccId(initialFromBankAccountId);
-        const other = activeAccounts.find((a) => a.id !== initialFromBankAccountId);
-        if (other) setToBankAccId(other.id);
-      } else {
-        if (!fromBankAccId) setFromBankAccId(activeAccounts[0]?.id || '');
-        if (!toBankAccId && activeAccounts.length > 1) {
-          setToBankAccId(activeAccounts[1]?.id || '');
-        }
-      }
-    }
-  }, [open, activeAccounts, initialFromBankAccountId]);
+    if (!open || accounts.length === 0) return;
+    const from = initialFromBankAccountId || accounts.find((a) => a.is_cash)?.id || accounts[0]?.id || '';
+    const to = initialToBankAccountId || accounts.find((a) => a.id !== from && !a.is_cash)?.id || accounts.find((a) => a.id !== from)?.id || '';
+    setFromId((cur) => (cur && accounts.some((a) => a.id === cur) && !initialFromBankAccountId ? cur : from));
+    setToId((cur) => (cur && accounts.some((a) => a.id === cur) && cur !== from && !initialToBankAccountId ? cur : to));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, accounts.length, initialFromBankAccountId, initialToBankAccountId]);
+  useEffect(() => {
+    if (!open) setTried(false);
+  }, [open]);
+  // The charges account: last used, else the best-named expense account
+  useEffect(() => {
+    if (!showCharges || chargesAccountId || expenseAccounts.length === 0) return;
+    const last = lastChargesAccount();
+    setChargesAccountId(expenseAccounts.some((a) => a.id === last) ? last : suggestChargesAccount(expenseAccounts));
+  }, [showCharges, chargesAccountId, expenseAccounts]);
 
-  const fromBankAcc = useMemo(
-    () => activeAccounts.find((a) => a.id === fromBankAccId) || null,
-    [activeAccounts, fromBankAccId]
-  );
-  const toBankAcc = useMemo(
-    () => activeAccounts.find((a) => a.id === toBankAccId) || null,
-    [activeAccounts, toBankAccId]
-  );
-
-  const transferNum = parseFloat(amount) || 0;
-  const fromBookBalance = Number(fromBankAcc?.book_balance ?? fromBankAcc?.opening_balance ?? 0);
-
-  // Check period coverage
-  const isPeriodOpen = useMemo(() => {
+  const from = accounts.find((a) => a.id === fromId) ?? null;
+  const to = accounts.find((a) => a.id === toId) ?? null;
+  const amt = Number(amount) || 0;
+  const fee = showCharges ? Number(charges) || 0 : 0;
+  const type = from && to ? contraTypeOf(Boolean(from.is_cash), Boolean(to.is_cash)) : null;
+  const meta = type ? CONTRA_META[type] : null;
+  const periodOpen = useMemo(() => {
     if (!date) return false;
-    const transferDate = new Date(date);
-    return openPeriods.some((p) => {
-      const s = new Date(p.start_date);
-      const e = new Date(p.end_date);
-      return transferDate >= s && transferDate <= e;
-    });
+    const d = new Date(`${date}T12:00:00`);
+    return openPeriods.some((p) => d >= new Date(p.start_date) && d <= new Date(p.end_date));
   }, [date, openPeriods]);
+  const after = from && to && amt > 0 ? balancesAfter(balanceOf(from), balanceOf(to), amt, fee, Boolean(from.is_cash)) : null;
+  const problems = contraProblems({ fromId, toId, amount: amt, charges: fee, chargesAccountId, periodOpen });
+  const feeFrom = from && to ? (chargedSide(Boolean(from.is_cash)) === 'from' ? from : to) : null;
+  const chargesAccount = expenseAccounts.find((a) => a.id === chargesAccountId);
 
-  // Swap From / To
-  const handleSwap = () => {
-    const temp = fromBankAccId;
-    setFromBankAccId(toBankAccId);
-    setToBankAccId(temp);
+  const reset = (keep: boolean) => {
+    setAmount('');
+    setReference('');
+    setMemo('');
+    setCharges('');
+    setTried(false);
+    if (!keep) setShowCharges(false);
   };
 
-  // Transfer Mutation
-  const transferMutation = useMutation({
+  const mutation = useMutation({
     mutationFn: financeService.transferFunds,
-    onSuccess: (res) => {
-      toast.success('Funds transferred successfully');
-      queryClient.invalidateQueries({ queryKey: ['bankAccounts'] });
-      queryClient.invalidateQueries({ queryKey: ['journalEntries'] });
-      queryClient.invalidateQueries({ queryKey: ['bankAccountTransactions'] });
-      queryClient.invalidateQueries({ queryKey: ['bankAccountBalanceHistory'] });
-      onOpenChange(false);
-      setAmount('');
-      setMemo('');
+    onSuccess: (res, vars) => {
+      const ref = res?.data?.ref_id;
+      toast.success(`${meta?.label ?? 'Contra entry'} posted${ref ? ` · ${ref}` : ''}`);
+      if (vars.charges_account_id) rememberChargesAccount(vars.charges_account_id);
+      ['bankAccounts', 'bank-accounts', 'contra', 'journalEntries', 'bankAccountTransactions', 'bankAccountBalanceHistory', 'finance-reports'].forEach((k) =>
+        queryClient.invalidateQueries({ queryKey: [k] }),
+      );
+      onPosted?.();
     },
     onError: (err: any) => {
-      const msg = err?.response?.data?.error || err?.message || 'Failed to transfer funds';
-      toast.error(msg);
+      const e = err?.response?.data?.error;
+      toast.error((typeof e === 'string' ? e : e?.message) || 'The contra entry could not be posted.');
     },
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!fromBankAcc?.accountId || !toBankAcc?.accountId) {
-      toast.error('Please select valid From and To accounts');
+  const submit = (again: boolean) => {
+    if (mutation.isPending) return;
+    if (problems.length) {
+      setTried(true);
       return;
     }
-    if (fromBankAcc.id === toBankAcc.id) {
-      toast.error('From and To accounts must be different');
-      return;
-    }
-    if (transferNum <= 0) {
-      toast.error('Transfer amount must be greater than zero');
-      return;
-    }
-    if (!isPeriodOpen) {
-      toast.error(`No open accounting period covers date ${date}`);
-      return;
-    }
-
-    transferMutation.mutate({
-      fromAccountId: fromBankAcc.accountId,
-      toAccountId: toBankAcc.accountId,
-      amount: transferNum,
-      date,
-      memo: memo || `Transfer from ${fromBankAcc.bank_name || 'Cash'} to ${toBankAcc.bank_name || 'Cash'}`,
-    });
+    mutation.mutate(
+      {
+        fromAccountId: from!.accountId,
+        toAccountId: to!.accountId,
+        amount: amt,
+        date,
+        reference: reference.trim() || null,
+        memo: memo.trim() || `${meta?.label ?? 'Transfer'}: ${bankLabel(from!)} to ${bankLabel(to!)}`,
+        charges_amount: fee > 0 ? fee : null,
+        charges_account_id: fee > 0 ? chargesAccountId : null,
+      },
+      {
+        onSuccess: () => {
+          reset(again);
+          if (again) document.getElementById('contra-amount')?.focus();
+          else onOpenChange(false);
+        },
+      },
+    );
   };
 
-  // Will post journal preview lines
-  const previewLines = useMemo(() => {
-    if (!fromBankAcc?.account || !toBankAcc?.account || transferNum <= 0) return [];
-    return [
-      {
-        account: toBankAcc.account,
-        debit: transferNum,
-        credit: 0,
-      },
-      {
-        account: fromBankAcc.account,
-        debit: 0,
-        credit: transferNum,
-      },
-    ];
-  }, [fromBankAcc, toBankAcc, transferNum]);
-
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="sm:max-w-[540px] w-full p-0 flex flex-col justify-between overflow-hidden border-l border-border dark:border-border shadow-2xl rounded-l-[24px]">
-        {/* Header */}
-        <SheetHeader className="p-6 border-b border-border dark:border-border bg-card">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-orange-50 dark:bg-orange-950/50 flex items-center justify-center text-[#FA634E] shrink-0 border border-orange-200/60 dark:border-orange-900/40">
-              <ArrowRightLeft className="w-5 h-5" />
-            </div>
-            <div>
-              <SheetTitle className="text-lg font-extrabold text-foreground">
-                Transfer Funds
-              </SheetTitle>
-              <SheetDescription className="text-xs text-muted-foreground dark:text-muted-foreground">
-                Move cash between bank accounts or cash drawers. Posts a 2-line journal entry.
-              </SheetDescription>
-            </div>
+    <Sheet open={open} onOpenChange={(o) => !mutation.isPending && onOpenChange(o)}>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-[560px]">
+        <SheetHeader className="border-b p-5 pr-14">
+          <div className="flex flex-wrap items-center gap-2">
+            <SheetTitle className="text-base">New contra entry</SheetTitle>
+            {meta && (
+              <Chip tone={meta.tone} size="sm" dot>
+                {meta.label}
+              </Chip>
+            )}
           </div>
+          <SheetDescription className="text-xs">{meta ? meta.hint : 'Money moved between cash and bank, or between banks.'} Posts to the ledger straight away.</SheetDescription>
         </SheetHeader>
 
-        {/* Content Body */}
-        <form id="transfer-form" onSubmit={handleSubmit} className="p-6 space-y-5 flex-1 overflow-y-auto bg-muted/50">
-          {/* Account Selector Cards Grid */}
-          <div className="space-y-4">
-            {/* From Account */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
-                  From Account (Source) <span className="text-rose-500">*</span>
-                </Label>
-                {fromBankAcc && (
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    Book Balance: <span className="fin-num font-bold">{formatMoney(fromBookBalance)}</span>
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {activeAccounts.map((acc) => {
-                  const tint = getBankTint(acc.bank_name, acc.is_cash);
-                  const isSelected = acc.id === fromBankAccId;
-                  const bal = Number(acc.book_balance ?? acc.opening_balance ?? 0);
-                  return (
-                    <button
-                      key={`from-${acc.id}`}
-                      type="button"
-                      onClick={() => {
-                        if (acc.id === toBankAccId) handleSwap();
-                        else setFromBankAccId(acc.id);
-                      }}
-                      className={`p-3 rounded-xl text-left border transition-all ${
-                        isSelected
-                          ? `bg-card  border-[#FA634E] ring-2 ring-[#FA634E]/20 shadow-xs`
-                          : `bg-card/80  border-border dark:border-border hover:border-border dark:hover:border-border`
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className={`w-6 h-6 rounded-md flex items-center justify-center font-black text-[10px] ${tint.bg} ${tint.text}`}>
-                          {acc.is_cash ? <Wallet className="w-3.5 h-3.5" /> : getBankInitials(acc.bank_name)}
-                        </div>
-                        <span className="text-xs font-bold text-foreground truncate flex-1">
-                          {acc.is_cash ? 'Cash Drawer' : acc.bank_name}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-[11px] text-muted-foreground dark:text-muted-foreground">
-                        <span className="font-mono">{acc.is_cash ? 'Cash' : maskAccountNumber(acc.account_number)}</span>
-                        <span className="fin-num font-semibold text-foreground">{formatMoney(bal)}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+        <form
+          id="contra-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit(false);
+          }}
+          className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5"
+        >
+          {accounts.length < 2 && bankAccountsRes && (
+            <p className={cn('rounded-md border p-2 text-xs', TONE_CLASSES.warning.bg, TONE_CLASSES.warning.fg, TONE_CLASSES.warning.border)}>
+              A contra entry needs at least two bank or cash accounts. Add them in Finance → Bank accounts.
+            </p>
+          )}
 
-            {/* Swap Button Divider */}
-            <div className="flex items-center justify-center py-1">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleSwap}
-                className="h-8 gap-1.5 text-xs font-bold text-muted-foreground border-border dark:border-border hover:bg-muted dark:hover:bg-slate-800 rounded-full px-4 shadow-xs"
-              >
-                <ArrowRightLeft className="w-3.5 h-3.5 text-[#FA634E]" />
-                <span>Swap From / To</span>
-              </Button>
-            </div>
-
-            {/* To Account */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
-                  To Account (Destination) <span className="text-rose-500">*</span>
-                </Label>
-                {toBankAcc && (
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    Book Balance: <span className="fin-num font-bold">{formatMoney(Number(toBankAcc.book_balance ?? toBankAcc.opening_balance ?? 0))}</span>
-                  </span>
-                )}
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {activeAccounts.map((acc) => {
-                  const tint = getBankTint(acc.bank_name, acc.is_cash);
-                  const isSelected = acc.id === toBankAccId;
-                  const bal = Number(acc.book_balance ?? acc.opening_balance ?? 0);
-                  const isSameAsFrom = acc.id === fromBankAccId;
-                  return (
-                    <button
-                      key={`to-${acc.id}`}
-                      type="button"
-                      disabled={isSameAsFrom}
-                      onClick={() => setToBankAccId(acc.id)}
-                      className={`p-3 rounded-xl text-left border transition-all ${
-                        isSameAsFrom ? 'opacity-40 cursor-not-allowed border-dashed' : ''
-                      } ${
-                        isSelected
-                          ? `bg-card  border-[#FA634E] ring-2 ring-[#FA634E]/20 shadow-xs`
-                          : `bg-card/80  border-border dark:border-border hover:border-border dark:hover:border-border`
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className={`w-6 h-6 rounded-md flex items-center justify-center font-black text-[10px] ${tint.bg} ${tint.text}`}>
-                          {acc.is_cash ? <Wallet className="w-3.5 h-3.5" /> : getBankInitials(acc.bank_name)}
-                        </div>
-                        <span className="text-xs font-bold text-foreground truncate flex-1">
-                          {acc.is_cash ? 'Cash Drawer' : acc.bank_name}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between text-[11px] text-muted-foreground dark:text-muted-foreground">
-                        <span className="font-mono">{acc.is_cash ? 'Cash' : maskAccountNumber(acc.account_number)}</span>
-                        <span className="fin-num font-semibold text-foreground">{formatMoney(bal)}</span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Amount & Date inputs */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
-                Amount (SAR) <span className="text-rose-500">*</span>
-              </Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
-                  SAR
-                </span>
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="pl-12 h-11 text-base font-extrabold fin-num bg-card border-border dark:border-border"
-                />
-              </div>
-              {transferNum > fromBookBalance && fromBankAcc && (
-                <div className="flex items-center gap-1.5 text-[11px] text-amber-600 dark:text-amber-400 font-medium pt-0.5">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                  <span>Transfer amount exceeds current book balance ({formatMoney(fromBookBalance)})</span>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
-                Transfer Date <span className="text-rose-500">*</span>
-              </Label>
-              <Input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="h-11 text-xs font-semibold bg-card border-border dark:border-border"
-              />
-              {!isPeriodOpen && (
-                <div className="flex items-center gap-1.5 text-[11px] text-rose-600 dark:text-rose-400 font-medium pt-0.5">
-                  <Lock className="w-3.5 h-3.5 shrink-0" />
-                  <span>No open accounting period covers this date</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Memo */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground dark:text-muted-foreground">
-              Memo / Description
-            </Label>
-            <Input
-              placeholder="e.g. Internal liquidity balancing transfer..."
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              className="h-9 text-xs bg-card border-border dark:border-border"
+          <div className="grid items-center gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+            <SideCard
+              title="From"
+              value={fromId}
+              onChange={(id) => (id === toId ? (setToId(fromId), setFromId(id)) : setFromId(id))}
+              accounts={accounts}
+              after={after?.from ?? null}
+              warn={from?.is_cash && after && after.from < -0.005 ? 'More than the cash in hand.' : null}
             />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="size-8 justify-self-center rounded-full max-sm:rotate-0 sm:rotate-90"
+              onClick={() => {
+                setFromId(toId);
+                setToId(fromId);
+              }}
+              aria-label="Swap from and to"
+              title="Swap"
+            >
+              <ArrowDownUp className="size-3.5" />
+            </Button>
+            <SideCard title="To" value={toId} onChange={setToId} accounts={accounts} exclude={fromId} after={after?.to ?? null} />
           </div>
 
-          {/* Will Post Preview */}
-          {previewLines.length > 0 && (
-            <div className="pt-2">
-              <JournalLinesTable lines={previewLines} title="Will post" variant="preview" />
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="space-y-1">
+              <Label htmlFor="contra-amount" className={label}>Amount (SAR)</Label>
+              <Input
+                id="contra-amount"
+                autoFocus
+                type="number"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                className={cn('fin-num h-11 text-right text-lg font-semibold', tried && !(amt > 0) && 'border-chip-negative-border')}
+              />
             </div>
+            <div className="space-y-1">
+              <Label htmlFor="contra-date" className={label}>Date</Label>
+              <Input id="contra-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={cn('h-11 text-sm', !periodOpen && 'border-chip-warning-border')} />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="contra-ref" className={label}>{type === 'withdrawal' ? 'Cheque no.' : type === 'deposit' ? 'Deposit slip no.' : 'Reference no.'}</Label>
+              <Input id="contra-ref" value={reference} onChange={(e) => setReference(e.target.value)} maxLength={80} placeholder={type === 'bank_to_bank' ? 'UTR / transfer no.' : 'Optional'} className="h-11 text-sm" />
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="contra-memo" className={label}>Note</Label>
+            <Input id="contra-memo" value={memo} onChange={(e) => setMemo(e.target.value)} placeholder={from && to ? `${meta?.label}: ${bankLabel(from)} to ${bankLabel(to)}` : 'Optional'} className="h-9 text-sm" />
+          </div>
+
+          {showCharges ? (
+            <div className="space-y-2 rounded-lg border p-3">
+              <div className="flex items-center justify-between">
+                <p className={label}>Bank charges{feeFrom ? ` · taken by ${bankLabel(feeFrom)}` : ''}</p>
+                <button type="button" onClick={() => (setShowCharges(false), setCharges(''))} className="text-muted-foreground hover:text-foreground" aria-label="Remove bank charges">
+                  <X className="size-3.5" />
+                </button>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-[8rem_minmax(0,1fr)]">
+                <Input type="number" inputMode="decimal" min="0" step="0.01" value={charges} onChange={(e) => setCharges(e.target.value)} placeholder="0.00" aria-label="Bank charges" className="fin-num h-9 text-right text-sm" />
+                <Select value={chargesAccountId || undefined} onValueChange={(v) => v && setChargesAccountId(v)}>
+                  <SelectTrigger className={cn('h-9 text-xs', tried && fee > 0 && !chargesAccountId && 'border-chip-negative-border')} aria-label="Charges account">
+                    <SelectValue placeholder={expenseAccounts.length ? 'Expense account…' : 'No expense accounts'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {expenseAccounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id} className="text-xs">
+                        {a.account_code} {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          ) : (
+            <button type="button" onClick={() => setShowCharges(true)} className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+              <Plus className="size-3" /> Bank charges
+            </button>
+          )}
+
+          {/* What will post */}
+          {from && to && amt > 0 && (
+            <div className="space-y-1 rounded-lg border bg-muted/30 p-3 text-xs">
+              <p className={label}>Posts</p>
+              <table className="w-full table-fixed">
+                <tbody className="fin-num">
+                  <tr>
+                    <td className="truncate font-sans">{to.account ? `${to.account.account_code} ${to.account.name}` : bankLabel(to)}</td>
+                    <td className={cn('w-28 text-right font-medium', TONE_CLASSES.positive.fg)}>Dr {formatMoney(amt)}</td>
+                  </tr>
+                  <tr>
+                    <td className="truncate pl-3 font-sans">{from.account ? `${from.account.account_code} ${from.account.name}` : bankLabel(from)}</td>
+                    <td className={cn('w-28 text-right font-medium', TONE_CLASSES.negative.fg)}>Cr {formatMoney(amt)}</td>
+                  </tr>
+                  {fee > 0 && feeFrom && (
+                    <>
+                      <tr>
+                        <td className="truncate font-sans">{chargesAccount ? `${chargesAccount.account_code} ${chargesAccount.name}` : 'Bank charges'}</td>
+                        <td className={cn('w-28 text-right font-medium', TONE_CLASSES.positive.fg)}>Dr {formatMoney(fee)}</td>
+                      </tr>
+                      <tr>
+                        <td className="truncate pl-3 font-sans">{feeFrom.account ? `${feeFrom.account.account_code} ${feeFrom.account.name}` : bankLabel(feeFrom)}</td>
+                        <td className={cn('w-28 text-right font-medium', TONE_CLASSES.negative.fg)}>Cr {formatMoney(fee)}</td>
+                      </tr>
+                    </>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {problems.length > 0 && (tried || !periodOpen) && (
+            <ul className="space-y-1">
+              {problems.map((p) => (
+                <li key={p} className={cn('flex items-start gap-1.5 text-xs', tried ? TONE_CLASSES.negative.fg : TONE_CLASSES.warning.fg)}>
+                  {tried ? <AlertCircle className="mt-px size-3.5 shrink-0" /> : <Circle className="mt-px size-3.5 shrink-0" />} {p}
+                </li>
+              ))}
+            </ul>
           )}
         </form>
 
-        {/* Footer Actions */}
-        <SheetFooter className="p-4 border-t border-border dark:border-border bg-card flex items-center justify-end gap-2 shrink-0">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            className="h-9 text-xs font-semibold px-4 border-border dark:border-border"
-          >
+        <SheetFooter className="flex-row justify-end gap-2 border-t p-4">
+          <Button type="button" variant="ghost" size="sm" className="h-8 text-xs" onClick={() => onOpenChange(false)} disabled={mutation.isPending}>
             Cancel
           </Button>
-          <Button
-            type="submit"
-            form="transfer-form"
-            disabled={transferMutation.isPending || transferNum <= 0 || !isPeriodOpen || fromBankAccId === toBankAccId}
-            className="h-9 text-xs font-bold px-5 bg-[#FA634E] hover:bg-[#EE553F] text-white shadow-xs"
-          >
-            {transferMutation.isPending ? 'Posting Transfer...' : 'Post Transfer'}
+          <Button type="button" variant="outline" size="sm" className="h-8 text-xs" onClick={() => submit(true)} disabled={mutation.isPending}>
+            Post and add another
+          </Button>
+          <Button type="submit" form="contra-form" size="sm" className="h-8 gap-1.5 bg-brand text-xs text-white hover:bg-brand-hover" disabled={mutation.isPending}>
+            {mutation.isPending && <Loader2 className="size-3.5 animate-spin" />} Post contra
           </Button>
         </SheetFooter>
       </SheetContent>

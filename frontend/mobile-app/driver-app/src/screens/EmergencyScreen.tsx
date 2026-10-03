@@ -29,7 +29,7 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
 
 const EmergencyScreen = () => {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, tp } = useLanguage();
   const [notes, setNotes] = useState('');
   const [photos, setPhotos] = useState<(CapturedPhoto | undefined)[]>([]);
   const [incidentType, setIncidentType] = useState('');
@@ -227,7 +227,7 @@ const EmergencyScreen = () => {
             style={styles.notesInput}
             value={notes}
             onChangeText={setNotes}
-            placeholder={t('placeholder_incident_notes_short', 'Where are you? Is anyone hurt?')}
+            placeholder={tp('placeholder_incident_notes_short', 'Where are you? Is anyone hurt?')}
             placeholderTextColor={Colors.gray400}
             multiline
             autoFocus={showNotes && !notes}

@@ -2,9 +2,11 @@
 # data: every table in mercon_db and the uploaded document files. Manual only —
 # never on push, never scheduled.
 #
-# This is read-only against production: it only ever runs pg_dump against
-# mercon-postgres and rsync's *from* the prod uploads directories. Nothing here
-# can write to prod. Everything it writes goes to the dev-postgres container and
+# Production and dev run on different servers, so this is two jobs: `export`
+# on the prod runner dumps the database and packs the uploads into a 1-day
+# workflow artifact (the same channel backup-db.yml uses for nightly dumps);
+# `import` on the dev runner restores them. Read-only against production:
+# nothing here can write to prod. Everything it writes goes to the dev-postgres container and
 # the dev uploads directories.
 #
 # Two things worth knowing before you run this:
@@ -26,9 +28,9 @@ on:
         type: string
 
 jobs:
-  sync:
-    name: Sync dev from prod
-    runs-on: self-hosted
+  export:
+    name: Export production snapshot
+    runs-on: [self-hosted, prod]
 
     # Optional extra gate: create a "dev-sync" environment in
     # Settings → Environments with a required reviewer if you want a second
@@ -43,57 +45,86 @@ jobs:
             echo "::error::Confirmation mismatch. You must type exactly 'SYNC'." >&2
             exit 1
           fi
+          if [ "$(docker inspect -f '{{.State.Running}}' mercon-postgres 2>/dev/null)" != "true" ]; then
+            echo "::error::Container 'mercon-postgres' is not running." >&2
+            exit 1
+          fi
 
-      - name: Verify containers are running
-        run: |
-          set -euo pipefail
-          for c in mercon-postgres dev-postgres; do
-            if [ "$(docker inspect -f '{{.State.Running}}' "$c" 2>/dev/null)" != "true" ]; then
-              echo "::error::Container '$c' is not running." >&2
-              exit 1
-            fi
-          done
-
-      - name: Dump production database
+      - name: Dump production database and pack uploads
         env:
           POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
         run: |
           set -euo pipefail
-          docker exec mercon-postgres pg_dump -U "$POSTGRES_USER" -Fc -d mercon_db > /tmp/mercon-prod-sync.dump
-          echo "Dump size: $(du -h /tmp/mercon-prod-sync.dump | cut -f1)"
+          rm -rf "$RUNNER_TEMP/prod-snapshot" && mkdir -p "$RUNNER_TEMP/prod-snapshot"
+          docker exec mercon-postgres pg_dump -U "$POSTGRES_USER" -Fc -d mercon_db > "$RUNNER_TEMP/prod-snapshot/db.dump"
+          test -s "$RUNNER_TEMP/prod-snapshot/db.dump"
+          # The API mounts two upload directories (see docker-compose.yml).
+          # Persistent paths since the move out of /tmp (ci-cd.yml).
+          sudo tar -czf "$RUNNER_TEMP/prod-snapshot/uploads-app.tgz" -C /var/lib/mercon/mercon-app-uploads .
+          sudo tar -czf "$RUNNER_TEMP/prod-snapshot/uploads-tmp.tgz" -C /var/lib/mercon/mercon-uploads .
+          sudo chown -R "$(id -u)" "$RUNNER_TEMP/prod-snapshot"
+          du -h "$RUNNER_TEMP"/prod-snapshot/*
+
+      - name: Hand over to the dev server
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-snapshot-${{ github.run_id }}
+          path: ${{ runner.temp }}/prod-snapshot
+          retention-days: 1
+
+      - name: Remove local copy
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/prod-snapshot"
+
+  import:
+    name: Restore snapshot into dev
+    needs: export
+    runs-on: [dev]
+
+    steps:
+      - name: Fetch snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: prod-snapshot-${{ github.run_id }}
+          path: ${{ runner.temp }}/prod-snapshot
 
       - name: Restore into dev database
         env:
           DEV_POSTGRES_USER: ${{ secrets.DEV_POSTGRES_USER }}
         run: |
           set -euo pipefail
-          docker cp /tmp/mercon-prod-sync.dump dev-postgres:/tmp/mercon-prod-sync.dump
-          # --no-owner/--no-privileges: prod's Postgres role name doesn't exist
-          # inside the dev Postgres instance (separate instance, separate
-          # roles), so ownership/GRANT statements from the dump would error.
-          # --clean --if-exists: drop dev's existing objects first so this is
-          # a clean replace, not a merge, on every run.
+          if [ "$(docker inspect -f '{{.State.Running}}' dev-postgres 2>/dev/null)" != "true" ]; then
+            echo "::error::Container 'dev-postgres' is not running." >&2
+            exit 1
+          fi
+          docker cp "$RUNNER_TEMP/prod-snapshot/db.dump" dev-postgres:/tmp/prod-sync.dump
+          # --no-owner/--no-privileges: prod's Postgres role doesn't exist in
+          # the dev instance. --clean --if-exists: a clean replace, not a merge.
           docker exec dev-postgres pg_restore \
             --clean --if-exists --no-owner --no-privileges \
-            -U "$DEV_POSTGRES_USER" -d mercon_dev_db /tmp/mercon-prod-sync.dump
-          docker exec dev-postgres rm -f /tmp/mercon-prod-sync.dump
-          rm -f /tmp/mercon-prod-sync.dump
+            -U "$DEV_POSTGRES_USER" -d mercon_dev_db /tmp/prod-sync.dump
+          docker exec dev-postgres rm -f /tmp/prod-sync.dump
 
-      - name: Sync uploaded document files
+      - name: Replace dev uploaded files
         run: |
           set -euo pipefail
-          mkdir -p /tmp/dev-uploads /tmp/mercon-dev-tmp-uploads
-          rsync -a --delete /tmp/mercon-uploads/ /tmp/dev-uploads/
-          rsync -a --delete /tmp/uploads/ /tmp/mercon-dev-tmp-uploads/
-          echo "dev-uploads: $(du -sh /tmp/dev-uploads | cut -f1) · mercon-dev-tmp-uploads: $(du -sh /tmp/mercon-dev-tmp-uploads | cut -f1)"
+          # Same two mounts as docker-compose.yml with CLIENT_NAME=dev
+          # (APP_UPLOADS_DIR / TMP_UPLOADS_DIR in ci-cd-dev.yml).
+          for pair in "uploads-app.tgz:/var/lib/mercon/dev-app-uploads" "uploads-tmp.tgz:/var/lib/mercon/dev-uploads"; do
+            archive="${pair%%:*}"; target="${pair#*:}"
+            sudo mkdir -p "$target"
+            sudo find "$target" -mindepth 1 -delete
+            sudo tar -xzf "$RUNNER_TEMP/prod-snapshot/$archive" -C "$target"
+            # The API runs as uid 1000 (node) and must be able to write here.
+            sudo chown -R 1000:1000 "$target" && sudo chmod 770 "$target"
+            echo "$target: $(sudo du -sh "$target" | cut -f1)"
+          done
 
       - name: Restart dev app containers
         run: |
           set -euo pipefail
-          # Pinned container names, not `docker compose restart` — a compose
-          # subcommand would require every required env var (POSTGRES_PASSWORD,
-          # JWT_SECRET, etc.) just to parse the file for a restart.
           docker restart dev-api dev-frontend
+          rm -rf "$RUNNER_TEMP/prod-snapshot"
 
       - name: Summary
         run: |

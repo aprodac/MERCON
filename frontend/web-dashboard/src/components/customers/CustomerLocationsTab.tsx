@@ -1,0 +1,149 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { Edit2, MapPin, Plus, Trash2, UploadCloud } from 'lucide-react';
+
+import { locationService, type Location } from '@/services/locationService';
+import LocationFormDialog from '@/components/locations/LocationFormDialog';
+import ExcelImportDialog from '@/components/fleet/ExcelImportDialog';
+import ConfirmModal from '@/components/ui/ConfirmModal';
+import { Button } from '@/components/ui/button';
+import { useModuleEnabled } from '@/components/auth/RequireModule';
+import { LOCATION_COLUMNS } from '@/utils/importUtils';
+import { cn } from '@/lib/utils';
+import { isExactPin } from '@/components/locations/PinChip';
+import { Badge, EmptyRow, SearchField, Toolbar, ui, type UiTone } from '@/components/customers/customerUi';
+
+// Same two states as everywhere else (PinChip): exact, or a pin is still needed.
+const PIN_EXACT: { tone: UiTone; label: string } = { tone: 'emerald', label: 'Exact' };
+const PIN_NEEDED: { tone: UiTone; label: string } = { tone: 'amber', label: 'Pin needed' };
+
+/** Customer → Locations: their saved pickup / delivery places, used by quotations and trips. */
+export default function CustomerLocationsTab({ customerId, locations }: { customerId: string; locations: Location[] }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const locationsModule = useModuleEnabled('locations');
+
+  const [search, setSearch] = useState('');
+  const [formOpen, setFormOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<Location | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Location | null>(null);
+
+  const remove = useMutation({
+    mutationFn: (id: string) => locationService.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['locations', customerId] });
+      setDeleteTarget(null);
+      toast.success('Location deleted');
+    },
+    onError: (err: any) => {
+      setDeleteTarget(null);
+      toast.error(err?.response?.data?.error?.message || "Couldn't delete the location.");
+    },
+  });
+
+  const q = search.trim().toLowerCase();
+  const shown = q
+    ? locations.filter((l) => [l.name, l.code, l.address, l.city].some((v) => (v || '').toLowerCase().includes(q)))
+    : locations;
+
+  return (
+    <section className={cn(ui.card, 'min-w-0 overflow-hidden')}>
+      <Toolbar>
+        <p className="text-[13px] text-slate-500">Pickup and delivery places used on this customer's quotations and trips</p>
+        <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
+          <SearchField value={search} onChange={setSearch} placeholder="Search locations" className="flex-1 sm:w-56 sm:flex-none" />
+          <Button variant="outline" size="sm" onClick={() => setImportOpen(true)} className={ui.btnSm}>
+            <UploadCloud /> Import
+          </Button>
+          <Button size="sm" onClick={() => { setEditTarget(null); setFormOpen(true); }} className={ui.btnSm}>
+            <Plus /> Add location
+          </Button>
+        </div>
+      </Toolbar>
+
+      {shown.length === 0 ? (
+        <EmptyRow icon={MapPin}>{q ? 'No locations match.' : 'No saved locations yet — saved places fill in pickup and delivery stops on quotations and trips.'}</EmptyRow>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[640px] text-[13px]">
+            <thead className={ui.thead}>
+              <tr>
+                <th className={cn(ui.thc, 'pl-4')}>Location</th>
+                <th className={ui.thc}>Address</th>
+                <th className={ui.thc}>Pin</th>
+                <th className={cn(ui.thc, 'text-right')}>Trip stops</th>
+                <th className={cn(ui.thc, 'w-20 pr-4')}><span className="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody className={ui.tbody}>
+              {shown.map((l) => {
+                const p = isExactPin(l.coordinate_precision, l.lat, l.lng) ? PIN_EXACT : PIN_NEEDED;
+                return (
+                  <tr
+                    key={l.id}
+                    onClick={locationsModule ? () => navigate(`/locations/${l.id}`) : undefined}
+                    className={locationsModule ? ui.row : 'group'}
+                  >
+                    <td className={cn(ui.tdc, 'pl-4')}>
+                      <p className="font-medium text-slate-900 group-hover:text-[#E5533F] dark:text-white">{l.name}</p>
+                      <p className="text-xs text-slate-500">{l.code}</p>
+                    </td>
+                    <td className={cn(ui.tdc, 'max-w-[320px] truncate text-slate-600 dark:text-slate-300')} title={l.address || undefined}>
+                      {[l.address, l.city].filter(Boolean).join(', ') || <span className="text-slate-400">—</span>}
+                    </td>
+                    <td className={ui.tdc}><Badge tone={p.tone} dot>{p.label}</Badge></td>
+                    <td className={cn(ui.tdc, 'text-right text-slate-900 tabular-nums dark:text-white')}>{l._count?.tripStops ?? '—'}</td>
+                    <td className={cn(ui.tdc, 'pr-4')}>
+                      <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" onClick={() => { setEditTarget(l); setFormOpen(true); }} className={cn(ui.iconSm, 'size-7 text-slate-500')} aria-label={`Edit ${l.name}`} title="Edit">
+                          <Edit2 className="size-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => setDeleteTarget(l)} className={cn(ui.iconSm, 'size-7 text-slate-500 hover:bg-rose-50 hover:text-rose-600')} aria-label={`Delete ${l.name}`} title="Delete">
+                          <Trash2 className="size-3.5" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <LocationFormDialog
+        isOpen={formOpen}
+        onClose={() => { setFormOpen(false); setEditTarget(null); }}
+        location={editTarget}
+        defaultCustomerId={customerId}
+      />
+
+      <ExcelImportDialog
+        isOpen={importOpen}
+        onClose={() => setImportOpen(false)}
+        entityLabel="Locations"
+        columns={LOCATION_COLUMNS}
+        requiredFields={['customer_name', 'name']}
+        preferSheet="locations"
+        templateUrl="/templates/MERCON_Locations_Import_Template.xlsx"
+        matchLabel="customer + name"
+        onImport={(rows) => locationService.importRows(rows)}
+        invalidateKeys={[['locations', customerId]]}
+      />
+
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && remove.mutate(deleteTarget.id)}
+        isLoading={remove.isPending}
+        title="Delete location?"
+        message={`Delete ${deleteTarget?.name ?? 'this location'}? A location still used by trips or quotations can't be deleted.`}
+        confirmLabel="Delete"
+        isDestructive
+      />
+    </section>
+  );
+}

@@ -8,6 +8,7 @@ import { CarouselPagination } from './CarouselPagination';
 import { useActiveTrips } from '../hooks';
 import type { Trip } from '../types';
 import { deriveVehicleCardStatus } from '../services/dashboardService';
+import { autoTrackingUrl, operatorService } from '../../../lib/operator';
 
 interface ActiveTripsSectionProps {
   onViewAll?: () => void;
@@ -15,7 +16,7 @@ interface ActiveTripsSectionProps {
   className?: string;
 }
 
-export function formatWhatsAppMessage(trip: Trip): string {
+export function formatWhatsAppMessage(trip: Trip, trackingUrl?: string | null): string {
   const truck = (trip.vehicle?.ref_id || trip.vehicle?.plate_number || 'N/A').toUpperCase();
   const driverName = trip.driver
     ? `${trip.driver.first_name} ${trip.driver.last_name}`.toUpperCase()
@@ -57,7 +58,20 @@ export function formatWhatsAppMessage(trip: Trip): string {
     trip.status === 'AtDelivery' ? 'At Delivery' :
     trip.status;
 
-  return `🚛 Vehicle Status Update\n\nTruck: ${truck}\nDriver: ${driverName}\nRoute: ${routeStr}\nDistance left: ${distanceStr}  TO ${destination}\nETA: ${etaStr}\nStatus: ${statusLabel}`;
+  // Planned figures, labelled as such — the live distance and ETA are on the tracking link.
+  const arrival = etaStr === '—' || etaStr === 'ARRIVING SOON' ? etaStr : `in ${etaStr}`;
+  const text = `🚛 Vehicle Status Update\n\nTruck: ${truck}\nDriver: ${driverName}\nRoute: ${routeStr}\nTrip distance: ${distanceStr}\nPlanned arrival: ${arrival}\nStatus: ${statusLabel}`;
+  return trackingUrl ? `${text}\n\nTrack live: ${trackingUrl}` : text;
+}
+
+/** Customer tracking links for these trips (only customers who want them in messages). Never blocks a share. */
+async function statusLinks(trips: Trip[]): Promise<Record<string, string | null>> {
+  try {
+    const links = await operatorService.trackingLinks(trips.map((t) => t.id));
+    return Object.fromEntries(Object.entries(links).map(([id, l]) => [id, autoTrackingUrl(l)]));
+  } catch {
+    return {};
+  }
 }
 
 export async function shareTextToWhatsApp(text: string, title = 'Vehicle Status Update') {
@@ -105,14 +119,16 @@ export async function shareTextToWhatsApp(text: string, title = 'Vehicle Status 
 }
 
 export async function shareTripToWhatsApp(trip: Trip) {
-  const singleText = formatWhatsAppMessage(trip);
+  const links = await statusLinks([trip]);
+  const singleText = formatWhatsAppMessage(trip, links[trip.id]);
   await shareTextToWhatsApp(singleText);
 }
 
 export async function shareMultipleCombinedToWhatsApp(trips: Trip[]) {
   if (trips.length === 0) return;
+  const links = await statusLinks(trips);
   const itemsFormatted = trips
-    .map((t, idx) => `[TRIP ${idx + 1}/${trips.length}]\n` + formatWhatsAppMessage(t))
+    .map((t, idx) => `[TRIP ${idx + 1}/${trips.length}]\n` + formatWhatsAppMessage(t, links[t.id]))
     .join('\n\n───────────────────\n\n');
 
   const bulkText = `🚛 Vehicle Status Updates (${trips.length} Trips)\n\n${itemsFormatted}`;
@@ -294,10 +310,10 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
       {isSelectionMode && visibleTrips.length > 0 && (
         <View className="flex-row items-center justify-between bg-gray-100 p-2.5 rounded-xl border border-gray-200/80">
           <TouchableOpacity activeOpacity={0.7} onPress={toggleSelectAll} className="flex-row items-center gap-2 px-2 py-1">
-            <View className={`h-4 w-4 rounded items-center justify-center border ${selectedIds.size === visibleTrips.length ? 'bg-gray-900 border-gray-900' : 'bg-white border-gray-300'}`}>
+            <View className={`h-4 w-4 rounded items-center justify-center border ${selectedIds.size === visibleTrips.length ? 'bg-[#3E3C3D] border-gray-900' : 'bg-white border-gray-300'}`}>
               {selectedIds.size === visibleTrips.length && <Check size={11} color="#FFFFFF" strokeWidth={3} />}
             </View>
-            <Text className="text-xs font-bold text-gray-800">
+            <Text className="text-xs font-bold text-[#3E3C3D]">
               {selectedIds.size === visibleTrips.length ? 'Deselect All' : 'Select All'}
             </Text>
           </TouchableOpacity>
@@ -340,7 +356,7 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
 
       {/* Floating / Sticky Bulk Action Pill when 1+ trips selected */}
       {selectedIds.size > 0 && (
-        <View className="mt-2 p-3 bg-gray-900 rounded-2xl flex-row items-center justify-between shadow-lg">
+        <View className="mt-2 p-3 bg-[#3E3C3D] rounded-2xl flex-row items-center justify-between shadow-lg">
           <View>
             <Text className="text-xs font-black text-white">
               {selectedIds.size} {selectedIds.size === 1 ? 'Trip' : 'Trips'} Selected
@@ -375,7 +391,7 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
             {/* Header */}
             <View className="flex-row items-center justify-between pb-3 border-b border-gray-200">
               <View>
-                <Text className="text-base font-black text-gray-900">
+                <Text className="text-base font-black text-[#3E3C3D]">
                   Send Separate WhatsApp Updates
                 </Text>
                 <Text className="text-xs text-gray-500 font-medium">
@@ -397,7 +413,7 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
                 <View className="flex-row items-center justify-between">
                   <View className="flex-row items-center gap-2">
                     <Truck size={16} color="#FA634E" />
-                    <Text className="text-sm font-black text-gray-900">
+                    <Text className="text-sm font-black text-[#3E3C3D]">
                       {(selectedTrips[currentQueueIndex].vehicle?.ref_id || selectedTrips[currentQueueIndex].vehicle?.plate_number || 'N/A').toUpperCase()}
                     </Text>
                   </View>
@@ -408,7 +424,7 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
                   </Text>
                 </View>
                 <Text className="text-xs font-medium text-gray-600">
-                  Status: <Text className="font-bold text-gray-900">{selectedTrips[currentQueueIndex].status}</Text>
+                  Status: <Text className="font-bold text-[#3E3C3D]">{selectedTrips[currentQueueIndex].status}</Text>
                 </Text>
               </View>
             )}
@@ -464,7 +480,7 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
                   >
                     <View className="flex-row items-center gap-2">
                       <Text className="text-xs font-bold text-gray-400">#{idx + 1}</Text>
-                      <Text className="text-xs font-black text-gray-900">{truck}</Text>
+                      <Text className="text-xs font-black text-[#3E3C3D]">{truck}</Text>
                     </View>
 
                     {isSent ? (
@@ -473,7 +489,7 @@ export function ActiveTripsSection({ onViewAll, onTripPress, className }: Active
                         <Text className="text-[11px] font-bold text-emerald-700">Sent</Text>
                       </View>
                     ) : isCurrent ? (
-                      <Text className="text-[11px] font-bold text-gray-900">Next →</Text>
+                      <Text className="text-[11px] font-bold text-[#3E3C3D]">Next →</Text>
                     ) : (
                       <Text className="text-[11px] font-medium text-gray-400">Pending</Text>
                     )}

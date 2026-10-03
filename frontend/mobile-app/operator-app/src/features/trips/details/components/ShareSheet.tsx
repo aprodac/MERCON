@@ -4,7 +4,7 @@
  * so every operator sees what was already sent; quick texts (status, ETA,
  * location, delay) just open WhatsApp with the message.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, Image, ScrollView, Linking, Alert, Switch } from 'react-native';
 import { Check, MessageCircle, Play } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -26,6 +26,9 @@ interface Props {
   f: Formatters;
   position: { lat: number; lng: number } | null;
   remaining: Remaining | null;
+  trackingUrl: string | null;
+  /** Fetch the tracking link again when it's missing. */
+  onNeedTracking?: () => void;
   whatsappApi: boolean;
   onShared: () => void;
 }
@@ -34,7 +37,7 @@ type Who = 'customer_group' | 'customer_contact' | 'driver' | 'internal' | 'othe
 
 const QUICK_TITLE: Record<QuickKind, string> = { status: 'Send status', eta: 'Send ETA', location: 'Send location', delay: 'Send delay notice' };
 
-export function ShareSheet({ target, onClose, trip, phase, f, position, remaining, whatsappApi, onShared }: Props) {
+export function ShareSheet({ target, onClose, trip, phase, f, position, remaining, trackingUrl, onNeedTracking, whatsappApi, onShared }: Props) {
   const customerPhone = trip.customer?.whatsapp_number || trip.customer?.contact_phone || null;
   const driverPhone = trip.is_third_party ? trip.third_party_driver_phone : trip.driver?.phone_primary;
   const update = target?.type === 'update' ? target.update : null;
@@ -53,6 +56,10 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
     ? `Next: ${stopName(stops[nextIdx], nextIdx)}${stops[nextIdx].planned_arrival ? ` · due ${f.smart(stops[nextIdx].planned_arrival)}` : ''}`
     : null;
 
+  // The last message written for the operator — declared before the reset
+  // below, which runs during render and sets it.
+  const generated = useRef('');
+
   // Reset every time the sheet opens for something new.
   const [shownFor, setShownFor] = useState<ShareTarget | null>(null);
   if (target !== shownFor) {
@@ -70,9 +77,30 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
       setChosen(new Set(unsent.length ? unsent : target.update.items.map((m) => m.id)));
       setText('');
     } else {
-      setText(quickMessage(target.kind, { trip, phase, f, position, remaining }));
+      const msg = quickMessage(target.kind, { trip, phase, f, position, remaining, trackingUrl });
+      generated.current = msg;
+      setText(msg);
     }
   }
+
+  // The tracking link (and the distance / ETA) can arrive after the sheet opened —
+  // rewrite the message with them, unless the operator has already edited it.
+  useEffect(() => {
+    if (!target || target.type !== 'quick') return;
+    if (text !== generated.current) return;
+    const msg = quickMessage(target.kind, { trip, phase, f, position, remaining, trackingUrl });
+    if (msg !== text) {
+      generated.current = msg;
+      setText(msg);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackingUrl, remaining, position, phase]);
+
+  // No link yet (it failed when the screen opened): ask again once the sheet is open.
+  useEffect(() => {
+    if (target && !trackingUrl) onNeedTracking?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target]);
 
   const options = useMemo(() => {
     const o: { id: Who; label: string; detail: string; phone: string | null }[] = [
@@ -106,6 +134,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
         [update.vehicle_plate ? `Truck ${update.vehicle_plate}` : '', update.driver?.name ? `Driver ${update.driver.name}` : ''].filter(Boolean).join(' · '),
         update.delay_note ? `Reason: ${update.delay_note}` : null,
         withNext && nextLine ? nextLine : null,
+        trackingUrl ? `\nTrack live: ${trackingUrl}` : null,
       ].filter(Boolean).join('\n')
     : '';
 

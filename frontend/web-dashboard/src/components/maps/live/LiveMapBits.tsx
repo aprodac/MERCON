@@ -2,22 +2,55 @@ import { Marker } from 'react-map-gl/maplibre';
 import { Check, Info, Smartphone, Truck, UserRound } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { nextStop, stopLabel, timeAgo, unitTitle, type StopGroup } from '@/lib/fleetLive';
+import { nextStop, stopLabel, stopNumbersLabel, timeAgo, unitTitle, type StopGroup } from '@/lib/fleetLive';
 import type { LiveGpsFix, LiveUnit } from '@/services/fleetLiveService';
 import { TONE, unitTone, type UnitTone } from './liveMapStyle';
 import { GLASS } from './LiveUnitPanel';
 
-/** A group of nearby units. Ringed in the colour of the most urgent unit inside. */
+/** Ring order: most urgent first, clockwise from 12 o'clock. */
+const RING_ORDER: UnitTone[] = ['delayed', 'active', 'upcoming', 'free'];
+
+export type ToneMix = Record<UnitTone, number>;
+
+/** How a group's units split by status — "5 on trip · 9 free". */
+export function mixLabel(mix: ToneMix): string {
+  return RING_ORDER.filter((t) => mix[t] > 0).map((t) => `${mix[t]} ${TONE[t].label.toLowerCase()}`).join(' · ');
+}
+
+/**
+ * A group of nearby units. The ring is split by status so the mix shows before
+ * anyone clicks; clicking opens the list of units (it does not zoom).
+ */
 export function ClusterMarker({
-  lng, lat, count, tone, onClick,
-}: { lng: number; lat: number; count: number; tone: UnitTone; onClick: () => void }) {
-  const size = count < 10 ? 34 : count < 50 ? 40 : 46;
+  lng, lat, count, mix, open, highlighted, dimmed, onClick,
+}: {
+  lng: number; lat: number; count: number; mix: ToneMix;
+  /** Its list is the one showing. */
+  open?: boolean;
+  /** A row for one of its units is hovered in the list. */
+  highlighted?: boolean;
+  dimmed?: boolean;
+  onClick: () => void;
+}) {
+  const size = count < 10 ? 40 : count < 50 ? 46 : 52;
+  const r = size / 2 - 3;
+  const circ = 2 * Math.PI * r;
+  const gap = count > 1 ? 1.5 : 0;
+  let offset = 0;
+  const segments = RING_ORDER.filter((t) => mix[t] > 0).map((t) => {
+    const len = (circ * mix[t]) / count;
+    const seg = { tone: t, len: Math.max(len - gap, 0.5), offset };
+    offset += len;
+    return seg;
+  });
+  const dark = open || highlighted;
+  const summary = mixLabel(mix);
   return (
     <Marker
       longitude={lng}
       latitude={lat}
       anchor="center"
-      style={{ zIndex: 25 }}
+      style={{ zIndex: dark ? 30 : 25 }}
       onClick={(e) => {
         e.originalEvent.stopPropagation();
         onClick();
@@ -25,12 +58,41 @@ export function ClusterMarker({
     >
       <button
         type="button"
-        aria-label={`${count} units here — zoom in`}
-        title={`${count} units — click to zoom in`}
-        className="flex items-center justify-center rounded-full bg-white text-[13px] font-semibold text-slate-800 shadow-[0_2px_10px_rgba(0,0,0,0.25)] transition-transform hover:scale-110 dark:bg-slate-50"
-        style={{ width: size, height: size, boxShadow: `0 0 0 3px ${TONE[tone].fill}, 0 0 0 7px ${TONE[tone].fill}22, 0 2px 10px rgba(0,0,0,0.25)` }}
+        aria-label={`${count} units here: ${summary}. Show the list`}
+        className={cn('group relative block rounded-full transition-[transform,opacity] duration-200 hover:scale-110', dimmed && 'opacity-35')}
+        style={{ width: size, height: size }}
       >
-        {count}
+        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="drop-shadow-[0_2px_6px_rgba(0,0,0,0.25)]">
+          <circle cx={size / 2} cy={size / 2} r={r - 2.5} className={dark ? 'fill-charcoal dark:fill-white' : 'fill-white dark:fill-slate-50'} />
+          {segments.map((s) => (
+            <circle
+              key={s.tone}
+              cx={size / 2}
+              cy={size / 2}
+              r={r}
+              fill="none"
+              stroke={TONE[s.tone].fill}
+              strokeWidth={5}
+              strokeDasharray={`${s.len} ${circ - s.len}`}
+              strokeDashoffset={-s.offset}
+              transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            />
+          ))}
+          <text
+            x="50%"
+            y="50%"
+            dominantBaseline="central"
+            textAnchor="middle"
+            className={cn('text-[13px] font-semibold', dark ? 'fill-white dark:fill-slate-900' : 'fill-slate-800')}
+          >
+            {count}
+          </text>
+        </svg>
+        {!open && (
+          <span className="pointer-events-none absolute bottom-full left-1/2 mb-1.5 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-black/[0.06] bg-white/95 px-2 py-1 text-[11px] font-medium text-foreground shadow-md group-hover:block dark:border-white/10 dark:bg-slate-950/90">
+            {summary}
+          </span>
+        )}
       </button>
     </Marker>
   );
@@ -101,12 +163,12 @@ export function StopPin({ group, eta, tone = 'live' }: { group: StopGroup; eta: 
   return (
     <Marker longitude={group.lng} latitude={group.lat} anchor="bottom" style={{ zIndex: group.isNext ? 15 : 5 }}>
       <div className="flex flex-col items-center">
-        <div className="mb-1 flex max-w-[170px] items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[11px] leading-4 shadow-sm ring-1 ring-black/5 dark:bg-slate-900/90 dark:ring-white/10">
+        <div className="mb-1 flex max-w-[220px] items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[11px] leading-4 shadow-sm ring-1 ring-black/5 dark:bg-slate-900/90 dark:ring-white/10">
           <span className={cn('truncate font-medium', group.done ? 'text-muted-foreground' : 'text-foreground')}>{group.name}</span>
           {group.isNext && eta && <span className="shrink-0 font-semibold text-blue-600 dark:text-blue-400">· {eta}</span>}
         </div>
         <div className={cn('flex h-7 min-w-7 items-center justify-center rounded-full border-[2.5px] border-white px-1.5 text-[11px] font-bold text-white shadow-md', bg)}>
-          {group.done ? <Check className="size-3.5" strokeWidth={3} /> : group.numbers.join('·')}
+          {group.done ? <Check className="size-3.5" strokeWidth={3} /> : stopNumbersLabel(group.numbers)}
         </div>
         <div className={cn('-mt-0.5 h-2 w-0.5 rounded-full', bg)} />
       </div>

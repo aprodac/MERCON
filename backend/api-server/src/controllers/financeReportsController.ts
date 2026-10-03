@@ -4,7 +4,7 @@ import { prisma } from '../db';
 
 const FALLBACK_TZ = 'Asia/Riyadh';
 
-function localDateToUtc(dateStr: string, tz: string, endOfDay: boolean): Date {
+export function localDateToUtc(dateStr: string, tz: string, endOfDay: boolean): Date {
   const time = endOfDay ? '23:59:59' : '00:00:00';
   const probe = new Date(`${dateStr}T${time}Z`);
 

@@ -6,8 +6,19 @@ import { nextJournalEntryRefId } from './refId';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const toUuidOrNull = (id?: string | null): string | null => (id && UUID_REGEX.test(id) ? id : null);
 
+export interface TransferOptions {
+  /** Deposit slip, cheque or transfer (UTR) number. */
+  reference?: string | null;
+  /** Bank charges on the transfer, posted Dr the charges account / Cr the bank that took them. */
+  chargesAmount?: number | string | null;
+  /** Expense account the charges go to; required when there are charges. */
+  chargesAccountId?: string | null;
+}
+
 /**
- * Transfers funds between two GL cash/bank accounts by posting a 2-line JournalEntry.
+ * A contra entry: moves money between two cash/bank accounts (both must be linked to a
+ * BankAccount) with a JournalEntry — Dr destination, Cr source — plus, when the bank took a fee,
+ * Dr the charges account / Cr the bank side (the source when it's a bank, else the destination).
  */
 export async function transferFunds(
   fromAccountId: string,
@@ -16,8 +27,17 @@ export async function transferFunds(
   date: Date | string,
   memo?: string,
   userId?: string | null,
+  opts: TransferOptions = {},
 ) {
   const transferAmount = new Prisma.Decimal(amount);
+  const charges = new Prisma.Decimal(opts.chargesAmount || 0);
+  if (charges.lessThan(0)) {
+    throw new AccountingError('Bank charges cannot be negative', 'INVALID_AMOUNT', 400);
+  }
+  if (charges.greaterThan(0) && !opts.chargesAccountId) {
+    throw new AccountingError('Choose the expense account for the bank charges', 'CHARGES_ACCOUNT_REQUIRED', 400);
+  }
+  const reference = opts.reference?.trim() || null;
   if (transferAmount.lessThanOrEqualTo(0)) {
     throw new AccountingError('Transfer amount must be greater than zero', 'INVALID_AMOUNT', 400);
   }
@@ -43,6 +63,26 @@ export async function transferFunds(
     if (!toAccount.is_postable) {
       throw new AccountingError('Destination account is marked as non-postable', 'ACCOUNT_NOT_POSTABLE', 400);
     }
+
+    // Contra entries move money between cash and bank only
+    const [fromBank, toBank] = await Promise.all([
+      tx.bankAccount.findFirst({ where: { accountId: fromAccountId, deletedAt: null, isActive: true } }),
+      tx.bankAccount.findFirst({ where: { accountId: toAccountId, deletedAt: null, isActive: true } }),
+    ]);
+    if (!fromBank || !toBank) {
+      throw new AccountingError('Both accounts must be active bank or cash accounts', 'NOT_A_BANK_ACCOUNT', 400);
+    }
+
+    let chargesAccount: { id: string; account_code: string; name: string } | null = null;
+    if (charges.greaterThan(0)) {
+      const a = await tx.account.findUnique({ where: { id: opts.chargesAccountId as string } });
+      if (!a || a.account_type !== 'Expense' || !a.is_postable || !a.isActive || a.deletedAt) {
+        throw new AccountingError('Bank charges must go to an active, postable Expense account', 'INVALID_CHARGES_ACCOUNT', 400);
+      }
+      chargesAccount = a;
+    }
+    // The bank that took the fee: the sending bank, or the receiving one for a cash deposit
+    const chargedAccount = fromBank.is_cash ? toAccount : fromAccount;
 
     // 2. Lookup open accounting period covering transfer date
     const transferDate = new Date(date);
@@ -74,6 +114,7 @@ export async function transferFunds(
         status: 'Draft',
         periodId: period.id,
         source_type: 'BankTransfer',
+        reference,
         created_by: toUuidOrNull(userId),
         lines: {
           create: [
@@ -89,6 +130,12 @@ export async function transferFunds(
               credit: transferAmount,
               description: `Transfer out to ${toAccount.account_code} - ${toAccount.name}`,
             },
+            ...(chargesAccount
+              ? [
+                  { accountId: chargesAccount.id, debit: charges, credit: 0, description: `Bank charges (${chargedAccount.account_code} - ${chargedAccount.name})` },
+                  { accountId: chargedAccount.id, debit: 0, credit: charges, description: `Bank charges to ${chargesAccount.account_code} - ${chargesAccount.name}` },
+                ]
+              : []),
           ],
         },
       },

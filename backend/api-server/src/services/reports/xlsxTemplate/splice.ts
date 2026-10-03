@@ -1,6 +1,6 @@
 import { unzipSync, zipSync } from 'fflate';
-import type { TemplateLayout, TripReportFieldKey } from '@mercon/shared-types';
-import { TRIP_REPORT_FIELDS } from '@mercon/shared-types';
+import type { ReportFieldKey, TemplateLayout } from '@mercon/shared-types';
+import { REPORT_FIELDS_BY_SOURCE } from '@mercon/shared-types';
 import {
   ParsedCell,
   ParsedRow,
@@ -16,9 +16,13 @@ import {
 
 type SharedFormulaMap = Map<string, { row: number; text: string }>;
 
-const FIELD_TYPE: Record<TripReportFieldKey, string> = Object.fromEntries(
-  TRIP_REPORT_FIELDS.map((f) => [f.key, f.type])
-) as Record<TripReportFieldKey, string>;
+// Every source's fields; a key shared by two sources has the same type in both.
+const FIELD_TYPE: Record<string, string> = Object.fromEntries(
+  Object.values(REPORT_FIELDS_BY_SOURCE).flatMap((fields) => fields.map((f) => [f.key, f.type]))
+);
+
+/** One generated row: field key → value. */
+export type ReportRow = Partial<Record<ReportFieldKey, unknown>>;
 
 const EXCEL_EPOCH_MS = Date.UTC(1899, 11, 30);
 
@@ -41,7 +45,7 @@ function buildCell(
   ref: string,
   sourceCell: ParsedCell,
   column: TemplateLayout['columns'][number] | undefined,
-  record: Record<TripReportFieldKey, unknown> | null,
+  record: ReportRow | null,
   rowDelta: number,
   sourceRow: number,
   shared: SharedFormulaMap
@@ -92,7 +96,7 @@ function buildDataRow(
   rowNum: number,
   bandRow: ParsedRow,
   layout: TemplateLayout,
-  record: Record<TripReportFieldKey, unknown>,
+  record: ReportRow,
   bandRowNum: number,
   shared: SharedFormulaMap
 ): string {
@@ -149,7 +153,7 @@ export interface GenerateOptions {
 export function generateFromTemplate(
   fileBuf: Buffer,
   layout: TemplateLayout,
-  rows: Record<TripReportFieldKey, unknown>[],
+  rows: ReportRow[],
   options: GenerateOptions = {}
 ): Buffer {
   const files = unzipSync(new Uint8Array(fileBuf));

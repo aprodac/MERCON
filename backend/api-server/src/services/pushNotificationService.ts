@@ -1,6 +1,7 @@
-﻿import axios from 'axios';
-import { prisma } from '../index';
+import axios from 'axios';
+import { prisma } from '../db';
 import { logger } from '../utils/logger';
+import { WATCH_TIMINGS } from './driverPhone/rules';
 
 export interface ExpoPushMessage {
   to: string;
@@ -13,80 +14,242 @@ export interface ExpoPushMessage {
 }
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
+const EXPO_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts';
+const EXPO_HEADERS = {
+  Accept: 'application/json',
+  'Accept-Encoding': 'gzip, deflate',
+  'Content-Type': 'application/json',
+};
 
 /**
- * Sends push notifications to active devices for a given driver via Expo Push Service.
+ * The text a driver sees. The delay monitor tags its prompt with "[stop:<id>]"
+ * so it can tell which stop it already asked about; that tag stays in the
+ * database but never reaches the phone or the office trail.
+ */
+export function visibleNotificationMessage(message: string): string {
+  return message.replace(/\s*\[stop:[^\]]*\]/g, '');
+}
+
+export function isExpoPushToken(token: string | null | undefined): token is string {
+  return !!token && (token.startsWith('ExponentPushToken[') || token.startsWith('ExpoPushToken['));
+}
+
+interface Target {
+  deviceId: string;
+  token: string;
+  /** Existing PushDelivery row when this is a retry. */
+  deliveryId?: string;
+}
+
+/**
+ * Hands messages to Expo and records the outcome of each one in PushDelivery:
+ * `Sent` with the ticket id (the driverWatch job later fetches the receipt),
+ * or `Failed` with Expo's error code. A token Expo says is no longer
+ * registered deactivates its device so we stop sending to it.
+ */
+async function deliver(
+  notificationId: string,
+  targets: Target[],
+  message: Omit<ExpoPushMessage, 'to'>,
+): Promise<void> {
+  if (targets.length === 0) return;
+
+  const record = async (t: Target, data: { status: string; expo_ticket_id?: string | null; error_code?: string | null; error_message?: string | null }) => {
+    if (t.deliveryId) {
+      await prisma.pushDelivery.update({
+        where: { id: t.deliveryId },
+        data: { ...data, attempts: { increment: 1 }, sent_at: new Date() },
+      });
+    } else {
+      await prisma.pushDelivery.create({ data: { notificationId, deviceId: t.deviceId, ...data } });
+    }
+  };
+
+  let tickets: any[] | null = null;
+  try {
+    const response = await axios.post(
+      EXPO_PUSH_URL,
+      targets.map((t) => ({ to: t.token, ...message })),
+      { headers: EXPO_HEADERS, timeout: 10000 },
+    );
+    tickets = Array.isArray(response.data?.data) ? response.data.data : null;
+    if (!tickets) {
+      const err = response.data?.errors?.[0];
+      await Promise.all(targets.map((t) => record(t, {
+        status: 'Failed',
+        error_code: err?.code ?? 'ExpoBadResponse',
+        error_message: err?.message ?? 'Expo returned no tickets',
+      })));
+      return;
+    }
+  } catch (error: any) {
+    logger.error({ err: error?.message || error, notificationId }, '[PushService] Expo push request failed');
+    const rateLimited = error?.response?.status === 429;
+    await Promise.all(targets.map((t) => record(t, {
+      status: 'Failed',
+      error_code: rateLimited ? 'MessageRateExceeded' : 'ExpoUnreachable',
+      error_message: String(error?.message ?? error).slice(0, 500),
+    }))).catch((err) => logger.error({ err }, '[PushService] Failed to record push failure'));
+    return;
+  }
+
+  for (let i = 0; i < targets.length; i++) {
+    const t = targets[i];
+    const ticket = tickets[i];
+    try {
+      if (ticket?.status === 'ok') {
+        await record(t, { status: 'Sent', expo_ticket_id: ticket.id ?? null, error_code: null, error_message: null });
+        continue;
+      }
+      const code = ticket?.details?.error ?? 'Error';
+      logger.warn({ ticket, deviceId: t.deviceId }, '[PushService] Push ticket error');
+      await record(t, { status: 'Failed', error_code: code, error_message: ticket?.message ?? null });
+      if (code === 'DeviceNotRegistered') await deactivateDevice(t.deviceId);
+    } catch (err) {
+      logger.error({ err, deviceId: t.deviceId }, '[PushService] Failed to record push ticket');
+    }
+  }
+}
+
+export async function deactivateDevice(deviceId: string): Promise<void> {
+  logger.info({ deviceId }, '[PushService] Token not registered. Deactivating device');
+  await prisma.driverDevice
+    .update({ where: { id: deviceId }, data: { isActive: false } })
+    .catch((err: any) => logger.error({ err }, '[PushService] Failed to deactivate device'));
+}
+
+/**
+ * Sends a driver notification to every active device of the driver via Expo
+ * and records one PushDelivery per device — or a single `NoDevice` row when
+ * the driver has nowhere to receive it, so the dashboard can say so.
  * Safe and non-blocking: errors in push delivery never throw to caller.
  */
 export async function sendDriverPushNotification(
   driverId: string,
   title: string,
   body: string,
-  data: Record<string, any> = {}
+  data: Record<string, any> = {},
+  notificationId?: string,
 ): Promise<void> {
   try {
     const devices = await prisma.driverDevice.findMany({
-      where: {
-        driverId,
-        isActive: true,
-      },
+      where: { driverId, isActive: true },
+      select: { id: true, token: true },
     });
 
-    if (!devices || devices.length === 0) {
-      logger.debug({ driverId }, '[PushService] No active devices found for driver');
+    const targets: Target[] = devices
+      .filter((d) => isExpoPushToken(d.token))
+      .map((d) => ({ deviceId: d.id, token: d.token as string }));
+
+    if (targets.length === 0) {
+      logger.debug({ driverId }, '[PushService] No push-capable device for driver');
+      if (notificationId) {
+        await prisma.pushDelivery.create({
+          data: {
+            notificationId,
+            status: 'NoDevice',
+            error_message: devices.length
+              ? 'The driver\'s phone has notifications turned off'
+              : 'The driver has no phone registered',
+          },
+        });
+      }
       return;
     }
 
-    const messages: ExpoPushMessage[] = [];
-    const validDevices: typeof devices = [];
-
-    for (const dev of devices) {
-      if (dev.token && (dev.token.startsWith('ExponentPushToken[') || dev.token.startsWith('ExpoPushToken['))) {
-        messages.push({
-          to: dev.token,
-          sound: 'default',
-          title,
-          body,
-          data,
-          channelId: 'default',
-          priority: 'high',
-        });
-        validDevices.push(dev);
-      } else {
-        logger.warn({ token: dev.token, driverId }, '[PushService] Skipping invalid Expo push token format');
-      }
+    if (!notificationId) {
+      // Nothing to record against — send without a trail (not used by the app today).
+      await axios.post(EXPO_PUSH_URL, targets.map((t) => ({ to: t.token, sound: 'default', title, body, data, channelId: 'default', priority: 'high' })), { headers: EXPO_HEADERS, timeout: 10000 });
+      return;
     }
 
-    if (messages.length === 0) return;
-
-    // Send via Expo Push API
-    const response = await axios.post(EXPO_PUSH_URL, messages, {
-      headers: {
-        Accept: 'application/json',
-        'Accept-Encoding': 'gzip, deflate',
-        'Content-Type': 'application/json',
-      },
-      timeout: 10000,
-    });
-
-    const results = response.data?.data;
-    if (Array.isArray(results)) {
-      for (let i = 0; i < results.length; i++) {
-        const ticket = results[i];
-        const device = validDevices[i];
-        if (ticket.status === 'error') {
-          logger.warn({ ticket, token: device.token }, '[PushService] Push ticket error');
-          if (ticket.details?.error === 'DeviceNotRegistered') {
-            logger.info({ token: device.token }, '[PushService] Token not registered. Deactivating device');
-            await prisma.driverDevice.update({
-              where: { id: device.id },
-              data: { isActive: false },
-            }).catch((err: any) => logger.error({ err }, '[PushService] Failed to deactivate device'));
-          }
-        }
-      }
-    }
+    await deliver(notificationId, targets, { sound: 'default', title, body, data, channelId: 'default', priority: 'high' });
   } catch (error: any) {
     logger.error({ err: error?.message || error, driverId }, '[PushService] Failed to send push notification');
   }
+}
+
+/** Re-sends one failed delivery (used by the driverWatch retry check). */
+export async function retryPushDelivery(deliveryId: string): Promise<void> {
+  const row = await prisma.pushDelivery.findUnique({
+    where: { id: deliveryId },
+    include: { notification: true, device: { select: { id: true, token: true, isActive: true } } },
+  });
+  if (!row || !row.device || !row.device.isActive || !isExpoPushToken(row.device.token)) return;
+  const n = row.notification;
+  await deliver(
+    n.id,
+    [{ deviceId: row.device.id, token: row.device.token, deliveryId: row.id }],
+    {
+      sound: 'default',
+      title: n.title,
+      body: visibleNotificationMessage(n.message),
+      data: {
+        type: n.type,
+        entity_type: n.entity_type,
+        entity_id: n.entity_id,
+        notificationId: n.id,
+        ...(n.entity_type === 'Trip' && n.entity_id ? { tripId: n.entity_id } : {}),
+      },
+      channelId: 'default',
+      priority: 'high',
+    },
+  );
+}
+
+/**
+ * Asks Expo whether Apple/Google accepted each `Sent` push old enough to have
+ * a receipt. Expo answers per ticket: ok → Delivered, error → Failed (and a
+ * dead token deactivates its device). Tickets with no receipt after Expo's
+ * ~24 h retention become Unknown.
+ */
+export async function checkPushReceipts(now: Date = new Date()): Promise<{ checked: number; delivered: number; failed: number }> {
+  const result = { checked: 0, delivered: 0, failed: 0 };
+
+  await prisma.pushDelivery.updateMany({
+    where: { status: 'Sent', sent_at: { lt: new Date(now.getTime() - WATCH_TIMINGS.receiptGiveUpMs) } },
+    data: { status: 'Unknown', receipt_checked_at: now, error_message: 'Expo no longer had a receipt for this push' },
+  });
+
+  const pending = await prisma.pushDelivery.findMany({
+    where: {
+      status: 'Sent',
+      expo_ticket_id: { not: null },
+      sent_at: { lt: new Date(now.getTime() - WATCH_TIMINGS.receiptAfterMs) },
+    },
+    select: { id: true, expo_ticket_id: true, deviceId: true },
+    orderBy: { sent_at: 'asc' },
+    take: 1000, // Expo's per-request limit
+  });
+  if (pending.length === 0) return result;
+
+  const response = await axios.post(
+    EXPO_RECEIPTS_URL,
+    { ids: pending.map((p) => p.expo_ticket_id) },
+    { headers: EXPO_HEADERS, timeout: 15000 },
+  );
+  const receipts: Record<string, any> = response.data?.data ?? {};
+
+  for (const p of pending) {
+    const receipt = receipts[p.expo_ticket_id as string];
+    if (!receipt) {
+      // Not ready yet — stamp it so the dashboard shows we looked.
+      await prisma.pushDelivery.update({ where: { id: p.id }, data: { receipt_checked_at: now } });
+      continue;
+    }
+    result.checked++;
+    if (receipt.status === 'ok') {
+      result.delivered++;
+      await prisma.pushDelivery.update({ where: { id: p.id }, data: { status: 'Delivered', receipt_checked_at: now } });
+    } else {
+      result.failed++;
+      const code = receipt.details?.error ?? 'Error';
+      await prisma.pushDelivery.update({
+        where: { id: p.id },
+        data: { status: 'Failed', error_code: code, error_message: receipt.message ?? null, receipt_checked_at: now },
+      });
+      if (code === 'DeviceNotRegistered' && p.deviceId) await deactivateDevice(p.deviceId);
+    }
+  }
+  return result;
 }

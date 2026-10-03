@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Clock, Navigation, MapPin, CheckCircle2, ArrowRight } from 'lucide-react';
 import {
   estimateTravelTimeByName,
+  estimateRouteTravelTime,
   calculateArrivalDropoffTime,
   calculateArrivalDropoffDateAndTime,
+  formatDuration,
   TravelTimeEstimate,
 } from '@/services/travelTimeService';
 import { cn, isUuid } from '@/lib/utils';
@@ -23,7 +25,18 @@ interface TransitTimeBadgeProps {
   pickupTime?: string;
   dropoffTime?: string;
   onAutoSetDropoffTime?: (suggestedDropoffTime: string, isOvernight: boolean) => void;
-  onAutoSetDropoffDateTime?: (dropoffDate: string, dropoffTime: string, isOvernight: boolean, estimate: TravelTimeEstimate) => void;
+  onAutoSetDropoffDateTime?: (
+    dropoffDate: string,
+    dropoffTime: string,
+    isOvernight: boolean,
+    estimate: TravelTimeEstimate,
+    /** Minutes after pickup at each intermediate stop (empty without stops / for a duty shift). */
+    stopOffsetsMinutes: number[]
+  ) => void;
+  /** Intermediate stops to drive through (the estimate adds each leg plus a stop allowance). */
+  intermediateStops?: Array<{ name: string; lat?: number | null; lng?: number | null }>;
+  /** A duty shift (10 / 12 hours): arrival is pickup + this, not the drive time. */
+  fixedDurationMinutes?: number | null;
   className?: string;
   compact?: boolean;
 }
@@ -44,25 +57,51 @@ export default function TransitTimeBadge({
   dropoffTime,
   onAutoSetDropoffTime,
   onAutoSetDropoffDateTime,
+  intermediateStops = [],
+  fixedDurationMinutes = null,
   className,
   compact = false,
 }: TransitTimeBadgeProps) {
   const [estimate, setEstimate] = useState<TravelTimeEstimate | null>(null);
+  const [stopOffsets, setStopOffsets] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
+  const namedStops = intermediateStops.filter((st) => st.name && st.name.trim() && !isUuid(st.name));
+  const stopsKey = JSON.stringify(namedStops);
 
   useEffect(() => {
     let isMounted = true;
 
     if (!origin?.trim() || !destination?.trim()) {
       setEstimate(null);
+      setStopOffsets([]);
+      return;
+    }
+
+    if (fixedDurationMinutes && fixedDurationMinutes > 0) {
+      setEstimate({
+        durationMinutes: fixedDurationMinutes,
+        durationText: `${formatDuration(fixedDurationMinutes)} duty`,
+        distanceKm: 0,
+        source: 'saudi_routes',
+      });
+      setStopOffsets([]);
+      setLoading(false);
       return;
     }
 
     setLoading(true);
-    estimateTravelTimeByName(origin, destination, originLat, originLng, destinationLat, destinationLng)
+    const request = namedStops.length > 0
+      ? estimateRouteTravelTime([
+          { name: origin, lat: originLat, lng: originLng },
+          ...namedStops,
+          { name: destination, lat: destinationLat, lng: destinationLng },
+        ])
+      : estimateTravelTimeByName(origin, destination, originLat, originLng, destinationLat, destinationLng);
+    request
       .then((res) => {
         if (isMounted) {
           setEstimate(res);
+          setStopOffsets(res && 'stopOffsetsMinutes' in res ? (res as any).stopOffsetsMinutes : []);
           setLoading(false);
         }
       })
@@ -76,24 +115,34 @@ export default function TransitTimeBadge({
     return () => {
       isMounted = false;
     };
-  }, [origin, destination, originLat, originLng, destinationLat, destinationLng]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [origin, destination, originLat, originLng, destinationLat, destinationLng, stopsKey, fixedDurationMinutes]);
+
+  // Callers pass inline callbacks (a new function every render). Keeping them in a ref
+  // means the auto-fill below runs only when the estimate or the pickup actually
+  // changes — not on every render, which looped and overwrote a hand-set drop-off.
+  const autoSetRef = useRef({ onAutoSetDropoffDateTime, onAutoSetDropoffTime });
+  autoSetRef.current = { onAutoSetDropoffDateTime, onAutoSetDropoffTime };
 
   // Auto-update dropoff date and time when estimate, pickupDate, or pickupTime changes
+  const durationMinutes = estimate?.durationMinutes;
+  const stopOffsetsKey = stopOffsets.join(',');
   useEffect(() => {
-    if (estimate && pickupTime && pickupTime.trim()) {
-      if (onAutoSetDropoffDateTime) {
-        const arrivalCalc = calculateArrivalDropoffDateAndTime(pickupDate, pickupTime, estimate.durationMinutes);
-        if (arrivalCalc.dropoffTime) {
-          onAutoSetDropoffDateTime(arrivalCalc.dropoffDate, arrivalCalc.dropoffTime, arrivalCalc.isOvernight, estimate);
-        }
-      } else if (onAutoSetDropoffTime) {
-        const arrivalCalc = calculateArrivalDropoffTime(pickupTime, estimate.durationMinutes);
-        if (arrivalCalc.dropoffTime) {
-          onAutoSetDropoffTime(arrivalCalc.dropoffTime, arrivalCalc.isOvernight);
-        }
+    if (!estimate || !pickupTime || !pickupTime.trim()) return;
+    const { onAutoSetDropoffDateTime: setDateTime, onAutoSetDropoffTime: setTime } = autoSetRef.current;
+    if (setDateTime) {
+      const arrivalCalc = calculateArrivalDropoffDateAndTime(pickupDate, pickupTime, estimate.durationMinutes);
+      if (arrivalCalc.dropoffTime) {
+        setDateTime(arrivalCalc.dropoffDate, arrivalCalc.dropoffTime, arrivalCalc.isOvernight, estimate, stopOffsets);
+      }
+    } else if (setTime) {
+      const arrivalCalc = calculateArrivalDropoffTime(pickupTime, estimate.durationMinutes);
+      if (arrivalCalc.dropoffTime) {
+        setTime(arrivalCalc.dropoffTime, arrivalCalc.isOvernight);
       }
     }
-  }, [estimate, pickupDate, pickupTime, onAutoSetDropoffDateTime, onAutoSetDropoffTime]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [durationMinutes, pickupDate, pickupTime, stopOffsetsKey]);
 
   if (!origin.trim() || !destination.trim()) {
     return null;
@@ -112,8 +161,10 @@ export default function TransitTimeBadge({
     return (
       <span className={cn("inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-orange-50 dark:bg-orange-950/40 text-brand text-[10px] font-black border border-orange-200/80 dark:border-orange-900/60 shadow-2xs shrink-0", className)}>
         <Clock className="w-3 h-3 text-brand shrink-0" />
-        <span>Transit: {estimate.durationText}</span>
-        <span className="text-orange-700/80 dark:text-orange-300/80 font-bold ml-0.5">({estimate.distanceKm} km)</span>
+        <span>{fixedDurationMinutes ? `Shift: ${estimate.durationText}` : `Transit: ${estimate.durationText}`}</span>
+        {!fixedDurationMinutes && (
+          <span className="text-orange-700/80 dark:text-orange-300/80 font-bold ml-0.5">({estimate.distanceKm} km)</span>
+        )}
       </span>
     );
   }

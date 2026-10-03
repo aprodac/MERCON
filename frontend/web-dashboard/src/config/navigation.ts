@@ -2,9 +2,10 @@ import type { LucideIcon } from 'lucide-react';
 import {
   Home, Truck, CalendarRange, Calculator, Building2, Car, Users, Wrench, Handshake,
   ReceiptText, Clock, CreditCard, Wallet, Landmark, Scale, HandCoins, BookOpen, BookOpenText,
-  FolderTree, CalendarCheck, BarChart3, FileBarChart, Coins, TrendingUp, FileSpreadsheet,
-  SlidersHorizontal, Files, GraduationCap, Bell, Settings, Palette, UserCog, ShieldCheck,
+  FolderTree, CalendarCheck, BarChart3, FileBarChart, Coins, TrendingUp,
+  SlidersHorizontal, Files, GraduationCap, Bell, Settings, Palette, UserCog, ShieldCheck, Smile,
   Map as MapIcon, MapPin, Layers, Tags, FileType, Trash2, ScrollText, AlertTriangle, Activity, FolderArchive, FileCheck2,
+  ArrowLeftRight, Percent, Banknote,
 } from 'lucide-react';
 import type { ModuleKey } from '@mercon/shared-types';
 
@@ -134,7 +135,7 @@ export const SETTINGS_GROUPS: { id: SettingsGroupId; label: string }[] = [
   { id: 'aprodac', label: 'Shared with Aprodac' },
 ];
 
-const isVehicleFinancials = (p: string) => p === '/vehicles/financials' || /^\/vehicles\/[^/]+\/financials$/.test(p);
+const isVehicleFinancials = (p: string) => p === '/vehicles/financials' || p.startsWith('/vehicles/financials/') || /^\/vehicles\/[^/]+\/financials$/.test(p);
 
 export const NAV_PAGES: NavPage[] = [
   { id: 'home', label: 'Home', path: '/', icon: Home, section: 'home', moduleKey: 'dashboard', keywords: ['dashboard', 'overview'], match: (p) => p === '/' },
@@ -171,9 +172,11 @@ export const NAV_PAGES: NavPage[] = [
   // Finance — Purchases
   { id: 'bills', label: 'Bills', path: '/finance/bills', icon: CreditCard, section: 'finance', group: 'purchases', moduleKey: 'finance', keywords: ['vendor bills', 'ap'] },
   { id: 'expenses', label: 'Expenses', path: '/expenses', icon: Wallet, section: 'finance', group: 'purchases', moduleKey: 'expenses', permissionKey: 'reports.view', keywords: ['operating expenses', 'fuel', 'costs'] },
+  { id: 'driver-pay', label: 'Driver pay', path: '/finance/driver-pay', icon: Banknote, section: 'finance', group: 'purchases', moduleKey: 'finance', keywords: ['driver settlement', 'trip pay', 'payout', 'pay drivers', 'driver payouts by month', 'monthly payouts'] },
   { id: 'payables', label: 'Payables', path: '/finance/ap-ageing', icon: Clock, section: 'finance', group: 'purchases', moduleKey: 'finance', keywords: ['ap ageing', 'aging', 'pay bills'] },
   // Finance — Banking
   { id: 'bank-accounts', label: 'Bank accounts', path: '/finance/bank-accounts', icon: Landmark, section: 'finance', group: 'banking', moduleKey: 'finance', keywords: ['cash', 'transfer'] },
+  { id: 'contra-entries', label: 'Contra entries', path: '/finance/contra', icon: ArrowLeftRight, section: 'finance', group: 'banking', moduleKey: 'finance', keywords: ['transfer', 'cash deposit', 'withdrawal', 'bank to bank'] },
   { id: 'reconciliation', label: 'Reconciliation', path: '/finance/reconciliation', icon: Scale, section: 'finance', group: 'banking', moduleKey: 'finance', keywords: ['bank statement'] },
   { id: 'advances', label: 'Advances', path: '/finance/advances', icon: HandCoins, section: 'finance', group: 'banking', moduleKey: 'finance', keywords: ['prepayments', 'driver advance', 'customer advance'] },
   // Finance — Accounting
@@ -185,6 +188,8 @@ export const NAV_PAGES: NavPage[] = [
   { id: 'profit-and-loss', label: 'Profit & loss', path: '/finance/profit-and-loss', icon: BarChart3, section: 'finance', group: 'reports', moduleKey: 'finance', keywords: ['p&l', 'income statement'] },
   { id: 'balance-sheet', label: 'Balance sheet', path: '/finance/balance-sheet', icon: FileBarChart, section: 'finance', group: 'reports', moduleKey: 'finance' },
   { id: 'trial-balance', label: 'Trial balance', path: '/finance/trial-balance', icon: Scale, section: 'finance', group: 'reports', moduleKey: 'finance', keywords: ['tb'] },
+  { id: 'trip-profitability', label: 'Trip profitability', path: '/finance/trip-profitability', icon: Percent, section: 'finance', group: 'reports', moduleKey: 'finance', keywords: ['margin', 'customer profitability', 'lane', 'route profit', 'losing trips'] },
+  { id: 'vat-return', label: 'VAT return', path: '/finance/vat-return', icon: Landmark, section: 'finance', group: 'reports', moduleKey: 'finance', keywords: ['vat', 'zatca return', 'tax return', 'output vat', 'input vat'] },
   { id: 'cash-flow', label: 'Cash flow', path: '/finance/cash-flow', icon: Coins, section: 'finance', group: 'reports', moduleKey: 'finance' },
   {
     id: 'vehicle-pnl', label: 'Vehicle P&L', path: '/vehicles/financials', icon: TrendingUp, section: 'finance', group: 'reports', moduleKey: 'vehicles', permissionKey: 'fleet.financials',
@@ -192,12 +197,12 @@ export const NAV_PAGES: NavPage[] = [
   },
 
   // Workspace
-  { id: 'company-reports', label: 'Reports', path: '/company-reports', icon: FileSpreadsheet, section: 'workspace', moduleKey: 'company-reports', permissionKey: 'reports.view', keywords: ['company reports', 'export'] },
   { id: 'report-builder', label: 'Report builder', path: '/report-builder', icon: SlidersHorizontal, section: 'workspace', moduleKey: 'report-builder', permissionKey: 'reports.view', keywords: ['quick report', 'advanced builder', 'custom report'] },
   {
     id: 'documents', label: 'Documents', path: '/documents', icon: Files, section: 'workspace', moduleKey: 'documents', keywords: ['files', 'expiry'],
     match: (p) => p === '/documents' || p.startsWith('/documents/') || p.startsWith('/docs/'),
   },
+  { id: 'users', label: 'Users', path: '/settings/users', icon: UserCog, section: 'workspace', adminOnly: true, keywords: ['user management', 'roles', 'accounts', 'team', 'admins', 'operators', 'driver app password'] },
   { id: 'learning', label: 'Learning', path: '/learning', icon: GraduationCap, section: 'workspace', moduleKey: 'learning', keywords: ['academy', 'tutorials'] },
   { id: 'notifications', label: 'Notifications', path: '/notifications', icon: Bell, section: 'workspace', keywords: ['alerts', 'inbox'], hiddenInSidebar: true },
 ];
@@ -213,6 +218,7 @@ export const NAV_ACTIONS: NavAction[] = [
   { id: 'new-bill', label: 'New bill', path: '/finance/bills/new', icon: CreditCard, section: 'finance', moduleKey: 'finance' },
   { id: 'new-journal-entry', label: 'New journal entry', path: '/finance/journal-entries/new', icon: BookOpen, section: 'finance', moduleKey: 'finance' },
   { id: 'new-advance', label: 'New advance', path: '/finance/advances/new', icon: HandCoins, section: 'finance', moduleKey: 'finance' },
+  { id: 'new-contra', label: 'New contra entry', path: '/finance/contra?new=1', icon: ArrowLeftRight, section: 'finance', moduleKey: 'finance' },
   { id: 'new-bank-account', label: 'New bank account', path: '/finance/bank-accounts/new', icon: Landmark, section: 'finance', moduleKey: 'finance' },
   { id: 'new-location', label: 'New location', path: '/locations/create', icon: MapPin, section: 'settings', moduleKey: 'locations', permissionKey: 'settings.view' },
 ];
@@ -227,8 +233,8 @@ export const NAV_ACTION_SECTIONS: { id: NavAction['section']; label: string }[] 
 export const SETTINGS_PAGES: SettingsNavPage[] = [
   { id: 'system-settings', label: 'Account & company', path: '/settings', icon: Settings, settingsGroup: 'general', keywords: ['system settings', 'company', 'profile', 'password', 'timezone', 'vat'], match: (p) => p === '/settings' || p === '/settings/profile' },
   { id: 'branding', label: 'Branding', path: '/settings/branding', icon: Palette, settingsGroup: 'general', superAdminOnly: true, keywords: ['logo', 'colors', 'theme'] },
+  { id: 'assistant', label: 'Assistant', path: '/settings/assistant', icon: Smile, settingsGroup: 'general', adminOnly: true, keywords: ['assistant', 'mascot', 'extra charges', 'reminders', 'cap', 'flag', 'headset'] },
   { id: 'zatca', label: 'ZATCA e-invoicing', path: '/settings/zatca', icon: FileCheck2, settingsGroup: 'general', adminOnly: true, moduleKey: 'zatca', keywords: ['fatoora', 'e-invoice', 'vat', 'tax', 'csid', 'certificate'] },
-  { id: 'users', label: 'Users', path: '/settings/users', icon: UserCog, settingsGroup: 'access', adminOnly: true, keywords: ['user management', 'roles', 'accounts'] },
   { id: 'module-governance', label: 'Modules', path: '/settings/module-governance', icon: ShieldCheck, settingsGroup: 'access', superAdminOnly: true, keywords: ['module governance', 'enable', 'disable', 'features'] },
   {
     id: 'locations', label: 'Locations', path: '/locations', icon: MapPin, settingsGroup: 'master-data', moduleKey: 'locations', permissionKey: 'settings.view', keywords: ['places', 'sites'],

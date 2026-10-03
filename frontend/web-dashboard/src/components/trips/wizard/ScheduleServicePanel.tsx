@@ -6,6 +6,7 @@ import { TimePicker } from '@/components/ui/time-picker';
 import TransitTimeBadge from '@/components/trips/TransitTimeBadge';
 import { getAllTaxonomyOptions, resolveTaxonomyOption } from '@/utils/taxonomyRegistry';
 import { isDateTimeInPast } from '@/utils/pastDateTripUtils';
+import { useDeploymentTimezone } from '@/lib/datetime';
 import { cn } from '@/lib/utils';
 
 interface ScheduleServicePanelProps {
@@ -25,6 +26,7 @@ export const ScheduleServicePanel: React.FC<ScheduleServicePanelProps> = ({
   triggerRateLookupForSlots,
   handleUpdateTripSlot,
 }) => {
+  const tz = useDeploymentTimezone();
   return (
     <div className="p-3 rounded-xl border border-[#FFDCD6] bg-white dark:bg-slate-900 shadow-2xs space-y-2.5">
       <div className="flex items-center justify-between pb-1.5 border-b border-[#FFDCD6]">
@@ -114,7 +116,7 @@ export const ScheduleServicePanel: React.FC<ScheduleServicePanelProps> = ({
       <div className="border-t border-slate-100 dark:border-slate-800 pt-2 space-y-2">
         {/* 2. PICKUP SCHEDULE */}
         {(() => {
-          const isPastSchedule = isDateTimeInPast(slot.date, slot.pickupTime);
+          const isPastSchedule = isDateTimeInPast(slot.date, slot.pickupTime, tz);
 
           return (
             <div className="space-y-1">

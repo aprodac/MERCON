@@ -37,7 +37,7 @@ describe('navigation config', () => {
       '/finance/bills/new', '/expenses', '/finance/ap-ageing', '/finance/bank-accounts', '/finance/bank-accounts/new',
       '/finance/reconciliation', '/finance/advances', '/finance/advances/new', '/finance/general-ledger', '/finance/journal-entries',
       '/finance/journal-entries/new', '/finance/chart-of-accounts', '/finance/periods', '/finance/profit-and-loss',
-      '/finance/balance-sheet', '/finance/trial-balance', '/finance/cash-flow', '/company-reports', '/report-builder',
+      '/finance/balance-sheet', '/finance/trial-balance', '/finance/cash-flow', '/report-builder',
       '/report-builder/quick', '/report-builder/advanced', '/documents', '/learning', '/locations', '/locations/create', '/taxonomy',
       '/settings', '/settings/recycle-bin', '/settings/module-governance', '/settings/audit-log', '/settings/users',
       '/settings/error-console', '/aprodac-documents',
@@ -94,6 +94,7 @@ describe('navigation config', () => {
     expect(active('/vehicles/abc')).toBe('vehicles');
     expect(active('/vehicles/financials')).toBe('vehicle-pnl');
     expect(active('/vehicles/abc/financials')).toBe('vehicle-pnl');
+    expect(active('/vehicles/financials/setup')).toBe('vehicle-pnl');
     expect(active('/finance/invoices/new')).toBe('invoices');
     expect(active('/rate-cards/5/edit')).toBe('quotations');
     expect(active('/settings/error-console/99')).toBe('error-console');

@@ -49,9 +49,11 @@ export interface OperatorTripStop {
   stop_type: string;
   location_lat: number;
   location_lng: number;
+  /** EXACT, or a guess (APPROXIMATE / UNKNOWN / null) that still needs a pin. */
+  location_coordinate_precision?: 'EXACT' | 'APPROXIMATE' | 'UNKNOWN' | null;
   location_name: string | null;
   /** The saved place, when the stop was picked from Locations. */
-  location?: { name?: string | null; code?: string | null; city?: string | null } | null;
+  location?: { id?: string; name?: string | null; code?: string | null; city?: string | null } | null;
   planned_arrival: string | null;
   actual_arrival: string | null;
   actual_departure: string | null;
@@ -116,6 +118,8 @@ export interface OperatorTripDetail {
   } | null;
   stops: OperatorTripStop[];
   documents?: OperatorTripDocument[];
+  /** Photos/videos removed by the 60-day retention job (null when none). */
+  media_purged?: { count: number; purged_at: string; retention_days: number } | null;
 
   // Co-driver — same DB columns/relation as the web dashboard's Trip type.
   co_driver_id?: string | null;
@@ -164,11 +168,13 @@ export interface OperatorTripCharge {
 export type TripPhase = 'planned' | 'active' | 'done' | 'cancelled';
 export type LiveMediaStage = 'loaded' | 'arrived' | 'stop' | 'delivered' | 'delay' | 'other';
 
+/** Mirrors `LiveGpsFix` in backend services/fleetLiveMap.ts (field names as the API sends them). */
 export interface LiveGpsFix {
   lat: number;
   lng: number;
-  heading?: number | null;
-  speed_kmh?: number | null;
+  heading_deg?: number | null;
+  speed_kph?: number | null;
+  accuracy_m?: number | null;
   recorded_at: string;
   fresh: boolean;
 }
@@ -258,6 +264,9 @@ export interface LiveUnit {
   driver_gps: LiveGpsFix | null;
   position: (LiveGpsFix & { source: 'vehicle' | 'driver' }) | null;
   feeds_gap_m?: number | null;
+  /** Which GPS feeds are live, and whether the truck is moving (same as the web live map). */
+  feed?: 'both' | 'vehicle' | 'driver' | 'none';
+  motion?: 'moving' | 'idle' | 'stale' | 'no_signal';
 }
 
 /** A document or licence that has expired or expires soon (backend services/operatorInbox.ts). */
@@ -330,8 +339,81 @@ export interface OperatorThirdPartyProvider {
   contact_person?: string | null;
   phone?: string | null;
   email?: string | null;
+  address?: string | null;
+  tax_id?: string | null;
+  notes?: string | null;
+  rating?: number | null;
   isActive?: boolean;
   _count?: { subcontracts?: number };
+  // Computed by the API (thirdPartyController), not stored columns.
+  total_trips?: number;
+  active_trips?: number;
+  total_cost?: number | string;
+  /** Only on GET /third-party-providers/:id — the provider's 20 most recent trips. */
+  trips?: OperatorTrip[];
+}
+
+export interface ThirdPartyProviderInput {
+  name: string;
+  contact_person?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  tax_id?: string;
+  notes?: string;
+  isActive?: boolean;
+}
+
+export interface ThirdPartyStats {
+  total: number;
+  active: number;
+  inactive: number;
+  total_trips: number;
+  total_cost: number;
+}
+
+/** PUT /trips/:id/stops — the whole route is replaced, so every stop is sent. */
+export interface UpdateTripRouteInput {
+  stops: {
+    stop_type: string;
+    leg_index: number;
+    location_id?: string | null;
+    location_name: string;
+    lat?: number | null;
+    lng?: number | null;
+    planned_arrival?: string | null;
+  }[];
+  planned_start?: string;
+  planned_end?: string;
+  isRound?: boolean;
+}
+
+/** A quotation as GET /quotations/:id returns it (the edit form's starting values). */
+export interface OperatorQuotationDetail {
+  id: string;
+  name?: string | null;
+  customerId: string;
+  customer?: { id: string; name: string } | null;
+  rate: number | string;
+  driver_payout?: number | string | null;
+  currency?: string | null;
+  vehicle_class?: string | null;
+  source_vehicle_label?: string | null;
+  line_type?: string | null;
+  operation_type?: string | null;
+  pricing_basis?: string | null;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  is_active: boolean;
+  stops?: {
+    id: string;
+    sequence: number;
+    leg_index?: number | null;
+    stop_type: string;
+    source_label?: string | null;
+    locationId?: string | null;
+    location?: { id: string; name: string } | null;
+  }[];
 }
 
 /** A driver as the create-trip form needs them: status and assigned truck. */
@@ -513,6 +595,8 @@ export interface OperatorDocument {
 
 export const ACTIVE_TRIP_STATUSES = ['Scheduled', 'Loading', 'InTransit', 'Delayed', 'Emergency'];
 
+let timezoneRequest: Promise<string> | null = null;
+
 export const operatorService = {
   async summary(): Promise<DashboardSummary> {
     const { data } = await api.get('/reports/summary');
@@ -531,12 +615,12 @@ export const operatorService = {
   },
 
   async drivers(): Promise<OperatorDriver[]> {
-    const { data } = await api.get('/drivers', { params: { per_page: 100 } });
+    const { data } = await api.get('/drivers', { params: { mode: 'lookup', per_page: 100 } });
     return (data.data ?? []) as OperatorDriver[];
   },
 
   async vehicles(): Promise<OperatorVehicle[]> {
-    const { data } = await api.get('/vehicles', { params: { per_page: 100 } });
+    const { data } = await api.get('/vehicles', { params: { mode: 'lookup', per_page: 100 } });
     return (data.data ?? []) as OperatorVehicle[];
   },
 
@@ -545,26 +629,12 @@ export const operatorService = {
     return (data.data ?? []) as OperatorInvoice[];
   },
 
+  /** GET /trips/:id already carries every document on the trip and its stops. */
   async tripById(id: string): Promise<OperatorTripDetail> {
     const { data } = await api.get(`/trips/${id}`);
-    const tripDetail = data.data as OperatorTripDetail;
-
-    if (!tripDetail.documents || tripDetail.documents.length === 0) {
-      try {
-        const docRes = await api.get('/documents', {
-          params: { entity_type: 'Trip', entity_id: tripDetail.id || id, per_page: 50 },
-        });
-        const docs = docRes.data?.data || [];
-        if (docs.length > 0) {
-          tripDetail.documents = docs;
-        }
-      } catch {
-        // silent fallback
-      }
-    }
-
-    return tripDetail;
+    return data.data as OperatorTripDetail;
   },
+
 
   async customers(): Promise<OperatorCustomer[]> {
     const { data } = await api.get('/customers', { params: { per_page: 100 } });
@@ -587,12 +657,12 @@ export const operatorService = {
   },
 
   async availableDrivers(): Promise<OperatorDriver[]> {
-    const { data } = await api.get('/drivers', { params: { per_page: 100, status: 'Available' } });
+    const { data } = await api.get('/drivers', { params: { mode: 'lookup', per_page: 100, status: 'Available' } });
     return (data.data ?? []) as OperatorDriver[];
   },
 
   async availableVehicles(): Promise<OperatorVehicle[]> {
-    const { data } = await api.get('/vehicles', { params: { per_page: 100, status: 'Available' } });
+    const { data } = await api.get('/vehicles', { params: { mode: 'lookup', per_page: 100, status: 'Available' } });
     return (data.data ?? []) as OperatorVehicle[];
   },
 
@@ -635,6 +705,26 @@ export const operatorService = {
   async thirdPartyProviders(): Promise<OperatorThirdPartyProvider[]> {
     const { data } = await api.get('/third-party-providers', { params: { per_page: 100 } });
     return (data.data ?? []) as OperatorThirdPartyProvider[];
+  },
+
+  async thirdPartyProviderById(id: string): Promise<OperatorThirdPartyProvider> {
+    const { data } = await api.get(`/third-party-providers/${id}`);
+    return data.data as OperatorThirdPartyProvider;
+  },
+
+  async thirdPartyStats(): Promise<ThirdPartyStats> {
+    const { data } = await api.get('/third-party-providers/stats');
+    return data.data as ThirdPartyStats;
+  },
+
+  async createThirdPartyProvider(payload: ThirdPartyProviderInput): Promise<OperatorThirdPartyProvider> {
+    const { data } = await api.post('/third-party-providers', payload);
+    return data.data as OperatorThirdPartyProvider;
+  },
+
+  async updateThirdPartyProvider(id: string, payload: Partial<ThirdPartyProviderInput>): Promise<OperatorThirdPartyProvider> {
+    const { data } = await api.put(`/third-party-providers/${id}`, payload);
+    return data.data as OperatorThirdPartyProvider;
   },
 
   /** Same `/quotations` list endpoint the web dashboard's create-trip wizard
@@ -718,14 +808,20 @@ export const operatorService = {
     }
   },
 
-  /** The deployment timezone trip times are entered in (Settings.timezone). */
-  async deploymentTimezone(): Promise<string> {
-    try {
-      const { data } = await api.get('/settings/public');
-      return data?.data?.timezone || 'Asia/Riyadh';
-    } catch {
-      return 'Asia/Riyadh';
+  /**
+   * The deployment timezone trip times are entered in (Settings.timezone).
+   * Asked once per app run: Home, Trips, Trip details and Create Trip all need it.
+   */
+  deploymentTimezone(): Promise<string> {
+    if (!timezoneRequest) {
+      timezoneRequest = api.get('/settings/public')
+        .then(({ data }) => (data?.data?.timezone as string | undefined) || 'Asia/Riyadh')
+        .catch(() => {
+          timezoneRequest = null; // try again next time
+          return 'Asia/Riyadh';
+        });
     }
+    return timezoneRequest;
   },
 
   /**
@@ -760,6 +856,17 @@ export const operatorService = {
   async createQuotationRaw(payload: Record<string, unknown>): Promise<OperatorQuotation> {
     const { data } = await api.post('/quotations', payload);
     return data.data as OperatorQuotation;
+  },
+
+  async quotationById(id: string): Promise<OperatorQuotationDetail> {
+    const { data } = await api.get(`/quotations/${id}`);
+    return data.data as OperatorQuotationDetail;
+  },
+
+  /** PUT /quotations/:id — same payload shape as create (the web's Edit Quotation page). */
+  async updateQuotation(id: string, payload: Record<string, unknown>): Promise<OperatorQuotationDetail> {
+    const { data } = await api.put(`/quotations/${id}`, payload);
+    return data.data as OperatorQuotationDetail;
   },
 
   async bulkImportTrips(rows: unknown[]): Promise<{ imported: number; failed: number; results: Array<{ row: number; success: boolean; error?: string; created_id?: string }> }> {
@@ -891,16 +998,42 @@ export const operatorService = {
     return data.data as OperatorTripDetail;
   },
 
-  /** Confirm or correct the real time an EXTERNAL_APP evidence screenshot
-   * happened at — same endpoint/columns the web dashboard's time-confirmation
-   * panel uses. Omit a field to leave that timestamp as recorded. */
-  async confirmEvidenceTime(
+  /** Save a customer-app trip's real stop times, copied off the driver's
+   * screenshots, all stops at once — same endpoint as the web's "Check times".
+   * Only changed times are sent; an empty list confirms the tapped times. */
+  async confirmTripTimes(
+    tripId: string,
+    stops: { stop_id: string; actual_arrival?: string; actual_departure?: string }[]
+  ): Promise<{ stops_updated: number; screenshots_verified: number }> {
+    const { data } = await api.patch(`/trips/${tripId}/confirm-times`, { stops });
+    return data.data;
+  },
+
+  /**
+   * Pin a stop exactly — same endpoint as the web's "Set pin" box. When the
+   * stop is its customer location (not pinned yet), that location and its
+   * other open trips are pinned too.
+   */
+  async pinStop(
     tripId: string,
     stopId: string,
-    payload: { document_id: string; actual_arrival?: string; actual_departure?: string }
-  ): Promise<OperatorTripStop> {
-    const { data } = await api.patch(`/trips/${tripId}/stops/${stopId}/confirm-time`, payload);
-    return data.data as OperatorTripStop;
+    pin: { lat: number; lng: number; address?: string | null }
+  ): Promise<{ location_pinned: boolean; other_trip_count: number }> {
+    const { data } = await api.post(`/trips/${tripId}/stops/${stopId}/pin`, pin);
+    return data.data;
+  },
+
+  /** A pasted Google Maps / WhatsApp link or "lat, lng" → a pin (resolved by the API). */
+  async resolveLocationText(text: string): Promise<{ lat: number; lng: number; address?: string }> {
+    const { data } = await api.get('/geocoding/resolve-location', { params: { text } });
+    return data;
+  },
+
+  /** Place search (Saudi Arabia). */
+  async searchPlaces(q: string): Promise<{ id: string; label: string; lat: number; lng: number }[]> {
+    const { data } = await api.get('/geocoding/search', { params: { q } });
+    return ((data?.suggestions ?? []) as { id: string; display_name: string; lat: number; lon: number }[])
+      .map((r) => ({ id: r.id, label: r.display_name, lat: r.lat, lng: r.lon }));
   },
 
   /** Every truck/driver with a running or scheduled trip and its GPS — the web's live map. */
@@ -928,9 +1061,37 @@ export const operatorService = {
   },
 
   /** Phase, pre-trip checks, live GPS and the path driven — the web map's data. */
+  /** The trip's customer tracking link (created on first ask); `renew` replaces it and the old one stops working. */
+  async trackingLink(id: string, renew = false): Promise<TrackingLinkInfo> {
+    const { data } = await api.post(`/trips/${id}/tracking-link`, { renew });
+    return data.data as TrackingLinkInfo;
+  },
+
+  /** Tracking links for several trips at once, keyed by trip id (bulk status share). */
+  async trackingLinks(ids: string[]): Promise<Record<string, TrackingLinkInfo>> {
+    if (ids.length === 0) return {};
+    const { data } = await api.post('/trips/tracking-links', { trip_ids: ids.slice(0, 100) });
+    return data.data as Record<string, TrackingLinkInfo>;
+  },
+
   async tripOverview(id: string): Promise<TripOverview> {
     const { data } = await api.get(`/vehicles/live-map/trips/${id}/overview`);
     return data.data as TripOverview;
+  },
+
+  /** Road route between two points or through several, with its [lng, lat] geometry (null when routing is down). */
+  async liveRoute(points: { lat: number; lng: number }[]): Promise<{ geometry: [number, number][]; distanceMeters: number; durationSeconds: number } | null> {
+    if (points.length < 2) return null;
+    try {
+      const params = points.length === 2
+        ? { from: `${points[0].lat},${points[0].lng}`, to: `${points[1].lat},${points[1].lng}` }
+        : { points: points.map((p) => `${p.lat},${p.lng}`).join(';') };
+      const { data } = await api.get('/vehicles/live-map/route', { params, timeout: 10_000 });
+      const r = data?.data;
+      return r && Array.isArray(r.geometry) && Number.isFinite(r.distanceMeters) ? r : null;
+    } catch {
+      return null;
+    }
   },
 
   /** Road distance and drive time between two points (null when routing is down) — the web map's route call. */
@@ -961,6 +1122,21 @@ export const operatorService = {
   }): Promise<ShareResult> {
     const { data } = await api.post('/operator-inbox/driver-updates/share', body);
     return data.data as ShareResult;
+  },
+
+  /** Replaces the trip's route and planned times (PUT /trips/:id/stops, as the web's Edit Trip). Draft / Scheduled trips only. */
+  async updateTripRoute(id: string, payload: UpdateTripRouteInput): Promise<OperatorTripDetail> {
+    const { data } = await api.put(`/trips/${id}/stops`, payload);
+    return data.data as OperatorTripDetail;
+  },
+
+  /** Billing amount and driver payout (PATCH /trips/:id/financials, as the web's Edit Trip). */
+  async updateTripPrice(id: string, payload: { billing_amount?: number; driver_payout?: number }): Promise<OperatorTripDetail> {
+    const { data } = await api.patch(`/trips/${id}/financials`, {
+      ...payload,
+      ...(payload.driver_payout !== undefined ? { trip_charges: payload.driver_payout } : {}),
+    });
+    return data.data as OperatorTripDetail;
   },
 
   /** Replaces the trip's additional charges (PATCH /trips/:id/financials, as the web's charges editor). */
@@ -1203,62 +1379,6 @@ export function useOperatorVehicles() {
   useEffect(() => { refetch(); }, [refetch]);
 
   return { vehicles, loading, error, refetch };
-}
-
-export interface VehicleRenewal {
-  documentId: string;
-  vehiclePlate: string;
-  docType: string;
-  status: string;
-  expiryDate: string | null;
-  daysLeft: number | null;
-}
-
-/** Joins vehicle documents with their vehicle's plate number for the renewals screen. */
-export function useOperatorVehicleRenewals() {
-  const [renewals, setRenewals] = useState<VehicleRenewal[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const refetch = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [documents, vehicles] = await Promise.all([
-        operatorService.vehicleDocuments(),
-        operatorService.vehicles(),
-      ]);
-      const vehicleById = new Map(vehicles.map((v) => [v.id, v]));
-      const now = Date.now();
-      // Documents whose vehicle no longer exists (e.g. deleted from the fleet)
-      // are dropped — there's nothing to renew for a vehicle that's gone.
-      const joined = documents
-        .filter((doc) => vehicleById.has(doc.entity_id))
-        .map((doc): VehicleRenewal => {
-          const vehicle = vehicleById.get(doc.entity_id)!;
-          const daysLeft = doc.expiry_date
-            ? Math.ceil((new Date(doc.expiry_date).getTime() - now) / (1000 * 60 * 60 * 24))
-            : null;
-          return {
-            documentId: doc.id,
-            vehiclePlate: vehicle.plate_number,
-            docType: doc.doc_type,
-            status: doc.status,
-            expiryDate: doc.expiry_date,
-            daysLeft,
-          };
-        });
-      setRenewals(joined);
-    } catch (e) {
-      setError(getApiErrorMessage(e));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { refetch(); }, [refetch]);
-
-  return { renewals, loading, error, refetch };
 }
 
 let cacheOperatorInvoices: OperatorInvoice[] = [];
@@ -1603,4 +1723,20 @@ export function useOperatorDocuments() {
   useEffect(() => { refetch(); }, [refetch]);
 
   return { documents, loading, error, refetch };
+}
+
+/** Mirrors the API's trip tracking link (backend services/tracking/customerTracking.ts). */
+export interface TrackingLinkInfo {
+  /** False when the customer has tracking switched off — then url is null. */
+  enabled: boolean;
+  /** Whether status messages should end with the link (customer setting). */
+  auto_link: boolean;
+  url: string | null;
+  open_count: number;
+  last_opened_at: string | null;
+}
+
+/** The link a status message should end with — only for customers who want it added. */
+export function autoTrackingUrl(link: TrackingLinkInfo | null | undefined): string | null {
+  return link?.enabled && link.auto_link ? link.url : null;
 }

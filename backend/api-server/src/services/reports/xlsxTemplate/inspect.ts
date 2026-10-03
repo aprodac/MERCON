@@ -1,12 +1,12 @@
 import ExcelJS from 'exceljs';
-import type { TripReportFieldKey } from '@mercon/shared-types';
+import type { ReportFieldKey, ReportSource } from '@mercon/shared-types';
 import { suggestField } from './aliases';
 
 export interface InspectedColumn {
   colIndex: number;
   headerText: string;
   sampleValue: string;
-  suggestedField: TripReportFieldKey | null;
+  suggestedField: ReportFieldKey | null;
 }
 
 export interface InspectedSheet {
@@ -29,7 +29,7 @@ export interface TemplateInspection {
  * entirely by splice.ts's byte-preserving ZIP engine, so nothing lossy about
  * ExcelJS's writer ever runs against a customer's template.
  */
-export async function inspectTemplate(buf: Buffer): Promise<TemplateInspection> {
+export async function inspectTemplate(buf: Buffer, source: ReportSource = 'trips'): Promise<TemplateInspection> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buf as any);
 
@@ -66,7 +66,7 @@ export async function inspectTemplate(buf: Buffer): Promise<TemplateInspection> 
 
       let hits = 0;
       const columns: InspectedColumn[] = headers.map((h) => {
-        const suggestedField = suggestField(h.text);
+        const suggestedField = suggestField(h.text, source);
         if (suggestedField) hits++;
         const sampleCell = worksheet.getRow(dataStartRow).getCell(h.colIndex);
         return {
@@ -79,7 +79,7 @@ export async function inspectTemplate(buf: Buffer): Promise<TemplateInspection> 
       if (hits < 2) continue;
 
       const uniqueFields = new Set(
-        columns.map((c) => c.suggestedField).filter((f): f is TripReportFieldKey => f !== null)
+        columns.map((c) => c.suggestedField).filter((f): f is ReportFieldKey => f !== null)
       ).size;
       const better =
         !bestScore ||

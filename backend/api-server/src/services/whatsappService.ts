@@ -4,6 +4,17 @@ import axios from 'axios';
 import FormData from 'form-data';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
+import { ensureTrackingLink } from './tracking/customerTracking';
+
+/**
+ * The trip's evidence-gallery link, opened by its tracking token — never by trip
+ * number, which anyone could change to see other customers' trips. Null when
+ * the customer has tracking (and so public links) switched off.
+ */
+async function galleryLink(publicBase: string, tripId: string): Promise<string | null> {
+  const link = await ensureTrackingLink(prisma, tripId, { userId: null });
+  return link?.token ? `${publicBase}/trips/evidence-gallery?t=${encodeURIComponent(link.token)}` : null;
+}
 
 export interface WhatsAppServiceConfig {
   apiToken?: string;
@@ -217,7 +228,7 @@ export class WhatsAppService {
 
       const publicMediaUrl = this.toPublicHttpsUrl(relativeFilePath);
       const publicBase = (this.config.publicBaseUrl || 'https://dev.mercon.tech').replace(/\/+$/, '');
-      const galleryUrl = `${publicBase}/trips/evidence-gallery?ref=${encodeURIComponent(tripRef)}`;
+      const galleryUrl = await galleryLink(publicBase, trip.id);
 
       const tripNotes = (trip as any).notes;
       const delayReason = (tripNotes && typeof tripNotes === 'string' && tripNotes.includes('[DELAY REPORT]'))
@@ -233,7 +244,7 @@ export class WhatsAppService {
       if (driverPhone) shareText += `Number # +${driverPhone.replace(/^\+/, '')}\n`;
       shareText += `Reason # ${delayReason}\n`;
       shareText += `\n📹 *Delay Video*:\n${publicMediaUrl}\n`;
-      shareText += `\n🔗 *Full Evidence Gallery*:\n${galleryUrl}`;
+      if (galleryUrl) shareText += `\n🔗 *Full Evidence Gallery*:\n${galleryUrl}`;
 
       const cleanPhone = targetPhone.replace(/[^0-9]/g, '');
       const whatsappWebUrl = cleanPhone
@@ -262,7 +273,7 @@ export class WhatsAppService {
 
       const publicMediaUrl = this.toPublicHttpsUrl(relativeFilePath);
       const publicBase = (this.config.publicBaseUrl || 'https://dev.mercon.tech').replace(/\/+$/, '');
-      const galleryUrl = `${publicBase}/trips/evidence-gallery?ref=${encodeURIComponent(tripRef)}`;
+      const galleryUrl = await galleryLink(publicBase, trip.id);
 
       shareText = `✅ *POD Confirmed — ${tripRef}*\n\n`;
       shareText += `Customer # ${customerName}\n`;
@@ -273,7 +284,7 @@ export class WhatsAppService {
       if (driverPhone) shareText += `Number # +${driverPhone.replace(/^\+/, '')}\n`;
       shareText += `Status # Verified Proof of Delivery\n`;
       shareText += `\n🖼️ *POD Image*:\n${publicMediaUrl}\n`;
-      shareText += `\n🔗 *Full Evidence Gallery*:\n${galleryUrl}`;
+      if (galleryUrl) shareText += `\n🔗 *Full Evidence Gallery*:\n${galleryUrl}`;
 
       const cleanPhone = targetPhone.replace(/[^0-9]/g, '');
       const whatsappWebUrl = cleanPhone

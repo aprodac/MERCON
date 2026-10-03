@@ -1,7 +1,11 @@
-/** Who and where, at a glance: customer, trip number, status, what's happening now, stop progress. */
+/**
+ * The trip at a glance, one card: who it's for and its status, one line on
+ * what's happening now, stop progress while it's running, and the quick
+ * actions. Each fact appears once — a finished trip shows "Finished …" and
+ * nothing else about being done.
+ */
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { ArrowRight, CircleAlert, Clock3, ExternalLink, Flag, XCircle } from 'lucide-react-native';
 import { CompanyAvatar, niceName } from '../../create/components/ui';
 import type { OperatorTripDetail, TripPhase } from '../../../../lib/operator';
 import { TONE, delayText, sortedStops, statusChip, stopName, type Formatters, type Tone, statePhrase } from '../tripDetailsModel';
@@ -9,96 +13,81 @@ import { Card, Chip, INK, MUTED } from './parts';
 
 const PHASE_TONE: Record<TripPhase, Tone> = { planned: 'violet', active: 'blue', done: 'green', cancelled: 'gray' };
 
-export function TripHeader({ trip, phase, f }: { trip: OperatorTripDetail; phase: TripPhase; f: Formatters }) {
+export function TripHeader({ trip, phase, f, children }: { trip: OperatorTripDetail; phase: TripPhase; f: Formatters; children?: React.ReactNode }) {
   const stops = sortedStops(trip);
   const chip = statusChip(trip.status);
   const phrase = statePhrase(trip, phase, f);
   const delayed = trip.status === 'Delayed' || trip.status === 'Emergency';
-  const toneKey: Tone = delayed ? 'red' : PHASE_TONE[phase];
-  const tone = TONE[toneKey];
-  const PhraseIcon = delayed ? CircleAlert : phase === 'planned' ? Clock3 : phase === 'done' ? Flag : phase === 'cancelled' ? XCircle : ArrowRight;
+  const tone = TONE[delayed ? 'red' : PHASE_TONE[phase]];
   const nextIdx = phase === 'active' ? stops.findIndex((s) => !s.actual_arrival) : -1;
   const doneCount = stops.filter((s) => s.actual_arrival).length;
   const reported = [...stops].reverse().find((s) => s.delay_reason || s.delay_note);
-  const route = stops.length
-    ? stops.length <= 2
-      ? stops.map((s, i) => stopName(s, i)).join(' → ')
-      : `${stopName(stops[0], 0)} → +${stops.length - 2} → ${stopName(stops[stops.length - 1], stops.length - 1)}`
-    : 'No stops';
-  const caption =
-    phase === 'planned' ? `${stops.length} stops planned`
-    : phase === 'cancelled' ? 'Cancelled'
-    : phase === 'done' ? `All ${stops.length} stops done`
-    : `${doneCount} of ${stops.length} stops done`;
+  const from = stops.length ? niceName(stopName(stops[0], 0)) : null;
+  const to = stops.length > 1 ? niceName(stopName(stops[stops.length - 1], stops.length - 1)) : null;
+  const via = Math.max(0, stops.length - 2);
+  const now = delayed ? `Delayed${reported ? ` · ${delayText(reported)}` : ''}` : phrase;
+  // Progress only means something while the trip is running.
+  const showProgress = phase === 'active' && stops.length > 0;
 
   return (
-    <Card style={{ gap: 11 }}>
+    <Card style={{ gap: 14 }}>
       <View style={s.top}>
-        <CompanyAvatar name={trip.customer?.name} url={trip.customer?.logo_url} size={42} />
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={s.ref} numberOfLines={1} selectable>{trip.ref_id ?? trip.id.slice(0, 8)}</Text>
-          <Text style={s.customer} numberOfLines={1}>{niceName(trip.customer?.name) || 'No customer'}</Text>
+        <CompanyAvatar name={trip.customer?.name} url={trip.customer?.logo_url} size={44} />
+        <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+          <Text style={s.customer} numberOfLines={2}>{niceName(trip.customer?.name) || 'No customer'}</Text>
+          <Text style={s.ref} selectable>{trip.ref_id ?? trip.id.slice(0, 8)}</Text>
         </View>
         <Chip label={chip.label} tone={chip.tone} dot />
       </View>
 
-      {phrase ? (
-        <View style={[s.phrase, { backgroundColor: tone.bg }]}>
-          <PhraseIcon size={15} color={tone.fg} strokeWidth={2.4} />
-          <Text style={[s.phraseText, { color: tone.fg }]} numberOfLines={2}>
-            {delayed ? `Delayed${reported ? ` · ${delayText(reported)}` : ''}` : phrase}
-          </Text>
+      {from ? (
+        <View style={s.routeBox}>
+          <View style={s.rail}>
+            <View style={[s.pin, { backgroundColor: '#FFFFFF', borderColor: INK }]} />
+            {to ? <View style={s.railLine} /> : null}
+            {to ? <View style={[s.pin, { backgroundColor: INK, borderColor: INK }]} /> : null}
+          </View>
+          <View style={{ flex: 1, minWidth: 0, gap: 10 }}>
+            <Text style={s.route} numberOfLines={1}>{from}</Text>
+            {to ? <Text style={s.route} numberOfLines={1}>{to}</Text> : null}
+          </View>
+          {via > 0 ? <Text style={s.via}>{`+${via} ${via === 1 ? 'stop' : 'stops'}`}</Text> : null}
         </View>
       ) : null}
 
-      {trip.driver_workflow === 'EXTERNAL_APP' ? (
-        <View style={s.external}>
-          <ExternalLink size={12} color={MUTED} />
-          <Text style={s.externalText}>Driver uses the customer’s app · screenshots as proof</Text>
-        </View>
-      ) : null}
+      <View style={{ gap: 4 }}>
+        {now && !(delayed && !reported) ? <Text style={[s.now, { color: tone.fg }]}>{now}</Text> : null}
+        {trip.driver_workflow === 'EXTERNAL_APP' ? <Text style={s.note}>Driver uses the customer’s app · screenshots as proof</Text> : null}
+      </View>
 
-      {stops.length > 0 ? (
+      {showProgress ? (
         <View style={{ gap: 6 }}>
           <View style={s.segments}>
             {stops.map((st, i) => (
-              <View
-                key={st.id}
-                style={[
-                  s.segment,
-                  {
-                    backgroundColor:
-                      phase === 'cancelled' ? '#D6D3D1'
-                      : phase === 'planned' ? '#DCD2F6'
-                      : phase === 'done' || st.actual_arrival ? TONE.green.dot
-                      : i === nextIdx ? TONE.blue.dot
-                      : '#DDE0E8',
-                  },
-                ]}
-              />
+              <View key={st.id} style={[s.segment, { backgroundColor: st.actual_arrival ? TONE.green.dot : i === nextIdx ? (delayed ? TONE.red.dot : TONE.blue.dot) : '#E4E4E7' }]} />
             ))}
           </View>
-          <View style={s.captionRow}>
-            <Text style={s.caption} numberOfLines={1}>{route}</Text>
-            <Text style={s.captionStrong}>{caption}</Text>
-          </View>
+          <Text style={s.note}>{doneCount} of {stops.length} stops done</Text>
         </View>
       ) : null}
+
+      {children}
     </Card>
   );
 }
 
 const s = StyleSheet.create({
-  top: { flexDirection: 'row', alignItems: 'center', gap: 11 },
-  ref: { fontFamily: 'monospace', fontSize: 15, fontWeight: '700', color: INK },
-  customer: { fontSize: 13, fontWeight: '600', color: INK, marginTop: 1 },
-  phrase: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 12, paddingHorizontal: 11, paddingVertical: 9 },
-  phraseText: { flex: 1, fontSize: 13, fontWeight: '700' },
-  external: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  externalText: { fontSize: 12, color: MUTED },
+  top: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  customer: { fontSize: 17, fontWeight: '700', color: INK, lineHeight: 22, letterSpacing: -0.2 },
+  ref: { fontSize: 13, color: MUTED, fontVariant: ['tabular-nums'] },
+  routeBox: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#F6F6F7', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 11 },
+  rail: { alignItems: 'center', alignSelf: 'stretch', justifyContent: 'center', paddingVertical: 4 },
+  pin: { width: 9, height: 9, borderRadius: 5, borderWidth: 2 },
+  railLine: { flex: 1, width: 2, backgroundColor: '#C9C9D1', marginVertical: 2 },
+  route: { fontSize: 15, fontWeight: '600', color: INK, lineHeight: 20 },
+  via: { fontSize: 12, fontWeight: '600', color: MUTED, backgroundColor: '#E9E9EC', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
+  now: { fontSize: 14, fontWeight: '600' },
+  note: { fontSize: 12, color: MUTED },
   segments: { flexDirection: 'row', gap: 4 },
   segment: { flex: 1, height: 5, borderRadius: 3 },
-  captionRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
-  caption: { flex: 1, fontSize: 12, color: MUTED },
-  captionStrong: { fontSize: 12, fontWeight: '700', color: INK },
 });

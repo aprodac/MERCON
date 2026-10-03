@@ -63,6 +63,30 @@ export function normalizeBillingTypeToken(val?: string | null): 'Monthly' | 'Ext
   return 'Monthly';
 }
 
+/**
+ * Every spelling a stored billing type may have. Older quotations hold the label
+ * ("Extra" / "Monthly"), the quotation form saves the code ("EXTRA" / "MONTHLY"),
+ * so a database filter on one spelling must match both.
+ */
+export function billingTypeVariants(val?: string | null): string[] {
+  if (!val || !String(val).trim()) return [];
+  const s = String(val).trim().toUpperCase();
+  if (s.includes('MONTH')) return ['Monthly', 'MONTHLY', 'monthly'];
+  if (/\b(EXTRA|SPOT|ADHOC)\b/.test(s)) return ['Extra', 'EXTRA', 'extra'];
+  return [String(val).trim()];
+}
+
+/** Every spelling a stored line type may have (label or code). */
+export function lineTypeVariants(val?: string | null): string[] {
+  if (!val || !String(val).trim()) return [];
+  const s = String(val).trim().toUpperCase().replace(/_/g, ' ');
+  if (s.includes('10')) return ['10_HRS', '10 Hours Duty', '10 Hrs Duty', '10 Hours Shift', '10_HOURS', '10 HOURS'];
+  if (s.includes('12')) return ['12_HRS', '12 Hours Duty', '12 Hrs Duty', '12 Hours Shift', '12_HOURS', '12 HOURS'];
+  if (s.includes('ROUND')) return ['ROUND_TRIP', 'Round Trip', 'Trip/Round Trip'];
+  if (s.includes('SINGLE')) return ['SINGLE_TRIP', 'Single Trip'];
+  return [String(val).trim()];
+}
+
 export function matchLocationToken(cardLocRaw?: string | null, targetLocRaw?: string | null): boolean {
   if (!cardLocRaw || !targetLocRaw) return false;
   const cleanCard = normalizeLocationNameToken(cardLocRaw);

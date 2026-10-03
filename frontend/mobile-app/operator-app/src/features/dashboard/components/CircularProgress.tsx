@@ -46,7 +46,7 @@ export function CircularProgress({
         />
       </Svg>
       <View className="absolute inset-0 items-center justify-center">
-        <Text className="text-sm font-extrabold text-gray-900">{Math.round(clamped * 100)}%</Text>
+        <Text className="text-sm font-extrabold text-[#3E3C3D]">{Math.round(clamped * 100)}%</Text>
         {label ? <Text className="text-[9px] text-gray-500">{label}</Text> : null}
       </View>
     </View>

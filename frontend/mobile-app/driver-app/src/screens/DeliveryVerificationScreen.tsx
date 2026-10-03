@@ -6,14 +6,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Svg, { Path, Rect, Circle, Line, G, Polygon, Ellipse } from 'react-native-svg';
-import { Info, Camera, MapPin, Trash2, Package, ArrowRight, Clock, Check, MessageSquare, ClipboardList, Send, Navigation, RotateCcw } from 'lucide-react-native';
+import { Info, Camera, MapPin, Trash2, CircleCheckBig, ArrowRight, Clock, Check, MessageSquare, ClipboardList, Send, Navigation, RotateCcw } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { GoogleMapsGeotagPreview } from '../components/GoogleMapsGeotagPreview';
 import { GeotagPhotoModal } from '../components/GeotagPhotoModal';
-import { TripProgressStepper } from '../components/TripProgressStepper';
+import { StageHeader, STAGE_THEME } from '../components/StageHeader';
 import { FadedBottomIllustration } from '../components/FadedBottomIllustration';
 import { DelayReportModal } from '../components/DelayReportModal';
-import { DelayButton } from '../components/DelayButton';
 import { ReturnLoadingModal } from '../components/ReturnLoadingModal';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { tripService, stopAddress, stopLabel, isRoundTrip, getEffectiveWorkflowState, getLegEndpoints, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
@@ -97,7 +96,7 @@ const SideMapTileBox = () => (
 
 const DeliveryVerificationScreen = () => {
   const router = useRouter();
-  const { t, language } = useLanguage();
+  const { t, language, tr } = useLanguage();
   const { trip, loading, refetch, setTrip } = useCurrentTrip();
   const ws = getEffectiveWorkflowState(trip);
   const isRound = isRoundTrip(trip);
@@ -115,6 +114,8 @@ const DeliveryVerificationScreen = () => {
   // Khalid Airport placeholder, since there's no real next pickup) in a
   // loop instead of landing on the completed screen.
   const isReturnDelivery = isRound && (ws === 'ARRIVED_AT_FINAL_DELIVERY' || ws === 'FINAL_DELIVERY_VERIFICATION' || ws === 'IN_TRANSIT_RETURN' || ws === 'COMPLETED');
+  // This delivery completes the trip (one-way, or the return leg of a round trip).
+  const isFinalDelivery = !isRound || isReturnDelivery;
 
   const legIndex = isReturnDelivery ? 1 : 0;
   const dropoffStop = getLegEndpoints(trip, legIndex).delivery;
@@ -360,7 +361,7 @@ const DeliveryVerificationScreen = () => {
       if (failedUploads > 0) {
         Alert.alert(
           t('err_upload_failed_title', 'Upload failed'),
-          t('err_upload_failed_retry', `${failedUploads} photo(s) could not be uploaded. Check your connection and tap the button again.`),
+          t('err_upload_failed_retry', '{count} photo(s) could not be uploaded. Check your connection and tap the button again.').replace('{count}', String(failedUploads)),
         );
         return;
       }
@@ -429,22 +430,21 @@ const DeliveryVerificationScreen = () => {
   const deliveryLocationAddr = stopAddress(dropoffStop) || '';
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {/* Header Bar */}
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-            <Text style={styles.backIconText}>←</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{isReturnDelivery ? t('title_return_delivery_header', 'Return Delivery') : t('title_delivery_header', 'Delivery')}</Text>
-          <DelayButton onPress={() => setShowDelayModal(true)} />
-        </View>
-
-        {/* 4-Step Progress Stepper: Pickup ✓ -> Loading ✓ -> Delivery ● -> Complete */}
-        <TripProgressStepper
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: STAGE_THEME.delivery.main }}>
+      <StatusBar barStyle="light-content" backgroundColor={STAGE_THEME.delivery.main} />
+      <ScrollView style={{ backgroundColor: STAGE_THEME.delivery.page }} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <StageHeader
+          stage="delivery"
+          title={isReturnDelivery ? t('title_return_delivery_header', 'Return Delivery') : t('title_delivery_header', 'Delivery')}
+          subtitle={evidence.screenshot
+            ? t('sub_stage_screenshot', "Add a screenshot of the customer's app")
+            : t('sub_stage_delivery', 'Unload the cargo, then take 3 photos')}
+          isReturn={isReturnDelivery}
           trip={trip}
           target={{ kind: 'delivery', leg: isReturnDelivery ? 1 : 0 }}
+          onBack={() => router.back()}
+          onDelay={() => setShowDelayModal(true)}
+          style={{ marginHorizontal: -14 }}
         />
 
         {/* Location Card (Horizontal Side-by-Side matching Screenshot 2) */}
@@ -479,7 +479,11 @@ const DeliveryVerificationScreen = () => {
           </View>
 
           {evidence.screenshot && (
-            <Text style={styles.screenshotHint}>{t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")}</Text>
+            <Text style={styles.screenshotHint}>
+              {isFinalDelivery
+                ? t('hint_upload_screenshot_final', "Attach a screenshot of the customer app's Completed screen, showing every stop's arrive and departure time. Hold to use the camera instead.")
+                : t('hint_upload_screenshot', "Attach a screenshot of the customer's app showing this update. Hold to use the camera instead.")}
+            </Text>
           )}
 
           {/* Photo slots: 3, or 1 wide slot for a screenshot */}
@@ -497,6 +501,7 @@ const DeliveryVerificationScreen = () => {
                     <Image source={{ uri: photos[i].uri }} style={styles.photoImage} resizeMode={evidence.screenshot ? 'contain' : 'cover'} />
                     {!evidence.screenshot && !!photos[i].location && (
                       <GoogleMapsGeotagPreview
+                        customerName={trip?.customer?.name}
                         latitude={photos[i].location!.latitude}
                         longitude={photos[i].location!.longitude}
                         timestamp={photos[i].location!.timestamp}
@@ -524,7 +529,7 @@ const DeliveryVerificationScreen = () => {
               <Text style={styles.galleryLinkText}>
                 {evidence.screenshot
                   ? t('action_take_photo_instead', 'Take a photo instead')
-                  : language === 'ur' ? 'گیلری سے منتخب کریں' : 'Choose from gallery'}
+                  : tr('Choose from gallery', 'گیلری سے منتخب کریں')}
               </Text>
             </TouchableOpacity>
           ) : null}
@@ -539,7 +544,7 @@ const DeliveryVerificationScreen = () => {
             onPress={handleCompleteDelivery}
             disabled={!hasAllPhotos || submitting}
           >
-            <Package size={22} color={hasAllPhotos ? "#FFFFFF" : "#94A3B8"} strokeWidth={2} />
+            <CircleCheckBig size={22} color={hasAllPhotos ? "#FFFFFF" : "#94A3B8"} strokeWidth={2} />
             <Text style={[styles.mainActionBtnText, !hasAllPhotos && styles.mainActionBtnTextDisabled]}>
               {submitting
                 ? t('msg_completing', 'COMPLETING…')
@@ -564,6 +569,7 @@ const DeliveryVerificationScreen = () => {
       />
 
       <GeotagPhotoModal
+        companyName={trip?.customer?.name}
         visible={!!previewPhoto}
         photo={previewPhoto ? { uri: previewPhoto.uri, title: t('title_pod_preview', 'POD Photo Preview'), location: previewPhoto.location } : null}
         onClose={() => setPreviewPhoto(null)}
@@ -594,37 +600,8 @@ const styles = StyleSheet.create({
   scroll: {
     flexGrow: 1,
     paddingHorizontal: 14,
-    paddingTop: 6,
+    paddingTop: 0,
     paddingBottom: 0,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  backIconText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
   },
   returnBadgePill: {
     flexDirection: 'row',

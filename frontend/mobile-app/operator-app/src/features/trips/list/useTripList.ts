@@ -11,7 +11,7 @@ import { api } from '@mercon/mobile-shared/lib/api';
 import { operatorService, type OperatorTrip } from '../../../lib/operator';
 import { makeTime } from './tripListModel';
 
-export type View = 'now' | 'schedule' | 'history';
+export type View = 'now' | 'delayed' | 'schedule' | 'history';
 
 export const SCHEDULE_BEFORE = 7;
 export const SCHEDULE_AFTER = 13;
@@ -47,8 +47,8 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
   const openQ = useQuery({
     queryKey: ['trips', 'open', scopeKey ?? 'all'],
     queryFn: () => fetchTrips({ status: 'Draft,Scheduled,Loading,InTransit,Delayed', per_page: 300, ...filter }),
-    refetchInterval: view === 'now' ? 30_000 : false,
-    enabled: view === 'now' || view === 'schedule',
+    refetchInterval: view === 'now' || view === 'delayed' ? 30_000 : false,
+    enabled: view === 'now' || view === 'delayed' || view === 'schedule',
   });
 
   const windowStart = useMemo(() => {
@@ -99,10 +99,10 @@ export function useTripList(view: View, search: string, now: number, scope?: Rec
     results: found.data?.trips ?? [],
     searching: term.length >= 2,
     searchLoading: found.isFetching,
-    error: (view === 'now' ? openQ.error : view === 'schedule' ? schedule.error : history.error) as Error | null,
+    error: (view === 'now' || view === 'delayed' ? openQ.error : view === 'schedule' ? schedule.error : history.error) as Error | null,
     refresh: async () => {
       await Promise.all([
-        view === 'now' || view === 'schedule' ? openQ.refetch() : null,
+        view === 'now' || view === 'delayed' || view === 'schedule' ? openQ.refetch() : null,
         view === 'schedule' ? schedule.refetch() : null,
         view === 'history' ? history.refetch() : null,
         term.length >= 2 ? found.refetch() : null,

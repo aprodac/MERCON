@@ -144,27 +144,10 @@ export function DriverNotificationManager() {
           if (eventType === 'TripDelayPrompt') {
             handleForegroundDelayPrompt(payload);
           } else if (eventType === 'TripAssigned') {
+            // Refetching shows the "Got it" prompt (AcknowledgeTripsPrompt),
+            // which replaces the old Dismiss / View Trip alert.
             queryClient.invalidateQueries();
-            Alert.alert(
-              payload?.title || 'Trip Assigned',
-              payload?.message || 'You have been assigned a new trip.',
-              [
-                {
-                  text: 'Dismiss',
-                  style: 'cancel',
-                  onPress: () => {
-                    if (notifId) notificationService.markRead(notifId).catch(() => {});
-                  },
-                },
-                {
-                  text: 'View Trip',
-                  onPress: () => {
-                    if (notifId) notificationService.markRead(notifId).catch(() => {});
-                    if (tripId) navigateToTripDetails(tripId);
-                  },
-                },
-              ]
-            );
+            if (notifId) notificationService.markRead(notifId).catch(() => {});
           } else if (eventType === 'TripStartingSoon') {
             queryClient.invalidateQueries();
             Alert.alert(
@@ -272,7 +255,7 @@ export function DriverNotificationManager() {
       const eventType = (data?.type || data?.event || '').toString();
 
       if (notifId) {
-        notificationService.markRead(notifId).catch(() => {});
+        notificationService.markOpened(notifId).catch(() => {});
       }
 
       if (eventType === 'TripDelayPrompt') {

@@ -19,6 +19,7 @@ export async function getDriverRecommendations(req: Request, res: Response) {
     const origin = typeof req.query.origin === 'string' ? req.query.origin : undefined;
     const destination = typeof req.query.destination === 'string' ? req.query.destination : undefined;
     const plannedStart = typeof req.query.plannedStart === 'string' ? req.query.plannedStart : undefined;
+    const q = (k: string) => (typeof req.query[k] === 'string' ? (req.query[k] as string) : undefined);
 
     if (origin || destination || vehicleClass) {
       const recommendations = await getRecommendedDriversForTrip({
@@ -27,6 +28,11 @@ export async function getDriverRecommendations(req: Request, res: Response) {
         origin,
         destination,
         plannedStart,
+        plannedEnd: q('plannedEnd'),
+        originLocationId: q('originLocationId'),
+        destinationLocationId: q('destinationLocationId'),
+        customerId: q('customerId'),
+        excludeTripId: q('excludeTripId'),
       });
 
       return res.json({

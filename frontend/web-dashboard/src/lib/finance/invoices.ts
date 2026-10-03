@@ -109,3 +109,35 @@ export function invoiceNotice(
   ].filter((l) => l !== null);
   return `${en.join('\n')}\n\n────────\n\n${ar.join('\n')}`;
 }
+
+export interface PrintedLineVat {
+  /** Net of any line discount. */
+  amount: number;
+  rate: number;
+  vat: number;
+  total: number;
+}
+
+/**
+ * VAT on one stored line as issued: the line's own rate and tax (lines can differ, e.g. 15% and
+ * 0% zero-rated), falling back to the invoice rate for lines saved before per-line VAT existed.
+ */
+export function printedLineVat(line: Pick<InvoiceLine, 'amount' | 'tax_rate' | 'tax_amount'>, invoiceRate: number): PrintedLineVat {
+  const amount = n(line.amount);
+  const rate = line.tax_rate !== undefined && line.tax_rate !== null ? n(line.tax_rate) : invoiceRate;
+  const vat = line.tax_amount !== undefined && line.tax_amount !== null ? n(line.tax_amount) : Math.round(amount * rate) / 100;
+  return { amount, rate, vat, total: Math.round((amount + vat) * 100) / 100 };
+}
+
+/** VAT grouped by rate for the printed summary, highest rate first. */
+export function printedVatByRate(lines: Pick<InvoiceLine, 'amount' | 'tax_rate' | 'tax_amount'>[], invoiceRate: number) {
+  const by = new Map<number, { rate: number; taxable: number; vat: number }>();
+  lines.forEach((l) => {
+    const p = printedLineVat(l, invoiceRate);
+    const row = by.get(p.rate) ?? { rate: p.rate, taxable: 0, vat: 0 };
+    row.taxable = Math.round((row.taxable + p.amount) * 100) / 100;
+    row.vat = Math.round((row.vat + p.vat) * 100) / 100;
+    by.set(p.rate, row);
+  });
+  return [...by.values()].sort((a, b) => b.rate - a.rate);
+}

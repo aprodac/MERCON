@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button';
 import { KbdBadge } from '@/components/ui/KbdBadge';
 import DriverAvatar from '@/components/ui/DriverAvatar';
 import { cn } from '@/lib/utils';
-import { computeTripFinancials } from '@/utils/financialCalculations';
+import { summarizeTripRows, type TripImportRow } from '@mercon/shared-types';
 
 interface TripReviewConfirmModalProps {
   isOpen: boolean;
@@ -43,6 +43,8 @@ interface TripReviewConfirmModalProps {
   thirdPartyVehiclePlate?: string;
   thirdPartyCost?: number | string;
   thirdPartyProviders?: any[];
+  /** The exact rows that will be sent — totals are computed from these. */
+  rows?: TripImportRow[];
 }
 
 const isUuidString = (str: string) =>
@@ -86,9 +88,8 @@ export const TripReviewConfirmModal: React.FC<TripReviewConfirmModalProps> = ({
   thirdPartyVehiclePlate = '',
   thirdPartyCost = 0,
   thirdPartyProviders = [],
+  rows = [],
 }) => {
-  if (!isOpen) return null;
-
   // Resolve Customer Name & Object
   const customerObj = customers.find((c) => c.id === contractCustomer || c.name === contractCustomer);
   const customerName = customerObj?.name || contractCustomer || 'Unspecified Customer';
@@ -97,15 +98,14 @@ export const TripReviewConfirmModal: React.FC<TripReviewConfirmModalProps> = ({
   const primarySlot = contractSlots[0] || {};
   const originName = primarySlot.originName || primarySlot.origin || 'Origin';
   const destName = primarySlot.destinationName || primarySlot.destination || 'Destination';
-  const intermediates: string[] = primarySlot.intermediates || [];
+  const intermediates: string[] = (primarySlot.intermediateLocations || primarySlot.intermediates || []).filter(Boolean);
   const rateCategory = contractRateCategory || primarySlot.rateCategory || 'Single Trip';
 
   // Calculate Totals
   const totalOperatingDays = selectedDates.length || 1;
   const totalLanesCount = contractSlots.length || 1;
-  const totalTripsCount = totalOperatingDays * totalLanesCount;
-  const slotBillingTotal = contractSlots.reduce((sum, s) => sum + (Number(s.billingAmount) || 0), 0);
-  const grandTotalBilling = slotBillingTotal * (contractBillingType === 'Monthly' ? 1 : totalOperatingDays);
+  const totals = summarizeTripRows(rows);
+  const totalTripsCount = rows.length || totalOperatingDays * totalLanesCount;
 
   // Helper to safely resolve Driver Name & Avatar
   const resolveDriverDisplay = (dId: string) => {
@@ -204,36 +204,22 @@ export const TripReviewConfirmModal: React.FC<TripReviewConfirmModalProps> = ({
     return new Date().toISOString().slice(0, 10);
   }, [selectedDates, primarySlot?.date, dayAssignments, selectedMonth]);
 
-  // Validate schedule errors
+  // Checked on the rows that will be sent, so overnight / multi-night trips and
+  // monthly shifts are judged exactly as they will be saved.
   const scheduleErrors = React.useMemo(() => {
     const errors: string[] = [];
-    contractSlots.forEach((slot, idx) => {
-      const pDate = slot.date;
-      const dDate = slot.dropoffDate || slot.date;
-      if (!pDate || !dDate) {
-        errors.push(`Slot #${idx + 1}: Missing start or drop-off date.`);
-        return;
-      }
-      if (dDate < pDate) {
-        errors.push(`Slot #${idx + 1}: Drop-off date (${dDate}) cannot be before start date (${pDate}).`);
-        return;
-      }
-      const pTime = (slot.pickupTime || '08:00').split(' ')[0];
-      const dTime = (slot.dropoffTime || '14:00').split(' ')[0];
-      if (dDate === pDate && dTime <= pTime) {
-        errors.push(`Slot #${idx + 1}: Drop-off time (${dTime}) must be after start time (${pTime}).`);
-        return;
-      }
-      const pClean = pTime.length === 4 ? '0' + pTime : pTime;
-      const dClean = dTime.length === 4 ? '0' + dTime : dTime;
-      const pTs = new Date(`${pDate}T${pClean}`).getTime();
-      const dTs = new Date(`${dDate}T${dClean}`).getTime();
-      if (isNaN(pTs) || isNaN(dTs) || dTs <= pTs) {
-        errors.push(`Slot #${idx + 1}: Drop-off date and time must be strictly later than start date and time.`);
+    rows.forEach((row, idx) => {
+      if (!row.planned_end) return;
+      const start = new Date(row.planned_start).getTime();
+      const end = new Date(row.planned_end).getTime();
+      if (isNaN(start) || isNaN(end) || end <= start) {
+        errors.push(`Trip #${idx + 1}: Drop-off must be later than pickup.`);
       }
     });
     return errors;
-  }, [contractSlots]);
+  }, [rows]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[999] bg-charcoal-strong/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
@@ -464,19 +450,12 @@ export const TripReviewConfirmModal: React.FC<TripReviewConfirmModalProps> = ({
 
             {/* COLUMN 3: FINANCIAL SUMMARY */}
             {(() => {
-              const fin = computeTripFinancials({
-                customerBilling: grandTotalBilling,
-                driverPayout: assignmentType === 'third_party' ? thirdPartyCost : primarySlot.driverPayout,
-                is3PL: assignmentType === 'third_party',
-                subcontractCost: thirdPartyCost,
-                pricingBasis: contractBillingType === 'Monthly' ? 'Per Month' : 'Per Trip',
-                selectedOperatingDays: totalOperatingDays,
-              });
-
-              const costValue = fin.perDriverPayout;
-              const totalCost = fin.resolvedDriverPayout;
-              const netMargin = fin.balanceMargin;
-              const marginPct = fin.marginPercent;
+              // Same numbers the server receives: summed over every trip row.
+              const totalBilling = totals.billing + totals.charges;
+              const totalCost = assignmentType === 'third_party' ? totals.thirdPartyCost : totals.payout;
+              const costValue = totalCost;
+              const netMargin = totalBilling - totalCost;
+              const marginPct = totalBilling > 0 ? (netMargin / totalBilling) * 100 : 0;
 
               return (
                 <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 flex flex-col justify-between">
@@ -505,16 +484,25 @@ export const TripReviewConfirmModal: React.FC<TripReviewConfirmModalProps> = ({
                       <div className="flex items-center justify-between">
                         <span className="text-slate-500 font-medium">Customer Billing</span>
                         <span className="font-mono font-black text-slate-900 dark:text-white">
-                          SAR {fin.resolvedBilling.toLocaleString()}
+                          SAR {totalBilling.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                         </span>
                       </div>
+
+                      {totals.charges > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 font-medium">incl. extra charges</span>
+                          <span className="font-mono font-bold text-slate-700 dark:text-slate-300">
+                            SAR {totals.charges.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      )}
 
                       <div className="flex items-center justify-between">
                         <span className="text-slate-500 font-medium">
                           {assignmentType === 'third_party' ? '3PL Cost' : 'Driver Payout'}
                         </span>
                         <span className="font-mono font-bold text-slate-700 dark:text-slate-300">
-                          {costValue > 0 ? `SAR ${totalCost.toLocaleString()}` : '—'}
+                          {costValue > 0 ? `SAR ${totalCost.toLocaleString(undefined, { maximumFractionDigits: 2 })}` : '—'}
                         </span>
                       </div>
                     </div>
@@ -528,7 +516,7 @@ export const TripReviewConfirmModal: React.FC<TripReviewConfirmModalProps> = ({
                         netMargin >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
                       )}
                     >
-                      {netMargin >= 0 ? '+' : ''}SAR {netMargin.toLocaleString()}
+                      {netMargin >= 0 ? '+' : ''}SAR {netMargin.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>

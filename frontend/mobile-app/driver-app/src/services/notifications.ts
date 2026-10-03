@@ -3,10 +3,10 @@
  *   GET  /mobile/notifications        → the driver's recent notifications
  *   POST /mobile/notifications/:id/read → mark one as read
  */
-import * as Device from 'expo-device';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { api } from '@mercon/mobile-shared/lib/api';
+import { getInstallId } from '@mercon/mobile-shared/lib/install-id';
 import type { AppNotification } from '@mercon/mobile-shared/lib/notifications';
 
 let Notifications: typeof import('expo-notifications') | null = null;
@@ -52,6 +52,11 @@ export const notificationService = {
   async markRead(id: string): Promise<void> {
     await api.post(`/mobile/notifications/${id}/read`);
   },
+
+  /** The driver tapped the push itself (shown to the office as "opened"). */
+  async markOpened(id: string): Promise<void> {
+    await api.post(`/mobile/notifications/${id}/opened`);
+  },
 };
 
 /**
@@ -86,10 +91,10 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     }
     await setupNotificationChannelAsync();
 
-    if (!Device.isDevice) {
-      console.log('[Push] Must use physical device for push notifications');
-      return null;
-    }
+    // No "physical device only" gate: an Android emulator with Google Play
+    // services gets a real push token, which is how pushes are tested without
+    // a phone. Where no token can be had (iOS simulator) the call below throws
+    // and is caught like any other failure.
 
     const existingStatus = (await Notifications?.getPermissionsAsync())?.status ?? 'undetermined';
     let finalStatus: string = existingStatus;
@@ -120,16 +125,9 @@ export async function registerPushDeviceWithBackend(token: string): Promise<void
     await api.post('/mobile/devices', {
       token,
       platform: Platform.OS,
+      install_id: await getInstallId(),
     });
   } catch (error) {
     console.warn('[Push] Failed to register device token with backend:', error);
-  }
-}
-
-export async function unregisterPushDeviceWithBackend(token: string): Promise<void> {
-  try {
-    await api.delete(`/mobile/devices/${encodeURIComponent(token)}`);
-  } catch (error) {
-    console.warn('[Push] Failed to unregister device token with backend:', error);
   }
 }

@@ -58,8 +58,8 @@ export function RoutePreview({ originLabel, destinationLabel, progress = 0.5, he
         {/* Origin marker */}
         <Circle cx={ORIGIN.x} cy={ORIGIN.y} r={6} fill="#E8450F" stroke="#FFFFFF" strokeWidth={2} />
         {/* Destination marker */}
-        <Circle cx={DESTINATION.x} cy={DESTINATION.y} r={7} fill="#FFFFFF" stroke="#1C1C2E" strokeWidth={2} />
-        <Circle cx={DESTINATION.x} cy={DESTINATION.y} r={2.5} fill="#1C1C2E" />
+        <Circle cx={DESTINATION.x} cy={DESTINATION.y} r={7} fill="#FFFFFF" stroke="#3E3C3D" strokeWidth={2} />
+        <Circle cx={DESTINATION.x} cy={DESTINATION.y} r={2.5} fill="#3E3C3D" />
       </Svg>
 
       {/* Truck marker, positioned along the curve */}

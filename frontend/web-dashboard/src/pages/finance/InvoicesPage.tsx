@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowUpRight, BellRing, ChevronLeft, ChevronRight, Download, FileCheck2, Plus, Search, Truck, X } from 'lucide-react';
+import { ArrowUpRight, BellRing, BookOpenCheck, ChevronLeft, ChevronRight, Download, FileCheck2, Plus, Search, Truck, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Invoice } from '@mercon/shared-types';
 
@@ -12,20 +12,19 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import ExportModal, { type ExportColumn } from '@/components/ui/ExportModal';
 import { ScrollTableCard } from '@/components/finance/kit/ScrollTableCard';
 import { PeriodControl } from '@/components/finance/kit/PeriodControl';
 import { asOfPresetDate } from '@/components/finance/kit/AsOfControl';
 import { TONE_CLASSES } from '@/components/finance/kit/tones';
+import { Figure, FigureStrip } from '@/components/finance/kit/FigureStrip';
 import { PartyAvatar } from '@/components/finance/ageing/PartyAvatar';
 import { InvoiceActions, InvoiceStateChip } from '@/components/finance/invoices/InvoiceActions';
 import { InvoiceRecord } from '@/components/finance/invoices/InvoiceRecord';
 import { ReadyToBillSheet } from '@/components/finance/invoices/ReadyToBillSheet';
 import { useInvoiceWorkflow } from '@/components/finance/invoices/useInvoiceWorkflow';
+import { InvoiceLedgerSetupSheet, IssueInvoiceDialog } from '@/components/finance/invoices/InvoiceLedgerSetup';
+import { authStore } from '@/store/authStore';
 import { customerService } from '@/services/customerService';
 import { financeService, type InvoiceListStatus, type InvoiceSort } from '@/services/financeService';
 import type { PeriodPreset } from '@/lib/finance/pnlPeriodHelpers';
@@ -140,6 +139,7 @@ export default function InvoicesPage() {
   const selectedCustomers = new Set(selectedRows.map((i) => i.customerId));
   const selectedOpen = selectedRows.filter((i) => ['unpaid', 'part_paid', 'overdue'].includes(invoiceState(i, today)));
   const [bulkIssue, setBulkIssue] = useState(false);
+  const [ledgerOpen, setLedgerOpen] = useState(false);
   const [bulkRunning, setBulkRunning] = useState(false);
 
   const issueSelected = async () => {
@@ -193,26 +193,26 @@ export default function InvoicesPage() {
   const billableCustomers = ub?.customers.filter((c) => c.trip_ids.length > 0).length ?? 0;
 
   const allChecked = invoices.length > 0 && invoices.every((i) => selected.has(i.id));
-  const figure = (label: string, value: string, count: number | undefined, tone: string | null, onClick: () => void) => (
-    <button type="button" onClick={onClick} className="min-w-0 rounded-md px-2 py-1 text-left outline-none hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
-      <span className="block text-[11px] text-muted-foreground">
-        {label}
-        {count !== undefined && ` · ${count}`}
-      </span>
-      <span className={cn('fin-num block text-base font-semibold leading-tight', tone ?? 'text-foreground')}>{value}</span>
-    </button>
-  );
+
+  const role = authStore.getUser()?.role as string | undefined;
+  const isAdmin = role === 'Admin' || role === 'SuperAdmin';
 
   return (
     <DashboardLayout active="finance" title="Invoices" fixedViewport>
+      <InvoiceLedgerSetupSheet open={ledgerOpen} onOpenChange={setLedgerOpen} />
       <div className="mx-auto flex h-full w-full max-w-7xl min-h-0 flex-1 flex-col gap-3 overflow-hidden p-4 max-md:h-auto max-md:overflow-y-auto">
         <div className="flex shrink-0 flex-col gap-3 lg:flex-row lg:items-center">
-          <Card className="flex flex-1 flex-row flex-wrap items-center gap-2 rounded-xl p-2 shadow-xs">
-            {figure('Unpaid', formatMoney(s?.unpaid_balance ?? 0), counts?.unpaid, null, () => set({ tab: 'unpaid' }))}
-            {figure('Overdue', formatMoney(s?.overdue_balance ?? 0), counts?.overdue, (s?.overdue_balance ?? 0) > 0 ? TONE_CLASSES.negative.fg : null, () => set({ tab: 'overdue' }))}
-            {figure('Received this month', formatMoney(s?.paid_this_month ?? 0), s?.payments_this_month, TONE_CLASSES.positive.fg, () => set({ tab: 'Paid' }))}
-            {figure('Drafts', String(counts?.Draft ?? 0), undefined, null, () => set({ tab: 'Draft' }))}
-          </Card>
+          <FigureStrip>
+            <Figure label="Unpaid" value={formatMoney(s?.unpaid_balance ?? 0)} count={counts?.unpaid} onClick={() => set({ tab: 'unpaid' })} />
+            <Figure label="Overdue" value={formatMoney(s?.overdue_balance ?? 0)} count={counts?.overdue} tone={(s?.overdue_balance ?? 0) > 0 ? TONE_CLASSES.negative.fg : null} onClick={() => set({ tab: 'overdue' })} />
+            <Figure label="Received this month" value={formatMoney(s?.paid_this_month ?? 0)} count={s?.payments_this_month} tone={TONE_CLASSES.positive.fg} onClick={() => set({ tab: 'Paid' })} />
+            <Figure label="Drafts" value={String(counts?.Draft ?? 0)} onClick={() => set({ tab: 'Draft' })} />
+          </FigureStrip>
+          {isAdmin && (
+            <Button variant="ghost" size="sm" className="h-9 shrink-0 gap-1.5 text-xs text-muted-foreground" onClick={() => setLedgerOpen(true)} title="Which accounts invoices post to">
+              <BookOpenCheck className="size-3.5" /> Ledger setup
+            </Button>
+          )}
           <Button onClick={() => navigate('/finance/invoices/new')} className="h-9 shrink-0 gap-1.5 bg-brand text-white hover:bg-brand-hover">
             <Plus className="size-4" /> New invoice
           </Button>
@@ -476,29 +476,16 @@ export default function InvoicesPage() {
         </SheetContent>
       </Sheet>
 
-      <AlertDialog open={bulkIssue} onOpenChange={(o) => !bulkRunning && setBulkIssue(o)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Issue {selectedDrafts.length} draft{selectedDrafts.length === 1 ? '' : 's'}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              They're posted to the ledger for SAR {formatMoney(selectedDrafts.reduce((t, i) => t + Number(i.total_amount), 0))} in total and can no longer be
-              edited. Their trips are marked invoiced.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={bulkRunning}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              disabled={bulkRunning}
-              onClick={(e) => {
-                e.preventDefault();
-                issueSelected();
-              }}
-            >
-              {bulkRunning ? 'Issuing…' : 'Issue invoices'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <IssueInvoiceDialog
+        open={bulkIssue}
+        onOpenChange={setBulkIssue}
+        title={`Issue ${selectedDrafts.length} draft${selectedDrafts.length === 1 ? '' : 's'}?`}
+        description={`They're posted to the ledger for SAR ${formatMoney(selectedDrafts.reduce((t, i) => t + Number(i.total_amount), 0))} in total and can no longer be edited. Their trips are marked invoiced.`}
+        hasVat={selectedDrafts.some((i) => Number(i.tax_amount) > 0.005)}
+        pending={bulkRunning}
+        onConfirm={issueSelected}
+        confirmLabel="Issue invoices"
+      />
 
       <ReadyToBillSheet open={readyOpen} onOpenChange={setReadyOpen} unbilled={ub} today={today} onDone={() => set({ tab: 'Draft' })} />
 

@@ -231,7 +231,7 @@ export const syncLocalDocumentRecords = async (req: Request, res: Response) => {
 
       if (orConditions.length > 0) {
         matchingDoc = await prisma.document.findFirst({
-          where: { OR: orConditions },
+          where: { OR: orConditions, deletedAt: null },
         });
       }
 
@@ -255,6 +255,7 @@ export const syncLocalDocumentRecords = async (req: Request, res: Response) => {
           matchingDoc = await prisma.document.findFirst({
             where: {
               entity_id: vehicle.id,
+              deletedAt: null,
               doc_type: rec.doc_type,
             },
           });
@@ -264,6 +265,7 @@ export const syncLocalDocumentRecords = async (req: Request, res: Response) => {
             matchingDoc = await prisma.document.findFirst({
               where: {
                 entity_id: vehicle.id,
+              deletedAt: null,
                 expiry_date: null,
               },
             });

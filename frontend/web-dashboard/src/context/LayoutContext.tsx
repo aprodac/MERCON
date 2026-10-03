@@ -13,6 +13,8 @@ export interface LayoutMeta {
   onBackClick?: () => void;
   /** When true, the AppShell content area switches to overflow-hidden for a locked one-page viewport */
   fixedViewport?: boolean;
+  /** A slimmer header (≈56 px) for pages that need the height, e.g. Create Trip. */
+  compactHeader?: boolean;
 }
 
 interface LayoutContextValue {
@@ -69,7 +71,8 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
         prev.pageTitle === m.pageTitle &&
         prev.actions === m.actions &&
         prev.onBackClick === m.onBackClick &&
-        prev.fixedViewport === m.fixedViewport
+        prev.fixedViewport === m.fixedViewport &&
+        prev.compactHeader === m.compactHeader
       ) {
         return prev;
       }

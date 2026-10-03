@@ -26,6 +26,7 @@ import { Badge } from '@/components/ui/badge';
 import { financeService, CreateBillDTO, BillLineDTO } from '@/services/financeService';
 import { thirdPartyService } from '@/services/thirdPartyService';
 import { expenseService } from '@/services/expenseService';
+import { vehicleService } from '@/services/vehicleService';
 import type { Account } from '@mercon/shared-types';
 
 export default function BillCreatePage() {
@@ -61,6 +62,13 @@ export default function BillCreatePage() {
     queryKey: ['accounts', 'postable'],
     queryFn: () => financeService.getAccounts({ include_inactive: false }),
   });
+
+  // Trucks, so a line (e.g. a workshop bill) can count in that truck's P&L
+  const { data: vehiclesRes } = useQuery({
+    queryKey: ['vehicles', 'lookup'],
+    queryFn: () => vehicleService.getAll({ per_page: 500, mode: 'lookup' }),
+  });
+  const vehicles = vehiclesRes?.data || [];
 
   const providers = providersRes?.data?.data || [];
   const unbilledExpenses = useMemo(() => unbilledExpensesRes?.data || [], [unbilledExpensesRes]);
@@ -410,7 +418,7 @@ export default function BillCreatePage() {
                         key={idx}
                         className="grid grid-cols-1 md:grid-cols-12 gap-2 p-2.5 sm:p-1.5 bg-muted/70 rounded-lg border border-border dark:border-border items-center"
                       >
-                        <div className="md:col-span-5">
+                        <div className="md:col-span-4">
                           <Label className="md:hidden text-[10px] text-muted-foreground mb-1 block">Description</Label>
                           <Input
                             placeholder="e.g. Subcontracted transport service"
@@ -419,7 +427,7 @@ export default function BillCreatePage() {
                             className="h-8 text-xs bg-card"
                           />
                         </div>
-                        <div className="md:col-span-4">
+                        <div className="md:col-span-3">
                           <Label className="md:hidden text-[10px] text-muted-foreground mb-1 block">GL Account</Label>
                           <Select
                             value={line.accountId || ''}
@@ -433,6 +441,23 @@ export default function BillCreatePage() {
                                 <SelectItem key={acc.id} value={acc.id}>
                                   {acc.account_code} - {acc.name}
                                 </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="md:col-span-2">
+                          <Label className="md:hidden text-[10px] text-muted-foreground mb-1 block">Truck</Label>
+                          <Select
+                            value={line.vehicleId || 'none'}
+                            onValueChange={(v) => handleManualLineChange(idx, 'vehicleId', v === 'none' ? null : v)}
+                          >
+                            <SelectTrigger className="h-8 text-xs bg-card" title="Counts this line in the truck's P&L">
+                              <SelectValue placeholder="No truck" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-60">
+                              <SelectItem value="none" className="text-xs text-muted-foreground">No truck</SelectItem>
+                              {vehicles.map((v) => (
+                                <SelectItem key={v.id} value={v.id} className="text-xs">{v.plate_number}</SelectItem>
                               ))}
                             </SelectContent>
                           </Select>

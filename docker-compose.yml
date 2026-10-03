@@ -49,7 +49,10 @@ services:
     mem_limit: "${API_MEM_LIMIT:-768m}"
     cpus: "${API_CPU_LIMIT:-0.75}"
     ports:
-      - "${API_PORT:-3050}:3000" # Exposed for Nginx proxy on a safe port
+      # Loopback only: host nginx is the one client (proxy_pass 127.0.0.1).
+      # Published on all interfaces, Docker's iptables rules bypass UFW and
+      # the API was reachable from the internet without TLS.
+      - "127.0.0.1:${API_PORT:-3050}:3000"
     environment:
       DATABASE_URL: "postgresql://${POSTGRES_USER:?POSTGRES_USER must be provided}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be provided}@postgres-db:5432/${POSTGRES_DB:-mercon_db}?schema=public"
       JWT_SECRET: "${JWT_SECRET:?JWT_SECRET must be provided (set it as a GitHub Actions secret / env var)}"
@@ -76,15 +79,16 @@ services:
       DATA_ENCRYPTION_KEY_PREVIOUS: "${DATA_ENCRYPTION_KEY_PREVIOUS:-}"
       PORT: 3000
     volumes:
-      # Parameterized by CLIENT_NAME so a second stack (e.g. dev) on the same
-      # host never mounts the same host directory as another client's — that
-      # would mix each client's uploaded/OCR'd documents on disk. The first
-      # default preserves mercon's existing path exactly when CLIENT_NAME is
-      # unset. The second uses its own var (not CLIENT_NAME-derived) because
-      # mercon's existing host path is literally "/tmp/uploads" — deriving it
-      # from CLIENT_NAME would silently move prod to a new, empty directory.
-      - "/tmp/${CLIENT_NAME:-mercon}-uploads:/app/backend/api-server/uploads"
-      - "${DEV_UPLOADS_DIR:-${TMP_UPLOADS_DIR:-/tmp/uploads}}:/tmp/uploads"
+      # Persistent host directories under /var/lib/mercon, one pair per
+      # CLIENT_NAME so two stacks on one host never share uploaded documents.
+      # Never /tmp: Ubuntu empties /tmp at boot, which would delete every POD,
+      # photo and logo (they lived there until 2026-09; the deploy workflows
+      # copy them across with scripts/provision/migrate-uploads.sh).
+      #   <client>-app-uploads → older files written under the app directory
+      #   <client>-uploads     → current writes (UPLOADS_DIR is unset, so the
+      #                          API writes to /tmp/uploads inside the container)
+      - "${APP_UPLOADS_DIR:-/var/lib/mercon/${CLIENT_NAME:-mercon}-app-uploads}:/app/backend/api-server/uploads"
+      - "${TMP_UPLOADS_DIR:-/var/lib/mercon/${CLIENT_NAME:-mercon}-uploads}:/tmp/uploads"
     depends_on:
       postgres-db:
         condition: service_healthy
@@ -114,10 +118,13 @@ services:
     mem_limit: "${FRONTEND_MEM_LIMIT:-256m}"
     cpus: "${FRONTEND_CPU_LIMIT:-0.25}"
     ports:
-      - "${FRONTEND_PORT:-3060}:80" # Exposed for Nginx proxy on a safe port
+      - "127.0.0.1:${FRONTEND_PORT:-3060}:80" # Loopback only, behind host nginx (see mercon-api)
     healthcheck:
-      # nginx:alpine ships busybox wget, not curl.
-      test: ["CMD", "wget", "-qO-", "http://localhost/healthz"]
+      # nginx:alpine ships busybox wget, not curl. 127.0.0.1, not localhost:
+      # inside the container localhost resolves to ::1 first and nginx only
+      # listens on IPv4, so the check failed and the container showed
+      # "unhealthy" while serving normally.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/healthz"]
       interval: 30s
       timeout: 5s
       retries: 3

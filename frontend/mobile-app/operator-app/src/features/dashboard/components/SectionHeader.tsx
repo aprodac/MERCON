@@ -12,7 +12,7 @@ interface SectionHeaderProps {
 export function SectionHeader({ title, actionLabel, onActionPress, className }: SectionHeaderProps) {
   return (
     <View className={`flex-row items-center justify-between ${className ?? ''}`}>
-      <Text className="text-base font-bold text-gray-900">{title}</Text>
+      <Text className="text-base font-bold text-[#3E3C3D]">{title}</Text>
       {actionLabel && (
         <TouchableOpacity onPress={onActionPress} activeOpacity={0.7} className="flex-row items-center gap-0.5">
           <Text className="text-xs font-semibold text-primary">{actionLabel}</Text>

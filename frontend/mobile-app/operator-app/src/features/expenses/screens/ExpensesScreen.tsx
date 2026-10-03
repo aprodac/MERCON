@@ -6,6 +6,7 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-sha
 import { useOperatorExpenses, type OperatorExpense } from '@/lib/operator';
 import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
+import { AppTopBar } from '@/components/AppTopBar';
 
 export default function ExpensesScreen() {
   const router = useRouter();
@@ -25,7 +26,7 @@ export default function ExpensesScreen() {
       }}
     >
       <View className="flex-row items-center justify-between">
-        <Text style={{ fontSize: Typography.base, fontWeight: '700', color: Colors.gray900 }}>
+        <Text style={{ fontSize: Typography.base, fontWeight: '700', color: Colors.charcoal }}>
           {item.category ?? 'Operational Expense'}
         </Text>
         <Text style={{ fontSize: Typography.base, fontWeight: '800', color: Colors.primary }}>
@@ -60,39 +61,10 @@ export default function ExpensesScreen() {
   );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
       
-      {/* Header */}
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingHorizontal: Spacing.lg,
-          paddingVertical: Spacing.md,
-          backgroundColor: Colors.white,
-          borderBottomWidth: 1,
-          borderBottomColor: Colors.gray100,
-        }}
-      >
-        <View className="flex-row items-center gap-3">
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} className="h-9 w-9 items-center justify-center rounded-xl bg-gray-100">
-            <ArrowLeft size={18} color={Colors.gray800} strokeWidth={2.2} />
-          </TouchableOpacity>
-          <View>
-            <Text style={{ fontSize: Typography.lg, fontWeight: '800', color: Colors.gray900 }}>Expenses</Text>
-            <Text style={{ fontSize: Typography.xs, color: Colors.gray500 }}>Operational costs & receipts</Text>
-          </View>
-        </View>
-        <TouchableOpacity
-          onPress={() => setDrawerVisible(true)}
-          activeOpacity={0.75}
-          style={{ width: 38, height: 38, borderRadius: Radius.md, backgroundColor: Colors.gray100, alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Menu size={20} color={Colors.gray800} strokeWidth={2.2} />
-        </TouchableOpacity>
-      </View>
+      <AppTopBar title="Expenses" />
 
       {error ? (
         <ErrorState message={error} onRetry={refetch} className="flex-1" />
@@ -116,7 +88,6 @@ export default function ExpensesScreen() {
         />
       )}
 
-      <OperatorSidebarDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </SafeAreaView>
   );
 }

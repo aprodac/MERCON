@@ -1,6 +1,17 @@
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 
+export const TRIP_DRAFT_STORAGE_KEY = 'mercon_trip_draft';
+
+/** Drops the saved draft — called once its trips are created so it can't be restored twice. */
+export function clearSavedTripDraft() {
+  try {
+    localStorage.removeItem(TRIP_DRAFT_STORAGE_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 export function useTripDraftStorage(
   contractCustomer: string,
   contractRateCategory: string,
@@ -33,7 +44,7 @@ export function useTripDraftStorage(
 
   useEffect(() => {
     try {
-      const saved = localStorage.getItem('mercon_trip_draft');
+      const saved = localStorage.getItem(TRIP_DRAFT_STORAGE_KEY);
       if (saved) {
         setHasSavedDraft(true);
       }
@@ -44,7 +55,7 @@ export function useTripDraftStorage(
 
   const restoreDraft = () => {
     try {
-      const saved = localStorage.getItem('mercon_trip_draft');
+      const saved = localStorage.getItem(TRIP_DRAFT_STORAGE_KEY);
       if (!saved) return;
       const data = JSON.parse(saved);
       if (data.contractCustomer) setContractCustomer(data.contractCustomer);
@@ -68,7 +79,7 @@ export function useTripDraftStorage(
   };
 
   const discardDraft = () => {
-    localStorage.removeItem('mercon_trip_draft');
+    localStorage.removeItem(TRIP_DRAFT_STORAGE_KEY);
     setHasSavedDraft(false);
     toast.info('Draft discarded.');
   };
@@ -93,7 +104,7 @@ export function useTripDraftStorage(
             thirdPartyCost,
             savedAt: new Date().toISOString(),
           };
-          localStorage.setItem('mercon_trip_draft', JSON.stringify(draftPayload));
+          localStorage.setItem(TRIP_DRAFT_STORAGE_KEY, JSON.stringify(draftPayload));
         } catch (e) {
           console.warn('Failed to auto-save trip draft', e);
         }

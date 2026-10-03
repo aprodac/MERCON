@@ -18,47 +18,55 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to Self-Hosted Runner
-    runs-on: self-hosted
+    runs-on: [self-hosted, prod]
+    env:
+      DEPLOY_DIR: /opt/mercon/prod
     # Releases reach main through a reviewed dev → main PR (docs/RELEASE_PROCESS.md);
     # release-check.yml reports on the PR, this workflow deploys the merge.
 
     steps:
-      # Native git instead of actions/checkout: this runner keeps its work
-      # directory between runs, so `uses: actions/checkout` was re-downloading
-      # its action bundle from codeload.github.com on every single deploy —
-      # the actual source of the 429s above, independent of the concurrency
-      # fix. git itself is already on the runner; nothing to download.
-      - name: Checkout Code (native git — avoids actions/checkout download)
+      # Production is built from its own directory, not the runner's work
+      # directory. Every other job this runner takes (release-check on PRs,
+      # backup-db and db-inspect from the default branch, seed/demo/sync)
+      # checks out code into the work directory, and before this change the
+      # live `mercon` Compose project pointed there — whatever branch the last
+      # job left behind is what a manual `docker compose up` or an hPanel
+      # Docker "update" would have rebuilt production from.
+      #
+      # Native git instead of actions/checkout: the marketplace action bundle
+      # was re-downloaded from codeload.github.com on every deploy and tripped
+      # GitHub's per-IP rate limit (429). Shallow fetch + gc keeps .git at one
+      # commit's worth of objects instead of growing with every release.
+      - name: Checkout Code into the production deploy directory
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          # actions/checkout normally adds this safe.directory exception itself;
-          # without it git refuses to touch a workspace it doesn't own (this
-          # runner's job dir is root-owned, the runner process usually isn't).
+          sudo install -d -m 755 -o "$(id -u)" -g "$(id -g)" "$DEPLOY_DIR"
+          cd "$DEPLOY_DIR"
           # `git config --global` needs $HOME, which this runner's job shell
-          # doesn't set — GIT_CONFIG_* env vars inject the same config with no
-          # file and no $HOME dependency.
+          # doesn't set — GIT_CONFIG_* env vars inject the same config.
           export GIT_CONFIG_COUNT=1
           export GIT_CONFIG_KEY_0=safe.directory
-          export GIT_CONFIG_VALUE_0="$GITHUB_WORKSPACE"
+          export GIT_CONFIG_VALUE_0="$DEPLOY_DIR"
           REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
-          if [ -d .git ]; then
-            git remote set-url origin "$REPO_URL"
-            git fetch --force --prune origin "$GITHUB_SHA"
-            git checkout --force "$GITHUB_SHA"
-            git clean -fdx
-          else
-            git init -q
-            git remote add origin "$REPO_URL"
-            git fetch --depth 1 origin "$GITHUB_SHA"
-            git checkout --force FETCH_HEAD
-          fi
+          [ -d .git ] || { git init -q && git remote add origin "$REPO_URL"; }
+          git remote set-url origin "$REPO_URL"
+          git fetch --depth 1 --force origin "$GITHUB_SHA"
+          git checkout --force FETCH_HEAD
+          git clean -fdx
+          git remote set-url origin "https://github.com/${{ github.repository }}.git"
+          git reflog expire --expire=now --all && git gc --prune=now --quiet
+          echo "Deploying $(git rev-parse --short HEAD) from $DEPLOY_DIR ($(du -sh .git | cut -f1) .git)"
 
       - name: Rebuild and Restart Docker Containers
         env:
           CLIENT_NAME: mercon
           COMPOSE_PROJECT_NAME: mercon
+          # Persistent upload directories (docker-compose.yml defaults, spelled
+          # out so the migration step and the mounts cannot disagree).
+          APP_UPLOADS_DIR: /var/lib/mercon/mercon-app-uploads
+          TMP_UPLOADS_DIR: /var/lib/mercon/mercon-uploads
           # Injected into docker compose interpolation; stored as GitHub
           # Actions secrets, never committed. Rotating JWT_SECRET invalidates
           # all existing JWTs (everyone must log in again). Rotating
@@ -87,6 +95,7 @@ jobs:
           # than failing the deploy.
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}
         run: |
+          cd "$DEPLOY_DIR"
           echo "Rebuilding backend and frontend services..."
           # docker-compose.yml lives at the repo root (workspace-aware builds)
 
@@ -123,9 +132,21 @@ jobs:
           sudo cp nginx/mercon-api.conf /etc/nginx/sites-available/mercon-api.conf 2>/dev/null || true
           sudo nginx -s reload 2>/dev/null || true
 
-          # Ensure host uploads directory exists with full 777 write permissions
-          mkdir -p /tmp/mercon-uploads /tmp/uploads ./backend/api-server/uploads
-          chmod -R 777 /tmp/mercon-uploads /tmp/uploads ./backend/api-server/uploads 2>/dev/null || true
+
+          # Keep the images now serving production as :previous before the
+          # build replaces :latest — a fast rollback without rebuilding (see
+          # "Restore instructions" below). The :previous from the release
+          # before becomes dangling and the next prune removes it, so this
+          # holds one extra image set, not a growing pile.
+          HAD_PREVIOUS=true
+          for IMG in mercon-mercon-api mercon-mercon-frontend; do
+            if ! docker image inspect "$IMG:latest" >/dev/null 2>&1; then
+              HAD_PREVIOUS=false
+            else
+              docker tag "$IMG:latest" "$IMG:previous"
+              echo "Kept $IMG:previous ($(docker image inspect -f '{{.Id}}' "$IMG:previous" | cut -c8-19))"
+            fi
+          done
 
           # Free up disk space from previous builds and dangling layers to prevent ENOSPC errors
           echo "Pruning dangling Docker images and build cache to ensure disk space..."
@@ -145,6 +166,18 @@ jobs:
           # out docker-buildx and the runner service with it (2026-09-27).
           docker compose -p mercon build mercon-api
           docker compose -p mercon build mercon-frontend
+
+          # Uploaded documents (PODs, photos, logos) move out of /tmp, which
+          # Ubuntu empties at boot, into /var/lib/mercon (docker-compose.yml).
+          # Copy only — the /tmp originals stay until someone removes them by
+          # hand. A file that fails to copy stops the deploy here, before the
+          # database or the containers are touched. Must run before the first
+          # `docker compose run` below, which would otherwise let Docker
+          # create the new directories root-owned. Pass 2 after the container
+          # swap picks up anything uploaded while this deploy was running.
+          echo "Migrating uploads to persistent storage (pass 1)..."
+          sudo bash scripts/provision/migrate-uploads.sh /tmp/mercon-uploads "$APP_UPLOADS_DIR"
+          sudo bash scripts/provision/migrate-uploads.sh /tmp/uploads "$TMP_UPLOADS_DIR"
 
           # Back up production right before the migration (after the slow
           # build, so the dump is as close as possible to the moment the schema
@@ -172,8 +205,36 @@ jobs:
           echo "Executing Prisma database migrations against production database..."
           docker compose -p mercon run --rm --no-deps mercon-api npx prisma migrate deploy
 
+          # A release that fails its health checks is not left serving: the
+          # images that were live before this deploy (:previous, tagged above)
+          # go back up and the job still fails. The database is not rolled
+          # back — migrations are additive by policy, so the previous code runs
+          # on the migrated schema; the pre-deploy dump is there if a release
+          # changed data (see "Restore instructions" below).
+          rollback_and_fail() {
+            echo "::error::$1" >&2
+            if [ "$HAD_PREVIOUS" != "true" ]; then
+              echo "::error::No :previous images from before this deploy — nothing to roll back to. Production is running the failed release." >&2
+              exit 1
+            fi
+            echo "Rolling back mercon-api and mercon-frontend to the images from before this deploy..."
+            for IMG in mercon-mercon-api mercon-mercon-frontend; do docker tag "$IMG:previous" "$IMG:latest"; done
+            docker compose -p mercon up -d --no-build mercon-api mercon-frontend
+            for i in $(seq 1 30); do curl -fsS http://127.0.0.1:3050/health >/dev/null 2>&1 && break; sleep 2; done
+            if curl -fsS http://127.0.0.1:3050/health >/dev/null 2>&1; then
+              echo "::error::Rolled back: the previous release is serving again and answers /health. This release did NOT deploy." >&2
+            else
+              echo "::error::Rolled back, but the previous release does not answer /health either — investigate now (docker compose -p mercon ps / logs)." >&2
+            fi
+            exit 1
+          }
+
           echo "Recreating and restarting containers..."
           docker compose -p mercon up -d --no-build
+
+          echo "Migrating uploads to persistent storage (pass 2, after the swap)..."
+          sudo bash scripts/provision/migrate-uploads.sh --finalize /tmp/mercon-uploads "$APP_UPLOADS_DIR"
+          sudo bash scripts/provision/migrate-uploads.sh --finalize /tmp/uploads "$TMP_UPLOADS_DIR"
 
           # Give mercon-api a moment to finish starting before polling it.
           sleep 8
@@ -215,7 +276,7 @@ jobs:
             echo "::error::Deployment failed! Service mercon-api container did not achieve healthy status (Status: '$HEALTH_STATUS'). Printing logs..." >&2
             echo "--- mercon-api logs (last 100 lines) ---"
             docker compose -p mercon logs --no-color --tail=100 mercon-api || true
-            exit 1
+            rollback_and_fail "mercon-api did not become healthy (status: $HEALTH_STATUS)."
           fi
 
           echo "--- Verifying external health endpoint ---"
@@ -223,12 +284,29 @@ jobs:
             echo "::error::Deployment failed! External health probe GET http://127.0.0.1:3050/health failed or returned non-200. Printing logs..." >&2
             echo "--- mercon-api logs (last 100 lines) ---"
             docker compose -p mercon logs --no-color --tail=100 mercon-api || true
-            exit 1
+            rollback_and_fail "GET http://127.0.0.1:3050/health failed."
           fi
           echo "✓ External health probe GET http://127.0.0.1:3050/health verified successfully."
 
+          echo "--- Verifying the web dashboard ---"
+          for i in $(seq 1 15); do curl -fsS http://127.0.0.1:3060/healthz >/dev/null 2>&1 && break; sleep 2; done
+          if ! curl -fsS http://127.0.0.1:3060/healthz; then
+            docker compose -p mercon logs --no-color --tail=50 mercon-frontend || true
+            rollback_and_fail "Web dashboard did not answer GET http://127.0.0.1:3060/healthz."
+          fi
+          echo " ← web dashboard /healthz"
+
+          # Disk after the build. The prune above only removes build cache
+          # older than 24 h; disk-guard.yml checks daily between deploys.
+          USED=$(df --output=pcent / | tail -1 | tr -dc '0-9')
+          df -h / && docker system df || true
+          if [ "$USED" -ge 85 ]; then
+            echo "::warning::Root filesystem is ${USED}% full after this deploy."
+          fi
+
       - name: Deploy Nginx Config & Reload
         run: |
+          cd "$DEPLOY_DIR"
           echo "Deploying nginx reverse proxy config..."
 
           # Deploy catch-all default SSL block (rejects unknown HTTPS hosts)
@@ -259,7 +337,9 @@ jobs:
             echo "Backup: $BACKUP_PATH"
             echo "To restore production to the pre-deploy state (run on the server):"
             echo "  docker exec -i mercon-postgres pg_restore --clean --if-exists --no-owner --no-privileges -U \"\$POSTGRES_USER\" -d mercon_db < $BACKUP_PATH"
-            echo "Then redeploy the previous main commit (revert the release merge on main)."
+            echo "Then put the previous release's containers back: Actions → \"Rollback Production\" (rollback-prod.yml),"
+            echo "which swaps in the :previous images kept by this deploy without rebuilding."
           else
             echo "Deploy failed before any database backup or migration — the database was not touched."
+            echo "If the containers were already replaced, Actions → \"Rollback Production\" restores the :previous images."
           fi

@@ -1,6 +1,7 @@
 import '../global.css';
 
 import { Stack, usePathname, useRouter } from 'expo-router';
+export { ErrorBoundary } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { View, StyleSheet, Image } from 'react-native';
@@ -9,6 +10,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider, useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { queryClient } from '@mercon/mobile-shared/lib/query-client';
 import { OperatorBottomNav } from '@/navigation/OperatorBottomNav';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { LanguageProvider } from '@mercon/mobile-shared/lib/language-context';
 import { ThemeProvider } from '@mercon/mobile-shared/lib/theme-context';
@@ -18,7 +20,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const TAB_ROUTES = [
   '/', '/trips', '/drivers', '/vehicles', '/invoices',
-  '/more', '/customers', '/vehicle-renewals',
+  '/more', '/profile', '/customers',
   '/quotations', '/third-party', '/maintenance',
   '/expenses', '/documents', '/notifications', '/user-management',
 ];
@@ -70,13 +72,13 @@ function RootNavigator() {
         <Stack.Screen name="customers" options={{ animation: 'none' }} />
         <Stack.Screen name="trip-details" />
         <Stack.Screen name="create-trip" />
-        <Stack.Screen name="vehicle-renewals" />
         <Stack.Screen name="quotations" options={{ animation: 'none' }} />
         <Stack.Screen name="third-party" options={{ animation: 'none' }} />
         <Stack.Screen name="maintenance" options={{ animation: 'none' }} />
         <Stack.Screen name="expenses" options={{ animation: 'none' }} />
         <Stack.Screen name="documents" options={{ animation: 'none' }} />
         <Stack.Screen name="notifications" options={{ animation: 'none' }} />
+        <Stack.Screen name="fleet-map" />
         <Stack.Screen name="driver-details" />
         <Stack.Screen name="driver-edit" />
         <Stack.Screen name="vehicle-details" />
@@ -85,6 +87,12 @@ function RootNavigator() {
         <Stack.Screen name="customer-edit" />
         <Stack.Screen name="user-management" options={{ animation: 'none' }} />
         <Stack.Screen name="user-edit" />
+        <Stack.Screen name="quotation-details" />
+        <Stack.Screen name="quotation-edit" />
+        <Stack.Screen name="trip-edit" />
+        <Stack.Screen name="third-party-details" />
+        <Stack.Screen name="third-party-edit" />
+        <Stack.Screen name="profile" options={{ animation: 'none' }} />
       </Stack>
 
       {showBottomNav && (
@@ -98,15 +106,17 @@ function RootNavigator() {
 
 export default function RootLayout() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider signIn={signInOperator} allowedRoles={OPERATOR_APP_ROLES}>
-        <LanguageProvider>
-          <ThemeProvider>
-            <RootNavigator />
-          </ThemeProvider>
-        </LanguageProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider signIn={signInOperator} allowedRoles={OPERATOR_APP_ROLES}>
+          <LanguageProvider>
+            <ThemeProvider>
+              <RootNavigator />
+            </ThemeProvider>
+          </LanguageProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </GestureHandlerRootView>
   );
 }
 

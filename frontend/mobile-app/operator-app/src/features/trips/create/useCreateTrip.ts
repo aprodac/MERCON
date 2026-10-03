@@ -289,6 +289,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     rateMatched: false,
     matchedRateCard: null,
     rateCardId: undefined,
+    driverPayoutModified: false,
+    updateQuotationPayout: undefined,
     // A price copied from a quotation belongs to that quotation's route — drop it.
     ...(keepTyped ? {} : { billingAmount: '', driverPayout: '', tripCharges: '' }),
   });
@@ -307,6 +309,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
       rateCardId: q.id,
       billingAmount: pricing?.billingAmount ?? '',
       driverPayout: pricing?.driverPayout ?? '',
+      driverPayoutModified: false,
+      updateQuotationPayout: undefined,
       tripCharges: '',
       pricingBasis: undefined,
       saveAsQuotation: false,
@@ -578,6 +582,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const allIssues = useMemo(
     () =>
       validateTripDraft({
+        rateCategory: rateCategory,
         customerId,
         slots: [slot],
         billingType,
@@ -591,7 +596,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
         selectedDates,
         toUtcIso,
       }),
-    [customerId, slot, billingType, assignmentType, driverId, vehicleId, thirdPartyProviderId, thirdPartyDriverName, thirdPartyCost, selectedDates, toUtcIso, rotationActive, rotationDrivers],
+    [customerId, slot, billingType, rateCategory, assignmentType, driverId, vehicleId, thirdPartyProviderId, thirdPartyDriverName, thirdPartyCost, selectedDates, toUtcIso, rotationActive, rotationDrivers],
   );
 
   const stepIssues = useCallback(
@@ -639,7 +644,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
 
   /** Saves a newly defined quotation (if any), then creates the trip(s). Returns an error message or null. */
   const submit = useCallback(
-    async (pastChoice: 'Completed' | 'Incomplete' = 'Incomplete'): Promise<{ ok: boolean; message: string; step?: CreateTripStep }> => {
+    async (pastChoice: 'Completed' | 'Incomplete' = 'Incomplete'): Promise<{ ok: boolean; partial?: boolean; message: string; step?: CreateTripStep }> => {
       if (allIssues.length > 0) {
         const first = allIssues[0];
         return { ok: false, message: first.message, step: STEP_OF[first.section] };
@@ -680,13 +685,18 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
         if (countPastTrips(rows) > 0) rows = applyPastTripStatus(rows, pastChoice, tz);
 
         const res = await operatorService.bulkImportTrips(rows);
-        if (!res || res.failed > 0) {
+        if (!res || !res.imported) {
           const firstError = res?.results?.find((r) => !r.success)?.error;
+          return { ok: false, message: `Trip not created: ${firstError || 'unknown error'}` };
+        }
+        if (res.failed > 0) {
+          // Some trips exist now — leave the form so submitting again can't create them twice.
+          const firstError = res.results?.find((r) => !r.success)?.error;
+          invalidateOperatorTrips();
           return {
-            ok: false,
-            message: res?.imported
-              ? `${res.imported} created, ${res.failed} failed: ${firstError || 'unknown error'}`
-              : `Trip not created: ${firstError || 'unknown error'}`,
+            ok: true,
+            partial: true,
+            message: `${res.imported} created, ${res.failed} failed: ${firstError || 'unknown error'}. Create the failed ones again.`,
           };
         }
         invalidateOperatorTrips();

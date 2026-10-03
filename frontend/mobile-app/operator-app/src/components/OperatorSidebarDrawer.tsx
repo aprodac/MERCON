@@ -17,7 +17,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import {
-  Bell, Building2, CalendarClock, CreditCard, FileText, FolderOpen, House, LogOut, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
+  Map as MapIcon,
+  Bell, Building2, CreditCard, FileText, FolderOpen, House, LogOut, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
@@ -25,8 +26,8 @@ import { useNotifications } from '@/features/notifications/hooks/useNotification
 import { operatorService } from '@/lib/operator';
 
 const ZINC = {
-  fg: '#18181B',
-  text: '#27272A',
+  fg: '#3E3C3D',
+  text: '#3E3C3D',
   muted: '#71717A',
   faint: '#A1A1AA',
   border: '#E4E4E7',
@@ -35,7 +36,7 @@ const ZINC = {
 };
 
 type BadgeTone = 'neutral' | 'red' | 'amber';
-type BadgeKey = 'trips' | 'notifications' | 'renewals' | 'invoices' | 'documents';
+type BadgeKey = 'trips' | 'notifications' | 'invoices' | 'documents';
 
 interface MenuItem {
   Icon: LucideIcon;
@@ -64,11 +65,11 @@ const GROUPS: MenuGroup[] = [
   {
     title: 'Fleet',
     items: [
+      { Icon: MapIcon, label: 'Fleet map', route: '/fleet-map', keywords: 'live map trucks location gps tracking' },
       { Icon: Truck, label: 'Vehicles', route: '/vehicles', keywords: 'trucks trailers' },
+      { Icon: Building2, label: '3rd party fleet', route: '/third-party', keywords: 'subcontractors providers 3pl' },
       // Hidden until these screens can do more than list (owner, 2026-09-26).
-      // { Icon: Building2, label: '3rd party fleet', route: '/third-party', keywords: 'subcontractors providers 3pl' },
       // { Icon: Wrench, label: 'Maintenance', route: '/maintenance', keywords: 'service repair' },
-      { Icon: CalendarClock, label: 'Renewals', route: '/vehicle-renewals', badge: 'renewals', keywords: 'expiring istimara insurance' },
     ],
   },
   {
@@ -113,7 +114,6 @@ function useMenuBadges(enabled: boolean): Record<BadgeKey, { text: string; tone:
     const unread = (notifications.data ?? []).filter((n) => !n.is_read).length;
     const running = (live.data ?? []).filter((u) => u.trip && u.trip.phase !== 'upcoming').length;
     const soon = (expiries.data ?? []).filter((e) => e.days <= 7);
-    const vehicleSoon = soon.filter((e) => e.entity_type === 'Vehicle').length;
     const expired = soon.filter((e) => e.days < 0).length;
     const overdue = (invoices.data ?? []).filter(
       (i) => ['Issued', 'PartiallyPaid', 'Overdue'].includes(i.status) && !!i.due_date && new Date(i.due_date).getTime() < now - 86_400_000,
@@ -121,7 +121,6 @@ function useMenuBadges(enabled: boolean): Record<BadgeKey, { text: string; tone:
     return {
       notifications: unread ? { text: String(unread), tone: 'red' as const } : null,
       trips: running ? { text: `${running} live`, tone: 'neutral' as const } : null,
-      renewals: vehicleSoon ? { text: String(vehicleSoon), tone: 'amber' as const } : null,
       documents: soon.length ? { text: String(soon.length), tone: expired ? ('red' as const) : ('amber' as const) } : null,
       invoices: overdue ? { text: `${overdue} overdue`, tone: 'neutral' as const } : null,
     };
@@ -308,11 +307,13 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
           {/* Account */}
           <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
             <View style={styles.account}>
-              <View style={styles.avatar}><Text style={styles.avatarText}>{initialsOf(name)}</Text></View>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={styles.name} numberOfLines={1}>{name}</Text>
-                <Text style={styles.role} numberOfLines={1}>{role ?? 'Operator'}</Text>
-              </View>
+              <TouchableOpacity style={styles.accountLink} onPress={() => go('/profile')} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Open your profile">
+                <View style={styles.avatar}><Text style={styles.avatarText}>{initialsOf(name)}</Text></View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.name} numberOfLines={1}>{name}</Text>
+                  <Text style={styles.role} numberOfLines={1}>{role ?? 'Operator'}</Text>
+                </View>
+              </TouchableOpacity>
               <TouchableOpacity style={styles.signOut} onPress={handleSignOut} activeOpacity={0.7}>
                 <LogOut size={14} color="#B42318" strokeWidth={2} />
                 <Text style={styles.signOutText}>Sign out</Text>
@@ -391,6 +392,7 @@ const styles = StyleSheet.create({
   avatarText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
   name: { fontSize: 14, fontWeight: '600', color: ZINC.fg },
   role: { fontSize: 12, color: ZINC.muted },
+  accountLink: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
   signOut: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: ZINC.border, backgroundColor: '#FFFFFF' },
   signOutText: { fontSize: 13, fontWeight: '500', color: '#B42318' },
   version: { fontSize: 11, color: ZINC.faint, paddingHorizontal: 6 },

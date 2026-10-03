@@ -4,6 +4,7 @@ import { validateTripStops } from './tripValidationService';
 import { isRoundTripCategory, getLegEndpoints } from '@mercon/shared-types';
 import { parseFullTripStops } from './legacyStopStringParser';
 import { logger } from '../utils/logger';
+import { isSamePlace, pinLocation } from './locationPin';
 
 function parseOptionalFloat(val: any): number | null {
   if (val === undefined || val === null || val === '') return null;
@@ -90,77 +91,98 @@ export async function writeTripStops(
   }
 
   // 1. Resolve locations & canonical master data
-  const resolvedStops = await Promise.all(
-    rawStops.map(async (stop: any) => {
-      const stopName = String(stop.location_name ?? '').trim();
-      let locId = stop.location_id || null;
-      let resolvedLoc: any = null;
+  // One stop at a time, not Promise.all: a round trip names the same new
+  // place twice (A→B, then B→A), and two parallel creates of one Location
+  // collide on its unique code — which aborted the whole trip-creation transaction.
+  const resolveStop = async (stop: any) => {
+    const stopName = String(stop.location_name ?? '').trim();
+    let locId = stop.location_id || null;
+    let resolvedLoc: any = null;
 
-      if (locId) {
-        resolvedLoc = await resolveLocation(
+    if (locId) {
+      resolvedLoc = await resolveLocation(
+        tx,
+        { id: locId, customerId, skipCanonicalUpdate: true },
+        createdBy
+      );
+      if (resolvedLoc) locId = resolvedLoc.id;
+    } else if (stopName) {
+      try {
+        const loc = await resolveLocation(
           tx,
-          { id: locId, customerId, skipCanonicalUpdate: true },
+          {
+            customerId,
+            name: stopName,
+            address: String(stop.location_address ?? '').trim() || null,
+            lat: parseOptionalFloat(stop.lat),
+            lng: parseOptionalFloat(stop.lng),
+            skipCanonicalUpdate: !stop.update_canonical_location,
+          },
           createdBy
         );
-        if (resolvedLoc) locId = resolvedLoc.id;
-      } else if (stopName) {
+        if (loc) { locId = loc.id; resolvedLoc = loc; }
+      } catch (e) {
+        logger.warn({ err: e }, 'Failed to resolve location for trip stop');
+      }
+    }
+
+    // Stops sent without coordinates/address (the default return-leg stops
+    // from buildTripStops, spreadsheet/CSV rows) take them from the Location
+    // master record — driver navigation and geofence arrival need them.
+    const hasCoords = parseOptionalFloat(stop.lat) != null && parseOptionalFloat(stop.lng) != null;
+    if (!hasCoords && resolvedLoc?.lat != null && resolvedLoc?.lng != null) {
+      stop = {
+        ...stop,
+        lat: resolvedLoc.lat,
+        lng: resolvedLoc.lng,
+        coordinate_precision: stop.coordinate_precision || resolvedLoc.coordinate_precision || 'APPROXIMATE',
+      };
+    }
+    if (!stop.location_address && resolvedLoc?.address) {
+      stop = { ...stop, location_address: resolvedLoc.address };
+    }
+
+    if (stop.update_canonical_location === true && locId) {
+      const parsedLat = parseOptionalFloat(stop.lat);
+      const parsedLng = parseOptionalFloat(stop.lng);
+      try {
+        await tx.location.update({
+          where: { id: locId },
+          data: {
+            ...(parsedLat != null ? { lat: parsedLat } : {}),
+            ...(parsedLng != null ? { lng: parsedLng } : {}),
+            ...(stop.location_address ? { address: String(stop.location_address).trim() } : {}),
+            coordinate_precision: 'EXACT',
+            updated_by: createdBy,
+          },
+        });
+      } catch (uErr) {
+        logger.warn({ err: uErr }, 'Failed to update canonical location master data during trip creation');
+      }
+    } else if (
+      locId && resolvedLoc &&
+      (stop.coordinate_precision || stop.location_coordinate_precision) === 'EXACT' &&
+      resolvedLoc.coordinate_precision !== 'EXACT' &&
+      isSamePlace(stopName, resolvedLoc.name)
+    ) {
+      // The stop was pinned exactly and is the customer location itself, which
+      // isn't pinned yet: save the pin there too, so the next trip starts exact
+      // and other open trips still on the old guess are fixed with it.
+      const parsedLat = parseOptionalFloat(stop.lat);
+      const parsedLng = parseOptionalFloat(stop.lng);
+      if (parsedLat != null && parsedLng != null) {
         try {
-          const loc = await resolveLocation(
-            tx,
-            {
-              customerId,
-              name: stopName,
-              address: String(stop.location_address ?? '').trim() || null,
-              lat: parseOptionalFloat(stop.lat),
-              lng: parseOptionalFloat(stop.lng),
-              skipCanonicalUpdate: !stop.update_canonical_location,
-            },
-            createdBy
-          );
-          if (loc) { locId = loc.id; resolvedLoc = loc; }
-        } catch (e) {
-          logger.warn({ err: e }, 'Failed to resolve location for trip stop');
+          await pinLocation(tx, locId, { lat: parsedLat, lng: parsedLng, address: stop.location_address || null }, createdBy ?? null);
+        } catch (pErr) {
+          logger.warn({ err: pErr }, 'Failed to pin customer location from an exact trip stop');
         }
       }
+    }
 
-      // Stops sent without coordinates/address (the default return-leg stops
-      // from buildTripStops, spreadsheet/CSV rows) take them from the Location
-      // master record — driver navigation and geofence arrival need them.
-      const hasCoords = parseOptionalFloat(stop.lat) != null && parseOptionalFloat(stop.lng) != null;
-      if (!hasCoords && resolvedLoc?.lat != null && resolvedLoc?.lng != null) {
-        stop = {
-          ...stop,
-          lat: resolvedLoc.lat,
-          lng: resolvedLoc.lng,
-          coordinate_precision: stop.coordinate_precision || resolvedLoc.coordinate_precision || 'APPROXIMATE',
-        };
-      }
-      if (!stop.location_address && resolvedLoc?.address) {
-        stop = { ...stop, location_address: resolvedLoc.address };
-      }
-
-      if (stop.update_canonical_location === true && locId) {
-        const parsedLat = parseOptionalFloat(stop.lat);
-        const parsedLng = parseOptionalFloat(stop.lng);
-        try {
-          await tx.location.update({
-            where: { id: locId },
-            data: {
-              ...(parsedLat != null ? { lat: parsedLat } : {}),
-              ...(parsedLng != null ? { lng: parsedLng } : {}),
-              ...(stop.location_address ? { address: String(stop.location_address).trim() } : {}),
-              coordinate_precision: 'EXACT',
-              updated_by: createdBy,
-            },
-          });
-        } catch (uErr) {
-          logger.warn({ err: uErr }, 'Failed to update canonical location master data during trip creation');
-        }
-      }
-
-      return { ...stop, location_id: locId };
-    })
-  );
+    return { ...stop, location_id: locId };
+  };
+  const resolvedStops: any[] = [];
+  for (const stop of rawStops) resolvedStops.push(await resolveStop(stop));
 
   // 2. Validate stops
   const stopValidation = validateTripStops(resolvedStops);
@@ -191,6 +213,11 @@ export async function writeTripStops(
   }
 
   // 4. Build database create records
+  let endStopIndex = resolvedStops.length - 1;
+  if (hasReturnLeg) {
+    const lastOutbound = resolvedStops.map((st: any, i: number) => ({ st, i })).filter(({ st }) => Number(st.leg_index ?? 0) === 0).pop();
+    if (lastOutbound) endStopIndex = lastOutbound.i;
+  }
   const stopsToCreate = resolvedStops.map((stop: any, index: number) => {
     let rawLat = parseOptionalFloat(stop.lat);
     let rawLng = parseOptionalFloat(stop.lng);
@@ -219,7 +246,9 @@ export async function writeTripStops(
       stopPlannedArrival = new Date(stop.planned_arrival);
     } else if (index === 0 && plannedStart) {
       stopPlannedArrival = plannedStart;
-    } else if (index === resolvedStops.length - 1 && plannedEnd) {
+    } else if (index === endStopIndex && plannedEnd) {
+      // A stop without its own time: the trip's end goes on the outbound drop of
+      // a round trip (the return stops keep their own times), else on the last stop.
       stopPlannedArrival = plannedEnd;
     }
 

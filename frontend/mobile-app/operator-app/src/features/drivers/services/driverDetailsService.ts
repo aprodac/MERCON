@@ -68,7 +68,7 @@ export function documentDisplayStatus(
 ): DriverDocumentStatus {
   if (status === 'PendingReview') return 'PendingRenewal';
   if (status === 'Expired' || status === 'Rejected') return 'Expired';
-  if (daysLeft === null) return 'Valid';
+  if (daysLeft == null) return 'Valid';
   if (daysLeft < 0) return 'Expired';
   if (daysLeft <= EXPIRY_SOON_DAYS) return 'ExpiresSoon';
   return 'Valid';
@@ -199,7 +199,7 @@ export function formatDate(iso: string | null | undefined): string {
 
 /** "Expired 3 days ago" / "Expires today" / "12 days left" — used under document + licence dates. */
 export function formatDaysLeft(daysLeft: number | null): string {
-  if (daysLeft === null) return 'No expiry recorded';
+  if (daysLeft == null) return 'No expiry recorded';
   if (daysLeft < 0) {
     const n = Math.abs(daysLeft);
     return `Expired ${n} ${n === 1 ? 'day' : 'days'} ago`;
@@ -217,8 +217,9 @@ export function driverDisplayInitials(driver: Pick<DriverDetail, 'firstName' | '
 }
 
 /** Capacity in kg, thousands-separated. */
-export function formatCapacity(kg: number | null): string {
-  if (kg === null || Number.isNaN(kg)) return '—';
+export function formatCapacity(kg: number | null | undefined): string {
+  // The API leaves the field out for some trucks, so undefined is as real as null.
+  if (kg == null || Number.isNaN(kg)) return '—';
   return `${kg.toLocaleString()} kg`;
 }
 
@@ -226,8 +227,8 @@ export function formatCapacity(kg: number | null): string {
  * `ai_risk_score` is a *risk* float (0–1, higher = riskier), so the safety
  * score shown to the user is its inverse as a percentage.
  */
-export function safetyScoreFromRisk(aiRiskScore: number | null): number | null {
-  if (aiRiskScore === null || Number.isNaN(aiRiskScore)) return null;
+export function safetyScoreFromRisk(aiRiskScore: number | null | undefined): number | null {
+  if (aiRiskScore == null || Number.isNaN(aiRiskScore)) return null;
   const clamped = Math.min(Math.max(aiRiskScore, 0), 1);
   return Math.round((1 - clamped) * 100);
 }

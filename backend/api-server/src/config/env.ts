@@ -36,6 +36,10 @@ export const env = {
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
 };
 
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = env.DATABASE_URL;
+}
+
 /** True only when all three ICCES credentials are present. */
 export function iccesConfigured(): boolean {
   return Boolean(env.ICCES_USER && env.ICCES_PASS && env.ICCES_ACCT);

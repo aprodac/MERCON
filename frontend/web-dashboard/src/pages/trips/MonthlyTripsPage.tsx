@@ -1,26 +1,25 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useCallback, useMemo, useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   CalendarRange, ChevronLeft, ChevronRight, FileSpreadsheet, FileText, Download, ChevronDown,
-  Plus, Search, X, Info, SlidersHorizontal, Layers, Trash2, Filter, RotateCw, Building2,
-  Truck, User, Wrench, Users
+  Plus, Search, X, Info, Layers, Trash2, Filter, AlertTriangle, CheckCircle2,
 } from 'lucide-react';
 
-import { format, subDays, addDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
-import { DateRange } from 'react-day-picker';
-import { TripDateFilterPicker, DateFilterType } from '@/components/trips/TripDateFilterPicker';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import MonthlyCompanyBoard from '@/components/trips/monthly/MonthlyCompanyBoard';
+import MonthlyRouteGrid, { type GridCompany } from '@/components/trips/monthly/MonthlyRouteGrid';
+import MonthlyGroupLedgerModal from '@/components/trips/monthly/MonthlyGroupLedgerModal';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import ExportModal, { ExportColumn, ExportFilter } from '@/components/ui/ExportModal';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Combobox } from '@/components/ui/combobox';
-import { currentMonthKey, monthLabel, monthOptions, shiftMonth } from '@/components/trips/monthly/monthlyBoardUtils';
-import { computeMonthlyTripSearchRelevance } from '@/components/trips/monthly/MonthlyCompanyCard';
+import { currentMonthKey, monthLabel, shiftMonth, formatMoney } from '@/components/trips/monthly/monthlyBoardUtils';
+import { computeMonthlyTripSearchRelevance } from '@/components/trips/monthly/monthlySearch';
+import { buildBookings, buildGroups, CELL_STYLES, OVERDUE_CELL, localDay, totalsOf, type CellState } from '@/components/trips/monthly/monthlyGrid';
+import { useAssignmentLookups } from '@/components/trips/monthly/useAssignmentLookups';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import {
   Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -28,21 +27,17 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { tripService } from '@/services/tripService';
-import { customerService } from '@/services/customerService';
-import { VEHICLE_TYPES, RATE_CATEGORIES, BILLING_TYPES } from '@mercon/shared-types';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { tripService, type MonthlyBoardCompany } from '@/services/tripService';
 import { exportExcelTable, exportPDFTable, downloadCSVTable } from '@/utils/exportUtils';
 
-const LABEL = 'text-[10px] font-bold uppercase tracking-wider text-[#9898A4]';
-
+/** The Prisma TripStatus enum — the only values the bulk endpoint accepts. */
 const STATUS_OPTIONS = [
-  'Draft', 'Dispatched', 'AtPickup', 'InTransit', 'AtDelivery', 'Completed', 'Invoiced', 'Cancelled',
+  'Draft', 'Scheduled', 'Loading', 'InTransit', 'Delayed', 'Completed', 'Invoiced', 'Cancelled',
 ];
+
+const LEGEND: CellState[] = ['done', 'active', 'planned', 'gap', 'cancelled'];
 
 const EXPORT_HEADERS = [
   'Company', 'Date', 'Trip Ref', 'Status', 'Driver', 'Vehicle',
@@ -88,8 +83,8 @@ const MONTHLY_EXPORT_FILTERS: ExportFilter<MonthlyExportRow>[] = [
     label: 'Status',
     options: [
       { label: 'All Statuses', value: 'All' },
-      { label: 'Scheduled', value: 'Draft' },
-      { label: 'At Pickup', value: 'AtPickup' },
+      { label: 'Scheduled', value: 'Scheduled' },
+      { label: 'Loading', value: 'Loading' },
       { label: 'In Transit', value: 'InTransit' },
       { label: 'Completed', value: 'Completed' },
       { label: 'Invoiced', value: 'Invoiced' },
@@ -101,33 +96,14 @@ const MONTHLY_EXPORT_FILTERS: ExportFilter<MonthlyExportRow>[] = [
 
 export default function MonthlyTripsPage() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [month, setMonth] = useState(currentMonthKey());
   const [search, setSearch] = useState('');
-  const [dateFilter, setDateFilter] = useState<DateFilterType>('All');
-  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>(undefined);
-  const [customerId, setCustomerId] = useState('All');
-  const [rateCategory, setRateCategory] = useState('');
-  const [vehicleType, setVehicleType] = useState('');
-  const [billingType, setBillingType] = useState('');
-  const [status, setStatus] = useState('');
-
-  const effectiveDateRange = useMemo<DateRange | undefined>(() => {
-    const today = new Date();
-    if (dateFilter === 'Today') return { from: today, to: today };
-    if (dateFilter === 'Yesterday') {
-      const y = subDays(today, 1);
-      return { from: y, to: y };
-    }
-    if (dateFilter === '3Days') return { from: subDays(today, 1), to: addDays(today, 1) };
-    if (dateFilter === 'ThisWeek') return { from: startOfWeek(today, { weekStartsOn: 0 }), to: endOfWeek(today, { weekStartsOn: 0 }) };
-    if (dateFilter === 'Last7Days') return { from: subDays(today, 6), to: today };
-    if (dateFilter === 'ThisMonth') return { from: startOfMonth(today), to: endOfMonth(today) };
-    if (dateFilter === 'Last30Days') return { from: subDays(today, 29), to: today };
-    if (dateFilter === 'Custom') return customDateRange;
-    return undefined;
-  }, [dateFilter, customDateRange]);
+  const [companyId, setCompanyId] = useState('All');
+  /** Narrow the grid to routes that need attention. */
+  const [focus, setFocus] = useState<'gaps' | 'overdue' | null>(null);
+  const toggleFocus = (f: 'gaps' | 'overdue') => setFocus((cur) => (cur === f ? null : f));
 
   useEffect(() => {
     if (searchParams.get('bulk') === 'true') {
@@ -138,123 +114,130 @@ export default function MonthlyTripsPage() {
   // Selection & Batch Actions State
   const [selectedTripIds, setSelectedTripIds] = useState<string[]>([]);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
-  const [isSingleDeleteConfirmOpen, setIsSingleDeleteConfirmOpen] = useState(false);
-  const [tripToDelete, setTripToDelete] = useState<string | null>(null);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [selectedMonthlyTripsForExport, setSelectedMonthlyTripsForExport] = useState<MonthlyExportRow[]>([]);
 
-  const filters = {
-    month,
-    ...(customerId && customerId !== 'All' ? { customer_id: customerId } : {}),
-    ...(rateCategory ? { rate_category: rateCategory } : {}),
-    ...(vehicleType ? { vehicle_type: vehicleType } : {}),
-    ...(billingType ? { billing_type: billingType } : {}),
-    ...(status ? { status } : {}),
-  };
-
-  const { data: board, isLoading, isFetching, isError, refetch } = useQuery({
-    queryKey: ['trips', 'monthly-board', filters],
-    queryFn: () => tripService.getMonthlyBoard(filters),
+  const { data: board, isLoading, isError, refetch } = useQuery({
+    queryKey: ['trips', 'monthly-board', { month }],
+    queryFn: () => tripService.getMonthlyBoard({ month }),
   });
 
-  const { data: customersRes } = useQuery({
-    queryKey: ['customers-select'],
-    queryFn: () => customerService.getAll({ per_page: 100 , mode: 'lookup' }),
-  });
-
-  const rawCompanies = board?.companies ?? [];
+  const rawCompanies = useMemo(() => board?.companies ?? [], [board]);
   const summary = board?.summary;
-  const customers = customersRes?.data ?? [];
 
-  const companyOptions = useMemo(() => {
-    const icon = <Building2 className="h-3.5 w-3.5 text-purple-400 shrink-0" />;
-    const opts = [{ value: 'All', label: 'All Companies', icon }];
-    customers.forEach((c) => {
-      opts.push({ value: c.id, label: c.name, icon });
-    });
-    return opts;
-  }, [customers]);
+  const today = localDay(0);
+  const soonUntil = localDay(2);
 
-  const companies = useMemo(() => {
-    let fromStr: string | null = null;
-    let toStr: string | null = null;
-
-    if (effectiveDateRange?.from) {
-      fromStr = format(effectiveDateRange.from, 'yyyy-MM-dd');
-      toStr = effectiveDateRange.to ? format(effectiveDateRange.to, 'yyyy-MM-dd') : fromStr;
-    }
-
-    if (!search.trim() && !fromStr) return rawCompanies;
-    
-    const query = search.trim();
-    const filtered = rawCompanies.map((c) => {
-      const filteredDays = c.days.map((d) => {
-        // Date Filter
-        if (fromStr && toStr) {
-          if (d.date < fromStr || d.date > toStr) return null;
-        }
-
-        // Search Filter
-        let matchingTrips = d.trips;
-        if (query) {
-          matchingTrips = d.trips.filter((t) => computeMonthlyTripSearchRelevance(t, query) > 0);
-        }
-
-        if (matchingTrips.length === 0) return null;
-
-        return { ...d, trips: matchingTrips };
-      }).filter(Boolean) as typeof c.days;
-
-      const totalMatchingTrips = filteredDays.reduce((sum, d) => sum + d.trips.length, 0);
-
-      const totalBilled = filteredDays.reduce((sum, d) => 
-        sum + d.trips.reduce((tSum, t) => tSum + (t.billing_amount ?? 0), 0)
-      , 0);
-
-      return {
-        ...c,
-        days: filteredDays,
-        total_trips: totalMatchingTrips,
-        total_billed: totalBilled,
-      };
-    }).filter((c) => c.total_trips > 0);
-
-    if (!query) return filtered;
-
-    return filtered.sort((a, b) => {
-      const aTrips = a.days.flatMap((d) => d.trips);
-      const bTrips = b.days.flatMap((d) => d.trips);
-      const scoreA = aTrips.reduce((max, t) => Math.max(max, computeMonthlyTripSearchRelevance(t, query)), 0);
-      const scoreB = bTrips.reduce((max, t) => Math.max(max, computeMonthlyTripSearchRelevance(t, query)), 0);
-      if (scoreA !== scoreB) return scoreB - scoreA;
-      return b.total_trips - a.total_trips;
-    });
-  }, [rawCompanies, search, effectiveDateRange]);
-
-  const allVisibleTripIds = useMemo(
-    () => companies.flatMap((c) => c.days.flatMap((d) => d.trips.map((t) => t.id))),
-    [companies],
+  /** Companies with trips this month, busiest first. */
+  const companyChips = useMemo(
+    () => [...rawCompanies].sort((a, b) => b.total_trips - a.total_trips),
+    [rawCompanies],
   );
+
+  const companyOptions = useMemo<ComboboxOption[]>(
+    () => [
+      {
+        value: 'All',
+        label: `All companies · ${summary?.total_trips ?? 0} trips`,
+        selectedLabel: 'All companies',
+        keywords: 'all',
+      },
+      ...companyChips.map((c) => ({
+        value: c.customer.id,
+        label: `${c.customer.name} · ${c.total_trips}`,
+        selectedLabel: c.customer.name,
+        keywords: c.customer.name,
+      })),
+    ],
+    [companyChips, summary?.total_trips],
+  );
+
+  // Company + search narrow the trips; the grid groups what's left into routes.
+  const companies = useMemo<MonthlyBoardCompany[]>(() => {
+    const query = search.trim();
+    return rawCompanies
+      .filter((c) => companyId === 'All' || c.customer.id === companyId)
+      .map((c) => {
+        if (!query) return c;
+        const days = c.days
+          .map((d) => ({ ...d, trips: d.trips.filter((t) => computeMonthlyTripSearchRelevance(t, query) > 0) }))
+          .filter((d) => d.trips.length > 0);
+        return { ...c, days };
+      })
+      .filter((c) => c.days.length > 0);
+  }, [rawCompanies, companyId, search]);
+
+  const gridRows = useMemo<GridCompany[]>(() => {
+    return companies
+      .map((company) => {
+        let groups = buildGroups(company);
+        if (focus) {
+          groups = groups.filter((g) => {
+            const t = totalsOf(g.trips, today, soonUntil);
+            return focus === 'gaps' ? t.gapsSoon > 0 : t.overdue > 0;
+          });
+        }
+        const trips = groups.flatMap((g) => g.trips);
+        return { company, groups, totals: totalsOf(trips, today, soonUntil) };
+      })
+      .filter((r) => r.groups.length > 0)
+      .sort((a, b) => b.totals.total - a.totals.total);
+  }, [companies, focus, today, soonUntil]);
+
+  // Double-booking is checked against the whole month, whatever is filtered.
+  const bookings = useMemo(() => buildBookings(rawCompanies), [rawCompanies]);
 
   const allTripsFlat = useMemo(
     () => companies.flatMap((c) => c.days.flatMap((d) => d.trips)),
     [companies],
   );
+  const kpis = useMemo(() => totalsOf(allTripsFlat, today, soonUntil), [allTripsFlat, today, soonUntil]);
 
-  const handleToggleTrip = (id: string) => {
-    setSelectedTripIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id],
-    );
-  };
+  const allVisibleTripIds = useMemo(
+    () => gridRows.flatMap((r) => r.groups.flatMap((g) => g.trips.map((t) => t.id))),
+    [gridRows],
+  );
 
-  const handleToggleCompany = (tripIds: string[]) => {
-    const allInCompanySelected = tripIds.every((id) => selectedTripIds.includes(id));
-    if (allInCompanySelected) {
-      setSelectedTripIds((prev) => prev.filter((id) => !tripIds.includes(id)));
-    } else {
-      setSelectedTripIds((prev) => Array.from(new Set([...prev, ...tripIds])));
+  // ── Ledger drawer, kept in the URL so Back closes it ──
+  const ledgerKey = searchParams.get('route');
+  const ledger = useMemo(() => {
+    if (!ledgerKey) return null;
+    for (const company of rawCompanies) {
+      const group = buildGroups(company).find((g) => g.key === ledgerKey);
+      if (group) return { group, company };
     }
+    return null;
+  }, [ledgerKey, rawCompanies]);
+
+  const openLedger = useCallback(
+    (group: { key: string }) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('route', group.key);
+        return next;
+      });
+    },
+    [setSearchParams],
+  );
+
+  const closeLedger = () => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('route');
+      return next;
+    }, { replace: true });
   };
+
+  const handleToggleTrips = useCallback((ids: string[]) => {
+    setSelectedTripIds((prev) => {
+      const all = ids.every((id) => prev.includes(id));
+      return all ? prev.filter((id) => !ids.includes(id)) : Array.from(new Set([...prev, ...ids]));
+    });
+  }, []);
+
+  const handleSelectTrips = useCallback((ids: string[]) => {
+    setSelectedTripIds((prev) => Array.from(new Set([...prev, ...ids])));
+  }, []);
 
   const handleSelectAllVisible = () => {
     if (selectedTripIds.length === allVisibleTripIds.length) {
@@ -275,7 +258,35 @@ export default function MonthlyTripsPage() {
       refetch();
       setSelectedTripIds([]);
     },
+    onError: (e: any) => {
+      toast.error(e.response?.data?.error?.message || 'Failed to update status');
+    },
   });
+
+  // Driver / truck for a selected range of days, confirmed before it goes out.
+  const { driverOptions, vehicleOptions } = useAssignmentLookups(selectedTripIds.length > 0);
+  const [pendingAssign, setPendingAssign] = useState<{ field: 'driver_id' | 'vehicle_id'; id: string; label: string } | null>(null);
+
+  const bulkAssignMutation = useMutation({
+    mutationFn: (p: { field: 'driver_id' | 'vehicle_id'; id: string }) =>
+      tripService.bulkAssign({ trip_ids: selectedTripIds, [p.field]: p.id }),
+    onSuccess: () => {
+      toast.success(`Updated ${selectedTripIds.length} trip(s)`);
+      refetch();
+      setSelectedTripIds([]);
+      setPendingAssign(null);
+    },
+    onError: (e: any) => {
+      toast.error(e.response?.data?.error?.message || 'Failed to update trips');
+    },
+  });
+
+  const askAssign = (field: 'driver_id' | 'vehicle_id', id: string) => {
+    if (!id) return;
+    const options = field === 'driver_id' ? driverOptions : vehicleOptions;
+    const label = options.find((o) => o.value === id)?.label;
+    setPendingAssign({ field, id, label: typeof label === 'string' ? label : id });
+  };
 
   const bulkDeleteMutation = useMutation({
     mutationFn: (ids: string[]) => tripService.bulkDelete(ids),
@@ -283,8 +294,6 @@ export default function MonthlyTripsPage() {
       refetch();
       setSelectedTripIds([]);
       setIsDeleteConfirmOpen(false);
-      setIsSingleDeleteConfirmOpen(false);
-      setTripToDelete(null);
       if (res?.skippedCount > 0) {
         if (res.deletedCount > 0) {
           toast.warning(`Moved ${res.deletedCount} trip(s) to Trash. ${res.skippedCount} trip(s) were protected from deletion (invoiced/settled).`);
@@ -301,25 +310,12 @@ export default function MonthlyTripsPage() {
   });
 
   const resetFilters = () => {
-    setCustomerId('All');
-    setRateCategory('');
-    setVehicleType('');
-    setBillingType('');
-    setStatus('');
+    setCompanyId('All');
     setSearch('');
-    setDateFilter('All');
-    setCustomDateRange(undefined);
+    setFocus(null);
   };
 
-  const appliedFiltersCount = [
-    customerId !== 'All',
-    Boolean(rateCategory),
-    Boolean(vehicleType),
-    Boolean(billingType),
-    Boolean(status),
-    Boolean(search.trim()),
-    dateFilter !== 'All',
-  ].filter(Boolean).length;
+  const appliedFiltersCount = [companyId !== 'All', Boolean(search.trim()), Boolean(focus)].filter(Boolean).length;
 
   const exportRows: MonthlyExportRow[] = useMemo(
     () =>
@@ -380,76 +376,38 @@ export default function MonthlyTripsPage() {
 
   return (
     <DashboardLayout active="Trips" title="Monthly Trips">
-      <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-4">
+      <div className="px-4 sm:px-6 pb-6 w-full flex flex-col animate-fade-in gap-3">
 
-        {/* ── Filter Toolbar Row ── */}
+        {/* ── Toolbar: month, search, export, new trip ── */}
         <div className="flex flex-wrap items-center justify-between gap-3 shrink-0 py-1">
-          {/* Left: Total Trips Pill + Search + Filters */}
           <div className="flex items-center flex-wrap gap-2.5 min-w-0">
-            {/* Total Trips Pill */}
-            <div
-              onClick={resetFilters}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-50 dark:bg-purple-950/50 border border-purple-200/90 dark:border-purple-800/80 text-purple-700 dark:text-purple-300 text-xs font-bold shadow-2xs hover:bg-purple-100 transition-all cursor-pointer h-9 shrink-0"
-              title="Click to reset filters"
-            >
-              <div className="w-2 h-2 rounded-full bg-purple-600 animate-pulse" />
-              <span>Total Trips:</span>
-              <span className="font-mono text-xs font-black text-purple-700 bg-white dark:bg-slate-900 px-2 py-0.5 rounded-lg border border-purple-200 shadow-3xs">
-                {summary?.total_trips ?? allTripsFlat.length}
-              </span>
-            </div>
-
-            {/* Search Input */}
+            <MonthStepper month={month} onChange={(m) => { setMonth(m); setSelectedTripIds([]); }} />
             <div className="relative w-56 sm:w-64 lg:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <Input
-                placeholder="Search by route, driver, vehicle, trip ID..."
+                placeholder="Search route, driver, plate, trip ID"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 text-xs h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 w-full rounded-xl shadow-2xs focus-visible:ring-purple-500/20 focus-visible:border-purple-500"
+                className="pl-9 text-xs h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 w-full rounded-lg shadow-none"
               />
               {search && (
-                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                <button onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
                   <X size={13} />
                 </button>
               )}
             </div>
-
-            {/* Date Filter Button from Trip Ledger */}
-            <div className="w-auto">
-              <TripDateFilterPicker
-                dateFilter={dateFilter}
-                setDateFilter={setDateFilter}
-                customDateRange={customDateRange}
-                setCustomDateRange={(newRange) => {
-                  setCustomDateRange(newRange);
-                  if (newRange?.from) {
-                    const newMonthKey = format(newRange.from, 'yyyy-MM');
-                    if (newMonthKey !== month) {
-                      setMonth(newMonthKey);
-                    }
-                  }
-                }}
-              />
-            </div>
-
           </div>
 
-          {/* Right: Month Selector, Export & Import, + New Trip */}
           <div className="flex items-center flex-wrap gap-2.5">
-            {/* Month Selector Stepper */}
-            <MonthStepper month={month} onChange={setMonth} />
-
-            {/* Export & Import Dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="h-9 gap-1.5 text-xs font-bold border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/80 shadow-2xs rounded-xl transition-colors"
+                  className="h-9 gap-1.5 text-xs font-semibold border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/80 shadow-none rounded-lg transition-colors"
                 >
                   <Download className="h-3.5 w-3.5 text-slate-500 dark:text-slate-400" />
-                  Export & Import
+                  Export
                   <ChevronDown className="h-3 w-3 text-slate-400" />
                 </Button>
               </DropdownMenuTrigger>
@@ -470,24 +428,22 @@ export default function MonthlyTripsPage() {
                   <FileText className="mr-2 h-3.5 w-3.5 text-rose-600" />
                   Export PDF (.pdf)
                 </DropdownMenuItem>
-
                 <DropdownMenuItem
                   onClick={() => {
                     setSelectedMonthlyTripsForExport([]);
                     setIsExportOpen(true);
                   }}
-                  className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-purple-700 hover:bg-purple-50"
+                  className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-slate-700"
                 >
-                  <Filter className="mr-2 h-3.5 w-3.5 text-purple-600" />
+                  <Filter className="mr-2 h-3.5 w-3.5 text-slate-500" />
                   Custom Export Settings...
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Primary Action Button (New Trip) */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button className="h-9 rounded-xl px-4 text-xs font-extrabold bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-1.5 cursor-pointer shadow-md">
+                <Button className="h-9 rounded-lg px-4 text-xs font-semibold bg-charcoal hover:bg-charcoal-strong text-white flex items-center gap-1.5 cursor-pointer">
                   <span>New Trip</span>
                   <ChevronDown className="h-3.5 w-3.5 text-white/80 ml-0.5" />
                 </Button>
@@ -495,22 +451,21 @@ export default function MonthlyTripsPage() {
               <DropdownMenuContent align="end" className="w-60 p-1.5 rounded-xl shadow-xl border border-slate-200 bg-white">
                 <DropdownMenuItem
                   onClick={() => navigate('/trips/new')}
-                  className="cursor-pointer text-xs font-medium py-2.5 px-3 rounded-lg flex items-center gap-3 hover:bg-purple-50"
+                  className="cursor-pointer text-xs font-medium py-2.5 px-3 rounded-lg flex items-center gap-3"
                 >
-                  <Plus className="w-4 h-4 text-purple-600 shrink-0" />
+                  <Plus className="w-4 h-4 text-slate-500 shrink-0" />
                   <div>
-                    <div className="font-bold text-[#111111]">Daily / Single Local Trip</div>
+                    <div className="font-bold text-[#3E3C3D]">Daily / Single Local Trip</div>
                     <div className="text-[10px] text-slate-500">Standard single dispatch trip</div>
                   </div>
                 </DropdownMenuItem>
-
                 <DropdownMenuItem
                   onClick={() => navigate(`/trips/new?mode=monthly&month=${month}`)}
-                  className="cursor-pointer text-xs font-medium py-2.5 px-3 rounded-lg flex items-center gap-3 hover:bg-purple-50"
+                  className="cursor-pointer text-xs font-medium py-2.5 px-3 rounded-lg flex items-center gap-3"
                 >
-                  <Layers className="w-4 h-4 text-purple-600 shrink-0" />
+                  <Layers className="w-4 h-4 text-slate-500 shrink-0" />
                   <div>
-                    <div className="font-bold text-[#111111]">Monthly / Bulk Add Trips</div>
+                    <div className="font-bold text-[#3E3C3D]">Monthly / Bulk Add Trips</div>
                     <div className="text-[10px] text-slate-500">Batch contract generator & import</div>
                   </div>
                 </DropdownMenuItem>
@@ -519,21 +474,96 @@ export default function MonthlyTripsPage() {
           </div>
         </div>
 
+        {/* ── KPI strip ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard label="Trips this month">
+            <div className="text-xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">{kpis.total}</div>
+            <div className="text-[11px] text-slate-400">across {gridRows.length} {gridRows.length === 1 ? 'company' : 'companies'}</div>
+          </StatCard>
+          <StatCard label="Completed">
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">{kpis.done}</span>
+              <span className="text-xs text-slate-400 tabular-nums">· {kpis.total ? Math.round((kpis.done / kpis.total) * 100) : 0}%</span>
+            </div>
+            <div className="mt-1.5 h-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+              <div className="h-full rounded-full bg-emerald-500" style={{ width: `${kpis.total ? (kpis.done / kpis.total) * 100 : 0}%` }} />
+            </div>
+          </StatCard>
+          <StatCard
+            label="Needs attention"
+            icon={<AlertTriangle className="h-3 w-3" />}
+            tone={kpis.gapsSoon + kpis.overdue > 0 ? 'warn' : undefined}
+          >
+            {kpis.gapsSoon + kpis.overdue === 0 && !focus ? (
+              <div className="flex items-center gap-1.5 text-sm font-medium text-emerald-700 dark:text-emerald-400 pt-1">
+                <CheckCircle2 className="h-4 w-4" /> All clear
+              </div>
+            ) : (
+              <div className="flex gap-1 -mx-1.5">
+                <AttentionRow
+                  count={kpis.gapsSoon}
+                  label="no driver, next 3d"
+                  tone="amber"
+                  active={focus === 'gaps'}
+                  onClick={() => toggleFocus('gaps')}
+                />
+                <AttentionRow
+                  count={kpis.overdue}
+                  label="not closed"
+                  tone="rose"
+                  active={focus === 'overdue'}
+                  onClick={() => toggleFocus('overdue')}
+                />
+              </div>
+            )}
+          </StatCard>
+          <StatCard label="Billed so far">
+            <div className="text-xl font-semibold tabular-nums text-slate-900 dark:text-slate-100">{formatMoney(kpis.earned)}</div>
+            <div className="text-[11px] text-slate-400 tabular-nums">of {formatMoney(kpis.expected)} planned</div>
+          </StatCard>
+        </div>
+
+        {/* ── Company filter: searchable, since the list can grow long ── */}
+        {companyChips.length > 0 && (
+          <div className="flex items-center gap-2">
+            <div className="w-72">
+              <Combobox
+                options={companyOptions}
+                value={companyId}
+                onChange={(v) => setCompanyId(v || 'All')}
+                placeholder="All companies"
+                searchPlaceholder="Search companies"
+                className="h-9 text-xs rounded-lg"
+                popoverClassName="min-w-[288px]"
+              />
+            </div>
+            {companyId !== 'All' && (
+              <button
+                type="button"
+                onClick={() => setCompanyId('All')}
+                className="h-9 px-2 text-xs font-medium text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center gap-1"
+              >
+                <X className="h-3.5 w-3.5" /> Show all
+              </button>
+            )}
+          </div>
+        )}
+
         {summary?.truncated && (
           <div className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-xs text-amber-900 flex items-start gap-2">
             <Info className="h-4 w-4 shrink-0 mt-px text-amber-700" />
             <span>
-              This month has more trips than the board loads at once. Filter by company to be sure you are
+              This month has more trips than the board loads at once. Pick a company to be sure you are
               seeing everything.
             </span>
           </div>
         )}
 
-        {/* ── 3. Main Body: 4-Column Company Board ── */}
+        {/* ── Route × day grid ── */}
         {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-            {[0, 1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-80 w-full rounded-2xl border border-slate-200" />
+          <div className="flex flex-col gap-2">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} className="h-12 w-full rounded-xl" />
             ))}
           </div>
         ) : isError ? (
@@ -553,7 +583,7 @@ export default function MonthlyTripsPage() {
               </Button>
             </div>
           </div>
-        ) : companies.length === 0 ? (
+        ) : gridRows.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white shadow-sm px-6 py-16 text-center">
             <CalendarRange className="w-8 h-8 text-slate-600 shrink-0 mx-auto" />
             <h3 className="mt-4 text-sm font-bold text-slate-900">
@@ -578,32 +608,64 @@ export default function MonthlyTripsPage() {
                 </Button>
               ) : (
                 <Button
-                  className="h-9 rounded-lg text-xs font-bold bg-purple-600 hover:bg-purple-700 shadow-none text-white"
-                  onClick={() => navigate('/trips/new')}
+                  className="h-9 rounded-lg text-xs font-semibold bg-charcoal hover:bg-charcoal-strong shadow-none text-white"
+                  onClick={() => navigate(`/trips/new?mode=monthly&month=${month}`)}
                 >
                   <Plus className="h-3.5 w-3.5 mr-1.5" />
-                  Create a trip
+                  Add monthly trips
                 </Button>
               )}
             </div>
           </div>
         ) : (
-          <MonthlyCompanyBoard
-            companies={companies}
-            selectedTripIds={selectedTripIds}
-            search={search}
-            onToggleTrip={handleToggleTrip}
-            onToggleCompany={handleToggleCompany}
-            onRefresh={refetch}
-          />
+          <>
+            <MonthlyRouteGrid
+              month={month}
+              rows={gridRows}
+              today={today}
+              soonUntil={soonUntil}
+              bookings={bookings}
+              selectedTripIds={selectedTripIds}
+              onToggleTrips={handleToggleTrips}
+              onSelectTrips={handleSelectTrips}
+              onOpenLedger={openLedger}
+            />
+            <div className="flex items-center gap-4 flex-wrap text-[11px] text-slate-500">
+              {LEGEND.map((s) => (
+                <span key={s} className="flex items-center gap-1.5">
+                  <span className={`h-3 w-2.5 rounded-[3px] ${CELL_STYLES[s].dot}`} />
+                  {CELL_STYLES[s].label}
+                </span>
+              ))}
+              <span className="flex items-center gap-1.5">
+                <span className={`h-3 w-2.5 rounded-[3px] ${OVERDUE_CELL}`} />
+                Past, not closed
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-3 w-2.5 rounded-[3px] bg-slate-100 dark:bg-slate-800" />
+                No trip
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-full bg-rose-600" />
+                Driver or truck double-booked
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-3.5 w-3 rounded-[3px] bg-emerald-100 text-emerald-800 text-[9px] font-semibold grid place-items-center">4</span>
+                Trips that day, when it differs from the route's usual
+              </span>
+              <span className="ml-auto text-slate-400">
+                Click a day to edit it · shift-click two days to select the range · click a route for its ledger
+              </span>
+            </div>
+          </>
         )}
       </div>
 
       {/* Floating Selection & Bulk Action Bar */}
       {selectedTripIds.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-2xl w-[92vw] sm:w-auto bg-charcoal text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-800 flex items-center justify-between gap-4 animate-in slide-in-from-bottom-5 duration-200">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-5xl w-[96vw] sm:w-auto bg-charcoal text-white px-4 py-3 rounded-2xl shadow-2xl border border-slate-800 flex items-center justify-between gap-4 animate-in slide-in-from-bottom-5 duration-200">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 text-xs font-extrabold bg-purple-600 text-white px-2.5 py-1 rounded-lg shadow-2xs">
+            <div className="flex items-center gap-1.5 text-xs font-semibold bg-white/15 text-white px-2.5 py-1 rounded-lg">
               <span>{selectedTripIds.length}</span>
               <span>Selected</span>
             </div>
@@ -616,7 +678,27 @@ export default function MonthlyTripsPage() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <div className="w-44">
+              <Combobox
+                options={driverOptions}
+                value=""
+                onChange={(val) => askAssign('driver_id', val)}
+                placeholder="Set driver"
+                searchPlaceholder="Search drivers"
+                className="h-8 text-xs bg-slate-800 border-slate-700 text-white rounded-lg"
+              />
+            </div>
+            <div className="w-40">
+              <Combobox
+                options={vehicleOptions}
+                value=""
+                onChange={(val) => askAssign('vehicle_id', val)}
+                placeholder="Set truck"
+                searchPlaceholder="Search plates"
+                className="h-8 text-xs bg-slate-800 border-slate-700 text-white rounded-lg"
+              />
+            </div>
             <Select
               onValueChange={(val: string) => {
                 if (val) bulkStatusMutation.mutate({ ids: selectedTripIds, status: val });
@@ -674,7 +756,30 @@ export default function MonthlyTripsPage() {
         </div>
       )}
 
-      {/* Delete Confirmation Modals */}
+      <MonthlyGroupLedgerModal
+        isOpen={Boolean(ledger)}
+        onClose={closeLedger}
+        group={ledger?.group ?? null}
+        companyName={ledger?.company.customer.name ?? ''}
+        companyLogo={ledger?.company.customer.logo_url}
+        allCompanyTrips={ledger ? ledger.company.days.flatMap((d) => d.trips) : []}
+        onRefresh={refetch}
+      />
+
+      <ConfirmModal
+        isOpen={Boolean(pendingAssign)}
+        onClose={() => setPendingAssign(null)}
+        onConfirm={() => pendingAssign && bulkAssignMutation.mutate(pendingAssign)}
+        title={`Set ${pendingAssign?.field === 'driver_id' ? 'driver' : 'truck'} on ${selectedTripIds.length} trip(s)?`}
+        message={
+          pendingAssign?.id === 'unassigned'
+            ? `This removes the ${pendingAssign.field === 'driver_id' ? 'driver' : 'truck'} from the ${selectedTripIds.length} selected trips.`
+            : `${pendingAssign?.label ?? ''} will be put on all ${selectedTripIds.length} selected trips, replacing whoever is on them now.`
+        }
+        confirmLabel={bulkAssignMutation.isPending ? 'Saving...' : 'Apply'}
+        isLoading={bulkAssignMutation.isPending}
+      />
+
       <ConfirmModal
         isOpen={isDeleteConfirmOpen}
         onClose={() => setIsDeleteConfirmOpen(false)}
@@ -682,17 +787,6 @@ export default function MonthlyTripsPage() {
         title={`Delete ${selectedTripIds.length} Selected Trips?`}
         message={`Are you sure you want to permanently delete the ${selectedTripIds.length} selected trips from the database? This action cannot be undone.`}
         confirmLabel={bulkDeleteMutation.isPending ? 'Deleting...' : 'Delete Selected Trips'}
-        isDestructive
-        isLoading={bulkDeleteMutation.isPending}
-      />
-
-      <ConfirmModal
-        isOpen={isSingleDeleteConfirmOpen}
-        onClose={() => { setIsSingleDeleteConfirmOpen(false); setTripToDelete(null); }}
-        onConfirm={() => tripToDelete && bulkDeleteMutation.mutate([tripToDelete])}
-        title="Delete Trip?"
-        message="Are you sure you want to permanently delete this trip from the database? This action cannot be undone."
-        confirmLabel={bulkDeleteMutation.isPending ? 'Deleting...' : 'Delete Trip'}
         isDestructive
         isLoading={bulkDeleteMutation.isPending}
       />
@@ -715,23 +809,83 @@ export default function MonthlyTripsPage() {
   );
 }
 
+function StatCard({
+  label,
+  icon,
+  tone,
+  children,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  tone?: 'warn';
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={`rounded-xl border bg-white dark:bg-slate-900 px-4 py-2.5 ${
+        tone === 'warn' ? 'border-amber-300/80 dark:border-amber-800' : 'border-slate-200 dark:border-slate-800'
+      }`}
+    >
+      <div
+        className={`text-[11px] font-medium flex items-center gap-1 ${
+          tone === 'warn' ? 'text-amber-700 dark:text-amber-300' : 'text-slate-500'
+        }`}
+      >
+        {icon}
+        {label}
+      </div>
+      <div className="mt-0.5">{children}</div>
+    </div>
+  );
+}
+
+function AttentionRow({
+  count,
+  label,
+  tone,
+  active,
+  onClick,
+}: {
+  count: number;
+  label: string;
+  tone: 'amber' | 'rose';
+  active: boolean;
+  onClick: () => void;
+}) {
+  const hot = count > 0;
+  const color = tone === 'amber' ? 'text-amber-700 dark:text-amber-300' : 'text-rose-600 dark:text-rose-400';
+  const activeBg = tone === 'amber' ? 'bg-amber-100 dark:bg-amber-950/50' : 'bg-rose-100 dark:bg-rose-950/50';
+  const hover = tone === 'amber' ? 'hover:bg-amber-50 dark:hover:bg-amber-950/30' : 'hover:bg-rose-50 dark:hover:bg-rose-950/30';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!hot && !active}
+      title={active ? 'Show all routes' : 'Show only these routes'}
+      className={`flex items-baseline gap-1.5 rounded-md px-1.5 py-0.5 text-left transition-colors ${
+        active ? `${activeBg} ${color}` : hot ? `${hover} ${color}` : 'text-slate-400 cursor-default'
+      }`}
+    >
+      <span className="text-xl font-semibold tabular-nums">{count}</span>
+      <span className="text-[11px] font-medium whitespace-nowrap">{label}</span>
+      {active && <X className="h-3 w-3 self-center" />}
+    </button>
+  );
+}
+
 /** Month Stepper Control */
 function MonthStepper({ month, onChange }: { month: string; onChange: (month: string) => void }) {
   const isCurrent = month === currentMonthKey();
+  const step = 'h-9 w-8 grid place-items-center text-slate-500 hover:bg-slate-50 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white transition-colors';
 
   return (
-    <div className="flex items-center rounded-xl border border-slate-200/90 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden divide-x divide-slate-200 dark:divide-slate-800 shadow-2xs h-9">
-      <button
-        type="button"
-        onClick={() => onChange(shiftMonth(month, -1))}
-        aria-label="Previous month"
-        className="h-9 w-8 grid place-items-center text-slate-500 hover:bg-purple-50 dark:hover:bg-purple-950/40 hover:text-purple-600 transition-colors"
-      >
+    <div className="flex items-center rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden divide-x divide-slate-200 dark:divide-slate-800 h-9">
+      <button type="button" onClick={() => onChange(shiftMonth(month, -1))} aria-label="Previous month" className={step}>
         <ChevronLeft className="h-3.5 w-3.5" />
       </button>
 
       <div className="relative h-9 flex items-center">
-        <span className="px-3 text-xs font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap min-w-[100px] text-center">
+        <span className="px-3 text-xs font-semibold text-slate-900 dark:text-slate-100 whitespace-nowrap min-w-[110px] text-center">
           {monthLabel(month)}
         </span>
         <input
@@ -743,12 +897,7 @@ function MonthStepper({ month, onChange }: { month: string; onChange: (month: st
         />
       </div>
 
-      <button
-        type="button"
-        onClick={() => onChange(shiftMonth(month, 1))}
-        aria-label="Next month"
-        className="h-9 w-8 grid place-items-center text-slate-500 hover:bg-purple-50 dark:hover:bg-purple-950/40 hover:text-purple-600 transition-colors"
-      >
+      <button type="button" onClick={() => onChange(shiftMonth(month, 1))} aria-label="Next month" className={step}>
         <ChevronRight className="h-3.5 w-3.5" />
       </button>
 
@@ -756,54 +905,11 @@ function MonthStepper({ month, onChange }: { month: string; onChange: (month: st
         <button
           type="button"
           onClick={() => onChange(currentMonthKey())}
-          className="h-9 px-2.5 text-[11px] font-bold text-purple-600 hover:bg-purple-50 transition-colors whitespace-nowrap"
+          className="h-9 px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 transition-colors whitespace-nowrap"
         >
-          Today
+          This month
         </button>
       )}
     </div>
-  );
-}
-
-/** Filter dropdown */
-function FilterSelect({
-  value, onChange, placeholder, label, options, icon,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  label: string;
-  options: { value: string; label: string }[];
-  icon?: React.ReactNode;
-}) {
-  const active = !!value;
-  return (
-    <Select value={value || 'all'} onValueChange={(val: string) => onChange(val === 'all' ? '' : val)}>
-      <SelectTrigger
-        className={`h-9 w-auto min-w-[130px] rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 text-xs font-semibold shadow-2xs focus:ring-0 flex items-center gap-1.5 ${
-          active ? 'text-purple-700 font-bold border-purple-300' : 'text-slate-600'
-        }`}
-      >
-        {icon}
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent align="start" className="w-[200px] max-h-[320px] p-1.5 rounded-xl border border-slate-200 bg-white shadow-md">
-        <SelectGroup>
-          <SelectLabel className={`${LABEL} px-2 py-1`}>{label}</SelectLabel>
-          <SelectItem value="all" className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-            {placeholder}
-          </SelectItem>
-          {options.map((option) => (
-            <SelectItem
-              key={option.value}
-              value={option.value}
-              className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md"
-            >
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectGroup>
-      </SelectContent>
-    </Select>
   );
 }

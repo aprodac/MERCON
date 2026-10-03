@@ -1,4 +1,11 @@
 import { BulkImportTripRow, TripStatus } from '@/services/tripService';
+import { fromZonedTime } from 'date-fns-tz';
+import { addDaysToDateStr, dateInZone } from '@mercon/shared-types';
+
+// Every helper below takes an optional `tz` (the deployment timezone, e.g.
+// Asia/Riyadh). With it, "past" and "today" are judged in that zone — trips are
+// stored in it; without it, the browser's own zone is used (old behaviour),
+// which flagged Saudi times as past for anyone browsing from India.
 
 export interface PastDateAnalysis {
   hasPastTrips: boolean;
@@ -39,7 +46,7 @@ export function parseDateStart(dateStr?: string | null): Date | null {
 /**
  * Parses date + time string into a Date object in local time.
  */
-export function parseDateTime(dateVal?: string | null, timeVal?: string | null): Date | null {
+export function parseDateTime(dateVal?: string | null, timeVal?: string | null, tz?: string): Date | null {
   if (!dateVal) return null;
 
   // If dateVal is a full ISO timestamp (e.g. "2026-09-07T20:00:00.000Z"), parse directly
@@ -70,6 +77,11 @@ export function parseDateTime(dateVal?: string | null, timeVal?: string | null):
     }
   }
 
+  if (tz && !isNaN(year) && !isNaN(month) && !isNaN(day)) {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const zoned = fromZonedTime(`${year}-${pad(month + 1)}-${pad(day)}T${pad(hours)}:${pad(minutes)}:00`, tz);
+    return isNaN(zoned.getTime()) ? null : zoned;
+  }
   const dt = new Date(year, month, day, hours, minutes, 0, 0);
   return isNaN(dt.getTime()) ? null : dt;
 }
@@ -77,15 +89,15 @@ export function parseDateTime(dateVal?: string | null, timeVal?: string | null):
 /**
  * Checks if a date/time is strictly before the current real time.
  */
-export function isDateTimeInPast(dateVal?: string | null, timeVal?: string | null): boolean {
+export function isDateTimeInPast(dateVal?: string | null, timeVal?: string | null, tz?: string): boolean {
   if (!dateVal) return false;
   // If dateVal is only a YYYY-MM-DD date (no ISO 'T') and timeVal is empty/missing,
   // evaluate whether the date itself is strictly in the past (prior calendar day).
   // An empty time field on today's date should NOT be treated as a past time.
   if (!dateVal.includes('T') && (!timeVal || !timeVal.trim())) {
-    return isDateInPast(dateVal);
+    return isDateInPast(dateVal, tz);
   }
-  const dt = parseDateTime(dateVal, timeVal);
+  const dt = parseDateTime(dateVal, timeVal, tz);
   if (!dt) return false;
   return dt.getTime() < Date.now();
 }
@@ -93,7 +105,10 @@ export function isDateTimeInPast(dateVal?: string | null, timeVal?: string | nul
 /**
  * Checks if a date string is strictly before today (local timezone).
  */
-export function isDateInPast(dateStr?: string | null): boolean {
+export function isDateInPast(dateStr?: string | null, tz?: string): boolean {
+  if (tz && dateStr && /^\d{4}-\d{2}-\d{2}/.test(dateStr) && !dateStr.includes('T')) {
+    return dateStr.slice(0, 10) < dateInZone(Date.now(), tz);
+  }
   const d = parseDateStart(dateStr);
   if (!d) return false;
   const today = getTodayStart();
@@ -103,7 +118,12 @@ export function isDateInPast(dateStr?: string | null): boolean {
 /**
  * Analyzes a set of trip rows to detect past dates/times and determine allowable status choices.
  */
-export function analyzePastDateRows(rows: BulkImportTripRow[]): PastDateAnalysis {
+/** The calendar date (YYYY-MM-DD) of a row's date value, in `tz`. */
+function rowDateKey(dateVal: string, tz: string): string {
+  return dateVal.includes('T') ? dateInZone(new Date(dateVal).getTime(), tz) : dateVal.slice(0, 10);
+}
+
+export function analyzePastDateRows(rows: BulkImportTripRow[], tz?: string): PastDateAnalysis {
   const today = getTodayStart();
   const oneDayMs = 24 * 60 * 60 * 1000;
   const yesterday = new Date(today.getTime() - oneDayMs);
@@ -120,11 +140,13 @@ export function analyzePastDateRows(rows: BulkImportTripRow[]): PastDateAnalysis
     const timeVal = row.pickup_time || row.pickupTime || row.time;
     if (!dateVal) return;
 
-    if (isDateTimeInPast(dateVal, timeVal)) {
+    if (isDateTimeInPast(dateVal, timeVal, tz)) {
       pastTripsCount++;
-      const dt = parseDateTime(dateVal, timeVal);
+      const dt = parseDateTime(dateVal, timeVal, tz);
       const d = dt || parseDateStart(dateVal)!;
-      const formatted = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const formatted = tz
+        ? rowDateKey(dateVal, tz)
+        : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       if (!samplePastDateStr) samplePastDateStr = formatted;
 
       if (oldestTime === null || d.getTime() < oldestTime) {
@@ -134,7 +156,10 @@ export function analyzePastDateRows(rows: BulkImportTripRow[]): PastDateAnalysis
 
       // Check if older than yesterday start
       const dayOnly = parseDateStart(dateVal);
-      if (dayOnly && dayOnly.getTime() < yesterday.getTime()) {
+      const olderThanYesterday = tz
+        ? rowDateKey(dateVal, tz) < addDaysToDateStr(dateInZone(Date.now(), tz), -1)
+        : Boolean(dayOnly && dayOnly.getTime() < yesterday.getTime());
+      if (olderThanYesterday) {
         hasOlderThanYesterday = true;
         hasOnlyYesterday = false;
       }
@@ -162,27 +187,32 @@ export function analyzePastDateRows(rows: BulkImportTripRow[]): PastDateAnalysis
  */
 export function applyPastStatusToRows(
   rows: BulkImportTripRow[],
-  targetStatus: TripStatus | 'Incompleted' = 'Completed'
+  targetStatus: TripStatus | 'Incompleted' = 'Completed',
+  tz?: string
 ): BulkImportTripRow[] {
   return rows.map((row) => {
     const dateVal = row.planned_start || row.date;
     const timeVal = row.pickup_time || row.pickupTime || row.time;
 
     if (targetStatus === 'Completed') {
+      // Only rows that already started are finished — future rows stay Scheduled.
       return {
         ...row,
-        status: 'Completed',
+        status: dateVal && isDateTimeInPast(dateVal, timeVal, tz) ? 'Completed' : 'Scheduled',
       };
     }
 
     if (targetStatus === 'Incompleted' || targetStatus === 'Scheduled') {
-      if (dateVal && isDateTimeInPast(dateVal, timeVal)) {
+      if (dateVal && isDateTimeInPast(dateVal, timeVal, tz)) {
         const dayOnly = parseDateStart(dateVal);
         const today = getTodayStart();
         const oneDayMs = 24 * 60 * 60 * 1000;
         const yesterday = new Date(today.getTime() - oneDayMs);
+        const olderThanYesterday = tz
+          ? rowDateKey(dateVal, tz) < addDaysToDateStr(dateInZone(Date.now(), tz), -1)
+          : Boolean(dayOnly && dayOnly.getTime() < yesterday.getTime());
 
-        if (dayOnly && dayOnly.getTime() < yesterday.getTime()) {
+        if (olderThanYesterday) {
           return {
             ...row,
             status: 'Draft',
@@ -202,7 +232,7 @@ export function applyPastStatusToRows(
     }
 
     // Direct status fallback if explicit status like 'InTransit' or 'Draft' passed
-    if (dateVal && isDateTimeInPast(dateVal, timeVal)) {
+    if (dateVal && isDateTimeInPast(dateVal, timeVal, tz)) {
       return {
         ...row,
         status: targetStatus as TripStatus,

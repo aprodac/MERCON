@@ -92,6 +92,17 @@ export interface EtaInfo {
   lateByMin: number | null;
 }
 
+/**
+ * The routing provider times a car; a loaded truck averages less. Same cap as the
+ * customer tracking page (backend `customerTracking.ts`), so the ETA an operator
+ * sends and the one the customer's link shows agree.
+ */
+export const TRUCK_MAX_AVG_KMH = 80;
+
+export function truckDriveSeconds(distanceMeters: number, providerSeconds: number): number {
+  return Math.round(Math.max(providerSeconds, distanceMeters / (TRUCK_MAX_AVG_KMH / 3.6)));
+}
+
 export function computeEta(
   u: LiveUnit,
   route: { distanceMeters: number; durationSeconds: number } | null,
@@ -99,7 +110,8 @@ export function computeEta(
 ): EtaInfo | null {
   const stop = nextStop(u);
   if (!stop || !u.position) return null;
-  const arrival = route ? new Date(now + route.durationSeconds * 1000) : null;
+  const driveSeconds = route ? truckDriveSeconds(route.distanceMeters, route.durationSeconds) : null;
+  const arrival = driveSeconds != null ? new Date(now + driveSeconds * 1000) : null;
   const distanceKm = route
     ? route.distanceMeters / 1000
     : stop.lat != null && stop.lng != null
@@ -109,7 +121,7 @@ export function computeEta(
     arrival && stop.planned_arrival
       ? Math.round((arrival.getTime() - new Date(stop.planned_arrival).getTime()) / 60000)
       : null;
-  return { arrival, durationSeconds: route?.durationSeconds ?? null, distanceKm, distanceIsRoad: !!route, lateByMin };
+  return { arrival, durationSeconds: driveSeconds, distanceKm, distanceIsRoad: !!route, lateByMin };
 }
 
 /** Five minutes of slack before an arrival counts as late. */
@@ -121,8 +133,8 @@ export function punctuality(lateByMin: number | null): { label: string; tone: 'g
   return { label: `${formatDuration(lateByMin * 60)} late`, tone: 'bad' };
 }
 
-/** The WhatsApp message — ETA only, by request; no live-tracking link. */
-export function buildEtaShareText(u: LiveUnit, eta: EtaInfo | null, formatTime: (d: Date) => string): string {
+/** The WhatsApp ETA message, ending with the trip's customer tracking link when there is one. */
+export function buildEtaShareText(u: LiveUnit, eta: EtaInfo | null, formatTime: (d: Date) => string, trackingUrl?: string | null): string {
   const stop = nextStop(u);
   const head = [u.trip?.ref_id, u.vehicle?.plate_number].filter(Boolean).join(' · ') || unitTitle(u);
   const lines = [`*${head}*`];
@@ -134,6 +146,7 @@ export function buildEtaShareText(u: LiveUnit, eta: EtaInfo | null, formatTime: 
     lines.push(`Distance: about ${formatKm(eta.distanceKm)}`);
   }
   if (u.driver?.name) lines.push(`Driver: ${u.driver.name}`);
+  if (trackingUrl) lines.push('', `Track live: ${trackingUrl}`);
   return lines.join('\n');
 }
 
@@ -208,6 +221,48 @@ export function groupStopsOf(trip: { stops: LiveStop[]; next_stop_index: number 
     }
   });
   return [...groups.values()];
+}
+
+/**
+ * Pins that would overlap on screen at the current zoom share one pin — e.g.
+ * Khamis Mushayt and Muhayil seen from far away become "Khamis Mushayt · Muhayil"
+ * with stops 1–4 — and split again as the map zooms in. `project` turns a
+ * place into screen pixels; `minPx` is how close two pins may be.
+ */
+export function mergeNearbyStops(groups: StopGroup[], project: (lat: number, lng: number) => [number, number], minPx = 64): StopGroup[] {
+  const placed = groups.map((g) => ({ g, p: project(g.lat, g.lng) }));
+  const clusters: { members: typeof placed; x: number; y: number }[] = [];
+  for (const item of placed) {
+    const c = clusters.find((k) => Math.hypot(k.x - item.p[0], k.y - item.p[1]) < minPx);
+    if (c) c.members.push(item);
+    else clusters.push({ members: [item], x: item.p[0], y: item.p[1] });
+  }
+  return clusters.map(({ members }) => {
+    if (members.length === 1) return members[0].g;
+    const gs = members.map((m) => m.g);
+    const names = [...new Set(gs.map((g) => g.name))];
+    return {
+      lat: gs.reduce((s, g) => s + g.lat, 0) / gs.length,
+      lng: gs.reduce((s, g) => s + g.lng, 0) / gs.length,
+      numbers: gs.flatMap((g) => g.numbers).sort((a, b) => a - b),
+      name: names.join(' · '),
+      done: gs.every((g) => g.done),
+      isNext: gs.some((g) => g.isNext),
+    };
+  });
+}
+
+/** Stop numbers on a pin: runs become ranges — [1,2,3,4] → "1–4", [1,4] → "1·4". */
+export function stopNumbersLabel(numbers: number[]): string {
+  const sorted = [...new Set(numbers)].sort((a, b) => a - b);
+  const parts: string[] = [];
+  for (let i = 0; i < sorted.length; ) {
+    let j = i;
+    while (j + 1 < sorted.length && sorted[j + 1] === sorted[j] + 1) j++;
+    parts.push(j - i >= 2 ? `${sorted[i]}–${sorted[j]}` : sorted.slice(i, j + 1).join('·'));
+    i = j + 1;
+  }
+  return parts.join('·');
 }
 
 /** "3h" / "12m" — for the small age tag under an offline marker. */

@@ -20,7 +20,7 @@ export function phaseOf(status: string): TripPhase {
   return 'active';
 }
 
-export type Tone = 'violet' | 'sky' | 'blue' | 'red' | 'green' | 'gray';
+export type Tone = 'violet' | 'sky' | 'blue' | 'red' | 'green' | 'gray' | 'amber';
 
 export const TONE: Record<Tone, { bg: string; fg: string; dot: string }> = {
   violet: { bg: '#F0EBFC', fg: '#5B34B0', dot: '#7651D6' },
@@ -29,6 +29,7 @@ export const TONE: Record<Tone, { bg: string; fg: string; dot: string }> = {
   red: { bg: '#FDEDEB', fg: '#912018', dot: '#D92D20' },
   green: { bg: '#E8F5EE', fg: '#146C3C', dot: '#1F9D55' },
   gray: { bg: '#F1F1F3', fg: '#52525B', dot: '#9898A4' },
+  amber: { bg: '#FFF6E5', fg: '#8A5200', dot: '#D98E04' },
 };
 
 /** Status chip colours — the same meaning as the web's statusChip. */
@@ -83,6 +84,9 @@ export const canChangeAssignment = (t: OperatorTripDetail) =>
   !t.is_third_party && !['Completed', 'Invoiced', 'Cancelled'].includes(t.status);
 
 export const canCancel = (t: OperatorTripDetail) => !['Completed', 'Invoiced', 'Cancelled'].includes(t.status);
+
+/** Something on the Edit trip page can still be changed (times and route, or the price). */
+export const canEditTrip = (t: OperatorTripDetail) => !['Invoiced', 'Cancelled'].includes(t.status);
 
 const isUuid = (s?: string | null) => !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s.trim());
 
@@ -336,6 +340,8 @@ export interface QuickContext {
   f: Formatters;
   position: { lat: number; lng: number } | null;
   remaining: Remaining | null;
+  /** The customer tracking link, ending status messages when there is one. */
+  trackingUrl?: string | null;
 }
 
 /** A stop as a short place code for the route line ("RUH"), else its name. */
@@ -363,7 +369,7 @@ export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; l
 }
 
 /** The message for a quick send — every line the operator can still edit before sending. */
-export function quickMessage(kind: QuickKind, { trip, phase, f, position, remaining }: QuickContext): string {
+export function quickMessage(kind: QuickKind, { trip, phase, f, position, remaining, trackingUrl }: QuickContext): string {
   const stops = sortedStops(trip);
   const nextIdx = stops.findIndex((s) => !s.actual_arrival);
   const next = nextIdx >= 0 ? stops[nextIdx] : null;
@@ -386,14 +392,21 @@ export function quickMessage(kind: QuickKind, { trip, phase, f, position, remain
     lines.push(`Driver: ${(driver || '—').toUpperCase()}`);
     if (codeRoute) lines.push(`Route: ${codeRoute}`);
     if (phase === 'active') {
-      lines.push(remaining ? `Distance left: ${remaining.approx ? '~' : ''}${Math.round(remaining.km)} KM TO ${dest}` : `Distance left: [KM] TO ${dest}`);
-      lines.push(`ETA: ${remaining ? hoursText(remaining.sec) : '[HRS]'}`);
+      // Unknown distance (no fresh position yet): say where it's heading — the
+      // tracking link below carries the live distance and ETA.
+      if (remaining) {
+        lines.push(`Distance left: ${remaining.approx ? '~' : ''}${Math.round(remaining.km)} KM TO ${dest}`);
+        lines.push(`ETA: ${hoursText(remaining.sec)}`);
+      } else if (dest) {
+        lines.push(`Heading to: ${dest}`);
+      }
     } else if (phase === 'planned' && trip.planned_start) {
       lines.push(`Starts: ${f.dayTime(trip.planned_start)}`);
     } else if (phase === 'done' && trip.actual_end) {
       lines.push(`Delivered: ${f.dayTime(trip.actual_end)}`);
     }
     lines.push(`Status: ${statusChip(trip.status).label.replace(/\b\w/g, (c) => c.toUpperCase())}`);
+    if (trackingUrl) lines.push('', `Track live: ${trackingUrl}`);
   } else if (kind === 'location') {
     lines.push(`*${ref} · Truck location*`);
     if (position) lines.push(mapsLink(position.lat, position.lng));
@@ -406,6 +419,7 @@ export function quickMessage(kind: QuickKind, { trip, phase, f, position, remain
     lines.push(reported ? `Reason: ${delayText(reported)}` : 'Reason: [reason]');
     if (next) lines.push(`Next stop: ${stopName(next, nextIdx)} · new ETA [time]`);
     if (who) lines.push(who);
+    if (trackingUrl) lines.push('', `Track live: ${trackingUrl}`);
   }
   return lines.join('\n');
 }

@@ -4,7 +4,7 @@
  * Map on top (MapLibre), then who / where / status, then three tabs:
  *   Updates — WhatsApp first: quick sends and the driver's photos, each with Send.
  *   Stops   — every stop with times, lateness, delays and screenshots to check.
- *   Details — pre-trip checks or trip summary, truck & driver, money, paperwork.
+ *   Details — pre-trip checks or trip summary, truck & driver, financials, paperwork.
  * The next status step, WhatsApp and "more" stay pinned at the bottom.
  */
 import React, { useEffect, useMemo, useState } from 'react';
@@ -26,42 +26,52 @@ import { useTripDetails } from './useTripDetails';
 import { ago, digits, hoursText, makeFormatters, mapsLink, nextActionFor, sortedStops, stopName, updateTitle, type QuickKind, type Stop } from './tripDetailsModel';
 import { TripMap } from './components/TripMap';
 import { TripHeader } from './components/TripHeader';
-import { UpdatesTab } from './components/UpdatesTab';
 import { StopsTab } from './components/StopsTab';
 import { DetailsTab } from './components/DetailsTab';
 import { ShareSheet, type ShareTarget } from './components/ShareSheet';
 import { MediaViewer, type ViewerItem } from './components/MediaViewer';
-import { TimeConfirmSheet } from './components/TimeConfirmSheet';
+import { TripTimesSheet } from './components/TripTimesSheet';
+import { PinSheet } from './components/PinSheet';
 import { ActivitySheet, ChargesSheet, MoreSheet, UploadSheet } from './components/Sheets';
 import { ACTION, INK, MUTED, PAGE, WA, tap } from './components/parts';
+import { shareTextToWhatsApp } from '../../dashboard/components/ActiveTripsSection';
 
-type Tab = 'updates' | 'stops' | 'details';
-const MAP_H = 250;
+/** Under the More sheet's tracking row: has the customer looked at it? */
+function trackingSub(opens: number, last: string | null): string {
+  return opens > 0 && last ? `Customer opened it ${opens}× · ${ago(last)}` : 'Not opened yet · send, open or replace';
+}
+
+type Tab = 'stops' | 'details';
+const MAP_H = 320;
 
 export default function TripDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // Links from the home's "Needs action" cards can open a tab, a message or a picker straight away.
-  const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; assign?: string }>();
+  const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; assign?: string; times?: string }>();
   const { id } = params;
-  const { trip, overview, updates, whatsappApi, tz, phase, remaining, loading, refreshing, error, refresh, reload } = useTripDetails(id);
+  const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, renewTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
 
-  const [tab, setTab] = useState<Tab>(params.tab === 'updates' || params.tab === 'stops' ? params.tab : 'details');
+  const [tab, setTab] = useState<Tab>(params.tab === 'stops' ? params.tab : 'details');
   const [busy, setBusy] = useState(false);
   const [share, setShare] = useState<ShareTarget | null>(null);
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string; update?: DriverUpdate } | null>(null);
-  const [timeCheck, setTimeCheck] = useState<{ doc: OperatorTripDocument; stop: Stop; stopLabel: string } | null>(null);
+  const [checkingTimes, setCheckingTimes] = useState(false);
+  const [pinTarget, setPinTarget] = useState<{ stop: Stop; label: string } | null>(null);
   const [sheet, setSheet] = useState<'more' | 'upload' | 'activity' | 'charges' | null>(null);
   const [fullMap, setFullMap] = useState(false);
   const [picker, setPicker] = useState<{ kind: 'driver' | 'truck'; drivers?: OperatorDriver[]; vehicles?: OperatorVehicle[] } | null>(null);
   const [uploading, setUploading] = useState(false);
+  // Past the map, a solid top bar takes over so content doesn't slide under the clock and the Back button.
+  const [pastMap, setPastMap] = useState(false);
 
   // Once the trip is here: open what the link asked for (only once).
   const [linkDone, setLinkDone] = useState(false);
   if (trip && !linkDone) {
     setLinkDone(true);
     if (params.share === 'delay' || params.share === 'status') setShare({ type: 'quick', kind: params.share });
+    if (params.times === '1') setCheckingTimes(true);
   }
   const assignKind = params.assign === 'driver' || params.assign === 'truck' ? params.assign : null;
   const tripLoaded = !!trip;
@@ -100,7 +110,6 @@ export default function TripDetailsScreen() {
   const stops = sortedStops(trip);
   const next = nextActionFor(trip.status);
   const position = overview?.unit?.position ? { lat: overview.unit.position.lat, lng: overview.unit.position.lng } : null;
-  const unsentUpdates = updates.filter((u) => u.unsent_count > 0).length;
   const gps = overview?.unit?.position;
 
   // ── Actions ────────────────────────────────────────────────────────────────
@@ -179,15 +188,6 @@ export default function TripDetailsScreen() {
     }
   };
 
-  const openUpdate = (u: DriverUpdate, index: number) => {
-    const where = u.stop?.name ?? 'Trip';
-    setViewer({
-      title: `${updateTitle(u)} · ${where}`,
-      index,
-      update: u,
-      items: u.items.map((m) => ({ id: m.id, url: m.url, kind: m.kind, caption: f.smart(m.captured_at) })),
-    });
-  };
 
   const openStopMedia = (st: Stop) => {
     const ups = updates.filter((u) => u.stop?.id === st.id);
@@ -205,10 +205,28 @@ export default function TripDetailsScreen() {
 
   const quick = (kind: QuickKind) => setShare({ type: 'quick', kind });
 
+  // The customer tracking link: send it, open what the customer sees, or replace it.
+  const trackingActions = () => {
+    const url = tracking?.url;
+    if (!url) return;
+    const head = [trip.ref_id, trip.vehicle?.plate_number ?? trip.third_party_vehicle_plate].filter(Boolean).join(' · ');
+    Alert.alert('Customer tracking link', url, [
+      { text: 'Send on WhatsApp', onPress: () => { shareTextToWhatsApp(`*${head}*\nTrack your truck live: ${url}`, 'Tracking link').catch(() => {}); } },
+      { text: 'Open the page', onPress: () => { Linking.openURL(url).catch(() => {}); } },
+      {
+        text: 'New link…',
+        onPress: () => Alert.alert('Make a new link?', 'The current link stops working for everyone who has it.', [
+          { text: 'Keep it', style: 'cancel' },
+          { text: 'Make new link', style: 'destructive', onPress: () => { renewTracking().catch((e) => Alert.alert('Could not make a new link', getApiErrorMessage(e))); } },
+        ]),
+      },
+      { text: 'Close', style: 'cancel' },
+    ]);
+  };
+
   // ── Render ─────────────────────────────────────────────────────────────────
   const tabs: { id: Tab; label: string; icon: LucideIcon; badge?: number }[] = [
     { id: 'details', label: 'Details', icon: LayoutList },
-    { id: 'updates', label: 'Updates', icon: MessageCircle, badge: unsentUpdates },
     { id: 'stops', label: 'Stops', icon: Route, badge: undefined },
   ];
 
@@ -217,24 +235,27 @@ export default function TripDetailsScreen() {
   const nextIdx = stops.findIndex((st) => !st.actual_arrival);
   const target = phase === 'active' && nextIdx >= 0 ? stops[nextIdx] : stops[stops.length - 1];
   const hasTarget = !!target && Number.isFinite(target.location_lat) && !!(target.location_lat || target.location_lng);
-  const actions: { key: string; label: string; icon: LucideIcon; bg: string; fg: string; onPress?: () => void }[] = [
-    { key: 'call', label: 'Call', icon: Phone, bg: '#E8F5EE', fg: '#146C3C', onPress: driverPhone ? () => Linking.openURL(`tel:${driverPhone}`).catch(() => {}) : undefined },
-    { key: 'wa', label: 'WhatsApp', icon: MessageCircle, bg: '#E3F7EA', fg: '#0F6B37', onPress: driverPhone ? () => Linking.openURL(`https://wa.me/${digits(driverPhone)}`).catch(() => {}) : undefined },
-    { key: 'nav', label: 'Directions', icon: Navigation, bg: '#E7EEFC', fg: '#2449A8', onPress: hasTarget ? () => Linking.openURL(mapsLink(target.location_lat, target.location_lng)).catch(() => {}) : undefined },
-    { key: 'status', label: 'Send status', icon: Send, bg: '#FDECE8', fg: '#B43A27', onPress: () => quick('status') },
+  const actions: { key: string; label: string; icon: LucideIcon; onPress?: () => void }[] = [
+    { key: 'call', label: 'Call', icon: Phone, onPress: driverPhone ? () => Linking.openURL(`tel:${driverPhone}`).catch(() => {}) : undefined },
+    { key: 'wa', label: 'WhatsApp', icon: MessageCircle, onPress: driverPhone ? () => Linking.openURL(`https://wa.me/${digits(driverPhone)}`).catch(() => {}) : undefined },
+    { key: 'nav', label: 'Directions', icon: Navigation, onPress: hasTarget ? () => Linking.openURL(mapsLink(target.location_lat, target.location_lng)).catch(() => {}) : undefined },
+    { key: 'status', label: 'Send status', icon: Send, onPress: () => quick('status') },
   ];
 
   return (
     <View style={{ flex: 1, backgroundColor: PAGE }}>
       <StatusBar barStyle="dark-content" translucent backgroundColor="transparent" />
       <ScrollView
-        stickyHeaderIndices={[1]}
-        contentContainerStyle={{ paddingBottom: 120 + insets.bottom }}
+        onScroll={(e) => { const v = e.nativeEvent.contentOffset.y > MAP_H - insets.top - 70; if (v !== pastMap) setPastMap(v); }}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingBottom: (next ? 110 : 32) + insets.bottom }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={Colors.primary} progressViewOffset={insets.top} />}
       >
         {/* 0 · map + header */}
         <View>
-          <TripMap stops={stops} overview={overview} phase={phase} height={MAP_H} padding={{ top: insets.top + 60, bottom: 50 }} />
+          <View style={s.mapClip}>
+            <TripMap stops={stops} overview={overview} phase={phase} height={MAP_H} padding={{ top: insets.top + 24, bottom: 60 }} />
+          </View>
           <View style={s.mapBottom}>
             {gps && phase === 'active' ? (
               <View style={s.gpsChip}>
@@ -250,28 +271,28 @@ export default function TripDetailsScreen() {
             </TouchableOpacity>
           </View>
           <View style={s.sheetTop}>
-            <TripHeader trip={trip} phase={phase} f={f} />
-            <View style={s.actions}>
-              {actions.map((a) => (
-                <TouchableOpacity key={a.key} style={[s.action, !a.onPress && { opacity: 0.4 }]} disabled={!a.onPress} onPress={() => { tap(); a.onPress?.(); }} activeOpacity={0.75}>
-                  <View style={[s.actionIcon, { backgroundColor: a.bg }]}>
-                    <a.icon size={19} color={a.fg} strokeWidth={2.2} />
-                  </View>
-                  <Text style={s.actionText} numberOfLines={1}>{a.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <TripHeader trip={trip} phase={phase} f={f}>
+              <View style={s.actions}>
+                {actions.map((a) => (
+                  <TouchableOpacity key={a.key} style={[s.action, !a.onPress && { opacity: 0.35 }]} disabled={!a.onPress} onPress={() => { tap(); a.onPress?.(); }} activeOpacity={0.7}>
+                    <View style={s.actionIcon}>
+                      <a.icon size={19} color={INK} strokeWidth={2.1} />
+                    </View>
+                    <Text style={s.actionText} numberOfLines={1}>{a.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </TripHeader>
           </View>
         </View>
 
-        {/* 1 · tabs (sticky) */}
+        {/* 1 · tabs — scroll with the page; pinned they slid under the status bar and the Back button */}
         <View style={s.tabsWrap}>
           <View style={s.tabs}>
             {tabs.map((t) => {
               const on = t.id === tab;
               return (
                 <TouchableOpacity key={t.id} style={[s.tab, on && s.tabOn]} onPress={() => { if (!on) tap(); setTab(t.id); }} activeOpacity={0.8} accessibilityRole="tab" accessibilityState={{ selected: on }}>
-                  <t.icon size={15} color={on ? INK : '#6E6E80'} strokeWidth={on ? 2.4 : 2} />
                   <Text style={[s.tabText, on && s.tabTextOn]} numberOfLines={1}>{t.label}</Text>
                   {t.badge ? (
                     <View style={s.badge}><Text style={s.badgeText}>{t.badge}</Text></View>
@@ -283,26 +304,16 @@ export default function TripDetailsScreen() {
         </View>
 
         {/* 2 · tab body */}
-        <View style={{ paddingHorizontal: 12, paddingTop: 4 }}>
-          {tab === 'updates' ? (
-            <UpdatesTab
-              trip={trip}
-              phase={phase}
-              updates={updates}
-              f={f}
-              onQuick={quick}
-              onSendUpdate={(u) => setShare({ type: 'update', update: u })}
-              onOpenMedia={openUpdate}
-              onAddPhoto={() => setSheet('upload')}
-            />
-          ) : tab === 'stops' ? (
+        <View style={{ paddingHorizontal: 16 }}>
+          {tab === 'stops' ? (
             <StopsTab
               trip={trip}
               phase={phase}
               updates={updates}
               f={f}
               onOpenStopMedia={openStopMedia}
-              onConfirmTime={(doc, st) => setTimeCheck({ doc, stop: st, stopLabel: stopName(st, stops.indexOf(st)) })}
+              onCheckTimes={() => setCheckingTimes(true)}
+              onSetPin={(st) => setPinTarget({ stop: st, label: stopName(st, stops.indexOf(st)) })}
             />
           ) : (
             <DetailsTab
@@ -320,39 +331,40 @@ export default function TripDetailsScreen() {
         </View>
       </ScrollView>
 
+      {/* Solid top bar once the map has scrolled away */}
+      {pastMap ? (
+        <View style={[s.topBar, { height: insets.top + 60, paddingTop: insets.top }]}>
+          <Text style={s.topTitle} numberOfLines={1}>{trip.ref_id ?? 'Trip'}</Text>
+          <Text style={s.topSub} numberOfLines={1}>{niceName(trip.customer?.name)}</Text>
+        </View>
+      ) : null}
+
       {/* Back, floating over the map and content */}
       <TouchableOpacity style={[s.back, { top: insets.top + 8 }]} onPress={() => router.back()} accessibilityLabel="Back">
         <ArrowLeft size={20} color={INK} strokeWidth={2.4} />
       </TouchableOpacity>
 
-      {/* Bottom bar */}
-      <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) + 4 }]}>
-        <TouchableOpacity style={[s.barIcon, { backgroundColor: WA }]} onPress={() => { tap(); setTab('updates'); }} accessibilityLabel="WhatsApp updates">
-          <MessageCircle size={22} color={Colors.white} strokeWidth={2.3} />
-        </TouchableOpacity>
-        {next ? (
+      {/* More — top-right over the map, opposite Back */}
+      <TouchableOpacity style={[s.back, s.more, { top: insets.top + 8 }]} onPress={() => setSheet('more')} accessibilityLabel="More actions">
+        {uploading ? <ActivityIndicator color={INK} /> : <MoreHorizontal size={20} color={INK} strokeWidth={2.4} />}
+      </TouchableOpacity>
+
+      {/* Bottom bar — only when the trip has a next step */}
+      {next ? (
+        <View style={[s.bar, { paddingBottom: Math.max(insets.bottom, 12) + 4 }]}>
           <TouchableOpacity style={[s.primary, busy && { opacity: 0.7 }]} onPress={advance} disabled={busy} activeOpacity={0.85}>
             {busy ? <ActivityIndicator color={Colors.white} /> : (
               <>
-                <Check size={18} color={Colors.white} strokeWidth={2.8} />
+                <Check size={18} color={Colors.white} strokeWidth={2.6} />
                 <Text style={s.primaryText} numberOfLines={1}>{next.label}</Text>
               </>
             )}
           </TouchableOpacity>
-        ) : (
-          <View style={[s.primary, { backgroundColor: '#F1F3F7' }]}>
-            <Text style={[s.primaryText, { color: MUTED }]} numberOfLines={1}>
-              {phase === 'done' ? (trip.status === 'Invoiced' ? 'Invoiced' : 'Delivered') : phase === 'cancelled' ? 'Cancelled' : 'No next step'}
-            </Text>
-          </View>
-        )}
-        <TouchableOpacity style={[s.barIcon, { backgroundColor: '#F1F3F7' }]} onPress={() => setSheet('more')} accessibilityLabel="More actions">
-          {uploading ? <ActivityIndicator color={INK} /> : <MoreHorizontal size={22} color={INK} />}
-        </TouchableOpacity>
-      </View>
+        </View>
+      ) : null}
 
       {/* Sheets */}
-      <ShareSheet target={share} onClose={() => setShare(null)} trip={trip} phase={phase} f={f} position={position} remaining={remaining} whatsappApi={whatsappApi} onShared={reload} />
+      <ShareSheet target={share} onClose={() => setShare(null)} trip={trip} phase={phase} f={f} position={position} remaining={remaining} trackingUrl={trackingUrl} onNeedTracking={refreshTracking} whatsappApi={whatsappApi} onShared={reload} />
       <MediaViewer
         items={viewer?.items ?? null}
         startIndex={viewer?.index ?? 0}
@@ -360,16 +372,17 @@ export default function TripDetailsScreen() {
         onClose={() => setViewer(null)}
         onSend={viewer?.update ? () => { const u = viewer.update!; setViewer(null); setTimeout(() => setShare({ type: 'update', update: u }), 250); } : undefined}
       />
-      <TimeConfirmSheet target={timeCheck} tripId={trip.id} tz={tz} onClose={() => setTimeCheck(null)} onDone={reload} />
+      <PinSheet target={pinTarget} tripId={trip.id} onClose={() => setPinTarget(null)} onSaved={reload} />
+      <TripTimesSheet visible={checkingTimes} trip={trip} tz={tz} onClose={() => setCheckingTimes(false)} onDone={reload} />
       <MoreSheet
         visible={sheet === 'more'}
         trip={trip}
         onClose={() => setSheet(null)}
-        onChange={openChange}
-        onCharges={() => setSheet('charges')}
-        onUpload={() => setSheet('upload')}
-        onActivity={() => setSheet('activity')}
+        onEdit={() => router.push({ pathname: '/trip-edit', params: { id: trip.id } })}
         onCancel={cancelTrip}
+        onQuick={quick}
+        active={phase === 'active'}
+        tracking={tracking?.enabled && tracking.url ? { sub: trackingSub(tracking.open_count, tracking.last_opened_at), onPress: trackingActions } : null}
       />
       <UploadSheet visible={sheet === 'upload'} onClose={() => setSheet(null)} onPick={upload} />
       <ActivitySheet visible={sheet === 'activity'} trip={trip} f={f} onClose={() => setSheet(null)} />
@@ -410,31 +423,36 @@ const s = StyleSheet.create({
   errText: { fontSize: 13, color: MUTED, marginTop: 4, textAlign: 'center' },
   errBtn: { height: 44, borderRadius: 12, paddingHorizontal: 18, justifyContent: 'center', backgroundColor: Colors.white },
   errBtnText: { fontSize: 14, fontWeight: '800', color: INK },
+  topBar: { position: 'absolute', top: 0, left: 0, right: 0, backgroundColor: PAGE, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: '#E9E9EC', paddingHorizontal: 70 },
+  topTitle: { fontSize: 16, fontWeight: '700', color: INK },
+  topSub: { fontSize: 12, color: MUTED },
   back: { position: 'absolute', left: 14, width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.96)', alignItems: 'center', justifyContent: 'center', ...shadow },
-  mapBottom: { position: 'absolute', left: 14, right: 14, top: MAP_H - 76, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  mapBottom: { position: 'absolute', left: 16, right: 16, top: MAP_H - 38 - 14, height: 38, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   gpsChip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.96)', borderRadius: 999, paddingHorizontal: 11, paddingVertical: 7, ...shadow },
   gpsDot: { width: 8, height: 8, borderRadius: 4 },
   gpsText: { fontSize: 12, fontWeight: '700', color: INK },
   mapBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.96)', alignItems: 'center', justifyContent: 'center', ...shadow },
-  sheetTop: { marginTop: -24, backgroundColor: PAGE, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingHorizontal: 12, paddingTop: 12 },
-  tabsWrap: { backgroundColor: PAGE, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 8 },
-  tabs: { flexDirection: 'row', gap: 4, backgroundColor: '#E1E4EC', borderRadius: 13, padding: 3 },
-  tab: { flex: 1, height: 40, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 4 },
+  // The map has a rounded bottom edge; the header card sits just below it.
+  sheetTop: { marginTop: 14, paddingHorizontal: 16 },
+  mapClip: { height: MAP_H, overflow: 'hidden', borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
+  tabsWrap: { backgroundColor: PAGE, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 18 },
+  tabs: { flexDirection: 'row', gap: 4, backgroundColor: '#EAEAED', borderRadius: 12, padding: 3 },
+  tab: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 38, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 4 },
   badge: { minWidth: 18, height: 18, borderRadius: 9, backgroundColor: WA, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 5 },
   badgeText: { color: Colors.white, fontSize: 11, fontWeight: '800' },
-  actions: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  action: { flex: 1, alignItems: 'center', gap: 5, backgroundColor: Colors.white, borderRadius: 16, paddingVertical: 10 },
-  actionIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  actionText: { fontSize: 11, fontWeight: '700', color: INK },
+  actions: { flexDirection: 'row', paddingTop: 14, borderTopWidth: 1, borderTopColor: '#F1F1F3' },
+  action: { flex: 1, alignItems: 'center', gap: 6 },
+  actionIcon: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#F4F4F5', alignItems: 'center', justifyContent: 'center' },
+  actionText: { fontSize: 12, fontWeight: '500', color: MUTED },
   tabOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  tabText: { fontSize: 13, fontWeight: '700', color: '#4A4A55' },
-  tabTextOn: { color: INK, fontWeight: '800' },
+  tabText: { fontSize: 14, fontWeight: '600', color: MUTED },
+  tabTextOn: { color: INK, fontWeight: '700' },
   bar: {
     position: 'absolute', left: 0, right: 0, bottom: 0, flexDirection: 'row', gap: 10, paddingHorizontal: 14, paddingTop: 10,
-    backgroundColor: 'rgba(255,255,255,0.98)', borderTopWidth: 1, borderTopColor: '#E4E7EE',
+    backgroundColor: 'rgba(255,255,255,0.98)', borderTopWidth: 1, borderTopColor: '#E9E9EC',
     shadowColor: '#14141E', shadowOpacity: 0.08, shadowRadius: 16, shadowOffset: { width: 0, height: -6 }, elevation: 12,
   },
-  barIcon: { width: 52, height: 52, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  primary: { flex: 1, height: 52, borderRadius: 14, backgroundColor: ACTION, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 10 },
-  primaryText: { color: Colors.white, fontSize: 16, fontWeight: '800' },
+  more: { left: undefined, right: 14 },
+  primary: { flex: 1, height: 52, borderRadius: 16, backgroundColor: ACTION, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 10 },
+  primaryText: { color: Colors.white, fontSize: 16, fontWeight: '700' },
 });

@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import QuickAssignModal from '@/components/trips/QuickAssignModal';
 import { cn } from '@/lib/utils';
+import { isExactPin } from '@/components/locations/PinChip';
 import { Trip } from '@/services/tripService';
 
 interface OperatorActionCenterProps {
@@ -31,6 +32,8 @@ export interface PriorityActionItem {
   context: string; // e.g. 'IMILE DELIVERY SAUDI LOGISTICS • Khamis → Dammam'
   actionLabel: string; // e.g. 'Upload POD', 'Open Trip', 'Assign'
   actionType: 'assign' | 'view' | 'location' | 'pod' | 'review';
+  /** 'location' only — the stop the Set pin box opens on. */
+  stopId?: string;
   icon: typeof AlertTriangle;
 }
 
@@ -112,19 +115,21 @@ export default function OperatorActionCenter({ trips, onOpenQuickAssign }: Opera
         });
       }
 
-      // 4. Location Precision Review Needed (ATTENTION)
-      const hasApproxLocation = stops.some((s: any) => s.location_coordinate_precision === 'APPROXIMATE' || s.location_coordinate_precision === 'UNKNOWN');
-      if (hasApproxLocation && (t.status === 'Draft' || t.status === 'Dispatched')) {
+      // 4. A stop still on a guessed pin (ATTENTION) — its ETA, navigation and
+      // automatic arrival are unreliable until someone sets the exact pin.
+      const unpinned = stops.find((s: any) => !s.actual_arrival && !isExactPin(s.location_coordinate_precision, s.location_lat, s.location_lng));
+      if (unpinned && !['Completed', 'Invoiced', 'Cancelled'].includes(t.status)) {
         items.push({
           id: `location-${t.id}`,
           trip: t,
           priority: 'attention',
-          typeLabel: 'LOCATION REVIEW',
+          typeLabel: 'PIN NEEDED',
           entityId: tripRef,
           context: `${customerName} • ${routeStr}`,
-          actionLabel: 'Review',
+          actionLabel: 'Set pin',
           actionType: 'location',
           icon: MapPin,
+          stopId: unpinned.id,
         });
       }
     });
@@ -170,6 +175,8 @@ export default function OperatorActionCenter({ trips, onOpenQuickAssign }: Opera
       }
     } else if (item.actionType === 'review') {
       navigate('/documents');
+    } else if (item.actionType === 'location' && item.stopId) {
+      navigate(`/trips/${item.trip.id}?pin=${item.stopId}`);
     } else {
       navigate(`/trips/${item.trip.id}`);
     }

@@ -21,14 +21,17 @@ const CLIENT_PROFILES = {
     // Slug stays 'mercon-app': it is bound to the existing EAS project (projectId below).
     slug: 'mercon-app',
     scheme: 'mercondriver',
-    iosBundleIdentifier: 'tech.mercon.driver',
-    androidPackage: 'tech.mercon.driver',
-    icon: '../shared/assets/images/merconclosed.png',
+    iosBundleIdentifier: 'tech.merconapp.driver',
+    androidPackage: 'tech.merconapp.driver',
+    icon: '../shared/assets/images/driver-icon.png',
     splashImage: '../shared/assets/images/merconclosed.png',
-    androidAdaptiveForeground: '../shared/assets/images/merconclosed.png',
+    androidAdaptiveForeground: '../shared/assets/images/driver-adaptive-icon.png',
     androidAdaptiveBackground: '../shared/assets/images/android-icon-background.png',
     androidAdaptiveMonochrome: '../shared/assets/images/android-icon-monochrome.png',
     favicon: '../shared/assets/images/favicon.png',
+    // Android draws the push icon from its transparency only — a full-colour
+    // logo shows up as a white square. A white "M" on transparent.
+    notificationIcon: '../shared/assets/images/notification-icon.png',
     apiUrl: process.env.EXPO_PUBLIC_API_URL || 'https://dev.mercon.tech/api',
     brandColor: '#FA634E',
     brandColorLight: '#FFF0EB',
@@ -41,10 +44,22 @@ type ClientKey = keyof typeof CLIENT_PROFILES;
 
 const clientKey = (process.env.APP_CLIENT as ClientKey) || 'mercon';
 
-// CI build number (Codemagic sets BUILD_NUMBER) → Android versionCode / iOS
-// buildNumber, so every CI build installs over the previous one. Local builds use 1.
-const buildNumber = Number(process.env.BUILD_NUMBER) || 1;
+// Version + build number live in version.json (bump with `npm run version:bump`,
+// which also writes them into ios/ for Xcode archives — see
+// ../shared/tooling/app-version.js). Codemagic (Android only) sets BUILD_NUMBER;
+// it only wins when higher, so a CI build never goes below a number already uploaded.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const appVersion: { version: string; buildNumber: number } = require('./version.json');
+const buildNumber = Math.max(appVersion.buildNumber, Number(process.env.BUILD_NUMBER) || 0);
 const client = CLIENT_PROFILES[clientKey];
+
+// Firebase config for Android push (Expo delivers to Android through Firebase
+// Cloud Messaging). EAS can hand the file over as a file secret
+// (GOOGLE_SERVICES_JSON); otherwise it is read from this folder. Without it the
+// build still works — Android just cannot receive pushes.
+const googleServicesFile =
+  process.env.GOOGLE_SERVICES_JSON ||
+  (require('fs').existsSync(`${process.cwd()}/google-services.json`) ? './google-services.json' : undefined);
 
 if (!client) {
   throw new Error(
@@ -55,7 +70,7 @@ if (!client) {
 export default (): ExpoConfig => ({
   name: client.name,
   slug: client.slug,
-  version: '1.0.0',
+  version: appVersion.version,
   orientation: 'portrait',
   icon: client.icon,
   scheme: client.scheme,
@@ -83,6 +98,12 @@ export default (): ExpoConfig => ({
     ],
     package: client.androidPackage,
     versionCode: buildNumber,
+    ...(googleServicesFile ? { googleServicesFile } : {}),
+    // Trip GPS runs as a foreground service started while the app is on
+    // screen, which Android treats as "while in use". Keep the "all the time"
+    // permission out so no library can add it — it would bring a Play Console
+    // background-location review.
+    blockedPermissions: ['android.permission.ACCESS_BACKGROUND_LOCATION'],
   },
   web: {
     output: 'static',
@@ -118,11 +139,12 @@ export default (): ExpoConfig => ({
     [
       'expo-notifications',
       {
-        icon: client.icon,
+        icon: client.notificationIcon,
         color: client.brandColor,
         // TestFlight / App Store builds talk to Apple's production push service.
-        // Codemagic's iOS workflows set APS_ENVIRONMENT=production; local and
-        // dev-client builds keep 'development' (matching a development profile).
+        // Set APS_ENVIRONMENT=production in .env.local before prebuilding for an
+        // Xcode archive (docs/IOS_DISTRIBUTION_AND_PUSH.md); dev-client builds keep
+        // 'development' (matching a development profile).
         mode: process.env.APS_ENVIRONMENT === 'production' ? 'production' : 'development',
       },
     ],
@@ -154,6 +176,11 @@ export default (): ExpoConfig => ({
       'expo-location',
       {
         locationWhenInUsePermission: `${client.name} shares your location with your operator while you're on an active trip, so they can track the delivery.`,
+        // Trip GPS keeps going in Google Maps / with the screen off, shown by a
+        // "sharing your trip location" notification (services/tripLocationTask).
+        isAndroidForegroundServiceEnabled: true,
+        isAndroidBackgroundLocationEnabled: false,
+        isIosBackgroundLocationEnabled: true,
       },
     ],
     'expo-image',

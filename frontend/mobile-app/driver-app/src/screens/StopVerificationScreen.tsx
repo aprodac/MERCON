@@ -6,14 +6,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Svg, { Path, Rect, Circle, Line, G } from 'react-native-svg';
-import { ArrowLeft, ArrowRight, Camera, MapPin, Trash2, Check, Navigation, Send, Route, Info } from 'lucide-react-native';
+import { ArrowRight, Camera, MapPin, Trash2, Check, Navigation, Send, Route, Info } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { GoogleMapsGeotagPreview } from '../components/GoogleMapsGeotagPreview';
 import { GeotagPhotoModal } from '../components/GeotagPhotoModal';
-import { TripProgressStepper } from '../components/TripProgressStepper';
+import { StageHeader, STAGE_THEME } from '../components/StageHeader';
 import { BilingualText } from '@mercon/mobile-shared/components/BilingualText';
 import { DelayReportModal } from '../components/DelayReportModal';
-import { DelayButton } from '../components/DelayButton';
 import { FadedBottomIllustration } from '../components/FadedBottomIllustration';
 import { useCurrentTrip } from '../hooks/use-current-trip';
 import { tripService, stopAddress, isRoundTrip, getLegIntermediateDbStops, getEvidencePolicy } from '@mercon/mobile-shared/lib/trips';
@@ -89,7 +88,7 @@ const RedCameraPlusIcon = () => (
 export default function StopVerificationScreen() {
   const router = useRouter();
   const { stopIndex: paramStopIndex, legIndex: paramLegIndex } = useLocalSearchParams<{ stopIndex?: string; legIndex?: string }>();
-  const { t, language } = useLanguage();
+  const { t, language, tr } = useLanguage();
   const { trip, loading, refetch, setTrip } = useCurrentTrip();
 
   const [photos, setPhotos] = useState<CapturedPhoto[]>([]);
@@ -259,34 +258,30 @@ export default function StopVerificationScreen() {
     }
   };
 
-  const stopName = activeStop?.name || (isReturnLeg ? (language === 'ur' ? 'واپسی کا درمیانی اسٹاپ' : 'Return Intermediate Stop') : (language === 'ur' ? 'درمیانی اسٹاپ' : 'Intermediate Stop'));
+  const stopName = activeStop?.name || (isReturnLeg ? (tr('Return Intermediate Stop', 'واپسی کا درمیانی اسٹاپ')) : (tr('Intermediate Stop', 'درمیانی اسٹاپ')));
   const stopHeaderTitle = language === 'ur'
     ? (isReturnLeg ? `واپسی کا درمیانی اسٹاپ #${parsedIndex + 1}` : `درمیانی اسٹاپ #${parsedIndex + 1}`)
-    : (isReturnLeg ? `Return Stop #${parsedIndex + 1}` : `Intermediate Stop #${parsedIndex + 1}`);
+    : (isReturnLeg ? `Return Stop ${parsedIndex + 1}` : `Stop ${parsedIndex + 1}`);
   const totalStopsInLeg = activeStopsList.length > 0 ? activeStopsList.length : 1;
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#F8FAFC" />
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: STAGE_THEME.stop.main }]}>
+      <StatusBar barStyle="light-content" backgroundColor={STAGE_THEME.stop.main} />
 
-      {/* Top Header Bar */}
-      <View style={styles.topHeaderBar}>
-        <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitleText}>
-          {stopHeaderTitle}
-        </Text>
-        <DelayButton onPress={() => setShowDelayModal(true)} />
-      </View>
-
-      {/* Stepper Bar */}
-      <TripProgressStepper
-        trip={trip}
-        target={{ kind: 'stop', leg: isReturnLeg ? 1 : 0, stopIndex: parsedIndex }}
-      />
-
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView style={{ backgroundColor: STAGE_THEME.stop.page }} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <StageHeader
+          stage="stop"
+          title={stopHeaderTitle}
+          subtitle={evidence.screenshot
+            ? t('sub_stage_screenshot', "Add a screenshot of the customer's app")
+            : t('sub_stage_stop', 'Take 3 photos at this stop')}
+          isReturn={isReturnLeg}
+          trip={trip}
+          target={{ kind: 'stop', leg: isReturnLeg ? 1 : 0, stopIndex: parsedIndex }}
+          onBack={() => router.back()}
+          onDelay={() => setShowDelayModal(true)}
+          style={{ marginHorizontal: -14 }}
+        />
         {/* Stop Info Location Card (matching SideMapTileBox layout) */}
         <View style={styles.locationCardHorizontal}>
           <SideMapTileBox />
@@ -401,6 +396,7 @@ export default function StopVerificationScreen() {
       {/* Geotag Preview Modal */}
       {previewPhoto && (
         <GeotagPhotoModal
+          companyName={trip?.customer?.name}
           visible={Boolean(previewPhoto)}
           photo={{ uri: previewPhoto.uri, location: previewPhoto.location || previewPhoto.geotag }}
           onClose={() => setPreviewPhoto(null)}
@@ -423,35 +419,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8FAFC',
   },
-  topHeaderBar: {
-    height: 52,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    backgroundColor: '#F8FAFC',
-  },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  headerTitleText: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
-  },
   scrollContent: {
     paddingHorizontal: 14,
-    paddingTop: 6,
+    paddingTop: 0,
     paddingBottom: 20,
   },
   locationCardHorizontal: {

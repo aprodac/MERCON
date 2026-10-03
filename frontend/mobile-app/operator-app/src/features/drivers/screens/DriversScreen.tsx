@@ -6,10 +6,10 @@
  * the route stack, in src/app/_layout.tsx (`<OperatorBottomNav />`).
  */
 import React, { useEffect, useState } from 'react';
-import { FlatList, Linking, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
+import { FlatList, Linking, RefreshControl, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Users, X } from 'lucide-react-native';
+import { Users } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 
 import { SearchBar } from '@/features/dashboard/components';
@@ -19,22 +19,18 @@ import {
   DriverCard,
   DriverPagination,
   DriversHeader,
-  DriversListHeader,
   DriverStatsSection,
-  FilterBottomSheet,
   SkeletonDriverCard,
 } from '../components';
-import { useDriverFilters, useDriverSearch, useDriverSorting, useDrivers } from '../hooks';
+import { useDriverFilters, useDriverSearch, useDrivers } from '../hooks';
 import type { DriverListItem } from '../types';
 
 export default function DriversScreen() {
   const router = useRouter();
-  const [filterVisible, setFilterVisible] = useState(false);
   const [page, setPage] = useState(1);
 
   const { query, debouncedQuery, setQuery } = useDriverSearch();
   const { status, setStatus } = useDriverFilters();
-  const { sort, setSort } = useDriverSorting();
 
   // Reset to page 1 whenever search query or status filter changes
   useEffect(() => {
@@ -53,7 +49,7 @@ export default function DriversScreen() {
     isFetching,
     hasNextPage,
     hasPrevPage,
-  } = useDrivers({ search: debouncedQuery, status, sort, page });
+  } = useDrivers({ search: debouncedQuery, status, sort: 'name', page, all: false });
 
   const isFiltered = Boolean(debouncedQuery || status);
 
@@ -62,11 +58,8 @@ export default function DriversScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }} edges={['top']}>
-      <DriversHeader
-        onFilterPress={() => setFilterVisible(true)}
-        filterActive={status !== null}
-      />
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
+      <DriversHeader />
 
       {error ? (
         <ErrorState message={error} onRetry={() => refresh()} className="flex-1" />
@@ -75,34 +68,18 @@ export default function DriversScreen() {
           data={drivers}
           keyExtractor={(item) => item.id}
           contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 110 }}
-          ItemSeparatorComponent={() => <View style={{ height: 14 }} />}
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={Colors.primary} />}
           ListHeaderComponent={
             <View className="gap-4 pb-3">
-              <DriverStatsSection />
+              <DriverStatsSection status={status} onSelect={setStatus} />
               <SearchBar
                 value={query}
                 onChangeText={setQuery}
-                placeholder="Search drivers by name or phone…"
+                placeholder="Search name or phone"
                 isLoading={isFetching && !isRefreshing}
               />
-              {status !== null && (
-                <View className="flex-row items-center">
-                  <TouchableOpacity
-                    onPress={() => setStatus(null)}
-                    activeOpacity={0.75}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Clear ${status} status filter`}
-                    className="flex-row items-center gap-1.5 rounded-full bg-[#FFF0EB] px-3 py-1 border border-[#FDE3DF]"
-                  >
-                    <Text style={{ color: Colors.primary }} className="text-[12px] font-bold">
-                      Status: {status === 'OnTrip' ? 'On Trip' : status === 'OffDuty' ? 'Offline' : status}
-                    </Text>
-                    <X size={12} color={Colors.primary} strokeWidth={2.5} />
-                  </TouchableOpacity>
-                </View>
-              )}
-              <DriversListHeader total={total} sort={sort} onSortChange={setSort} />
+              <Text style={{ fontSize: 16, fontWeight: '700', color: '#3E3C3D' }}>{total} {total === 1 ? 'driver' : 'drivers'}</Text>
             </View>
           }
           renderItem={({ item }) => (
@@ -123,7 +100,7 @@ export default function DriversScreen() {
             ) : isFiltered ? (
               <EmptyState
                 title={debouncedQuery ? `No drivers match "${debouncedQuery}"` : 'No matching drivers'}
-                subtitle="Try adjusting your search query or status filter."
+                subtitle="Try a different search or clear a filter."
                 Icon={Users}
                 className="mt-8"
               />
@@ -136,7 +113,7 @@ export default function DriversScreen() {
               />
             )
           }
-          ListFooterComponent={
+          ListFooterComponent={(
             <DriverPagination
               currentCount={drivers.length}
               totalCount={total}
@@ -148,17 +125,10 @@ export default function DriversScreen() {
               onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
               onNextPage={() => setPage((p) => Math.min(totalPages, p + 1))}
             />
-          }
+          )}
         />
       )}
 
-      <FilterBottomSheet
-        visible={filterVisible}
-        value={status}
-        onChange={setStatus}
-        onClose={() => setFilterVisible(false)}
-      />
     </SafeAreaView>
   );
 }
-

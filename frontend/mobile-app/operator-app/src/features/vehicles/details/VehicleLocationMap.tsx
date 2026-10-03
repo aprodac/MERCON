@@ -21,7 +21,8 @@ const ML: typeof import('@maplibre/maplibre-react-native') | null = hasNativeMap
 
 export const mapsUrl = (lat: number, lng: number) => `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 
-export function VehicleLocationMap({ lat, lng, fresh, height = 150 }: { lat: number; lng: number; fresh: boolean; height?: number }) {
+/** `bare` drops the rounded corners and the "Open in Maps" button, for use as a full-width page header. */
+export function VehicleLocationMap({ lat, lng, fresh, height = 150, bare }: { lat: number; lng: number; fresh: boolean; height?: number; bare?: boolean }) {
   const open = () => Linking.openURL(mapsUrl(lat, lng)).catch(() => {});
 
   if (!ML) {
@@ -38,8 +39,8 @@ export function VehicleLocationMap({ lat, lng, fresh, height = 150 }: { lat: num
   const { Map, Camera, ViewAnnotation } = ML;
   const d = 0.06;
   return (
-    <View style={[styles.wrap, { height }]}>
-      <Map style={StyleSheet.absoluteFill} mapStyle={MAP_STYLE_URL} logo={false} compass={false} scaleBar={false} dragPan={false} touchZoom={false} doubleTapZoom={false} touchRotate={false} touchPitch={false}>
+    <View style={[styles.wrap, bare && { borderRadius: 0 }, { height }]}>
+      <Map style={StyleSheet.absoluteFill} mapStyle={MAP_STYLE_URL} logo={false} attribution={false} compass={false} scaleBar={false} dragPan={false} touchZoom={false} doubleTapZoom={false} touchRotate={false} touchPitch={false}>
         <Camera bounds={[lng - d, lat - d, lng + d, lat + d]} duration={0} />
         <ViewAnnotation id="truck" lngLat={[lng, lat]} anchor="center">
           <View style={[styles.halo, !fresh && { backgroundColor: 'rgba(110,110,128,0.2)' }]}>
@@ -49,9 +50,11 @@ export function VehicleLocationMap({ lat, lng, fresh, height = 150 }: { lat: num
           </View>
         </ViewAnnotation>
       </Map>
-      <TouchableOpacity style={[styles.btn, styles.btnOver]} onPress={open} activeOpacity={0.8}>
-        <Text style={styles.btnText}>Open in Maps</Text>
-      </TouchableOpacity>
+      {bare ? null : (
+        <TouchableOpacity style={[styles.btn, styles.btnOver]} onPress={open} activeOpacity={0.8}>
+          <Text style={styles.btnText}>Open in Maps</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }

@@ -3,7 +3,7 @@ import { Role } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { prisma } from '../db';
 import type { DelayDetection } from '../services/tripLifecycle';
-import { sendDriverPushNotification } from '../services/pushNotificationService';
+import { sendDriverPushNotification, visibleNotificationMessage } from '../services/pushNotificationService';
 
 const getIO = () => {
   try {
@@ -163,9 +163,12 @@ export const notifyOperatorsOfDelay = async (detection: DelayDetection) => {
     });
 
     const videoBadge = videoDoc ? ' 📹 Video evidence attached.' : '';
-    const message =
-      `${trip} reached ${where} ${formatDelay(detection.delayMinutes)} late.${videoBadge} ` +
-      `Log the reason while the driver still remembers it.`;
+    const late = formatDelay(detection.delayMinutes);
+    const what =
+      detection.situation === 'not_arrived' ? `${trip} is ${late} late for ${where} — the driver has not arrived yet.`
+      : detection.situation === 'not_departed' ? `${trip} is ${late} late leaving ${where}.`
+      : `${trip} reached ${where} ${late} late.`;
+    const message = `${what}${videoBadge} Log the reason while the driver still remembers it.`;
 
     await Promise.all(
       staff.map((u) =>
@@ -194,7 +197,8 @@ export const createDriverNotification = async (
     });
 
     // 1. Emit real-time Socket.io event to driver's private room
-    getIO()?.to(`driver:${driverId}`).emit(`driver:notification:${driverId}`, notification);
+    const shown = visibleNotificationMessage(message);
+    getIO()?.to(`driver:${driverId}`).emit(`driver:notification:${driverId}`, { ...notification, message: shown });
 
     // 2. Attempt push notification dispatch (non-blocking for DB and socket)
     const pushData = {
@@ -204,7 +208,7 @@ export const createDriverNotification = async (
       notificationId: notification.id,
       ...(dataPayload || {}),
     };
-    sendDriverPushNotification(driverId, title, message, pushData).catch((err) => {
+    sendDriverPushNotification(driverId, title, shown, pushData, notification.id).catch((err) => {
       logger.error({ err, driverId }, '[NotificationController] Background push dispatch failed');
     });
 

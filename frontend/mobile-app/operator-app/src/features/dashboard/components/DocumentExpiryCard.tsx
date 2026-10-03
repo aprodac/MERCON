@@ -33,7 +33,7 @@ export function DocumentExpiryCard({ document, onPress, className }: DocumentExp
         <DocumentTypeIcon docType={document.docType} size={44} />
 
         <View className="flex-1">
-          <Text numberOfLines={1} className="text-sm font-bold text-gray-900">
+          <Text numberOfLines={1} className="text-sm font-bold text-[#3E3C3D]">
             {documentTypeLabel(document.docType)}
           </Text>
           <Text numberOfLines={1} className="text-xs text-gray-500">{document.subjectLabel}</Text>

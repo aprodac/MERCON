@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { InvoiceLine } from '@mercon/shared-types';
-import { canVoid, daysToDue, dueDateFor, dueText, duplicableLines, invoiceNotice, invoiceState, nextAction, paidShare, termsToDays } from './invoices';
+import { canVoid, daysToDue, dueDateFor, dueText, duplicableLines, invoiceNotice, invoiceState, nextAction, paidShare, printedLineVat, printedVatByRate, termsToDays } from './invoices';
 
 const TODAY = '2026-09-25';
 const inv = (status: string, due: string | null, balance: number, total = 1000, paid = total - balance) =>
@@ -73,5 +73,25 @@ describe('invoice helpers', () => {
     const part = invoiceNotice(inv('PartiallyPaid', null, 400), 'Najd Steel Works', 'Mercon', true);
     expect(part).toContain('Balance due: SAR 400.00');
     expect(part).toContain('الرصيد المستحق: 400.00 ريال');
+  });
+});
+
+describe('printed VAT', () => {
+  const line = (amount: string, tax_rate?: string, tax_amount?: string) => ({ amount, tax_rate, tax_amount }) as unknown as InvoiceLine;
+
+  it("uses each line's own rate and tax, not the invoice's", () => {
+    expect(printedLineVat(line('1000.00', '0', '0'), 15)).toEqual({ amount: 1000, rate: 0, vat: 0, total: 1000 });
+    expect(printedLineVat(line('999.99', '15', '150.00'), 15)).toEqual({ amount: 999.99, rate: 15, vat: 150, total: 1149.99 });
+  });
+
+  it('falls back to the invoice rate for lines stored without one', () => {
+    expect(printedLineVat(line('200'), 15)).toEqual({ amount: 200, rate: 15, vat: 30, total: 230 });
+  });
+
+  it('groups VAT by rate, highest first', () => {
+    expect(printedVatByRate([line('1000', '15', '150'), line('500', '0', '0'), line('100', '15', '15')], 15)).toEqual([
+      { rate: 15, taxable: 1100, vat: 165 },
+      { rate: 0, taxable: 500, vat: 0 },
+    ]);
   });
 });

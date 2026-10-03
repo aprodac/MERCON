@@ -1,16 +1,15 @@
 /**
  * Driver sign-in for the shared <AuthProvider> (@mercon/mobile-shared/lib/auth-context).
  * Drivers log in with phone + license number (POST /mobile/auth/login); the
- * device's push token is registered once a session starts and removed on sign-out.
+ * device's push token and phone health are reported once a session starts, and the
+ * phone is marked signed-out on sign-out.
  */
 import { api, PUSH_TOKEN_KEY } from '@mercon/mobile-shared/lib/api';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import type { SignInStrategy } from '@mercon/mobile-shared/lib/auth-context';
-import {
-  registerForPushNotificationsAsync,
-  registerPushDeviceWithBackend,
-  unregisterPushDeviceWithBackend,
-} from './notifications';
+import { registerForPushNotificationsAsync, registerPushDeviceWithBackend } from './notifications';
+import { reportLogout, reportPhoneHealth } from './phoneHealth';
+import { stopTripTracking } from './tripLocationTask';
 
 export const signInDriver: SignInStrategy = async (phone_primary, secret) => {
   const trimmedSecret = secret.trim();
@@ -23,7 +22,18 @@ export const signInDriver: SignInStrategy = async (phone_primary, secret) => {
   return { token, session: { role: 'Driver', profile: driver } };
 };
 
+/**
+ * Runs on sign-in and on every app start with a saved session: asks for push
+ * permission (first time), saves the token, then reports the phone's health
+ * so the office can see whether this phone can receive work — even when the
+ * driver denied notifications and there is no token.
+ */
 export async function syncPushToken(): Promise<void> {
+  // Report first: it moves this phone to the driver who just signed in (the
+  // server keeps the phone's push token), so trips assigned in the next few
+  // seconds already reach it. Getting a fresh token can take a while on a
+  // slow connection, and until now nothing was registered before it finished.
+  await reportPhoneHealth('AppOpened');
   try {
     const pushToken = await registerForPushNotificationsAsync();
     if (pushToken) {
@@ -36,12 +46,7 @@ export async function syncPushToken(): Promise<void> {
 }
 
 export async function unregisterPushToken(): Promise<void> {
-  try {
-    const pushToken = await SecureStore.getItemAsync(PUSH_TOKEN_KEY);
-    if (pushToken) {
-      await unregisterPushDeviceWithBackend(pushToken).catch(() => {});
-    }
-  } catch {
-    // Non-fatal unregistration
-  }
+  // A signed-out phone must stop sharing its location.
+  await stopTripTracking().catch(() => {});
+  await reportLogout();
 }

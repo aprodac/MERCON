@@ -2,7 +2,7 @@
  * Create trip — three steps (job, when, who) and a review sheet, with the
  * trip's money always visible at the bottom.
  */
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -15,6 +15,8 @@ import { StepJob } from './components/StepJob';
 import { StepSchedule } from './components/StepSchedule';
 import { StepAssign } from './components/StepAssign';
 import { ReviewSheet } from './components/ReviewSheet';
+import { PayoutMissingSheet } from './components/PayoutMissingSheet';
+import { getQuotationRoute, type OperatorQuotation } from '../../../lib/operator';
 import { SkeletonRows, fmtSar } from './components/ui';
 
 const STEPS: Record<CreateTripStep, { title: string; short: string; next: string }> = {
@@ -34,6 +36,26 @@ export default function CreateTripScreen() {
   // Which way the steps slide: forward from the right, back from the left.
   const [direction, setDirection] = useState<1 | -1>(1);
 
+  // Driver payout missing: ask once as soon as a quotation without one is picked,
+  // and again whenever the user tries to move on to Review.
+  const [payoutOpen, setPayoutOpen] = useState(false);
+  const payoutPromptedFor = useRef(new Set<string>());
+  const payoutCard = form.slot.rateMatched ? (form.slot.matchedRateCard as OperatorQuotation | null) : null;
+  const payoutRoute = payoutCard ? getQuotationRoute(payoutCard) : null;
+  const payoutLabel = payoutCard
+    ? [payoutCard.name, payoutRoute && `${payoutRoute.origin} → ${payoutRoute.dest}`, payoutCard.vehicle_class].filter(Boolean).join(' · ')
+    : '';
+  useEffect(() => {
+    const id = payoutCard?.id;
+    if (!form.payoutMissing || !id || payoutPromptedFor.current.has(id)) return;
+    payoutPromptedFor.current.add(id);
+    setPayoutOpen(true);
+  }, [form.payoutMissing, payoutCard?.id]);
+  const savePayout = (payout: string, saveOnQuotation: boolean) => {
+    form.updateSlot({ driverPayout: payout, driverPayoutModified: true, updateQuotationPayout: saveOnQuotation });
+    setPayoutOpen(false);
+  };
+
   const goTo = (s: CreateTripStep) => {
     setDirection(s >= form.step ? 1 : -1);
     form.setStep(s);
@@ -48,6 +70,7 @@ export default function CreateTripScreen() {
       return;
     }
     if (form.step < 3) goTo((form.step + 1) as CreateTripStep);
+    else if (form.payoutMissing) setPayoutOpen(true);
     else {
       // Everything, including what earlier steps leave for the end (driver payout).
       const first = form.allIssues[0];
@@ -76,8 +99,8 @@ export default function CreateTripScreen() {
       return;
     }
     setReviewOpen(false);
-    setToast({ message: res.message, type: 'success' });
-    setTimeout(() => router.replace('/' as any), 900);
+    setToast({ message: res.message, type: res.partial ? 'error' : 'success' });
+    setTimeout(() => router.replace('/' as any), res.partial ? 3500 : 900);
   };
 
   const { money } = form;
@@ -150,6 +173,13 @@ export default function CreateTripScreen() {
       )}
 
       <ReviewSheet form={form} visible={reviewOpen} onClose={() => setReviewOpen(false)} onConfirm={confirm} />
+      <PayoutMissingSheet
+        visible={payoutOpen}
+        quotationLabel={payoutLabel}
+        hasQuotation={Boolean(payoutCard)}
+        onClose={() => setPayoutOpen(false)}
+        onSave={savePayout}
+      />
       <Toast visible={Boolean(toast)} message={toast?.message ?? ''} type={toast?.type ?? 'info'} onDismiss={() => setToast(null)} />
     </SafeAreaView>
   );

@@ -19,11 +19,14 @@ import PastDateTripConfirmModal from '@/components/trips/PastDateTripConfirmModa
 import TripWizardHeader from '@/components/trips/wizard/TripWizardHeader';
 import TripStep1UnifiedWorkspace from '@/components/trips/wizard/TripStep1UnifiedWorkspace';
 import { MonthlyDaysSelector } from '@/components/trips/wizard/MonthlyDaysSelector';
+import { resolveSlotDriverPayout } from '@mercon/shared-types';
 import { TripReviewConfirmModal } from '@/components/trips/wizard/TripReviewConfirmModal';
+import DriverPayoutMissingDialog from '@/components/trips/wizard/DriverPayoutMissingDialog';
 import TripBatchGeneratorTab from '@/components/trips/wizard/TripBatchGeneratorTab';
 import TripBulkImportTab from '@/components/trips/wizard/TripBulkImportTab';
 import { Button } from '@/components/ui/button';
 import { KbdBadge } from '@/components/ui/KbdBadge';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import {
@@ -76,6 +79,37 @@ export default function CreateTripPage() {
   const form = useCreateTripForm();
   const [isReviewModalOpen, setIsReviewModalOpen] = React.useState(false);
 
+  // ── Driver payout missing ─────────────────────────────────────────────────
+  // Own-fleet trips need a driver payout. Many quotations are saved without one,
+  // so tell the operator as soon as such a quotation is picked, and again on
+  // Review / Create (the trip can't be created without it).
+  const payoutSlot: any = form.contractSlots[0];
+  const payoutCard: any = payoutSlot?.matchedRateCard;
+  const payoutPriced = Boolean(payoutSlot && (payoutCard || Number(payoutSlot.billingAmount) > 0));
+  const payoutMissing =
+    form.assignmentType === 'own' && payoutPriced && !(resolveSlotDriverPayout(payoutSlot) > 0);
+  const payoutLabel = payoutCard
+    ? [
+        payoutCard.quotation_number != null ? `QT-${payoutCard.quotation_number}` : null,
+        payoutSlot?.origin && payoutSlot?.destination ? `${payoutSlot.origin} → ${payoutSlot.destination}` : null,
+        payoutCard.vehicle_class || payoutCard.vehicle_type || null,
+      ].filter(Boolean).join(' · ')
+    : '';
+  const [payoutDialogOpen, setPayoutDialogOpen] = React.useState(false);
+  const payoutPromptedFor = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    const cardId = payoutCard?.id;
+    if (!cardId || !payoutMissing || payoutPromptedFor.current.has(cardId)) return;
+    payoutPromptedFor.current.add(cardId);
+    setPayoutDialogOpen(true);
+  }, [payoutCard?.id, payoutMissing]);
+  /** True (and opens the popup) when the payout still has to be entered. */
+  const promptForMissingPayout = () => {
+    if (!payoutMissing) return false;
+    setPayoutDialogOpen(true);
+    return true;
+  };
+
   // Step Transition Focus Management
   React.useEffect(() => {
     if (form.submissionResult) return;
@@ -100,53 +134,64 @@ export default function CreateTripPage() {
     return () => clearTimeout(timer);
   }, [form.contractStep, form.submissionResult]);
 
-  // Global Keyboard Shortcuts (Alt+1..2, Ctrl+Enter, Ctrl+S)
+  /** The main button: go to the next missing section, then step 2 (monthly), then review. */
+  const runPrimaryAction = () => {
+    if (form.isSubmitting) return;
+    if (form.contractStep === 1 && form.nextSection === 'price' && payoutMissing) {
+      setPayoutDialogOpen(true);
+      return;
+    }
+    if (form.contractStep === 1 && form.nextSection) {
+      form.focusSection(form.nextSection);
+      return;
+    }
+    if (form.contractBillingType === 'Monthly' && form.contractStep === 1) {
+      if (form.canNavigateToStep(2)) form.setContractStep(2);
+      else form.validateAndFocusErrors();
+      return;
+    }
+    if (promptForMissingPayout()) return;
+    if (form.validateAndFocusErrors()) setIsReviewModalOpen(true);
+  };
+  const primaryRef = React.useRef(runPrimaryAction);
+  primaryRef.current = runPrimaryAction;
+
+  // Keyboard: Ctrl+S and Ctrl+Enter do what the main button does; Alt+1/2 switch steps.
   React.useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      const maxSteps = form.contractBillingType === 'Monthly' ? 2 : 1;
-
-      // Alt + 1..2 Step Direct Navigation
-      if (e.altKey && !e.ctrlKey && !e.metaKey) {
-        if (['1', '2'].includes(e.key)) {
-          const targetStep = parseInt(e.key, 10);
-          if (form.canNavigateToStep(targetStep)) {
-            e.preventDefault();
-            form.setContractStep(targetStep as any);
-            return;
-          }
-        }
-      }
-
-      // Ctrl + Enter or Cmd + Enter (Open Review Modal on Last Step)
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        const hasOpenPopover = !!document.querySelector('[data-state="open"]');
-        if (form.contractStep === maxSteps && !hasOpenPopover && form.isStepValid(1) && !form.bulkMutation.isPending) {
+      if (e.altKey && !e.ctrlKey && !e.metaKey && ['1', '2'].includes(e.key)) {
+        const targetStep = parseInt(e.key, 10);
+        if (form.canNavigateToStep(targetStep)) {
           e.preventDefault();
-          setIsReviewModalOpen(true);
-          return;
+          form.setContractStep(targetStep as any);
         }
+        return;
       }
-
-      // Ctrl + S (Next step or Save)
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'Enter' || e.key.toLowerCase() === 's')) {
         e.preventDefault();
-        const hasOpenPopover = !!document.querySelector('[data-state="open"]');
-        if (!hasOpenPopover) {
-          if (form.contractStep < maxSteps && form.isStepValid(form.contractStep)) {
-            form.setContractStep((prev) => (prev + 1) as any);
-          } else if (form.contractStep === maxSteps && form.isStepValid(1) && !form.bulkMutation.isPending) {
-            setIsReviewModalOpen(true);
-          }
-        }
+        if (document.querySelector('[data-radix-popper-content-wrapper]')) return; // a dropdown is open
+        if (!isReviewModalOpen) primaryRef.current();
       }
     };
-
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [form.contractStep, form.canNavigateToStep, form.isStepValid, form.bulkMutation.isPending]);
+  }, [form.canNavigateToStep, form.setContractStep, isReviewModalOpen]);
+
+  // Leaving with unsaved work asks first (Cancel / close), and the browser warns on reload or tab close.
+  const [isDiscardOpen, setIsDiscardOpen] = React.useState(false);
+  const requestClose = () => (form.isDirty ? setIsDiscardOpen(true) : form.handleDialogClose());
+  React.useEffect(() => {
+    if (!form.isDirty || form.submissionResult) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [form.isDirty, form.submissionResult]);
 
   return (
-    <DashboardLayout active="Trips" title="Create New Trip" hideBackButton hideHeader fixedViewport>
+    <DashboardLayout active="Trips" title="Create New Trip" hideBackButton fixedViewport compactHeader>
       <div className="px-2 sm:px-4 pb-2 sm:pb-3 animate-fade-in w-full h-full flex flex-col min-h-0">
         <div className="w-full flex-1 overflow-hidden bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl rounded-2xl flex flex-col min-h-0">
 
@@ -161,12 +206,20 @@ export default function CreateTripPage() {
             canNavigateToStep={form.canNavigateToStep}
             setContractStep={form.setContractStep}
             handleContractSubmit={() => {
+              if (promptForMissingPayout()) return;
               if (form.validateAndFocusErrors()) {
                 setIsReviewModalOpen(true);
               }
             }}
-            handleDialogClose={form.handleDialogClose}
-            isPending={form.bulkMutation.isPending}
+            handleDialogClose={requestClose}
+            isPending={form.isSubmitting}
+            progress={form.progress}
+            nextSection={form.nextSection}
+            nextActionLabel={form.nextActionLabel}
+            onJumpTo={(key) => {
+              if (key === 'price' && promptForMissingPayout()) return;
+              form.focusSection(key);
+            }}
             batchTripRowsCount={form.batchTripRows.length}
             KbdBadge={KbdBadge}
             hasSavedDraft={form.hasSavedDraft}
@@ -241,6 +294,16 @@ export default function CreateTripPage() {
                         dayAssignments={form.dayAssignments}
                         setDayAssignments={form.setDayAssignments}
                         fieldErrors={form.fieldErrors}
+                        nextSection={form.nextSection}
+                        masterCoDriver={form.masterCoDriver}
+                        setMasterCoDriver={form.setMasterCoDriver}
+                        coDriverSplit={form.coDriverSplit}
+                        setCoDriverSplit={form.setCoDriverSplit}
+                        basePayout={resolveSlotDriverPayout(form.contractSlots[0] || ({} as any))}
+                        loading={form.loading}
+                        lastLaneTime={form.lastLaneTime}
+                        handleUpdateSlotIntermediateFee={form.handleUpdateSlotIntermediateFee}
+                        handleUpdateSlotReturnIntermediateFee={form.handleUpdateSlotReturnIntermediateFee}
                       />
                     )}
 
@@ -252,20 +315,20 @@ export default function CreateTripPage() {
                         selectedDates={form.selectedDates}
                         setSelectedDates={form.setSelectedDates}
                         contractSlotsCount={form.contractSlots.length}
-                        masterDriver={form.masterDriver}
-                        masterCoDriver={form.masterCoDriver}
-                        setMasterCoDriver={form.setMasterCoDriver}
-                        masterVehicle={form.masterVehicle}
-                        handleDriverChange={form.handleDriverChange}
-                        handleVehicleChange={form.handleVehicleChange}
+                        crewMode={form.monthlyCrewMode}
+                        setCrewMode={form.setMonthlyCrewMode}
+                        crew={form.monthlyCrew}
+                        setCrew={form.setMonthlyCrew}
+                        dayOverrides={form.monthlyDayOverrides}
+                        setDayOverrides={form.setMonthlyDayOverrides}
+                        dayAssignments={form.dayAssignments}
+                        rows={form.buildContractRows()}
+                        basePayout={resolveSlotDriverPayout(form.contractSlots[0] || ({} as any))}
                         driverOptions={form.driverOptions}
                         vehicleOptions={form.vehicleOptions}
                         drivers={form.drivers}
                         vehicles={form.vehicles}
-                        dayAssignments={form.dayAssignments}
-                        setDayAssignments={form.setDayAssignments}
                         assignmentType={form.assignmentType}
-                        setAssignmentType={form.setAssignmentType}
                         thirdPartyProviderId={form.thirdPartyProviderId}
                         setThirdPartyProviderId={form.setThirdPartyProviderId}
                         thirdPartyProviders={form.thirdPartyProviders}
@@ -278,7 +341,6 @@ export default function CreateTripPage() {
                         thirdPartyCost={form.thirdPartyCost}
                         setThirdPartyCost={form.setThirdPartyCost}
                         contractVehicleType={form.contractVehicleType}
-                        setContractVehicleType={form.setContractVehicleType}
                       />
                     )}
                   </div>
@@ -298,7 +360,7 @@ export default function CreateTripPage() {
                     drivers={form.drivers}
                     vehicles={form.vehicles}
                     getVehicleTypeFromCapacity={getVehicleTypeFromCapacity}
-                    isPending={form.bulkMutation.isPending}
+                    isPending={form.isSubmitting}
                   />
                 )}
 
@@ -314,7 +376,7 @@ export default function CreateTripPage() {
                     setParsedRows={form.setParsedRows}
                     parseError={form.parseError}
                     handleFileSubmit={form.handleFileSubmit}
-                    isPending={form.bulkMutation.isPending}
+                    isPending={form.isSubmitting}
                   />
                 )}
           </div>
@@ -339,7 +401,7 @@ export default function CreateTripPage() {
         isOpen={form.isCreateCustomerOpen}
         onClose={() => form.setIsCreateCustomerOpen(false)}
         onSuccess={(c) => {
-          form.setContractCustomer(c.name);
+          form.setContractCustomer(c.id);
           form.queryClient.invalidateQueries({ queryKey: ['customers'] });
         }}
       />
@@ -348,7 +410,7 @@ export default function CreateTripPage() {
         onClose={() => form.setPastDateModalOpen(false)}
         onConfirm={form.handlePastDateConfirm}
         analysis={form.pastDateAnalysis}
-        isSubmitting={form.bulkMutation.isPending}
+        isSubmitting={form.isSubmitting}
       />
       <CreateThirdPartyModal
         isOpen={form.isCreateProviderOpen}
@@ -411,6 +473,39 @@ export default function CreateTripPage() {
         />
       )}
 
+      <ConfirmModal
+        isOpen={isDiscardOpen}
+        onClose={() => setIsDiscardOpen(false)}
+        onConfirm={() => {
+          setIsDiscardOpen(false);
+          form.discardDraft?.();
+          form.handleDialogClose();
+        }}
+        title="Discard this trip?"
+        message="What you've entered will be lost."
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        variant="destructive"
+      />
+
+      <DriverPayoutMissingDialog
+        isOpen={payoutDialogOpen}
+        quotationLabel={payoutLabel}
+        hasQuotation={Boolean(payoutCard)}
+        onClose={() => setPayoutDialogOpen(false)}
+        onSave={(payout, saveOnQuotation) => {
+          if (payoutSlot) {
+            form.handleUpdateTripSlot(payoutSlot.id, {
+              driverPayout: payout,
+              driverPayoutModified: true,
+              // Unticked = this trip only; the quotation keeps no payout.
+              updateQuotationPayout: saveOnQuotation,
+            });
+          }
+          setPayoutDialogOpen(false);
+        }}
+      />
+
       <TripReviewConfirmModal
         isOpen={isReviewModalOpen}
         onClose={() => setIsReviewModalOpen(false)}
@@ -418,7 +513,7 @@ export default function CreateTripPage() {
           setIsReviewModalOpen(false);
           form.handleContractSubmit();
         }}
-        isPending={form.bulkMutation.isPending}
+        isPending={form.isSubmitting}
         contractCustomer={form.contractCustomer}
         customers={form.customers}
         contractSlots={form.contractSlots}
@@ -438,6 +533,7 @@ export default function CreateTripPage() {
         thirdPartyVehiclePlate={form.thirdPartyVehiclePlate}
         thirdPartyCost={form.thirdPartyCost}
         thirdPartyProviders={form.thirdPartyProviders}
+        rows={isReviewModalOpen ? form.buildContractRows() : []}
       />
     </DashboardLayout>
   );

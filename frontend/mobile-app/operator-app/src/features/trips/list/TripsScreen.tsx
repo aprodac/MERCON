@@ -1,7 +1,8 @@
 /**
  * Route: /trips — the operator's trips.
  *
- *   Now      — a live board: needs attention, on the road, starting next.
+ *   Delayed  — every delayed trip, the longest-delayed first.
+ *   Now      — a live list: needs attention, on the road, starting next.
  *   Schedule — a date strip (with a count per day) and that day's trips.
  *   History  — delivered and cancelled trips by day, loading as you scroll.
  * Search looks across every trip on the server. Long-press a trip for quick
@@ -14,19 +15,20 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  Building2, CalendarDays, CircleCheckBig, History, MessageCircle, Phone, Radio, Search, Send, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
+  Building2, CalendarDays, CircleCheckBig, History, AlertTriangle, MessageCircle, Phone, Radio, Search, Send, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import type { OperatorTrip } from '../../../lib/operator';
 import { TripCard } from './TripCard';
+import { AppTopBar } from '@/components/AppTopBar';
 import { useNow, useTripList, SCHEDULE_AFTER, SCHEDULE_BEFORE, type View as ListView } from './useTripList';
 import {
   dayLabel, dayRange, driverNameOf, driverPhoneOf, groupByDay, needsAttention, phaseOf, tripDayIso, type TimeFmt,
 } from './tripListModel';
 
-const INK = '#2B2A2B';
+const INK = '#3E3C3D';
 const MUTED = '#5F5F6E';
 const PAGE = '#F4F5F8';
 
@@ -36,7 +38,7 @@ const tap = () => Haptics.selectionAsync().catch(() => {});
 export default function TripsScreen() {
   const router = useRouter();
   // Opened from a truck's or a customer's details: their trips only, until the chip is cleared.
-  const params = useLocalSearchParams<{ vehicleId?: string; plate?: string; customerId?: string; customerName?: string }>();
+  const params = useLocalSearchParams<{ vehicleId?: string; plate?: string; customerId?: string; customerName?: string; view?: string }>();
   const [scope, setScope] = useState<{ kind: 'truck' | 'customer'; filter: Record<string, string>; label: string } | null>(
     params.vehicleId
       ? { kind: 'truck', filter: { vehicle_id: String(params.vehicleId) }, label: String(params.plate ?? 'This truck') }
@@ -44,7 +46,11 @@ export default function TripsScreen() {
         ? { kind: 'customer', filter: { customer_id: String(params.customerId) }, label: String(params.customerName ?? 'This customer') }
         : null,
   );
-  const [view, setView] = useState<ListView>(params.vehicleId || params.customerId ? 'history' : 'now');
+  const [view, setView] = useState<ListView>(
+    params.vehicleId || params.customerId ? 'history'
+      : params.view === 'delayed' || params.view === 'schedule' || params.view === 'history' ? params.view
+      : 'now',
+  );
   const [query, setQuery] = useState('');
   const [debounced, setDebounced] = useState('');
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -90,6 +96,14 @@ export default function TripsScreen() {
     };
   }, [data.open, now]);
 
+  // Delayed: every delayed / emergency trip, the one that's been late longest first.
+  const delayedTrips = useMemo(
+    () => data.open
+      .filter((t) => phaseOf(t.status) === 'delayed')
+      .sort((a, b) => new Date(tripDayIso(a) ?? 0).getTime() - new Date(tripDayIso(b) ?? 0).getTime()),
+    [data.open],
+  );
+
   // The sections are the grouping — no filter chips on top of them.
   const nowSections = useMemo(() => [
     { key: 'attention', title: 'Needs attention', tone: '#D92D20', data: board.attention },
@@ -126,7 +140,8 @@ export default function TripsScreen() {
   );
 
   const views: { id: ListView; label: string; icon: LucideIcon; badge?: number }[] = [
-    { id: 'now', label: 'Now', icon: Radio, badge: board.attention.length || undefined },
+    { id: 'now', label: 'Now', icon: Radio },
+    { id: 'delayed', label: 'Delayed', icon: AlertTriangle, badge: delayedTrips.length || undefined },
     { id: 'schedule', label: 'Schedule', icon: CalendarDays },
     { id: 'history', label: 'History', icon: History },
   ];
@@ -135,13 +150,10 @@ export default function TripsScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: PAGE }} edges={['top']}>
-      {/* Header */}
-      <View style={s.header}>
+      <AppTopBar title="Trips" />
+      {/* Scope chip (opened from a truck or customer) */}
+      <View style={[s.header, !scope && { paddingTop: 0, paddingBottom: 4 }]}>
         <View style={{ flex: 1 }}>
-          <Text style={s.h1}>Trips</Text>
-          <Text style={s.h1sub}>
-            {board.road.length} on the road · {board.attention.length} need attention
-          </Text>
           {scope ? (
             <TouchableOpacity
               style={s.truckChip}
@@ -200,7 +212,6 @@ export default function TripsScreen() {
               const on = v.id === view;
               return (
                 <TouchableOpacity key={v.id} style={[s.segItem, on && s.segOn]} onPress={() => { if (!on) tap(); setView(v.id); }} activeOpacity={0.8} accessibilityRole="tab" accessibilityState={{ selected: on }}>
-                  <v.icon size={15} color={on ? INK : '#6E6E80'} strokeWidth={on ? 2.4 : 2} />
                   <Text style={[s.segText, on && s.segTextOn]}>{v.label}</Text>
                   {v.badge ? <View style={s.badge}><Text style={s.badgeText}>{v.badge}</Text></View> : null}
                 </TouchableOpacity>
@@ -208,7 +219,18 @@ export default function TripsScreen() {
             })}
           </View>
 
-          {view === 'now' ? (
+          {view === 'delayed' ? (
+            <FlatList
+              data={delayedTrips}
+              keyExtractor={(t) => t.id}
+              contentContainerStyle={s.list}
+              refreshControl={refreshControl}
+              renderItem={({ item }) => renderCard(item, true)}
+              ItemSeparatorComponent={Gap}
+              ListHeaderComponent={delayedTrips.length ? <Text style={s.resultsHead}>{delayedTrips.length} delayed · longest first</Text> : null}
+              ListEmptyComponent={data.openLoading ? <Loading /> : <Empty icon={CircleCheckBig} title="Nothing delayed" text="Every open trip is on schedule." good />}
+            />
+          ) : view === 'now' ? (
             <SectionList
               sections={nowSections}
               keyExtractor={(t) => t.id}
@@ -272,7 +294,7 @@ export default function TripsScreen() {
 
 // ── Pieces ─────────────────────────────────────────────────────────────────────
 
-const Gap = () => <View style={{ height: 10 }} />;
+const Gap = () => <View style={{ height: 12 }} />;
 const Loading = () => <ActivityIndicator color={Colors.primary} style={{ marginVertical: 30 }} />;
 
 function Empty({ icon: Icon, title, text, good }: { icon: LucideIcon; title: string; text: string; good?: boolean }) {
@@ -370,7 +392,7 @@ const s = StyleSheet.create({
   searchBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 16, height: 46, borderRadius: 14, backgroundColor: Colors.white, paddingHorizontal: 13, borderWidth: 1, borderColor: '#EEF0F4' },
   searchInput: { flex: 1, fontSize: 15, color: INK, paddingVertical: 0 },
   segment: { flexDirection: 'row', gap: 4, marginHorizontal: 16, marginTop: 12, backgroundColor: '#E4E7EE', borderRadius: 13, padding: 3 },
-  segItem: { flex: 1, height: 38, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  segItem: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 38, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 4 },
   segOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   segText: { fontSize: 13, fontWeight: '700', color: '#4A4A55' },
   segTextOn: { color: INK, fontWeight: '800' },

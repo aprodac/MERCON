@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db';
-import { MODULE_KEYS, COMMON_TIMEZONES } from '@mercon/shared-types';
+import { MODULE_KEYS, COMMON_TIMEZONES, normalizeAssistantConfig } from '@mercon/shared-types';
 
 const SINGLETON_ID = 'singleton';
 
@@ -91,6 +91,7 @@ export const getPublicSettings = async (_req: Request, res: Response) => {
         primaryColor: settings.primaryColor,
         themeColors: settings.themeColors,
         timezone: settings.timezone,
+        supportWhatsapp: settings.supportWhatsapp,
         defaultCountryCode: settings.defaultCountryCode,
         defaultCountryDialCode: settings.defaultCountryDialCode,
         maintenanceMode: settings.maintenanceMode,
@@ -109,6 +110,7 @@ export const getPublicSettings = async (_req: Request, res: Response) => {
         primaryColor: DEFAULT_SETTINGS.primaryColor,
         themeColors: null,
         timezone: DEFAULT_SETTINGS.timezone,
+        supportWhatsapp: null,
         defaultCountryCode: DEFAULT_SETTINGS.defaultCountryCode,
         defaultCountryDialCode: DEFAULT_SETTINGS.defaultCountryDialCode,
         maintenanceMode: false,
@@ -125,6 +127,23 @@ export const getSettings = async (_req: Request, res: Response) => {
     return res.json({ success: true, data: settings });
   } catch (error) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to load settings' } });
+  }
+};
+
+/* ─── The floating assistant: what it reports and how it looks — any Admin ──── */
+export const updateAssistantConfig = async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user?.id;
+    // Already validated by the route; normalising fills anything missing with defaults.
+    const assistantConfig = normalizeAssistantConfig(req.body);
+    await getOrCreateSettings();
+    const settings = await prisma.settings.update({
+      where: { id: SINGLETON_ID },
+      data: { assistantConfig: assistantConfig as any, updated_by: userId },
+    });
+    return res.json({ success: true, data: settings });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to save the assistant settings' } });
   }
 };
 
@@ -150,6 +169,28 @@ export const updateTimezone = async (req: Request, res: Response) => {
     return res.json({ success: true, data: settings });
   } catch (error) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to update timezone' } });
+  }
+};
+
+/* ─── Ops WhatsApp number for the tracking page's "Ask us" button — any Admin ─ */
+export const updateSupportWhatsapp = async (req: Request, res: Response) => {
+  try {
+    const raw = req.body?.supportWhatsapp;
+    const digits = typeof raw === 'string' ? raw.replace(/[^0-9]/g, '') : '';
+    if (raw != null && raw !== '' && (digits.length < 8 || digits.length > 15)) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Enter the WhatsApp number with its country code, e.g. 966501234567' },
+      });
+    }
+    await getOrCreateSettings();
+    const settings = await prisma.settings.update({
+      where: { id: SINGLETON_ID },
+      data: { supportWhatsapp: digits || null, updated_by: (req as any).user?.id },
+    });
+    return res.json({ success: true, data: settings });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to save the WhatsApp number' } });
   }
 };
 

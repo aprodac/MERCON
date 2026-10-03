@@ -1,5 +1,6 @@
 import { AlarmClock, CalendarCheck, Check, CircleAlert, FileText, ListOrdered, Phone, PlayCircle, Plus, Receipt, Route, Smartphone, Timer, Truck, UploadCloud, UserRound, X } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import type { ReactNode } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import DriverAvatar from '@/components/ui/DriverAvatar';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
@@ -194,8 +195,15 @@ function Feed({ icon: Icon, label, fix, missing }: { icon: typeof Truck; label: 
 
 /** Truck and driver, as a card on the map (top-left): photos, class, contact, and links to their profiles. */
 export function TruckDriverOverlay({
-  trip, overview, truckLabel, onReassign,
-}: { trip: Trip; overview: TripOverview | undefined; truckLabel: string; onReassign: (mode: 'driver' | 'truck') => void }) {
+  trip, overview, truckLabel, onReassign, driverExtra,
+}: {
+  trip: Trip;
+  overview: TripOverview | undefined;
+  truckLabel: string;
+  onReassign: (mode: 'driver' | 'truck') => void;
+  /** Extra line under the driver (phone status / "Got it"). */
+  driverExtra?: ReactNode;
+}) {
   const navigate = useNavigate();
   const d = trip.driver as (NonNullable<Trip['driver']> & { status?: DriverStatus; ref_id?: string }) | null | undefined;
   const v = trip.vehicle as (NonNullable<Trip['vehicle']> & { image_url?: string | null; trailer_number?: string | null }) | null | undefined;
@@ -274,6 +282,7 @@ export function TruckDriverOverlay({
               </a>
             </div>
           )}
+          {d && driverExtra}
         </div>
         {canChange && change('driver')}
       </div>
@@ -316,8 +325,12 @@ export interface FinancialFigures {
   coDriverPayout: number;
   charges: number;
   chargesCount: number;
+  /** After driver pay and the trip's own expenses. */
   margin: number;
   marginPercent: string;
+  /** Expenses recorded against this trip (fuel, tolls). */
+  tripCosts?: number;
+  tripCostsCount?: number;
   paid: number;
   balanceDue: number;
   is3PL: boolean;
@@ -333,13 +346,28 @@ const sar = (n: number) => `SAR ${Math.round(n).toLocaleString('en-US')}`;
  * amount due beside it, one bar showing where the billing goes, and the three
  * parts underneath (charges can be added right there).
  */
-export function FinancialSummary({ f, onCharges }: { f: FinancialFigures; onCharges: () => void }) {
+export function FinancialSummary({
+  f,
+  onCharges,
+  onTripCosts,
+  addTripCostHref,
+}: {
+  f: FinancialFigures;
+  onCharges: () => void;
+  /** Open the trip's expenses. */
+  onTripCosts?: () => void;
+  /** Record an expense against this trip; absent for subcontracted trips. */
+  addTripCostHref?: string;
+}) {
   const payout = f.driverPayout + f.coDriverPayout;
-  const total = Math.max(payout + f.charges + Math.max(f.margin, 0), 1);
+  const tripCosts = f.tripCosts ?? 0;
+  const showCosts = !f.is3PL;
+  const total = Math.max(payout + f.charges + (showCosts ? tripCosts : 0) + Math.max(f.margin, 0), 1);
   const settled = f.balanceDue <= 0;
   const parts = [
     { key: 'payout', label: f.is3PL ? 'Subcontract' : 'Driver payout', value: payout, color: 'bg-violet-500' },
     { key: 'charges', label: 'Charges', value: f.charges, color: 'bg-amber-400' },
+    ...(showCosts ? [{ key: 'costs', label: f.tripCostsCount ? `Costs (${f.tripCostsCount})` : 'Costs', value: tripCosts, color: 'bg-rose-400' }] : []),
     { key: 'margin', label: 'Margin', value: f.margin, color: 'bg-emerald-500' },
   ];
 
@@ -366,28 +394,44 @@ export function FinancialSummary({ f, onCharges }: { f: FinancialFigures; onChar
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
+      <div className={cn('grid gap-2', parts.length === 4 ? 'grid-cols-4' : 'grid-cols-3')}>
         {parts.map((p) => (
           <div key={p.key} className="min-w-0">
             <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <span className={cn('size-1.5 shrink-0 rounded-full', p.color)} />
-              <span className="truncate">{p.label}</span>
-            </p>
-            <div className="flex items-center gap-1.5">
-              <p className={cn('truncate text-sm font-semibold tabular-nums', p.key === 'margin' && p.value < 0 ? 'text-rose-700 dark:text-rose-400' : 'text-foreground')}>
-                {sar(p.value)}
-              </p>
+              {p.key === 'costs' && onTripCosts && (f.tripCostsCount ?? 0) > 0 ? (
+                <button type="button" onClick={onTripCosts} className="truncate underline-offset-2 hover:text-foreground hover:underline" title="Show this trip's expenses">
+                  {p.label}
+                </button>
+              ) : (
+                <span className="truncate">{p.label}</span>
+              )}
+              {p.key === 'costs' && addTripCostHref && (
+                <Link
+                  to={addTripCostHref}
+                  title="Record fuel, tolls or another cost of this trip"
+                  aria-label="Add trip cost"
+                  className="flex size-4 shrink-0 items-center justify-center rounded-full border border-rose-300 bg-rose-50 text-rose-800 transition-colors hover:border-rose-400 hover:bg-rose-100 dark:border-rose-800 dark:bg-rose-950/50 dark:text-rose-300"
+                >
+                  <Plus className="size-2.5" strokeWidth={3} />
+                </Link>
+              )}
               {p.key === 'charges' && (
                 <button
                   type="button"
                   onClick={onCharges}
                   title="Add or edit additional charges"
                   aria-label="Add charge"
-                  className="flex h-5 shrink-0 items-center gap-0.5 rounded-full border border-amber-300 bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-800 transition-colors hover:border-amber-400 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
+                  className="flex size-4 shrink-0 items-center justify-center rounded-full border border-amber-300 bg-amber-50 text-amber-800 transition-colors hover:border-amber-400 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-300"
                 >
-                  <Plus className="size-3" strokeWidth={2.5} /> Add
+                  <Plus className="size-2.5" strokeWidth={3} />
                 </button>
               )}
+            </p>
+            <div className="flex items-center gap-1.5">
+              <p className={cn('truncate text-sm font-semibold tabular-nums', p.key === 'margin' && p.value < 0 ? 'text-rose-700 dark:text-rose-400' : 'text-foreground')}>
+                {sar(p.value)}
+              </p>
             </div>
           </div>
         ))}

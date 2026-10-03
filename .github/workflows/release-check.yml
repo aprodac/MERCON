@@ -5,8 +5,12 @@ name: Release Check
 #   - what ships: commits, authors, areas changed
 #   - database: migrations new in this release, migrations still pending on
 #     the PRODUCTION database, failed migrations, destructive SQL
-# Nothing here changes production. The only job that touches the server
-# (prod-db) never checks out PR code and reads with a read-only session.
+# Nothing here runs on the production server. A `pull_request` run uses the
+# workflow file from the PR itself, so a job on the production runner here
+# would let any PR run commands as root on production. The production
+# migration ledger is read instead by prod-ledger.yml (after each deploy and
+# every 6 h, never on PRs) and downloaded here as an artifact.
+# Never add a self-hosted job to this workflow.
 # Merging the PR is what deploys (ci-cd.yml: backup → migrate → health check).
 
 on:
@@ -19,61 +23,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  prod-db:
-    name: Read production migration ledger
-    # Self-hosted = the production server. Only same-repo PRs, never forks.
-    if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: self-hosted
-    permissions: {}
-    outputs:
-      reachable: ${{ steps.read.outputs.reachable }}
-      has_ledger: ${{ steps.read.outputs.has_ledger }}
-      applied: ${{ steps.read.outputs.applied }}
-      failed: ${{ steps.read.outputs.failed }}
-      tables: ${{ steps.read.outputs.tables }}
-    steps:
-      - name: Query _prisma_migrations (read-only)
-        id: read
-        env:
-          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
-        run: |
-          set -uo pipefail
-          q() {
-            docker exec -e PGOPTIONS='-c default_transaction_read_only=on' mercon-postgres \
-              psql -U "$POSTGRES_USER" -d mercon_db -At -v ON_ERROR_STOP=1 -c "$1"
-          }
-          if [ "$(docker inspect -f '{{.State.Running}}' mercon-postgres 2>/dev/null)" != "true" ] || ! q "SELECT 1" >/dev/null 2>&1; then
-            echo "reachable=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "reachable=true" >> "$GITHUB_OUTPUT"
-          echo "tables=$(q "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")" >> "$GITHUB_OUTPUT"
-          if [ "$(q "SELECT to_regclass('public._prisma_migrations') IS NOT NULL")" != "t" ]; then
-            echo "has_ledger=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          echo "has_ledger=true" >> "$GITHUB_OUTPUT"
-          {
-            echo "applied<<EOF_APPLIED"
-            q "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name"
-            echo "EOF_APPLIED"
-            echo "failed<<EOF_FAILED"
-            q "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL ORDER BY migration_name"
-            echo "EOF_FAILED"
-          } >> "$GITHUB_OUTPUT"
-
   report:
     name: Release report
-    needs: prod-db
-    if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
+      actions: read   # download the prod-ledger.yml artifact
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # Latest successful prod-ledger.yml run. Its files are plain text the
+      # report only compares; nothing from them is executed.
+      - name: Fetch production migration ledger
+        id: ledger
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -uo pipefail
+          RUN_ID=$(gh run list -R "$GITHUB_REPOSITORY" --workflow prod-ledger.yml --status success --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)
+          if [ -z "$RUN_ID" ] || ! gh run download "$RUN_ID" -R "$GITHUB_REPOSITORY" -n prod-migration-ledger -D "$RUNNER_TEMP/ledger" >/dev/null 2>&1; then
+            echo "job=unavailable" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          L="$RUNNER_TEMP/ledger"
+          echo "job=success" >> "$GITHUB_OUTPUT"
+          for k in reachable has_ledger tables read_at; do
+            echo "$k=$(head -n1 "$L/$k" 2>/dev/null | tr -cd 'A-Za-z0-9:_.-')" >> "$GITHUB_OUTPUT"
+          done
+          for k in applied failed; do
+            { echo "$k<<EOF_LEDGER_$k"; grep -E '^[A-Za-z0-9_]+$' "$L/$k" 2>/dev/null || true; echo "EOF_LEDGER_$k"; } >> "$GITHUB_OUTPUT"
+          done
 
       - name: Build report
         id: build
@@ -81,12 +64,13 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
           HEAD: ${{ github.event.pull_request.head.sha }}
           HEAD_REF: ${{ github.event.pull_request.head.ref }}
-          DB_JOB: ${{ needs.prod-db.result }}
-          REACHABLE: ${{ needs.prod-db.outputs.reachable }}
-          HAS_LEDGER: ${{ needs.prod-db.outputs.has_ledger }}
-          APPLIED: ${{ needs.prod-db.outputs.applied }}
-          FAILED: ${{ needs.prod-db.outputs.failed }}
-          TABLES: ${{ needs.prod-db.outputs.tables }}
+          DB_JOB: ${{ steps.ledger.outputs.job }}
+          REACHABLE: ${{ steps.ledger.outputs.reachable }}
+          HAS_LEDGER: ${{ steps.ledger.outputs.has_ledger }}
+          APPLIED: ${{ steps.ledger.outputs.applied }}
+          FAILED: ${{ steps.ledger.outputs.failed }}
+          TABLES: ${{ steps.ledger.outputs.tables }}
+          READ_AT: ${{ steps.ledger.outputs.read_at }}
           REPO_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           set -euo pipefail
@@ -122,7 +106,7 @@ jobs:
 
           DB_LINE=""; PENDING=""; FAILED_LIST=""; ORPHANS=""
           if [ "$DB_JOB" != "success" ] || [ "$REACHABLE" != "true" ]; then
-            BLOCK+=("Could not read the production database (job: $DB_JOB). Re-run this check.")
+            BLOCK+=("No production migration ledger available (fetch: ${DB_JOB:-none}, reachable: ${REACHABLE:-?}). Run **Production Migration Ledger** (prod-ledger.yml) from the Actions tab, then re-run this check.")
             DB_LINE="❓ Production database not reachable"
           elif [ "$HAS_LEDGER" != "true" ]; then
             BLOCK+=("Production has no \`_prisma_migrations\` table — \`prisma migrate deploy\` would refuse to run. Baseline production first.")
@@ -133,7 +117,7 @@ jobs:
             FAILED_LIST=$(echo "$FAILED" | sed '/^$/d')
             [ -n "$FAILED_LIST" ] && BLOCK+=("Production has failed migrations that must be resolved first (\`prisma migrate resolve\`).")
             [ -n "$ORPHANS" ] && WARN+=("Production has applied migrations that are not in this branch: $(echo $ORPHANS | sed 's/ /, /g').")
-            DB_LINE="✅ Read production: $TABLES tables, $(echo "$APPLIED" | sed '/^$/d' | wc -l | tr -d ' ') migrations applied"
+            DB_LINE="✅ Read production: $TABLES tables, $(echo "$APPLIED" | sed '/^$/d' | wc -l | tr -d ' ') migrations applied (as of $READ_AT)"
           fi
 
           # ── Report ─────────────────────────────────────────────────────

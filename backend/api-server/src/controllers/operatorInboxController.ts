@@ -35,7 +35,7 @@ export const getDocumentExpiries = async (_req: Request, res: Response) => {
  * mercon.tech points at mercon.tech and one from dev points at dev — the
  * server's old default sent every environment's links to dev.
  */
-function publicBaseUrl(req: Request): string {
+export function publicBaseUrl(req: Request): string {
   const configured = process.env.PUBLIC_BASE_URL?.trim();
   if (configured) return configured.replace(/\/+$/, '');
   const origin = req.get('origin');
@@ -140,7 +140,21 @@ export const getPublicShare = async (req: Request, res: Response) => {
 
     const update = (await loadTripDriverUpdates(prisma, share.tripId)).find((u) => u.key === share.update_key);
     const items = (update?.items ?? []).filter((i) => share.media_ids.includes(i.id));
-    if (!update || items.length === 0) return res.status(404).json({ success: false, error: { message: 'These photos are no longer available' } });
+    if (!update || items.length === 0) {
+      const purged = await prisma.document.findFirst({
+        where: { id: { in: share.media_ids }, file_purged_at: { not: null } },
+        select: { file_purged_at: true },
+      });
+      if (purged?.file_purged_at) {
+        const days = Number(process.env.MEDIA_RETENTION_DAYS) || 60;
+        const on = purged.file_purged_at.toISOString().slice(0, 10);
+        return res.status(410).json({
+          success: false,
+          error: { message: `These photos and videos were deleted on ${on}, ${days} days after the trip ended.` },
+        });
+      }
+      return res.status(404).json({ success: false, error: { message: 'These photos are no longer available' } });
+    }
 
     res.json({
       success: true,

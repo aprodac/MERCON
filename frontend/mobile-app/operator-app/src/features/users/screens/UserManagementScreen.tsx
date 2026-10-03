@@ -15,6 +15,7 @@ import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
 import { operatorService, type OperatorDriver, type PlatformUser } from '@/lib/operator';
+import { AppTopBar } from '@/components/AppTopBar';
 
 type Tab = 'drivers' | 'users';
 
@@ -111,23 +112,10 @@ export default function UserManagementScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
 
-      <View style={styles.header}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.iconBtn}>
-            <ArrowLeft size={18} color={Colors.gray800} strokeWidth={2.2} />
-          </TouchableOpacity>
-          <View>
-            <Text style={styles.title}>User management</Text>
-            <Text style={styles.subtitle}>Drivers and platform logins</Text>
-          </View>
-        </View>
-        <TouchableOpacity onPress={() => setDrawerVisible(true)} activeOpacity={0.75} style={styles.iconBtn}>
-          <Menu size={20} color={Colors.gray800} strokeWidth={2.2} />
-        </TouchableOpacity>
-      </View>
+      <AppTopBar title="Users" />
 
       <View style={styles.toolbar}>
         <View style={styles.tabs}>
@@ -199,7 +187,6 @@ export default function UserManagementScreen() {
         />
       )}
 
-      <OperatorSidebarDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </SafeAreaView>
   );
 }
@@ -221,7 +208,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { fontSize: Typography.lg, fontWeight: '800', color: Colors.gray900 },
+  title: { fontSize: Typography.lg, fontWeight: '800', color: Colors.charcoal },
   subtitle: { fontSize: Typography.xs, color: Colors.gray500 },
   toolbar: {
     backgroundColor: Colors.white,
@@ -240,7 +227,7 @@ const styles = StyleSheet.create({
   tab: { flex: 1, paddingVertical: 8, borderRadius: Radius.md - 2, alignItems: 'center' },
   tabActive: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   tabText: { fontSize: Typography.sm, fontWeight: '600', color: Colors.gray500 },
-  tabTextActive: { color: Colors.gray900 },
+  tabTextActive: { color: Colors.charcoal },
   searchRow: { flexDirection: 'row', gap: Spacing.sm },
   search: {
     flex: 1,
@@ -252,12 +239,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 40,
   },
-  searchInput: { flex: 1, fontSize: Typography.sm, color: Colors.gray900, paddingVertical: 0 },
+  searchInput: { flex: 1, fontSize: Typography.sm, color: Colors.charcoal, paddingVertical: 0 },
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: Colors.gray900,
+    backgroundColor: Colors.charcoal,
     borderRadius: Radius.md,
     paddingHorizontal: 14,
     height: 40,
@@ -285,7 +272,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { fontSize: 13, fontWeight: '700', color: Colors.gray700 },
-  name: { fontSize: Typography.base, fontWeight: '700', color: Colors.gray900 },
+  name: { fontSize: Typography.base, fontWeight: '700', color: Colors.charcoal },
   sub: { fontSize: 12, color: Colors.gray500, marginTop: 1 },
   pill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: Radius.full },
   pillText: { fontSize: 11, fontWeight: '700' },

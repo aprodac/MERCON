@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { makeRoomBelow } from '@/lib/dropdownRoom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, ChevronDown, MapPin, Plus, Loader2, Building2, AlertTriangle, Sparkles, Globe, Search } from 'lucide-react';
 import { toast } from 'sonner';
@@ -50,7 +51,7 @@ export default function LocationCombobox({
   excludeLocationId,
   triggerClassName,
   customerId,
-  side = 'top',
+  side = 'bottom',
   hasError = false,
   precision,
   onEditPrecision,
@@ -287,6 +288,12 @@ export default function LocationCombobox({
     setActiveIndex(0);
   }, [search, open]);
 
+  // Always open below the field; slide the page up first if it's near the bottom.
+  useEffect(() => {
+    if (!open) return;
+    return makeRoomBelow(triggerRef.current, 340);
+  }, [open]);
+
   // Focus search input when popover opens
   useEffect(() => {
     if (open) {
@@ -386,11 +393,11 @@ export default function LocationCombobox({
                   "px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition-all cursor-pointer flex items-center gap-1 shadow-2xs",
                   (precision || selected?.coordinate_precision || (selected?.lat != null ? 'APPROXIMATE' : 'UNKNOWN')) === 'EXACT'
                     ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:border-emerald-800 dark:text-emerald-300"
-                    : "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 dark:bg-amber-950/60 dark:border-amber-800 dark:text-amber-300 animate-pulse"
+                    : "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 dark:bg-amber-950/60 dark:border-amber-800 dark:text-amber-300"
                 )}
                 title="Click to edit location details, map pin & address"
               >
-                {(precision || selected?.coordinate_precision || (selected?.lat != null ? 'APPROXIMATE' : 'UNKNOWN')) === 'EXACT' ? 'Exact (Edit)' : 'Area (Edit)'}
+                {(precision || selected?.coordinate_precision || (selected?.lat != null ? 'APPROXIMATE' : 'UNKNOWN')) === 'EXACT' ? 'Exact (Edit)' : 'Pin needed (Edit)'}
               </span>
             </span>
           )}
@@ -402,8 +409,7 @@ export default function LocationCombobox({
         align="start"
         side={side}
         sideOffset={4}
-        avoidCollisions={true}
-        collisionPadding={8}
+        avoidCollisions={false}
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           inputRef.current?.focus();
@@ -524,7 +530,7 @@ export default function LocationCombobox({
                         >
                           {prec === 'APPROXIMATE' ? (
                             <>
-                              <span>≈ Area</span>
+                              <span>Pin needed</span>
                               <span className="text-[9px] underline font-black text-amber-900 dark:text-amber-100">Edit</span>
                             </>
                           ) : (
@@ -533,7 +539,7 @@ export default function LocationCombobox({
                         </button>
                         {prec === 'UNKNOWN' && (
                           <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[9px] font-bold">
-                            ○ Not Pinned
+                            Pin needed
                           </Badge>
                         )}
                         {selected?.id === loc.id && <Check className="h-3.5 w-3.5 text-brand shrink-0" />}

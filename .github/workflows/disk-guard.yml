@@ -1,0 +1,64 @@
+name: Disk Guard
+
+# Daily disk check on both servers. Between deploys nothing else watches the
+# disk, and on 2026-09-23 production reached 75% (40.5 of 53.7 GB) from
+# Docker build cache before a deploy's prune happened to free 17.7 GB.
+#
+# Cleans only Docker build cache older than 3 days and dangling (untagged)
+# images: never volumes, never tagged images (so :latest and the :previous
+# rollback images stay), never logs, uploads or backups.
+# Fails when the disk is still above the limit after cleaning, so the failed
+# run shows up in Actions and GitHub's failed-workflow email goes out.
+
+on:
+  schedule:
+    - cron: '17 */6 * * *' # every 6 hours
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  check:
+    name: Disk on ${{ matrix.server }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - server: prod
+            runs_on: '["self-hosted", "prod"]'
+          - server: dev
+            runs_on: '["dev"]'
+    runs-on: ${{ fromJSON(matrix.runs_on) }}
+    timeout-minutes: 15
+    env:
+      CLEAN_AT: 70   # % used: start cleaning build cache
+      FAIL_AT: 85    # % used after cleaning: fail the run
+    steps:
+      - name: Check and clean
+        run: |
+          set -euo pipefail
+          used() { df --output=pcent / | tail -1 | tr -dc '0-9'; }
+          echo "Before: $(used)% used"
+          df -h /
+          docker system df || true
+
+          if [ "$(used)" -ge "$CLEAN_AT" ]; then
+            echo "Above ${CLEAN_AT}% — removing build cache older than 72 h and dangling images"
+            docker builder prune -af --filter "until=72h" || true
+            docker image prune -f || true
+            echo "After: $(used)% used"
+            df -h /
+          fi
+
+          {
+            echo "## Disk on ${{ matrix.server }}: $(used)% used"
+            echo '```'
+            df -h /
+            docker system df 2>/dev/null || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$(used)" -ge "$FAIL_AT" ]; then
+            echo "::error::Disk is $(used)% full on ${{ matrix.server }} after cleaning build cache. Find what is growing: sudo du -xh --max-depth=2 / | sort -rh | head -30" >&2
+            exit 1
+          fi

@@ -61,6 +61,7 @@ import mobileDeviceRoutes from './routes/mobileDeviceRoutes';
 import mobileProfileRoutes from './routes/mobileProfileRoutes';
 import mobileEmergencyRoutes from './routes/mobileEmergencyRoutes';
 import mobileMiscRoutes from './routes/mobileMiscRoutes';
+import mobileHealthRoutes from './routes/mobileHealthRoutes';
 import quotationRoutes from './routes/quotationRoutes';
 import rateCardRoutes from './routes/rateCardRoutes';
 import surchargeRuleRoutes from './routes/surchargeRuleRoutes';
@@ -80,6 +81,7 @@ import accountRoutes from './routes/accountRoutes';
 import accountingPeriodRoutes from './routes/accountingPeriodRoutes';
 import journalEntryRoutes from './routes/journalEntryRoutes';
 import invoiceRoutes from './routes/invoiceRoutes';
+import driverSettlementRoutes from './routes/driverSettlementRoutes';
 import billRoutes from './routes/billRoutes';
 import bankAccountRoutes from './routes/bankAccountRoutes';
 import advanceRoutes from './routes/advanceRoutes';
@@ -95,6 +97,10 @@ import { authenticateJWT } from './middlewares/auth';
 import { initFleetTracking } from './services/icces/fleetPoller';
 import { normalizeMobileLocationUpdate } from './services/tracking/locationUpdate';
 import { initTripDelayMonitor } from './services/tracking/tripDelayMonitor';
+import { initDriverWatch } from './services/tracking/driverWatch';
+import { initTripMediaRetention } from './services/media/tripMediaRetention';
+import { initDocumentTrashPurge } from './services/documentTrash';
+import { driverSocketConnected, driverSocketDisconnected } from './services/driverPhone/presence';
 
 import helmet from 'helmet';
 // @ts-ignore
@@ -106,7 +112,7 @@ app.use(cors({
   origin: true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cache-Control', 'X-CSRF-Token'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin', 'Cache-Control', 'X-CSRF-Token', 'X-Install-Id'],
 }));
 
 // Gzip every response big enough to be worth it. List endpoints return highly
@@ -177,6 +183,7 @@ apiRouter.use('/accounts', accountRoutes);
 apiRouter.use('/accounting-periods', accountingPeriodRoutes);
 apiRouter.use('/journal-entries', journalEntryRoutes);
 apiRouter.use('/invoices', invoiceRoutes);
+apiRouter.use('/driver-settlements', driverSettlementRoutes);
 apiRouter.use('/bills', billRoutes);
 apiRouter.use('/bank-accounts', bankAccountRoutes);
 apiRouter.use('/advances', advanceRoutes);
@@ -197,6 +204,7 @@ app.use('/mobile/devices', mobileDeviceRoutes);
 app.use('/api/mobile/devices', mobileDeviceRoutes);
 app.use('/mobile/profile', mobileProfileRoutes);
 app.use('/mobile/emergency', mobileEmergencyRoutes);
+app.use('/mobile/health', mobileHealthRoutes);
 app.use('/mobile', mobileMiscRoutes); // /mobile/documents, /mobile/vehicle
 app.use('/api/mobile', mobileMiscRoutes);
 
@@ -222,6 +230,7 @@ io.on('connection', (socket: Socket) => {
   // instead of broadcasting to every connected client.
   if (user.role === 'Driver' && user.driver_id) {
     socket.join(`driver:${user.driver_id}`);
+    driverSocketConnected(user.driver_id);
   } else if (user.id) {
     socket.join(`user:${user.id}`);
   }
@@ -271,6 +280,10 @@ io.on('connection', (socket: Socket) => {
 
   socket.on('disconnect', () => {
     logger.info(`📡 WebSocket disconnected: ${socket.id}`);
+    if (user.role === 'Driver' && user.driver_id) {
+      const driverId = user.driver_id;
+      driverSocketDisconnected(driverId, () => (io.sockets.adapter.rooms.get(`driver:${driverId}`)?.size ?? 0) > 0);
+    }
   });
 });
 
@@ -303,6 +316,9 @@ app.use((err: Error, req: Request, res: Response, next: express.NextFunction) =>
 // Initialize Background Workers
 initFleetTracking();
 initTripDelayMonitor();
+initDriverWatch();
+initTripMediaRetention();
+initDocumentTrashPurge();
 
 /**
  * Integration secrets key (docs/CLIENT_SECRETS.md). The deploy refuses to run

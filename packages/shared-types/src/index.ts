@@ -132,7 +132,6 @@ export const SUGGESTED_CHARGE_UNITS = [
  */
 export const EXPENSE_CATEGORIES = [
   'Salary',
-  'Salary Advance',
   'Fuel',
   'Toll & Parking',
   'Rent',
@@ -140,10 +139,94 @@ export const EXPENSE_CATEGORIES = [
   'Office Supplies',
   'Insurance',
   'Vehicle Maintenance',
+  'Tyres',
   'Government Fees',
   'Other',
 ] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+/**
+ * Categories that are only ever a truck's cost — an expense in one of these
+ * must name the vehicle, or Vehicle P&L can't count it. Enforced by the API.
+ */
+export const VEHICLE_REQUIRED_EXPENSE_CATEGORIES: readonly string[] = ['Fuel', 'Vehicle Maintenance', 'Tyres'];
+
+/**
+ * Categories no longer offered for new expenses but still found on old records. A salary advance
+ * is money the driver owes back, not a cost: it is recorded as an employee advance (Finance →
+ * Advances) instead.
+ */
+export const LEGACY_EXPENSE_CATEGORIES: readonly string[] = ['Salary Advance'];
+
+/**
+ * What an expense can be charged to. A trip implies its truck and driver; a truck's costs count in
+ * its P&L; a driver link records who it was for; none of them means company overhead.
+ */
+export type ExpenseLinkKind = 'trip' | 'vehicle' | 'driver' | 'company';
+
+export interface ExpenseCategoryRule {
+  /** Links this category may carry. */
+  allowed: readonly ExpenseLinkKind[];
+  /** Once paid, it must be charged to a trip or a truck (it counts in that truck's P&L). */
+  needsTruckWhenPaid?: boolean;
+}
+
+const ANY: readonly ExpenseLinkKind[] = ['trip', 'vehicle', 'driver', 'company'];
+
+/** Per-category linking rules; categories not listed (custom ones, "Other") may link to anything. */
+export const EXPENSE_CATEGORY_RULES: Record<string, ExpenseCategoryRule> = {
+  Fuel: { allowed: ['trip', 'vehicle'], needsTruckWhenPaid: true },
+  'Toll & Parking': { allowed: ['trip', 'vehicle', 'company'] },
+  'Vehicle Maintenance': { allowed: ['vehicle'], needsTruckWhenPaid: true },
+  Tyres: { allowed: ['vehicle'], needsTruckWhenPaid: true },
+  Insurance: { allowed: ['vehicle', 'company'] },
+  'Government Fees': { allowed: ['vehicle', 'driver', 'company'] },
+  Salary: { allowed: ['driver', 'company'] },
+  'Salary Advance': { allowed: ['driver', 'company'] },
+  Rent: { allowed: ['company'] },
+  Utilities: { allowed: ['company'] },
+  'Office Supplies': { allowed: ['company'] },
+  Other: { allowed: ANY },
+};
+
+export const expenseCategoryRule = (category: string | null | undefined): ExpenseCategoryRule =>
+  EXPENSE_CATEGORY_RULES[(category || '').trim()] ?? { allowed: ANY };
+
+/**
+ * Categories whose truck cost may already be set up as a recurring fixed cost (Vehicle cost setup).
+ * Recording the same cost as an expense on that truck would count it twice in the truck's P&L.
+ */
+export const FIXED_COST_EXPENSE_CATEGORIES: readonly string[] = ['Insurance', 'Government Fees'];
+
+export interface ExpenseLinkInput {
+  category: string;
+  status: 'Paid' | 'Pending' | string;
+  tripId?: string | null;
+  vehicleId?: string | null;
+  driverId?: string | null;
+  /** The linked trip is done by a subcontractor. */
+  tripIsThirdParty?: boolean;
+}
+
+/** The first rule the links break, as a message for the user; null when they are fine. */
+export function expenseLinkProblem(e: ExpenseLinkInput): string | null {
+  const category = (e.category || '').trim();
+  const rule = expenseCategoryRule(category);
+  const name = category.toLowerCase() || 'this';
+  if (e.tripId) {
+    if (e.tripIsThirdParty) return "This trip is done by a subcontractor; its costs come through the subcontract bill, so it can't carry expenses.";
+    if (!rule.allowed.includes('trip')) return `A ${name} expense can't be charged to a trip.`;
+  } else {
+    if (e.vehicleId && !rule.allowed.includes('vehicle')) return `A ${name} expense can't be charged to a truck.`;
+    if (e.driverId && !rule.allowed.includes('driver')) return `A ${name} expense can't be charged to a driver.`;
+    // No link means company overhead; truck-only categories are handled below (a pending one may wait)
+    if (!e.vehicleId && !e.driverId && !rule.allowed.includes('company') && !rule.needsTruckWhenPaid) return `Choose what this ${name} expense is for.`;
+  }
+  if (e.status === 'Paid' && rule.needsTruckWhenPaid && !e.tripId && !e.vehicleId) {
+    return rule.allowed.includes('trip') ? `Choose the trip or truck this ${name} cost is for; it counts in that truck's P&L.` : `Choose the truck this ${name} cost is for; it counts in that truck's P&L.`;
+  }
+  return null;
+}
 
 /** Suggested Expense.payment_method values (free-text column, same reasoning as above). */
 export const EXPENSE_PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'Cheque', 'Card'] as const;
@@ -194,6 +277,7 @@ export type BillStatus = 'Draft' | 'Approved' | 'PartiallyPaid' | 'Paid' | 'Void
 export const TRIP_REPORT_FIELDS = [
   { key: 'serial', label: 'Row number', type: 'number' },
   { key: 'ref_id', label: 'Trip / Job No.', type: 'string' },
+  { key: 'awb_number', label: 'AWB / shipment no.', type: 'string' },
   { key: 'date', label: 'Trip date', type: 'date' },
   { key: 'driver_name', label: 'Driver name', type: 'string' },
   { key: 'driver_phone', label: 'Driver mobile', type: 'string' },
@@ -210,9 +294,67 @@ export const TRIP_REPORT_FIELDS = [
   { key: 'driver_payout', label: 'Driver payout', type: 'money' },
   { key: 'balance_amount', label: 'Balance amount', type: 'money' },
   { key: 'status', label: 'Trip status', type: 'string' },
-  { key: 'rate_category', label: 'Rate category', type: 'string' },
+  { key: 'rate_category', label: 'Line type', type: 'string' },
 ] as const;
 export type TripReportFieldKey = (typeof TRIP_REPORT_FIELDS)[number]['key'];
+
+/**
+ * Statement of account: one row per issued invoice, payment, advance applied
+ * or credit note, oldest first, with a running balance (opening balance is
+ * carried in, not a row). Draft and void invoices are left out, same as the
+ * customer's Financial Summary.
+ */
+export const STATEMENT_REPORT_FIELDS = [
+  { key: 'serial', label: 'Row number', type: 'number' },
+  { key: 'date', label: 'Date', type: 'date' },
+  { key: 'doc_type', label: 'Type (invoice, payment…)', type: 'string' },
+  { key: 'doc_no', label: 'Document no.', type: 'string' },
+  { key: 'invoice_no', label: 'Invoice no.', type: 'string' },
+  { key: 'reference', label: 'Reference / note', type: 'string' },
+  { key: 'due_date', label: 'Due date', type: 'date' },
+  { key: 'debit', label: 'Debit (invoiced)', type: 'money' },
+  { key: 'credit', label: 'Credit (paid / credited)', type: 'money' },
+  { key: 'balance', label: 'Running balance', type: 'money' },
+  { key: 'invoice_status', label: 'Invoice status', type: 'string' },
+] as const;
+export type StatementReportFieldKey = (typeof STATEMENT_REPORT_FIELDS)[number]['key'];
+
+/** Rates: one row per active quotation for the customer. */
+export const RATE_REPORT_FIELDS = [
+  { key: 'serial', label: 'Row number', type: 'number' },
+  { key: 'quotation_no', label: 'Quotation no.', type: 'string' },
+  { key: 'quotation_name', label: 'Quotation name', type: 'string' },
+  { key: 'origin', label: 'From', type: 'string' },
+  { key: 'destination', label: 'To', type: 'string' },
+  { key: 'route', label: 'Full route (all stops)', type: 'string' },
+  { key: 'vehicle_type', label: 'Vehicle type', type: 'string' },
+  { key: 'line_type', label: 'Line type', type: 'string' },
+  { key: 'pricing_basis', label: 'Per trip / per month', type: 'string' },
+  { key: 'rate', label: 'Rate', type: 'money' },
+  { key: 'currency', label: 'Currency', type: 'string' },
+  { key: 'valid_from', label: 'Valid from', type: 'date' },
+  { key: 'valid_to', label: 'Valid to', type: 'date' },
+] as const;
+export type RateReportFieldKey = (typeof RATE_REPORT_FIELDS)[number]['key'];
+
+/** What a customer Excel export format is filled with. Stored in ReportTemplate.source. */
+export const REPORT_SOURCES = ['trips', 'statement', 'rates'] as const;
+export type ReportSource = (typeof REPORT_SOURCES)[number];
+
+export const REPORT_SOURCE_LABELS: Record<ReportSource, string> = {
+  trips: 'Trips',
+  statement: 'Statement of account',
+  rates: 'Rates',
+};
+
+export const REPORT_FIELDS_BY_SOURCE = {
+  trips: TRIP_REPORT_FIELDS,
+  statement: STATEMENT_REPORT_FIELDS,
+  rates: RATE_REPORT_FIELDS,
+} as const;
+
+/** Any field a format column can be filled from. A key shared by two sources has the same type in both. */
+export type ReportFieldKey = TripReportFieldKey | StatementReportFieldKey | RateReportFieldKey;
 
 /**
  * A confirmed mapping between an uploaded company template's Excel columns
@@ -237,13 +379,36 @@ export interface TemplateLayout {
     colIndex: number; // 1-based
     headerText: string; // for display only
     source:
-      | { kind: 'field'; key: TripReportFieldKey }
+      | { kind: 'field'; key: ReportFieldKey }
       | { kind: 'const'; value: string }
       | { kind: 'formula' } // keep the template's own formula, row-shifted
       | { kind: 'blank' };
   }>;
   tokens?: Record<string, string>;
 }
+
+/**
+ * Placeholders a customer's export format can hold in any text cell
+ * (e.g. "Invoice: {{invoice_no}}"); filled on export by
+ * reportTemplateController's resolveRun. A token that doesn't apply to the
+ * format's data (an invoice token on a date-range export) is left blank.
+ */
+export const TRIP_SHEET_TOKENS: ReadonlyArray<{ token: string; label: string; sources: readonly ReportSource[] }> = [
+  { token: 'customer', label: 'Customer name', sources: ['trips', 'statement', 'rates'] },
+  { token: 'period', label: 'Period, e.g. 01/08/2026 - 31/08/2026', sources: ['trips', 'statement'] },
+  { token: 'period_from', label: 'Period start', sources: ['trips', 'statement'] },
+  { token: 'period_to', label: 'Period end', sources: ['trips', 'statement'] },
+  { token: 'row_count', label: 'Number of rows', sources: ['trips', 'statement', 'rates'] },
+  { token: 'trip_count', label: 'Number of trips', sources: ['trips'] },
+  { token: 'total', label: 'Sum of the trips’ total amount', sources: ['trips'] },
+  { token: 'invoice_no', label: 'Invoice number', sources: ['trips'] },
+  { token: 'invoice_date', label: 'Invoice date', sources: ['trips'] },
+  { token: 'due_date', label: 'Invoice due date', sources: ['trips'] },
+  { token: 'invoice_total', label: 'Invoice total incl. VAT', sources: ['trips'] },
+  { token: 'opening_balance', label: 'Balance before the period', sources: ['statement'] },
+  { token: 'closing_balance', label: 'Balance at the end of the period', sources: ['statement'] },
+  { token: 'generated_on', label: 'Export date', sources: ['trips', 'statement', 'rates'] },
+];
 
 // ─── Domain entities ─────────────────────────────────────────────
 export interface User {
@@ -256,6 +421,7 @@ export interface User {
   status?: UserStatus;
   lastLogin?: string;
   isSuperAdmin?: boolean;
+  createdAt?: string;
 }
 
 /**
@@ -379,12 +545,19 @@ export interface Settings {
   hiddenModules: ModuleKey[];
   /** IANA timezone (e.g. "Asia/Riyadh") the frontends convert UTC timestamps to for display. */
   timezone: string;
+  /** Lowest driver-app version allowed ("1.2.0"); older installs must update. Null = no check. */
+  driverAppMinVersion?: string | null;
+  /** Ops WhatsApp number (digits) for the customer tracking page's "Ask us" button. */
+  supportWhatsapp?: string | null;
+  /** Settings → Assistant (raw JSON; read it through normalizeAssistantConfig). */
+  assistantConfig?: unknown;
   /** Default country code (e.g. "SA") for phone number fields across the deployment. */
   defaultCountryCode?: string;
   /** Default dial code (e.g. "+966") for phone number fields across the deployment. */
   defaultCountryDialCode?: string;
   defaultReceivableAccountId?: string | null;
   defaultRevenueAccountId?: string | null;
+  defaultVatOutputAccountId?: string | null;
   defaultPayableAccountId?: string | null;
   defaultCustomerAdvanceAccountId?: string | null;
   defaultProviderAdvanceAccountId?: string | null;
@@ -640,6 +813,8 @@ export interface Invoice {
   tax_amount: number | string;
   total_amount: number | string;
   paid_amount: number | string;
+  /** Taken off by credit notes; balance_due = total − paid − credited. */
+  credited_amount?: number | string;
   balance_due: number | string;
   currency: string;
   lines?: InvoiceLine[];
@@ -647,6 +822,9 @@ export interface Invoice {
   trips?: any[];
   journalEntryId?: string | null;
   journalEntry?: JournalEntry | null;
+  /** Shown on the printed invoice. */
+  notes?: string | null;
+  terms?: string | null;
   created_by?: string | null;
   updated_by?: string | null;
   createdAt: string;
@@ -662,7 +840,12 @@ export interface InvoiceLine {
   description: string;
   quantity: number;
   rate: number | string;
+  /** Percent; `amount` is net of it. */
+  discount_pct?: number | string;
   amount: number | string;
+  /** VAT on this line, percent (e.g. 15, or 0 for zero-rated). */
+  tax_rate?: number | string;
+  tax_amount?: number | string;
   createdAt: string;
 }
 
@@ -1084,3 +1267,8 @@ export * from './tripRoute';
 
 
 export * from './tripCreation';
+export * from './driverRecommendation';
+export * from './mapsLink';
+export * from './evidenceTimes';
+export * from './chargeReview';
+export * from './assistantConfig';

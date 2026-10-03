@@ -2120,51 +2120,15 @@ export default function TripListPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    size="sm"
-                    className="h-8 gap-1.5 text-[11px] font-bold bg-brand hover:bg-[#d13d0d] text-white shadow-xs rounded-xl px-3.5 cursor-pointer flex items-center"
-                  >
-                    <span>New Trip</span>
-                    <ChevronDown className="h-3.5 w-3.5 text-white/80 ml-0.5" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-60 p-1.5 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 z-50">
-                  <DropdownMenuItem
-                    onClick={() => navigate('/trips/new?billingType=Extra')}
-                    className="cursor-pointer text-xs font-medium py-2.5 px-3 rounded-lg flex items-center gap-3 hover:bg-orange-50 dark:hover:bg-orange-950/40 focus:bg-orange-50 focus:text-brand"
-                  >
-                    <Plus className="w-4 h-4 text-brand shrink-0" />
-                    <div>
-                      <div className="font-bold text-[#111111] dark:text-slate-100">Daily / Spot Trip</div>
-                      <div className="text-[10px] text-slate-500">Single or round trip at spot rate cards</div>
-                    </div>
-                  </DropdownMenuItem>
-
-                  <DropdownMenuItem
-                    onClick={() => navigate('/trips/new?billingType=Monthly')}
-                    className="cursor-pointer text-xs font-medium py-2.5 px-3 rounded-lg flex items-center gap-3 hover:bg-orange-50 dark:hover:bg-orange-950/40 focus:bg-orange-50 focus:text-brand"
-                  >
-                    <Layers className="w-4 h-4 text-indigo-600 shrink-0" />
-                    <div>
-                      <div className="font-bold text-[#111111] dark:text-slate-100">Monthly Duty Trip</div>
-                      <div className="text-[10px] text-slate-500">Dedicated monthly contract duty & calendar</div>
-                    </div>
-                  </DropdownMenuItem>
-
-                  <DropdownMenuItem
-                    onClick={() => navigate('/trips/new?assignment=third_party')}
-                    className="cursor-pointer text-xs font-medium py-2.5 px-3 rounded-lg flex items-center gap-3 hover:bg-orange-50 dark:hover:bg-orange-950/40 focus:bg-orange-50 focus:text-brand"
-                  >
-                    <Truck className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <div>
-                      <div className="font-bold text-[#111111] dark:text-slate-100">3PL Partner Dispatch</div>
-                      <div className="text-[10px] text-slate-500">Subcontracted trip with 3PL carrier cost</div>
-                    </div>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              {/* One entry point: billing (per trip / monthly) and own fleet / 3PL are chosen on the page itself. */}
+              <Button
+                size="sm"
+                onClick={() => navigate('/trips/new')}
+                className="h-8 gap-1.5 text-[11px] font-bold bg-brand hover:bg-[#d13d0d] text-white shadow-xs rounded-xl px-3.5 cursor-pointer flex items-center"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>New Trip</span>
+              </Button>
             </div>
           );
 

@@ -1,11 +1,10 @@
-# Codemagic builds for the two MERCON mobile apps (Expo, prebuilt on the build machine).
-# Setup steps (keystore, Apple integration): docs/CODEMAGIC_SETUP.md
+# Codemagic Android builds for the two MERCON mobile apps (Expo, prebuilt on the build machine).
+# iOS is built and uploaded from Xcode on the Mac only (docs/IOS_DISTRIBUTION_AND_PUSH.md).
+# Setup steps (keystore): docs/CODEMAGIC_SETUP.md
 #
 # Workflows (all started manually from the Codemagic UI):
 #   driver-android    → Mercon Driver   APK (install on phones) + AAB (Play Store)
 #   operator-android  → Mercon Operator APK + AAB
-#   driver-ios        → Mercon Driver   IPA → TestFlight
-#   operator-ios      → Mercon Operator IPA → TestFlight
 #
 # The apps live in an npm workspace (frontend/mobile-app); dependencies are
 # installed there, then each app is prebuilt from its own folder. Each script
@@ -22,7 +21,7 @@ definitions:
     #   main           → https://mercon.tech/api      (production)
     #   anything else  → https://dev.mercon.tech/api  (dev)
     # To force one, set EXPO_PUBLIC_API_URL when starting the build in Codemagic.
-    # Written to $CM_ENV so the later steps (prebuild + Gradle/Xcode, which
+    # Written to $CM_ENV so the later steps (prebuild + Gradle, which
     # bundle the JS) see it.
     - &select_api
       name: Select API for branch
@@ -49,25 +48,10 @@ definitions:
         cd android
         ./gradlew assembleRelease bundleRelease \
           -PreactNativeArchitectures=armeabi-v7a,arm64-v8a --no-daemon
-    - &ios_build
-      name: Prebuild + build IPA
-      script: |
-        cd "$APP_DIR"
-        npx expo prebuild --platform ios --no-install
-        cd ios && pod install && cd ..
-        xcode-project use-profiles
-        WORKSPACE=$(ls -d ios/*.xcworkspace | head -1)
-        SCHEME=$(basename "$WORKSPACE" .xcworkspace)
-        xcode-project build-ipa --workspace "$WORKSPACE" --scheme "$SCHEME"
 
   android_artifacts: &android_artifacts
     - frontend/mobile-app/*-app/android/app/build/outputs/apk/release/*.apk
     - frontend/mobile-app/*-app/android/app/build/outputs/bundle/release/*.aab
-
-  ios_publishing: &ios_publishing
-    app_store_connect:
-      auth: integration
-      submit_to_testflight: true
 
 workflows:
   driver-android:
@@ -103,55 +87,3 @@ workflows:
       - *install
       - *android_build
     artifacts: *android_artifacts
-
-  driver-ios:
-    name: Mercon Driver · iOS
-    instance_type: mac_mini_m2
-    max_build_duration: 90
-    integrations:
-      app_store_connect: mercon_app_store_connect
-    environment:
-      <<: *env_common
-      xcode: latest
-      cocoapods: default
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: tech.mercon.driver
-      vars:
-        APP_DIR: frontend/mobile-app/driver-app
-        # Push entitlement for App Store / TestFlight builds (see app.config.ts).
-        APS_ENVIRONMENT: production
-    scripts:
-      - *select_api
-      - *install
-      - *ios_build
-    artifacts:
-      - build/ios/ipa/*.ipa
-      - frontend/mobile-app/driver-app/build/ios/ipa/*.ipa
-    publishing: *ios_publishing
-
-  operator-ios:
-    name: Mercon Operator · iOS
-    instance_type: mac_mini_m2
-    max_build_duration: 90
-    integrations:
-      app_store_connect: mercon_app_store_connect
-    environment:
-      <<: *env_common
-      xcode: latest
-      cocoapods: default
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: tech.mercon.operator
-      vars:
-        APP_DIR: frontend/mobile-app/operator-app
-        # Push entitlement for App Store / TestFlight builds (see app.config.ts).
-        APS_ENVIRONMENT: production
-    scripts:
-      - *select_api
-      - *install
-      - *ios_build
-    artifacts:
-      - build/ios/ipa/*.ipa
-      - frontend/mobile-app/operator-app/build/ios/ipa/*.ipa
-    publishing: *ios_publishing

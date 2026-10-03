@@ -39,6 +39,13 @@ export interface CreateLocationPayload {
   coordinate_precision?: CoordinatePrecision;
 }
 
+/** What the "Set pin" box saves. */
+export interface PinPayload {
+  lat: number;
+  lng: number;
+  address?: string | null;
+}
+
 export const locationService = {
   async getAll(params?: { customerId?: string; search?: string; active_only?: boolean; coordinate_precision?: CoordinatePrecision }): Promise<ApiResponse<Location[]>> {
     const res = await api.get<ApiResponse<Location[]>>('/locations', {
@@ -64,6 +71,12 @@ export const locationService = {
 
   async update(id: string, payload: Partial<CreateLocationPayload & { is_active: boolean }>): Promise<Location> {
     const res = await api.patch<ApiResponse<Location>>(`/locations/${id}`, payload);
+    return res.data.data;
+  },
+
+  /** Pin exactly. Also re-pins open trip stops still on the old guess. */
+  async pin(id: string, pin: PinPayload): Promise<{ location: Location; updated_trip_count: number }> {
+    const res = await api.post<ApiResponse<{ location: Location; updated_trip_count: number }>>(`/locations/${id}/pin`, pin);
     return res.data.data;
   },
 

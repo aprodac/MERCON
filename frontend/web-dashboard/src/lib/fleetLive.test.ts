@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LiveUnit } from '@/services/fleetLiveService';
-import { buildEtaShareText, computeEta, formatDuration, formatKm, matchesFilter, matchesQuery, punctuality } from './fleetLive';
+import { buildEtaShareText, computeEta, mergeNearbyStops, stopNumbersLabel, formatDuration, formatKm, matchesFilter, matchesQuery, punctuality, truckDriveSeconds } from './fleetLive';
 
 const NOW = Date.parse('2026-09-26T10:00:00Z');
 
@@ -66,6 +66,20 @@ describe('fleet live map helpers', () => {
     );
   });
 
+  it('ends the ETA message with the tracking link when there is one', () => {
+    const eta = computeEta(unit(), { distanceMeters: 42_000, durationSeconds: 38 * 60 }, NOW);
+    expect(buildEtaShareText(unit(), eta, () => '14:38', 'https://mercon.tech/t/abc')).toBe(
+      '*TRP-10482 · ABC 4521*\nNext stop: Jubail port\nETA: 14:38 (in 38 min) · 42 km\nDriver: Mohammed Ali\n\nTrack live: https://mercon.tech/t/abc',
+    );
+  });
+
+  it('never times a truck faster than 80 km/h on average', () => {
+    // 300 km the router says takes 2.5 h → 3 h 45 min for a truck.
+    const eta = computeEta(unit(), { distanceMeters: 300_000, durationSeconds: 9_000 }, NOW)!;
+    expect(eta.durationSeconds).toBe(13_500);
+    expect(truckDriveSeconds(10_000, 1_200)).toBe(1_200);
+  });
+
   it('formats distances and durations', () => {
     expect(formatKm(0.42)).toBe('420 m');
     expect(formatKm(4.25)).toBe('4.3 km');
@@ -110,5 +124,35 @@ describe('driver view direction', () => {
     const coords: [number, number][] = [[46, 24], [45.9999, 24], [46, 24.01]];
     expect(Math.round(routeBearing(coords)!)).toBe(0);
     expect(routeBearing([[46, 24]])).toBeNull();
+  });
+});
+
+describe('stop pins', () => {
+  const g = (name: string, lat: number, lng: number, numbers: number[], done = false, isNext = false) => ({ name, lat, lng, numbers, done, isNext });
+  // 1 degree = 100 px in this test projection
+  const project = (lat: number, lng: number): [number, number] => [lng * 100, -lat * 100];
+
+  it('merges pins that would overlap on screen, keeping every stop number', () => {
+    const out = mergeNearbyStops([g('Khamis Mushayt', 18.3, 42.73, [1, 4]), g('Muhayil', 18.55, 42.05, [2, 3])], (lat, lng) => [lng * 10, -lat * 10]);
+    expect(out).toHaveLength(1);
+    expect(out[0].name).toBe('Khamis Mushayt · Muhayil');
+    expect(out[0].numbers).toEqual([1, 2, 3, 4]);
+  });
+
+  it('keeps pins apart when zoomed in far enough', () => {
+    const out = mergeNearbyStops([g('Khamis Mushayt', 18.3, 42.73, [1, 4]), g('Muhayil', 18.55, 42.05, [2, 3])], project);
+    expect(out).toHaveLength(2);
+  });
+
+  it('a merged pin is next if any of its stops is next, done only if all are', () => {
+    const out = mergeNearbyStops([g('A', 0, 0, [1], true), g('B', 0, 0.1, [2], false, true)], project);
+    expect(out[0]).toMatchObject({ done: false, isNext: true });
+  });
+
+  it('labels runs of stops as ranges', () => {
+    expect(stopNumbersLabel([1, 2, 3, 4])).toBe('1–4');
+    expect(stopNumbersLabel([4, 1])).toBe('1·4');
+    expect(stopNumbersLabel([1, 2, 5])).toBe('1·2·5');
+    expect(stopNumbersLabel([1, 2, 3, 6, 7, 8, 10])).toBe('1–3·6–8·10');
   });
 });

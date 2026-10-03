@@ -29,6 +29,10 @@ export interface TripSlot {
   pricingBasis?: 'Per Trip' | 'Per Month';
   rateReason?: string;
   isOvernight?: boolean;
+  /** Arrival was set by hand — the travel-time estimate stops overwriting it. */
+  dropoffManual?: boolean;
+  /** Minutes after pickup at each intermediate stop, from the travel-time estimate. */
+  intermediateArrivalOffsets?: number[];
   intermediateLocations: string[];
   intermediateLocationIds?: (string | null)[];
   intermediateStopFees?: string[];
@@ -36,8 +40,12 @@ export interface TripSlot {
   returnDestination?: string;
   returnOriginLocationId?: string | null;
   returnDestinationLocationId?: string | null;
+  returnPickupDate?: string;
   returnPickupTime?: string;
+  returnDropoffDate?: string;
   returnDropoffTime?: string;
+  /** Return arrival set by hand — the travel-time estimate stops overwriting it. */
+  returnDropoffManual?: boolean;
   returnIsOvernight?: boolean;
   returnIntermediateLocations?: string[];
   returnIntermediateLocationIds?: (string | null)[];

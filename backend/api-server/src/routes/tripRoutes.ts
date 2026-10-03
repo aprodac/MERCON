@@ -2,14 +2,17 @@ import { Router } from 'express';
 import {
   getTrips, getTripById, createTrip, updateTripStatus,
   dispatchTrip, replaceDriver, pickupArrive, pickupVerify, deliveryVerify,
-  bulkDeleteTrips, bulkUpdateTripStatus, bulkAssignTrips, getUnsettledCompletedTrips, updateTripFinancials,
-  logStopDelay, confirmEvidenceTime, bulkImportTrips, updateTripStop, updateTripStopsRoute, getMonthlyTripBoard, shareTripMediaToWhatsApp
+  bulkDeleteTrips, bulkUpdateTripStatus, bulkAssignTrips, getUnsettledCompletedTrips, updateTripFinancials, reviewTripCharges,
+  logStopDelay, confirmEvidenceTime, confirmTripTimes, bulkImportTrips, updateTripStop, pinStop, updateTripStopsRoute, getMonthlyTripBoard, shareTripMediaToWhatsApp
 } from '../controllers/tripController';
 import { exportTrips } from '../controllers/tripExportController';
+import { getTripTrackingLink, getTripTrackingLinks, trackingLinkBody, trackingLinksBody } from '../controllers/trackingController';
+import { idParam } from '../schemas';
+import { getTripDriverTrail } from '../controllers/driverPhoneController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 import { validate } from '../middlewares/validate';
-import { createTripBody, listQuery, logStopDelayBody, confirmEvidenceTimeBody, bulkImportTripsBody, updateTripStopBody, updateTripStopsRouteBody } from '../schemas';
+import { createTripBody, listQuery, logStopDelayBody, confirmEvidenceTimeBody, confirmTripTimesBody, bulkImportTripsBody, updateTripStopBody, updateTripStopsRouteBody, pinBody, reviewTripChargesBody } from '../schemas';
 
 import { getDriverRecommendations, getVehicleRecommendations } from '../controllers/fleetDispatchController';
 
@@ -26,6 +29,8 @@ router.get('/monthly', getMonthlyTripBoard);
 router.post('/bulk-delete', bulkDeleteTrips);
 router.post('/bulk-update-status', bulkUpdateTripStatus);
 router.post('/bulk-assign', bulkAssignTrips);
+// Customer tracking links for several trips at once (trip list share).
+router.post('/tracking-links', validate({ body: trackingLinksBody }), getTripTrackingLinks);
 router.post('/bulk-import', validate({ body: bulkImportTripsBody }), bulkImportTrips);
 
 
@@ -34,8 +39,11 @@ router.get('/', validate({ query: listQuery }), getTrips);
 router.get('/export', exportTrips);
 router.post('/', validate({ body: createTripBody }), createTrip);
 router.get('/:id', getTripById);
+// What the driver was sent for this trip, whether it reached the phone, and what they did.
+router.get('/:id/driver-trail', getTripDriverTrail);
 router.patch('/:id/status', updateTripStatus);
 router.patch('/:id/financials', updateTripFinancials);
+router.post('/:id/charge-review', validate({ body: reviewTripChargesBody }), reviewTripCharges);
 
 // Phase 1: Dispatch & Assignment
 router.post('/:id/dispatch', dispatchTrip);
@@ -47,6 +55,8 @@ router.patch('/:id/stops/:stopId/delay', validate({ body: logStopDelayBody }), l
 // Confirm/correct the real time an EXTERNAL_APP evidence screenshot happened
 // at. No frozen-trip restriction — see confirmEvidenceTime's own comment.
 router.patch('/:id/stops/:stopId/confirm-time', validate({ body: confirmEvidenceTimeBody }), confirmEvidenceTime);
+// Same, for every stop of the trip at once (customer apps show all stops on one screen).
+router.patch('/:id/confirm-times', validate({ body: confirmTripTimesBody }), confirmTripTimes);
 
 router.put('/:id/stops', validate({ body: updateTripStopsRouteBody }), updateTripStopsRoute);
 
@@ -54,6 +64,8 @@ router.put('/:id/stops', validate({ body: updateTripStopsRouteBody }), updateTri
 // the trip is still running — a wrong address is exactly what needs fixing
 // mid-trip — and refused once it's completed, invoiced or cancelled.
 router.patch('/:id/stops/:stopId', validate({ body: updateTripStopBody }), updateTripStop);
+// Pin a stop exactly (and its customer location + other open trips going there).
+router.post('/:id/stops/:stopId/pin', validate({ body: pinBody }), pinStop);
 
 // Phase 2: Driver Workflow
 router.post('/:id/pickup/arrive', pickupArrive);
@@ -62,6 +74,8 @@ router.post('/:id/delivery/verify', deliveryVerify);
 
 // Phase 3: Operator WhatsApp Media Dispatch
 router.post('/:id/share-whatsapp', shareTripMediaToWhatsApp);
+// The customer tracking link for this trip (created on first ask; renew issues a new one).
+router.post('/:id/tracking-link', validate({ params: idParam, body: trackingLinkBody }), getTripTrackingLink);
 
 export default router;
 
