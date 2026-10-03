@@ -116,14 +116,14 @@ export default function LoginPage() {
 
   return (
     <div
-      className="min-h-[100dvh] bg-[#eceef0] px-3 py-3 sm:grid sm:place-items-center sm:px-6 sm:py-6"
+      className="min-h-[100dvh] bg-white sm:grid sm:bg-[#eceef0] sm:place-items-center sm:px-6 sm:py-6"
       style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif", colorScheme: 'light' }}
     >
-      <div className="mx-auto grid w-full max-w-[1180px] grid-cols-1 rounded-[24px] bg-white p-2 shadow-[0_24px_70px_-28px_rgba(45,43,44,0.28)] sm:rounded-[28px] sm:p-2.5 lg:min-h-[min(700px,calc(100dvh-48px))] lg:grid-cols-[1.05fr_1fr]">
+      <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1180px] grid-cols-1 bg-white sm:min-h-0 sm:rounded-[28px] sm:p-2.5 sm:shadow-[0_24px_70px_-28px_rgba(45,43,44,0.28)] lg:min-h-[min(700px,calc(100dvh-48px))] lg:grid-cols-[1.05fr_1fr]">
         {/* ── The scene: a Saudi road at dusk ── */}
         <section
           aria-label="MERCON Logistics"
-          className="relative h-44 overflow-hidden rounded-[18px] text-white sm:h-60 lg:h-auto lg:min-h-[560px] lg:rounded-[20px] [@media(max-height:560px)_and_(orientation:landscape)]:hidden"
+          className="relative hidden h-60 overflow-hidden rounded-[18px] text-white sm:block lg:h-auto lg:min-h-[560px] lg:rounded-[20px] [@media(max-height:560px)_and_(orientation:landscape)]:hidden"
           style={{ background: 'linear-gradient(180deg,#1c1a1b 0%,#2d2b2c 34%,#6b3a33 58%,#e8714c 76%,#3a2722 86%,#221b1b 100%)' }}
         >
           <div
@@ -151,7 +151,7 @@ export default function LoginPage() {
         </section>
 
         {/* ── The form ── */}
-        <main className="flex flex-col px-3 pb-4 pt-5 sm:px-8 sm:pb-6 sm:pt-7 lg:px-11 lg:pb-6 lg:pt-7">
+        <main className="flex flex-col px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.5rem,env(safe-area-inset-top))] sm:px-8 sm:pb-6 sm:pt-7 lg:px-11 lg:pb-6 lg:pt-7">
           <div className="flex items-center justify-between">
             <img src="/mercon-mark.webp" alt="MERCON" className="h-9 w-auto sm:h-10" />
             {isTestSite() && (
