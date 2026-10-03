@@ -27,8 +27,9 @@ export const login = async (req: Request, res: Response) => {
     const user = await prisma.user.findFirst({
       where: {
         OR: [
-          { username: identifier },
-          { email: identifier },
+          // People type "Admin" for "admin" — usernames and emails match regardless of case.
+          { username: { equals: identifier, mode: 'insensitive' } },
+          { email: { equals: identifier, mode: 'insensitive' } },
           ...phoneVariants.map((p) => ({ phone: p })),
         ],
       },
