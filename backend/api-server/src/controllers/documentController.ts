@@ -517,7 +517,7 @@ export const getOwnerFolders = async (req: Request, res: Response) => {
       ownerType === 'Driver'
         ? prisma.driver.findMany({
             where: { deletedAt: null },
-            select: { id: true, first_name: true, last_name: true, ref_id: true, assignedVehicle: { select: { plate_number: true, ref_id: true } } },
+            select: { id: true, first_name: true, last_name: true, ref_id: true, avatar_url: true, assignedVehicle: { select: { plate_number: true, ref_id: true } } },
             orderBy: { first_name: 'asc' },
           })
         : prisma.vehicle.findMany({

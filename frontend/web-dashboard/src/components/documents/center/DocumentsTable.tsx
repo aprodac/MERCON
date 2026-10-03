@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Download, Eye, FileText, Lock, MoreHorizontal,
+  ArrowDown, ArrowUp, Download, Eye, FileText, Lock, MoreHorizontal,
   Plus, RotateCcw, Trash2, ExternalLink, Truck, User as UserIcon, Building2,
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { formatDocDate, resolveFileUrl } from '@/lib/documents';
 import { ROW_STATE_STYLE, VERIFICATION_STYLE, relativeExpiry, daysUntilPurge, type RowState } from '@/lib/documentLibrary';
 import type { DocStatus } from '@/services/documentService';
+import Pager from '@/components/documents/center/Pager';
 
 export interface DocTableRow {
   /** Document id, or `missing:<ownerId>:<typeId>` for a mandatory slot with nothing uploaded. */
@@ -38,7 +39,7 @@ export interface DocTableRow {
 
 type SortKey = 'document' | 'owner' | 'expiry' | 'uploaded';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZES = [20, 50, 100];
 
 const OWNER_ICON: Record<string, React.ElementType> = { Vehicle: Truck, Driver: UserIcon };
 
@@ -66,6 +67,7 @@ export default function DocumentsTable({
     mode === 'deleted' ? { key: 'uploaded', dir: -1 } : { key: 'expiry', dir: 1 },
   );
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
 
   useEffect(() => setPage(1), [rows]);
 
@@ -85,8 +87,7 @@ export default function DocumentsTable({
     });
   }, [rows, sort, mode]);
 
-  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  const pageRows = sorted.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const pageRows = sorted.slice((page - 1) * pageSize, page * pageSize);
 
   const selectableIds = useMemo(() => rows.map((r) => r.docId).filter((id): id is string => !!id), [rows]);
   const selectedHere = selectableIds.filter((id) => selected.has(id)).length;
@@ -290,22 +291,16 @@ export default function DocumentsTable({
           </tbody>
         </table>
       </div>
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between px-3 py-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500">
-          <span>
-            {(page - 1) * PAGE_SIZE + 1}–{Math.min(sorted.length, page * PAGE_SIZE)} of {sorted.length}
-          </span>
-          <div className="flex items-center gap-1">
-            <Button size="icon" variant="ghost" className="h-7 w-7" disabled={page === 1} onClick={() => setPage((p) => p - 1)} aria-label="Previous page">
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </Button>
-            <span className="px-1 font-semibold text-slate-700 dark:text-slate-300">{page} / {totalPages}</span>
-            <Button size="icon" variant="ghost" className="h-7 w-7" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)} aria-label="Next page">
-              <ChevronRight className="w-3.5 h-3.5" />
-            </Button>
-          </div>
-        </div>
-      )}
+      <Pager
+        page={page}
+        pageSize={pageSize}
+        total={sorted.length}
+        noun="documents"
+        pageSizes={PAGE_SIZES}
+        onPageChange={setPage}
+        onPageSizeChange={(n) => { setPageSize(n); setPage(1); }}
+        className="px-3 py-2 border-t border-slate-100 dark:border-slate-800"
+      />
     </div>
   );
 }
