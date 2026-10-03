@@ -6,6 +6,10 @@ import { prisma } from '../db';
 import { env } from '../config/env';
 import { recordDriverActivity } from '../services/driverPhone/activity';
 
+export function normalizeLicense(value: string): string {
+  return value.replace(/[\s\-_.\/]/g, '').toUpperCase();
+}
+
 export const mobileLogin = async (req: Request, res: Response) => {
   const { phone_primary, password, license_number } = req.body;
 
@@ -63,9 +67,10 @@ export const mobileLogin = async (req: Request, res: Response) => {
       }
     }
 
-    // Fallback to license number if password not provided or password failed and license match allowed
-    if (!isValid && license_number) {
-      isValid = driver.license_number === license_number;
+    // Fallback to license number if password not provided or password failed and license match allowed.
+    // Drivers type it by hand: ignore case, spaces and dashes ("ab-12 34" matches "AB1234").
+    if (!isValid && license_number && driver.license_number) {
+      isValid = normalizeLicense(driver.license_number) === normalizeLicense(String(license_number));
     }
 
     if (!isValid) {

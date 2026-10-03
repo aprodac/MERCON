@@ -26,7 +26,7 @@ const CLIENT_PROFILES = {
     icon: '../shared/assets/images/driver-icon.png',
     splashImage: '../shared/assets/images/merconclosed.png',
     androidAdaptiveForeground: '../shared/assets/images/driver-adaptive-icon.png',
-    androidAdaptiveBackground: '../shared/assets/images/android-icon-background.png',
+    androidAdaptiveBackground: '../shared/assets/images/driver-icon-background.png',
     androidAdaptiveMonochrome: '../shared/assets/images/android-icon-monochrome.png',
     favicon: '../shared/assets/images/favicon.png',
     // Android draws the push icon from its transparency only — a full-colour
@@ -77,6 +77,10 @@ export default (): ExpoConfig => ({
   userInterfaceStyle: 'light',
   ios: {
     bundleIdentifier: client.iosBundleIdentifier,
+    // Apple team the app is signed with (Ilan Usman's account today; change it
+    // when the apps move to the organisation account). Prebuild writes it into
+    // ios/, so a regenerated project can still be archived without opening Xcode.
+    appleTeamId: 'Z83Y9VJTKH',
     buildNumber: String(buildNumber),
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
