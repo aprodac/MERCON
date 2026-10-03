@@ -5,10 +5,12 @@ import {
   buildBookings,
   buildGroups,
   dayCellState,
+  displayPlace,
   driverDayKey,
   isDoubleBooked,
   isOverdue,
   otherBookings,
+  slotOf,
   totalsOf,
 } from './monthlyGrid';
 
@@ -84,9 +86,33 @@ describe('monthly grid', () => {
     const cancelled = trip({ id: 'z', status: 'Cancelled' });
     const index = buildBookings([company('1', [a, other]), company('2', [b, cancelled])]);
 
-    expect(isDoubleBooked(index, a)).toBe(true);
-    expect(isDoubleBooked(index, other)).toBe(false);
-    expect(otherBookings(index, driverDayKey('d1', a.date), 'a').map((x) => x.tripId)).toEqual(['b']);
+    expect(isDoubleBooked(index, '1', a)).toBe(true);
+    expect(isDoubleBooked(index, '1', other)).toBe(false);
+    expect(otherBookings(index, driverDayKey('d1', a.date), slotOf('1', a)).map((x) => x.tripId)).toEqual(['b']);
+  });
+
+  it('does not flag several runs of the same line on one day', () => {
+    const runs = [trip({ id: 'a' }), trip({ id: 'b' }), trip({ id: 'c' })];
+    const index = buildBookings([company('1', runs)]);
+    expect(runs.some((t) => isDoubleBooked(index, '1', t))).toBe(false);
+  });
+
+  it('uses planned times when both trips have them', () => {
+    const at = (id: string, start: string, end: string, origin = 'RUH — Riyadh') =>
+      trip({ id, origin, planned_start: `2026-10-05T${start}:00Z`, planned_end: `2026-10-05T${end}:00Z` });
+    const morning = at('a', '06:00', '09:00');
+    const overlap = at('b', '08:00', '11:00');
+    const afternoon = at('c', '13:00', '16:00', 'DMM — Dammam');
+    const index = buildBookings([company('1', [morning, afternoon]), company('2', [overlap])]);
+
+    expect(isDoubleBooked(index, '1', morning)).toBe(true);
+    // Different route but no overlap in time: fine.
+    expect(isDoubleBooked(index, '1', afternoon)).toBe(false);
+  });
+
+  it('title-cases lowercase place names only', () => {
+    expect(displayPlace('khamis mushayt')).toBe('Khamis Mushayt');
+    expect(displayPlace('JED DC')).toBe('JED DC');
   });
 
   it('groups a company month by route, truck class, line type and rate', () => {
