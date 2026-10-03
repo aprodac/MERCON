@@ -53,7 +53,7 @@ function makerFamily(): MakerFamily {
 const MAKER_STEPS: Record<MakerFamily, { key: string; en: string }> = {
   oppo: {
     key: 'setup_maker_oppo',
-    en: 'Tap "Open app settings" → Battery usage → turn ON "Allow background activity" and "Allow auto launch".',
+    en: 'Tap "Open app settings" → Battery usage → turn ON "Allow background activity" and "Allow auto startup" (may be called "Allow auto launch").',
   },
   xiaomi: {
     key: 'setup_maker_xiaomi',

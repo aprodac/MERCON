@@ -130,6 +130,7 @@ let sending: Promise<void> = Promise.resolve();
 function sendPoints(fresh: QueuedPoint[]): Promise<void> {
   sending = sending.then(async () => {
     const pending = [...(await readQueue()), ...fresh];
+    const ended = new Set<string>();
     let sent = 0;
     for (const p of pending) {
       const { tripId, ...body } = p;
@@ -140,13 +141,60 @@ function sendPoints(fresh: QueuedPoint[]): Promise<void> {
         const status = err?.response?.status;
         // 4xx: the server will never take this point (trip finished, not this
         // driver's, bad fix) — drop it rather than retry it forever.
-        if (status >= 400 && status < 500) { sent++; continue; }
+        if (status >= 400 && status < 500) {
+          if (tripEndedFor(err)) ended.add(tripId);
+          sent++;
+          continue;
+        }
         break;
       }
     }
     await writeQueue(pending.slice(sent));
+    // The trip being shared was given to another driver or ended: stop here,
+    // also when the app is closed. Seen on a real phone: after "Change
+    // driver" the old driver's phone kept sharing until the app's next clean
+    // "no trip" answer, which did not come.
+    const active = await SecureStore.getItemAsync(ACTIVE_TRIP_KEY).catch(() => null);
+    if (active && ended.has(active)) void endTracking(active);
   }).catch(() => {});
   return sending;
+}
+
+/** The server's answer meaning "this trip is no longer yours to report on". */
+function tripEndedFor(err: any): boolean {
+  const status = err?.response?.status;
+  const code = err?.response?.data?.error?.code;
+  const message = String(err?.response?.data?.error?.message ?? '');
+  return (
+    status === 404 ||
+    code === 'TRIP_NOT_ASSIGNED' ||
+    code === 'TRIP_CLOSED' ||
+    message.startsWith('Cannot record location for trip in state') // servers before the codes
+  );
+}
+
+/** Stops the service without flushing the queue (safe to call from inside sendPoints). */
+async function endTracking(tripId: string): Promise<void> {
+  try {
+    if ((await SecureStore.getItemAsync(ACTIVE_TRIP_KEY)) !== tripId) return;
+    startedThisRun = false;
+    await SecureStore.deleteItemAsync(ACTIVE_TRIP_KEY);
+    if (await Location.hasStartedLocationUpdatesAsync(TRIP_LOCATION_TASK).catch(() => false)) {
+      await Location.stopLocationUpdatesAsync(TRIP_LOCATION_TASK);
+    }
+  } catch (err) {
+    console.warn('[TripLocation] Could not stop trip tracking:', err);
+  }
+}
+
+/**
+ * Stops sharing if `tripId` is the trip being shared — for a "Trip
+ * Reassigned" / "Trip Cancelled" alert, so the phone does not wait for the
+ * next rejected point.
+ */
+export async function stopTripTrackingFor(tripId: string | null | undefined): Promise<void> {
+  if (!tripId || !isBackgroundTrackingAvailable()) return;
+  await endTracking(tripId);
 }
 
 if (isBackgroundTrackingAvailable()) {
