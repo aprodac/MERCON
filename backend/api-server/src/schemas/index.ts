@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+/** Heaviest payload a truck in this fleet can carry (40 ft trailer ≈ 30 t) — anything above is a typo. */
+const MAX_PAYLOAD_KG = 60000;
+const MAX_PAYLOAD_MSG = 'Payload is in kilograms and can be at most 60,000 (e.g. 20000 for a 20-ton truck).';
+
 /* ─── Shared building blocks ─────────────────────────────────────────────── */
 
 /** A required, trimmed, non-empty string. Safely coerces numbers to strings in Excel imports. */
@@ -338,7 +342,7 @@ export const bulkImportVehiclesBody = z.object({
     asset_type: z.preprocess(normaliseAssetType, z.enum(['Flatbed', 'Reefer', 'Box', 'Tanker'], {
       message: 'Asset type must be Flatbed, Reefer, Box or Tanker',
     })),
-    capacity_kg: coercedNumber(z.number().int().positive('Capacity must be a positive whole number')),
+    capacity_kg: coercedNumber(z.number().int().positive('Capacity must be a positive whole number').max(MAX_PAYLOAD_KG, MAX_PAYLOAD_MSG)),
     current_odometer: coercedNumber(z.number().min(0).optional()),
     icces_device_id: safeImportString(z.string().trim().max(64).optional()),
     trailer_number: saudiTrailerPlateSchema,
@@ -567,7 +571,7 @@ export const updateCustomerBody = z.object({
 export const createVehicleBody = z.object({
   plate_number: saudiPlateSchema,
   asset_type: z.enum(['Flatbed', 'Reefer', 'Box', 'Tanker']),
-  capacity_kg: z.coerce.number().int().positive('Capacity must be a whole number of kg'),
+  capacity_kg: z.coerce.number().int().positive('Capacity must be a whole number of kg').max(MAX_PAYLOAD_KG, MAX_PAYLOAD_MSG),
   trailer_number: saudiTrailerPlateSchema,
   trailer_type: z.enum(['Flatbed', 'Reefer', 'Box', 'Tanker']).optional().nullable(),
   trailer_capacity_kg: z.coerce.number().int().positive().optional().nullable(),
@@ -578,7 +582,7 @@ export const createVehicleBody = z.object({
 export const updateVehicleBody = z.object({
   plate_number: saudiPlateSchema.optional(),
   asset_type: z.enum(['Flatbed', 'Reefer', 'Box', 'Tanker']).optional(),
-  capacity_kg: z.coerce.number().int().positive().optional(),
+  capacity_kg: z.coerce.number().int().positive().max(MAX_PAYLOAD_KG, MAX_PAYLOAD_MSG).optional(),
   current_odometer: z.coerce.number().min(0).optional(),
   trailer_number: saudiTrailerPlateSchema,
   trailer_type: z.enum(['Flatbed', 'Reefer', 'Box', 'Tanker']).optional().nullable(),

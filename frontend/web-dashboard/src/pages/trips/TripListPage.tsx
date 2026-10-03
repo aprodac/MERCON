@@ -735,7 +735,7 @@ export default function TripListPage() {
       });
 
       if (targetStatus === 'Completed') {
-        setSettlementModalTrip(updated || { ...trip, status: 'Completed' });
+        setSettlementModalTrip({ ...trip, ...(updated || {}), status: 'Completed' } as Trip);
       }
     } catch (e: any) {
       // Revert the local override on error so the card snaps back to its correct column
@@ -934,6 +934,8 @@ export default function TripListPage() {
       customer_id: selectedCustomerId !== 'All' ? selectedCustomerId : undefined,
       driver_id: selectedDriverId !== 'All' ? selectedDriverId : undefined,
       date_filter: dateFilter === 'All' || dateFilter === 'Custom' ? undefined : dateFilter,
+      // "Last 3 days" etc. still lists unfinished trips from earlier — they need action.
+      include_open: dateFilter !== 'All' && dateFilter !== 'Custom' ? true : undefined,
       start_date: startDateStr,
       end_date: endDateStr,
       search: debouncedSearch || undefined,
@@ -1257,7 +1259,7 @@ export default function TripListPage() {
       toast.success('Trip status updated successfully');
 
       if (targetStatus === 'Completed') {
-        setSettlementModalTrip(updated || { ...targetTrip, status: 'Completed' });
+        setSettlementModalTrip({ ...targetTrip, ...(updated || {}), status: 'Completed' } as Trip);
       }
     } catch (e: any) {
       toast.error(e?.response?.data?.error?.message || 'Failed to update trip status');

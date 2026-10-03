@@ -60,20 +60,21 @@ export async function restoreTrashItem(req: Request, res: Response) {
     }
     switch (type) {
       case 'Customer':
-        await prisma.customer.update({ where: { id }, data: { deletedAt: null } });
+        await prisma.customer.update({ where: { id }, data: { deletedAt: null, deleted_by: null, isActive: true } });
         break;
       case 'Driver':
-        await prisma.driver.update({ where: { id }, data: { deletedAt: null } });
+        // Deleting set them Inactive; a restored driver is back in the roster.
+        await prisma.driver.update({ where: { id }, data: { deletedAt: null, deleted_by: null, isActive: true, status: 'Available' } });
         break;
       case 'Vehicle':
-        await prisma.vehicle.update({ where: { id }, data: { deletedAt: null } });
+        await prisma.vehicle.update({ where: { id }, data: { deletedAt: null, deleted_by: null, isActive: true, status: 'Available' } });
         break;
       case 'Trip': {
         const existingTrip = await prisma.trip.findUnique({ where: { id }, select: { ref_id: true } });
         let restoredRefId = existingTrip?.ref_id;
         if (!restoredRefId || restoredRefId.startsWith('TRP-DEL-')) {
           restoredRefId = await generateRefId('TRP', () =>
-            prisma.trip.findMany({ where: { deletedAt: null }, select: { ref_id: true } }));
+            prisma.trip.findMany({ select: { ref_id: true } }), { keepDeletedNumbers: true });
         }
         await prisma.trip.update({
           where: { id },

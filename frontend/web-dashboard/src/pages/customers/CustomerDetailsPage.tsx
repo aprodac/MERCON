@@ -125,9 +125,11 @@ export default function CustomerDetailsPage() {
     try {
       await customerService.delete(id!);
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      toast.success(`${customer?.name ?? 'Customer'} moved to the Recycle bin`);
       navigate('/customers');
-    } catch {
-      toast.error('Failed to delete customer account.');
+    } catch (err: any) {
+      setIsDeleteModalOpen(false);
+      toast.error(err?.response?.data?.error?.message || "Couldn't delete this customer.");
     }
   };
 
@@ -436,7 +438,7 @@ export default function CustomerDetailsPage() {
           <DialogHeader className="px-6 pt-6 pb-2">
             <DialogTitle className="text-base font-semibold">Delete {customer.name}?</DialogTitle>
             <DialogDescription className="text-[13px] text-slate-500">
-              Their trips and invoices stay, marked as from a deleted customer.
+              Their past trips, quotations and invoices stay. You can restore them from Settings → Recycle bin.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex justify-end gap-2 px-6 pt-2 pb-5">

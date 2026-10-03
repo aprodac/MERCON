@@ -67,7 +67,7 @@ export default function EditCustomerPage() {
     whatsapp_number: '',
     whatsapp_group_link: '',
     whatsapp_group_name: '',
-    payment_terms: 'Net 30 Days',
+    payment_terms: '',
     driver_workflow: 'NATIVE' as 'NATIVE' | 'EXTERNAL_APP',
     isActive: true,
   });
@@ -84,7 +84,7 @@ export default function EditCustomerPage() {
         whatsapp_number: customer.whatsapp_number || '',
         whatsapp_group_link: customer.whatsapp_group_link || '',
         whatsapp_group_name: customer.whatsapp_group_name || '',
-        payment_terms: customer.payment_terms || 'Net 30 Days',
+        payment_terms: customer.payment_terms || '',
         driver_workflow: customer.driver_workflow || 'NATIVE',
         isActive: customer.isActive ?? true,
       });
@@ -181,7 +181,7 @@ export default function EditCustomerPage() {
         whatsapp_number: customer.whatsapp_number || '',
         whatsapp_group_link: customer.whatsapp_group_link || '',
         whatsapp_group_name: customer.whatsapp_group_name || '',
-        payment_terms: customer.payment_terms || 'Net 30 Days',
+        payment_terms: customer.payment_terms || '',
         driver_workflow: customer.driver_workflow || 'NATIVE',
         isActive: customer.isActive ?? true,
       });
@@ -387,7 +387,7 @@ export default function EditCustomerPage() {
                         onValueChange={(val) => handleChange('payment_terms', val)}
                       >
                         <SelectTrigger id="payment_terms" className="h-8 text-xs">
-                          <SelectValue placeholder="Select terms" />
+                          <SelectValue placeholder="Not set" />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="Net 15 Days">Net 15 Days</SelectItem>

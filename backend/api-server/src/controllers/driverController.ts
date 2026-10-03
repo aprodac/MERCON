@@ -565,7 +565,7 @@ export const updateDriver = async (req: Request, res: Response) => {
 export const deleteDriver = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
-    const { password } = req.body;
+    const { password } = req.body || {};
 
     if (!password) {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Password is required to confirm deletion' } });

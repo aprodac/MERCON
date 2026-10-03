@@ -39,7 +39,7 @@ import VehicleImageUploader from '@/components/ui/VehicleImageUploader';
 const EMPTY_FORM = {
   plate_number: '',
   asset_type: 'Flatbed' as AssetType,
-  capacity_kg: '20000',
+  capacity_kg: '',
   trailer_number: '',
   trailer_type: 'Flatbed' as AssetType,
   trailer_capacity_kg: '',
@@ -151,7 +151,7 @@ export default function AddVehiclePage() {
   const isPlateValid = validateSaudiPlate(formData.plate_number);
   const isTrailerValid = !hasTrailer || validateSaudiPlate(formData.trailer_number);
 
-  const isFormValid = isPlateValid && tractorCap > 0 && isTrailerValid;
+  const isFormValid = isPlateValid && tractorCap > 0 && tractorCap <= 60000 && isTrailerValid;
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -160,6 +160,7 @@ export default function AddVehiclePage() {
     if (!formData.plate_number.trim()) return setError('Plate number is required');
     if (!isPlateValid) return setError('Invalid vehicle plate number (e.g. DRA-6484 or 1234 ABC).');
     if (!formData.capacity_kg || tractorCap <= 0) return setError('Valid tractor capacity (kg) is required');
+    if (tractorCap > 60000) return setError('Payload is in kilograms and can be at most 60,000 (e.g. 20000 for a 20-ton truck).');
     if (hasTrailer && !formData.trailer_number.trim()) return setError('Trailer plate number is required when a trailer is attached');
     if (hasTrailer && !isTrailerValid) return setError('Invalid trailer plate number.');
 

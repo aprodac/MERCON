@@ -55,11 +55,17 @@ export default function CreateCustomerModal({ isOpen, onClose, onSuccess }: Crea
       setError('Company / Customer name is required');
       return;
     }
+    // The customer record needs a phone (drivers and the office call it); it
+    // used to be saved as the text "N/A", which showed dead call buttons.
+    if (contactPhone.replace(/\D/g, '').length < 6) {
+      setError('Contact phone is required');
+      return;
+    }
     setError(null);
 
     createMutation.mutate({
       name: name.trim(),
-      contact_phone: contactPhone.trim() || 'N/A',
+      contact_phone: contactPhone.trim(),
       primary_contact_person: primaryContactPerson.trim() || undefined,
       whatsapp_group_link: whatsappGroupLink.trim() || undefined,
       driver_workflow: driverWorkflow,

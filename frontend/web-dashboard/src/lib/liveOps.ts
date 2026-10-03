@@ -15,7 +15,7 @@ export const OPS_TABS: { id: OpsTab; label: string }[] = [
   { id: 'attention', label: 'Attention' },
   { id: 'scheduled', label: 'Scheduled' },
   { id: 'fleet', label: 'Fleet' },
-  { id: 'done', label: 'Done today' },
+  { id: 'done', label: 'Done' },
 ];
 
 export const ACTIVE_STATUSES = ['Loading', 'InTransit', 'Delayed'] as const;

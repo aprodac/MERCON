@@ -1,3 +1,4 @@
+import { getValidUuid } from '../utils/uuid';
 import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { buildSearchAnd } from '../utils/search';
@@ -415,27 +416,33 @@ export const updateCustomer = async (req: Request, res: Response) => {
 export const deleteCustomer = async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
-    const tripCount = await prisma.trip.count({ where: { customerId: id } });
+    const customer = await prisma.customer.findFirst({ where: { id, deletedAt: null } });
+    if (!customer) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Customer not found' } });
+    }
 
-    if (tripCount > 0) {
+    // Trips still on the road or booked can't lose their customer.
+    const openTrips = await prisma.trip.count({
+      where: { customerId: id, deletedAt: null, status: { in: ['Draft', 'Scheduled', 'Loading', 'InTransit', 'Delayed'] as any } },
+    });
+    if (openTrips > 0) {
       return res.status(409).json({
         success: false,
         error: {
           code: 'CUSTOMER_IN_USE',
-          message: `Cannot delete customer because they have ${tripCount} trip(s) linked.`
-        }
+          message: `${customer.name} has ${openTrips} open trip${openTrips === 1 ? '' : 's'}. Finish or cancel ${openTrips === 1 ? 'it' : 'them'} first.`,
+        },
       });
     }
 
-    // Hard delete associated non-operational items like locations & surcharge rules, then the customer
-    await prisma.$transaction([
-      prisma.surchargeRule.deleteMany({ where: { customerId: id } }),
-      prisma.location.deleteMany({ where: { customerId: id } }),
-      prisma.reportTemplate.deleteMany({ where: { customerId: id } }),
-      prisma.customer.delete({ where: { id } })
-    ]);
+    // Soft delete, like trips: finished trips, quotations and locations stay
+    // linked, and the Recycle bin can restore it (or delete it for good).
+    await prisma.customer.update({
+      where: { id },
+      data: { deletedAt: new Date(), deleted_by: getValidUuid((req as any).user?.id), isActive: false },
+    });
 
-    res.json({ success: true, data: { message: 'Customer permanently deleted successfully' } });
+    res.json({ success: true, data: { message: `${customer.name} moved to the Recycle bin` } });
   } catch (error) {
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to delete customer' } });
   }

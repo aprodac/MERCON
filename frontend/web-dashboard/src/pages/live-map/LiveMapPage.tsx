@@ -86,7 +86,7 @@ function confirmCopy(trip: Trip, to: string): { title: string; message: string; 
   if (to === 'Completed') {
     return {
       title: `Complete ${trip.ref_id}?`,
-      message: 'This closes the trip and generates its invoice. You can add extra charges straight after.',
+      message: 'This closes the trip and frees the driver and truck. You can add extra charges straight after.',
       label: 'Mark completed',
       destructive: false,
     };
@@ -404,7 +404,8 @@ export default function LiveMapPage() {
     },
     onSuccess: (updated, { trip, status }) => {
       toast.success(`${trip.ref_id} → ${STATUS_LABEL[status] ?? status}`);
-      if (status === 'Completed') setSettlementTrip(updated ?? { ...trip, status });
+      // The status reply has no customer / driver / truck — keep the ones the card already has.
+      if (status === 'Completed') setSettlementTrip({ ...trip, ...(updated ?? {}), status } as Trip);
     },
     onError: (err: unknown, { trip }, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(['live-ops-trips', 'open'], ctx.prev);

@@ -412,7 +412,8 @@ export function CustomerAvatar({ name, logo, size = 'md' }: { name: string; logo
 
 /** Phone number in body type with call / WhatsApp shortcuts. */
 export function PhoneLine({ phone, className }: { phone?: string | null; className?: string }) {
-  if (!phone?.trim()) return null;
+  // No number, or a placeholder like "N/A": nothing to show or call.
+  if (!phone?.trim() || phone.replace(/\D/g, '').length < 6) return null;
   const { country, nationalNumber } = parsePhoneNumber(phone);
   const shown = `${country.dialCode} ${nationalNumber}`.trim();
   const digits = phone.replace(/[^0-9+]/g, '');

@@ -148,15 +148,16 @@ export default function CustomerListPage() {
     setConfirm({
       open: true,
       title: rows.length === 1 ? 'Delete customer?' : `Delete ${rows.length} customers?`,
-      message: `${rows.length === 1 ? rows[0].name : `These ${rows.length} customers`} will be removed. Their trips and invoices stay, marked as from a deleted customer.`,
+      message: `${rows.length === 1 ? rows[0].name : `These ${rows.length} customers`} will be removed. Their past trips, quotations and invoices stay. You can restore them from Settings → Recycle bin.`,
       onConfirm: async () => {
         try {
           await Promise.all(rows.map((c) => customerService.delete(c.id)));
           queryClient.invalidateQueries({ queryKey: ['customers'] });
           setSelected(new Set());
           toast.success(rows.length === 1 ? 'Customer deleted' : `${rows.length} customers deleted`);
-        } catch {
-          toast.error('Failed to delete customer');
+        } catch (err: any) {
+          queryClient.invalidateQueries({ queryKey: ['customers'] });
+          toast.error(err?.response?.data?.error?.message || "Couldn't delete the customer.");
         }
       },
     });

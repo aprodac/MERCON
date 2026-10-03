@@ -1,3 +1,4 @@
+import { getValidUuid } from '../utils/uuid';
 import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { DOCUMENT_LIST_SELECT, DOCUMENT_FILES_SELECT } from '../utils/documentSelect';
@@ -600,7 +601,19 @@ export const createVehicle = async (req: Request, res: Response) => {
     res.status(201).json({ success: true, data: vehicle });
   } catch (error: any) {
     if (error.code === 'P2002') {
-      return res.status(400).json({ success: false, error: { code: 'DUPLICATE', message: 'Plate number already exists' } });
+      const plate = String(req.body?.plate_number || '').trim();
+      const deleted = plate
+        ? await prisma.vehicle.findFirst({ where: { plate_number: { equals: plate, mode: 'insensitive' }, deletedAt: { not: null } }, select: { id: true } })
+        : null;
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'DUPLICATE',
+          message: deleted
+            ? `Plate ${plate} belongs to a deleted truck. Restore it from Settings → Recycle bin.`
+            : 'Plate number already exists',
+        },
+      });
     }
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to create vehicle' } });
   }
@@ -628,6 +641,15 @@ export const updateVehicle = async (req: Request, res: Response) => {
   }
 };
 
+/** Recycle-bin delete: hidden everywhere, history kept, drivers no longer default to it. */
+async function softDeleteVehicles(ids: string[], userId: string | null) {
+  await prisma.$transaction([
+    prisma.driverVehicleAssignment.updateMany({ where: { vehicleId: { in: ids }, isActive: true }, data: { isActive: false, effectiveTo: new Date() } }),
+    prisma.driver.updateMany({ where: { assignedVehicleId: { in: ids } }, data: { assignedVehicleId: null } }),
+    prisma.vehicle.updateMany({ where: { id: { in: ids } }, data: { deletedAt: new Date(), deleted_by: userId, isActive: false, status: 'Inactive' } }),
+  ]);
+}
+
 export const deleteVehicle = async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
@@ -648,15 +670,10 @@ export const deleteVehicle = async (req: Request, res: Response) => {
       });
     }
 
-    await prisma.$transaction([
-      prisma.trip.updateMany({ where: { vehicleId: id }, data: { vehicleId: null } }),
-      prisma.expense.updateMany({ where: { vehicleId: id }, data: { vehicleId: null } }),
-      prisma.maintenanceRecord.deleteMany({ where: { vehicleId: id } }),
-      prisma.driverVehicleAssignment.deleteMany({ where: { vehicleId: id } }),
-      prisma.driver.updateMany({ where: { assignedVehicleId: id }, data: { assignedVehicleId: null } }),
-      prisma.vehicle.delete({ where: { id } })
-    ]);
-    res.json({ success: true, data: { message: 'Vehicle permanently deleted successfully' } });
+    // Soft delete: past trips, service history and costs keep their truck,
+    // and the Recycle bin can restore it (or delete it for good).
+    await softDeleteVehicles([id], getValidUuid((req as any).user?.id));
+    res.json({ success: true, data: { message: 'Truck moved to the Recycle bin' } });
   } catch (error) {
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to delete vehicle' } });
   }
@@ -788,14 +805,7 @@ export const bulkDeleteVehicles = async (req: Request, res: Response) => {
     const deletableIds = ids.filter((id: string) => !inUseIds.has(id));
 
     if (deletableIds.length > 0) {
-      await prisma.$transaction([
-        prisma.trip.updateMany({ where: { vehicleId: { in: deletableIds } }, data: { vehicleId: null } }),
-        prisma.expense.updateMany({ where: { vehicleId: { in: deletableIds } }, data: { vehicleId: null } }),
-        prisma.maintenanceRecord.deleteMany({ where: { vehicleId: { in: deletableIds } } }),
-        prisma.driverVehicleAssignment.deleteMany({ where: { vehicleId: { in: deletableIds } } }),
-        prisma.driver.updateMany({ where: { assignedVehicleId: { in: deletableIds } }, data: { assignedVehicleId: null } }),
-        prisma.vehicle.deleteMany({ where: { id: { in: deletableIds } } })
-      ]);
+      await softDeleteVehicles(deletableIds, getValidUuid((req as any).user?.id));
     }
 
     const skippedMessage = inUseIds.size > 0 ? ` ${inUseIds.size} skipped (active trip in progress).` : '';

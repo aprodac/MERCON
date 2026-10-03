@@ -1,3 +1,4 @@
+import { resolveTaxonomyOption } from '@/utils/taxonomyRegistry';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -224,9 +225,12 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
   // Quotation Reference ID (Auto-generated or existing)
   const quotationRefId = useMemo(() => {
     if (isEdit && existingQuotation) {
-      return existingQuotation.agreement_ref || `QT-${existingQuotation.id.substring(0, 8).toUpperCase()}`;
+      const no = (existingQuotation as any).quotation_number;
+      return no != null ? `QT-${no}` : existingQuotation.agreement_ref || `QT-${existingQuotation.id.substring(0, 8).toUpperCase()}`;
     }
-    return `QT-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    // The number is given when it's saved (QT-526 …); a made-up one here
+    // (QT-2026-5527) never matched the saved quotation.
+    return 'New';
   }, [isEdit, existingQuotation]);
 
   // Populate state from existing quotation when editing
@@ -1372,7 +1376,7 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
                           Vehicle: {line.vehicleClass}
                         </Badge>
                         <Badge variant="outline" className="text-[10px] font-semibold">
-                          Line: {line.lineType}
+                          Line: {resolveTaxonomyOption('LINE_TYPE', line.lineType)?.label || line.lineType}
                         </Badge>
                         {line.driverPayout && (
                           <span className="text-slate-600 dark:text-slate-400 font-medium">
