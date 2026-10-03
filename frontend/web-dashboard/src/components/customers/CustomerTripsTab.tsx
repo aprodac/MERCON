@@ -1,14 +1,14 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, MapPinned, Plus, Search, Truck, X } from 'lucide-react';
+import { MapPinned, Plus, Truck } from 'lucide-react';
 import { getLegEndpoints, isRoundTrip, parseTripRouteNodes } from '@mercon/shared-types';
 
 import { tripService, Trip } from '@/services/tripService';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { formatInDeploymentTz, useDeploymentTimezone } from '@/lib/datetime';
 import { cn } from '@/lib/utils';
-import { EmptyBlock, Panel, TripStatusBadge, ui } from '@/components/customers/customerUi';
+import { EmptyRow, Pager, SearchField, Segmented, SkeletonRows, Toolbar, TripStatusBadge, ui } from '@/components/customers/customerUi';
 
 interface CustomerTripsTabProps {
   customerId: string;
@@ -89,123 +89,82 @@ export default function CustomerTripsTab({ customerId, customerName }: CustomerT
   ];
 
   return (
-    <Panel
-      title="Trips"
-      description={`Every trip for ${customerName}${trips.length >= 200 ? ' (latest 200)' : ''}`}
-      icon={Truck}
-      tone="brand"
-      flush
-      action={
-        <button type="button" onClick={() => navigate(`/trips/new?customer_id=${customerId}`)} className={cn(ui.btn, ui.btnPrimary, 'h-8')}>
-          <Plus className="size-4" /> New trip
-        </button>
-      }
-    >
-      <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-5 py-3 dark:border-slate-800">
-        <div className="flex max-w-full items-center gap-1 overflow-x-auto" role="tablist" aria-label="Trip stage">
-          {chips.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              role="tab"
-              aria-selected={filter === c.id}
-              onClick={() => { setFilter(c.id); setPage(1); }}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-[13px] font-medium transition-colors cursor-pointer',
-                filter === c.id ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
-              )}
-            >
-              {c.label}
-              <span className={cn('tabular-nums', filter === c.id ? 'text-white/70 dark:text-slate-500' : 'text-slate-400')}>{counts[c.id]}</span>
-            </button>
-          ))}
+    <section className={cn(ui.card, 'min-w-0 overflow-hidden')}>
+      <Toolbar>
+        <Segmented label="Trip stage" value={filter} onChange={(id) => { setFilter(id); setPage(1); }} options={chips.map((c) => ({ ...c, count: counts[c.id] }))} />
+        <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
+          <SearchField value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Trip, driver, plate, place or AWB" className="flex-1 sm:w-72 sm:flex-none" />
+          <Button size="sm" onClick={() => navigate(`/trips/new?customer_id=${customerId}`)} className={ui.btnSm}>
+            <Plus /> New trip
+          </Button>
         </div>
-        <div className="relative ml-auto w-full sm:w-72">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <Input value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} placeholder="Trip, driver, plate, place or AWB" aria-label="Search trips" className={cn(ui.input, 'w-full pl-9 pr-8')} />
-          {search && (
-            <button type="button" onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700">
-              <X className="size-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
+      </Toolbar>
 
       {isError ? (
-        <div className="p-5"><EmptyBlock icon={Truck} title="Couldn't load trips" text="Try again in a moment." /></div>
-      ) : !isLoading && rows.length === 0 ? (
-        <div className="p-5">
-          <EmptyBlock icon={Truck} title={search || filter !== 'all' ? 'No trips match' : 'No trips yet'} text={search || filter !== 'all' ? 'Try another stage or search.' : `Create the first trip for ${customerName}.`} />
-        </div>
+        <EmptyRow icon={Truck}>Couldn't load trips — try again in a moment.</EmptyRow>
+      ) : isLoading ? (
+        <SkeletonRows rows={6} />
+      ) : rows.length === 0 ? (
+        <EmptyRow icon={Truck}>{search || filter !== 'all' ? 'No trips match — try another stage or search.' : `No trips yet. Create the first trip for ${customerName}.`}</EmptyRow>
       ) : (
-        <div className="overflow-x-auto border-t border-slate-100 dark:border-slate-800">
-          <table className="w-full min-w-[860px] text-sm">
-            <thead className="bg-slate-50/80 dark:bg-slate-800/40">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[780px] text-[13px]">
+            <thead className={ui.thead}>
               <tr>
-                <th className={cn(ui.th, 'pl-5')}>Trip</th>
-                <th className={ui.th}>Route</th>
-                <th className={ui.th}>Driver & truck</th>
-                <th className={cn(ui.th, 'text-right')}>Value (SAR)</th>
-                <th className={ui.th}>Status</th>
-                <th className={cn(ui.th, 'pr-5')}><span className="sr-only">Actions</span></th>
+                <th className={cn(ui.thc, 'pl-4')}>Trip</th>
+                <th className={ui.thc}>Route</th>
+                <th className={ui.thc}>Driver & truck</th>
+                <th className={ui.thc}>Status</th>
+                <th className={cn(ui.thc, 'text-right')}>Value (SAR)</th>
+                <th className={cn(ui.thc, 'w-24 pr-4')}><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {isLoading
-                ? Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={i}><td colSpan={6} className="px-5 py-4"><div className="h-6 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></td></tr>
-                ))
-                : rows.map((t) => {
-                  const r = routeLabel(t);
-                  const driver = driverLabel(t);
-                  const plate = t.vehicle?.plate_number || (t as any).third_party_vehicle_plate;
-                  const value = Number(t.billing_amount || (t as any).applied_rate || 0);
-                  const live = GROUPS.live.includes(t.status);
-                  return (
-                    <tr key={t.id} onClick={() => navigate(`/trips/${t.id}`)} className="group cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                      <td className={cn(ui.td, 'pl-5')}>
-                        <p className="font-medium text-slate-900 tabular-nums group-hover:text-[#E5533F] dark:text-white">{t.ref_id || t.id.slice(0, 8).toUpperCase()}</p>
-                        <p className="text-xs text-slate-500">{formatInDeploymentTz((t as any).planned_start || t.createdAt, tz, 'd MMM yyyy, HH:mm')}</p>
-                      </td>
-                      <td className={cn(ui.td, 'max-w-[300px]')}>
-                        <p className="truncate text-slate-800 dark:text-slate-200" title={`${r.origin} → ${r.dest}`}>
-                          {r.origin} <span className="text-slate-400">{r.round ? '⇄' : '→'}</span> {r.dest}
-                        </p>
-                        {r.via && <p className="truncate text-xs text-slate-500">via {r.via}</p>}
-                      </td>
-                      <td className={ui.td}>
-                        <p className={cn('truncate', driver ? 'text-slate-800 dark:text-slate-200' : 'text-slate-400')}>{driver || 'No driver yet'}</p>
-                        {plate && <p className="text-xs text-slate-500 tabular-nums">{plate}</p>}
-                      </td>
-                      <td className={cn(ui.td, 'text-right font-medium text-slate-900 tabular-nums dark:text-white')}>
-                        {value > 0 ? value.toLocaleString('en-US', { maximumFractionDigits: 2 }) : <span className="font-normal text-slate-300">—</span>}
-                      </td>
-                      <td className={ui.td}><TripStatusBadge status={t.status} /></td>
-                      <td className={cn(ui.td, 'pr-5 text-right')}>
-                        {live && (
-                          <button type="button" onClick={(e) => { e.stopPropagation(); navigate(`/trips/${t.id}/track`); }} className={cn(ui.btn, ui.btnOutline, 'h-8')}>
-                            <MapPinned className="size-4 text-emerald-600" /> Track
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+            <tbody className={ui.tbody}>
+              {rows.map((t) => {
+                const r = routeLabel(t);
+                const driver = driverLabel(t);
+                const plate = t.vehicle?.plate_number || (t as any).third_party_vehicle_plate;
+                const value = Number(t.billing_amount || (t as any).applied_rate || 0);
+                const live = GROUPS.live.includes(t.status);
+                return (
+                  <tr key={t.id} onClick={() => navigate(`/trips/${t.id}`)} className={ui.row}>
+                    <td className={cn(ui.tdc, 'whitespace-nowrap pl-4')}>
+                      <p className={ui.link}>{t.ref_id || t.id.slice(0, 8).toUpperCase()}</p>
+                      <p className="text-xs text-slate-500 tabular-nums">{formatInDeploymentTz((t as any).planned_start || t.createdAt, tz, 'd MMM yyyy, HH:mm')}</p>
+                    </td>
+                    <td className={cn(ui.tdc, 'max-w-[320px]')}>
+                      <p className="truncate text-slate-800 dark:text-slate-200" title={`${r.origin} → ${r.dest}`}>
+                        {r.origin} <span className="text-slate-400">{r.round ? '⇄' : '→'}</span> {r.dest}
+                      </p>
+                      {r.via && <p className="truncate text-xs text-slate-500">via {r.via}</p>}
+                    </td>
+                    <td className={cn(ui.tdc, 'max-w-[200px]')}>
+                      <p className={cn('truncate', driver ? 'text-slate-800 dark:text-slate-200' : 'text-slate-400')}>{driver || 'No driver yet'}</p>
+                      {plate && <p className="text-xs text-slate-500 tabular-nums">{plate}</p>}
+                    </td>
+                    <td className={ui.tdc}><TripStatusBadge status={t.status} /></td>
+                    <td className={cn(ui.tdc, 'text-right font-medium text-slate-900 tabular-nums dark:text-white')}>
+                      {value > 0 ? value.toLocaleString('en-US', { maximumFractionDigits: 2 }) : <span className="font-normal text-slate-300">—</span>}
+                    </td>
+                    <td className={cn(ui.tdc, 'pr-4 text-right')}>
+                      {live && (
+                        <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); navigate(`/trips/${t.id}/track`); }} className={cn(ui.btnSm, 'h-7 px-2.5')}>
+                          <MapPinned className="text-emerald-600" /> Track
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
 
-      {shown.length > PAGE_SIZE && (
-        <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 text-[13px] text-slate-500 dark:border-slate-800">
-          <span className="tabular-nums">{(current - 1) * PAGE_SIZE + 1}–{Math.min(shown.length, current * PAGE_SIZE)} of {shown.length}</span>
-          <div className="flex items-center gap-1">
-            <button type="button" onClick={() => setPage(current - 1)} disabled={current <= 1} className={cn(ui.btn, ui.btnOutline, 'h-8 px-2.5')} aria-label="Previous page"><ChevronLeft className="size-4" /></button>
-            <span className="px-2 tabular-nums">Page {current} of {pages}</span>
-            <button type="button" onClick={() => setPage(current + 1)} disabled={current >= pages} className={cn(ui.btn, ui.btnOutline, 'h-8 px-2.5')} aria-label="Next page"><ChevronRight className="size-4" /></button>
-          </div>
-        </div>
+      <Pager page={current} pages={pages} total={shown.length} size={PAGE_SIZE} onPage={setPage} />
+      {trips.length >= 200 && (
+        <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500 dark:border-slate-800">Showing the latest 200 trips — older ones are in Trips, filtered by customer.</p>
       )}
-    </Panel>
+    </section>
   );
 }

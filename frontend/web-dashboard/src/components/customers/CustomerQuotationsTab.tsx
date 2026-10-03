@@ -1,16 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Edit2, ExternalLink, Plus, Search, Tag, X } from 'lucide-react';
+import { Edit2, ExternalLink, Plus, Tag } from 'lucide-react';
 import { quotationService, Quotation } from '@/services/quotationService';
-import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { Badge, EmptyBlock, Panel, ui } from '@/components/customers/customerUi';
+import { Badge, EmptyRow, SearchField, Segmented, SkeletonRows, Toolbar, ui } from '@/components/customers/customerUi';
 
 interface CustomerQuotationsTabProps {
   customerId: string;
-  customerName: string;
   onOpenAddQuotation: () => void;
   onOpenEditQuotation: (quotation: Quotation) => void;
 }
@@ -46,7 +45,7 @@ function routeOfQuote(q: Quotation) {
 type StatusFilter = 'all' | 'active' | 'inactive';
 
 /** Customer → Quotations: the prices agreed with this customer, used to price new trips. */
-export default function CustomerQuotationsTab({ customerId, customerName, onOpenAddQuotation, onOpenEditQuotation }: CustomerQuotationsTabProps) {
+export default function CustomerQuotationsTab({ customerId, onOpenAddQuotation, onOpenEditQuotation }: CustomerQuotationsTabProps) {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<StatusFilter>('active');
@@ -81,40 +80,21 @@ export default function CustomerQuotationsTab({ customerId, customerName, onOpen
     });
   }, [quotations, status, lineType, billing, search]);
 
-  const selectTrigger = 'h-9 w-auto min-w-[140px] gap-2 rounded-lg border-slate-200 text-[13px] dark:border-slate-700';
+  const selectTrigger = 'h-8 w-auto min-w-[130px] gap-2 rounded-md border-slate-200 text-[13px] shadow-none dark:border-slate-700';
 
   return (
-    <Panel
-      title="Quotations"
-      description={`Prices agreed with ${customerName} — new trips on these lanes price themselves`}
-      icon={Tag}
-      tone="brand"
-      flush
-      action={
-        <button type="button" onClick={onOpenAddQuotation} className={cn(ui.btn, ui.btnPrimary, 'h-8')}>
-          <Plus className="size-4" /> New quotation
-        </button>
-      }
-    >
-      <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-5 py-3 dark:border-slate-800">
-        <div className="flex items-center gap-1" role="tablist" aria-label="Quotation status">
-          {([['active', 'Active'], ['inactive', 'Inactive'], ['all', 'All']] as const).map(([id, label]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={status === id}
-              onClick={() => setStatus(id)}
-              className={cn(
-                'inline-flex h-8 items-center gap-1.5 rounded-lg px-3 text-[13px] font-medium transition-colors cursor-pointer',
-                status === id ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
-              )}
-            >
-              {label}
-              <span className={cn('tabular-nums', status === id ? 'text-white/70 dark:text-slate-500' : 'text-slate-400')}>{counts[id]}</span>
-            </button>
-          ))}
-        </div>
+    <section className={cn(ui.card, 'min-w-0 overflow-hidden')}>
+      <Toolbar>
+        <Segmented
+          label="Quotation status"
+          value={status}
+          onChange={setStatus}
+          options={[
+            { id: 'active', label: 'Active', count: counts.active },
+            { id: 'inactive', label: 'Inactive', count: counts.inactive },
+            { id: 'all', label: 'All', count: counts.all },
+          ]}
+        />
         <div className="ml-auto flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {lineTypes.length > 1 && (
             <Select value={lineType} onValueChange={(v) => v && setLineType(v)}>
@@ -134,84 +114,70 @@ export default function CustomerQuotationsTab({ customerId, customerName, onOpen
               </SelectContent>
             </Select>
           )}
-          <div className="relative flex-1 sm:w-64 sm:flex-none">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Route, place or vehicle" aria-label="Search quotations" className={cn(ui.input, 'w-full pl-9 pr-8')} />
-            {search && (
-              <button type="button" onClick={() => setSearch('')} aria-label="Clear search" className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700">
-                <X className="size-3.5" />
-              </button>
-            )}
-          </div>
+          <SearchField value={search} onChange={setSearch} placeholder="Route, place or vehicle" className="flex-1 sm:w-60 sm:flex-none" />
+          <Button size="sm" onClick={onOpenAddQuotation} className={ui.btnSm}>
+            <Plus /> New quotation
+          </Button>
         </div>
-      </div>
+      </Toolbar>
 
-      {!isLoading && shown.length === 0 ? (
-        <div className="p-5">
-          <EmptyBlock
-            icon={Tag}
-            title={quotations.length === 0 ? 'No quotations yet' : 'No quotations match'}
-            text={quotations.length === 0 ? 'Add the prices agreed with this customer so new trips price themselves.' : 'Try another status, filter or search.'}
-            action={quotations.length === 0 ? (
-              <button type="button" onClick={onOpenAddQuotation} className={cn(ui.btn, ui.btnPrimary, 'h-8')}><Plus className="size-4" /> New quotation</button>
-            ) : undefined}
-          />
-        </div>
+      {isLoading ? (
+        <SkeletonRows rows={4} />
+      ) : shown.length === 0 ? (
+        <EmptyRow icon={Tag}>
+          {quotations.length === 0 ? 'No quotations yet — add the prices agreed with this customer so new trips price themselves.' : 'No quotations match — try another status, filter or search.'}
+        </EmptyRow>
       ) : (
-        <div className="overflow-x-auto border-t border-slate-100 dark:border-slate-800">
-          <table className="w-full min-w-[820px] text-sm">
-            <thead className="bg-slate-50/80 dark:bg-slate-800/40">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-[13px]">
+            <thead className={ui.thead}>
               <tr>
-                <th className={cn(ui.th, 'pl-5')}>Route</th>
-                <th className={ui.th}>Vehicle</th>
-                <th className={ui.th}>Terms</th>
-                <th className={cn(ui.th, 'text-right')}>Rate (SAR)</th>
-                <th className={ui.th}>Status</th>
-                <th className={cn(ui.th, 'pr-5')}><span className="sr-only">Actions</span></th>
+                <th className={cn(ui.thc, 'pl-4')}>Route</th>
+                <th className={ui.thc}>Vehicle</th>
+                <th className={ui.thc}>Terms</th>
+                <th className={cn(ui.thc, 'text-right')}>Rate (SAR)</th>
+                <th className={ui.thc}>Status</th>
+                <th className={cn(ui.thc, 'w-20 pr-4')}><span className="sr-only">Actions</span></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {isLoading
-                ? Array.from({ length: 4 }).map((_, i) => (
-                  <tr key={i}><td colSpan={6} className="px-5 py-4"><div className="h-6 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></td></tr>
-                ))
-                : shown.map((q) => {
-                  const r = routeOfQuote(q);
-                  const rate = Number(q.rate ?? q.base_price ?? 0);
-                  const monthly = isMonthly(q);
-                  return (
-                    <tr key={q.id} onClick={() => onOpenEditQuotation(q)} className="group cursor-pointer hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                      <td className={cn(ui.td, 'max-w-[340px] pl-5')}>
-                        <p className="truncate text-slate-900 group-hover:text-[#E5533F] dark:text-white" title={`${r.origin} → ${r.dest}`}>
-                          {r.origin} <span className="text-slate-400">→</span> {r.dest}
-                        </p>
-                        <p className="truncate text-xs text-slate-500">{r.via ? `via ${r.via}` : q.name}</p>
-                      </td>
-                      <td className={cn(ui.td, 'text-slate-700 dark:text-slate-200')}>{q.vehicle_class || q.source_vehicle_label || q.vehicle_type || <span className="text-slate-400">Any</span>}</td>
-                      <td className={cn(ui.td, 'text-slate-600 dark:text-slate-300')}>
-                        {lineTypeLabel(q.line_type || q.rate_category)} <span className="text-slate-300">·</span> {billingLabel(q.billing_type)}
-                      </td>
-                      <td className={cn(ui.td, 'text-right tabular-nums')}>
-                        <p className="font-medium text-slate-900 dark:text-white">
-                          {rate > 0 ? rate.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
-                          <span className="ml-1 text-xs font-normal text-slate-400">{monthly ? '/ month' : '/ trip'}</span>
-                        </p>
-                        {monthly && rate > 0 && <p className="text-xs text-slate-500">≈ {(rate / 30).toLocaleString('en-US', { maximumFractionDigits: 0 })} / day</p>}
-                      </td>
-                      <td className={ui.td}>{q.is_active ? <Badge tone="emerald" dot>Active</Badge> : <Badge tone="slate" dot>Inactive</Badge>}</td>
-                      <td className={cn(ui.td, 'pr-5')}>
-                        <div className="flex items-center justify-end" onClick={(e) => e.stopPropagation()}>
-                          <button type="button" onClick={() => onOpenEditQuotation(q)} className={ui.iconBtn} title="Edit" aria-label="Edit quotation"><Edit2 className="size-4" /></button>
-                          <button type="button" onClick={() => navigate(`/quotations/${q.id}/edit`)} className={ui.iconBtn} title="Open full page" aria-label="Open quotation page"><ExternalLink className="size-4" /></button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+            <tbody className={ui.tbody}>
+              {shown.map((q) => {
+                const r = routeOfQuote(q);
+                const rate = Number(q.rate ?? q.base_price ?? 0);
+                const monthly = isMonthly(q);
+                return (
+                  <tr key={q.id} onClick={() => onOpenEditQuotation(q)} className={ui.row}>
+                    <td className={cn(ui.tdc, 'max-w-[340px] pl-4')}>
+                      <p className="truncate text-slate-900 group-hover:text-[#E5533F] dark:text-white" title={`${r.origin} → ${r.dest}`}>
+                        {r.origin} <span className="text-slate-400">→</span> {r.dest}
+                      </p>
+                      <p className="truncate text-xs text-slate-500">{r.via ? `via ${r.via}` : q.name}</p>
+                    </td>
+                    <td className={cn(ui.tdc, 'text-slate-700 dark:text-slate-200')}>{q.vehicle_class || q.source_vehicle_label || q.vehicle_type || <span className="text-slate-400">Any</span>}</td>
+                    <td className={cn(ui.tdc, 'text-slate-600 dark:text-slate-300')}>
+                      {lineTypeLabel(q.line_type || q.rate_category)} <span className="text-slate-300">·</span> {billingLabel(q.billing_type)}
+                    </td>
+                    <td className={cn(ui.tdc, 'text-right tabular-nums')}>
+                      <p className="font-medium text-slate-900 dark:text-white">
+                        {rate > 0 ? rate.toLocaleString('en-US', { maximumFractionDigits: 2 }) : '—'}
+                        <span className="ml-1 text-xs font-normal text-slate-400">{monthly ? '/ month' : '/ trip'}</span>
+                      </p>
+                      {monthly && rate > 0 && <p className="text-xs text-slate-500">≈ {(rate / 30).toLocaleString('en-US', { maximumFractionDigits: 0 })} / day</p>}
+                    </td>
+                    <td className={ui.tdc}>{q.is_active ? <Badge tone="emerald" dot>Active</Badge> : <Badge tone="slate" dot>Inactive</Badge>}</td>
+                    <td className={cn(ui.tdc, 'pr-4')}>
+                      <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" onClick={() => onOpenEditQuotation(q)} className={cn(ui.iconSm, 'size-7 text-slate-500')} title="Edit" aria-label="Edit quotation"><Edit2 className="size-3.5" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => navigate(`/quotations/${q.id}/edit`)} className={cn(ui.iconSm, 'size-7 text-slate-500')} title="Open full page" aria-label="Open quotation page"><ExternalLink className="size-3.5" /></Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
-    </Panel>
+    </section>
   );
 }

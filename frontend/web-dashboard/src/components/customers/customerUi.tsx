@@ -1,19 +1,24 @@
 /**
  * Building blocks for the Customers pages (list + details + tabs), so they
  * share one type scale and spacing:
- *   page title     text-2xl font-semibold
- *   section title  text-[15px] font-semibold
- *   body           text-sm (values font-medium)
+ *   page title     text-2xl font-semibold (details header: text-lg)
+ *   section title  text-sm font-semibold
+ *   body           text-sm / text-[13px] (values font-medium)
  *   secondary      text-[13px] text-slate-500
  *   labels         text-xs font-medium text-slate-500 (no uppercase)
- *   KPI value      text-[26px] font-semibold tabular-nums
- * Cards: rounded-xl, 1px border, p-5; gaps between cards 20–24px.
+ *   KPI value      text-[26px] (list) / text-xl (details stat strip), tabular-nums
+ * The details page is the compact variant: `Section` cards with a 44px title
+ * row, toolbars of 32px controls, `ui.thc` / `ui.tdc` table cells, 16px gaps.
  */
 import type { ElementType, ReactNode } from 'react';
-import { Phone } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Phone, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
 import { parsePhoneNumber } from '@/components/ui/PhoneInput';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
+
+/** Sections of the customer details page (?tab=). */
+export type CustomerTabId = 'overview' | 'trips' | 'quotations' | 'locations' | 'financials' | 'tracking' | 'exports';
 
 export type UiTone = 'brand' | 'blue' | 'emerald' | 'amber' | 'rose' | 'indigo' | 'slate';
 
@@ -65,6 +70,18 @@ export const ui = {
   btnGhost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800',
   iconBtn:
     'inline-flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white transition-colors cursor-pointer',
+  // ── Compact variant (details page) ──
+  /** Size for shadcn <Button size="sm">: 32px, 13px text. */
+  btnSm: 'h-8 gap-1.5 rounded-md px-3 text-[13px]',
+  /** Square 32px icon button for shadcn <Button size="icon">. */
+  iconSm: 'size-8 rounded-md',
+  /** Table header / body cells — first column adds pl-4, last pr-4. */
+  thc: 'h-9 px-3 text-left text-xs font-medium text-slate-500 whitespace-nowrap dark:text-slate-400',
+  tdc: 'px-3 py-2.5 align-middle',
+  thead: 'border-b border-slate-100 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-800/40',
+  tbody: 'divide-y divide-slate-100 dark:divide-slate-800',
+  row: 'group cursor-pointer transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40',
+  link: 'font-medium text-slate-900 tabular-nums group-hover:text-[#E5533F] dark:text-white',
 };
 
 export function Badge({ tone = 'slate', dot, pulse, children, className }: { tone?: UiTone; dot?: boolean; pulse?: boolean; children: ReactNode; className?: string }) {
@@ -148,40 +165,210 @@ export function Stat({
   );
 }
 
-/** Card with a title row. `flush` drops the body padding (tables, lists that run edge to edge). */
-export function Panel({
+/**
+ * One cell of a stat strip (a row of figures sharing one card, split by 1px
+ * lines). Clickable when `onClick` is set; `active` marks the tab it opened.
+ */
+export function StatCell({
+  label,
+  icon: Icon,
+  value,
+  unit,
+  sub,
+  subTone,
+  active,
+  onClick,
+}: {
+  label: string;
+  icon: ElementType;
+  value: ReactNode;
+  unit?: string;
+  sub?: ReactNode;
+  subTone?: 'rose' | 'emerald';
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const Comp = onClick ? 'button' : 'div';
+  return (
+    <Comp
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      aria-pressed={onClick ? !!active : undefined}
+      className={cn(
+        'relative flex h-full w-full min-w-0 flex-col gap-1 px-4 py-3 text-left',
+        onClick && 'cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50',
+        active && 'bg-slate-50/80 dark:bg-slate-800/40',
+      )}
+    >
+      <span className="flex items-center gap-1.5 text-xs font-medium text-slate-500 dark:text-slate-400">
+        <Icon className="size-3.5" /> <span className="truncate">{label}</span>
+      </span>
+      <span className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+        <span className="whitespace-nowrap text-xl font-semibold leading-7 text-slate-900 tabular-nums dark:text-white">
+          {unit && <span className="mr-1 text-xs font-medium text-slate-400">{unit}</span>}
+          {value}
+        </span>
+        {sub && (
+          <span
+            className={cn(
+              'truncate text-xs',
+              subTone === 'rose' ? 'font-medium text-rose-600 dark:text-rose-400' : subTone === 'emerald' ? 'font-medium text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400',
+            )}
+          >
+            {sub}
+          </span>
+        )}
+      </span>
+    </Comp>
+  );
+}
+
+/**
+ * Compact card with a 44px title row: title, an optional count / meta after it,
+ * actions on the right. The body runs edge to edge (tables, lists) unless `padded`.
+ */
+export function Section({
   title,
-  description,
-  icon,
-  tone = 'slate',
+  meta,
   action,
   children,
-  flush,
+  padded,
   className,
 }: {
   title: ReactNode;
-  description?: ReactNode;
-  icon?: ElementType;
-  tone?: UiTone;
+  meta?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
-  flush?: boolean;
+  padded?: boolean;
   className?: string;
 }) {
   return (
-    <section className={cn(ui.card, 'min-w-0', className)}>
-      <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-5 pb-4">
-        <div className="flex min-w-0 items-start gap-3">
-          {icon && <IconTile icon={icon} tone={tone} size="sm" />}
-          <div className="min-w-0">
-            <h2 className={cn(ui.h2, icon && 'leading-8')}>{title}</h2>
-            {description && <p className={cn(ui.muted, 'mt-0.5', icon && '-mt-1')}>{description}</p>}
-          </div>
-        </div>
-        {action && <div className="flex shrink-0 items-center gap-2">{action}</div>}
+    <section className={cn(ui.card, 'min-w-0 overflow-hidden', className)}>
+      <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 gap-y-1.5 border-b border-slate-100 px-4 py-2 dark:border-slate-800">
+        <h2 className="flex min-w-0 items-center gap-2 text-sm font-semibold text-slate-900 dark:text-white">
+          <span className="truncate">{title}</span>
+          {meta}
+        </h2>
+        {action && <div className="flex shrink-0 items-center gap-1.5">{action}</div>}
       </div>
-      <div className={flush ? '' : 'px-5 pb-5'}>{children}</div>
+      <div className={padded ? 'p-4' : undefined}>{children}</div>
     </section>
+  );
+}
+
+/** Small grey count after a section title or inside a tab. */
+export function Count({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <span className={cn('rounded-md bg-slate-100 px-1.5 py-px text-[11px] font-medium text-slate-500 tabular-nums dark:bg-slate-800 dark:text-slate-400', className)}>
+      {children}
+    </span>
+  );
+}
+
+/** Toolbar row on top of a table: filters left, search / actions right. */
+export function Toolbar({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={cn('flex flex-wrap items-center gap-2 border-b border-slate-100 px-4 py-2.5 dark:border-slate-800', className)}>
+      {children}
+    </div>
+  );
+}
+
+/** Segmented filter (shadcn tabs look): one pill per option, with an optional count. */
+export function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+  label,
+  className,
+}: {
+  value: T;
+  onChange: (v: T) => void;
+  options: { id: T; label: string; count?: number }[];
+  label: string;
+  className?: string;
+}) {
+  return (
+    <div role="tablist" aria-label={label} className={cn('inline-flex h-8 max-w-full items-center gap-0.5 overflow-x-auto rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800', className)}>
+      {options.map((o) => {
+        const active = o.id === value;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(o.id)}
+            className={cn(
+              'inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 text-[13px] font-medium transition-colors cursor-pointer',
+              active ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-950 dark:text-white' : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white',
+            )}
+          >
+            {o.label}
+            {o.count !== undefined && <span className={cn('text-xs tabular-nums', active ? 'text-slate-500' : 'text-slate-400')}>{o.count}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 32px search box with a clear button. */
+export function SearchField({ value, onChange, placeholder, className }: { value: string; onChange: (v: string) => void; placeholder: string; className?: string }) {
+  return (
+    <div className={cn('relative w-full sm:w-64', className)}>
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        className="h-8 w-full rounded-md border-slate-200 bg-white pl-8 pr-7 text-[13px] shadow-none placeholder:opacity-100 focus-visible:border-[#FA634E] focus-visible:ring-2 focus-visible:ring-[#FA634E]/15 dark:border-slate-700 dark:bg-slate-900"
+      />
+      {value && (
+        <button type="button" onClick={() => onChange('')} aria-label="Clear search" className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-1 text-slate-400 hover:text-slate-700 cursor-pointer">
+          <X className="size-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** One-line empty / error state inside a card. */
+export function EmptyRow({ icon: Icon, children, action }: { icon?: ElementType; children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-2 px-4 py-8 text-center text-[13px] text-slate-500 dark:text-slate-400">
+      {Icon && <Icon className="size-4 text-slate-400" />}
+      <span>{children}</span>
+      {action}
+    </div>
+  );
+}
+
+/** Rows of skeleton bars while a table loads. */
+export function SkeletonRows({ rows = 5 }: { rows?: number }) {
+  return (
+    <div className="divide-y divide-slate-100 dark:divide-slate-800">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="px-4 py-3"><div className="h-5 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /></div>
+      ))}
+    </div>
+  );
+}
+
+/** Table footer with "1–20 of 64" and prev / next. */
+export function Pager({ page, pages, total, size, onPage }: { page: number; pages: number; total: number; size: number; onPage: (p: number) => void }) {
+  if (total <= size) return null;
+  const btn = 'inline-flex size-7 items-center justify-center rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer';
+  return (
+    <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-2 text-xs text-slate-500 dark:border-slate-800">
+      <span className="tabular-nums">{(page - 1) * size + 1}–{Math.min(total, page * size)} of {total}</span>
+      <div className="flex items-center gap-1">
+        <span className="mr-1 tabular-nums">Page {page} of {pages}</span>
+        <button type="button" onClick={() => onPage(page - 1)} disabled={page <= 1} className={btn} aria-label="Previous page"><ChevronLeft className="size-4" /></button>
+        <button type="button" onClick={() => onPage(page + 1)} disabled={page >= pages} className={btn} aria-label="Next page"><ChevronRight className="size-4" /></button>
+      </div>
+    </div>
   );
 }
 
@@ -213,7 +400,7 @@ export function TripStatusBadge({ status }: { status?: string | null }) {
 }
 
 export function CustomerAvatar({ name, logo, size = 'md' }: { name: string; logo?: string | null; size?: 'sm' | 'md' | 'lg' }) {
-  const box = size === 'lg' ? 'size-16 text-2xl rounded-2xl' : size === 'md' ? 'size-10 text-sm rounded-lg' : 'size-8 text-xs rounded-lg';
+  const box = size === 'lg' ? 'size-12 text-lg rounded-xl' : size === 'md' ? 'size-10 text-sm rounded-lg' : 'size-8 text-xs rounded-lg';
   return logo ? (
     <img src={logo} alt="" className={cn(box, 'shrink-0 border border-slate-200 bg-white object-contain p-1 dark:border-slate-700')} />
   ) : (
