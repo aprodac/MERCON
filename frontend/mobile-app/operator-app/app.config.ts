@@ -67,6 +67,10 @@ export default (): ExpoConfig => ({
   userInterfaceStyle: 'light',
   ios: {
     bundleIdentifier: client.iosBundleIdentifier,
+    // Apple team the app is signed with (Ilan Usman's account today; change it
+    // when the apps move to the organisation account). Prebuild writes it into
+    // ios/, so a regenerated project can still be archived without opening Xcode.
+    appleTeamId: 'Z83Y9VJTKH',
     buildNumber: String(buildNumber),
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,

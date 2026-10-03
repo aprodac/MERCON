@@ -63,7 +63,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "version:bump": "node ../shared/tooling/app-version.js bump",
-    "version:sync": "node ../shared/tooling/app-version.js sync"
+    "version:sync": "node ../shared/tooling/app-version.js sync",
+    "version:check": "node ../shared/tooling/app-version.js check"
   },
   "private": true
 }
