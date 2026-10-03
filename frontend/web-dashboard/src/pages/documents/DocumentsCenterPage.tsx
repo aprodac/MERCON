@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   UploadCloud, Download, ChevronDown, FileSpreadsheet, FileText, Search, X, Truck, User as UserIcon,
-  Building2, Trash2, LayoutGrid, List, Sparkles, CheckCircle2, FileArchive, RotateCcw, Settings2, Loader2,
+  Building2, Trash2, LayoutGrid, List, CheckCircle2, FileArchive, RotateCcw, Settings2, Loader2,
 } from 'lucide-react';
 
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -20,7 +20,6 @@ import {
 import { FigureStrip, Figure } from '@/components/finance/kit/FigureStrip';
 import FolderCardSection from '@/components/documents/FolderCardSection';
 import DocumentPreviewSheet from '@/components/documents/DocumentPreviewSheet';
-import ImportReviewModal from '@/components/documents/ImportReviewModal';
 import DocumentsTable, { type DocTableRow } from '@/components/documents/center/DocumentsTable';
 import SelectionBar, { SelectionAction } from '@/components/documents/center/SelectionBar';
 
@@ -112,7 +111,6 @@ export default function DocumentsCenterPage() {
 
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
-  const [isImportOpen, setIsImportOpen] = useState(false);
   const [isRadarOpen, setIsRadarOpen] = useState(searchParams.get('radar') === 'open');
   const [uploadTarget, setUploadTarget] = useState<{ ownerType: string; ownerId: string; ownerName: string; typeId: string | null; typeName: string } | null>(null);
   const [confirm, setConfirm] = useState<{ kind: 'delete' | 'purge'; ids: string[] } | null>(null);
@@ -172,10 +170,12 @@ export default function DocumentsCenterPage() {
     return m;
   }, [docs]);
 
-  const ownerFolders = useMemo<OwnerFoldersSummaryRow[]>(
-    () => (tab === 'Drivers' ? driverFolders : tab === 'Vehicles' ? vehicleFolders : []),
-    [tab, driverFolders, vehicleFolders],
-  );
+  const driverPhoto = useMemo(() => new Map<string, string | null>(drivers.map((d: any) => [d.id, d.avatar_url || null])), [drivers]);
+  const ownerFolders = useMemo<OwnerFoldersSummaryRow[]>(() => {
+    if (tab === 'Vehicles') return vehicleFolders;
+    if (tab !== 'Drivers') return [];
+    return driverFolders.map((r) => (r.avatar_url ? r : { ...r, avatar_url: driverPhoto.get(r.ownerId) ?? null }));
+  }, [tab, driverFolders, vehicleFolders, driverPhoto]);
   const ownerType = tab === 'Vehicles' || tab === 'Drivers' ? OWNER_TYPE[tab] : null;
   const folderById = useMemo(() => new Map(ownerFolders.map((r) => [r.ownerId, r])), [ownerFolders]);
 
@@ -456,9 +456,6 @@ export default function DocumentsCenterPage() {
                 <Settings2 className="w-3.5 h-3.5" /> Document types
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={() => setIsImportOpen(true)} className="h-9 gap-1.5 text-xs font-semibold rounded-xl">
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" /> AI import
-            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="h-9 gap-1.5 text-xs font-semibold rounded-xl">
@@ -528,15 +525,19 @@ export default function DocumentsCenterPage() {
               );
             })}
           </div>
-          <div className="flex items-center gap-2 pb-2">
-            <span className="hidden lg:inline text-[11px] text-slate-400">Trip photos and POD are on each trip</span>
+          <span className="hidden lg:inline pb-2 text-[11px] text-slate-400">Trip photos and POD are on each trip</span>
+        </div>
+
+        {/* ── Filters ────────────────────────────────────────────────────── */}
+        {tab !== 'Deleted' ? (
+          <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
               <input
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setParam({ q: e.target.value }); }}
                 placeholder={tab === 'Drivers' ? 'Driver, ID, document number…' : tab === 'Vehicles' ? 'Plate, driver, document number…' : 'Document, owner, number…'}
-                className="h-8 w-56 text-xs pl-8 pr-7 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FA634E]/30"
+                className="h-8 w-60 text-xs pl-8 pr-7 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FA634E]/30"
               />
               {search && (
                 <button type="button" onClick={() => { setSearch(''); setParam({ q: null }); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer" aria-label="Clear search">
@@ -544,12 +545,6 @@ export default function DocumentsCenterPage() {
                 </button>
               )}
             </div>
-          </div>
-        </div>
-
-        {/* ── Filters ────────────────────────────────────────────────────── */}
-        {tab !== 'Deleted' ? (
-          <div className="flex flex-wrap items-center gap-2">
             {ownerType && view === 'folders' && (
               <label className="flex items-center gap-1.5 pr-2 mr-1 border-r border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-500 cursor-pointer">
                 <Checkbox
@@ -609,9 +604,25 @@ export default function DocumentsCenterPage() {
             )}
           </div>
         ) : (
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Deleted documents stay here for 30 days, then they're removed for good. Restore one to put it back in its folder.
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={search}
+                onChange={(e) => { setSearch(e.target.value); setParam({ q: e.target.value }); }}
+                placeholder="Document, owner, number…"
+                className="h-8 w-60 text-xs pl-8 pr-7 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#FA634E]/30"
+              />
+              {search && (
+                <button type="button" onClick={() => { setSearch(''); setParam({ q: null }); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer" aria-label="Clear search">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Deleted documents stay here for 30 days, then they're removed for good. Restore one to put it back in its folder.
+            </p>
+          </div>
         )}
 
         {/* ── Content ────────────────────────────────────────────────────── */}
@@ -663,9 +674,7 @@ export default function DocumentsCenterPage() {
           </div>
         ) : (
           <FolderCardSection
-            title={tab}
-            icon={null}
-            noun={tab}
+            noun={tab.toLowerCase()}
             rows={visibleFolders}
             onOpenRow={(row) => openOwner(row)}
             onPreviewDocument={setPreviewDocId}
@@ -746,7 +755,6 @@ export default function DocumentsCenterPage() {
         onUploadSuccess={refreshAll}
       />
 
-      <ImportReviewModal isOpen={isImportOpen} onClose={() => setIsImportOpen(false)} onImported={refreshAll} />
 
       <ExpiryRadarModal isOpen={isRadarOpen} onClose={() => { setIsRadarOpen(false); setParam({ radar: null }); }} />
     </DashboardLayout>
