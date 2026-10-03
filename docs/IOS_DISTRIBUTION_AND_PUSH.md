@@ -217,10 +217,11 @@ Internal testers (App Store Connect users on the team) don't need Beta App Revie
 
 ## Android (for completeness)
 
-Expo push on Android needs **FCM**: a Firebase project with an Android app for
-`tech.merconapp.driver`, its `google-services.json` referenced in the app config, and the FCM
-v1 service-account key uploaded to the same Expo project (expo.dev → Credentials →
-Android → FCM V1). Not set up yet.
+Android uses a **different package**, `tech.mercon.driver` (the Play Console app, its EAS upload
+key and Firebase are on it — do not change it to the iOS ID). Expo push on Android uses **FCM**:
+Firebase project `mercon-driver` with an Android app for `tech.mercon.driver`, its
+`google-services.json` in `driver-app/`, and the FCM v1 key in the Expo project. Set up and
+tested on a real phone (2026-10-03).
 
 ## Operator app — push not built yet
 

@@ -80,7 +80,10 @@ only when it is higher.
 
 - **Push notifications (driver app):** step-by-step for iOS (App ID push
   capability, profiles, APNs key → Expo, TestFlight external testers, testing)
-  is in **`docs/IOS_DISTRIBUTION_AND_PUSH.md`**. Android push still needs a
-  Firebase project with an Android app for `tech.merconapp.driver` (its
-  `google-services.json` and the FCM v1 key in Expo). Until then, builds work
-  but drivers get no push notifications.
+  is in **`docs/IOS_DISTRIBUTION_AND_PUSH.md`**. Android push is set up:
+  Firebase project `mercon-driver`, Android app `tech.mercon.driver`
+  (`driver-app/google-services.json`), FCM v1 key in Expo.
+- **Play Store builds of the driver app come from EAS, not Codemagic.** Play
+  only accepts files signed with the EAS upload key (SHA-1 `E9:F7:09:B1…`); the
+  Codemagic `mercon_driver_keystore` is a different key. See
+  `docs/ANDROID_PLAY_RELEASE.md`.
