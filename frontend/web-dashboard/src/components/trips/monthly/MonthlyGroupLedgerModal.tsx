@@ -22,15 +22,13 @@ import {
   User,
 } from 'lucide-react';
 
-import {
-  Dialog,
-  DialogContent,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Combobox, ComboboxOption } from '@/components/ui/combobox';
+import { Combobox } from '@/components/ui/combobox';
 import {
   Select,
   SelectContent,
@@ -46,12 +44,10 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { formatDriverDetails } from '@/utils/driverStatusUtils';
 
-import type { TemplateGroup } from './MonthlyCompanyBoard';
+import type { TemplateGroup } from './monthlyGrid';
+import { useAssignmentLookups } from './useAssignmentLookups';
 import { tripService, type MonthlyBoardTrip } from '@/services/tripService';
-import { driverService } from '@/services/driverService';
-import { vehicleService } from '@/services/vehicleService';
 import { driverPhotoUrl } from '@/lib/documents';
 import { formatDayHeading, formatMoney, formatTime, initialsOf, isUnassigned, formatLocationClean } from './monthlyBoardUtils';
 
@@ -143,57 +139,7 @@ export default function MonthlyGroupLedgerModal({
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [tripToDelete, setTripToDelete] = useState<string | null>(null);
 
-  // Fetch all available drivers
-  const { data: driversRes } = useQuery({
-    queryKey: ['drivers-ledger-lookup'],
-    queryFn: () => driverService.getAll({ per_page: 1000, mode: 'lookup' }),
-    enabled: isOpen,
-  });
-
-  // Fetch all available vehicles
-  const { data: vehiclesRes } = useQuery({
-    queryKey: ['vehicles-ledger-lookup'],
-    queryFn: () => vehicleService.getAll({ per_page: 1000, mode: 'lookup' }),
-    enabled: isOpen,
-  });
-
-  const rawDrivers = driversRes?.data || [];
-  const rawVehicles = vehiclesRes?.data || [];
-
-  const driverOptions = useMemo<ComboboxOption[]>(() => {
-    const opts: ComboboxOption[] = [
-      { value: 'unassigned', label: '— Unassign Driver —', keywords: 'none unassign remove' },
-    ];
-    rawDrivers.forEach((d) => {
-      const details = formatDriverDetails(d);
-      const phoneStr = (d as any).phone || d.phone_primary || '';
-
-      opts.push({
-        value: d.id,
-        label: `${d.first_name} ${d.last_name} (${details})`,
-        keywords: `${d.first_name} ${d.last_name} ${phoneStr} ${details} ${d.status || ''}`,
-      });
-    });
-    return opts;
-  }, [rawDrivers]);
-
-  const vehicleOptions = useMemo<ComboboxOption[]>(() => {
-    const opts: ComboboxOption[] = [
-      { value: 'unassigned', label: '— Unassign Vehicle —', keywords: 'none unassign remove' },
-    ];
-    rawVehicles.forEach((v) => {
-      const capTon = v.capacity_kg ? (v.capacity_kg / 1000).toFixed(0) + 'T' : '';
-      const typeStr = (v as any).type || v.asset_type || 'Truck';
-      const meta = [typeStr, capTon].filter(Boolean).join(' · ');
-
-      opts.push({
-        value: v.id,
-        label: meta ? `${v.plate_number} (${meta})` : v.plate_number,
-        keywords: `${v.plate_number} ${typeStr} ${capTon}`,
-      });
-    });
-    return opts;
-  }, [rawVehicles]);
+  const { rawDrivers, rawVehicles, driverOptions, vehicleOptions } = useAssignmentLookups(isOpen);
 
   const filteredDriversList = useMemo(() => {
     if (!driverSearch.trim()) return rawDrivers;
@@ -582,11 +528,12 @@ export default function MonthlyGroupLedgerModal({
 
   return (
     <>
-      <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-        <DialogContent className="max-w-6xl w-[96vw] max-h-[92vh] flex flex-col p-0 overflow-hidden rounded-[24px] border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-950 shadow-2xl [&>button]:right-6 [&>button]:top-6 [&>button]:text-slate-400 [&>button]:hover:text-slate-600">
+      <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <SheetContent side="right" className="w-[96vw] sm:max-w-5xl flex flex-col p-0 gap-0 overflow-hidden">
+        <SheetTitle className="sr-only">{companyName} route ledger</SheetTitle>
         
         {/* ── 1. Top Header Area (Clean Light Design matching reference) ── */}
-        <div className="p-6 sm:px-8 bg-white dark:bg-slate-950 border-b border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-4 shrink-0">
+        <div className="p-6 pr-16 sm:px-8 sm:pr-16 bg-white dark:bg-slate-950 border-b border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-4 shrink-0">
           
           {/* Left: Company Partner Logo, Title & Route */}
           <div className="flex items-center gap-4 min-w-0">
@@ -1270,8 +1217,8 @@ export default function MonthlyGroupLedgerModal({
             Done
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
 
     <ConfirmModal
       isOpen={isDeleteConfirmOpen}
