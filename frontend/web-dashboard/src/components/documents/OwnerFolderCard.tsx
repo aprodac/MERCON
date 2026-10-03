@@ -1,12 +1,12 @@
 import React from 'react';
-import { CheckCircle2, AlertTriangle, XCircle, FileQuestion, ChevronRight, Folder, Truck } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, FileQuestion, ChevronRight, Truck, Plus } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import DriverAvatar from '@/components/ui/DriverAvatar';
+import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import type { DocComplianceStatus, OwnerFoldersSummaryRow } from '@/services/documentService';
-import { useDeploymentTimezone } from '@/lib/datetime';
-import { formatDocDate, getOwnerCardSummary } from '@/lib/documents';
+import { daysUntil, formatDocDate, getOwnerCardSummary } from '@/lib/documents';
 
 const STATUS_ICON: Record<DocComplianceStatus, { label?: string; icon: any; iconClass: string; textClass: string }> = {
   VALID:          { label: 'Valid', icon: CheckCircle2, iconClass: 'text-emerald-500', textClass: 'text-emerald-600 dark:text-emerald-400 font-bold' },
@@ -22,10 +22,14 @@ interface OwnerFolderCardProps {
   onPreviewDocument?: (documentId: string) => void;
   /** Clicking a Missing slot opens the upload flow directly, without leaving the page. */
   onUploadMissing?: (row: OwnerFoldersSummaryRow, slotCode: string) => void;
+  /** Selection for bulk actions; the checkbox only shows when onToggleSelect is given. */
+  selected?: boolean;
+  onToggleSelect?: () => void;
+  /** Slot to emphasise when the list is filtered by one document type. */
+  highlightTypeId?: string | null;
 }
 
-export default function OwnerFolderCard({ row, onOpen, onPreviewDocument, onUploadMissing }: OwnerFolderCardProps) {
-  const tz = useDeploymentTimezone();
+export default function OwnerFolderCard({ row, onOpen, onPreviewDocument, onUploadMissing, selected, onToggleSelect, highlightTypeId }: OwnerFolderCardProps) {
   const { slots: mandatorySlots } = row;
   const cardSummary = getOwnerCardSummary(mandatorySlots);
   
@@ -84,13 +88,23 @@ export default function OwnerFolderCard({ row, onOpen, onPreviewDocument, onUplo
         onClick={onOpen}
         className={cn(
           'border bg-white dark:bg-slate-900 rounded-2xl rounded-tl-none p-4 shadow-2xs transition-all duration-300 flex flex-col justify-between cursor-pointer group-hover:shadow-xs relative z-10',
-          folderTheme.cardBorder
+          selected ? 'border-charcoal ring-1 ring-charcoal dark:border-slate-300 dark:ring-slate-300' : folderTheme.cardBorder
         )}
       >
         <div className="space-y-3.5">
           {/* Header */}
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2.5 min-w-0">
+              {onToggleSelect && (
+                <span onClick={(e) => e.stopPropagation()} className="flex">
+                  <Checkbox
+                    checked={!!selected}
+                    onCheckedChange={() => onToggleSelect()}
+                    aria-label={`Select ${title}`}
+                    className="border-slate-300 dark:border-slate-600 data-[state=checked]:bg-charcoal data-[state=checked]:border-charcoal data-[state=checked]:text-white"
+                  />
+                </span>
+              )}
               {row.ownerType === 'Driver' ? (
                 <DriverAvatar
                   src={row.avatar_url}
@@ -125,7 +139,10 @@ export default function OwnerFolderCard({ row, onOpen, onPreviewDocument, onUplo
               const getStatusText = () => {
                 if (slot.status === 'MISSING') return 'Missing';
                 if (slot.status === 'VALID') return 'Valid';
-                if (slot.status === 'EXPIRING_SOON') return 'Expiring';
+                if (slot.status === 'EXPIRING_SOON') {
+                  const d = daysUntil(slot.expiry_date);
+                  return d !== null && d > 0 ? `${d}d left` : 'Expiring';
+                }
                 if (slot.status === 'EXPIRED') return 'Expired';
                 return 'Valid';
               };
@@ -139,15 +156,24 @@ export default function OwnerFolderCard({ row, onOpen, onPreviewDocument, onUplo
                     if (hasDoc) onPreviewDocument?.(slot.documentId!);
                     else onUploadMissing?.(row, slot.code);
                   }}
-                  className="flex items-center justify-between gap-2 text-[11px] -mx-1 px-1 py-0.5 rounded-md cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                  className={cn(
+                    'flex items-center justify-between gap-2 text-[11px] -mx-1 px-1 py-0.5 rounded-md cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/60',
+                    highlightTypeId && slot.documentTypeId !== highlightTypeId && 'opacity-40',
+                  )}
                 >
                   <span className="flex items-center gap-1.5 min-w-0">
                     <Icon className={cn('w-3.5 h-3.5 shrink-0', cfg.iconClass)} />
                     <span className="truncate text-slate-700 dark:text-slate-300 font-medium text-[11px]">{slot.name}</span>
                   </span>
-                  <span className={cn('shrink-0 text-[11px]', cfg.textClass)}>
-                    {getStatusText()}
-                  </span>
+                  {slot.status === 'MISSING' && onUploadMissing ? (
+                    <span className="shrink-0 text-[11px] font-bold text-[#FA634E] flex items-center gap-0.5">
+                      <Plus className="w-3 h-3" /> Upload
+                    </span>
+                  ) : (
+                    <span className={cn('shrink-0 text-[11px]', cfg.textClass)}>
+                      {getStatusText()}
+                    </span>
+                  )}
                 </div>
               );
             })}

@@ -7,6 +7,7 @@ import {
 import { importLocalTrucksDocs, importUploadedTrucksDocsFolder, uploadRawFileChunk } from '../controllers/batchImportController';
 import { extractAllDocumentsOcr, extractSingleDocumentOcr, syncLocalDocumentRecords, autoAssignUnlinkedDocs, previewAutoAssignUnlinkedDocs, confirmAutoAssignDocs } from '../controllers/bulkOcrController';
 import { createImport, appendImportFiles, getImport, updateImportItem, confirmImport, listImports, discardImport, triggerImportAnalysis } from '../controllers/documentImportController';
+import { getTrashedDocuments, restoreDocuments, purgeDocuments, updateDocument, getDocumentVersions, getDocumentActivity } from '../controllers/documentLibraryController';
 import { authenticateJWT } from '../middlewares/auth';
 import { authorizeRoles, requireModuleEnabled } from '../middlewares/rbac';
 import { upload } from '../middlewares/upload';
@@ -47,11 +48,21 @@ router.delete('/imports/:id', discardImport);
 router.get('/owner-folder', getOwnerFolder);
 router.get('/owner-folders', getOwnerFolders);
 
+// Recently deleted — restorable for 30 days, then purged (services/documentTrash.ts)
+router.get('/trash', getTrashedDocuments);
+router.post('/restore', restoreDocuments);
+router.post('/purge', purgeDocuments);
+
 // List all documents (filterable by entity_type, entity_id, doc_type, status, expiring_within_days)
 router.get('/', getDocuments);
 
 // Get a single document
 router.get('/:id', getDocumentById);
+router.get('/:id/versions', getDocumentVersions);
+router.get('/:id/activity', getDocumentActivity);
+
+// Edit details (type, number, dates, confidentiality, folder)
+router.patch('/:id', updateDocument);
 
 // Upload a new document — 'file' (single) or 'files' (several pages of one document)
 router.post('/', upload.fields([{ name: 'file', maxCount: 1 }, { name: 'files', maxCount: 50 }]), uploadDocument);
@@ -63,7 +74,7 @@ router.patch('/:id/status', updateDocumentStatus);
 router.post('/:id/files', upload.single('file'), addDocumentFile);
 router.delete('/:id/files/:fileId', deleteDocumentFile);
 
-// Soft delete
+// Soft delete → Recently deleted
 router.delete('/:id', deleteDocument);
 
 export default router;

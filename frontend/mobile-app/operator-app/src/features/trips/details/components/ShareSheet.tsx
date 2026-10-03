@@ -56,6 +56,10 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
     ? `Next: ${stopName(stops[nextIdx], nextIdx)}${stops[nextIdx].planned_arrival ? ` · due ${f.smart(stops[nextIdx].planned_arrival)}` : ''}`
     : null;
 
+  // The last message written for the operator — declared before the reset
+  // below, which runs during render and sets it.
+  const generated = useRef('');
+
   // Reset every time the sheet opens for something new.
   const [shownFor, setShownFor] = useState<ShareTarget | null>(null);
   if (target !== shownFor) {
@@ -81,7 +85,6 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
 
   // The tracking link (and the distance / ETA) can arrive after the sheet opened —
   // rewrite the message with them, unless the operator has already edited it.
-  const generated = useRef('');
   useEffect(() => {
     if (!target || target.type !== 'quick') return;
     if (text !== generated.current) return;

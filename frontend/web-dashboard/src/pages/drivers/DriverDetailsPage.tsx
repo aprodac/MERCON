@@ -38,7 +38,7 @@ import { cn } from '@/lib/utils';
 import { useDeploymentTimezone, formatInDeploymentTz } from '@/lib/datetime';
 import { driverPhotoUrl, resolveFileUrl } from '@/lib/documents';
 import {
-  dk, EMPTY, fmtDate, fmtSar, toNum, personName, routeOf, tripFacts,
+  dk, EMPTY, fmtDate, fmtSar, fmtPhone, saPhoneDigits, toNum, personName, routeOf, tripFacts,
   StatusPill, TripStatusPill, entityStatusTone, entityStatusLabel,
   DetailTitleRow, KpiCard, MetricCard, PanelHeader, PanelSearch, EmptyState, ListPager, ViewAllButton, TripCard, TripPreview,
 } from '@/components/details/DetailKit';
@@ -542,11 +542,8 @@ export default function DriverDetailsPage() {
 
   // Phone & WhatsApp formatting for quick contact actions
   const phoneRaw = driver.phone_primary || '';
-  const phoneDisplayStr = phoneRaw ? (phoneRaw.startsWith('+') ? phoneRaw : `+966 ${phoneRaw}`) : EMPTY;
-  const cleanPhoneDigits = phoneRaw.replace(/[^0-9]/g, '');
-  const whatsappNumber = cleanPhoneDigits.startsWith('966')
-    ? cleanPhoneDigits
-    : (cleanPhoneDigits.startsWith('0') ? `966${cleanPhoneDigits.slice(1)}` : `966${cleanPhoneDigits}`);
+  const phoneDisplayStr = fmtPhone(phoneRaw);
+  const whatsappNumber = saPhoneDigits(phoneRaw);
 
   const DRIVER_TRIPS_PER_PAGE = 3;
   const totalDriverTripPages = Math.max(1, Math.ceil(searchedDriverTrips.length / DRIVER_TRIPS_PER_PAGE));
@@ -589,7 +586,7 @@ export default function DriverDetailsPage() {
               }
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 shrink-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[1fr_1.3fr_0.8fr_1.1fr] gap-3 xl:gap-4 shrink-0">
               <KpiCard
                 icon={Truck}
                 iconClass="text-[#FA634E]"
@@ -605,14 +602,13 @@ export default function DriverDetailsPage() {
                 iconClass="text-emerald-600 dark:text-emerald-400"
                 label="Phone Number"
                 value={phoneDisplayStr}
-                mono
                 sub="Primary contact"
                 trailing={phoneRaw ? (
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <a href={`tel:${phoneRaw}`} className={dk.iconButton} title="Call Driver" aria-label="Call Driver">
+                    <a href={`tel:+${whatsappNumber}`} className={cn(dk.iconButton, 'w-8 h-8 rounded-lg')} title="Call Driver" aria-label="Call Driver">
                       <PhoneCall className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     </a>
-                    <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer" className={dk.iconButton} title="Send WhatsApp Message" aria-label="Send WhatsApp Message">
+                    <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noopener noreferrer" className={cn(dk.iconButton, 'w-8 h-8 rounded-lg')} title="Send WhatsApp Message" aria-label="Send WhatsApp Message">
                       <WhatsAppIcon className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                     </a>
                   </div>
