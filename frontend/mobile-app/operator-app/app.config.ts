@@ -25,7 +25,7 @@ const CLIENT_PROFILES = {
     icon: '../shared/assets/images/operator-icon.png',
     splashImage: '../shared/assets/images/merconclosed.png',
     androidAdaptiveForeground: '../shared/assets/images/operator-adaptive-icon.png',
-    androidAdaptiveBackground: '../shared/assets/images/android-icon-background.png',
+    androidAdaptiveBackground: '../shared/assets/images/operator-icon-background.png',
     androidAdaptiveMonochrome: '../shared/assets/images/android-icon-monochrome.png',
     favicon: '../shared/assets/images/favicon.png',
     apiUrl: process.env.EXPO_PUBLIC_API_URL || 'https://dev.mercon.tech/api',
@@ -78,7 +78,7 @@ export default (): ExpoConfig => ({
   },
   android: {
     adaptiveIcon: {
-      backgroundColor: '#FFFFFF',
+      backgroundColor: '#221F1F',
       foregroundImage: client.androidAdaptiveForeground,
       backgroundImage: client.androidAdaptiveBackground,
       monochromeImage: client.androidAdaptiveMonochrome,

@@ -26,7 +26,7 @@ const CLIENT_PROFILES = {
     icon: '../shared/assets/images/driver-icon.png',
     splashImage: '../shared/assets/images/merconclosed.png',
     androidAdaptiveForeground: '../shared/assets/images/driver-adaptive-icon.png',
-    androidAdaptiveBackground: '../shared/assets/images/android-icon-background.png',
+    androidAdaptiveBackground: '../shared/assets/images/driver-icon-background.png',
     androidAdaptiveMonochrome: '../shared/assets/images/android-icon-monochrome.png',
     favicon: '../shared/assets/images/favicon.png',
     // Android draws the push icon from its transparency only — a full-colour
