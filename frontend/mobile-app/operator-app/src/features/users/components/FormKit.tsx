@@ -9,7 +9,7 @@ import {
   View, Text, TextInput, TouchableOpacity, Switch, StyleSheet, ActivityIndicator,
   type TextInputProps,
 } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
+import { setStringAsync } from '@/lib/clipboard';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ArrowLeft, Check, Copy, Eye, EyeOff, Sparkles, type LucideIcon } from 'lucide-react-native';
 import { Colors, Radius, Spacing, Typography } from '@mercon/mobile-shared/theme/tokens';
@@ -100,8 +100,8 @@ export function PasswordField({
   };
   const copy = async () => {
     if (!value) return;
-    await Clipboard.setStringAsync(value);
-    setCopied(true);
+    const ok = await setStringAsync(value);
+    if (ok) setCopied(true);
   };
 
   return (

@@ -465,11 +465,10 @@ export const confirmImport = async (req: AuthenticatedRequest, res: Response) =>
         continue;
       }
 
+      // Replacing keeps the old copy: the owner folder always uses the newest
+      // document of a type, so the previous one becomes version history
+      // (GET /documents/:id/versions) instead of disappearing.
       if (item.duplicate_of_document_id && action === 'replace') {
-        await prisma.document.update({
-          where: { id: item.duplicate_of_document_id },
-          data: { deletedAt: new Date(), isActive: false, deleted_by: req.user?.id },
-        });
         results.replaced++;
       }
 

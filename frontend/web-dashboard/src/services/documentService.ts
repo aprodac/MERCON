@@ -145,9 +145,41 @@ export interface DocumentFilters {
   status?: DocStatus;
   expiring_within_days?: number;
   folder_id?: string | null;
+  /** 'library' leaves out trip and stop media (photos, POD), which live on the trip. */
+  scope?: 'library';
   page?: number;
   per_page?: number;
 }
+
+export interface DocumentPatch {
+  document_type_id?: string | null;
+  issue_date?: string | null;
+  expiry_date?: string | null;
+  document_number?: string | null;
+  is_confidential?: boolean;
+  folder_id?: string | null;
+}
+
+export interface DocumentVersion {
+  id: string;
+  status: DocStatus;
+  issue_date: string | null;
+  expiry_date: string | null;
+  file_url: string;
+  mime_type: string | null;
+  createdAt: string;
+  isCurrent: boolean;
+}
+
+export interface DocumentActivityEntry {
+  id: string;
+  action: string;
+  at: string;
+  by: string | null;
+  details: Record<string, any>;
+}
+
+export type TrashedDocument = MerconDocument & { deletedAt: string };
 
 export const documentService = {
   async getAll(filters: DocumentFilters = {}): Promise<ApiResponse<MerconDocument[]>> {
@@ -191,9 +223,42 @@ export const documentService = {
   },
 
   async updateDates(id: string, dates: { issue_date?: string | null; expiry_date?: string | null }): Promise<MerconDocument> {
-    const res = await api.patch<ApiResponse<MerconDocument>>(`/documents/${id}/status`, dates);
+    return documentService.update(id, dates);
+  },
+
+  /** Edit a document's details. Only the fields sent are changed. */
+  async update(id: string, patch: DocumentPatch): Promise<MerconDocument> {
+    const res = await api.patch<ApiResponse<MerconDocument>>(`/documents/${id}`, patch);
     return res.data.data;
   },
+
+  async getVersions(id: string): Promise<DocumentVersion[]> {
+    const res = await api.get<ApiResponse<DocumentVersion[]>>(`/documents/${id}/versions`);
+    return res.data.data;
+  },
+
+  async getActivity(id: string): Promise<DocumentActivityEntry[]> {
+    const res = await api.get<ApiResponse<DocumentActivityEntry[]>>(`/documents/${id}/activity`);
+    return res.data.data;
+  },
+
+  /** Recently deleted — restorable for 30 days. */
+  async getTrash(): Promise<TrashedDocument[]> {
+    const res = await api.get<ApiResponse<TrashedDocument[]>>('/documents/trash');
+    return res.data.data;
+  },
+
+  async restore(ids: string[]): Promise<number> {
+    const res = await api.post<ApiResponse<{ count: number }>>('/documents/restore', { ids });
+    return res.data.data.count;
+  },
+
+  /** Deletes documents already in Recently deleted, for good. */
+  async purge(ids: string[]): Promise<number> {
+    const res = await api.post<ApiResponse<{ count: number }>>('/documents/purge', { ids });
+    return res.data.data.count;
+  },
+
 
   async delete(id: string): Promise<void> {
     await api.delete(`/documents/${id}`);

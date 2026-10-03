@@ -161,6 +161,8 @@ export function useTripDetails(id: string | undefined) {
     tracking: trackable ? tracking : null,
     /** The link status messages end with — only when the customer wants it added. */
     trackingUrl: trackable ? autoTrackingUrl(tracking) : null,
+    /** Ask for the tracking link again (e.g. it failed when the screen opened). */
+    refreshTracking: () => setTrackingTick((n) => n + 1),
     renewTracking,
     loading,
     refreshing,
