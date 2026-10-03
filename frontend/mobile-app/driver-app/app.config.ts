@@ -41,9 +41,13 @@ type ClientKey = keyof typeof CLIENT_PROFILES;
 
 const clientKey = (process.env.APP_CLIENT as ClientKey) || 'mercon';
 
-// CI build number (Codemagic sets BUILD_NUMBER) → Android versionCode / iOS
-// buildNumber, so every CI build installs over the previous one. Local builds use 1.
-const buildNumber = Number(process.env.BUILD_NUMBER) || 1;
+// Version + build number live in version.json (bump with `npm run version:bump`,
+// which also writes them into ios/ for Xcode archives — see
+// ../shared/tooling/app-version.js). Codemagic (Android only) sets BUILD_NUMBER;
+// it only wins when higher, so a CI build never goes below a number already uploaded.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const appVersion: { version: string; buildNumber: number } = require('./version.json');
+const buildNumber = Math.max(appVersion.buildNumber, Number(process.env.BUILD_NUMBER) || 0);
 const client = CLIENT_PROFILES[clientKey];
 
 if (!client) {
@@ -55,7 +59,7 @@ if (!client) {
 export default (): ExpoConfig => ({
   name: client.name,
   slug: client.slug,
-  version: '1.1.0',
+  version: appVersion.version,
   orientation: 'portrait',
   icon: client.icon,
   scheme: client.scheme,
@@ -121,8 +125,9 @@ export default (): ExpoConfig => ({
         icon: client.icon,
         color: client.brandColor,
         // TestFlight / App Store builds talk to Apple's production push service.
-        // Codemagic's iOS workflows set APS_ENVIRONMENT=production; local and
-        // dev-client builds keep 'development' (matching a development profile).
+        // Set APS_ENVIRONMENT=production in .env.local before prebuilding for an
+        // Xcode archive (docs/IOS_DISTRIBUTION_AND_PUSH.md); dev-client builds keep
+        // 'development' (matching a development profile).
         mode: process.env.APS_ENVIRONMENT === 'production' ? 'production' : 'development',
       },
     ],

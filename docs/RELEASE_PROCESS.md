@@ -33,9 +33,12 @@ dev.mercon.tech); a release is a PR that moves `main` forward to `dev`.
       `GET /health`)
 5. **Watch the deploy** in Actions → *CI/CD Pipeline*. If it fails after the
    backup, the last step prints the exact restore command.
-6. **Mobile apps**: after a successful deploy, build from `main` on
-   Codemagic — `main` builds talk to `https://mercon.tech/api`
-   (see `docs/CODEMAGIC_SETUP.md`).
+6. **Mobile apps**: after a successful deploy, build from `main`. iOS: on the
+   Mac with Xcode — `npm run version:bump` in the app folder, archive, upload
+   (`docs/IOS_DISTRIBUTION_AND_PUSH.md` §C5). Android: Codemagic
+   (`docs/CODEMAGIC_SETUP.md`). Release builds talk to `https://mercon.tech/api`.
+   The apps call the API on production, so release the backend **before**
+   shipping app builds that use new endpoints.
 
 ## Rules
 

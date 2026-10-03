@@ -61,7 +61,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "version:bump": "node ../shared/tooling/app-version.js bump",
+    "version:sync": "node ../shared/tooling/app-version.js sync"
   },
   "private": true
 }
