@@ -29,6 +29,9 @@ const CLIENT_PROFILES = {
     androidAdaptiveBackground: '../shared/assets/images/android-icon-background.png',
     androidAdaptiveMonochrome: '../shared/assets/images/android-icon-monochrome.png',
     favicon: '../shared/assets/images/favicon.png',
+    // Android draws the push icon from its transparency only — a full-colour
+    // logo shows up as a white square. A white "M" on transparent.
+    notificationIcon: '../shared/assets/images/notification-icon.png',
     apiUrl: process.env.EXPO_PUBLIC_API_URL || 'https://dev.mercon.tech/api',
     brandColor: '#FA634E',
     brandColorLight: '#FFF0EB',
@@ -45,6 +48,14 @@ const clientKey = (process.env.APP_CLIENT as ClientKey) || 'mercon';
 // buildNumber, so every CI build installs over the previous one. Local builds use 1.
 const buildNumber = Number(process.env.BUILD_NUMBER) || 1;
 const client = CLIENT_PROFILES[clientKey];
+
+// Firebase config for Android push (Expo delivers to Android through Firebase
+// Cloud Messaging). EAS can hand the file over as a file secret
+// (GOOGLE_SERVICES_JSON); otherwise it is read from this folder. Without it the
+// build still works — Android just cannot receive pushes.
+const googleServicesFile =
+  process.env.GOOGLE_SERVICES_JSON ||
+  (require('fs').existsSync(`${process.cwd()}/google-services.json`) ? './google-services.json' : undefined);
 
 if (!client) {
   throw new Error(
@@ -83,6 +94,12 @@ export default (): ExpoConfig => ({
     ],
     package: client.androidPackage,
     versionCode: buildNumber,
+    ...(googleServicesFile ? { googleServicesFile } : {}),
+    // Trip GPS runs as a foreground service started while the app is on
+    // screen, which Android treats as "while in use". Keep the "all the time"
+    // permission out so no library can add it — it would bring a Play Console
+    // background-location review.
+    blockedPermissions: ['android.permission.ACCESS_BACKGROUND_LOCATION'],
   },
   web: {
     output: 'static',
@@ -118,7 +135,7 @@ export default (): ExpoConfig => ({
     [
       'expo-notifications',
       {
-        icon: client.icon,
+        icon: client.notificationIcon,
         color: client.brandColor,
         // TestFlight / App Store builds talk to Apple's production push service.
         // Codemagic's iOS workflows set APS_ENVIRONMENT=production; local and
@@ -154,6 +171,11 @@ export default (): ExpoConfig => ({
       'expo-location',
       {
         locationWhenInUsePermission: `${client.name} shares your location with your operator while you're on an active trip, so they can track the delivery.`,
+        // Trip GPS keeps going in Google Maps / with the screen off, shown by a
+        // "sharing your trip location" notification (services/tripLocationTask).
+        isAndroidForegroundServiceEnabled: true,
+        isAndroidBackgroundLocationEnabled: false,
+        isIosBackgroundLocationEnabled: true,
       },
     ],
     'expo-image',
