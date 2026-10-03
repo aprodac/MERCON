@@ -1666,7 +1666,7 @@ export const replaceDriver = async (req: Request, res: Response) => {
           updated_by: (req as any).user?.id,
         },
         include: {
-          tripDrivers: { include: { driver: true } },
+          driver: true,
           assignmentEvents: true,
         },
       });
@@ -1702,6 +1702,7 @@ export const replaceDriver = async (req: Request, res: Response) => {
     if (['TRIP_OR_DRIVER_NOT_FOUND', 'NEW_DRIVER_UNAVAILABLE'].includes(error.message)) {
       return res.status(400).json({ success: false, error: { code: 'CONFLICT', message: error.message } });
     }
+    logger.error({ err: error }, '[TripController] Failed to replace driver');
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to replace driver' } });
   }
 };
