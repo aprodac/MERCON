@@ -19,7 +19,7 @@ import { currentMonthKey, monthLabel, shiftMonth, formatMoney } from '@/componen
 import { computeMonthlyTripSearchRelevance } from '@/components/trips/monthly/monthlySearch';
 import { buildBookings, buildGroups, CELL_STYLES, OVERDUE_CELL, localDay, totalsOf, type CellState } from '@/components/trips/monthly/monthlyGrid';
 import { useAssignmentLookups } from '@/components/trips/monthly/useAssignmentLookups';
-import { Combobox } from '@/components/ui/combobox';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import {
   Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
@@ -38,9 +38,6 @@ const STATUS_OPTIONS = [
 ];
 
 const LEGEND: CellState[] = ['done', 'active', 'planned', 'gap', 'cancelled'];
-
-/** Companies shown as segments; the rest sit under "N more". */
-const VISIBLE_COMPANIES = 5;
 
 const EXPORT_HEADERS = [
   'Company', 'Date', 'Trip Ref', 'Status', 'Driver', 'Vehicle',
@@ -131,10 +128,28 @@ export default function MonthlyTripsPage() {
   const today = localDay(0);
   const soonUntil = localDay(2);
 
-  /** Companies with trips this month, busiest first — the chips. */
+  /** Companies with trips this month, busiest first. */
   const companyChips = useMemo(
     () => [...rawCompanies].sort((a, b) => b.total_trips - a.total_trips),
     [rawCompanies],
+  );
+
+  const companyOptions = useMemo<ComboboxOption[]>(
+    () => [
+      {
+        value: 'All',
+        label: `All companies · ${summary?.total_trips ?? 0} trips`,
+        selectedLabel: 'All companies',
+        keywords: 'all',
+      },
+      ...companyChips.map((c) => ({
+        value: c.customer.id,
+        label: `${c.customer.name} · ${c.total_trips}`,
+        selectedLabel: c.customer.name,
+        keywords: c.customer.name,
+      })),
+    ],
+    [companyChips, summary?.total_trips],
   );
 
   // Company + search narrow the trips; the grid groups what's left into routes.
@@ -508,54 +523,29 @@ export default function MonthlyTripsPage() {
           </StatCard>
         </div>
 
-        {/* ── Company filter ── */}
+        {/* ── Company filter: searchable, since the list can grow long ── */}
         {companyChips.length > 0 && (
-          <div className="flex items-center">
-            <div className="inline-flex flex-wrap items-center gap-0.5 rounded-lg bg-slate-100 dark:bg-slate-800/70 p-0.5">
-              <SegmentButton label="All" count={summary?.total_trips ?? 0} active={companyId === 'All'} onClick={() => setCompanyId('All')} />
-              {companyChips.slice(0, VISIBLE_COMPANIES).map((c) => (
-                <SegmentButton
-                  key={c.customer.id}
-                  label={c.customer.name}
-                  count={c.total_trips}
-                  active={companyId === c.customer.id}
-                  onClick={() => setCompanyId(c.customer.id)}
-                />
-              ))}
-              {companyChips.length > VISIBLE_COMPANIES && (() => {
-                const hidden = companyChips.slice(VISIBLE_COMPANIES);
-                const picked = hidden.find((c) => c.customer.id === companyId);
-                return (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button
-                        type="button"
-                        className={`h-7 px-2.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors ${
-                          picked
-                            ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
-                            : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
-                        }`}
-                      >
-                        <span className="truncate max-w-[160px]">{picked ? picked.customer.name : `${hidden.length} more`}</span>
-                        <ChevronDown className="h-3 w-3" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="start" className="w-64 max-h-80 overflow-y-auto p-1 rounded-lg">
-                      {hidden.map((c) => (
-                        <DropdownMenuItem
-                          key={c.customer.id}
-                          onClick={() => setCompanyId(c.customer.id)}
-                          className="text-xs cursor-pointer flex justify-between gap-2"
-                        >
-                          <span className="truncate">{c.customer.name}</span>
-                          <span className="text-slate-400 tabular-nums">{c.total_trips}</span>
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                );
-              })()}
+          <div className="flex items-center gap-2">
+            <div className="w-72">
+              <Combobox
+                options={companyOptions}
+                value={companyId}
+                onChange={(v) => setCompanyId(v || 'All')}
+                placeholder="All companies"
+                searchPlaceholder="Search companies"
+                className="h-9 text-xs rounded-lg"
+                popoverClassName="min-w-[288px]"
+              />
             </div>
+            {companyId !== 'All' && (
+              <button
+                type="button"
+                onClick={() => setCompanyId('All')}
+                className="h-9 px-2 text-xs font-medium text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center gap-1"
+              >
+                <X className="h-3.5 w-3.5" /> Show all
+              </button>
+            )}
           </div>
         )}
 
@@ -658,6 +648,10 @@ export default function MonthlyTripsPage() {
               <span className="flex items-center gap-1.5">
                 <span className="h-2 w-2 rounded-full bg-rose-600" />
                 Driver or truck double-booked
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-3.5 w-3 rounded-[3px] bg-emerald-100 text-emerald-800 text-[9px] font-semibold grid place-items-center">4</span>
+                Trips that day, when it differs from the route's usual
               </span>
               <span className="ml-auto text-slate-400">
                 Click a day to edit it · shift-click two days to select the range · click a route for its ledger
@@ -875,24 +869,6 @@ function AttentionRow({
       <span className="text-xl font-semibold tabular-nums">{count}</span>
       <span className="text-[11px] font-medium whitespace-nowrap">{label}</span>
       {active && <X className="h-3 w-3 self-center" />}
-    </button>
-  );
-}
-
-function SegmentButton({ label, count, active, onClick }: { label: string; count: number; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      className={`h-7 px-2.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
-        active
-          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
-          : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-      }`}
-    >
-      <span className="truncate max-w-[160px]">{label}</span>
-      <span className="text-[10px] text-slate-400 tabular-nums">{count}</span>
     </button>
   );
 }
