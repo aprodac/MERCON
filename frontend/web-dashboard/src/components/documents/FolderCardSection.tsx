@@ -3,11 +3,10 @@ import { ArrowRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import OwnerFolderCard from '@/components/documents/OwnerFolderCard';
 import type { OwnerFoldersSummaryRow } from '@/services/documentService';
-import { cn } from '@/lib/utils';
 
 const ITEMS_PER_ROW = 4;
-const INITIAL_BATCH = 10;
-const BATCH_INCREMENT = 8;
+const INITIAL_BATCH = 12;
+const BATCH_INCREMENT = 12;
 
 interface FolderCardSectionProps {
   title: string;
@@ -19,6 +18,10 @@ interface FolderCardSectionProps {
   onUploadMissing?: (row: OwnerFoldersSummaryRow, slotCode: string) => void;
   isOverview?: boolean;
   onViewAll?: () => void;
+  /** Owner ids currently selected for bulk actions. */
+  selectedIds?: Set<string>;
+  onToggleSelect?: (row: OwnerFoldersSummaryRow) => void;
+  highlightTypeId?: string | null;
 }
 
 /**
@@ -37,6 +40,9 @@ export default function FolderCardSection({
   onUploadMissing,
   isOverview = false,
   onViewAll,
+  selectedIds,
+  onToggleSelect,
+  highlightTypeId,
 }: FolderCardSectionProps) {
   const [visibleLimit, setVisibleLimit] = useState(INITIAL_BATCH);
 
@@ -69,9 +75,18 @@ export default function FolderCardSection({
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-7">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-x-4 gap-y-7">
         {visibleRows.map((row) => (
-          <OwnerFolderCard key={row.ownerId} row={row} onOpen={() => onOpenRow(row)} onPreviewDocument={onPreviewDocument} onUploadMissing={onUploadMissing} />
+          <OwnerFolderCard
+            key={row.ownerId}
+            row={row}
+            onOpen={() => onOpenRow(row)}
+            onPreviewDocument={onPreviewDocument}
+            onUploadMissing={onUploadMissing}
+            selected={selectedIds?.has(row.ownerId)}
+            onToggleSelect={onToggleSelect ? () => onToggleSelect(row) : undefined}
+            highlightTypeId={highlightTypeId}
+          />
         ))}
       </div>
 

@@ -9,6 +9,8 @@ import fs from 'fs';
 import archiver from 'archiver';
 import { computeDocumentStatus } from '../services/documentStatusService';
 import { compressUploadedImage } from '../services/imageCompressor';
+import { logAuditEvent } from '../services/auditService';
+import { TRASHED_ACTION, TRASH_RETENTION_DAYS, TRIP_MEDIA_ENTITY_TYPES } from '../services/documentTrash';
 
 /* ─── List documents ──────────────────────────────────────────────────────── */
 export const getDocuments = async (req: Request, res: Response) => {
@@ -21,6 +23,7 @@ export const getDocuments = async (req: Request, res: Response) => {
       status,
       expiring_within_days,
       folder_id,
+      scope,
       page = '1',
       per_page = '20'
     } = req.query;
@@ -34,6 +37,9 @@ export const getDocuments = async (req: Request, res: Response) => {
 
     const whereClause: any = { deletedAt: null };
     if (entity_type) whereClause.entity_type = entity_type as string;
+    // The Documents library: everything except trip/stop media, which lives
+    // on the trip and would otherwise bury company documents.
+    else if (scope === 'library') whereClause.entity_type = { notIn: TRIP_MEDIA_ENTITY_TYPES };
     if (entity_id) {
       if (isUuid(entity_id as string)) {
         whereClause.entity_id = entity_id as string;
@@ -117,7 +123,7 @@ const LEGACY_DOC_TYPE_BY_OWNER: Record<string, DocType> = {
   Other: DocType.Contract,
 };
 
-const LEGACY_DOC_TYPES = new Set<string>(Object.values(DocType));
+export const LEGACY_DOC_TYPES = new Set<string>(Object.values(DocType));
 
 /** Best-effort cleanup of files multer already wrote for a rejected request. */
 function discardUploadedFiles(files: Express.Multer.File[]) {
@@ -221,6 +227,7 @@ export const uploadDocument = async (req: Request, res: Response) => {
       },
       include: { folder: true, documentType: true, files: true }
     });
+    await logAuditEvent({ req, action: 'DOCUMENT_UPLOADED', entityType: 'Document', entityId: document.id, metadata: { files: uploaded.length } });
 
     res.status(201).json({ success: true, data: document });
   } catch (error) {
@@ -259,6 +266,7 @@ export const updateDocumentStatus = async (req: Request, res: Response) => {
       where: { id: req.params.id as string },
       data: updateData
     });
+    await logAuditEvent({ req, action: 'DOCUMENT_STATUS_CHANGED', entityType: 'Document', entityId: updated.id, metadata: { status } });
 
     res.json({ success: true, data: updated });
   } catch (error) {
@@ -266,20 +274,29 @@ export const updateDocumentStatus = async (req: Request, res: Response) => {
   }
 };
 
-/* ─── Delete document (hard) ──────────────────────────────────────────────── */
+/* ─── Delete documents → Recently deleted (restorable for 30 days) ──────── */
+async function trashDocuments(req: Request, ids: string[]): Promise<number> {
+  const userId = (req as any).user?.id;
+  const live = await prisma.document.findMany({ where: { id: { in: ids }, deletedAt: null }, select: { id: true } });
+  if (!live.length) return 0;
+  const liveIds = live.map((d) => d.id);
+  await prisma.document.updateMany({
+    where: { id: { in: liveIds } },
+    data: { deletedAt: new Date(), deleted_by: userId, isActive: false },
+  });
+  await Promise.all(liveIds.map((id) => logAuditEvent({ req, action: TRASHED_ACTION, entityType: 'Document', entityId: id })));
+  return liveIds.length;
+}
+
 export const deleteDocument = async (req: Request, res: Response) => {
   try {
-    const id = req.params.id as string;
-    await prisma.$transaction([
-      prisma.documentFile.deleteMany({ where: { documentId: id } }),
-      prisma.document.delete({ where: { id } })
-    ]);
-    res.json({ success: true, data: { message: 'Document permanently deleted successfully' } });
+    const count = await trashDocuments(req, [req.params.id as string]);
+    if (!count) return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Document not found' } });
+    res.json({ success: true, data: { count, message: `Moved to Recently deleted for ${TRASH_RETENTION_DAYS} days` } });
   } catch (error) {
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to delete document' } });
   }
 };
-
 
 export const bulkDeleteDocuments = async (req: Request, res: Response) => {
   try {
@@ -289,11 +306,8 @@ export const bulkDeleteDocuments = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'No IDs provided' } });
     }
 
-    await prisma.$transaction([
-      prisma.documentFile.deleteMany({ where: { documentId: { in: ids } } }),
-      prisma.document.deleteMany({ where: { id: { in: ids } } })
-    ]);
-    res.json({ success: true, data: { message: `Successfully permanently deleted ${ids.length} documents` } });
+    const count = await trashDocuments(req, ids);
+    res.json({ success: true, data: { count, message: `Moved ${count} documents to Recently deleted` } });
   } catch (error) {
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: `Failed to bulk delete documents` } });
   }
@@ -361,13 +375,19 @@ export const bulkUpdateDocumentStatus = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'IDs and status are required' } });
     }
 
+    if (!(Object.values(DocStatus) as string[]).includes(status)) {
+      return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: `Status must be one of: ${Object.values(DocStatus).join(', ')}` } });
+    }
+
     await prisma.document.updateMany({
-      where: { id: { in: ids } },
+      where: { id: { in: ids }, deletedAt: null },
       data: {
         status: status as DocStatus,
-        updated_by: userId
+        updated_by: userId,
+        ...(status === DocStatus.Verified ? { verified_by: userId } : {}),
       }
     });
+    await Promise.all(ids.map((id: string) => logAuditEvent({ req, action: 'DOCUMENT_STATUS_CHANGED', entityType: 'Document', entityId: id, metadata: { status } })));
     res.json({ success: true, data: { message: `Successfully updated ${ids.length} documents` } });
   } catch (error) {
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: `Failed to bulk update documents` } });
@@ -591,6 +611,7 @@ export const addDocumentFile = async (req: Request, res: Response) => {
         created_by: (req as any).user?.id,
       },
     });
+    await logAuditEvent({ req, action: 'DOCUMENT_PAGE_ADDED', entityType: 'Document', entityId: document.id });
 
     res.status(201).json({ success: true, data: file });
   } catch (error) {
@@ -604,6 +625,7 @@ export const deleteDocumentFile = async (req: Request, res: Response) => {
     await prisma.documentFile.delete({
       where: { id: req.params.fileId as string },
     });
+    await logAuditEvent({ req, action: 'DOCUMENT_PAGE_REMOVED', entityType: 'Document', entityId: req.params.id as string });
     res.json({ success: true, data: { message: 'File permanently removed successfully' } });
   } catch (error) {
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to remove file' } });

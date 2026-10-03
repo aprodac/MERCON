@@ -8,7 +8,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, TurboModuleRegistry } from 'react-native';
-import * as Clipboard from 'expo-clipboard';
+import { getStringAsync } from '../../../../lib/clipboard';
 import { Clipboard as ClipboardIcon, MapPin, Search } from 'lucide-react-native';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
@@ -69,7 +69,7 @@ export function PinSheet({ target, tripId, onClose, onSaved }: Props) {
   };
 
   const pasteLink = async () => {
-    const text = (await Clipboard.getStringAsync()).trim();
+    const text = (await getStringAsync()).trim();
     if (!text) {
       Alert.alert('Nothing copied', 'Copy the location link from WhatsApp or Google Maps first.');
       return;

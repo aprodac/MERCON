@@ -9,6 +9,7 @@
  */
 import { Platform, TurboModuleRegistry } from 'react-native';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
+import { setStringAsync } from '../../../lib/clipboard';
 import type { LiveMediaItem } from '../../../lib/operator';
 
 const hasRNShare = (() => {
@@ -50,14 +51,7 @@ async function download(items: LiveMediaItem[]): Promise<string[]> {
 }
 
 async function copy(text: string): Promise<boolean> {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Clipboard = require('expo-clipboard');
-    await Clipboard.setStringAsync(text);
-    return true;
-  } catch {
-    return false;
-  }
+  return setStringAsync(text);
 }
 
 export type ShareFilesResult = { shared: number; captionCopied: boolean; onlyFirst: boolean; dismissed: boolean };
