@@ -129,9 +129,13 @@ export const getCurrentTrip = async (req: Request, res: Response) => {
         status: {
           in: [TripStatus.Loading, TripStatus.InTransit, TripStatus.Delayed]
         },
-        NOT: {
-          driver_workflow_state: 'COMPLETED'
-        }
+        // NOT { state: 'COMPLETED' } alone drops rows where the state is NULL
+        // (SQL: NULL = 'COMPLETED' is unknown), i.e. every trip the office
+        // started before the driver touched it — the driver saw "No active trip".
+        OR: [
+          { driver_workflow_state: null },
+          { driver_workflow_state: { not: 'COMPLETED' } }
+        ]
       },
       include,
       orderBy: { updatedAt: 'desc' },
