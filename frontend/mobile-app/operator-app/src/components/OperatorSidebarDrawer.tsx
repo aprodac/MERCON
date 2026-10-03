@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import {
   Map as MapIcon,
-  Bell, Building2, CalendarClock, CreditCard, FileText, FolderOpen, House, LogOut, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
+  Bell, Building2, CreditCard, FileText, FolderOpen, House, LogOut, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
@@ -36,7 +36,7 @@ const ZINC = {
 };
 
 type BadgeTone = 'neutral' | 'red' | 'amber';
-type BadgeKey = 'trips' | 'notifications' | 'renewals' | 'invoices' | 'documents';
+type BadgeKey = 'trips' | 'notifications' | 'invoices' | 'documents';
 
 interface MenuItem {
   Icon: LucideIcon;
@@ -70,7 +70,6 @@ const GROUPS: MenuGroup[] = [
       { Icon: Building2, label: '3rd party fleet', route: '/third-party', keywords: 'subcontractors providers 3pl' },
       // Hidden until these screens can do more than list (owner, 2026-09-26).
       // { Icon: Wrench, label: 'Maintenance', route: '/maintenance', keywords: 'service repair' },
-      { Icon: CalendarClock, label: 'Renewals', route: '/vehicle-renewals', badge: 'renewals', keywords: 'expiring istimara insurance' },
     ],
   },
   {
@@ -115,7 +114,6 @@ function useMenuBadges(enabled: boolean): Record<BadgeKey, { text: string; tone:
     const unread = (notifications.data ?? []).filter((n) => !n.is_read).length;
     const running = (live.data ?? []).filter((u) => u.trip && u.trip.phase !== 'upcoming').length;
     const soon = (expiries.data ?? []).filter((e) => e.days <= 7);
-    const vehicleSoon = soon.filter((e) => e.entity_type === 'Vehicle').length;
     const expired = soon.filter((e) => e.days < 0).length;
     const overdue = (invoices.data ?? []).filter(
       (i) => ['Issued', 'PartiallyPaid', 'Overdue'].includes(i.status) && !!i.due_date && new Date(i.due_date).getTime() < now - 86_400_000,
@@ -123,7 +121,6 @@ function useMenuBadges(enabled: boolean): Record<BadgeKey, { text: string; tone:
     return {
       notifications: unread ? { text: String(unread), tone: 'red' as const } : null,
       trips: running ? { text: `${running} live`, tone: 'neutral' as const } : null,
-      renewals: vehicleSoon ? { text: String(vehicleSoon), tone: 'amber' as const } : null,
       documents: soon.length ? { text: String(soon.length), tone: expired ? ('red' as const) : ('amber' as const) } : null,
       invoices: overdue ? { text: `${overdue} overdue`, tone: 'neutral' as const } : null,
     };
