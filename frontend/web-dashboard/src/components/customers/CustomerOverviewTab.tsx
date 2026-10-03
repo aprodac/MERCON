@@ -222,13 +222,13 @@ export default function CustomerOverviewTab({
             <EmptyRow icon={Truck}>No finished or scheduled trips yet.</EmptyRow>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[600px] text-[13px]">
+              <table className="w-full text-[13px] sm:min-w-[600px]">
                 <thead className={ui.thead}>
                   <tr>
                     <th className={cn(ui.thc, 'pl-4')}>Trip</th>
                     <th className={ui.thc}>Route</th>
-                    <th className={ui.thc}>Driver</th>
-                    <th className={ui.thc}>Status</th>
+                    <th className={cn(ui.thc, 'hidden md:table-cell')}>Driver</th>
+                    <th className={cn(ui.thc, 'hidden sm:table-cell')}>Status</th>
                     <th className={cn(ui.thc, 'pr-4 text-right')}>Value (SAR)</th>
                   </tr>
                 </thead>
@@ -241,13 +241,13 @@ export default function CustomerOverviewTab({
                           <p className={ui.link}>{tripRef(trip)}</p>
                           <p className="text-xs text-slate-500 tabular-nums">{fmtDate(trip.planned_start || trip.createdAt, tz)}</p>
                         </td>
-                        <td className={cn(ui.tdc, 'max-w-[280px]')}>
+                        <td className={cn(ui.tdc, 'w-full max-w-0 sm:w-auto sm:max-w-[280px]')}>
                           <p className="truncate text-slate-800 dark:text-slate-200" title={`${route.origin} → ${route.destination}`}>
                             {route.origin} <span className="text-slate-400">→</span> {route.destination}
                           </p>
                         </td>
-                        <td className={cn(ui.tdc, 'max-w-[160px] truncate text-slate-600 dark:text-slate-300')}>{assignedTo(trip)}</td>
-                        <td className={ui.tdc}><TripStatusBadge status={trip.status} /></td>
+                        <td className={cn(ui.tdc, 'hidden max-w-[160px] truncate text-slate-600 md:table-cell dark:text-slate-300')}>{assignedTo(trip)}</td>
+                        <td className={cn(ui.tdc, 'hidden sm:table-cell')}><TripStatusBadge status={trip.status} /></td>
                         <td className={cn(ui.tdc, 'pr-4 text-right font-medium text-slate-900 tabular-nums dark:text-white')}>{money(trip.billing_amount) ?? <span className="font-normal text-slate-300">—</span>}</td>
                       </tr>
                     );
