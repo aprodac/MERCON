@@ -122,6 +122,16 @@ Check the push setting landed: `ios/<AppName>/<AppName>.entitlements` should con
 `aps-environment` = **production**.
 
 ### C5. Sign, archive, upload
+**After pulling new code, regenerate `ios/` before archiving** — new code can add native
+modules (e.g. `expo-battery` on 2026-10-01), and an old `ios/` still builds but the app then
+crashes on launch ("Cannot find native module"). Driver build 101 shipped like that:
+```bash
+npx expo prebuild --platform ios
+cd ios && LANG=en_US.UTF-8 pod install && cd ..
+```
+`npm run version:bump` refuses to bump while `ios/` is missing a native module the app uses
+(`npm run version:check` runs only the check).
+
 Every upload needs a new build number. Bump it first — from the app folder:
 ```bash
 npm run version:bump              # build +1, e.g. 1.1.0 (100) → 1.1.0 (101)
