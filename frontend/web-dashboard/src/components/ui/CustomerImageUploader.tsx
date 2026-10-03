@@ -108,7 +108,7 @@ export default function CustomerImageUploader({
         <div className="flex-1 text-center sm:text-left space-y-1">
           <div className="flex items-center justify-center sm:justify-start gap-2">
             <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-              <Building2 className="w-3.5 h-3.5 text-brand" /> Company Logo / Brand Avatar
+              <Building2 className="w-3.5 h-3.5 text-brand" /> Company logo
             </span>
             {value && (
               <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">

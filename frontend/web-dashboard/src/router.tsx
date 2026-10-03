@@ -153,6 +153,7 @@ const AssistantSettingsPage   = lazyWithRetry(() => import('@/pages/settings/Ass
 const TaxonomySettingsPage    = lazyWithRetry(() => import('@/pages/settings/TaxonomySettingsPage'));
 const BrandingSettingsPage    = lazyWithRetry(() => import('@/pages/settings/BrandingSettingsPage'));
 const SystemHealthPage        = lazyWithRetry(() => import('@/pages/settings/SystemHealthPage'));
+const DataCleanupPage         = lazyWithRetry(() => import('@/pages/settings/DataCleanupPage'));
 const AuditLogPage            = lazyWithRetry(() => import('@/pages/settings/AuditLogPage'));
 const ModuleGovernancePage    = lazyWithRetry(() => import('@/pages/settings/ModuleGovernancePage'));
 const ZatcaSettingsPage       = lazyWithRetry(() => import('@/pages/settings/ZatcaSettingsPage'));
@@ -417,6 +418,7 @@ export default function AppRouter() {
               <Route path="/settings/taxonomy"        element={<RequireRole roles={['SuperAdmin']}><TaxonomySettingsPage /></RequireRole>} />
               <Route path="/settings/branding"        element={<RequireRole roles={['SuperAdmin']}><BrandingSettingsPage /></RequireRole>} />
               <Route path="/settings/system-health"   element={<RequireRole roles={['SuperAdmin']}><SystemHealthPage /></RequireRole>} />
+              <Route path="/settings/data-cleanup"    element={<RequireRole roles={['SuperAdmin']}><DataCleanupPage /></RequireRole>} />
               <Route path="/settings/audit-log"       element={<RequireRole roles={['SuperAdmin']}><AuditLogPage /></RequireRole>} />
               <Route path="/settings/module-governance" element={<RequireRole roles={['SuperAdmin']}><ModuleGovernancePage /></RequireRole>} />
               <Route path="/settings/zatca"           element={<RequireRole roles={['Admin']}><RequireModule moduleKey="zatca"><ZatcaSettingsPage /></RequireModule></RequireRole>} />

@@ -129,9 +129,13 @@ export const getCurrentTrip = async (req: Request, res: Response) => {
         status: {
           in: [TripStatus.Loading, TripStatus.InTransit, TripStatus.Delayed]
         },
-        NOT: {
-          driver_workflow_state: 'COMPLETED'
-        }
+        // NOT { state: 'COMPLETED' } alone drops rows where the state is NULL
+        // (SQL: NULL = 'COMPLETED' is unknown), i.e. every trip the office
+        // started before the driver touched it — the driver saw "No active trip".
+        OR: [
+          { driver_workflow_state: null },
+          { driver_workflow_state: { not: 'COMPLETED' } }
+        ]
       },
       include,
       orderBy: { updatedAt: 'desc' },
@@ -342,7 +346,9 @@ export const updateTripStatus = async (req: Request, res: Response) => {
       return tx.trip.update({
         where: { id },
         data: {
-          status,
+          // Start Trip sends "Scheduled"; a trip the office already sees as
+          // Delayed stays Delayed until the driver reaches the pickup.
+          status: trip.status === TripStatus.Delayed && status === TripStatus.Scheduled ? TripStatus.Delayed : status,
           driver_workflow_state: workflowState !== undefined ? workflowState : undefined,
           actual_start: status === TripStatus.InTransit && !trip.actual_start ? new Date() : undefined,
         },
@@ -609,7 +615,8 @@ export const recordDriverLocation = async (req: Request, res: Response) => {
     if (!trip) {
       return res.status(404).json({
         success: false,
-        error: { message: 'Active trip not found or not assigned to you' },
+        // The app stops sharing location on these two codes (trip moved to another driver / ended).
+        error: { code: 'TRIP_NOT_ASSIGNED', message: 'Active trip not found or not assigned to you' },
       });
     }
 
@@ -617,7 +624,7 @@ export const recordDriverLocation = async (req: Request, res: Response) => {
     if (terminalStatuses.includes(trip.status)) {
       return res.status(400).json({
         success: false,
-        error: { message: `Cannot record location for trip in state ${trip.status}` },
+        error: { code: 'TRIP_CLOSED', message: `Cannot record location for trip in state ${trip.status}` },
       });
     }
 

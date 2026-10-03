@@ -848,15 +848,6 @@ export default function DashboardPage() {
                 <Activity className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
                 <span>{greeting}, <span className="text-slate-900 dark:text-slate-100">{userName}</span></span>
               </h1>
-              {isAdmin ? (
-                <Badge className="bg-[#EEF2FF] text-[#4F46E5] border-[#C7D2FE] font-semibold text-[10px] px-2.5 py-0.5 rounded-full">
-                  Admin Module
-                </Badge>
-              ) : (
-                <Badge className="bg-[#ECFDF5] text-[#059669] border-[#A7F3D0] font-semibold text-[10px] px-2.5 py-0.5 rounded-full">
-                  Operator Module
-                </Badge>
-              )}
             </div>
 
             {/* Right: Actions */}

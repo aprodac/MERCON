@@ -57,7 +57,7 @@ const CUSTOMER_EXPORT_FILTERS: ExportFilter<Customer>[] = [
 ];
 
 /** Quick views across the whole customer list (filtered server-side). */
-type CustomerView = 'all' | 'active' | 'inactive' | 'live' | 'balance';
+type CustomerView = 'all' | 'active' | 'inactive' | 'live' | 'balance' | 'overdue';
 
 const VIEW_FILTERS: Record<CustomerView, Partial<CustomerFilters>> = {
   all: {},
@@ -65,6 +65,7 @@ const VIEW_FILTERS: Record<CustomerView, Partial<CustomerFilters>> = {
   inactive: { is_active: false },
   live: { live: true },
   balance: { has_balance: true },
+  overdue: { overdue: true },
 };
 
 type CustomerSort = 'trips' | 'latest' | 'oldest' | 'name_asc' | 'name_desc';
@@ -148,15 +149,16 @@ export default function CustomerListPage() {
     setConfirm({
       open: true,
       title: rows.length === 1 ? 'Delete customer?' : `Delete ${rows.length} customers?`,
-      message: `${rows.length === 1 ? rows[0].name : `These ${rows.length} customers`} will be removed. Their trips and invoices stay, marked as from a deleted customer.`,
+      message: `${rows.length === 1 ? rows[0].name : `These ${rows.length} customers`} will be removed. Their past trips, quotations and invoices stay. You can restore them from Settings → Recycle bin.`,
       onConfirm: async () => {
         try {
           await Promise.all(rows.map((c) => customerService.delete(c.id)));
           queryClient.invalidateQueries({ queryKey: ['customers'] });
           setSelected(new Set());
           toast.success(rows.length === 1 ? 'Customer deleted' : `${rows.length} customers deleted`);
-        } catch {
-          toast.error('Failed to delete customer');
+        } catch (err: any) {
+          queryClient.invalidateQueries({ queryKey: ['customers'] });
+          toast.error(err?.response?.data?.error?.message || "Couldn't delete the customer.");
         }
       },
     });
@@ -179,7 +181,7 @@ export default function CustomerListPage() {
         {exportsEnabled && (
           <DropdownMenuItem onClick={() => openCustomer(c, 'exports')} className="text-[13px]"><FileSpreadsheet className="mr-2 size-4 text-slate-500" /> Excel trip sheets</DropdownMenuItem>
         )}
-        <DropdownMenuItem onClick={() => openCustomer(c, 'financials')} className="text-[13px]"><ReceiptText className="mr-2 size-4 text-slate-500" /> Invoices & balance</DropdownMenuItem>
+        {financeEnabled && <DropdownMenuItem onClick={() => openCustomer(c, 'financials')} className="text-[13px]"><ReceiptText className="mr-2 size-4 text-slate-500" /> Invoices & balance</DropdownMenuItem>}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => setEditCustomer(c)} className="text-[13px]"><Edit2 className="mr-2 size-4 text-slate-500" /> Quick edit</DropdownMenuItem>
         <DropdownMenuItem onClick={() => navigate(`/customers/${c.id}/edit`)} className="text-[13px]"><Edit2 className="mr-2 size-4 text-slate-500" /> Edit full profile</DropdownMenuItem>
@@ -205,12 +207,17 @@ export default function CustomerListPage() {
     { id: 'active', label: 'Active', count: summary?.active },
     { id: 'inactive', label: 'Inactive', count: summary?.inactive },
     { id: 'live', label: 'On the road', count: summary?.live_customers },
-    { id: 'balance', label: 'Owe money', count: summary?.outstanding.customers },
+    // Invoices live in Finance; with it off there's nothing to owe on.
+    ...(financeEnabled ? [
+      { id: 'balance' as CustomerView, label: 'Owe money', count: summary?.outstanding.customers },
+      { id: 'overdue' as CustomerView, label: 'Overdue', count: summary?.overdue.customers },
+    ] : []),
   ];
 
   const emptyText =
     view === 'live' ? 'No customer has a truck on the road right now.'
       : view === 'balance' ? 'No customer owes money on issued invoices.'
+      : view === 'overdue' ? 'Nothing is past due. Every issued invoice is within its terms.'
         : debouncedSearch ? `Nothing matches “${debouncedSearch}”.`
           : 'Add your first customer to start creating trips.';
 
@@ -222,7 +229,7 @@ export default function CustomerListPage() {
       <div className={ui.page}>
 
         {/* ── KPIs — each opens the matching view ── */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <div className={cn('grid grid-cols-2 gap-3 sm:gap-4', financeEnabled && 'xl:grid-cols-4')}>
           <Stat
             label="Customers"
             icon={Building2}
@@ -237,10 +244,11 @@ export default function CustomerListPage() {
             icon={Navigation}
             tone="blue"
             value={summary?.live_customers ?? '—'}
-            sub={summary ? `${summary.live_trips} truck${summary.live_trips === 1 ? '' : 's'} loading or moving` : 'Loading…'}
+            sub={summary ? `customers · ${summary.live_trips} trip${summary.live_trips === 1 ? '' : 's'} loading or moving` : 'Loading…'}
             active={view === 'live'}
             onClick={() => changeView('live')}
           />
+          {financeEnabled && <>
           <Stat
             label="Outstanding"
             icon={Wallet}
@@ -259,8 +267,10 @@ export default function CustomerListPage() {
             value={summary ? money(summary.overdue.amount) : '—'}
             sub={summary ? (summary.overdue.amount > 0 ? `${summary.overdue.customers} customer${summary.overdue.customers === 1 ? '' : 's'} past due` : 'Nothing past due') : 'Loading…'}
             subTone={summary && summary.overdue.amount > 0 ? 'rose' : undefined}
-            onClick={financeEnabled ? () => navigate('/finance/invoices?tab=overdue') : undefined}
+            active={view === 'overdue'}
+            onClick={() => changeView('overdue')}
           />
+          </>}
         </div>
 
         {/* ── Customer table ── */}

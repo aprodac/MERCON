@@ -22,6 +22,8 @@ import { isGoogleMapsUrl, findGoogleMapsUrl, extractCityFromAddress, parsePasted
 import { usePastedLocation } from '@/hooks/usePastedLocation';
 import PasteLocationStatus from '@/components/ui/PasteLocationStatus';
 import LocationFormDialog, { LocationFormInitialData } from '@/components/locations/LocationFormDialog';
+import SetPinDialog from '@/components/locations/SetPinDialog';
+import { pinCustomerLocation } from '@/components/locations/pinCustomerLocation';
 
 interface LocationComboboxProps {
   id?: string;
@@ -38,6 +40,11 @@ interface LocationComboboxProps {
   hasError?: boolean;
   precision?: 'EXACT' | 'APPROXIMATE' | 'UNKNOWN';
   onEditPrecision?: (location: Location) => void;
+  /**
+   * The selected location was pinned from its chip. Without it the pinned
+   * location goes to onChange — which a form treats as a new place.
+   */
+  onPinned?: (location: Location) => void;
 }
 
 export default function LocationCombobox({
@@ -55,6 +62,7 @@ export default function LocationCombobox({
   hasError = false,
   precision,
   onEditPrecision,
+  onPinned,
 }: LocationComboboxProps) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -64,6 +72,7 @@ export default function LocationCombobox({
   const [pendingLocationData, setPendingLocationData] = useState<LocationFormInitialData | null>(null);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
   const [createdLocation, setCreatedLocation] = useState<Location | null>(null);
+  const [pinningLocation, setPinningLocation] = useState<Location | null>(null);
 
   const [googleSuggestions, setGoogleSuggestions] = useState<AddressSuggestion[]>([]);
   const [isSearchingGoogle, setIsSearchingGoogle] = useState(false);
@@ -89,6 +98,9 @@ export default function LocationCombobox({
     }
     return null;
   }, [locations, value, createdLocation]);
+  // Exact when the form pinned it or the location itself is pinned — a form can
+  // still hold the city guess it loaded before someone set the pin.
+  const chipExact = precision === 'EXACT' || selected?.coordinate_precision === 'EXACT';
 
   const trimmedSearch = search.trim();
   const matchingLocations = useMemo(() => {
@@ -200,7 +212,8 @@ export default function LocationCombobox({
         lat: resolved.lat,
         lng: resolved.lng,
         code: '',
-        coordinate_precision: DEFAULT_CITY_PRESETS[sug.id] ? 'APPROXIMATE' : 'EXACT',
+        // A search pick is the area, not the gate — "Pin needed" until it's pinned.
+        coordinate_precision: 'APPROXIMATE',
         sourceUrl: sug.label,
       });
       setIsSaveModalOpen(true);
@@ -373,8 +386,7 @@ export default function LocationCombobox({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  setEditingLocation(selected);
-                  setIsSaveModalOpen(true);
+                  setPinningLocation(selected);
                   if (onEditPrecision) {
                     onEditPrecision(selected);
                   }
@@ -383,21 +395,20 @@ export default function LocationCombobox({
                   if (e.key !== 'Enter' && e.key !== ' ') return;
                   e.preventDefault();
                   e.stopPropagation();
-                  setEditingLocation(selected);
-                  setIsSaveModalOpen(true);
+                  setPinningLocation(selected);
                   if (onEditPrecision) {
                     onEditPrecision(selected);
                   }
                 }}
                 className={cn(
                   "px-2 py-0.5 rounded-md text-[10px] font-extrabold border transition-all cursor-pointer flex items-center gap-1 shadow-2xs",
-                  (precision || selected?.coordinate_precision || (selected?.lat != null ? 'APPROXIMATE' : 'UNKNOWN')) === 'EXACT'
+                  chipExact
                     ? "bg-emerald-50 text-emerald-700 border-emerald-300 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:border-emerald-800 dark:text-emerald-300"
                     : "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 dark:bg-amber-950/60 dark:border-amber-800 dark:text-amber-300"
                 )}
-                title="Click to edit location details, map pin & address"
+                title={chipExact ? 'Move the pin' : 'Set the exact pin'}
               >
-                {(precision || selected?.coordinate_precision || (selected?.lat != null ? 'APPROXIMATE' : 'UNKNOWN')) === 'EXACT' ? 'Exact (Edit)' : 'Pin needed (Edit)'}
+                {chipExact ? 'Exact (Edit)' : 'Pin needed (Edit)'}
               </span>
             </span>
           )}
@@ -655,6 +666,20 @@ export default function LocationCombobox({
           </div>
         </div>
       </PopoverContent>
+
+      <SetPinDialog
+        open={!!pinningLocation}
+        onOpenChange={(o) => !o && setPinningLocation(null)}
+        placeName={pinningLocation?.name || ''}
+        lat={pinningLocation?.lat ?? null}
+        lng={pinningLocation?.lng ?? null}
+        footnote={pinningLocation ? `Saved to ${pinningLocation.name}, so every trip and quotation going there uses it.` : undefined}
+        onSave={async (pin) => {
+          const pinned = await pinCustomerLocation(queryClient, pinningLocation!, pin);
+          if (onPinned) onPinned(pinned);
+          else onChange(pinned.id, pinned);
+        }}
+      />
 
       <LocationFormDialog
         isOpen={isSaveModalOpen}

@@ -5,7 +5,7 @@ import { generateRefId } from '../utils/refId';
 import { createDriverNotification, notifyOperatorsOfDelay } from './notificationController';
 import { Prisma, TripStatus, StopType, DriverStatus, AssetStatus, AssignmentEntityType, DocStatus } from '@prisma/client';
 import { logger } from '../utils/logger';
-import { isValidTransition, completeTripAndInvoice, stampStopTransition, type DelayDetection } from '../services/tripLifecycle';
+import { isValidTransition, completeTripAndInvoice, stampStopTransition, releaseDriversIfFree, releaseVehiclesIfFree, type DelayDetection } from '../services/tripLifecycle';
 import { findRateForLane, findPricingRuleForLane, findQuotationForLane } from '../services/rateLookup';
 import { resolveLocation } from './locationController';
 import { resolveVehicleLocation, resolveVehicleLocationsForTrips } from '../services/locationResolver';
@@ -243,6 +243,22 @@ async function notifyDriverAssigned(
   }
 }
 
+/**
+ * What a blocked assignment means, in words. The code stays in error.code (and
+ * clients that matched on the old message still fall back to this text).
+ */
+const CONFLICT_TEXT: Record<string, string> = {
+  CUSTOMER_NOT_FOUND: 'That customer no longer exists.',
+  DRIVER_NOT_FOUND: 'That driver no longer exists.',
+  VEHICLE_NOT_FOUND: 'That truck no longer exists.',
+  DRIVER_UNAVAILABLE: 'That driver is on another trip right now. Pick a free driver.',
+  NEW_DRIVER_UNAVAILABLE: 'That driver is on another trip right now. Pick a free driver.',
+  VEHICLE_UNAVAILABLE: 'That truck is on another trip right now. Pick a free truck.',
+  VEHICLE_ON_MAINTENANCE: 'That truck is in the workshop on the trip date. Pick another truck or change the date.',
+  TRIP_OR_DRIVER_NOT_FOUND: 'This trip has no driver yet. Use Assign instead.',
+};
+const conflictError = (code: string) => ({ success: false, error: { code, message: CONFLICT_TEXT[code] ?? code } });
+
 export const getTrips = async (req: Request, res: Response) => {
   try {
     const { status, driver_id, vehicle_id, customer_id, rate_card_id, search, date_filter, start_date, end_date, page = '1', per_page = '20' } = req.query;
@@ -324,8 +340,19 @@ export const getTrips = async (req: Request, res: Response) => {
         });
       }
       if (dateConditions.length > 0) {
-        whereClause.AND = dateConditions;
+        // include_open: trips that aren't finished show whatever their date —
+        // a "last 3 days" list hid trips stuck Delayed since last month.
+        whereClause.AND = req.query.include_open === 'true'
+          ? [{ OR: [{ AND: dateConditions }, { status: { in: ['Draft', 'Scheduled', 'Loading', 'InTransit', 'Delayed'] as TripStatus[] } }] }]
+          : dateConditions;
       }
+    }
+
+    // Finished on or after this time — a late trip completed today counts as
+    // done today, whatever day it was planned for (start_date filters on the plan).
+    const endedSince = typeof req.query.ended_since === 'string' ? new Date(req.query.ended_since) : null;
+    if (endedSince && !isNaN(endedSince.getTime())) {
+      whereClause.actual_end = { gte: endedSince };
     }
 
     // Search conditions live in AND alongside the date window — one entry per
@@ -739,7 +766,7 @@ export const createTrip = async (req: Request, res: Response) => {
       attempts++;
       try {
         const ref_id = await generateRefId('TRP', () =>
-          prisma.trip.findMany({ where: { deletedAt: null }, select: { ref_id: true } }));
+          prisma.trip.findMany({ select: { ref_id: true } }), { keepDeletedNumbers: true });
 
         trip = await prisma.$transaction(async (tx) => {
           const customer = await tx.customer.findFirst({ where: { id: customer_id, deletedAt: null } });
@@ -1019,7 +1046,7 @@ export const createTrip = async (req: Request, res: Response) => {
       error.message === 'VEHICLE_UNAVAILABLE' ||
       error.message === 'VEHICLE_ON_MAINTENANCE'
     ) {
-      return res.status(400).json({ success: false, error: { code: 'CONFLICT', message: error.message } });
+      return res.status(400).json(conflictError(error.message));
     }
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: error.message || 'Failed to create trip' } });
   }
@@ -1158,7 +1185,7 @@ export const bulkImportTrips = async (req: Request, res: Response) => {
 
 
         const ref_id = await generateRefId('TRP', () =>
-          prisma.trip.findMany({ where: { deletedAt: null }, select: { ref_id: true } }));
+          prisma.trip.findMany({ select: { ref_id: true } }), { keepDeletedNumbers: true });
 
         const parsedDest = parseDestinationAndStops(row.destination || '');
         const originCoords = row.origin ? await resolveStopCoords(row.origin, customer.id) : null;
@@ -1374,7 +1401,14 @@ export const updateTripStatus = async (req: Request, res: Response) => {
 
       // Moving to active operational status (Scheduled, Loading, InTransit, Delayed):
       // Update driver & vehicle status to OnTrip without failing if already assigned
-      if (status === TripStatus.Scheduled || status === TripStatus.Loading || status === TripStatus.InTransit || status === TripStatus.Delayed) {
+      // Only a trip that is actually running puts its driver and truck "On trip";
+      // a Scheduled one is still in the future.
+      if (status === TripStatus.Scheduled) {
+        if (current.driverId) {
+          shouldNotifyDriver = true;
+          driverToNotify = current.driverId;
+        }
+      } else if (status === TripStatus.Loading || status === TripStatus.InTransit || status === TripStatus.Delayed) {
         if (current.driverId) {
           await tx.driver.update({
             where: { id: current.driverId },
@@ -1391,16 +1425,6 @@ export const updateTripStatus = async (req: Request, res: Response) => {
         }
       }
 
-      // Reverting back to Draft: release driver and vehicle back to Available
-      if (status === TripStatus.Draft && current.status !== TripStatus.Draft) {
-        if (current.driverId) {
-          await tx.driver.update({ where: { id: current.driverId }, data: { status: DriverStatus.Available } });
-        }
-        if (current.vehicleId) {
-          await tx.vehicle.update({ where: { id: current.vehicleId }, data: { status: AssetStatus.Available } });
-        }
-      }
-
       // Completing a trip always goes through the shared helper so every
       // path that can complete a trip also generates its invoice.
       if (status === TripStatus.Completed) {
@@ -1409,21 +1433,20 @@ export const updateTripStatus = async (req: Request, res: Response) => {
 
       const updateData: any = { status: status as TripStatus, updated_by: (req as any).user?.id };
       if (status === 'InTransit') updateData.actual_start = new Date();
+      // Reopening or cancelling a completed trip undoes "extra charges answered":
+      // it is asked again on the next completion, and a cancelled trip isn't
+      // "settled" (that flag alone blocked deleting it).
+      if (current.status === TripStatus.Completed) updateData.is_post_trip_settled = false;
 
       const updated = await tx.trip.update({ where: { id: tripId }, data: updateData });
 
       delay = await stampStopTransition(tx, tripId, status as TripStatus);
 
-      // Leaving the trip permanently via Cancelled must release the
-      // driver/vehicle back to Available — otherwise they stay stuck on
-      // "OnTrip" with no trip left to free them.
-      if (status === TripStatus.Cancelled) {
-        if (updated.driverId) {
-          await tx.driver.update({ where: { id: updated.driverId }, data: { status: DriverStatus.Available } });
-        }
-        if (updated.vehicleId) {
-          await tx.vehicle.update({ where: { id: updated.vehicleId }, data: { status: AssetStatus.Available } });
-        }
+      // Back to Draft / Scheduled, or Cancelled: the trip no longer holds its
+      // driver and truck — free them unless another trip is still running.
+      if (status === TripStatus.Draft || status === TripStatus.Scheduled || status === TripStatus.Cancelled) {
+        await releaseDriversIfFree(tx, [updated.driverId, updated.co_driver_id]);
+        await releaseVehiclesIfFree(tx, [updated.vehicleId]);
       }
 
       return updated;
@@ -1467,7 +1490,7 @@ export const updateTripStatus = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, error: { code: 'MISSING_ASSIGNMENT', message: 'Assign a driver and vehicle before dispatching this trip' } });
     }
     if (error.message === 'DRIVER_UNAVAILABLE' || error.message === 'VEHICLE_UNAVAILABLE') {
-      return res.status(400).json({ success: false, error: { code: 'CONFLICT', message: error.message } });
+      return res.status(400).json(conflictError(error.message));
     }
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to update trip status' } });
   }
@@ -1518,36 +1541,38 @@ export const dispatchTrip = async (req: Request, res: Response) => {
 
       // Atomically claim the driver/vehicle — see createTrip for why this
       // must be a conditional UPDATE rather than SELECT-then-UPDATE.
+      // Only a running trip claims its driver / truck as "On trip" (a future
+      // one would show them busy days early); the old ones are freed unless
+      // another trip of theirs is still running.
+      const isRunning = trip.status === TripStatus.Loading || trip.status === TripStatus.InTransit || trip.status === TripStatus.Delayed;
       if (driver_id && driver_id !== trip.driverId) {
-        const driverClaim = await tx.driver.updateMany({
-          where: { id: driver_id, status: 'Available' },
-          data: { status: 'OnTrip' },
-        });
-        if (driverClaim.count === 0) {
-          throw new Error('DRIVER_UNAVAILABLE');
+        if (isRunning) {
+          const driverClaim = await tx.driver.updateMany({
+            where: { id: driver_id, status: 'Available' },
+            data: { status: 'OnTrip' },
+          });
+          if (driverClaim.count === 0) {
+            throw new Error('DRIVER_UNAVAILABLE');
+          }
         }
         if (trip.driverId) {
           oldDriverIdToNotify = trip.driverId;
-          await tx.driver.update({
-            where: { id: trip.driverId },
-            data: { status: 'Available' },
-          });
+          await releaseDriversIfFree(tx, [trip.driverId], [trip.id]);
         }
       }
 
       if (vehicle_id && vehicle_id !== trip.vehicleId) {
-        const vehicleClaim = await tx.vehicle.updateMany({
-          where: { id: vehicle_id, status: 'Available' },
-          data: { status: 'OnTrip' },
-        });
-        if (vehicleClaim.count === 0) {
-          throw new Error('VEHICLE_UNAVAILABLE');
+        if (isRunning) {
+          const vehicleClaim = await tx.vehicle.updateMany({
+            where: { id: vehicle_id, status: 'Available' },
+            data: { status: 'OnTrip' },
+          });
+          if (vehicleClaim.count === 0) {
+            throw new Error('VEHICLE_UNAVAILABLE');
+          }
         }
         if (trip.vehicleId) {
-          await tx.vehicle.update({
-            where: { id: trip.vehicleId },
-            data: { status: 'Available' },
-          });
+          await releaseVehiclesIfFree(tx, [trip.vehicleId], [trip.id]);
         }
       }
 
@@ -1600,7 +1625,7 @@ export const dispatchTrip = async (req: Request, res: Response) => {
       return res.status(409).json(TRIP_CLOSED_RESPONSE);
     }
     if (error.message === 'DRIVER_UNAVAILABLE' || error.message === 'VEHICLE_UNAVAILABLE') {
-      return res.status(400).json({ success: false, error: { code: 'CONFLICT', message: error.message } });
+      return res.status(400).json(conflictError(error.message));
     }
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to dispatch trip' } });
   }
@@ -1637,8 +1662,8 @@ export const replaceDriver = async (req: Request, res: Response) => {
         });
         if (claim.count === 0) throw new Error('NEW_DRIVER_UNAVAILABLE');
 
-        // Free old driver
-        await tx.driver.update({ where: { id: oldDriverId }, data: { status: 'Available' } });
+        // Free the old driver unless another trip of theirs is still running
+        await releaseDriversIfFree(tx, [oldDriverId], [tripId]);
       }
 
       const now = new Date();
@@ -1702,7 +1727,7 @@ export const replaceDriver = async (req: Request, res: Response) => {
       return res.status(409).json(TRIP_CLOSED_RESPONSE);
     }
     if (['TRIP_OR_DRIVER_NOT_FOUND', 'NEW_DRIVER_UNAVAILABLE'].includes(error.message)) {
-      return res.status(400).json({ success: false, error: { code: 'CONFLICT', message: error.message } });
+      return res.status(400).json(conflictError(error.message));
     }
     logger.error({ err: error }, '[TripController] Failed to replace driver');
     res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to replace driver' } });
@@ -2426,12 +2451,9 @@ export const bulkDeleteTrips = async (req: Request, res: Response) => {
       const driverIds = [...new Set(inFlightTrips.map((t) => t.driverId).filter((id): id is string => !!id))];
       const vehicleIds = [...new Set(inFlightTrips.map((t) => t.vehicleId).filter((id): id is string => !!id))];
 
-      if (driverIds.length) {
-        await tx.driver.updateMany({ where: { id: { in: driverIds } }, data: { status: DriverStatus.Available } });
-      }
-      if (vehicleIds.length) {
-        await tx.vehicle.updateMany({ where: { id: { in: vehicleIds } }, data: { status: AssetStatus.Available } });
-      }
+      // The deleted trips no longer count (deletedAt set above).
+      await releaseDriversIfFree(tx, driverIds);
+      await releaseVehiclesIfFree(tx, vehicleIds);
     });
 
     const skippedReasons = blockedTrips.map((t) => ({
@@ -2494,6 +2516,11 @@ export const bulkUpdateTripStatus = async (req: Request, res: Response) => {
         where: { id: { in: validIds } },
         data: { status: status as TripStatus, updated_by: userId },
       });
+      // Same as the single-trip update: reopening a completed trip asks about extra charges again.
+      const reopened = trips.filter((t) => validIds.includes(t.id) && t.status === TripStatus.Completed).map((t) => t.id);
+      if (reopened.length && status !== TripStatus.Invoiced) {
+        await tx.trip.updateMany({ where: { id: { in: reopened } }, data: { is_post_trip_settled: false } });
+      }
 
       const affected = trips.filter((t) => validIds.includes(t.id));
 
@@ -2502,12 +2529,8 @@ export const bulkUpdateTripStatus = async (req: Request, res: Response) => {
       if (status === TripStatus.Cancelled) {
         const driverIds = [...new Set(affected.map((t) => t.driverId).filter((id): id is string => !!id))];
         const vehicleIds = [...new Set(affected.map((t) => t.vehicleId).filter((id): id is string => !!id))];
-        if (driverIds.length) {
-          await tx.driver.updateMany({ where: { id: { in: driverIds } }, data: { status: DriverStatus.Available } });
-        }
-        if (vehicleIds.length) {
-          await tx.vehicle.updateMany({ where: { id: { in: vehicleIds } }, data: { status: AssetStatus.Available } });
-        }
+        await releaseDriversIfFree(tx, driverIds);
+        await releaseVehiclesIfFree(tx, vehicleIds);
       }
 
       return { updated: validIds.length, skipped: skippedCount, affectedTrips: affected };

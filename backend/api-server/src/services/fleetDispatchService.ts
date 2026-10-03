@@ -32,6 +32,12 @@ export interface TripDriverRecommendationItem {
   reasons?: DriverReason[];
   truckFit?: 'exact' | 'bigger' | 'smaller' | 'none';
   clashStart?: string;
+  /**
+   * Trips this driver is still running (Loading / In transit / Delayed), whatever
+   * their date — a trip stuck "Delayed" since last month doesn't clash by date but
+   * the driver is still on it. The picker warns; booking is still allowed.
+   */
+  openTrips?: Array<{ ref: string | null; status: string }>;
 }
 
 export interface VehicleRecommendation {
@@ -113,6 +119,19 @@ export async function getRecommendedDriversForTrip(params: {
 
   const truckOf = (d: (typeof drivers)[number]) => d.assignedVehicle || d.vehicleAssignments[0]?.vehicle || null;
   const truckIds = drivers.map(truckOf).filter((t): t is NonNullable<typeof t> => Boolean(t)).map((t) => t.id);
+
+  const runningTrips = await prisma.trip.findMany({
+    where: {
+      deletedAt: null,
+      ...(excludeTripId ? { id: { not: excludeTripId } } : {}),
+      status: { in: ['Loading', 'InTransit', 'Delayed'] },
+      OR: [{ driverId: { in: driverIds } }, { co_driver_id: { in: driverIds } }],
+    },
+    orderBy: { planned_start: 'asc' },
+    select: { ref_id: true, status: true, driverId: true, co_driver_id: true },
+  });
+  const openTripsOf = (driverId: string) =>
+    runningTrips.filter((t) => t.driverId === driverId || t.co_driver_id === driverId).map((t) => ({ ref: t.ref_id, status: t.status as string }));
 
   const [nearTrips, previousTrips, history, maintenance] = await Promise.all([
     // Active trips around this one — for the clash check (driver or co-driver).
@@ -266,6 +285,7 @@ export async function getRecommendedDriversForTrip(params: {
       reasons: r.reasons,
       truckFit: r.truckFit,
       clashStart: r.clashStart,
+      openTrips: openTripsOf(r.driverId),
     };
   });
 }

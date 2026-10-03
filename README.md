@@ -71,7 +71,7 @@ mercon/
 ├── frontend/
 │   ├── web-dashboard/         # @mercon/web-dashboard — React + Vite dashboard
 │   └── mobile-app/            # Mobile npm workspace (own install)
-│       ├── driver-app/        # @mercon/driver-app    — Expo app for Drivers (tech.merconapp.driver)
+│       ├── driver-app/        # @mercon/driver-app    — Expo app for Drivers (iOS tech.merconapp.driver, Android tech.mercon.driver)
 │       ├── operator-app/      # @mercon/operator-app  — Expo app for Operators/Admins (tech.mercon.operator)
 │       └── shared/            # @mercon/mobile-shared — code both apps share
 ├── packages/shared-types/     # @mercon/shared-types  — DTOs shared API ↔ dashboard

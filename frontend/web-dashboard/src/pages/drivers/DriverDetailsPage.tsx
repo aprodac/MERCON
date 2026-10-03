@@ -614,13 +614,30 @@ export default function DriverDetailsPage() {
                   </div>
                 ) : undefined}
               />
-              <KpiCard
-                icon={TrendingUp}
-                iconClass="text-indigo-600 dark:text-indigo-400"
-                label="Total Trips"
-                value={trips.length}
-                sub={activeTrip ? '1 trip in progress' : 'Completed & active'}
-              />
+              {(() => {
+                // Licence number + expiry were required on create but shown nowhere.
+                const expiry = driver.license_expiry ? new Date(driver.license_expiry) : null;
+                const days = expiry ? Math.floor((expiry.getTime() - Date.now()) / 86_400_000) : null;
+                const tone = days == null ? '' : days < 0 ? 'text-rose-600 dark:text-rose-400' : days <= 30 ? 'text-amber-600 dark:text-amber-400' : '';
+                return (
+                  <KpiCard
+                    icon={ShieldCheck}
+                    iconClass={days != null && days < 0 ? 'text-rose-600' : days != null && days <= 30 ? 'text-amber-600' : 'text-indigo-600 dark:text-indigo-400'}
+                    label="Licence"
+                    value={driver.license_number || 'Not recorded'}
+                    mono={!!driver.license_number}
+                    sub={
+                      expiry ? (
+                        <span className={tone}>
+                          {days! < 0 ? 'Expired ' : 'Expires '}
+                          {formatInDeploymentTz(driver.license_expiry, tz, 'd MMM yyyy')}
+                          {days! >= 0 && days! <= 30 ? ` · in ${days} day${days === 1 ? '' : 's'}` : ''}
+                        </span>
+                      ) : 'No expiry date'
+                    }
+                  />
+                );
+              })()}
               <KpiCard
                 icon={Smartphone}
                 iconClass={phone?.status.level === 'red' ? 'text-rose-600' : phone?.status.level === 'amber' ? 'text-amber-600' : 'text-emerald-600 dark:text-emerald-400'}

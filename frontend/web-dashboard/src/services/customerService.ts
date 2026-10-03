@@ -88,6 +88,8 @@ export interface CustomerFilters {
   live?: boolean;
   /** Only customers owing on issued invoices. */
   has_balance?: boolean;
+  /** Customers with an issued invoice past its due date. */
+  overdue?: boolean;
   sort_by?: 'trips' | 'name' | 'createdAt';
   sort_dir?: 'asc' | 'desc';
 }

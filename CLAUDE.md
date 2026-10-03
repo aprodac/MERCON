@@ -54,7 +54,7 @@ from `@mercon/shared-types`.
 | App | Used by | Notes |
 |---|---|---|
 | Web dashboard (`frontend/web-dashboard`) | **Admin, Operator** | Drivers never log in here |
-| Driver app (`frontend/mobile-app/driver-app`, `tech.merconapp.driver` — not the old `tech.mercon.driver` App Store record) | **Driver** | Phone + license number login (`mobileAuthController`); non-driver roles are rejected |
+| Driver app (`frontend/mobile-app/driver-app`; iOS `tech.merconapp.driver` — not the old `tech.mercon.driver` App Store record; Android `tech.mercon.driver` — the Play Console app, upload key and Firebase are on it, never change it) | **Driver** | Phone + license number login (`mobileAuthController`); non-driver roles are rejected |
 | Operator app (`frontend/mobile-app/operator-app`, `tech.mercon.operator`) | **Operator, Admin** | Username/phone + password login (`POST /auth/login`); Driver accounts are turned away |
 | User Management page (`/settings/users`) | **Admin, Operator** | Gated by `RequireRole` + `authorizeRoles('Admin', 'Operator')`; also lists Drivers (read-only) alongside Admin/Operator so it's a full "all platform users" view — but Driver rows cannot be created/edited/deleted here, only viewed. Web-user create/edit (`createUserBody`/`updateUserBody`) still only accepts role `Admin`/`Operator` — Driver-role Users are still not creatable through this page's form |
 

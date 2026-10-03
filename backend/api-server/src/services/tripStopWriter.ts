@@ -142,6 +142,29 @@ export async function writeTripStops(
       stop = { ...stop, location_address: resolvedLoc.address };
     }
 
+    // The customer location is pinned exactly but this stop only carries a
+    // guess (the city centre, or the pin itself sent without its "exact" label —
+    // the create form labels any stop it didn't pin "approximate"): the stop is
+    // that place, so it takes the pin. Without this a trip created right after
+    // the pin was set still said "Pin needed".
+    const stopPrecision = stop.coordinate_precision || stop.location_coordinate_precision;
+    if (
+      !stop.update_canonical_location &&
+      stopPrecision !== 'EXACT' &&
+      resolvedLoc?.coordinate_precision === 'EXACT' &&
+      resolvedLoc.lat != null && resolvedLoc.lng != null &&
+      isSamePlace(stopName, resolvedLoc.name)
+    ) {
+      stop = {
+        ...stop,
+        lat: resolvedLoc.lat,
+        lng: resolvedLoc.lng,
+        coordinate_precision: 'EXACT',
+        location_coordinate_precision: 'EXACT',
+        location_address: stop.location_address || resolvedLoc.address || null,
+      };
+    }
+
     if (stop.update_canonical_location === true && locId) {
       const parsedLat = parseOptionalFloat(stop.lat);
       const parsedLng = parseOptionalFloat(stop.lng);
