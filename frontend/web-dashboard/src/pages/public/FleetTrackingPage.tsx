@@ -149,7 +149,7 @@ export default function FleetTrackingPage() {
           {data.month && data.month.trips > 0 && <MonthCard month={data.month} text={text} timezone={data.timezone} className="lg:w-[440px] lg:shrink-0" />}
         </header>
 
-        <div className="mt-4 grid gap-4 lg:mt-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-5">
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:mt-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-5">
           <main className={cn(card, 'min-w-0 p-4 sm:p-6 [&>*:first-child]:mt-0')}>
             {lateGroups.length > 0 && tab !== 'late' && (
               <button
