@@ -163,9 +163,12 @@ export const notifyOperatorsOfDelay = async (detection: DelayDetection) => {
     });
 
     const videoBadge = videoDoc ? ' 📹 Video evidence attached.' : '';
-    const message =
-      `${trip} reached ${where} ${formatDelay(detection.delayMinutes)} late.${videoBadge} ` +
-      `Log the reason while the driver still remembers it.`;
+    const late = formatDelay(detection.delayMinutes);
+    const what =
+      detection.situation === 'not_arrived' ? `${trip} is ${late} late for ${where} — the driver has not arrived yet.`
+      : detection.situation === 'not_departed' ? `${trip} is ${late} late leaving ${where}.`
+      : `${trip} reached ${where} ${late} late.`;
+    const message = `${what}${videoBadge} Log the reason while the driver still remembers it.`;
 
     await Promise.all(
       staff.map((u) =>

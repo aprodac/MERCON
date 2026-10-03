@@ -51,6 +51,12 @@ export interface DelayDetection {
   stopType: StopType;
   locationName: string | null;
   delayMinutes: number;
+  /**
+   * What is late. Stamping a stop reports `arrived_late` (the default); the
+   * delay monitor also reports trips that have not reached the stop yet, or
+   * have not left it, which must not read as "reached … late" to the office.
+   */
+  situation?: 'arrived_late' | 'not_arrived' | 'not_departed';
 }
 
 /**
