@@ -247,6 +247,11 @@ export function formatExpiryText(days: number | null): string {
 /**
  * Resolves a file_url to a valid browser URL regardless of environment or hardcoded localhost ports.
  */
+/** A driver's profile photo URL, or undefined when none is on file (callers show initials). */
+export function driverPhotoUrl(src: string | null | undefined): string | undefined {
+  return resolveFileUrl(src) || undefined;
+}
+
 export function resolveFileUrl(fileUrl: string | null | undefined): string {
   if (!fileUrl) return '';
 

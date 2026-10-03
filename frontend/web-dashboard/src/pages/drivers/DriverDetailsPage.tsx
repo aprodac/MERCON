@@ -7,7 +7,7 @@ import {
   MoreVertical, Activity, Award, FolderOpen, Mail, Gauge, Search,
   TrendingUp, BarChart2, DollarSign, ChevronDown, Eye,
   Building2, Banknote, Package, MapPin, ArrowRight, AlertCircle,
-  ArrowLeft, ExternalLink, PhoneCall, MessageSquare, Loader2
+  ArrowLeft, ExternalLink, PhoneCall, MessageSquare, Loader2, Smartphone
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -17,10 +17,12 @@ import DocumentsValidityFolder from '@/components/ui/DocumentsValidityFolder';
 import DriverDocumentsValidityFolder from '@/components/ui/DriverDocumentsValidityFolder';
 import VisualRouteProgress from '@/components/trips/VisualRouteProgress';
 import { driverService } from '@/services/driverService';
+import { driverPhoneService, PHONE_LEVEL_LABEL, timeAgo } from '@/services/driverPhoneService';
+import DriverPhoneSheet, { driverPhoneKey } from '@/components/drivers/phone/DriverPhoneSheet';
+import { PhoneDot } from '@/components/drivers/phone/PhoneStatus';
 import { documentService } from '@/services/documentService';
 import { exportExcelTable } from '@/utils/exportUtils';
 import DriverAvatar from '@/components/ui/DriverAvatar';
-import { getDriverAvatar } from '@/lib/driverAvatarMap';
 import DocumentPreviewSheet from '@/components/documents/DocumentPreviewSheet';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -34,7 +36,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { useDeploymentTimezone, formatInDeploymentTz } from '@/lib/datetime';
-import { resolveFileUrl } from '@/lib/documents';
+import { driverPhotoUrl, resolveFileUrl } from '@/lib/documents';
 import {
   dk, EMPTY, fmtDate, fmtSar, toNum, personName, routeOf, tripFacts,
   StatusPill, TripStatusPill, entityStatusTone, entityStatusLabel,
@@ -320,6 +322,8 @@ export default function DriverDetailsPage() {
   const tz = useDeploymentTimezone();
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isPhotoOpen, setIsPhotoOpen] = useState(false);
+  const [isDownloadingPhoto, setIsDownloadingPhoto] = useState(false);
   const [password, setPassword] = useState('');
   const [deleteError, setDeleteError] = useState('');
   const [selectedDocIdForPreview, setSelectedDocIdForPreview] = useState<string | null>(null);
@@ -328,6 +332,7 @@ export default function DriverDetailsPage() {
   const [driverTripPage, setDriverTripPage] = useState<number>(1);
   const [tripDateFilter, setTripDateFilter] = useState<'all' | 'this_month' | '30d' | '90d'>('all');
   const [deletedDocIds, setDeletedDocIds] = useState<string[]>([]);
+  const [phoneSheetOpen, setPhoneSheetOpen] = useState(false);
 
   const { data: driver, isLoading, error } = useQuery({
     queryKey: ['driver', id],
@@ -343,6 +348,14 @@ export default function DriverDetailsPage() {
       }
     }
   }, [driver?.id, driver?.ref_id, id, navigate]);
+
+  // Same query (and cache) the Phone & App sheet uses
+  const { data: phone } = useQuery({
+    queryKey: driverPhoneKey(driver?.id ?? ''),
+    queryFn: () => driverPhoneService.details(driver!.id),
+    enabled: !!driver?.id,
+    refetchInterval: 60_000,
+  });
 
   const { data: driverUsage } = useQuery({
     queryKey: ['driver-usage', id],
@@ -492,9 +505,30 @@ export default function DriverDetailsPage() {
 
   const assignedVehicle = driver.assignedVehicle;
   const driverName = personName(driver) || EMPTY;
+  const photoUrl = driverPhotoUrl(driver.avatar_url);
 
-  // Driver photo; initials when none is on file.
-  const photoUrl = getDriverAvatar(driver.avatar_url, driverName) || null;
+  // Saves the photo under the driver's name (a plain <a download> would use the upload's random file name).
+  const downloadPhoto = async () => {
+    if (!photoUrl) return;
+    setIsDownloadingPhoto(true);
+    try {
+      const res = await fetch(photoUrl);
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg');
+      const base = `${driver.first_name} ${driver.last_name}`.trim().replace(/[^\w\- ]+/g, '').replace(/\s+/g, '_') || 'driver';
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = `${base}.${ext}`;
+      a.click();
+      URL.revokeObjectURL(href);
+    } catch {
+      toast.error('Could not download the photo');
+    } finally {
+      setIsDownloadingPhoto(false);
+    }
+  };
 
   // Active / Live trip
   const activeTrip = trips.find((t: any) => {
@@ -527,17 +561,15 @@ export default function DriverDetailsPage() {
 
         {/* ── HEADER: photo, name, 3 KPI cards ── */}
         <div className="flex items-stretch gap-4 shrink-0">
-          <div className={dk.avatar}>
-            {photoUrl ? (
-              <img
-                src={photoUrl}
-                alt={driverName}
-                className="w-full h-full object-cover object-top rounded-full"
-              />
-            ) : (
-              <DriverAvatar firstName={driver.first_name} lastName={driver.last_name} size="lg" className="w-full h-full text-3xl" />
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => setIsPhotoOpen(true)}
+            title={photoUrl ? 'View, download or change photo' : 'Add a photo'}
+            className={cn(dk.avatar, 'cursor-pointer hover:ring-2 hover:ring-[#FA634E]/40 transition-shadow')}
+          >
+            {/* Driver photo; initials when none is on file or it fails to load. */}
+            <DriverAvatar src={driver.avatar_url} firstName={driver.first_name} lastName={driver.last_name} size="lg" className="w-full h-full text-3xl" imgClassName="object-top" />
+          </button>
 
           <div className="flex-1 flex flex-col justify-end gap-2 min-w-0">
             <DetailTitleRow
@@ -557,7 +589,7 @@ export default function DriverDetailsPage() {
               }
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 shrink-0">
               <KpiCard
                 icon={Truck}
                 iconClass="text-[#FA634E]"
@@ -592,6 +624,21 @@ export default function DriverDetailsPage() {
                 label="Total Trips"
                 value={trips.length}
                 sub={activeTrip ? '1 trip in progress' : 'Completed & active'}
+              />
+              <KpiCard
+                icon={Smartphone}
+                iconClass={phone?.status.level === 'red' ? 'text-rose-600' : phone?.status.level === 'amber' ? 'text-amber-600' : 'text-emerald-600 dark:text-emerald-400'}
+                label="Phone & App"
+                value={
+                  <span className="flex items-center gap-2">
+                    <PhoneDot level={phone?.status.level} />
+                    {phone ? PHONE_LEVEL_LABEL[phone.status.level] : '…'}
+                  </span>
+                }
+                sub={phone ? (phone.status.reasons[0] ?? `Seen ${timeAgo(phone.status.lastSeenAt)}`) : 'Checking phone…'}
+                onClick={() => setPhoneSheetOpen(true)}
+                title="Phone status, notifications and activity"
+                trailing={<ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />}
               />
             </div>
           </div>
@@ -774,7 +821,40 @@ export default function DriverDetailsPage() {
 
         </div>
 
+        <DriverPhoneSheet driverId={driver.id} driverName={driverName} open={phoneSheetOpen} onOpenChange={setPhoneSheetOpen} />
+
         {/* ── DELETE DRIVER CONFIRMATION MODAL ── */}
+        {/* Profile photo: view large, download, or change it on the edit page. */}
+        <Dialog open={isPhotoOpen} onOpenChange={setIsPhotoOpen}>
+          <DialogContent className="max-w-md w-[92vw]">
+            <DialogHeader>
+              <DialogTitle>{driverName} — Profile photo</DialogTitle>
+            </DialogHeader>
+            <div className="flex items-center justify-center py-2">
+              {photoUrl ? (
+                <img
+                  src={photoUrl}
+                  alt={driverName}
+                  className="max-h-[60vh] w-auto max-w-full object-contain rounded-xl border border-slate-100 dark:border-slate-800"
+                />
+              ) : (
+                <p className="text-sm text-slate-500 py-8">No photo on file yet.</p>
+              )}
+            </div>
+            <DialogFooter className="gap-2 sm:gap-2">
+              {photoUrl && (
+                <Button variant="outline" onClick={downloadPhoto} disabled={isDownloadingPhoto}>
+                  {isDownloadingPhoto ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Download className="w-4 h-4 mr-2" />}
+                  Download
+                </Button>
+              )}
+              <Button onClick={() => navigate(`/drivers/${driver.id}/edit`)}>
+                <Edit2 className="w-4 h-4 mr-2" /> {photoUrl ? 'Change photo' : 'Add photo'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         <Dialog open={isDeleteModalOpen} onOpenChange={(open) => !open && setIsDeleteModalOpen(false)}>
           <DialogContent className="max-w-md rounded-[32px] p-0 overflow-hidden border-2 border-slate-200 dark:border-slate-800">
             <DialogHeader className="px-6 py-5 border-b-2 border-slate-100 dark:border-slate-800 bg-rose-50/50 dark:bg-rose-955/20">

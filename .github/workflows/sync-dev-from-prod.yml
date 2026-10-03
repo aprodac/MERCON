@@ -59,8 +59,9 @@ jobs:
           docker exec mercon-postgres pg_dump -U "$POSTGRES_USER" -Fc -d mercon_db > "$RUNNER_TEMP/prod-snapshot/db.dump"
           test -s "$RUNNER_TEMP/prod-snapshot/db.dump"
           # The API mounts two upload directories (see docker-compose.yml).
-          sudo tar -czf "$RUNNER_TEMP/prod-snapshot/uploads-app.tgz" -C /tmp/mercon-uploads .
-          sudo tar -czf "$RUNNER_TEMP/prod-snapshot/uploads-tmp.tgz" -C /tmp/uploads .
+          # Persistent paths since the move out of /tmp (ci-cd.yml).
+          sudo tar -czf "$RUNNER_TEMP/prod-snapshot/uploads-app.tgz" -C /var/lib/mercon/mercon-app-uploads .
+          sudo tar -czf "$RUNNER_TEMP/prod-snapshot/uploads-tmp.tgz" -C /var/lib/mercon/mercon-uploads .
           sudo chown -R "$(id -u)" "$RUNNER_TEMP/prod-snapshot"
           du -h "$RUNNER_TEMP"/prod-snapshot/*
 
@@ -107,13 +108,15 @@ jobs:
       - name: Replace dev uploaded files
         run: |
           set -euo pipefail
-          # Same two mounts as docker-compose.yml with CLIENT_NAME=dev and
-          # DEV_UPLOADS_DIR=/var/lib/mercon/dev-uploads (ci-cd-dev.yml).
-          for pair in "uploads-app.tgz:/tmp/dev-uploads" "uploads-tmp.tgz:/var/lib/mercon/dev-uploads"; do
+          # Same two mounts as docker-compose.yml with CLIENT_NAME=dev
+          # (APP_UPLOADS_DIR / TMP_UPLOADS_DIR in ci-cd-dev.yml).
+          for pair in "uploads-app.tgz:/var/lib/mercon/dev-app-uploads" "uploads-tmp.tgz:/var/lib/mercon/dev-uploads"; do
             archive="${pair%%:*}"; target="${pair#*:}"
             sudo mkdir -p "$target"
             sudo find "$target" -mindepth 1 -delete
             sudo tar -xzf "$RUNNER_TEMP/prod-snapshot/$archive" -C "$target"
+            # The API runs as uid 1000 (node) and must be able to write here.
+            sudo chown -R 1000:1000 "$target" && sudo chmod 770 "$target"
             echo "$target: $(sudo du -sh "$target" | cut -f1)"
           done
 

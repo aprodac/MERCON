@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Driver } from '@/services/driverService';
-import { getDriverAvatar } from '@/lib/driverAvatarMap';
+import { driverPhotoUrl } from '@/lib/documents';
 import { 
   KeyRound, 
   Smartphone, 
@@ -131,8 +131,8 @@ export default function DriverPasswordModal({
           {/* Driver Identity Card */}
           <div className="bg-slate-50/80 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 rounded-xl p-3 flex items-center justify-between gap-2.5">
             <div className="flex items-center gap-2.5 min-w-0 flex-1">
-              {getDriverAvatar(driver.avatar_url, `${driver.first_name || ''} ${driver.last_name || ''}`) ? (
-                <img src={getDriverAvatar(driver.avatar_url, `${driver.first_name || ''} ${driver.last_name || ''}`)} alt="" className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200" />
+              {driverPhotoUrl(driver.avatar_url) ? (
+                <img src={driverPhotoUrl(driver.avatar_url)} alt="" className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200" />
               ) : (
                 <div className="w-9 h-9 rounded-full bg-[#1E293B] text-white font-extrabold text-xs flex items-center justify-center shrink-0 shadow-2xs">
                   {driver.first_name?.[0]?.toUpperCase() || ''}{driver.last_name?.[0]?.toUpperCase() || ''}

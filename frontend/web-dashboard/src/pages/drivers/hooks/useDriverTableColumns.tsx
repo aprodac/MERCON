@@ -26,6 +26,8 @@ import {
 import { formatInDeploymentTz } from '@/lib/datetime';
 import { getUpcomingScheduledDates } from '@/utils/scheduleUtils';
 import { cn } from '@/lib/utils';
+import { PHONE_LEVEL_LABEL, timeAgo, type DriverPhoneStatusRow } from '@/services/driverPhoneService';
+import { PhoneDot } from '@/components/drivers/phone/PhoneStatus';
 
 /** GPS status cell shared by the "GPS" column — mirrors the Kanban card's location states. */
 function GpsStatusCell({ driver }: { driver: Driver }) {
@@ -59,8 +61,29 @@ function GpsStatusCell({ driver }: { driver: Driver }) {
   );
 }
 
+/** Phone column: can this driver's phone receive work? (driver phone audit) */
+function PhoneStatusCell({ status }: { status: DriverPhoneStatusRow | undefined }) {
+  if (!status) return <span className="text-[10px] text-slate-300 dark:text-slate-600">—</span>;
+  const tip = [...status.reasons, `App last seen ${timeAgo(status.lastSeenAt)}`].join('\n');
+  return (
+    <div className="flex items-center gap-1.5" title={tip}>
+      <PhoneDot level={status.level} />
+      <span
+        className={cn(
+          'text-[10.5px] font-semibold',
+          status.level === 'green' ? 'text-emerald-600 dark:text-emerald-400' : status.level === 'amber' ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400',
+        )}
+      >
+        {PHONE_LEVEL_LABEL[status.level]}
+      </span>
+    </div>
+  );
+}
+
 export interface UseDriverTableColumnsOptions {
   tz: string;
+  /** Phone status by driver id, from GET /drivers/phone-status. */
+  phoneStatus?: Map<string, DriverPhoneStatusRow>;
   onPreviewDriver: (driver: Driver) => void;
   onWhatsappShare: (driver: Driver) => void;
   setConfirmModal: (modal: {
@@ -74,6 +97,7 @@ export interface UseDriverTableColumnsOptions {
 
 export function useDriverTableColumns({
   tz,
+  phoneStatus,
   onPreviewDriver,
   onWhatsappShare,
   setConfirmModal,
@@ -157,6 +181,10 @@ export function useDriverTableColumns({
       {
         header: 'GPS',
         accessor: (row: Driver) => <GpsStatusCell driver={row} />,
+      },
+      {
+        header: 'Phone',
+        accessor: (row: Driver) => <PhoneStatusCell status={phoneStatus?.get(row.id)} />,
       },
       {
         header: 'Capacity',
@@ -346,6 +374,6 @@ export function useDriverTableColumns({
         ),
       },
     ],
-    [tz, navigate, queryClient, onPreviewDriver, onWhatsappShare, setConfirmModal]
+    [tz, phoneStatus, navigate, queryClient, onPreviewDriver, onWhatsappShare, setConfirmModal]
   );
 }

@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Building2, CheckCheck, Clock, FileWarning, MapPin, PackageCheck, PackageOpen, Play, RefreshCw, SignalLow,
-  Split, Truck, UserRound, UserX, Video,
+  BellOff, Building2, CheckCheck, Clock, FileWarning, Hand, MapPin, PackageCheck, PackageOpen, Phone, Play, RefreshCw, SignalLow,
+  Smartphone, Split, Truck, UserRound, UserX, Video,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
@@ -15,11 +15,13 @@ import { MediaViewer } from '@/components/maps/live/TripMedia';
 import { fleetLiveService, type LiveMediaItem, type LiveMediaStage, type LiveUnit } from '@/services/fleetLiveService';
 import { operatorInboxService, type DriverUpdate, type ExpiryItem } from '@/services/operatorInboxService';
 import type { Trip } from '@/services/tripService';
+import { driverPhoneService, type AttentionItem, type AttentionKind } from '@/services/driverPhoneService';
+import DriverPhoneSheet from '@/components/drivers/phone/DriverPhoneSheet';
 import type { DocType } from '@/services/documentService';
 import { ShareUpdateDialog } from './ShareUpdateDialog';
 import { expiryBucket, expiryPhrase, mediaCount, reminderText, shortAgo, updateTitle, type ExpiryBucket } from './inboxText';
 
-type Tab = 'updates' | 'documents' | 'alerts';
+type Tab = 'updates' | 'documents' | 'alerts' | 'phones';
 
 interface Props {
   /** The dashboard's trip list — used for "no driver or truck" alerts. */
@@ -43,6 +45,8 @@ const STAGE_STYLE: Record<LiveMediaStage, { icon: typeof Truck; tile: string }> 
  *  - Driver updates: photos / videos to forward on WhatsApp, with who sent what
  *  - Documents: what has expired or is about to, with renew and remind
  *  - Alerts: delays, trucks gone quiet on a trip, trips missing a driver/truck
+ *  - Phones: drivers whose phone can't receive work, trips not acknowledged,
+ *    drivers gone silent on a trip, pushes that didn't arrive
  */
 export default function OperatorInbox({ trips, onFocusTrip }: Props) {
   const [tab, setTab] = useState<Tab>('updates');
@@ -57,6 +61,11 @@ export default function OperatorInbox({ trips, onFocusTrip }: Props) {
     queryFn: operatorInboxService.getDocumentExpiries,
     refetchInterval: 5 * 60_000,
   });
+  const attentionQ = useQuery({
+    queryKey: ['operator-inbox', 'attention'],
+    queryFn: driverPhoneService.attention,
+    refetchInterval: 60_000,
+  });
   // Same query the live map runs — shared cache, no second request.
   const liveQ = useQuery({ queryKey: ['fleet-live-map'], queryFn: fleetLiveService.getLiveMap, refetchInterval: 15_000 });
 
@@ -70,6 +79,7 @@ export default function OperatorInbox({ trips, onFocusTrip }: Props) {
     { id: 'updates', label: 'Driver updates', count: toSend, tone: 'bg-emerald-600' },
     { id: 'documents', label: 'Documents', count: urgentDocs, tone: 'bg-rose-600' },
     { id: 'alerts', label: 'Alerts', count: alerts.length, tone: 'bg-amber-500' },
+    { id: 'phones', label: 'Phones', count: (attentionQ.data ?? []).length, tone: 'bg-rose-600' },
   ];
 
   return (
@@ -104,6 +114,7 @@ export default function OperatorInbox({ trips, onFocusTrip }: Props) {
         )}
         {tab === 'documents' && <DocumentsList items={expiries} loading={expiriesQ.isLoading} />}
         {tab === 'alerts' && <AlertsList alerts={alerts} onFocusTrip={onFocusTrip} />}
+        {tab === 'phones' && <PhonesList items={attentionQ.data ?? []} loading={attentionQ.isLoading} />}
       </div>
     </div>
   );
@@ -389,6 +400,55 @@ function AlertsList({ alerts, onFocusTrip }: { alerts: Alert[]; onFocusTrip: (id
         </li>
       ))}
     </ul>
+  );
+}
+
+// ── Phones (driver phone audit) ─────────────────────────────────────────────
+
+const KIND_STYLE: Record<AttentionKind, { icon: typeof Truck; tone: string; title: (i: AttentionItem) => string }> = {
+  Silent: { icon: SignalLow, tone: 'bg-rose-600/10 text-rose-700 dark:text-rose-300', title: (i) => `${i.driverName} has gone silent` },
+  NotReady: { icon: Smartphone, tone: 'bg-amber-500/10 text-amber-700 dark:text-amber-300', title: (i) => `${i.driverName}'s phone isn't ready` },
+  NotAcknowledged: { icon: Hand, tone: 'bg-amber-500/10 text-amber-700 dark:text-amber-300', title: (i) => `${i.driverName} hasn't seen ${i.tripRef ?? 'a trip'}` },
+  PushFailed: { icon: BellOff, tone: 'bg-rose-600/10 text-rose-700 dark:text-rose-300', title: (i) => `Notification didn't reach ${i.driverName}` },
+};
+
+function PhonesList({ items, loading }: { items: AttentionItem[]; loading: boolean }) {
+  const navigate = useNavigate();
+  const [sheet, setSheet] = useState<{ id: string; name: string } | null>(null);
+  if (loading) return <ListNote>Checking drivers' phones…</ListNote>;
+  if (items.length === 0) return <ListNote>Every driver on an upcoming or active trip can be reached.</ListNote>;
+  return (
+    <>
+      <ul>
+        {items.map((i) => {
+          const k = KIND_STYLE[i.kind];
+          return (
+            <li key={`${i.kind}-${i.driverId}-${i.tripId ?? ''}`} className="flex items-center gap-2.5 border-t border-black/[0.05] px-3 py-2.5 first:border-t-0 dark:border-white/5">
+              <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-lg', k.tone)}>
+                <k.icon className="size-4" />
+              </span>
+              <button type="button" onClick={() => setSheet({ id: i.driverId, name: i.driverName })} className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-[13px] font-medium text-foreground">{k.title(i)}</span>
+                <span className="block truncate text-[11px] text-muted-foreground" title={i.reasons.join('\n')}>
+                  {[i.kind === 'NotReady' && i.tripRef ? i.tripRef : null, i.detail].filter(Boolean).join(' · ')}
+                </span>
+              </button>
+              {i.driverPhone && (
+                <a href={`tel:${i.driverPhone}`} title={`Call ${i.driverName}`} className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-emerald-600/10 text-emerald-700 hover:bg-emerald-600/15 dark:text-emerald-300">
+                  <Phone className="size-3.5" />
+                </a>
+              )}
+              {i.tripId && (
+                <button type="button" onClick={() => navigate(`/trips/${i.tripId}`)} className="shrink-0 text-[11px] font-medium text-blue-600 hover:underline dark:text-blue-400">
+                  Trip
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {sheet && <DriverPhoneSheet driverId={sheet.id} driverName={sheet.name} open onOpenChange={(o) => !o && setSheet(null)} />}
+    </>
   );
 }
 

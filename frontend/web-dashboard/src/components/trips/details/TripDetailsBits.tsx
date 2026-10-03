@@ -1,4 +1,5 @@
 import { AlarmClock, CalendarCheck, Check, CircleAlert, FileText, ListOrdered, Phone, PlayCircle, Plus, Receipt, Route, Smartphone, Timer, Truck, UploadCloud, UserRound, X } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import DriverAvatar from '@/components/ui/DriverAvatar';
@@ -194,8 +195,15 @@ function Feed({ icon: Icon, label, fix, missing }: { icon: typeof Truck; label: 
 
 /** Truck and driver, as a card on the map (top-left): photos, class, contact, and links to their profiles. */
 export function TruckDriverOverlay({
-  trip, overview, truckLabel, onReassign,
-}: { trip: Trip; overview: TripOverview | undefined; truckLabel: string; onReassign: (mode: 'driver' | 'truck') => void }) {
+  trip, overview, truckLabel, onReassign, driverExtra,
+}: {
+  trip: Trip;
+  overview: TripOverview | undefined;
+  truckLabel: string;
+  onReassign: (mode: 'driver' | 'truck') => void;
+  /** Extra line under the driver (phone status / "Got it"). */
+  driverExtra?: ReactNode;
+}) {
   const navigate = useNavigate();
   const d = trip.driver as (NonNullable<Trip['driver']> & { status?: DriverStatus; ref_id?: string }) | null | undefined;
   const v = trip.vehicle as (NonNullable<Trip['vehicle']> & { image_url?: string | null; trailer_number?: string | null }) | null | undefined;
@@ -274,6 +282,7 @@ export function TruckDriverOverlay({
               </a>
             </div>
           )}
+          {d && driverExtra}
         </div>
         {canChange && change('driver')}
       </div>

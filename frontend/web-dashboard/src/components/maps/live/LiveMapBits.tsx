@@ -2,7 +2,7 @@ import { Marker } from 'react-map-gl/maplibre';
 import { Check, Info, Smartphone, Truck, UserRound } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
-import { nextStop, stopLabel, timeAgo, unitTitle, type StopGroup } from '@/lib/fleetLive';
+import { nextStop, stopLabel, stopNumbersLabel, timeAgo, unitTitle, type StopGroup } from '@/lib/fleetLive';
 import type { LiveGpsFix, LiveUnit } from '@/services/fleetLiveService';
 import { TONE, unitTone, type UnitTone } from './liveMapStyle';
 import { GLASS } from './LiveUnitPanel';
@@ -101,12 +101,12 @@ export function StopPin({ group, eta, tone = 'live' }: { group: StopGroup; eta: 
   return (
     <Marker longitude={group.lng} latitude={group.lat} anchor="bottom" style={{ zIndex: group.isNext ? 15 : 5 }}>
       <div className="flex flex-col items-center">
-        <div className="mb-1 flex max-w-[170px] items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[11px] leading-4 shadow-sm ring-1 ring-black/5 dark:bg-slate-900/90 dark:ring-white/10">
+        <div className="mb-1 flex max-w-[220px] items-center gap-1 rounded-md bg-white/95 px-1.5 py-0.5 text-[11px] leading-4 shadow-sm ring-1 ring-black/5 dark:bg-slate-900/90 dark:ring-white/10">
           <span className={cn('truncate font-medium', group.done ? 'text-muted-foreground' : 'text-foreground')}>{group.name}</span>
           {group.isNext && eta && <span className="shrink-0 font-semibold text-blue-600 dark:text-blue-400">· {eta}</span>}
         </div>
         <div className={cn('flex h-7 min-w-7 items-center justify-center rounded-full border-[2.5px] border-white px-1.5 text-[11px] font-bold text-white shadow-md', bg)}>
-          {group.done ? <Check className="size-3.5" strokeWidth={3} /> : group.numbers.join('·')}
+          {group.done ? <Check className="size-3.5" strokeWidth={3} /> : stopNumbersLabel(group.numbers)}
         </div>
         <div className={cn('-mt-0.5 h-2 w-0.5 rounded-full', bg)} />
       </div>

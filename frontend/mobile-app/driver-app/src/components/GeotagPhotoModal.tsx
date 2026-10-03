@@ -15,12 +15,15 @@ export interface GeotagPhotoModalProps {
       address?: string | null;
     } | null;
   } | null;
+  /** The trip's customer, stamped on the photo the driver can share. */
+  companyName?: string | null;
 }
 
 export const GeotagPhotoModal: React.FC<GeotagPhotoModalProps> = ({
   visible,
   onClose,
   photo,
+  companyName,
 }) => {
   if (!photo) return null;
 
@@ -37,6 +40,7 @@ export const GeotagPhotoModal: React.FC<GeotagPhotoModalProps> = ({
         longitude={photo.location?.longitude}
         timestamp={photo.location?.timestamp ?? undefined}
         fullAddress={photo.location?.address ?? undefined}
+        companyName={companyName ?? undefined}
         onClose={onClose}
       />
     </Modal>

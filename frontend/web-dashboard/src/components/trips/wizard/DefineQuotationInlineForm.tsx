@@ -74,7 +74,7 @@ export const DefineQuotationInlineForm: React.FC<DefineQuotationInlineFormProps>
             onApplyRate={(bRate, dPayout) => {
               handleUpdateTripSlot(primarySlot.id, {
                 billingAmount: bRate,
-                ...(!is3PL && dPayout != null ? { driverPayout: dPayout, driverPayoutModified: true } : {}),
+                ...(!is3PL && dPayout != null ? { driverPayout: dPayout, driverPayoutModified: true, updateQuotationPayout: true } : {}),
                 saveAsQuotation: true,
                 saveAsRateCard: true,
               });
@@ -219,6 +219,7 @@ export const DefineQuotationInlineForm: React.FC<DefineQuotationInlineFormProps>
                   handleUpdateTripSlot(primarySlot.id, {
                     driverPayout: val,
                     driverPayoutModified: true,
+                    updateQuotationPayout: true,
                     saveAsQuotation: true,
                     saveAsRateCard: true,
                     pricingBasis: inlinePricingBasis,

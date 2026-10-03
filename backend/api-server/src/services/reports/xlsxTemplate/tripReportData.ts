@@ -108,6 +108,7 @@ export async function fetchTripRows(
       rows.push({
         serial: rows.length + 1,
         ref_id: t.ref_id || t.id,
+        awb_number: t.awb_number || '',
         date: t.actual_start || t.planned_start || t.createdAt,
         driver_name: sub ? sub.driverName || 'N/A' : t.driver ? `${t.driver.first_name} ${t.driver.last_name}` : 'N/A',
         driver_phone: (sub ? sub.driverPhone : t.driver?.phone_primary) || 'N/A',

@@ -21,6 +21,7 @@ import TripStep1UnifiedWorkspace from '@/components/trips/wizard/TripStep1Unifie
 import { MonthlyDaysSelector } from '@/components/trips/wizard/MonthlyDaysSelector';
 import { resolveSlotDriverPayout } from '@mercon/shared-types';
 import { TripReviewConfirmModal } from '@/components/trips/wizard/TripReviewConfirmModal';
+import DriverPayoutMissingDialog from '@/components/trips/wizard/DriverPayoutMissingDialog';
 import TripBatchGeneratorTab from '@/components/trips/wizard/TripBatchGeneratorTab';
 import TripBulkImportTab from '@/components/trips/wizard/TripBulkImportTab';
 import { Button } from '@/components/ui/button';
@@ -78,6 +79,37 @@ export default function CreateTripPage() {
   const form = useCreateTripForm();
   const [isReviewModalOpen, setIsReviewModalOpen] = React.useState(false);
 
+  // ── Driver payout missing ─────────────────────────────────────────────────
+  // Own-fleet trips need a driver payout. Many quotations are saved without one,
+  // so tell the operator as soon as such a quotation is picked, and again on
+  // Review / Create (the trip can't be created without it).
+  const payoutSlot: any = form.contractSlots[0];
+  const payoutCard: any = payoutSlot?.matchedRateCard;
+  const payoutPriced = Boolean(payoutSlot && (payoutCard || Number(payoutSlot.billingAmount) > 0));
+  const payoutMissing =
+    form.assignmentType === 'own' && payoutPriced && !(resolveSlotDriverPayout(payoutSlot) > 0);
+  const payoutLabel = payoutCard
+    ? [
+        payoutCard.quotation_number != null ? `QT-${payoutCard.quotation_number}` : null,
+        payoutSlot?.origin && payoutSlot?.destination ? `${payoutSlot.origin} → ${payoutSlot.destination}` : null,
+        payoutCard.vehicle_class || payoutCard.vehicle_type || null,
+      ].filter(Boolean).join(' · ')
+    : '';
+  const [payoutDialogOpen, setPayoutDialogOpen] = React.useState(false);
+  const payoutPromptedFor = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    const cardId = payoutCard?.id;
+    if (!cardId || !payoutMissing || payoutPromptedFor.current.has(cardId)) return;
+    payoutPromptedFor.current.add(cardId);
+    setPayoutDialogOpen(true);
+  }, [payoutCard?.id, payoutMissing]);
+  /** True (and opens the popup) when the payout still has to be entered. */
+  const promptForMissingPayout = () => {
+    if (!payoutMissing) return false;
+    setPayoutDialogOpen(true);
+    return true;
+  };
+
   // Step Transition Focus Management
   React.useEffect(() => {
     if (form.submissionResult) return;
@@ -105,6 +137,10 @@ export default function CreateTripPage() {
   /** The main button: go to the next missing section, then step 2 (monthly), then review. */
   const runPrimaryAction = () => {
     if (form.isSubmitting) return;
+    if (form.contractStep === 1 && form.nextSection === 'price' && payoutMissing) {
+      setPayoutDialogOpen(true);
+      return;
+    }
     if (form.contractStep === 1 && form.nextSection) {
       form.focusSection(form.nextSection);
       return;
@@ -114,6 +150,7 @@ export default function CreateTripPage() {
       else form.validateAndFocusErrors();
       return;
     }
+    if (promptForMissingPayout()) return;
     if (form.validateAndFocusErrors()) setIsReviewModalOpen(true);
   };
   const primaryRef = React.useRef(runPrimaryAction);
@@ -169,6 +206,7 @@ export default function CreateTripPage() {
             canNavigateToStep={form.canNavigateToStep}
             setContractStep={form.setContractStep}
             handleContractSubmit={() => {
+              if (promptForMissingPayout()) return;
               if (form.validateAndFocusErrors()) {
                 setIsReviewModalOpen(true);
               }
@@ -178,7 +216,10 @@ export default function CreateTripPage() {
             progress={form.progress}
             nextSection={form.nextSection}
             nextActionLabel={form.nextActionLabel}
-            onJumpTo={form.focusSection}
+            onJumpTo={(key) => {
+              if (key === 'price' && promptForMissingPayout()) return;
+              form.focusSection(key);
+            }}
             batchTripRowsCount={form.batchTripRows.length}
             KbdBadge={KbdBadge}
             hasSavedDraft={form.hasSavedDraft}
@@ -259,8 +300,7 @@ export default function CreateTripPage() {
                         coDriverSplit={form.coDriverSplit}
                         setCoDriverSplit={form.setCoDriverSplit}
                         basePayout={resolveSlotDriverPayout(form.contractSlots[0] || ({} as any))}
-                        lastCustomerTrip={form.lastCustomerTrip}
-                        onRepeatTrip={form.handleRepeatTrip}
+                        loading={form.loading}
                         lastLaneTime={form.lastLaneTime}
                         handleUpdateSlotIntermediateFee={form.handleUpdateSlotIntermediateFee}
                         handleUpdateSlotReturnIntermediateFee={form.handleUpdateSlotReturnIntermediateFee}
@@ -446,6 +486,24 @@ export default function CreateTripPage() {
         confirmLabel="Discard"
         cancelLabel="Keep editing"
         variant="destructive"
+      />
+
+      <DriverPayoutMissingDialog
+        isOpen={payoutDialogOpen}
+        quotationLabel={payoutLabel}
+        hasQuotation={Boolean(payoutCard)}
+        onClose={() => setPayoutDialogOpen(false)}
+        onSave={(payout, saveOnQuotation) => {
+          if (payoutSlot) {
+            form.handleUpdateTripSlot(payoutSlot.id, {
+              driverPayout: payout,
+              driverPayoutModified: true,
+              // Unticked = this trip only; the quotation keeps no payout.
+              updateQuotationPayout: saveOnQuotation,
+            });
+          }
+          setPayoutDialogOpen(false);
+        }}
       />
 
       <TripReviewConfirmModal

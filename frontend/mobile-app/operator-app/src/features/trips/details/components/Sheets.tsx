@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert } from 'react-native';
 import {
-  FileText, MapPin, Pencil, TriangleAlert, Package, ShieldAlert, Trash2, Truck, XCircle, type LucideIcon,
+  FileText, Link2, MapPin, Pencil, TriangleAlert, Package, ShieldAlert, Trash2, Truck, XCircle, type LucideIcon,
 } from 'lucide-react-native';
 import { SUGGESTED_CHARGE_TYPES, SUGGESTED_UNIT_BY_CHARGE_TYPE } from '@mercon/shared-types';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
@@ -14,7 +14,7 @@ import { ACTION, Divider, INK, MUTED, SheetRow } from './parts';
 // ── More ──────────────────────────────────────────────────────────────────────
 
 export function MoreSheet({
-  visible, trip, active, onClose, onEdit, onCancel, onQuick,
+  visible, trip, active, onClose, onEdit, onCancel, onQuick, tracking,
 }: {
   visible: boolean;
   trip: OperatorTripDetail;
@@ -23,6 +23,8 @@ export function MoreSheet({
   onEdit: () => void;
   onQuick: (kind: QuickKind) => void;
   onCancel: () => void;
+  /** The customer tracking link row — absent when the trip has no link (draft, cancelled, tracking off). */
+  tracking?: { sub: string; onPress: () => void } | null;
 }) {
   const go = (fn: () => void) => () => { onClose(); setTimeout(fn, 250); };
   return (
@@ -30,6 +32,9 @@ export function MoreSheet({
       <View>
         {canEditTrip(trip) ? (
           <SheetRow icon={Pencil} tint="#EEF0F4" fg={INK} label="Edit trip" sub="Times, route and price" onPress={go(onEdit)} />
+        ) : null}
+        {tracking ? (
+          <SheetRow icon={Link2} tint={TONE.blue.bg} fg={TONE.blue.fg} label="Customer tracking link" sub={tracking.sub} onPress={go(tracking.onPress)} />
         ) : null}
         {active ? (
           <>
