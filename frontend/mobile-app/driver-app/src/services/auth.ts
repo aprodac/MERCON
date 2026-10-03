@@ -29,6 +29,11 @@ export const signInDriver: SignInStrategy = async (phone_primary, secret) => {
  * driver denied notifications and there is no token.
  */
 export async function syncPushToken(): Promise<void> {
+  // Report first: it moves this phone to the driver who just signed in (the
+  // server keeps the phone's push token), so trips assigned in the next few
+  // seconds already reach it. Getting a fresh token can take a while on a
+  // slow connection, and until now nothing was registered before it finished.
+  await reportPhoneHealth('AppOpened');
   try {
     const pushToken = await registerForPushNotificationsAsync();
     if (pushToken) {
@@ -38,7 +43,6 @@ export async function syncPushToken(): Promise<void> {
   } catch (err) {
     console.warn('[Auth] Non-fatal push token registration failure:', err);
   }
-  await reportPhoneHealth('AppOpened');
 }
 
 export async function unregisterPushToken(): Promise<void> {

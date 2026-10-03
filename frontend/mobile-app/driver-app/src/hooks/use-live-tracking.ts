@@ -48,7 +48,7 @@ export function useLiveTracking(trip: MobileTrip | null, driverId: string | null
       if (tripKnown) stopTripTracking().catch(() => {});
       return;
     }
-    startTripTracking(tripId).catch(() => {});
+    startTripTracking(tripId, { ask: true }).catch(() => {});
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') startTripTracking(tripId).catch(() => {});
     });

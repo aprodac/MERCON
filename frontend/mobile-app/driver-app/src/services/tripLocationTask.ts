@@ -154,13 +154,15 @@ if (isBackgroundTrackingAvailable()) {
  * app is on screen — Android refuses to start the service from the
  * background. Returns false when it could not start (no permission, app in
  * background, web); the caller simply tries again next time the app opens.
+ *
+ * `ask` shows the permission prompt when location is not allowed yet. Only the
+ * first start asks: on Android a permission request pauses and resumes the
+ * app even when nothing is shown, so asking on every "app came back" retry
+ * re-triggered itself several times a second (seen on a Realme phone).
  */
-export async function startTripTracking(tripId: string): Promise<boolean> {
+export async function startTripTracking(tripId: string, { ask = false }: { ask?: boolean } = {}): Promise<boolean> {
   if (!isBackgroundTrackingAvailable()) return false;
   try {
-    const perm = await Location.requestForegroundPermissionsAsync();
-    if (!perm.granted) return false;
-
     const current = await SecureStore.getItemAsync(ACTIVE_TRIP_KEY);
     const running = await Location.hasStartedLocationUpdatesAsync(TRIP_LOCATION_TASK).catch(() => false);
     if (running && startedThisRun) {
@@ -168,6 +170,10 @@ export async function startTripTracking(tripId: string): Promise<boolean> {
       if (current !== tripId) await SecureStore.setItemAsync(ACTIVE_TRIP_KEY, tripId);
       return true;
     }
+
+    let perm = await Location.getForegroundPermissionsAsync();
+    if (!perm.granted && ask && perm.canAskAgain) perm = await Location.requestForegroundPermissionsAsync();
+    if (!perm.granted) return false;
 
     await SecureStore.setItemAsync(ACTIVE_TRIP_KEY, tripId);
     // Restored from an earlier run (see startedThisRun): restart it while on screen.
