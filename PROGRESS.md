@@ -1037,6 +1037,19 @@ Owner: /documents was missing basic DMS features (no select / select all / bulk 
 - ⬜ Owner screenshots of /documents and a document page on real data (not logged in locally, per owner rule)
 - ⬜ Consider also listing deleted documents in Settings → Recycle bin
 
+### Customer details page redesign, pass 3 — 🔄 built 2026-10-03 (branch `customer-details-redesign`), not yet on dev
+
+Owner: too much scrolling; live tracking / Excel trip sheets not placed by purpose; wanted a modern, compact (shadcn-style) layout.
+
+- ✅ One header card: logo, name, status, contact line (person · phone call/WhatsApp · group), Edit / New trip / ⋯ menu, with the 4 figures as its footer strip (each opens its tab); compact app header; line tabs Overview · Trips · Live tracking · Trip sheets · Invoices · Quotations · Locations (`?tab=` links unchanged). Content now starts ~300px from the top instead of ~500px
+- ✅ Overview: "On the road" rows carry the trip's tracking link (send on WhatsApp / copy / opens) and Track; latest trips table; side column Details (fields not in the header, "Not set" prompt), Live tracking status (opens, what the customer sees, Manage), Quotations. Removed the Shortcuts panel (duplicated the tabs)
+- ✅ Live tracking tab: all-trucks link row, link opens grouped by day in a bounded scroll list, settings column; per-trip links moved to Overview
+- ✅ Trip sheets tab: one card — period toolbar, then Trips / Statement / Rates groups each listing their formats + MERCON standard layout with Download
+- ✅ Trips / Invoices / Quotations / Locations: one card each (toolbar + compact table); Invoices summary strip replaces 4 big KPI cards
+- ✅ Shared compact kit in `components/customers/customerUi.tsx` (Section, StatCell, Segmented, SearchField, Toolbar, Pager, compact table tokens); shadcn `Button` throughout
+- ✅ Verified: dashboard `tsc -b`; screenshots desktop 1440 + phone 390 on local demo data
+- ⬜ Owner check on dev with real data
+
 ### Customers pages UI/UX redesign — 🔄 built 2026-10-02 (branch `customers-ux`), not yet on dev
 
 Owner: trip tracking, custom trip sheets and other useful customer features were hard to reach; list KPIs and the details page needed a modern, usable layout.

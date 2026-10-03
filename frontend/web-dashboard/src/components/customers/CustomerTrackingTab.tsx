@@ -2,19 +2,19 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Copy, ExternalLink, Eye, Link2, MapPinned, MoreHorizontal, RefreshCw, Truck } from 'lucide-react';
+import { Copy, ExternalLink, Eye, Link2, MoreHorizontal, RefreshCw, Truck } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { WhatsAppIcon } from '@/components/ui/whatsapp-icon';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { customerService, type Customer, type CreateCustomerPayload } from '@/services/customerService';
 import { trackingService, type TrackingOpen } from '@/services/trackingService';
 import { whatsAppLink } from '@/lib/share';
-import { timeAgo } from '@/lib/fleetLive';
 import { formatInDeploymentTz, useDeploymentTimezone } from '@/lib/datetime';
 import { cn } from '@/lib/utils';
-import { routeOf } from '@/components/details/DetailKit';
-import { Badge, Panel, TripStatusBadge, ui } from '@/components/customers/customerUi';
+import { Count, EmptyRow, Section, Segmented, SkeletonRows, ui } from '@/components/customers/customerUi';
+import { copyText, opensLabel } from '@/components/customers/trackingLinks';
 import { whatsAppGroupUrl } from '@mercon/shared-types';
 
 type TrackingField = 'tracking_auto_link' | 'tracking_show_deadline' | 'tracking_show_delay_reason' | 'tracking_show_photos';
@@ -27,33 +27,23 @@ const VISIBILITY: { key: TrackingField; label: string; hint: string; fallback: b
   { key: 'tracking_show_photos', label: 'Loading & delivery photos', hint: 'POD and cargo photos on finished stops (kept 60 days)', fallback: true },
 ];
 
-const HISTORY_PAGE = 25;
+const HISTORY_PAGE = 40;
 
-async function copyText(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    toast.success('Link copied');
-  } catch {
-    toast.error("Couldn't copy — open the link and copy it from the address bar");
-  }
-}
-
-function opensLabel(count: number, last: string | null | undefined) {
-  return count > 0 ? `Opened ${count}× · ${timeAgo(last)}` : 'Not opened yet';
-}
+type HistoryFilter = 'all' | 'all_trucks' | 'trip';
 
 /**
- * Customer → Live tracking: the all-trucks link, each live trip's link, every
- * time the customer opened one, and what they get to see. Switches save as flipped.
+ * Customer → Live tracking: the all-trucks link, every time the customer opened
+ * a link, and what they get to see. Switches save as flipped. Each truck on the
+ * road (with its own link) is on the Overview.
  */
-export default function CustomerTrackingTab({ customer, liveTrips = [] }: { customer: Customer; liveTrips?: any[] }) {
+export default function CustomerTrackingTab({ customer }: { customer: Customer }) {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const tz = useDeploymentTimezone();
   const enabled = customer.tracking_enabled ?? true;
   const [renewOpen, setRenewOpen] = useState(false);
   const [shown, setShown] = useState(HISTORY_PAGE);
-  const [historyFilter, setHistoryFilter] = useState<'all' | 'all_trucks' | 'trip'>('all');
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
 
   const save = useMutation({
     mutationFn: (patch: Partial<CreateCustomerPayload>) => customerService.update(customer.id, patch),
@@ -83,14 +73,6 @@ export default function CustomerTrackingTab({ customer, liveTrips = [] }: { cust
     onError: () => toast.error("Couldn't make a new link. Try again."),
   });
 
-  const liveIds = liveTrips.map((t) => t.id);
-  const { data: tripLinks, isLoading: tripLinksLoading } = useQuery({
-    queryKey: ['customer-trip-links', customer.id, liveIds],
-    queryFn: () => trackingService.getTripLinks(liveIds),
-    enabled: enabled && liveIds.length > 0,
-    staleTime: 30_000,
-  });
-
   const { data: history, isLoading: historyLoading } = useQuery({
     queryKey: ['customer-tracking-opens', customer.id],
     queryFn: () => trackingService.getCustomerOpens(customer.id, 500),
@@ -101,7 +83,7 @@ export default function CustomerTrackingTab({ customer, liveTrips = [] }: { cust
     () => (history?.opens ?? []).filter((o) => historyFilter === 'all' || o.link.kind === historyFilter),
     [history, historyFilter],
   );
-  // Newest first, grouped by day: "Today", "Yesterday", "30 Sep 2026".
+  // Newest first, grouped by day: "Today", "Yesterday", "Wed, 30 Sep 2026".
   const days = useMemo(() => {
     const todayKey = formatInDeploymentTz(new Date(), tz, 'yyyy-MM-dd');
     const yesterdayKey = formatInDeploymentTz(new Date(Date.now() - 86_400_000), tz, 'yyyy-MM-dd');
@@ -122,56 +104,53 @@ export default function CustomerTrackingTab({ customer, liveTrips = [] }: { cust
     if (!link?.url) return;
     window.open(whatsAppLink(customer.whatsapp_number ?? null, `*${customer.name} · live trucks*\nAll your trucks on the road, live: ${link.url}`), '_blank', 'noopener');
   };
-  const sendTrip = (trip: any, url: string) => {
-    const route = routeOf(trip);
-    window.open(whatsAppLink(customer.whatsapp_number ?? null, `*${customer.name} · ${trip.ref_id || 'Trip'}*\n${route.origin} → ${route.destination}\nTrack live: ${url}`), '_blank', 'noopener');
-  };
 
-  const tripOpenCount = (history?.opens ?? []).filter((o) => o.link.kind === 'trip').length;
-  const fleetOpenCount = (history?.opens ?? []).filter((o) => o.link.kind === 'all_trucks').length;
+  const all = history?.opens ?? [];
+  const tripOpenCount = all.filter((o) => o.link.kind === 'trip').length;
+  const fleetOpenCount = all.filter((o) => o.link.kind === 'all_trucks').length;
 
   return (
-    <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-12">
-      <div className="flex min-w-0 flex-col gap-6 xl:col-span-8">
+    <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="flex min-w-0 flex-col gap-4">
         {!enabled && (
-          <div className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-            Tracking is off for {customer.name}. Turn it on to share links.
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-[13px] text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+            Tracking is off for {customer.name}. Turn it on (right) to share links — links already sent stop working while it's off.
           </div>
         )}
 
-        {enabled && (<>
         {/* ── All-trucks link ── */}
-        <Panel
-          title="All-trucks link"
-          icon={Link2}
-          tone="blue"
-          action={link?.url ? <span className="text-[13px] text-slate-500">{opensLabel(link.open_count, link.last_opened_at)}</span> : undefined}
-        >
-          {linkLoading || !link?.url ? (
-            <div className="h-9 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
-          ) : (
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <button
-                type="button"
-                onClick={() => copyText(link.url!)}
-                title="Copy link"
-                className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-left text-[13px] text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 cursor-pointer"
-              >
-                <span className="min-w-0 flex-1 truncate">{link.url}</span>
-                <Copy className="size-4 shrink-0 text-slate-400" />
-              </button>
-              <div className="flex items-center gap-2">
-                <button type="button" onClick={sendAll} className={cn(ui.btn, 'bg-[#25D366] text-white hover:bg-[#1EBE5B]')}>
+        {enabled && (
+          <Section
+            title="All-trucks link"
+            meta={link?.url ? <span className="text-xs font-normal text-slate-500">{opensLabel(link.open_count, link.last_opened_at)}</span> : undefined}
+          >
+            <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center">
+              {linkLoading || !link?.url ? (
+                <div className="h-8 flex-1 animate-pulse rounded-md bg-slate-100 dark:bg-slate-800" />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => copyText(link.url!)}
+                  title="Copy link"
+                  className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-2.5 text-left text-[13px] text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 cursor-pointer"
+                >
+                  <Link2 className="size-3.5 shrink-0 text-slate-400" />
+                  <span className="min-w-0 flex-1 truncate">{link.url}</span>
+                  <Copy className="size-3.5 shrink-0 text-slate-400" />
+                </button>
+              )}
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" onClick={sendAll} disabled={!link?.url} className={cn(ui.btnSm, 'flex-1 bg-[#25D366] text-white hover:bg-[#1EBE5B] sm:flex-none')}>
                   <WhatsAppIcon className="size-4" /> Send
-                </button>
-                <button type="button" onClick={() => window.open(link.url!, '_blank', 'noopener')} className={cn(ui.btn, ui.btnOutline, 'w-9 px-0')} title="Open" aria-label="Open link">
-                  <ExternalLink className="size-4" />
-                </button>
+                </Button>
+                <Button variant="outline" size="icon" disabled={!link?.url} onClick={() => link?.url && window.open(link.url, '_blank', 'noopener')} className={ui.iconSm} title="Open the page" aria-label="Open the page">
+                  <ExternalLink />
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button type="button" className={cn(ui.btn, ui.btnOutline, 'w-9 px-0')} aria-label="More">
-                      <MoreHorizontal className="size-4" />
-                    </button>
+                    <Button variant="outline" size="icon" className={ui.iconSm} aria-label="More">
+                      <MoreHorizontal />
+                    </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-52">
                     <DropdownMenuItem onClick={() => setRenewOpen(true)} className="text-[13px]">
@@ -181,101 +160,44 @@ export default function CustomerTrackingTab({ customer, liveTrips = [] }: { cust
                 </DropdownMenu>
               </div>
             </div>
-          )}
-        </Panel>
-
-        {/* ── Each live trip's own link ── */}
-        <Panel
-          title="On the road"
-          icon={Truck}
-          tone="emerald"
-          action={liveTrips.length > 0 ? <Badge tone="emerald" dot pulse>{liveTrips.length} live</Badge> : undefined}
-          flush={liveTrips.length > 0}
-        >
-          {liveTrips.length === 0 ? (
-            <p className={ui.muted}>No trucks on the road right now.</p>
-          ) : (
-            <ul className="divide-y divide-slate-100 border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
-              {liveTrips.map((trip) => {
-                const route = routeOf(trip);
-                const tl = tripLinks?.[trip.id];
-                return (
-                  <li key={trip.id} className="flex flex-col gap-2 px-5 py-3 sm:flex-row sm:items-center sm:gap-4">
-                    <button type="button" onClick={() => navigate(`/trips/${trip.id}`)} className="group min-w-0 flex-1 text-left cursor-pointer">
-                      <span className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-slate-900 tabular-nums group-hover:text-[#E5533F] dark:text-white">{trip.ref_id || trip.id.slice(0, 8).toUpperCase()}</span>
-                        <TripStatusBadge status={trip.status} />
-                      </span>
-                      <span className="mt-0.5 block truncate text-[13px] text-slate-600 dark:text-slate-300">{route.origin} → {route.destination}</span>
-                    </button>
-                    <span className="flex items-center gap-1.5 text-[13px] text-slate-500 sm:w-40">
-                      <Eye className="size-4 shrink-0" />
-                      {tripLinksLoading ? '…' : tl ? opensLabel(tl.open_count, tl.last_opened_at) : '—'}
-                    </span>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <button type="button" disabled={!tl?.url} onClick={() => tl?.url && sendTrip(trip, tl.url)} className={cn(ui.btn, ui.btnOutline, 'h-8 w-8 px-0')} title="Send on WhatsApp" aria-label="Send on WhatsApp">
-                        <WhatsAppIcon className="size-4 text-emerald-600" />
-                      </button>
-                      <button type="button" disabled={!tl?.url} onClick={() => tl?.url && copyText(tl.url)} className={cn(ui.btn, ui.btnOutline, 'h-8 w-8 px-0')} title="Copy link" aria-label="Copy link">
-                        <Copy className="size-4" />
-                      </button>
-                      <button type="button" onClick={() => navigate(`/trips/${trip.id}/track`)} className={cn(ui.btn, ui.btnOutline, 'h-8 w-8 px-0')} title="Track on the map" aria-label="Track on the map">
-                        <MapPinned className="size-4" />
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Panel>
-        </>)}
+          </Section>
+        )}
 
         {/* ── Every open, newest first ── */}
-        <Panel
-          title="Opened"
-          icon={Eye}
-          tone="indigo"
-          flush
+        <Section
+          title="Link opens"
+          meta={history && history.total > 0 ? <Count>{history.total}</Count> : undefined}
           action={
             history && history.total > 0 ? (
-              <div className="flex items-center gap-1" role="tablist" aria-label="Which links">
-                {([['all', 'All', history.opens.length], ['all_trucks', 'All-trucks', fleetOpenCount], ['trip', 'Trips', tripOpenCount]] as const).map(([id, label, n]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    role="tab"
-                    aria-selected={historyFilter === id}
-                    onClick={() => { setHistoryFilter(id); setShown(HISTORY_PAGE); }}
-                    className={cn(
-                      'inline-flex h-7 items-center gap-1 rounded-md px-2.5 text-xs font-medium transition-colors cursor-pointer',
-                      historyFilter === id ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
-                    )}
-                  >
-                    {label} <span className={cn('tabular-nums', historyFilter === id ? 'text-white/70' : 'text-slate-400')}>{n}</span>
-                  </button>
-                ))}
-              </div>
+              <Segmented
+                label="Which links"
+                value={historyFilter}
+                onChange={(id) => { setHistoryFilter(id); setShown(HISTORY_PAGE); }}
+                options={[
+                  { id: 'all', label: 'All', count: all.length },
+                  { id: 'all_trucks', label: 'All-trucks', count: fleetOpenCount },
+                  { id: 'trip', label: 'Trips', count: tripOpenCount },
+                ]}
+              />
             ) : undefined
           }
         >
           {historyLoading ? (
-            <div className="space-y-2 border-t border-slate-100 p-5 dark:border-slate-800">
-              {[0, 1, 2].map((i) => <div key={i} className="h-6 animate-pulse rounded bg-slate-100 dark:bg-slate-800" />)}
-            </div>
+            <SkeletonRows rows={4} />
           ) : days.length === 0 ? (
-            <p className={cn(ui.muted, 'border-t border-slate-100 px-5 py-4 dark:border-slate-800')}>
-              {history && history.earlier_opens > 0 ? 'No opens since the history started.' : 'Nobody has opened a link yet.'}
-            </p>
+            <EmptyRow icon={Eye}>{history && history.earlier_opens > 0 ? 'No opens since the history started.' : 'Nobody has opened a link yet.'}</EmptyRow>
           ) : (
-            <div className="border-t border-slate-100 dark:border-slate-800">
+            <div className="max-h-[520px] overflow-y-auto">
               {days.map((day) => (
                 <div key={day.key}>
-                  <p className="bg-slate-50/80 px-5 py-1.5 text-xs font-medium text-slate-500 dark:bg-slate-800/40">{day.label}</p>
+                  <p className="sticky top-0 z-[1] flex items-center justify-between border-b border-slate-100 bg-slate-50/95 px-4 py-1 text-xs font-medium text-slate-500 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
+                    <span>{day.label}</span>
+                    <span className="tabular-nums text-slate-400">{day.items.length} open{day.items.length === 1 ? '' : 's'}</span>
+                  </p>
                   <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                     {day.items.map((o) => (
-                      <li key={o.id} className="flex items-center gap-3 px-5 py-2.5 text-sm">
-                        {o.link.kind === 'all_trucks' ? <Link2 className="size-4 shrink-0 text-blue-500" /> : <Truck className="size-4 shrink-0 text-[#E5533F]" />}
+                      <li key={o.id} className="flex items-center gap-3 px-4 py-2 text-[13px]">
+                        {o.link.kind === 'all_trucks' ? <Link2 className="size-3.5 shrink-0 text-blue-500" /> : <Truck className="size-3.5 shrink-0 text-[#E5533F]" />}
                         <span className="min-w-0 flex-1 truncate">
                           {o.link.kind === 'all_trucks' ? (
                             <span className="text-slate-900 dark:text-white">All-trucks page</span>
@@ -286,9 +208,9 @@ export default function CustomerTrackingTab({ customer, liveTrips = [] }: { cust
                           ) : (
                             <span className="text-slate-900 dark:text-white">Trip link</span>
                           )}
-                          {o.device && <span className="ml-2 text-[13px] text-slate-500">{o.device}</span>}
+                          {o.device && <span className="ml-2 text-xs text-slate-500">{o.device}</span>}
                         </span>
-                        <span className="shrink-0 text-[13px] text-slate-500 tabular-nums" title={formatInDeploymentTz(o.opened_at, tz, 'd MMM yyyy, HH:mm:ss')}>
+                        <span className="shrink-0 text-xs text-slate-500 tabular-nums" title={formatInDeploymentTz(o.opened_at, tz, 'd MMM yyyy, HH:mm:ss')}>
                           {formatInDeploymentTz(o.opened_at, tz, 'HH:mm')}
                         </span>
                       </li>
@@ -299,7 +221,7 @@ export default function CustomerTrackingTab({ customer, liveTrips = [] }: { cust
             </div>
           )}
           {(opens.length > shown || (history && history.earlier_opens > 0)) && (
-            <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-5 py-3 text-[13px] text-slate-500 dark:border-slate-800">
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-2 text-xs text-slate-500 dark:border-slate-800">
               <span>{history && history.earlier_opens > 0 ? `+${history.earlier_opens} earlier open${history.earlier_opens === 1 ? '' : 's'} (before times were recorded)` : ''}</span>
               {opens.length > shown && (
                 <button type="button" onClick={() => setShown((n) => n + HISTORY_PAGE * 2)} className="font-medium text-[#E5533F] hover:underline cursor-pointer">
@@ -308,26 +230,26 @@ export default function CustomerTrackingTab({ customer, liveTrips = [] }: { cust
               )}
             </div>
           )}
-        </Panel>
+        </Section>
       </div>
 
       {/* ── Settings ── */}
-      <section className={cn(ui.card, 'order-first xl:order-none xl:col-span-4 xl:sticky xl:top-4')}>
-        <label className="flex cursor-pointer items-center justify-between gap-3 px-5 py-4">
-          <span>
-            <span className={cn(ui.h2, 'block')}>Live tracking</span>
-            <span className={cn('text-[13px]', enabled ? 'text-emerald-600' : 'text-slate-500')}>{enabled ? 'On' : 'Off'}</span>
+      <section className={cn(ui.card, 'order-first overflow-hidden xl:order-none xl:sticky xl:top-2')}>
+        <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3 border-b border-slate-100 px-4 py-2 dark:border-slate-800">
+          <span className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-slate-900 dark:text-white">Live tracking</span>
+            <span className={cn('text-xs font-medium', enabled ? 'text-emerald-600' : 'text-slate-500')}>{enabled ? 'On' : 'Off'}</span>
           </span>
           <Switch checked={enabled} disabled={save.isPending} onCheckedChange={(v) => save.mutate({ tracking_enabled: v })} aria-label="Live tracking on" />
         </label>
-        <div className={cn('border-t border-slate-100 px-5 pb-2 pt-4 dark:border-slate-800', !enabled && 'pointer-events-none opacity-50')}>
+        <div className={cn('px-4 pb-1 pt-3', !enabled && 'pointer-events-none opacity-50')}>
           <p className={ui.label}>Customer can see</p>
-          <ul className="mt-1">
+          <ul className="mt-0.5">
             {VISIBILITY.map((f) => {
               const value = customer[f.key] ?? f.fallback;
               return (
                 <li key={f.key}>
-                  <label title={f.hint} className="flex cursor-pointer items-center justify-between gap-3 py-2.5 text-sm text-slate-800 dark:text-slate-100">
+                  <label title={f.hint} className="flex cursor-pointer items-center justify-between gap-3 py-2 text-[13px] text-slate-800 dark:text-slate-100">
                     {f.label}
                     <Switch checked={value} disabled={save.isPending || !enabled} onCheckedChange={(v) => save.mutate({ [f.key]: v })} aria-label={f.label} />
                   </label>
@@ -337,15 +259,15 @@ export default function CustomerTrackingTab({ customer, liveTrips = [] }: { cust
           </ul>
         </div>
         {/* Where the page's "Ask" button sends the customer */}
-        <div className={cn('border-t border-slate-100 px-5 py-4 dark:border-slate-800', !enabled && 'pointer-events-none opacity-50')}>
+        <div className={cn('border-t border-slate-100 px-4 py-3 dark:border-slate-800', !enabled && 'pointer-events-none opacity-50')}>
           <p className={ui.label}>"Ask" button on the page</p>
           {whatsAppGroupUrl(customer.whatsapp_group_link) ? (
-            <p className="mt-1.5 flex items-start gap-2 text-sm text-slate-800 dark:text-slate-100">
+            <p className="mt-1.5 flex items-start gap-2 text-[13px] text-slate-800 dark:text-slate-100">
               <WhatsAppIcon className="mt-0.5 size-4 shrink-0 text-[#25D366]" />
               <span>Opens {customer.whatsapp_group_name ? <b className="font-semibold">{customer.whatsapp_group_name}</b> : 'the customer’s WhatsApp group'}. The message is copied for them to paste.</span>
             </p>
           ) : (
-            <div className="mt-1.5 rounded-xl bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+            <div className="mt-1.5 rounded-lg bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
               <p className="font-semibold">No WhatsApp group link yet</p>
               <p className="mt-0.5 text-amber-900/80 dark:text-amber-200/80">
                 Until then, "Ask" messages the team member who created the trip (the phone on their user profile), or the company support number.
@@ -353,7 +275,7 @@ export default function CustomerTrackingTab({ customer, liveTrips = [] }: { cust
               <p className="mt-1.5 text-amber-900/80 dark:text-amber-200/80">
                 To add the group: in WhatsApp open the group, tap its name, then <b>Invite to group via link → Copy link</b> (group admins only), and paste it in the customer's details.
               </p>
-              <button type="button" onClick={() => navigate(`/customers/${customer.id}/edit`)} className="mt-2 rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-100 dark:ring-amber-800">
+              <button type="button" onClick={() => navigate(`/customers/${customer.id}/edit`)} className="mt-2 rounded-md bg-white px-2.5 py-1 text-xs font-semibold text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100 dark:bg-amber-900/40 dark:text-amber-100 dark:ring-amber-800 cursor-pointer">
                 Add group link
               </button>
             </div>
