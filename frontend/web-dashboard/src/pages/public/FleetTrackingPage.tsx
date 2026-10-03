@@ -118,91 +118,105 @@ export default function FleetTrackingPage() {
     { key: 'delivered', label: text.t.tabDelivered, count: data.delivered.length },
   ];
 
+  const card = 'rounded-3xl bg-white shadow-[0_8px_30px_rgba(0,0,0,0.06)]';
+  const history = <DeliveredHistory trips={shownDelivered} total={data.delivered.length} text={text} fleetToken={token} timezone={data.timezone} />;
+
+  // Phone: one column. Desktop: the customer and this month across the top, trucks
+  // in a grid on the left, deliveries and "Ask" in a sidebar on the right.
   return (
     <div dir={text.rtl ? 'rtl' : 'ltr'} className="min-h-[100dvh] bg-[#f6f4ef] text-slate-900">
-      <div className="mx-auto w-full max-w-2xl px-4 pt-4 pb-10 sm:pt-8">
+      <div className="mx-auto w-full max-w-6xl px-4 pt-4 pb-10 sm:px-6 sm:pt-6 lg:px-8">
         <div className="mb-4 flex items-center justify-between gap-2">
           <BrandMark brand={data.brand} className="h-7 max-w-[140px] opacity-90" />
           <LangToggle text={text} />
         </div>
 
-        <main className="rounded-3xl bg-white p-4 shadow-[0_8px_30px_rgba(0,0,0,0.06)] sm:p-6">
-          <header className="flex items-center gap-3.5">
-            <Photo url={data.customer.logo_url} name={data.customer.name} kind="logo" size={56} />
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-slate-500">{text.t.liveTrucks}</p>
-              <h1 className="text-xl leading-tight font-semibold text-balance text-slate-900 sm:text-2xl">{data.customer.name}</h1>
+        <header className={cn(card, 'flex flex-col gap-4 p-4 sm:p-6 lg:flex-row lg:items-center lg:justify-between')}>
+          <div className="min-w-0">
+            <div className="flex items-center gap-3.5">
+              <Photo url={data.customer.logo_url} name={data.customer.name} kind="logo" size={56} />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-slate-500">{text.t.liveTrucks}</p>
+                <h1 className="text-xl leading-tight font-semibold text-balance text-slate-900 sm:text-2xl">{data.customer.name}</h1>
+              </div>
             </div>
-          </header>
-          <div className="mt-4 flex flex-wrap gap-1.5">
-            <Chip tone="blue"><Truck className="size-3.5" /> {text.t.trucksOnRoad(onRoad)}</Chip>
-            {soon > 0 && <Chip tone="violet">{text.t.loadingSoon(soon)}</Chip>}
-            {deliveredToday > 0 && <Chip tone="green"><Check className="size-3.5" strokeWidth={3} /> {text.t.deliveredToday(deliveredToday)}</Chip>}
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              <Chip tone="blue"><Truck className="size-3.5" /> {text.t.trucksOnRoad(onRoad)}</Chip>
+              {soon > 0 && <Chip tone="violet">{text.t.loadingSoon(soon)}</Chip>}
+              {deliveredToday > 0 && <Chip tone="green"><Check className="size-3.5" strokeWidth={3} /> {text.t.deliveredToday(deliveredToday)}</Chip>}
+            </div>
           </div>
+          {data.month && data.month.trips > 0 && <MonthCard month={data.month} text={text} timezone={data.timezone} className="lg:w-[440px] lg:shrink-0" />}
+        </header>
 
-          {data.month && data.month.trips > 0 && <MonthCard month={data.month} text={text} timezone={data.timezone} />}
-
-          {lateGroups.length > 0 && tab !== 'late' && (
-            <button
-              type="button"
-              onClick={() => setTab('late')}
-              className="mt-4 flex w-full items-center gap-2.5 rounded-2xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-start text-sm text-rose-900 hover:bg-rose-100/70"
-            >
-              <AlertTriangle className="size-4 shrink-0 text-rose-600" />
-              <span className="min-w-0 flex-1 font-semibold">{text.t.runningLate(lateGroups.length)}</span>
-              <span className="shrink-0 text-xs font-semibold text-rose-700">{text.t.seeLate}</span>
-              <ChevronRight className={cn('size-4 shrink-0 text-rose-500', text.rtl && 'rotate-180')} />
-            </button>
-          )}
-
-          {soonGroups.length > 0 && <ArrivingSoon groups={soonGroups} text={text} fleetToken={token} />}
-
-          <FleetFilters text={text} routes={routes} query={query} onQuery={setQuery} route={route} onRoute={setRoute} />
-
-          <div role="tablist" className="mt-4 -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {tabs.map((tb) => (
+        <div className="mt-4 grid gap-4 lg:mt-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:items-start lg:gap-5">
+          <main className={cn(card, 'min-w-0 p-4 sm:p-6 [&>*:first-child]:mt-0')}>
+            {lateGroups.length > 0 && tab !== 'late' && (
               <button
-                key={tb.key}
                 type="button"
-                role="tab"
-                aria-selected={tab === tb.key}
-                onClick={() => setTab(tb.key)}
-                className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium transition-colors',
-                  tab === tb.key ? 'bg-[#3E3C3D] text-white' : 'text-slate-600 hover:bg-slate-100',
-                  tb.key === 'late' && tab !== tb.key && 'text-rose-700',
-                )}
+                onClick={() => setTab('late')}
+                className="mt-4 flex w-full items-center gap-2.5 rounded-2xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-start text-sm text-rose-900 hover:bg-rose-100/70"
               >
-                {tb.label}
-                <span className={cn('rounded-full px-1.5 text-[11px] font-semibold', tab === tb.key ? 'bg-white/20' : 'bg-slate-100 text-slate-500')}>{tb.count}</span>
+                <AlertTriangle className="size-4 shrink-0 text-rose-600" />
+                <span className="min-w-0 flex-1 font-semibold">{text.t.runningLate(lateGroups.length)}</span>
+                <span className="shrink-0 text-xs font-semibold text-rose-700">{text.t.seeLate}</span>
+                <ChevronRight className={cn('size-4 shrink-0 text-rose-500', text.rtl && 'rotate-180')} />
               </button>
-            ))}
-          </div>
+            )}
 
-          {tab === 'delivered' ? null : data.trucks.length === 0 ? (
-            <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">{text.t.noTrucks}</p>
-          ) : shownGroups.length === 0 ? (
-            <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">{query || route ? text.t.noMatch : text.t.noneInTab}</p>
-          ) : (
-            <ul className="mt-3 space-y-2.5">
-              {shownGroups.map((g) => <TruckCard key={g.key} group={g} text={text} fleetToken={token} />)}
-            </ul>
-          )}
+            {soonGroups.length > 0 && <ArrivingSoon groups={soonGroups} text={text} fleetToken={token} />}
 
-          {(tab === 'all' || tab === 'delivered') && (
-            <DeliveredHistory trips={shownDelivered} total={data.delivered.length} text={text} fleetToken={token} timezone={data.timezone} />
-          )}
+            <FleetFilters text={text} routes={routes} query={query} onQuery={setQuery} route={route} onRoute={setRoute} />
 
-          <div className="mt-5"><AskButton brand={data.brand} text={text} about={data.customer.name} /></div>
+            <div role="tablist" className="mt-4 -mx-1 flex gap-1 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {tabs.map((tb) => (
+                <button
+                  key={tb.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === tb.key}
+                  onClick={() => setTab(tb.key)}
+                  className={cn(
+                    'flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-medium transition-colors',
+                    tab === tb.key ? 'bg-[#3E3C3D] text-white' : 'text-slate-600 hover:bg-slate-100',
+                    tb.key === 'late' && tab !== tb.key && 'text-rose-700',
+                  )}
+                >
+                  {tb.label}
+                  <span className={cn('rounded-full px-1.5 text-[11px] font-semibold', tab === tb.key ? 'bg-white/20' : 'bg-slate-100 text-slate-500')}>{tb.count}</span>
+                </button>
+              ))}
+            </div>
 
-          <footer className="mt-5 flex items-center justify-between gap-2 border-t border-slate-100 pt-3 text-xs text-slate-400">
-            <span>{text.t.updated(text.ago(new Date(dataUpdatedAt).toISOString()))}</span>
-            <button type="button" onClick={() => refetch()} className="flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-slate-600 hover:bg-slate-100">
-              <RefreshCw className={cn('size-3.5', isFetching && 'animate-spin')} /> {text.t.refresh}
-            </button>
-          </footer>
-        </main>
-        <p className="mt-3 text-center text-[11px] text-slate-400">{text.t.sharedBy(data.brand.name)}</p>
+            {tab === 'delivered' ? (
+              history
+            ) : data.trucks.length === 0 ? (
+              <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">{text.t.noTrucks}</p>
+            ) : shownGroups.length === 0 ? (
+              <p className="mt-4 rounded-2xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">{query || route ? text.t.noMatch : text.t.noneInTab}</p>
+            ) : (
+              <ul className="mt-3 grid gap-2.5 sm:grid-cols-2">
+                {shownGroups.map((g) => <TruckCard key={g.key} group={g} text={text} fleetToken={token} />)}
+              </ul>
+            )}
+          </main>
+
+          <aside className="space-y-4 lg:sticky lg:top-6">
+            {tab !== 'delivered' && (
+              <section className={cn(card, 'p-4 sm:p-5 [&>section]:mt-0', tab === 'all' ? 'block' : 'hidden lg:block')}>{history}</section>
+            )}
+            <div className={cn(card, 'p-4 sm:p-5')}>
+              <AskButton brand={data.brand} text={text} about={data.customer.name} />
+              <footer className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-400">
+                <span>{text.t.updated(text.ago(new Date(dataUpdatedAt).toISOString()))}</span>
+                <button type="button" onClick={() => refetch()} className="flex items-center gap-1 rounded-lg px-2 py-1 font-medium text-slate-600 hover:bg-slate-100">
+                  <RefreshCw className={cn('size-3.5', isFetching && 'animate-spin')} /> {text.t.refresh}
+                </button>
+              </footer>
+            </div>
+            <p className="text-center text-[11px] text-slate-400">{text.t.sharedBy(data.brand.name)}</p>
+          </aside>
+        </div>
       </div>
     </div>
   );
@@ -227,8 +241,8 @@ function TruckCard({ group, text, fleetToken }: { group: TruckGroup; text: Track
   else when = x.next_stop_name ? `${t.to} ${x.next_stop_name}` : t.onTheWay;
 
   return (
-    <li className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-      <Link to={tripLink(x.token, fleetToken)} className="block p-3.5 transition-colors hover:bg-slate-50 active:bg-slate-100">
+    <li className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
+      <Link to={tripLink(x.token, fleetToken)} className="block flex-1 p-3.5 transition-colors hover:bg-slate-50 active:bg-slate-100">
         <div className="flex items-start gap-3">
           <CrewPhoto truck={x} />
           <div className="min-w-0 flex-1">
@@ -276,12 +290,12 @@ function TruckCard({ group, text, fleetToken }: { group: TruckGroup; text: Track
 }
 
 /** This month so far — "October so far · 312 trips delivered · 94% on time · 18 delayed, mostly waiting at the site". */
-function MonthCard({ month, text, timezone }: { month: MonthSummary; text: TrackingText; timezone: string }) {
+function MonthCard({ month, text, timezone, className }: { month: MonthSummary; text: TrackingText; timezone: string; className?: string }) {
   const { t } = text;
   const name = new Intl.DateTimeFormat(text.rtl ? 'ar-SA' : 'en-GB', { month: 'long', timeZone: timezone }).format(new Date(`${month.month}-15T12:00:00Z`));
   const pct = month.measured && month.on_time != null ? Math.round((month.on_time / month.measured) * 100) : null;
   return (
-    <section className="mt-4 rounded-2xl bg-slate-50 px-4 py-3">
+    <section className={cn('rounded-2xl bg-slate-50 px-4 py-3', className)}>
       <p className="flex items-center gap-1.5 text-xs font-medium text-slate-500"><CalendarDays className="size-3.5" /> {t.monthSoFar(name)}</p>
       <div className="mt-1.5 flex flex-wrap items-baseline gap-x-4 gap-y-1">
         <span className="text-lg font-semibold text-slate-900">{t.monthTrips(month.trips)}</span>
