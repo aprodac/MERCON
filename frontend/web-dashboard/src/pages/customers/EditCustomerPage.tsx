@@ -316,7 +316,7 @@ export default function EditCustomerPage() {
               className="h-7 text-xs bg-brand hover:bg-brand-hover text-white font-bold px-3 shadow-2xs"
             >
               <Save className="w-3.5 h-3.5 mr-1" />
-              {isSubmitting ? 'Saving...' : 'Save Customer Changes'} <KbdBadge keys="Ctrl+S" />
+              {isSubmitting ? 'Saving…' : 'Save'} <KbdBadge keys="Ctrl+S" />
             </Button>
           </div>
         </div>
@@ -333,7 +333,7 @@ export default function EditCustomerPage() {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <Building2 className="w-3.5 h-3.5 text-blue-500" /> Corporate Identity
+                      <Building2 className="w-3.5 h-3.5 text-blue-500" /> Company
                     </h2>
                   </div>
 
@@ -348,7 +348,7 @@ export default function EditCustomerPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div className="space-y-1 sm:col-span-2">
                       <Label htmlFor="name" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        Official Company Name <span className="text-rose-500">*</span>
+                        Company name <span className="text-rose-500">*</span>
                       </Label>
                       <Input
                         id="name"
@@ -372,7 +372,7 @@ export default function EditCustomerPage() {
                           <SelectValue placeholder="Select workflow..." />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="NATIVE">Native CargoPod App</SelectItem>
+                          <SelectItem value="NATIVE">MERCON Driver app</SelectItem>
                           <SelectItem value="EXTERNAL_APP">External Customer App</SelectItem>
                         </SelectContent>
                       </Select>
@@ -485,7 +485,7 @@ export default function EditCustomerPage() {
                 <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                   <div className="flex items-center justify-between">
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <Users className="w-3.5 h-3.5 text-emerald-500" /> Contact Personnel Roster ({contacts.length}/2)
+                      <Users className="w-3.5 h-3.5 text-emerald-500" /> Contacts ({contacts.length}/2)
                     </h2>
                     {contacts.length < 2 && (
                       <Button
@@ -503,7 +503,7 @@ export default function EditCustomerPage() {
                   <div className="space-y-2">
                     <div className="space-y-1">
                       <Label htmlFor="contact_phone" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        Primary Switchboard Phone <span className="text-rose-500">*</span>
+                        Main phone <span className="text-rose-500">*</span>
                       </Label>
                       <PhoneInput
                         id="contact_phone"
@@ -569,7 +569,7 @@ export default function EditCustomerPage() {
             <Card className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl p-3.5 space-y-3 shadow-2xs">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
                 <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
-                  <Building2 className="w-3.5 h-3.5 text-brand" /> Live Profile Preview
+                  <Building2 className="w-3.5 h-3.5 text-brand" /> Preview
                 </span>
                 <Badge variant="outline" className="text-[10px] font-mono text-brand border-orange-200">
                   {completionPct}% Complete
@@ -589,7 +589,7 @@ export default function EditCustomerPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
-                        {formData.name || 'Corporate Account Name'}
+                        {formData.name || 'Company name'}
                       </h3>
                       <StatusBadge status={formData.isActive ? 'Available' : 'Inactive'} />
                     </div>
@@ -606,7 +606,7 @@ export default function EditCustomerPage() {
                   Account Directory & Operations
                 </p>
                 <p className="text-[10.5px] text-slate-500">
-                  This corporate account has {customer.trips?.length || 0} active trip manifests associated with it.
+                  This customer has {customer.trips?.length || 0} trips.
                 </p>
               </div>
             </Card>

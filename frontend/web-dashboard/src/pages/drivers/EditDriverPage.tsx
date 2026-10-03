@@ -451,7 +451,7 @@ export default function EditDriverPage() {
                     value={formData.assigned_vehicle_id}
                     onChange={(val) => handleChange('assigned_vehicle_id', val)}
                     options={[
-                      { value: '', label: '— No default vehicle (Float Driver) —' },
+                      { value: '', label: 'No usual truck' },
                       ...vehicleOptions,
                     ]}
                     placeholder="Select default vehicle (optional)..."
@@ -634,7 +634,7 @@ export default function EditDriverPage() {
                     <span className="text-[11px] font-bold text-slate-800 dark:text-slate-200 truncate text-right max-w-[130px]">
                       {selectedVehicle
                         ? selectedVehicle.plate_number
-                        : <span className="text-slate-400 italic font-normal">Float Driver</span>}
+                        : <span className="text-slate-400 italic font-normal">No usual truck</span>}
                     </span>
                   </div>
 

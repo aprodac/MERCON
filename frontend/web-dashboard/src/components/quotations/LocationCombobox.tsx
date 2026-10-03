@@ -212,7 +212,8 @@ export default function LocationCombobox({
         lat: resolved.lat,
         lng: resolved.lng,
         code: '',
-        coordinate_precision: DEFAULT_CITY_PRESETS[sug.id] ? 'APPROXIMATE' : 'EXACT',
+        // A search pick is the area, not the gate — "Pin needed" until it's pinned.
+        coordinate_precision: 'APPROXIMATE',
         sourceUrl: sug.label,
       });
       setIsSaveModalOpen(true);

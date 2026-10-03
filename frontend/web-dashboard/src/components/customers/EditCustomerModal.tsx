@@ -154,7 +154,7 @@ export default function EditCustomerModal({ isOpen, customer, onClose, onSuccess
 
           <div className="space-y-1.5">
             <Label htmlFor="edit_driver_workflow" className="text-xs font-bold flex items-center gap-1.5">
-              Driver Workflow Configuration
+              Drivers report trips with
             </Label>
             <select
               id="edit_driver_workflow"
@@ -162,8 +162,8 @@ export default function EditCustomerModal({ isOpen, customer, onClose, onSuccess
               onChange={(e) => setDriverWorkflow(e.target.value as 'NATIVE' | 'EXTERNAL_APP')}
               className="w-full h-9 px-3 rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-brand"
             >
-              <option value="NATIVE">Native CargoPod App (Standard Driver Stepper)</option>
-              <option value="EXTERNAL_APP">External Customer App (Screenshot AI Ingestion)</option>
+              <option value="NATIVE">MERCON Driver app</option>
+              <option value="EXTERNAL_APP">Customer's own app (drivers send screenshots)</option>
             </select>
           </div>
 

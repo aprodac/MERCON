@@ -231,7 +231,7 @@ export default function CustomerDetailsPage() {
     { id: 'trips', label: 'Trips', count: totalTripsCount },
     { id: 'tracking', label: 'Live tracking', dot: true },
     ...(exportsEnabled ? [{ id: 'exports' as CustomerTabId, label: 'Trip sheets' }] : []),
-    { id: 'financials', label: 'Invoices', count: openInvoicesCount || undefined },
+    ...(financeEnabled ? [{ id: 'financials' as CustomerTabId, label: 'Invoices', count: openInvoicesCount || undefined }] : []),
     { id: 'quotations', label: 'Quotations', count: customerQuotations.length },
     { id: 'locations', label: 'Locations', count: customerLocations.length },
   ];
@@ -274,6 +274,9 @@ export default function CustomerDetailsPage() {
       onClick={() => setActiveTab('financials')}
     />,
   ];
+
+  // Money owed comes from Finance invoices; with Finance off the figure means nothing.
+  const shownStats = financeEnabled ? stats : stats.filter((cell) => cell.key !== 'owed');
 
   return (
     <DashboardLayout active="Customers" title={customer.name} breadcrumb="Customers" compactHeader>
@@ -352,8 +355,8 @@ export default function CustomerDetailsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 border-t border-slate-100 lg:grid-cols-4 dark:border-slate-800">
-            {stats.map((cell, i) => (
+          <div className={cn('grid grid-cols-2 border-t border-slate-100 dark:border-slate-800', shownStats.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
+            {shownStats.map((cell, i) => (
               <div key={i} className={cn('min-w-0 border-slate-100 dark:border-slate-800', CELL_BORDER[i])}>{cell}</div>
             ))}
           </div>

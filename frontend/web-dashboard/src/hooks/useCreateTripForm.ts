@@ -300,6 +300,11 @@ export function useCreateTripForm() {
         // The shared ranking (rankDrivers on the server) decides the group and the "why" chips.
         const ranked = rec?.group ? rec : null;
         const blocked = ranked?.group === 'unavailable';
+        // Still running another trip (any date): warn, booking stays allowed (owner decision 2026-10-03).
+        const openTrips: Array<{ ref: string | null; status: string }> = rec?.openTrips ?? [];
+        const openChip = openTrips.length
+          ? [{ text: `Still on ${openTrips[0].ref ?? 'a trip'} (${openTrips[0].status === 'InTransit' ? 'In transit' : openTrips[0].status})${openTrips.length > 1 ? ` +${openTrips.length - 1}` : ''}`, tone: 'warn' as const }]
+          : [];
         const clashText = ranked?.clashStart
           ? new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ranked.clashStart))
           : '';
@@ -309,18 +314,19 @@ export function useCreateTripForm() {
                 ...(blocked && ranked.unavailabilityReason
                   ? [{ text: clashText ? `Booked ${clashText}` : ranked.unavailabilityReason, tone: 'warn' as const }]
                   : []),
+                ...(blocked ? [] : openChip),
                 ...(ranked.reasons || []).map((r: any) => ({ text: r.text, tone: r.tone })),
               ],
-              statusLabel: blocked ? (ranked.unavailabilityReason?.startsWith('Only') ? 'Resting' : ranked.unavailabilityReason?.startsWith('Already') ? 'Booked' : 'Unavailable') : 'Free',
-              isFree: !blocked,
+              statusLabel: blocked ? (ranked.unavailabilityReason?.startsWith('Only') ? 'Resting' : ranked.unavailabilityReason?.startsWith('Already') ? 'Booked' : 'Unavailable') : openTrips.length ? 'On a trip' : 'Free',
+              isFree: !blocked && openTrips.length === 0,
             }
           : buildDriverFacts(d as any, rec as any, { plate: plateNumber, capacityLabel });
-        const isNotAvailable = !facts.isFree && d.id !== masterDriver;
+        const isNotAvailable = (ranked ? blocked : !facts.isFree && openTrips.length === 0) && d.id !== masterDriver;
         const detailsStr = formatDriverDetails(d, rec, matchedVeh);
         const firstName = d.first_name || '';
         const lastName = d.last_name || '';
         const fullName = `${firstName} ${lastName}`.trim() || `Driver #${d.id.slice(0, 5)}`;
-        const groupKey = ranked?.group ?? (facts.isFree ? 'other' : 'unavailable');
+        const groupKey = ranked?.group ?? (facts.isFree || openTrips.length ? 'other' : 'unavailable');
         const isBestFit = groupKey === 'best';
 
         return {
@@ -665,14 +671,18 @@ export function useCreateTripForm() {
         hint = 'Allowed alternative';
       }
 
-      const isVehNotAvailable = Boolean(v.status && v.status !== 'Available' && v.status.toLowerCase() !== 'available' && v.id !== masterVehicle);
-      const statusClean = v.status && v.status !== 'Available' && v.status.toLowerCase() !== 'available' ? v.status : '';
+      // On another trip: warn but allow (owner decision 2026-10-03). In the workshop
+      // or out of service: can't be booked.
+      const isOnTrip = v.status === 'OnTrip' && v.id !== masterVehicle;
+      const isVehNotAvailable = Boolean(v.status && !['Available', 'OnTrip'].includes(v.status) && v.status.toLowerCase() !== 'available' && v.id !== masterVehicle);
+      const statusClean = isOnTrip ? '' : v.status && v.status !== 'Available' && v.status.toLowerCase() !== 'available' ? (v.status === 'Maintenance' ? 'In the workshop' : v.status === 'Inactive' ? 'Out of service' : v.status) : '';
       const vehDetailsStr = [typeLabel, statusClean, hint].filter(Boolean).join(' • ');
 
       // Plate, then chips: class, status (if not free), why it's suggested.
       const vehChips: Array<{ text: string; tone: FactTone }> = [
         ...(typeLabel ? [{ text: typeLabel, tone: 'neutral' as FactTone }] : []),
         ...(statusClean ? [{ text: statusClean, tone: 'neutral' as FactTone }] : []),
+        ...(isOnTrip ? [{ text: 'On another trip', tone: 'warn' as FactTone }] : []),
         ...(hint ? [{ text: hint, tone: (isDriverUsual ? 'good' : 'neutral') as FactTone }] : []),
       ];
       const label = React.createElement(
@@ -688,7 +698,7 @@ export function useCreateTripForm() {
             ...vehChips.map((c) => React.createElement(FactChip, { key: c.text, text: c.text, tone: c.tone }))
           )
         ),
-        React.createElement(StatusTag, { label: isVehNotAvailable ? 'In use' : 'Free', isFree: !isVehNotAvailable })
+        React.createElement(StatusTag, { label: isVehNotAvailable ? 'Unavailable' : isOnTrip ? 'On a trip' : 'Free', isFree: !isVehNotAvailable && !isOnTrip })
       );
 
       return {

@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import { formatInDeploymentTz, useDeploymentTimezone } from '@/lib/datetime';
 import { LIVE_FILTERS, isOffline, matchesFilter, matchesQuery, timeAgo, type LiveFilter } from '@/lib/fleetLive';
 import {
-  OPS_TABS, STATUS_LABEL, attentionReasons, groupSchedule, isActiveTrip, isPlannedTrip, isThirdParty, matchesTripQuery, needsConfirm,
+  OPS_TABS, STATUS_LABEL, statusChangeCopy, attentionReasons, groupSchedule, isActiveTrip, isPlannedTrip, isThirdParty, matchesTripQuery, needsConfirm,
   nextStopIndex, sortActive, toLiveStops, type AttentionReason, type OpsTab,
 } from '@/lib/liveOps';
 import { defaultRadiusKm, isFreeTruck, lookupCity, tripsOnRoute, tripsTouching, unitsNear } from '@/lib/placeSearch';
@@ -74,38 +74,7 @@ function readPanelPref(): boolean {
 
 type ConfirmState = { trip: Trip; status: string } | null;
 
-function confirmCopy(trip: Trip, to: string): { title: string; message: string; label: string; destructive: boolean } {
-  if (to === 'Cancelled') {
-    return {
-      title: `Cancel ${trip.ref_id}?`,
-      message: 'The trip leaves the live board. It can be restored to Draft or Scheduled later.',
-      label: 'Cancel trip',
-      destructive: true,
-    };
-  }
-  if (to === 'Completed') {
-    return {
-      title: `Complete ${trip.ref_id}?`,
-      message: 'This closes the trip and frees the driver and truck. You can add extra charges straight after.',
-      label: 'Mark completed',
-      destructive: false,
-    };
-  }
-  if (to === 'Draft') {
-    return {
-      title: `Send ${trip.ref_id} back to Draft?`,
-      message: 'Its driver and truck are released back to Available.',
-      label: 'Move to Draft',
-      destructive: false,
-    };
-  }
-  return {
-    title: `Reopen ${trip.ref_id}?`,
-    message: `It moves from ${STATUS_LABEL[trip.status] ?? trip.status} back to ${STATUS_LABEL[to] ?? to}.`,
-    label: 'Reopen',
-    destructive: false,
-  };
-}
+const confirmCopy = (trip: Trip, to: string) => statusChangeCopy(trip.ref_id ?? 'this trip', trip.status, to);
 
 const SEARCH_EXAMPLES = ['riyadh to jeddah', 'near dammam', 'jubail'];
 

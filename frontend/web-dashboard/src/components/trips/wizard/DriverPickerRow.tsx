@@ -39,7 +39,7 @@ const STATUS_LABEL: Record<string, string> = {
 /** Everything the picker shows about one driver, from the driver record + the route recommendation. */
 export function buildDriverFacts(
   driver: { status?: string | null; rest_hours?: number | null },
-  rec: { isAvailable?: boolean; unavailabilityReason?: string; badges?: string[]; rest_hours?: number | null; routeTripCount?: number } | undefined,
+  rec: { isAvailable?: boolean; unavailabilityReason?: string; badges?: string[]; rest_hours?: number | null; routeTripCount?: number; openTrips?: Array<{ ref: string | null; status: string }> } | undefined,
   truck: { plate?: string | null; capacityLabel?: string | null }
 ): DriverFacts {
   const chips: DriverFacts['chips'] = [];
@@ -57,12 +57,20 @@ export function buildDriverFacts(
     chips.push({ text: /under-capacity/i.test(text) ? `Truck too small${size ? ` (${size})` : ''}` : text, tone: 'warn' });
   }
 
+  // Still running another trip (any date): warn, but the operator may book anyway.
+  const open = rec?.openTrips ?? [];
+  if (open.length > 0) {
+    const first = open[0];
+    const label = first.status === 'InTransit' ? 'In transit' : first.status;
+    chips.push({ text: `Still on ${first.ref ?? 'a trip'} (${label})${open.length > 1 ? ` +${open.length - 1}` : ''}`, tone: 'warn' });
+  }
+
   const rest = rec?.rest_hours ?? driver.rest_hours ?? null;
   if (rest != null) chips.push({ text: idleText(rest), tone: 'neutral' });
 
   const status = (driver.status || 'Available').trim();
-  const isFree = rec ? rec.isAvailable !== false && status.toLowerCase() === 'available' : status.toLowerCase() === 'available';
-  const statusLabel = isFree ? 'Free' : STATUS_LABEL[status] || (rec?.unavailabilityReason ? 'Busy' : status);
+  const isFree = rec ? rec.isAvailable !== false && open.length === 0 && status.toLowerCase() === 'available' : status.toLowerCase() === 'available';
+  const statusLabel = isFree ? 'Free' : open.length > 0 ? 'On a trip' : STATUS_LABEL[status] || (rec?.unavailabilityReason ? 'Busy' : status);
 
   return { chips, statusLabel, isFree };
 }

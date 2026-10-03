@@ -241,7 +241,9 @@ export default function LocationFormDialog({
         if (computedCity) setCity(computedCity);
         setLat(String(resolved.lat));
         setLng(String(resolved.lng));
-        setPrecision('EXACT');
+        // A search pick is the area, not the gate: it stays "Pin needed" until someone drags
+        // the pin or pastes a Google Maps link (owner decision 2026-10-03).
+        setPrecision('APPROXIMATE');
         setSearch(resolved.address || resolved.name);
         setGoogleSuggestions([]);
       }

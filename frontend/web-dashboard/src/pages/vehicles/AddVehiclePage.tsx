@@ -208,7 +208,7 @@ export default function AddVehiclePage() {
   });
 
   return (
-    <DashboardLayout active="Vehicles" title="Register New Vehicle">
+    <DashboardLayout active="Vehicles" title="Add truck">
       <div className="px-3 sm:px-5 pb-4 space-y-3 animate-fade-in max-w-[1350px] mx-auto">
         
         {/* Slim Top Action Strip */}
@@ -243,7 +243,7 @@ export default function AddVehiclePage() {
               disabled={createMutation.isPending || !isFormValid}
               className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white font-bold px-3 shadow-xs"
             >
-              {createMutation.isPending ? 'Registering...' : 'Register Vehicle'} <KbdBadge keys="Ctrl+S" />
+              {createMutation.isPending ? 'Adding…' : 'Add truck'} <KbdBadge keys="Ctrl+S" />
             </Button>
           </div>
         </div>
@@ -260,7 +260,7 @@ export default function AddVehiclePage() {
                 <div className="space-y-2.5">
                   <div className="flex items-center justify-between pb-1 border-b border-slate-100 dark:border-slate-800">
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <Truck className="w-3.5 h-3.5 text-brand" /> Primary Asset Identifier
+                      <Truck className="w-3.5 h-3.5 text-brand" /> Truck
                     </h2>
                     <span className="text-[10px] text-slate-400 font-mono">* Required fields</span>
                   </div>
@@ -293,7 +293,7 @@ export default function AddVehiclePage() {
 
                     <div className="space-y-1">
                       <Label htmlFor="asset_type" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        Asset Classification <span className="text-rose-500">*</span>
+                        Body type <span className="text-rose-500">*</span>
                       </Label>
                       <Select
                         value={formData.asset_type}
@@ -317,14 +317,14 @@ export default function AddVehiclePage() {
                 <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                   <div className="flex items-center justify-between">
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                      <Package className="w-3.5 h-3.5 text-blue-500" /> Payload & Telematics
+                      <Package className="w-3.5 h-3.5 text-blue-500" /> Load & GPS tracker
                     </h2>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div className="space-y-1">
                       <Label htmlFor="capacity_kg" className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                        Tractor Payload (kg) <span className="text-rose-500">*</span>
+                        Payload (kg) <span className="text-rose-500">*</span>
                       </Label>
                       <Input
                         id="capacity_kg"
@@ -522,7 +522,7 @@ export default function AddVehiclePage() {
           <div className="lg:col-span-4 space-y-3 sticky top-2">
             <Card className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl p-3.5 space-y-3 shadow-2xs">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
-                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Vehicle Summary</span>
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200">Summary</span>
                 <Badge variant="outline" className="text-[10px] font-mono text-brand border-orange-200">
                   {completionPct}% Complete
                 </Badge>
@@ -547,7 +547,7 @@ export default function AddVehiclePage() {
                 <div className="space-y-1 pt-1.5 border-t border-slate-100 dark:border-slate-800">
                   <span className="text-[9px] text-slate-400 uppercase font-bold block">Assigned Driver</span>
                   <p className="text-[11px] font-medium text-slate-800 dark:text-slate-200 truncate">
-                    {assignedDriver ? `${assignedDriver.first_name} ${assignedDriver.last_name}` : 'Unassigned (Float unit)'}
+                    {assignedDriver ? `${assignedDriver.first_name} ${assignedDriver.last_name}` : 'No usual driver'}
                   </p>
                 </div>
 
@@ -590,7 +590,7 @@ export default function AddVehiclePage() {
                 disabled={createMutation.isPending || !isFormValid}
                 className="w-full h-8 text-xs bg-brand hover:bg-brand-hover text-white font-bold shadow-xs mt-1"
               >
-                {createMutation.isPending ? 'Registering...' : 'Register Vehicle'}
+                {createMutation.isPending ? 'Adding…' : 'Add truck'}
               </Button>
             </Card>
           </div>

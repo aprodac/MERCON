@@ -180,7 +180,7 @@ export default function CustomerListPage() {
         {exportsEnabled && (
           <DropdownMenuItem onClick={() => openCustomer(c, 'exports')} className="text-[13px]"><FileSpreadsheet className="mr-2 size-4 text-slate-500" /> Excel trip sheets</DropdownMenuItem>
         )}
-        <DropdownMenuItem onClick={() => openCustomer(c, 'financials')} className="text-[13px]"><ReceiptText className="mr-2 size-4 text-slate-500" /> Invoices & balance</DropdownMenuItem>
+        {financeEnabled && <DropdownMenuItem onClick={() => openCustomer(c, 'financials')} className="text-[13px]"><ReceiptText className="mr-2 size-4 text-slate-500" /> Invoices & balance</DropdownMenuItem>}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => setEditCustomer(c)} className="text-[13px]"><Edit2 className="mr-2 size-4 text-slate-500" /> Quick edit</DropdownMenuItem>
         <DropdownMenuItem onClick={() => navigate(`/customers/${c.id}/edit`)} className="text-[13px]"><Edit2 className="mr-2 size-4 text-slate-500" /> Edit full profile</DropdownMenuItem>
@@ -206,7 +206,8 @@ export default function CustomerListPage() {
     { id: 'active', label: 'Active', count: summary?.active },
     { id: 'inactive', label: 'Inactive', count: summary?.inactive },
     { id: 'live', label: 'On the road', count: summary?.live_customers },
-    { id: 'balance', label: 'Owe money', count: summary?.outstanding.customers },
+    // Invoices live in Finance; with it off there's nothing to owe on.
+    ...(financeEnabled ? [{ id: 'balance' as CustomerView, label: 'Owe money', count: summary?.outstanding.customers }] : []),
   ];
 
   const emptyText =
@@ -223,7 +224,7 @@ export default function CustomerListPage() {
       <div className={ui.page}>
 
         {/* ── KPIs — each opens the matching view ── */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <div className={cn('grid grid-cols-2 gap-3 sm:gap-4', financeEnabled && 'xl:grid-cols-4')}>
           <Stat
             label="Customers"
             icon={Building2}
@@ -238,10 +239,11 @@ export default function CustomerListPage() {
             icon={Navigation}
             tone="blue"
             value={summary?.live_customers ?? '—'}
-            sub={summary ? `${summary.live_trips} truck${summary.live_trips === 1 ? '' : 's'} loading or moving` : 'Loading…'}
+            sub={summary ? `customers · ${summary.live_trips} trip${summary.live_trips === 1 ? '' : 's'} loading or moving` : 'Loading…'}
             active={view === 'live'}
             onClick={() => changeView('live')}
           />
+          {financeEnabled && <>
           <Stat
             label="Outstanding"
             icon={Wallet}
@@ -262,6 +264,7 @@ export default function CustomerListPage() {
             subTone={summary && summary.overdue.amount > 0 ? 'rose' : undefined}
             onClick={financeEnabled ? () => navigate('/finance/invoices?tab=overdue') : undefined}
           />
+          </>}
         </div>
 
         {/* ── Customer table ── */}

@@ -89,7 +89,9 @@ export function useTripSubmission(
             duration: 15000,
           });
         }
-        navigate('/trips');
+        // One trip made: open it (the next things are its pins, documents, sharing).
+        const created = (data?.results || []).filter((r: any) => r.success && r.created_id);
+        navigate(data.imported === 1 && !data.failed && created.length === 1 ? `/trips/${created[0].created_id}` : '/trips');
       } else {
         toast.error(`Trip creation failed (${data.failed || 1} rows)`, {
           description: errDetails || 'Check inputs and try again.',

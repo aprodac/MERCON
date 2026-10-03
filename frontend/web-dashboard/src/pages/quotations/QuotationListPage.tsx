@@ -654,8 +654,8 @@ export default function QuotationListPage() {
         q.is_active ? 'Active' : 'Inactive',
       ]);
       toast.dismiss(toastId);
-      if (format === 'xlsx') await exportExcelTable('MERCON Commercial Quotations', headers, rows, `quotations_${new Date().toISOString().slice(0, 10)}.xlsx`);
-      else exportPDFTable('MERCON Commercial Quotations', headers, rows, `quotations_${new Date().toISOString().slice(0, 10)}.pdf`);
+      if (format === 'xlsx') await exportExcelTable('MERCON Quotations', headers, rows, `quotations_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      else exportPDFTable('MERCON Quotations', headers, rows, `quotations_${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch {
       toast.dismiss(toastId);
       toast.error('Failed to generate export');
@@ -663,7 +663,7 @@ export default function QuotationListPage() {
   };
 
   return (
-    <DashboardLayout active="Quotations" title="Quotations Workspace">
+    <DashboardLayout active="Quotations" title="Quotations">
       <div className="px-4 sm:px-6 pb-10 w-full flex flex-col animate-fade-in gap-4">
         
         {/* 1. Page Header */}
@@ -672,7 +672,7 @@ export default function QuotationListPage() {
             <Calculator className="w-7 h-7 text-[#FA634E] shrink-0" />
             <div>
               <h1 className="text-xl sm:text-2xl font-black text-[#3E3C3D] dark:text-slate-100 tracking-tight uppercase">
-                COMMERCIAL QUOTATIONS
+                QUOTATIONS
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-normal">
                 Customer rates, route terms, and surcharge rules.
@@ -710,7 +710,7 @@ export default function QuotationListPage() {
               onClick={() => navigate(selectedGroup ? `/quotations/new?customer_id=${selectedGroup.id}` : '/quotations/new')}
             >
               <Plus className="h-4 w-4 stroke-[2.5]" />
-              <span>New Commercial Route</span>
+              <span>New quotation</span>
             </Button>
           </div>
         </div>
@@ -825,7 +825,7 @@ export default function QuotationListPage() {
                           )}
                         >
                           <RouteIcon className="w-3.5 h-3.5 text-[#FA634E]" />
-                          <span>Commercial Routes</span>
+                          <span>Routes</span>
                           <span className="font-mono text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded font-bold">
                             {selectedGroup.quotations.length}
                           </span>
@@ -951,7 +951,7 @@ export default function QuotationListPage() {
                       /* Empty State */
                       <div className="p-12 text-center flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
                         <RouteIcon className="w-5 h-5 text-slate-400 shrink-0" />
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">No Commercial Routes Yet</h3>
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">No quotations yet</h3>
                         <p className="text-xs text-slate-400">
                           {isFiltersActive ? 'No routes match your current active filters.' : 'This customer does not have any agreed commercial routes.'}
                         </p>
@@ -965,7 +965,7 @@ export default function QuotationListPage() {
                             onClick={() => navigate(`/quotations/new?customer_id=${selectedGroup.id}`)}
                             className="mt-2 h-8 px-3 text-xs font-semibold bg-[#FA634E] hover:bg-[#DF4834] text-white rounded-lg border-0"
                           >
-                            <Plus size={13} className="mr-1" /> Add Commercial Route
+                            <Plus size={13} className="mr-1" /> New quotation
                           </Button>
                         )}
                       </div>
@@ -1226,7 +1226,7 @@ export default function QuotationListPage() {
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleDelete}
-        title="Delete Commercial Route"
+        title="Delete quotation"
         message="Are you sure you want to delete this commercial route quotation? Historical trips billed with this quotation will retain their commercial snapshot."
         confirmLabel="Delete Route"
         isDestructive
@@ -1237,7 +1237,7 @@ export default function QuotationListPage() {
         isOpen={isBulkDeleteModalOpen}
         onClose={() => setIsBulkDeleteModalOpen(false)}
         onConfirm={handleBulkDelete}
-        title={`Delete ${selectedIds.size} Commercial Routes`}
+        title={`Delete ${selectedIds.size} quotations`}
         message={`Are you sure you want to delete ${selectedIds.size} selected commercial route(s)? Historical trips billed with these quotations will retain their commercial rate snapshots.`}
         confirmLabel={isBulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size} Routes`}
         isDestructive
@@ -1264,7 +1264,7 @@ export default function QuotationListPage() {
         allData={rawQuotations}
         columns={QUOTATION_EXPORT_COLUMNS}
         fileNamePrefix="Mercon_Commercial_Quotations"
-        title="Export Commercial Quotations"
+        title="Export quotations"
       />
 
       {/* Right-Side Route Details Inspection Drawer */}

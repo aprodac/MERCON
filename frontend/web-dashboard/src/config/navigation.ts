@@ -159,7 +159,7 @@ export const NAV_PAGES: NavPage[] = [
 
   // Fleet
   {
-    id: 'vehicles', label: 'Vehicles', path: '/vehicles', icon: Car, section: 'fleet', moduleKey: 'vehicles', keywords: ['trucks', 'trailers', 'fleet'],
+    id: 'vehicles', label: 'Trucks', path: '/vehicles', icon: Car, section: 'fleet', moduleKey: 'vehicles', keywords: ['vehicles', 'trailers', 'fleet'],
     match: (p) => (p === '/vehicles' || p.startsWith('/vehicles/')) && !isVehicleFinancials(p),
   },
   { id: 'drivers', label: 'Drivers', path: '/drivers', icon: Users, section: 'fleet', moduleKey: 'drivers' },
