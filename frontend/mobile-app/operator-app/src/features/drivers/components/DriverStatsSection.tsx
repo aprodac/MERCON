@@ -58,8 +58,8 @@ export function DriverStatsSection({ status, onSelect }: DriverStatsSectionProps
 const s = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8 },
   tile: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: '#E9E9EC', paddingVertical: 12, paddingHorizontal: 10, gap: 3 },
-  tileOn: { backgroundColor: '#18181B', borderColor: '#18181B' },
-  value: { fontSize: 20, fontWeight: '700', color: '#18181B', fontVariant: ['tabular-nums'], letterSpacing: -0.3 },
+  tileOn: { backgroundColor: '#3E3C3D', borderColor: '#3E3C3D' },
+  value: { fontSize: 20, fontWeight: '700', color: '#3E3C3D', fontVariant: ['tabular-nums'], letterSpacing: -0.3 },
   labelRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   label: { fontSize: 12, color: '#6B6B76', flexShrink: 1 },

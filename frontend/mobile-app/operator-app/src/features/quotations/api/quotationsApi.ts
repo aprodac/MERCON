@@ -59,7 +59,42 @@ export interface RawQuotationListResponse {
   };
 }
 
+/** An extra fee the customer has agreed (per stop, per hour…). quotationId null = applies to every lane of the customer. */
+export interface RawSurchargeRule {
+  id: string;
+  quotationId: string | null;
+  charge_type: string;
+  unit?: string | null;
+  vehicle_type?: string | null;
+  rate: number | string;
+  currency?: string | null;
+  is_active: boolean;
+}
+
+export interface RawQuotationTrip {
+  id: string;
+  ref_id: string | null;
+  status: string;
+  planned_start: string | null;
+  createdAt: string;
+  billing_amount?: number | string | null;
+  driver?: { first_name?: string; last_name?: string } | null;
+  vehicle?: { plate_number?: string } | null;
+}
+
 export const quotationsApi = {
+  /** GET /surcharge-rules — this lane's extra charges plus the customer-wide ones (same as the web drawer). */
+  async getSurchargeRules(quotationId: string, customerId: string): Promise<RawSurchargeRule[]> {
+    const { data } = await api.get('/surcharge-rules', { params: { quotationId, customerId, active_only: 'true' } });
+    return data?.data ?? [];
+  },
+
+  /** GET /trips?quotation_id= — trips billed on this rate, newest first. */
+  async getTripsUsingRate(quotationId: string): Promise<{ trips: RawQuotationTrip[]; total: number }> {
+    const { data } = await api.get('/trips', { params: { quotation_id: quotationId, per_page: 50 } });
+    return { trips: data?.data ?? [], total: data?.meta?.total ?? (data?.data ?? []).length };
+  },
+
   async getQuotations(params: {
     page?: number;
     per_page?: number | 'all';

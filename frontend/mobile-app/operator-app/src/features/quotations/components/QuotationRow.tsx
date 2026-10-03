@@ -13,7 +13,7 @@ import { formatCurrency } from '../services/quotationsService';
 import { QUOTATION_STATUS } from './status';
 import type { QuotationListItem } from '../types';
 
-const INK = '#18181B';
+const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
 
 export function QuotationRow({ quotation: q, onPress }: { quotation: QuotationListItem; onPress: () => void }) {
@@ -51,7 +51,7 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E9E9EC', paddingVertical: 13, paddingHorizontal: 14 },
   text: { flex: 1, minWidth: 0, gap: 4 },
   route: { fontSize: 16, fontWeight: '600', color: INK, letterSpacing: -0.2, lineHeight: 21 },
-  arrow: { color: '#A1A1AA', fontWeight: '400' },
+  arrow: { color: '#FA634E', fontWeight: '600' },
   via: { fontSize: 12, fontWeight: '500', color: MUTED },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 7, height: 7, borderRadius: 4 },

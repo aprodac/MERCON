@@ -2,7 +2,7 @@
 import { useMemo } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { operatorService } from '../../../lib/operator';
-import { vehicleDetailApi, type VehicleDocument, type VehicleTrip } from './vehicleDetailApi';
+import { vehicleDetailApi, type VehicleDocSlot, type VehicleDocument, type VehicleTrip } from './vehicleDetailApi';
 
 export const vehicleDetailKey = (id: string) => ['vehicles', 'detail', id] as const;
 
@@ -17,6 +17,16 @@ export function daysUntil(iso?: string | null): number | null {
   const t = new Date(iso).getTime();
   if (Number.isNaN(t)) return null;
   return Math.ceil((t - Date.now()) / 86_400_000);
+}
+
+export type SlotState = DocState | 'missing';
+/** A slot's state — the web's getSlotStatusFromDoc: no document = missing, otherwise by expiry (≤30 days = expiring). */
+export function slotState(x: VehicleDocSlot): SlotState {
+  if (!x.document) return 'missing';
+  const days = daysUntil(x.document.expiry_date);
+  if (days === null) return 'none';
+  if (days <= 0) return 'expired';
+  return days <= 30 ? 'expiring' : 'valid';
 }
 
 export function docState(d: VehicleDocument): DocState {
@@ -40,6 +50,8 @@ export function useVehicleDetail(id: string, now: number) {
   });
   const maintenanceQ = useQuery({ queryKey: [...vehicleDetailKey(id), 'maintenance'], queryFn: () => vehicleDetailApi.maintenance(id), enabled: Boolean(id) });
 
+  const slotsQ = useQuery({ queryKey: [...vehicleDetailKey(id), 'doc-slots'], queryFn: () => vehicleDetailApi.docSlots(id), enabled: Boolean(id) });
+
   const driverId = vehicleQ.data?.assignedDriver?.id;
   // The vehicle payload carries the driver's name and phone only — the photo comes from the driver record.
   const driverQ = useQuery({ queryKey: ['drivers', 'detail', driverId, 'photo'], queryFn: () => operatorService.driverById(driverId!), enabled: Boolean(driverId) });
@@ -59,7 +71,15 @@ export function useVehicleDetail(id: string, now: number) {
     const order: Record<DocState, number> = { expired: 0, expiring: 1, valid: 2, none: 3 };
     return [...(vehicle?.documents ?? [])].sort((a, b) => order[docState(a)] - order[docState(b)] || (daysUntil(a.expiry_date) ?? 9e9) - (daysUntil(b.expiry_date) ?? 9e9));
   }, [vehicle?.documents]);
-  const docsNeedingAttention = documents.filter((d) => docState(d) === 'expired' || docState(d) === 'expiring').length;
+  // The Docs tab mirrors the web: one row per document type (the current document, or missing), not every file ever uploaded.
+  const docSlots = useMemo(() => {
+    const order: Record<SlotState, number> = { expired: 0, expiring: 1, missing: 2, valid: 3, none: 4 };
+    return [...(slotsQ.data ?? [])].sort((a, b) => order[slotState(a)] - order[slotState(b)] || (a.documentType.displayOrder ?? 0) - (b.documentType.displayOrder ?? 0));
+  }, [slotsQ.data]);
+  // Same rule as the web's "N document(s) need attention": anything not valid / no-expiry, missing included.
+  const docsNeedingAttention = slotsQ.data
+    ? docSlots.filter((x) => ['expired', 'expiring', 'missing'].includes(slotState(x))).length
+    : documents.filter((d) => docState(d) === 'expired' || docState(d) === 'expiring').length;
 
   const maintenance = useMemo(() => {
     const list = maintenanceQ.data ?? [];
@@ -85,6 +105,9 @@ export function useVehicleDetail(id: string, now: number) {
     driverPhoto: driverQ.data?.avatar_url || driverQ.data?.photo_url || null,
     trips,
     documents,
+    docSlots,
+    docSlotsLoading: slotsQ.isLoading,
+    docSlotsError: Boolean(slotsQ.error),
     docsNeedingAttention,
     month: monthQ.data ?? null,
     monthLoading: monthQ.isLoading || tzQ.isLoading,
@@ -93,7 +116,7 @@ export function useVehicleDetail(id: string, now: number) {
     maintenanceLoading: maintenanceQ.isLoading,
     reassign,
     refresh: async () => {
-      await Promise.all([vehicleQ.refetch(), monthQ.refetch(), maintenanceQ.refetch(), driverId ? driverQ.refetch() : null]);
+      await Promise.all([vehicleQ.refetch(), monthQ.refetch(), maintenanceQ.refetch(), slotsQ.refetch(), driverId ? driverQ.refetch() : null]);
     },
   };
 }

@@ -300,7 +300,7 @@ function TripForm({ trip, tz, onDone }: { trip: OperatorTripDetail; tz: string; 
           {errors.route ? <Text style={s.error}>{errors.route}</Text> : null}
           {routeOpen && oneWay ? (
             <TouchableOpacity style={s.addStop} activeOpacity={0.75} onPress={() => { tap(); addStop(); }}>
-              <Plus size={15} color={Colors.gray800} strokeWidth={2.4} />
+              <Plus size={15} color={Colors.charcoal} strokeWidth={2.4} />
               <Text style={s.addStopText}>Add a stop on the way</Text>
             </TouchableOpacity>
           ) : null}
@@ -432,8 +432,8 @@ const s = StyleSheet.create({
   noteText: { flex: 1, fontSize: 12, color: Colors.gray500 },
   stopRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
   rail: { width: 14, alignItems: 'center', paddingTop: 20 },
-  pin: { width: 12, height: 12, borderRadius: 6, borderWidth: 2.5, borderColor: Colors.gray900, backgroundColor: Colors.white },
-  pinEnd: { backgroundColor: Colors.gray900 },
+  pin: { width: 12, height: 12, borderRadius: 6, borderWidth: 2.5, borderColor: Colors.charcoal, backgroundColor: Colors.white },
+  pinEnd: { backgroundColor: Colors.charcoal },
   pinMid: { width: 8, height: 8, borderRadius: 4, borderWidth: 0, backgroundColor: Colors.gray400, marginTop: 2 },
   railLine: { flex: 1, width: 1.5, backgroundColor: Colors.gray300, marginTop: 4, marginBottom: -24 },
   stopBox: {
@@ -441,10 +441,10 @@ const s = StyleSheet.create({
     borderColor: Colors.gray200, backgroundColor: Colors.white, paddingHorizontal: 12, paddingVertical: 8,
   },
   stopCap: { fontSize: 11, fontWeight: '600', color: Colors.gray500 },
-  stopName: { fontSize: 15, fontWeight: '600', color: Colors.gray900, marginTop: 1 },
+  stopName: { fontSize: 15, fontWeight: '600', color: Colors.charcoal, marginTop: 1 },
   addStop: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 42, borderRadius: 12,
     borderWidth: 1, borderColor: Colors.gray200, borderStyle: 'dashed', backgroundColor: Colors.gray50,
   },
-  addStopText: { fontSize: 13, fontWeight: '600', color: Colors.gray800 },
+  addStopText: { fontSize: 13, fontWeight: '600', color: Colors.charcoal },
 });

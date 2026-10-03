@@ -26,7 +26,7 @@ export function DocumentSummaryCard({ label, count, Icon, tone, className }: Doc
       <View style={{ backgroundColor: bg }} className="h-8 w-8 items-center justify-center rounded-full">
         <Icon size={16} color={color} strokeWidth={2.25} />
       </View>
-      <Text className="text-xl font-extrabold text-gray-900">{count}</Text>
+      <Text className="text-xl font-extrabold text-[#3E3C3D]">{count}</Text>
       <Text numberOfLines={1} className="text-[11px] text-gray-500">{label}</Text>
     </View>
   );

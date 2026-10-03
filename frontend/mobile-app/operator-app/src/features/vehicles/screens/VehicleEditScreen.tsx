@@ -71,7 +71,7 @@ const VehicleEditScreen = () => {
       <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-          <ArrowLeft size={22} color={Colors.gray900} strokeWidth={2.2} />
+          <ArrowLeft size={22} color={Colors.charcoal} strokeWidth={2.2} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Edit Vehicle</Text>
         <View style={styles.placeholder} />
@@ -139,7 +139,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: Typography.lg,
     fontWeight: '700',
-    color: Colors.gray900,
+    color: Colors.charcoal,
   },
   placeholder: {
     width: 40,

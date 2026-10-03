@@ -29,7 +29,7 @@ export function DocumentCard({ document, onPress }: DocumentCardProps) {
     >
       <DocumentTypeIcon docType={document.docType} size={38} />
 
-      <Text numberOfLines={2} className="mt-3 text-[13px] font-bold leading-[17px] text-gray-900">
+      <Text numberOfLines={2} className="mt-3 text-[13px] font-bold leading-[17px] text-[#3E3C3D]">
         {documentTypeLabel(document.docType)}
       </Text>
       <Text numberOfLines={1} className="mt-1 text-[11px] font-medium text-gray-400">

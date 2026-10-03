@@ -26,8 +26,8 @@ import { useNotifications } from '@/features/notifications/hooks/useNotification
 import { operatorService } from '@/lib/operator';
 
 const ZINC = {
-  fg: '#18181B',
-  text: '#27272A',
+  fg: '#3E3C3D',
+  text: '#3E3C3D',
   muted: '#71717A',
   faint: '#A1A1AA',
   border: '#E4E4E7',

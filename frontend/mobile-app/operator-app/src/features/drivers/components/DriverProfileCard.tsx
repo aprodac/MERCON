@@ -34,7 +34,7 @@ export function DriverProfileCard({ driver, performance }: DriverProfileCardProp
 
         {/* min-w-0 lets long names truncate instead of pushing the badge off-card. */}
         <View className="min-w-0 flex-1">
-          <Text numberOfLines={1} className="text-[19px] font-bold leading-[24px] text-gray-900">
+          <Text numberOfLines={1} className="text-[19px] font-bold leading-[24px] text-[#3E3C3D]">
             {driverDisplayName(driver)}
           </Text>
           <Text numberOfLines={1} className="mt-0.5 text-[12px] font-medium text-gray-400">

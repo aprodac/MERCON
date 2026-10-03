@@ -26,7 +26,7 @@ export default function ExpensesScreen() {
       }}
     >
       <View className="flex-row items-center justify-between">
-        <Text style={{ fontSize: Typography.base, fontWeight: '700', color: Colors.gray900 }}>
+        <Text style={{ fontSize: Typography.base, fontWeight: '700', color: Colors.charcoal }}>
           {item.category ?? 'Operational Expense'}
         </Text>
         <Text style={{ fontSize: Typography.base, fontWeight: '800', color: Colors.primary }}>

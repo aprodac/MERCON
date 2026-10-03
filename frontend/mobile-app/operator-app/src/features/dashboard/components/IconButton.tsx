@@ -16,7 +16,7 @@ interface IconButtonProps {
 }
 
 export function IconButton({
-  Icon, onPress, size = 40, iconColor = '#111111', iconSize = 20, className, badge, elevated, accessibilityLabel,
+  Icon, onPress, size = 40, iconColor = '#3E3C3D', iconSize = 20, className, badge, elevated, accessibilityLabel,
 }: IconButtonProps) {
   return (
     <TouchableOpacity

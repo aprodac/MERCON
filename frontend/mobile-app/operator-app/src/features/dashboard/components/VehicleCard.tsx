@@ -126,7 +126,7 @@ export function CustomerProfileRow({
           </View>
         )}
 
-        <Text numberOfLines={1} className="text-xs font-bold text-slate-800 flex-1">
+        <Text numberOfLines={1} className="text-xs font-bold text-[#3E3C3D] flex-1">
           {customer.name}
         </Text>
       </TouchableOpacity>
@@ -195,7 +195,7 @@ export function VehicleCard({
             online={driver.online}
           />
           <View className="flex-1">
-            <Text numberOfLines={1} className="text-sm font-black text-slate-900 tracking-tight">
+            <Text numberOfLines={1} className="text-sm font-black text-[#3E3C3D] tracking-tight">
               {driver.name}
             </Text>
             <Text numberOfLines={1} className="text-[11px] font-bold text-slate-500 mt-0.5">
@@ -230,7 +230,7 @@ export function VehicleCard({
               <View className="h-2 w-2 rounded-full bg-emerald-500" />
               <Text className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">ORIGIN</Text>
             </View>
-            <Text numberOfLines={1} className="text-xs font-black text-slate-900">
+            <Text numberOfLines={1} className="text-xs font-black text-[#3E3C3D]">
               {route.originLabel}
             </Text>
             {route.originSublabel ? (
@@ -250,7 +250,7 @@ export function VehicleCard({
               <Text className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">DESTINATION</Text>
               <View className="h-2 w-2 rounded-full bg-[#FA634E]" />
             </View>
-            <Text numberOfLines={1} className="text-xs font-black text-slate-900 text-right">
+            <Text numberOfLines={1} className="text-xs font-black text-[#3E3C3D] text-right">
               {route.destinationLabel}
             </Text>
             {route.destinationSublabel ? (
@@ -276,13 +276,13 @@ export function VehicleCard({
           <View className="flex-row items-center gap-1">
             <MapPin size={11} color="#64748B" />
             <Text className="text-[11px] font-medium text-slate-500">
-              Distance: <Text className="font-extrabold text-slate-900">{route.distanceStr || '—'}</Text>
+              Distance: <Text className="font-extrabold text-[#3E3C3D]">{route.distanceStr || '—'}</Text>
             </Text>
           </View>
           <View className="flex-row items-center gap-1">
             <Clock size={11} color="#64748B" />
             <Text className="text-[11px] font-medium text-slate-500">
-              ETA: <Text className="font-extrabold text-slate-900">{route.etaStr || '—'}</Text>
+              ETA: <Text className="font-extrabold text-[#3E3C3D]">{route.etaStr || '—'}</Text>
             </Text>
           </View>
         </View>

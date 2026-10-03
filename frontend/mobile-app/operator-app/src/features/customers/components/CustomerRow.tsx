@@ -12,7 +12,7 @@ import { CompanyAvatar, niceName } from '@/features/trips/create/components/ui';
 import { CustomerOverflowMenu } from './CustomerOverflowMenu';
 import type { CustomerListItem, CustomerPermissions } from '../types';
 
-const INK = '#18181B';
+const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
 
 interface CustomerRowProps {

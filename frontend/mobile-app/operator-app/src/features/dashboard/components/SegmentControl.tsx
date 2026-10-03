@@ -26,7 +26,7 @@ export function SegmentControl<T extends string>({ options, value, onChange, cla
             className={`rounded-full px-3 py-1.5 ${active ? 'bg-white' : ''}`}
             style={active ? { shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 } : undefined}
           >
-            <Text className={`text-xs font-semibold ${active ? 'text-gray-900' : 'text-gray-500'}`}>
+            <Text className={`text-xs font-semibold ${active ? 'text-[#3E3C3D]' : 'text-gray-500'}`}>
               {opt.label}
             </Text>
           </TouchableOpacity>

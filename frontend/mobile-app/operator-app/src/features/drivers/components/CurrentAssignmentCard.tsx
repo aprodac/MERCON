@@ -30,7 +30,7 @@ function StopRow({ label, stop, tone }: StopRowProps) {
         <Text style={{ letterSpacing: 0.8 }} className="text-[10px] font-semibold uppercase text-gray-400">
           {label}
         </Text>
-        <Text numberOfLines={1} className="mt-0.5 text-[13px] font-semibold text-gray-900">
+        <Text numberOfLines={1} className="mt-0.5 text-[13px] font-semibold text-[#3E3C3D]">
           {stop ? formatCoordinates(stop.lat, stop.lng) : '—'}
         </Text>
       </View>
@@ -56,7 +56,7 @@ export function CurrentAssignmentCard({ assignment, onTrackTrip }: CurrentAssign
           </View>
 
           <View className="min-w-0 flex-1 pl-3.5">
-            <Text numberOfLines={1} className="text-[15px] font-bold text-gray-900">
+            <Text numberOfLines={1} className="text-[15px] font-bold text-[#3E3C3D]">
               {assignment.refId ?? 'Active Trip'}
             </Text>
             <Text numberOfLines={1} className="mt-0.5 text-[12px] text-gray-400">
@@ -88,7 +88,7 @@ export function CurrentAssignmentCard({ assignment, onTrackTrip }: CurrentAssign
           className="mt-4 h-12 flex-row items-center justify-center rounded-2xl border border-[#EDEDF0] bg-white"
         >
           <Navigation size={15} color={Colors.accent} strokeWidth={2.25} />
-          <Text className="ml-2 text-[14px] font-bold text-gray-900">Track Trip</Text>
+          <Text className="ml-2 text-[14px] font-bold text-[#3E3C3D]">Track Trip</Text>
         </TouchableOpacity>
       </SectionCard>
     </Section>

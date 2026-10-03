@@ -287,7 +287,7 @@ function QuotationForm({ quotation, onDone }: { quotation?: OperatorQuotationDet
           </View>
           {errors.route ? <Text style={s.error}>{errors.route}</Text> : null}
           <TouchableOpacity style={s.addStop} activeOpacity={0.75} onPress={() => { tap(); addStop(); }}>
-            <Plus size={15} color={Colors.gray800} strokeWidth={2.4} />
+            <Plus size={15} color={Colors.charcoal} strokeWidth={2.4} />
             <Text style={s.addStopText}>Add a stop on the way</Text>
           </TouchableOpacity>
         </Section>
@@ -465,8 +465,8 @@ const s = StyleSheet.create({
   stops: { gap: 8 },
   stopRow: { flexDirection: 'row', alignItems: 'stretch', gap: 10 },
   rail: { width: 14, alignItems: 'center', paddingTop: 20 },
-  pin: { width: 12, height: 12, borderRadius: 6, borderWidth: 2.5, borderColor: Colors.gray900, backgroundColor: Colors.white },
-  pinEnd: { backgroundColor: Colors.gray900 },
+  pin: { width: 12, height: 12, borderRadius: 6, borderWidth: 2.5, borderColor: Colors.charcoal, backgroundColor: Colors.white },
+  pinEnd: { backgroundColor: Colors.charcoal },
   pinMid: { width: 8, height: 8, borderRadius: 4, borderWidth: 0, backgroundColor: Colors.gray400, marginTop: 2 },
   railLine: { flex: 1, width: 1.5, backgroundColor: Colors.gray300, marginTop: 4, marginBottom: -24 },
   stopBox: {
@@ -474,20 +474,20 @@ const s = StyleSheet.create({
     borderColor: Colors.gray200, backgroundColor: Colors.white, paddingHorizontal: 12, paddingVertical: 8,
   },
   stopCap: { fontSize: 11, fontWeight: '600', color: Colors.gray500 },
-  stopName: { fontSize: 15, fontWeight: '600', color: Colors.gray900, marginTop: 1 },
+  stopName: { fontSize: 15, fontWeight: '600', color: Colors.charcoal, marginTop: 1 },
   addStop: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 42, borderRadius: 12,
     borderWidth: 1, borderColor: Colors.gray200, borderStyle: 'dashed', backgroundColor: Colors.gray50,
   },
-  addStopText: { fontSize: 13, fontWeight: '600', color: Colors.gray800 },
+  addStopText: { fontSize: 13, fontWeight: '600', color: Colors.charcoal },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 14, height: 38, borderRadius: 999, borderWidth: 1, borderColor: Colors.gray200, backgroundColor: Colors.white, justifyContent: 'center' },
-  chipOn: { backgroundColor: Colors.gray900, borderColor: Colors.gray900 },
+  chipOn: { backgroundColor: Colors.charcoal, borderColor: Colors.charcoal },
   chipText: { fontSize: 13, fontWeight: '600', color: Colors.gray700 },
   chipTextOn: { color: Colors.white },
   segment: { backgroundColor: Colors.gray100 },
   summary: { backgroundColor: Colors.gray50, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 4 },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
   summaryLabel: { fontSize: 13, color: Colors.gray500 },
-  summaryValue: { fontSize: 14, fontWeight: '600', color: Colors.gray900 },
+  summaryValue: { fontSize: 14, fontWeight: '600', color: Colors.charcoal },
 });

@@ -67,6 +67,8 @@ export interface RawDriverTrip {
   createdAt: string;
   vehicle: RawVehicle | null;
   customer: { id: string; name: string } | null;
+  /** Trip.driver_payout — what this trip pays its driver. */
+  driver_payout?: number | string | null;
 }
 
 export interface RawTripStop {
@@ -84,7 +86,26 @@ export interface RawTripDetail extends RawDriverTrip {
   stops: RawTripStop[];
 }
 
+/** One trip's pay for a driver in a month, and the settlement that paid it (if any). Mirrors the backend's PayoutItem. */
+export interface RawPayoutItem {
+  month: string;
+  tripId: string;
+  tripRef: string | null;
+  day: string;
+  customer: string;
+  lane: string;
+  role: 'driver' | 'co_driver';
+  amount: number;
+  settlement: { id: string; ref: string | null; paidDate: string } | null;
+}
+
 export const driverDetailsApi = {
+  /** GET /driver-settlements/monthly/trips — this driver's trip pay for one month (YYYY-MM), same data as the web's driver payouts. */
+  async getMonthPayouts(driverId: string, month: string): Promise<RawPayoutItem[]> {
+    const { data } = await api.get('/driver-settlements/monthly/trips', { params: { month, driver_id: driverId } });
+    return data?.data ?? [];
+  },
+
   async getDriver(driverId: string): Promise<RawDriverDetail> {
     const { data } = await api.get(`/drivers/${driverId}`);
     return data.data as RawDriverDetail;

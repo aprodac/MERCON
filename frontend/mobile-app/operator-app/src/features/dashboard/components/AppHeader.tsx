@@ -49,7 +49,7 @@ export function AppHeader({
               </View>
             ) : null}
           </View>
-          <Text className="text-lg font-extrabold text-gray-900">{userName}</Text>
+          <Text className="text-lg font-extrabold text-[#3E3C3D]">{userName}</Text>
         </View>
       </View>
 

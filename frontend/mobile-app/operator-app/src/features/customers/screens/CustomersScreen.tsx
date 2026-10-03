@@ -20,7 +20,7 @@ import { CustomerRow } from '../components/CustomerRow';
 import { useCustomerActions, useCustomerFilters, useCustomerPermissions, useCustomers, useCustomerSearch } from '../hooks';
 import type { CustomerListItem, CustomerStatusFilter } from '../types';
 
-const INK = '#18181B';
+const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
 
 const TILES: { id: CustomerStatusFilter; label: string; dot?: string }[] = [

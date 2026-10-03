@@ -67,8 +67,8 @@ export function SecondaryActionButton({ label, Icon, onPress, disabled, loading 
         <ActivityIndicator color={Colors.gray500} size="small" />
       ) : (
         <>
-          <Icon size={17} color={Colors.gray900} strokeWidth={2.25} />
-          <Text numberOfLines={1} className="ml-2 text-[14px] font-bold text-gray-900">
+          <Icon size={17} color={Colors.charcoal} strokeWidth={2.25} />
+          <Text numberOfLines={1} className="ml-2 text-[14px] font-bold text-[#3E3C3D]">
             {label}
           </Text>
         </>

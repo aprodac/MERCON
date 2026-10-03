@@ -19,7 +19,7 @@ import { PHASE_STYLE, phaseOf, statusText } from '@/features/trips/list/tripList
 import { ACTION, Chip, WA_INK, WA_LIGHT, tap } from '@/features/trips/details/components/parts';
 import { compactSar } from '../format';
 
-const INK = '#18181B';
+const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
 const digits = (v: string) => v.replace(/[^\d]/g, '');
 
