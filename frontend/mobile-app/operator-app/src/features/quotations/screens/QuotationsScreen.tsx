@@ -115,7 +115,7 @@ export default function QuotationsScreen() {
             </View>
           }
           renderItem={({ item }) => (
-            <QuotationRow quotation={item} onPress={() => router.push({ pathname: '/quotation-details', params: { id: item.id } })} />
+            <QuotationRow quotation={item} hideCustomer onPress={() => router.push({ pathname: '/quotation-details', params: { id: item.id } })} />
           )}
           ListEmptyComponent={<EmptyState title="No quotations match" subtitle="Try another search." Icon={Tag} className="mt-8" />}
         />
