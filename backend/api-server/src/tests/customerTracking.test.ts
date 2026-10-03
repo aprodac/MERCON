@@ -5,7 +5,7 @@ import {
   ETA_STALE_MS, TRACKING_AFTER_END_DAYS, buildPublicTracking, firstName, lateMinutes, optionsOf, placeName, routeLabel, trackingLinkState, truckSeconds, waDigits,
   type TrackingOptions, type TrackingTripMeta,
 } from '../services/tracking/customerTracking';
-import { deliveredTripFilter, fleetTripFilter, sortFleet, toDeliveredTrip, toFleetTruck } from '../services/tracking/customerFleetTracking';
+import { deliveredTripFilter, fleetTripFilter, sortFleet, summarizeMonth, toDeliveredTrip, toFleetTruck } from '../services/tracking/customerFleetTracking';
 import { renderPreviewTags, tripPreview } from '../services/tracking/trackingPreview';
 import type { LiveTripMedia } from '../services/fleetLiveMap';
 import type { TripOverview } from '../services/tripOverview';
@@ -72,6 +72,20 @@ const MEDIA: LiveTripMedia = {
   ],
   unplaced: [],
 };
+
+test('month summary: on time and delay reasons only when the customer sees them', () => {
+  const d = (iso: string) => new Date(iso);
+  const trips = [
+    { stops: [{ planned_arrival: d('2026-10-01T08:00:00Z'), actual_arrival: d('2026-10-01T08:03:00Z'), delay_reason: null }] }, // on time (within grace)
+    { stops: [{ planned_arrival: d('2026-10-02T08:00:00Z'), actual_arrival: d('2026-10-02T08:40:00Z'), delay_reason: 'CustomerNotReady' }] }, // late
+    { stops: [{ planned_arrival: null, actual_arrival: d('2026-10-03T08:00:00Z'), delay_reason: 'CustomerNotReady' }] }, // not measured
+    { stops: [{ planned_arrival: null, actual_arrival: null, delay_reason: 'Traffic' }] },
+  ];
+  const all = summarizeMonth('2026-10', trips, { show_deadline: true, show_delay_reason: true, show_photos: true });
+  assert.deepEqual(all, { month: '2026-10', trips: 4, measured: 2, on_time: 1, delayed: 3, top_reason: 'CustomerNotReady' });
+  const hidden = summarizeMonth('2026-10', trips, { show_deadline: false, show_delay_reason: false, show_photos: true });
+  assert.deepEqual(hidden, { month: '2026-10', trips: 4, measured: null, on_time: null, delayed: null, top_reason: null });
+});
 
 test('whatsapp numbers become international for wa.me', () => {
   assert.equal(waDigits('0546126262'), '966546126262');
