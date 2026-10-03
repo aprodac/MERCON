@@ -12,11 +12,12 @@ export interface LoginResult {
 }
 
 export const authService = {
-  async login(payload: LoginPayload): Promise<LoginResult> {
+  /** `remember`: keep me signed in on this browser (else until the browser closes). */
+  async login(payload: LoginPayload, remember = true): Promise<LoginResult> {
     try {
       const res = await api.post<ApiResponse<LoginResult>>('/auth/login', payload);
       const { token, user } = res.data.data;
-      authStore.setSession(token, user);
+      authStore.setSession(token, user, remember);
       return res.data.data;
     } catch (err: any) {
       if (import.meta.env.DEV && (!err.response || err.response.status >= 500 || err.code === 'ERR_NETWORK')) {
@@ -37,7 +38,7 @@ export const authService = {
           expires_at: new Date(Date.now() + 864000000).toISOString(),
           user: mockUser,
         };
-        authStore.setSession(mockResult.token, mockResult.user);
+        authStore.setSession(mockResult.token, mockResult.user, remember);
         return mockResult;
       }
       throw err;
