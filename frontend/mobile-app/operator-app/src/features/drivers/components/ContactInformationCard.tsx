@@ -40,7 +40,7 @@ function Field({ Icon, label, value, hint, hintTone = 'muted' }: FieldProps) {
           {label}
         </Text>
       </View>
-      <Text numberOfLines={1} className="mt-1.5 text-[14px] font-semibold text-gray-900">
+      <Text numberOfLines={1} className="mt-1.5 text-[14px] font-semibold text-[#3E3C3D]">
         {value}
       </Text>
       {hint ? (

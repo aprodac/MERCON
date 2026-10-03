@@ -15,7 +15,7 @@ import { ArrowLeft, Bell, Menu, type LucideIcon } from 'lucide-react-native';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
 import { OperatorSidebarDrawer } from './OperatorSidebarDrawer';
 
-const FG = '#18181B';
+const FG = '#3E3C3D';
 const BORDER = '#E9E9EC';
 
 export interface TopBarAction {

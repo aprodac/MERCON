@@ -39,6 +39,6 @@ const s = StyleSheet.create({
   card: { backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E9E9EC', overflow: 'hidden' },
   map: { height: 160, backgroundColor: '#EFEFF1' },
   foot: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#E9E9EC' },
-  title: { fontSize: 15, fontWeight: '600', color: '#18181B' },
+  title: { fontSize: 15, fontWeight: '600', color: '#3E3C3D' },
   sub: { fontSize: 13, color: '#6B6B76', marginTop: 1 },
 });

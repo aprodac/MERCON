@@ -6,14 +6,14 @@ import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { TONE, type Tone } from '../tripDetailsModel';
 
-export const INK = '#18181B';
+export const INK = '#3E3C3D';
 export const MUTED = '#6B6B76';
 export const PAGE = '#F6F6F7';
 export const WA = '#1A9E55';
 export const WA_LIGHT = '#E3F7EA';
 export const WA_INK = '#0F6B37';
 /** The one primary-button colour: ink, like the rest of the app. */
-export const ACTION = '#18181B';
+export const ACTION = '#3E3C3D';
 
 export function tap() {
   Haptics.selectionAsync().catch(() => {});

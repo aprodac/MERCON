@@ -25,7 +25,7 @@ import type { LiveUnit } from '../../../lib/operator';
 import { niceName } from '../../trips/create/components/ui';
 import { whenLabel, type ActionIntent, type ActionItem, type ActionKind } from './actionModel';
 
-const INK = '#18181B';
+const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
 const LINE = '#E9E9EC';
 const RED = '#D92D20';
@@ -151,7 +151,7 @@ export function HomeStatus({ needNow, running, delayed, today, day, loading, upd
 function DayBar({ day }: { day: { total: number; done: number; running: number; toStart: number } }) {
   const parts = [
     { key: 'done', n: day.done, color: '#16A34A', label: 'done' },
-    { key: 'run', n: day.running, color: '#18181B', label: 'running' },
+    { key: 'run', n: day.running, color: '#3E3C3D', label: 'running' },
     { key: 'next', n: day.toStart, color: '#D4D4D8', label: 'to start' },
   ];
   return (

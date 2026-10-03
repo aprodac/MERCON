@@ -20,7 +20,7 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const TAB_ROUTES = [
   '/', '/trips', '/drivers', '/vehicles', '/invoices',
-  '/more', '/customers', '/vehicle-renewals',
+  '/more', '/profile', '/customers',
   '/quotations', '/third-party', '/maintenance',
   '/expenses', '/documents', '/notifications', '/user-management',
 ];
@@ -72,7 +72,6 @@ function RootNavigator() {
         <Stack.Screen name="customers" options={{ animation: 'none' }} />
         <Stack.Screen name="trip-details" />
         <Stack.Screen name="create-trip" />
-        <Stack.Screen name="vehicle-renewals" />
         <Stack.Screen name="quotations" options={{ animation: 'none' }} />
         <Stack.Screen name="third-party" options={{ animation: 'none' }} />
         <Stack.Screen name="maintenance" options={{ animation: 'none' }} />
@@ -88,6 +87,12 @@ function RootNavigator() {
         <Stack.Screen name="customer-edit" />
         <Stack.Screen name="user-management" options={{ animation: 'none' }} />
         <Stack.Screen name="user-edit" />
+        <Stack.Screen name="quotation-details" />
+        <Stack.Screen name="quotation-edit" />
+        <Stack.Screen name="trip-edit" />
+        <Stack.Screen name="third-party-details" />
+        <Stack.Screen name="third-party-edit" />
+        <Stack.Screen name="profile" options={{ animation: 'none' }} />
       </Stack>
 
       {showBottomNav && (

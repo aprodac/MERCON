@@ -1,6 +1,6 @@
-/** Route: /more — operator hub for Fleet, Invoices, Customers, Vehicle Renewals. */
-import MoreScreen from '@/features/more/screens/MoreScreen';
+/** Route: /more — the old hub. Its links now live on the Profile tab. */
+import { Redirect } from 'expo-router';
 
 export default function OperatorMoreRoute() {
-  return <MoreScreen />;
+  return <Redirect href="/profile" />;
 }

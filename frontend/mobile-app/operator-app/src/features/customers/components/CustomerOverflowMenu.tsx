@@ -96,7 +96,7 @@ export function CustomerOverflowMenu({
                 />
                 <Text
                   className="ml-2.5 text-sm font-medium"
-                  style={{ color: action.destructive ? Colors.danger : Colors.gray900 }}
+                  style={{ color: action.destructive ? Colors.danger : Colors.charcoal }}
                 >
                   {action.label}
                 </Text>

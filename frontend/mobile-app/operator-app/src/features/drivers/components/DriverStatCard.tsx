@@ -24,7 +24,7 @@ export function DriverStatCard({ label, value, Icon, caption, className }: Drive
       </View>
 
       <View className="flex-1" style={{ gap: 1 }}>
-        <Text numberOfLines={1} style={{ fontSize: 22, fontWeight: '700', color: '#18181B', lineHeight: 26 }}>
+        <Text numberOfLines={1} style={{ fontSize: 22, fontWeight: '700', color: '#3E3C3D', lineHeight: 26 }}>
           {value.toLocaleString()}
         </Text>
         <Text numberOfLines={1} style={{ fontSize: 13, fontWeight: '600', color: '#3F3F46' }}>{label}</Text>

@@ -6,7 +6,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
 import { Bell, Menu, Search } from 'lucide-react-native';
 
-const FG = '#18181B';
+const FG = '#3E3C3D';
 const BORDER = '#E4E4E7';
 
 export function HomeTopBar({ unread, onMenu, onSearch, onNotifications }: {
