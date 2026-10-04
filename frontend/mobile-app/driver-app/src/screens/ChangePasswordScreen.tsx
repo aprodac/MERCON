@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft, Lock, Eye, EyeOff } from 'lucide-react-native';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 export default function ChangePasswordScreen() {
   const router = useRouter();
@@ -106,7 +107,7 @@ export default function ChangePasswordScreen() {
           activeOpacity={0.8}
           onPress={() => router.back()}
         >
-          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} />
+          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} style={flipInRTL} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
           {t('nav_change_password', 'Change Password')}

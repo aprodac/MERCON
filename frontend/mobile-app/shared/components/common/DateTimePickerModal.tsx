@@ -4,6 +4,7 @@ import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, Check } fro
 import { Colors, Spacing, Radius, Typography } from '../../theme/tokens';
 import { AppModal } from './AppModal';
 import { Button } from '../Button';
+import { flipInRTL } from '../../lib/rtl';
 
 interface DatePickerModalProps {
   visible: boolean;
@@ -126,14 +127,14 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
       {/* Month Header Navigation */}
       <View style={styles.monthNavRow}>
         <TouchableOpacity style={styles.navBtn} onPress={handlePrevMonth}>
-          <ChevronLeft size={20} color={Colors.gray700} />
+          <ChevronLeft size={20} color={Colors.gray700} style={flipInRTL} />
         </TouchableOpacity>
         <View style={styles.monthTitleContainer}>
           <CalendarIcon size={16} color={Colors.primary} />
           <Text style={styles.monthTitleText}>{monthLabel}</Text>
         </View>
         <TouchableOpacity style={styles.navBtn} onPress={handleNextMonth}>
-          <ChevronRight size={20} color={Colors.gray700} />
+          <ChevronRight size={20} color={Colors.gray700} style={flipInRTL} />
         </TouchableOpacity>
       </View>
 

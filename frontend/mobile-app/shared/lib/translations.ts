@@ -612,4 +612,16 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   label_on_time_basis: { en: 'From {count} completed trips with delivery times', ur: 'ڈلیوری اوقات والے {count} مکمل ٹرپس سے' },
   label_unknown_route: { en: 'Unknown route', ur: 'نامعلوم روٹ' },
   label_origin: { en: 'Origin', ur: 'روانگی' },
+
+  // Urdu screens: text that stayed English (2026-10-04)
+  label_driver_id: { en: 'ID', ur: 'آئی ڈی' },
+  label_issued: { en: 'Issued', ur: 'تاریخ اجراء' },
+  unit_kg: { en: 'kg', ur: 'کلوگرام' },
+  footer_company: { en: 'MERCON Logistics Platform · Saudi Arabia', ur: 'MERCON لاجسٹکس پلیٹ فارم · سعودی عرب' },
+  doc_name_passport: { en: 'Passport', ur: 'پاسپورٹ' },
+  doc_name_iqama: { en: 'IQAMA', ur: 'اقامہ' },
+  doc_name_driving_licence: { en: 'Driving Licence', ur: 'ڈرائیونگ لائسنس' },
+  doc_name_driver_card: { en: 'Driver Card', ur: 'ڈرائیور کارڈ' },
+  doc_name_vehicle_registration: { en: 'Vehicle Registration', ur: 'گاڑی کی رجسٹریشن' },
+  doc_name_insurance: { en: 'Insurance', ur: 'انشورنس' },
 };

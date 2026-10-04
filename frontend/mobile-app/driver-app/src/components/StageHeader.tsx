@@ -7,6 +7,7 @@ import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { TripProgressStepper } from './TripProgressStepper';
 import { DelayButton } from './DelayButton';
 import { TimelineTarget } from '../utils/routeParser';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 export type TripStage = 'loading' | 'stop' | 'delivery';
 
@@ -48,7 +49,7 @@ export const StageHeader: React.FC<StageHeaderProps> = ({
     <View style={[styles.band, { backgroundColor: theme.main }, style]}>
       <View style={styles.topRow}>
         <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={onBack}>
-          <ArrowLeft size={20} color="#FFFFFF" strokeWidth={2.4} />
+          <ArrowLeft size={20} color="#FFFFFF" strokeWidth={2.4} style={flipInRTL} />
         </TouchableOpacity>
         <View style={styles.topRight}>
           {isReturn && (

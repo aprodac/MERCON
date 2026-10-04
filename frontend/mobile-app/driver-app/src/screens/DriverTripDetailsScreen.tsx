@@ -17,6 +17,7 @@ import { useLanguage, formatCurrency, getLocalizedStatus } from '@mercon/mobile-
 import { API_URL } from '@mercon/mobile-shared/lib/api';
 
 import { parseTripRouteNodes } from '../utils/routeParser';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
@@ -113,7 +114,7 @@ export default function DriverTripDetailsScreen() {
       {/* Header */}
       <View style={styles.topHeaderBar}>
         <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} />
+          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} style={flipInRTL} />
         </TouchableOpacity>
         <BilingualText
           ur="ٹرپ کی تفصیلات"

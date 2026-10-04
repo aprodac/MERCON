@@ -17,6 +17,7 @@ import { statusLabel, stopLabel, getTripChargeValue, getMonthlyDriverPayout, typ
 import { useLanguage, formatCurrency, LanguageMode } from '@mercon/mobile-shared/lib/language-context';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
 import { formatDay, formatDayTime } from '@mercon/mobile-shared/lib/dates';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
@@ -221,7 +222,7 @@ const DriverChargesScreen = ({ navigation }: any) => {
       {/* 1. Header: Back Arrow + Page Title (NO balance pill, NO duplicate chip) */}
       <View style={styles.topHeaderBar}>
         <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} />
+          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} style={flipInRTL} />
         </TouchableOpacity>
         <Text style={styles.screenTitle}>{t('title_driver_charges', 'Driver Charges')}</Text>
       </View>
