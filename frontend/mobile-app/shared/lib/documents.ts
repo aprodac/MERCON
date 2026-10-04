@@ -38,6 +38,32 @@ export function docTypeLabel(t: string): string {
   }
 }
 
+/**
+ * Translation key for a document name the office uses (DocumentType.name, or
+ * the doc type when there is none), so Urdu shows "پاسپورٹ" instead of
+ * "Passport". Names the app doesn't know are shown as the office wrote them.
+ */
+const DOC_NAME_KEYS: Record<string, string> = {
+  passport: 'doc_name_passport',
+  iqama: 'doc_name_iqama',
+  'resident id': 'doc_name_iqama',
+  'driver license': 'doc_name_driving_licence',
+  'driver licence': 'doc_name_driving_licence',
+  'driving license': 'doc_name_driving_licence',
+  'driving licence': 'doc_name_driving_licence',
+  driverlicense: 'doc_name_driving_licence',
+  'driver card': 'doc_name_driver_card',
+  'vehicle registration': 'doc_name_vehicle_registration',
+  vehicleregistration: 'doc_name_vehicle_registration',
+  insurance: 'doc_name_insurance',
+};
+
+export function docNameKey(doc: Pick<DriverDocument, 'doc_type' | 'documentType'>): { key: string | null; name: string } {
+  const name = doc.documentType?.name || docTypeLabel(doc.doc_type);
+  const key = DOC_NAME_KEYS[name.trim().toLowerCase()] ?? DOC_NAME_KEYS[(doc.doc_type || '').toLowerCase()] ?? null;
+  return { key, name };
+}
+
 export function docIcon(t: string): LucideIcon {
   switch (t) {
     case 'DriverLicense': return IdCard;

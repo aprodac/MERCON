@@ -24,6 +24,7 @@ import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { useTheme } from '@mercon/mobile-shared/lib/theme-context';
 import { SUPPORT_EMAIL } from '@mercon/mobile-shared/lib/support';
 import { HelpSupportSheet } from '../components/HelpSupportSheet';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 /**
  * Removed after the Phase 3 phone test (2026-10-04):
@@ -77,7 +78,7 @@ const SettingsScreen = () => {
       onPress: () =>
         Alert.alert(
           'MERCON Driver',
-          `${t('label_version', 'Version')} ${version}${build ? ` (${t('label_build', 'build')} ${build})` : ''}\nMERCON Logistics Platform · Saudi Arabia`,
+          `${t('label_version', 'Version')} ${version}${build ? ` (${t('label_build', 'build')} ${build})` : ''}\n${t('footer_company', 'MERCON Logistics Platform · Saudi Arabia')}`,
         ),
     },
     {
@@ -96,7 +97,7 @@ const SettingsScreen = () => {
 
       <View style={s.header}>
         <TouchableOpacity style={s.backBtn} onPress={() => router.back()} activeOpacity={0.8}>
-          <ArrowLeft size={20} color={colors.textPrimary} strokeWidth={2.2} />
+          <ArrowLeft size={20} color={colors.textPrimary} strokeWidth={2.2} style={flipInRTL} />
         </TouchableOpacity>
         <Text style={s.headerTitle}>{t('nav_settings', 'Settings')}</Text>
         <View style={{ width: 40 }} />
@@ -118,13 +119,13 @@ const SettingsScreen = () => {
               <Text style={s.rowLabelSingle}>{t(row.labelKey, row.defaultLabel)}</Text>
               <View style={s.rowRight}>
                 {row.value ? <Text style={s.rowValue}>{row.value}</Text> : null}
-                <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} />
+                <ChevronRight size={18} color={colors.textMuted} strokeWidth={2} style={flipInRTL} />
               </View>
             </TouchableOpacity>
           ))}
         </View>
 
-        <Text style={s.footer}>MERCON Logistics Platform · Saudi Arabia</Text>
+        <Text style={s.footer}>{t('footer_company', 'MERCON Logistics Platform · Saudi Arabia')}</Text>
         <TouchableOpacity
           onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`).catch(() => {})}
           accessibilityRole="link"
