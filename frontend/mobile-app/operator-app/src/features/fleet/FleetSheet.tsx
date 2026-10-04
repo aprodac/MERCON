@@ -17,11 +17,11 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Animated, Image, LayoutAnimation, Linking, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
+  ActivityIndicator, Alert, Animated, Image, LayoutAnimation, Linking, PanResponder, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Play, Smartphone, Truck, X } from 'lucide-react-native';
-import type { LiveTripMedia, LiveUnit, TripMediaItem } from '../../lib/operator';
+import { operatorService, type LiveTripMedia, type LiveUnit, type TripMediaItem } from '../../lib/operator';
 import type { ViewerItem } from '../trips/details/components/MediaViewer';
 import { niceName } from '../trips/create/components/ui';
 import type { makeTime } from '../trips/list/tripListModel';
@@ -188,9 +188,27 @@ export function UnitSheet({
     },
   }));
 
-  const shareEta = () => {
-    const text = buildEtaShareText(u, eta, (d) => f.time(d.toISOString()));
-    Linking.openURL(`https://wa.me/?text=${encodeURIComponent(text)}`).catch(() => Alert.alert("Couldn't open WhatsApp"));
+  // ETA + the customer's live tracking link (the same link the trip page shares). The
+  // link is skipped when the customer has tracking switched off or it can't be fetched.
+  const [sharing, setSharing] = useState(false);
+  const shareEta = async () => {
+    if (!t || sharing) return;
+    setSharing(true);
+    let url: string | null = null;
+    try {
+      const link = await operatorService.trackingLink(t.id);
+      url = link.enabled ? link.url : null;
+    } catch {
+      // share without the link
+    }
+    setSharing(false);
+    const text = buildEtaShareText(u, eta, (d) => f.time(d.toISOString()), url);
+    const viaWhatsApp = () => Linking.openURL(`https://wa.me/?text=${encodeURIComponent(text)}`).catch(() => Alert.alert("Couldn't open WhatsApp"));
+    Alert.alert(url ? 'Share ETA and live link' : 'Share ETA', url ? 'The customer can follow the truck live from the link.' : 'Live tracking is off for this customer — the ETA goes without a link.', [
+      { text: 'WhatsApp', onPress: viaWhatsApp },
+      { text: 'Other apps', onPress: () => { Share.share({ message: text }).catch(() => {}); } },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
   };
 
   return (
@@ -245,8 +263,8 @@ export function UnitSheet({
           </TouchableOpacity>
         ) : null}
         {t && onTrip(u) ? (
-          <TouchableOpacity style={s.iconBtn} onPress={shareEta} accessibilityLabel="Share ETA on WhatsApp">
-            <MessageCircle size={17} color="#3F3F46" strokeWidth={2.2} />
+          <TouchableOpacity style={s.iconBtn} onPress={shareEta} disabled={sharing} accessibilityLabel="Share ETA and live tracking link">
+            {sharing ? <ActivityIndicator size="small" color="#3F3F46" /> : <MessageCircle size={17} color="#3F3F46" strokeWidth={2.2} />}
           </TouchableOpacity>
         ) : null}
         {t && nextStep ? (
