@@ -27,6 +27,7 @@ import { API_URL, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { triggerGPayHapticsAndSound } from '../services/sound';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
@@ -550,7 +551,7 @@ const DeliveryVerificationScreen = () => {
                 ? t('msg_completing', 'COMPLETING…')
                 : (isReturnDelivery ? t('action_return_delivery_complete', 'RETURN DELIVERY COMPLETE') : t('action_delivery_complete', 'DELIVERY COMPLETE'))}
             </Text>
-            <ArrowRight size={20} color={hasAllPhotos ? "#FFFFFF" : "#94A3B8"} strokeWidth={2.2} />
+            <ArrowRight size={20} color={hasAllPhotos ? "#FFFFFF" : "#94A3B8"} strokeWidth={2.2} style={flipInRTL} />
           </TouchableOpacity>
         </View>
 

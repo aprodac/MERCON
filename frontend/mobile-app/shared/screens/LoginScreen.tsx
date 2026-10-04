@@ -34,6 +34,7 @@ import { safeSecureStore } from '../lib/secure-store';
 import { SUPPORT_EMAIL } from '../lib/support';
 
 import { useRouter } from 'expo-router';
+import { flipInRTL } from '../lib/rtl';
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const logo = require('../assets/images/mercon-logo.png');
@@ -384,7 +385,7 @@ const LoginScreen = ({ variant }: LoginScreenProps) => {
                   loading={loading}
                   size="lg"
                   fullWidth
-                  iconRight={!loading ? <ArrowRight size={20} color={Colors.white} /> : undefined}
+                  iconRight={!loading ? <ArrowRight size={20} color={Colors.white} style={flipInRTL} /> : undefined}
                 />
               </View>
             </View>

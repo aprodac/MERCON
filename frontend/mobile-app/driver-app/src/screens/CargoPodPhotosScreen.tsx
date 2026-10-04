@@ -11,6 +11,7 @@ import { API_URL } from '@mercon/mobile-shared/lib/api';
 import { useCargoPodPhotos, docTypeLabel, type DriverDocument } from '@mercon/mobile-shared/lib/documents';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { GoogleMapsGeotagPreview } from '../components/GoogleMapsGeotagPreview';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
@@ -108,7 +109,7 @@ export function CargoPodPhotosScreen() {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-          <ArrowLeft size={22} color={Colors.gray900} strokeWidth={2.2} />
+          <ArrowLeft size={22} color={Colors.gray900} strokeWidth={2.2} style={flipInRTL} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('title_cargo_pod_photos', 'Cargo & POD Photos')}</Text>
         <View style={{ width: 40 }} />

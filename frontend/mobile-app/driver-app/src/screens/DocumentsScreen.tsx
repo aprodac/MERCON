@@ -10,9 +10,10 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-sha
 import { Badge } from '@mercon/mobile-shared/components/Badge';
 import { formatCalendarDate } from '@mercon/mobile-shared/lib/dates';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
-import { useDocuments, docTypeLabel, docIcon, docStatus, type DriverDocument, type DocKind } from '@mercon/mobile-shared/lib/documents';
+import { useDocuments, docNameKey, docIcon, docStatus, type DriverDocument, type DocKind } from '@mercon/mobile-shared/lib/documents';
 
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
@@ -30,7 +31,8 @@ function openFile(fileUrl: string) {
 
 const DocumentCard = ({ doc }: { doc: DriverDocument }) => {
   const st = docStatus(doc);
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
+  const nameKey = docNameKey(doc);
   return (
     <View style={[styles.card, st.kind === 'expired' ? styles.cardExpired : null]}>
       <View style={styles.cardHeader}>
@@ -38,8 +40,8 @@ const DocumentCard = ({ doc }: { doc: DriverDocument }) => {
           {(() => { const Icon = docIcon(doc.doc_type); return <Icon size={22} color={Colors.primary} strokeWidth={2} />; })()}
         </View>
         <View style={styles.cardInfo}>
-          <Text style={styles.docTitle}>{doc.documentType?.name || docTypeLabel(doc.doc_type)}</Text>
-          {doc.issue_date ? <Text style={styles.docNumber}>{language === 'ur' ? `تاریخ اجراء ${formatCalendarDate(doc.issue_date)}` : `Issued ${formatCalendarDate(doc.issue_date)}`}</Text> : null}
+          <Text style={styles.docTitle}>{nameKey.key ? t(nameKey.key, nameKey.name) : nameKey.name}</Text>
+          {doc.issue_date ? <Text style={styles.docNumber}>{`${t('label_issued', 'Issued')} ${formatCalendarDate(doc.issue_date)}`}</Text> : null}
         </View>
         <Badge label={t(st.labelKey, st.label)} color={BADGE_COLORS[st.kind].color} bg={BADGE_COLORS[st.kind].bg} />
       </View>
@@ -80,7 +82,7 @@ const DocumentsScreen = () => {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-          <ArrowLeft size={22} color={Colors.gray900} strokeWidth={2.2} />
+          <ArrowLeft size={22} color={Colors.gray900} strokeWidth={2.2} style={flipInRTL} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('title_my_documents', 'My Documents')}</Text>
         <View style={{ width: 40 }} />

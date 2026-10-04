@@ -8,6 +8,7 @@ import { formatDay } from '@mercon/mobile-shared/lib/dates';
 import type { MobileTrip } from '@mercon/mobile-shared/lib/trips';
 import { useProfile } from '../hooks/use-profile';
 import { useTripHistory } from '../hooks/use-trip-history';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 type Badge = { label: string; color: string; bg: string; Icon: typeof CheckCircle2 };
 
@@ -38,7 +39,7 @@ export default function PerformanceOverviewScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} />
+          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} style={flipInRTL} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('title_performance_overview', 'Performance Overview')}</Text>
         <View style={{ width: 44 }} />

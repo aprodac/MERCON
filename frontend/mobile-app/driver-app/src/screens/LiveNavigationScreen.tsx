@@ -19,6 +19,7 @@ import { tripService, stopAddress, stopLabel, isRoundTrip, resolveAuthoritativeA
 import { targetFromWorkflowState, parseStopWorkflowState } from '../utils/routeParser';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 /** Great-circle distance between two lat/lng points, in meters. */
 function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -355,7 +356,7 @@ const LiveNavigationScreen = () => {
                 activeOpacity={0.8}
                 onPress={() => router.back()}
               >
-                <ArrowLeft size={18} color="#3E3C3D" strokeWidth={2.2} />
+                <ArrowLeft size={18} color="#3E3C3D" strokeWidth={2.2} style={flipInRTL} />
               </TouchableOpacity>
 
               <View style={styles.headerTitleCenter}>
