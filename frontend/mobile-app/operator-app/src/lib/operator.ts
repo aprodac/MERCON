@@ -248,7 +248,8 @@ export interface ShareResult {
 export interface LiveUnit {
   key: string;
   vehicle: { id: string; ref_id: string | null; plate_number: string; asset_type: string; status: string; image_url: string | null; has_tracker: boolean } | null;
-  driver: { id: string; ref_id: string | null; name: string; phone: string | null; avatar_url: string | null } | null;
+  /** `status` is the driver's own (Available / OnTrip / …) — used to rank trucks for a trip. */
+  driver: { id: string; ref_id: string | null; name: string; phone: string | null; avatar_url: string | null; status?: string | null } | null;
   trip: {
     id: string;
     ref_id: string | null;
@@ -267,6 +268,22 @@ export interface LiveUnit {
   /** Which GPS feeds are live, and whether the truck is moving (same as the web live map). */
   feed?: 'both' | 'vehicle' | 'driver' | 'none';
   motion?: 'moving' | 'idle' | 'stale' | 'no_signal';
+}
+
+/** What a driver sent from a trip's stops (backend services/fleetLiveMap.ts `LiveTripMedia`). */
+export interface TripMediaItem {
+  id: string;
+  /** A delivery note (POD) as well as photos and videos. */
+  kind: 'pod' | 'photo' | 'video';
+  stage: LiveMediaStage;
+  url: string;
+  mime: string | null;
+  captured_at: string;
+}
+export interface LiveTripMedia {
+  stops: { stop_id: string; sequence: number; delay: { reason: string | null; note: string | null; logged_at: string | null } | null; media: TripMediaItem[] }[];
+  /** Uploads that can't be tied to a stop (older driver-app builds). */
+  unplaced: TripMediaItem[];
 }
 
 /** A document or licence that has expired or expires soon (backend services/operatorInbox.ts). */
@@ -1023,6 +1040,11 @@ export const operatorService = {
 
   /** Reassign only the vehicle — same `/dispatch` endpoint the web dashboard's
    * ReassignTripModal calls for a vehicle-only reassignment. */
+  /** Send a truck — and, when the trip has none, the truck's driver — on a trip (POST /trips/:id/dispatch). */
+  async dispatchTrip(id: string, body: { vehicle_id: string; driver_id?: string }): Promise<OperatorTripDetail> {
+    const { data } = await api.post(`/trips/${id}/dispatch`, body);
+    return data.data as OperatorTripDetail;
+  },
   async replaceVehicle(id: string, newVehicleId: string): Promise<OperatorTripDetail> {
     const { data } = await api.post(`/trips/${id}/dispatch`, { vehicle_id: newVehicleId });
     return data.data as OperatorTripDetail;
@@ -1125,6 +1147,12 @@ export const operatorService = {
   },
 
   /** Road distance and drive time between two points (null when routing is down) — the web map's route call. */
+  /** Photos, POD and delay videos per stop of a trip (same as the web live map's details panel). */
+  async tripMedia(tripId: string): Promise<LiveTripMedia> {
+    const { data } = await api.get(`/vehicles/live-map/trips/${tripId}/media`);
+    return (data?.data ?? { stops: [], unplaced: [] }) as LiveTripMedia;
+  },
+
   async routeEstimate(from: { lat: number; lng: number }, to: { lat: number; lng: number }): Promise<{ distanceMeters: number; durationSeconds: number } | null> {
     try {
       const { data } = await api.get('/vehicles/live-map/route', { params: { from: `${from.lat},${from.lng}`, to: `${to.lat},${to.lng}` } });
