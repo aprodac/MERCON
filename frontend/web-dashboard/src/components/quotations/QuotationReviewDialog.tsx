@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { formatQuotationRef } from '@mercon/shared-types';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, CheckCircle2, Info, Loader2 } from 'lucide-react';
 
@@ -81,7 +82,7 @@ export function QuotationReviewDialog({
       if (same.length > 0) {
         const q = same[0] as any;
         const qRate = Number(q.rate ?? q.base_price ?? 0);
-        const ref = q.quotation_number != null ? `QT-${q.quotation_number}` : 'another quotation';
+        const ref = formatQuotationRef(q.quotation_number) ?? 'another quotation';
         notes.push(qRate === rate
           ? { tone: 'info', text: `${customerName} already has this route and truck at the same price (${ref}). Saving adds a duplicate.` }
           : { tone: 'warn', text: `${customerName} already has this route and truck at SAR ${money(qRate)} (${ref}). Saving adds a second price.` });

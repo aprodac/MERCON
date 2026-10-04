@@ -1,4 +1,5 @@
 import { DatePicker } from '@/components/ui/date-picker';
+import { formatQuotationRef } from '@mercon/shared-types';
 import { resolveTaxonomyOption } from '@/utils/taxonomyRegistry';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -234,7 +235,7 @@ export default function AddQuotationPage({ isEdit = false }: { isEdit?: boolean 
   const quotationRefId = useMemo(() => {
     if (isEdit && existingQuotation) {
       const no = (existingQuotation as any).quotation_number;
-      return no != null ? `QT-${no}` : existingQuotation.agreement_ref || `QT-${existingQuotation.id.substring(0, 8).toUpperCase()}`;
+      return formatQuotationRef(no) ?? (existingQuotation.agreement_ref || `QT-${existingQuotation.id.substring(0, 8).toUpperCase()}`);
     }
     // The number is given when it's saved (QT-526 …); a made-up one here
     // (QT-2026-5527) never matched the saved quotation.

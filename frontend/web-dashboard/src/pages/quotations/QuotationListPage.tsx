@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { formatQuotationRef } from '@mercon/shared-types';
 import { toast } from 'sonner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
@@ -290,7 +291,7 @@ export default function QuotationListPage() {
         const matchRef = (q.agreement_ref || '').toLowerCase().includes(term);
         const matchName = (q.name || '').toLowerCase().includes(term);
         const qNum = (q as any).quotation_number != null ? String((q as any).quotation_number) : '';
-        const qCode = qNum ? `qt-${qNum}` : `qt-${q.id.substring(0, 8).toLowerCase()}`;
+        const qCode = qNum ? `${(formatQuotationRef(qNum) || '').toLowerCase()} qt-${qNum}` : `qt-${q.id.substring(0, 8).toLowerCase()}`;
         const matchQNum = qNum.includes(term) || qCode.includes(term) || (q.id || '').toLowerCase().includes(term);
         if (!matchRoute && !matchVehicle && !matchRef && !matchName && !matchQNum) return false;
       }
