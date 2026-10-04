@@ -350,10 +350,10 @@ const TripsScreen = ({ navigation }: any) => {
           {language === 'ur-en' ? (
             <View style={styles.segmentCol}>
               <Text style={[styles.segmentTextTop, selectedTab === 'Completed' && styles.segmentTextActiveCompleted]} numberOfLines={1}>
-                مکمل شدہ
+                تاریخچہ
               </Text>
               <Text style={[styles.segmentTextSub, selectedTab === 'Completed' && styles.segmentTextActiveCompleted]} numberOfLines={1}>
-                Completed ({historyList.length})
+                History ({historyList.length})
               </Text>
             </View>
           ) : (
@@ -363,7 +363,8 @@ const TripsScreen = ({ navigation }: any) => {
               adjustsFontSizeToFit
               minimumFontScale={0.75}
             >
-              {t('status_completed', 'Completed')} ({historyList.length})
+              {/* Finished trips: completed and cancelled ones (cancelled show their own grey label). */}
+              {t('tab_trip_history', 'History')} ({historyList.length})
             </Text>
           )}
         </TouchableOpacity>
