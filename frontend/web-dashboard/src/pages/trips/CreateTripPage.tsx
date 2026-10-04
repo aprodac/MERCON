@@ -19,7 +19,7 @@ import PastDateTripConfirmModal from '@/components/trips/PastDateTripConfirmModa
 import TripWizardHeader from '@/components/trips/wizard/TripWizardHeader';
 import TripStep1UnifiedWorkspace from '@/components/trips/wizard/TripStep1UnifiedWorkspace';
 import { MonthlyDaysSelector } from '@/components/trips/wizard/MonthlyDaysSelector';
-import { resolveSlotDriverPayout } from '@mercon/shared-types';
+import { formatQuotationRef, resolveSlotDriverPayout } from '@mercon/shared-types';
 import { TripReviewConfirmModal } from '@/components/trips/wizard/TripReviewConfirmModal';
 import DriverPayoutMissingDialog from '@/components/trips/wizard/DriverPayoutMissingDialog';
 import TripBatchGeneratorTab from '@/components/trips/wizard/TripBatchGeneratorTab';
@@ -90,7 +90,7 @@ export default function CreateTripPage() {
     form.assignmentType === 'own' && payoutPriced && !(resolveSlotDriverPayout(payoutSlot) > 0);
   const payoutLabel = payoutCard
     ? [
-        payoutCard.quotation_number != null ? `QT-${payoutCard.quotation_number}` : null,
+        formatQuotationRef(payoutCard.quotation_number),
         payoutSlot?.origin && payoutSlot?.destination ? `${payoutSlot.origin} → ${payoutSlot.destination}` : null,
         payoutCard.vehicle_class || payoutCard.vehicle_type || null,
       ].filter(Boolean).join(' · ')

@@ -8,6 +8,7 @@
  * The quotation itself comes from the same cached list as the quotations page.
  */
 import React, { useMemo } from 'react';
+import { formatQuotationRef } from '@mercon/shared-types';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -87,7 +88,7 @@ export default function QuotationDetailsScreen() {
             <View style={s.logo}><Text style={s.logoText}>{initialsOf(q.customerName)}</Text></View>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={s.rowTitle} numberOfLines={1}>{niceName(q.customerName)}</Text>
-              <Text style={s.sub}>{q.quotationNumber ? `QT-${q.quotationNumber}` : 'Quotation'}</Text>
+              <Text style={s.sub}>{formatQuotationRef(q.quotationNumber) ?? 'Quotation'}</Text>
             </View>
             <View style={[s.pill, q.validityStatus === 'Expired' && { backgroundColor: Colors.primaryLight }]}>
               <View style={[s.dot, q.validityStatus === 'Expired' && { backgroundColor: Colors.primary }, (q.validityStatus === 'Inactive' || q.validityStatus === 'Future') && { backgroundColor: '#B4B4BC' }]} />

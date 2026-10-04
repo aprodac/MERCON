@@ -16,10 +16,12 @@ export interface ChargeReviewTrip extends ChargeReviewTripLike {
   ref_id: string | null;
   customerId: string | null;
   quotationId: string | null;
+  billing_amount: number | string | null;
   is_third_party: boolean;
   customer: { id: string; name: string } | null;
-  driver: { first_name: string; last_name: string | null } | null;
-  subcontract: { driverName: string | null; provider: { name: string } | null } | null;
+  driver: { first_name: string; last_name: string | null; avatar_url: string | null } | null;
+  vehicle: { plate_number: string } | null;
+  subcontract: { driverName: string | null; vehiclePlate: string | null; provider: { name: string } | null } | null;
   stops: (ChargeReviewTripLike['stops'][number] & { stop_sequence: number })[];
   charges: { id: string; charge_type: string; amount: number | string }[];
 }
@@ -124,6 +126,20 @@ export function useCustomerChargeRules(customerId?: string | null, quotationId?:
     enabled: enabled && Boolean(customerId),
     staleTime: 60_000,
   });
+}
+
+/** The customer's logo. The queue leaves logos out (it polls), so it's fetched once per customer. */
+export function useCustomerLogo(customerId?: string | null, enabled = true) {
+  const { data } = useQuery({
+    queryKey: ['customer-logo', customerId],
+    queryFn: async (): Promise<string | null> => {
+      const { data: res } = await api.get(`/customers/${customerId}`);
+      return res.data?.logo_url ?? null;
+    },
+    enabled: enabled && Boolean(customerId),
+    staleTime: 10 * 60_000,
+  });
+  return data ?? null;
 }
 
 /** The team's assistant settings (set by an Admin in the web dashboard's Settings → Assistant). */
