@@ -17,6 +17,7 @@ import { EmptyState, ErrorState, SkeletonBlock } from '@mercon/mobile-shared/ui'
 import { AppTopBar } from '@/components/AppTopBar';
 import { customersApi } from '../api/customersApi';
 import { CustomerRow } from '../components/CustomerRow';
+import { isDemoCustomer } from '../services/customersService';
 import { useCustomerActions, useCustomerFilters, useCustomerPermissions, useCustomers, useCustomerSearch } from '../hooks';
 import type { CustomerListItem, CustomerStatusFilter } from '../types';
 
@@ -29,9 +30,13 @@ const TILES: { id: CustomerStatusFilter; label: string; dot?: string }[] = [
   { id: 'inactive', label: 'Inactive', dot: '#9898A4' },
 ];
 
-/** How many customers there are in each status — one-row requests that read `meta.total`. */
+/** How many customers there are in each status. */
 function useCustomerCounts() {
-  const count = (is_active?: boolean) => async () => (await customersApi.getCustomers({ page: 1, per_page: 1, is_active })).meta.total;
+  // One request per status; the hidden demo rows (see isDemoCustomer) are left out of the count.
+  const count = (is_active?: boolean) => async () => {
+    const res = await customersApi.getCustomers({ page: 1, per_page: 200, is_active });
+    return res.meta.total - res.data.filter(isDemoCustomer).length;
+  };
   const all = useQuery({ queryKey: ['customers', 'count', 'all'], queryFn: count() });
   const active = useQuery({ queryKey: ['customers', 'count', 'active'], queryFn: count(true) });
   const inactive = useQuery({ queryKey: ['customers', 'count', 'inactive'], queryFn: count(false) });

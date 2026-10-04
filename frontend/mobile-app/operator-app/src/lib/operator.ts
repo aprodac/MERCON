@@ -349,8 +349,27 @@ export interface OperatorThirdPartyProvider {
   total_trips?: number;
   active_trips?: number;
   total_cost?: number | string;
-  /** Only on GET /third-party-providers/:id — the provider's 20 most recent trips. */
-  trips?: OperatorTrip[];
+  createdAt?: string;
+  /** Only on GET /third-party-providers/:id — the provider's 20 most recent trips, each with what the carrier is paid for it. */
+  trips?: (OperatorTrip & { third_party_cost?: number | string | null })[];
+}
+
+/** One negotiated price with a carrier (GET /third-party-providers/:id/rates). */
+export interface OperatorProviderRate {
+  id: string;
+  origin_city: string;
+  destination_city: string;
+  originLocation?: { id: string; name: string; city?: string | null } | null;
+  destinationLocation?: { id: string; name: string; city?: string | null } | null;
+  vehicle_class: string;
+  line_type: string;
+  operation_type?: string | null;
+  pricing_basis: string;
+  cost: number | string;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  /** "active", "expired" or "archived". */
+  status: string;
 }
 
 export interface ThirdPartyProviderInput {
@@ -710,6 +729,11 @@ export const operatorService = {
   async thirdPartyProviderById(id: string): Promise<OperatorThirdPartyProvider> {
     const { data } = await api.get(`/third-party-providers/${id}`);
     return data.data as OperatorThirdPartyProvider;
+  },
+
+  async thirdPartyProviderRates(id: string): Promise<OperatorProviderRate[]> {
+    const { data } = await api.get(`/third-party-providers/${id}/rates`);
+    return (data.data ?? []) as OperatorProviderRate[];
   },
 
   async thirdPartyStats(): Promise<ThirdPartyStats> {

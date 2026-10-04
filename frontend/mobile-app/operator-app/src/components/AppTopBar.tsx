@@ -2,7 +2,7 @@
  * The one top bar every main operator page uses, so the menu, title and bell
  * are always in the same place:
  *
- *   [☰]  MERCON  (Home)   or   Page title (every other page)   [page actions] [🔔]
+ *   [☰]  MERCON  (Home)   or   [page icon] Page title (every other page)   [page actions] [🔔]
  *
  * ☰ opens the side drawer (owned here, so pages don't each wire their own),
  * the bell opens notifications and shows a dot for unread ones. Pages pass
@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft, Bell, Menu, type LucideIcon } from 'lucide-react-native';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
 import { OperatorSidebarDrawer } from './OperatorSidebarDrawer';
+import { PageIconTile } from './pageCues';
 
 const FG = '#3E3C3D';
 const BORDER = '#E9E9EC';
@@ -48,7 +49,10 @@ export function AppTopBar({ title, actions = [], hideBell, onBack }: AppTopBarPr
         {onBack ? <IconBtn icon={ArrowLeft} label="Back" onPress={onBack} /> : <IconBtn icon={Menu} label="Open menu" onPress={() => setMenuOpen(true)} />}
 
         {title ? (
-          <Text style={s.title} numberOfLines={1}>{title}</Text>
+          <View style={s.titleRow}>
+            <PageIconTile title={title} />
+            <Text style={s.title} numberOfLines={1}>{title}</Text>
+          </View>
         ) : (
           <View style={s.brand}>
             <Image source={require('@mercon/mobile-shared/assets/images/merconclosed.png')} style={s.mark} resizeMode="contain" accessibilityLabel="MERCON" />
@@ -84,7 +88,8 @@ function IconBtn({ icon: Icon, label, onPress, dot, dotColor = FG }: { icon: Luc
 const s = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 56, paddingHorizontal: 16 },
   btn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: BORDER },
-  title: { flex: 1, fontSize: 20, fontWeight: '700', color: FG, letterSpacing: -0.3, marginLeft: 4 },
+  titleRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9, marginLeft: 4 },
+  title: { flexShrink: 1, fontSize: 20, fontWeight: '700', color: FG, letterSpacing: -0.3 },
   brand: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 4 },
   mark: { width: 36, height: 24 },
   word: { fontSize: 15, fontWeight: '700', color: FG, letterSpacing: 1.5 },

@@ -13,7 +13,7 @@ import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { EmptyState, ErrorState, SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { useOperatorThirdPartyProviders, type OperatorThirdPartyProvider } from '@/lib/operator';
 import { AppTopBar } from '@/components/AppTopBar';
-import { initialsOf, niceName } from '@/features/trips/create/components/ui';
+import { CompanyAvatar, niceName } from '@/features/trips/create/components/ui';
 import { compactSar } from '../format';
 
 type Filter = 'all' | 'active' | 'inactive';
@@ -154,7 +154,7 @@ function ProviderRow({ provider: p, onPress }: { provider: OperatorThirdPartyPro
 
   return (
     <TouchableOpacity style={s.row} activeOpacity={0.8} onPress={onPress} accessibilityRole="button" accessibilityLabel={`Open ${p.name}`}>
-      <View style={s.avatar}><Text style={s.avatarText}>{initialsOf(p.name)}</Text></View>
+      <CompanyAvatar name={p.name} size={46} />
       <View style={s.rowText}>
         <Text style={s.name} numberOfLines={2}>{niceName(p.name)}</Text>
         <View style={s.metaRow}>
@@ -192,8 +192,6 @@ const s = StyleSheet.create({
   searchInput: { flex: 1, fontSize: 15, color: INK, paddingVertical: 0 },
   count: { fontSize: 16, fontWeight: '700', color: INK },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E9E9EC', paddingVertical: 12, paddingHorizontal: 14 },
-  avatar: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#F1EFE8', alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 15, fontWeight: '700', color: '#5F5E5A' },
   rowText: { flex: 1, minWidth: 0, gap: 3 },
   name: { fontSize: 16, fontWeight: '600', color: INK, letterSpacing: -0.2 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
