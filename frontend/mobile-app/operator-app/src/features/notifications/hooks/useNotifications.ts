@@ -40,5 +40,5 @@ export function useMarkNotificationsRead() {
     markIds(items.filter((n) => !n.is_read).map((n) => n.id));
   }, [queryClient, markIds]);
 
-  return { markRead, markAllRead };
+  return { markRead, markAllRead, markIds };
 }
