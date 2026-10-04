@@ -22,6 +22,7 @@ import { useProfile } from '../hooks/use-profile';
 import { Avatar } from '@mercon/mobile-shared/components/Avatar';
 import { initialsOf } from '../services/profile';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
+import { formatCalendarDate, formatDay } from '@mercon/mobile-shared/lib/dates';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
@@ -35,18 +36,6 @@ function resolveAvatarUrl(rawUrl?: string | null): string | null {
   return trimmed;
 }
 
-function formatDate(isoStr?: string | null): string {
-  if (!isoStr) return '—';
-  try {
-    return new Date(isoStr).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
-  } catch {
-    return '—';
-  }
-}
 
 export default function PersonalInfoScreen() {
   const router = useRouter();
@@ -134,7 +123,7 @@ export default function PersonalInfoScreen() {
             </View>
             <View style={styles.rowTextCol}>
               <Text style={styles.rowLabel}>{t('label_license_expiry', 'License Expiry')}</Text>
-              <Text style={styles.rowValue}>{formatDate(profile?.license_expiry)}</Text>
+              <Text style={styles.rowValue}>{formatCalendarDate(profile?.license_expiry)}</Text>
             </View>
           </View>
         </View>
@@ -159,7 +148,7 @@ export default function PersonalInfoScreen() {
             </View>
             <View style={styles.rowTextCol}>
               <Text style={styles.rowLabel}>{t('label_joined_date', 'Joined Date')}</Text>
-              <Text style={styles.rowValue}>{formatDate(profile?.createdAt)}</Text>
+              <Text style={styles.rowValue}>{formatDay(profile?.createdAt)}</Text>
             </View>
           </View>
         </View>
