@@ -1,33 +1,41 @@
 /**
- * Operator Home screen. Composes the dashboard feature's hooks + components
- * only — no direct API calls and no business logic live here.
+ * Operator Home ("today at a glance"), top to bottom:
+ *   EmergencyStrip  only while a driver emergency is open
+ *   TodayCard       ring of done / on the road / to start, and how many
+ *                   things need you (delayed · no driver or truck · photos)
+ *   LiveNow         fleet map + the trips on the road, late ones first
+ *   UpNext          trips still to start today, with Assign when one is short
+ *   FromDrivers     photo sets drivers sent that the customer hasn't had yet
+ * Everything to act on in full lives on Notifications → To do.
+ * Composes hooks + components only — no direct API calls here.
  *
  * The bottom tab bar isn't rendered by this screen: it's mounted once, above
  * the route stack, in src/app/_layout.tsx (`<OperatorBottomNav />`), so every
  * operator screen shares one persistent nav instead of remounting it.
  */
-import React, { useEffect, useState } from 'react';
-import { Linking, RefreshControl, ScrollView } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-
-
-import { useDashboardRefresh } from '../hooks';
-import { useMarkNotificationsRead, useNotifications } from '@/features/notifications/hooks/useNotifications';
-import { AppTopBar } from '@/components/AppTopBar';
-import { FleetMapCard } from '@/features/fleet/FleetMapCard';
 import { Search } from 'lucide-react-native';
 import { ErrorState } from '@mercon/mobile-shared/ui';
-import { useActionInbox } from '../actions/useActionInbox';
-import { HomeStatus, NeedsActionList, UpNext } from '../actions/NeedsAction';
-import type { ActionIntent } from '../actions/actionModel';
-import { useCurrentUser } from '../hooks/useCurrentUser';
+import { AppTopBar } from '@/components/AppTopBar';
 import { ChargeAssistant } from '@/features/charges/ChargeAssistant';
+import { useDashboardRefresh } from '../hooks';
+import { useCurrentUser } from '../hooks/useCurrentUser';
+import { useActionInbox } from '../actions/useActionInbox';
+import { useActionIntent } from '../actions/useActionIntent';
+import { EmergencyStrip } from '../home/EmergencyStrip';
+import { TodayCard } from '../home/TodayCard';
+import { LiveNow } from '../home/LiveNow';
+import { UpNext } from '../home/UpNext';
+import { FromDrivers } from '../home/FromDrivers';
+import { dateLabel, greeting, toStartToday } from '../home/today';
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
-  // Ticks each minute so "12m late" / "in 2h" stay current.
+  // Ticks each minute so "in 20 min" / "2h late" stay current.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 60_000);
@@ -35,91 +43,72 @@ export default function DashboardHomeScreen() {
   }, []);
   const { refreshing, refresh } = useDashboardRefresh();
 
-  const notifications = useNotifications();
-  const { markRead } = useMarkNotificationsRead();
   const inbox = useActionInbox();
   const { data: me } = useCurrentUser();
+  const { onIntent, openTrip, toast, setToast } = useActionIntent();
 
+  const emergencies = useMemo(() => inbox.items.filter((i) => i.kind === 'emergency'), [inbox.items]);
+  const needs = useMemo(() => {
+    const count = (...kinds: string[]) => inbox.items.filter((i) => kinds.includes(i.kind)).length;
+    return { total: inbox.items.length, delayed: count('delayed', 'late-start'), unassigned: count('unassigned'), photos: count('photos') };
+  }, [inbox.items]);
+  const toStart = useMemo(() => toStartToday(inbox.scheduled, inbox.tz, now).length, [inbox.scheduled, inbox.tz, now]);
 
-  const openTrip = (id: string, extra: Record<string, string> = {}) =>
-    router.push({ pathname: '/trip-details', params: { id, ...extra } });
-
-  // Only for actions that finish right here on Home — never for ones that
-  // just open another screen or app, which hasn't done anything yet.
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-
-  const onIntent = (intent: ActionIntent) => {
-    switch (intent.type) {
-      case 'call':
-        Linking.openURL(`tel:${intent.phone}`).catch(() => setToast({ message: "Couldn't start the call", type: 'error' }));
-        return;
-      case 'whatsapp':
-        Linking.openURL(`https://wa.me/${(intent.phone ?? '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(intent.text)}`)
-          .catch(() => setToast({ message: "Couldn't open WhatsApp", type: 'error' }));
-        return;
-      case 'trip': {
-        const extra: Record<string, string> = {};
-        if (intent.tab) extra.tab = intent.tab;
-        if (intent.share) extra.share = intent.share;
-        if (intent.assign) extra.assign = intent.assign;
-        if (intent.times) extra.times = '1';
-        openTrip(intent.tripId, extra);
-        return;
-      }
-      case 'handled':
-        markRead(intent.notificationId);
-        setToast({ message: 'Marked as handled', type: 'success' });
-        return;
-      case 'driver':
-        router.push({ pathname: '/driver-details', params: { id: intent.id } });
-        return;
-      case 'vehicle':
-        router.push({ pathname: '/vehicle-details', params: { id: intent.id } });
-        return;
-      case 'customer':
-        router.push({ pathname: '/customer-details', params: { id: intent.id } });
-        return;
-      case 'invoices':
-        router.push('/invoices');
-    }
-  };
+  const first = (me?.name || me?.username || '').trim().split(/\s+/)[0];
+  const hello = `${greeting(inbox.tz, now)}${first ? `, ${first[0].toUpperCase()}${first.slice(1)}` : ''}`;
+  const trips = (view: string) => router.push({ pathname: '/trips', params: { view } });
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
-      <AppTopBar actions={[{ icon: Search, label: 'Search trips', onPress: () => router.push('/trips') }]} />
+      <AppTopBar
+        eyebrow={dateLabel(inbox.tz, now)}
+        title={hello}
+        urgent={inbox.counts.now}
+        actions={[{ icon: Search, label: 'Search trips', onPress: () => router.push('/trips') }]}
+      />
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 4, paddingBottom: 120, gap: 24 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120, gap: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#FA634E" />}
       >
-        <HomeStatus
-          needNow={inbox.counts.now}
-          running={inbox.counts.running}
-          delayed={inbox.counts.delayed}
-          today={inbox.today.length}
-          day={inbox.day}
-          loading={inbox.loading}
-          updatedAt={inbox.updatedAt}
+        <EmergencyStrip
+          items={emergencies}
           now={now}
-          onRunning={() => router.push({ pathname: '/trips', params: { view: 'now' } })}
-          onDelayed={() => router.push({ pathname: '/trips', params: { view: 'delayed' } })}
-          onToday={() => router.push({ pathname: '/trips', params: { view: 'schedule' } })}
-        />
-
-        {inbox.liveError ? (
-          <ErrorState message="Couldn't load live trips." onRetry={inbox.retry} />
-        ) : null}
-
-        <NeedsActionList
-          items={inbox.items}
-          loading={inbox.loading}
           onIntent={onIntent}
           onOpenTrip={(id) => openTrip(id)}
-          now={now}
+          onAll={() => router.push('/notifications')}
         />
 
-        <FleetMapCard units={inbox.units} onOpen={() => router.push('/fleet-map')} />
+        <TodayCard
+          done={inbox.finishedToday}
+          running={inbox.counts.running}
+          toStart={toStart}
+          needs={needs}
+          loading={inbox.loading}
+          onTrips={trips}
+          onTodo={(filter) => router.push({ pathname: '/notifications', params: filter ? { filter } : {} })}
+        />
 
-        <UpNext rows={inbox.today} tz={inbox.tz} onOpenTrip={(id) => openTrip(id)} onAll={() => router.push('/trips')} />
+        {inbox.liveError ? <ErrorState message="Couldn't load live trips." onRetry={inbox.retry} /> : null}
+
+        <LiveNow
+          units={inbox.units}
+          tz={inbox.tz}
+          now={now}
+          onOpenMap={() => router.push('/fleet-map')}
+          onOpenTrip={(id) => openTrip(id)}
+          onAll={() => trips('now')}
+        />
+
+        <UpNext
+          trips={inbox.scheduled}
+          tz={inbox.tz}
+          now={now}
+          onOpenTrip={(id) => openTrip(id)}
+          onAssign={(id, what) => openTrip(id, { assign: what })}
+          onAll={() => trips('schedule')}
+        />
+
+        <FromDrivers updates={inbox.updates} now={now} onSend={(id) => openTrip(id, { tab: 'updates' })} />
       </ScrollView>
       {/* Finished trips waiting for an answer on extra charges */}
       <ChargeAssistant userName={me?.name || me?.username || undefined} />
