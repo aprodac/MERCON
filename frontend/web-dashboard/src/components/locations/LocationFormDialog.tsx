@@ -80,6 +80,7 @@ export default function LocationFormDialog({
 
   const [customerId, setCustomerId] = useState(defaultCustomerId || '');
   const [code, setCode] = useState('');
+  const [noResultsFor, setNoResultsFor] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [city, setCity] = useState('');
   const [postalCode, setPostalCode] = useState('');
@@ -179,6 +180,7 @@ export default function LocationFormDialog({
 
   const handleSearchGoogle = async (val: string) => {
     setSearch(val);
+    setNoResultsFor(null);
     const trimmed = val.trim();
     if (!trimmed) {
       searchRequestIdRef.current++;
@@ -217,6 +219,7 @@ export default function LocationFormDialog({
 
       if (currentRequestId === searchRequestIdRef.current) {
         setGoogleSuggestions(suggestions);
+        setNoResultsFor(suggestions.length === 0 && trimmed.length >= 3 ? trimmed : null);
       }
     } catch (e) {
       console.error(e);
@@ -238,7 +241,9 @@ export default function LocationFormDialog({
         if (computedCity) setCity(computedCity);
         setLat(String(resolved.lat));
         setLng(String(resolved.lng));
-        setPrecision('EXACT');
+        // A search pick is the area, not the gate: it stays "Pin needed" until someone drags
+        // the pin or pastes a Google Maps link (owner decision 2026-10-03).
+        setPrecision('APPROXIMATE');
         setSearch(resolved.address || resolved.name);
         setGoogleSuggestions([]);
       }
@@ -274,7 +279,9 @@ export default function LocationFormDialog({
       setError('Please select a customer for this location.');
       return;
     }
-    if (!code.trim()) {
+    // A new place gets a code from its name when left blank (the API makes it);
+    // an existing one keeps needing one, so an edit can't wipe it.
+    if (isEditing && !code.trim()) {
       setError('Location code is required (e.g. RUH, KHA).');
       return;
     }
@@ -293,7 +300,7 @@ export default function LocationFormDialog({
 
     saveMutation.mutate({
       customerId: activeCustId,
-      code: code.trim().toUpperCase(),
+      ...(code.trim() || isEditing ? { code: code.trim().toUpperCase() } : {}),
       name: name.trim(),
       city: city.trim() || null,
       postalCode: postalCode.trim() || null,
@@ -329,8 +336,8 @@ export default function LocationFormDialog({
           </DialogTitle>
           <DialogDescription className="text-xs text-slate-500">
             {isFromGoogleMaps
-              ? 'Exact address found from Google Maps. Specify how to name and code this location.'
-              : 'Canonical operational hub scoped to customer.'}
+              ? "Found on Google Maps. Check the name, then save it as one of this customer's places."
+              : 'A pickup or delivery place of this customer, used on its quotations and trips.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -366,12 +373,12 @@ export default function LocationFormDialog({
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-1 col-span-1 min-w-0">
               <Label className="text-xs font-bold text-slate-900 dark:text-slate-100">
-                Code <span className="text-rose-500">*</span>
+                Code {isEditing ? <span className="text-rose-500">*</span> : <span className="font-normal text-slate-400">(optional)</span>}
               </Label>
               <Input
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
-                placeholder="Enter code (e.g. RUH, BAH)..."
+                placeholder={isEditing ? 'e.g. RUH, BAH' : 'Made from the name'}
                 maxLength={10}
                 className="h-9 text-xs font-mono font-bold uppercase truncate"
               />
@@ -443,6 +450,11 @@ export default function LocationFormDialog({
                 <span>Search</span>
               </Button>
             </div>
+            {noResultsFor && !isSearchingGoogle && googleSuggestions.length === 0 && (
+              <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                No places found for "{noResultsFor}". Try a shorter name, or paste a Google Maps link.
+              </p>
+            )}
             {googleSuggestions.length > 0 && (
               <div className="absolute left-0 right-0 top-full mt-1 z-[9999] border border-slate-200 dark:border-slate-800 rounded-xl p-1 bg-white dark:bg-slate-900 shadow-2xl max-h-44 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
                 {googleSuggestions.map((s) => (

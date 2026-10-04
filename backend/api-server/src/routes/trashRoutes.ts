@@ -12,6 +12,7 @@ router.use(requireModuleEnabled('recycle-bin'));
 
 router.get('/', getTrashItems);
 router.post('/:type/:id/restore', restoreTrashItem);
-router.delete('/:type/:id', hardDeleteTrashItem);
+// Permanent delete can't be undone: Admins only.
+router.delete('/:type/:id', authorizeRoles('Admin'), hardDeleteTrashItem);
 
 export default router;

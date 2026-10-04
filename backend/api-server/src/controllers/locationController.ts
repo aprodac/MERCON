@@ -540,6 +540,17 @@ export const updateLocation = async (req: Request, res: Response) => {
       }
     }
 
+    // A new exact pin (moved, or newly marked exact) goes the same way as the
+    // "Set pin" box: open trip stops still on the old guess get it too.
+    const newExactPin =
+      finalPrecision === CoordinatePrecision.EXACT && nextLat != null && nextLng != null &&
+      (existing.coordinate_precision !== CoordinatePrecision.EXACT || existing.lat !== nextLat || existing.lng !== nextLng);
+    if (newExactPin) {
+      await prisma.$transaction((tx) =>
+        pinLocation(tx, existing.id, { lat: nextLat!, lng: nextLng!, address: (updateData.address as string | null | undefined) ?? null }, getValidUuid((req as any).user?.id))
+      );
+    }
+
     const location = await prisma.location.update({
       where: { id: id as string },
       data: updateData,

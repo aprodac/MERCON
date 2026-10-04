@@ -128,7 +128,7 @@ Every alert goes through the dedupe check, is sent to the same staff list as del
 - **"Got it"** card on a new/changed trip (Home + trip details), blocking until tapped. No decline option.
 - In-app warning banner when notifications or location are off → button opens the phone's Settings.
 - "Update required" screen when below the minimum version the API returns.
-- No background location (unchanged — truck GPS comes from ICCES).
+- No background location (unchanged — truck GPS comes from ICCES). **Changed 2026-10-02 (owner):** trip GPS now keeps going outside the app as a foreground service — see `driver-app/src/services/tripLocationTask.ts`.
 
 ## Phase 5 — Web dashboard UI
 

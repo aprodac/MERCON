@@ -55,6 +55,14 @@ export function useFormKeyboardShortcuts({
 
       // 2. Esc -> Cancel / Close
       if (key === 'escape') {
+        // Esc belongs to whatever is open on top of the form (a dropdown, menu,
+        // date picker or dialog) — closing a dropdown used to cancel the whole
+        // page and throw the form away.
+        const overlayOpen =
+          event.defaultPrevented ||
+          target.getAttribute('aria-expanded') === 'true' ||
+          !!document.querySelector('[data-radix-popper-content-wrapper], [role="listbox"], [role="menu"], [role="dialog"], [role="alertdialog"]');
+        if (overlayOpen) return;
         if (onCancel) {
           event.stopPropagation();
           onCancel();

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "762440959131",
+    "project_id": "mercon-driver",
+    "storage_bucket": "mercon-driver.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:762440959131:android:90b37d7a8f04f56434323e",
+        "android_client_info": {
+          "package_name": "tech.mercon.driver"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBhTzOIETKcZ127DkFXvfqh0-InQ4qBkyE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

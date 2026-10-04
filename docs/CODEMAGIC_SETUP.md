@@ -1,14 +1,15 @@
-# Codemagic setup — Mercon Driver & Mercon Operator
+# Codemagic setup — Mercon Driver & Mercon Operator (Android)
 
 Builds are defined in `codemagic.yaml` (repo root). This page covers the
 one-time setup in the Codemagic web UI, which needs your accounts.
+
+Codemagic builds **Android only**. iOS is built and uploaded from Xcode on the
+Mac — see `docs/IOS_DISTRIBUTION_AND_PUSH.md`.
 
 | Workflow | Output |
 |---|---|
 | `driver-android` | Mercon Driver APK (install on phones) + AAB (Play Store) |
 | `operator-android` | Mercon Operator APK + AAB |
-| `driver-ios` | Mercon Driver IPA, uploaded to TestFlight |
-| `operator-ios` | Mercon Operator IPA, uploaded to TestFlight |
 
 All workflows run on `mac_mini_m2` machines and are started by hand.
 
@@ -47,31 +48,15 @@ How it works: `frontend/mobile-app/shared/tooling/with-release-signing.js`
 (an Expo config plugin) makes release builds use the keystore whenever
 Codemagic provides it (`CM_KEYSTORE_*` variables). Local builds are unchanged.
 
-## 3. iOS signing + TestFlight (needed before the first iOS build)
-
-Needs an **Apple Developer Program** membership.
-
-1. In **App Store Connect → Users and Access → Integrations → App Store Connect API**,
-   create a key with **App Manager** access. Download the `.p8` file (only once!)
-   and note the Issuer ID and Key ID.
-2. In Codemagic: **Team settings → Integrations → Developer Portal → Manage keys**
-   → add the key with the name **`mercon_app_store_connect`** (must match
-   `codemagic.yaml`).
-3. In App Store Connect create the two apps (bundle IDs `tech.mercon.driver`
-   and `tech.mercon.operator` — register them under Certificates, Identifiers
-   & Profiles first if they don't appear).
-4. In Codemagic: **Team settings → Code signing identities → iOS certificates**
-   → generate (or upload) an **Apple Distribution** certificate. Provisioning
-   profiles are fetched automatically for the bundle IDs above.
-
-## 4. Build
+## 3. Build
 
 Codemagic → the MERCON app → **Start new build** → pick the branch (`dev`) and
 the workflow. When it finishes, download the APK/AAB from the build's
-**Artifacts**; iOS builds appear in TestFlight.
+**Artifacts**.
 
-Each build uses Codemagic's `BUILD_NUMBER` as the Android `versionCode` /
-iOS `buildNumber`, so a new build always installs over the previous one.
+The version and `versionCode` come from the app's `version.json` (bump with
+`npm run version:bump` in the app folder); Codemagic's `BUILD_NUMBER` is used
+only when it is higher.
 
 ## Settings you may want to change in `codemagic.yaml`
 
@@ -95,7 +80,10 @@ iOS `buildNumber`, so a new build always installs over the previous one.
 
 - **Push notifications (driver app):** step-by-step for iOS (App ID push
   capability, profiles, APNs key → Expo, TestFlight external testers, testing)
-  is in **`docs/IOS_DISTRIBUTION_AND_PUSH.md`**. Android push still needs a
-  Firebase project with an Android app for `tech.mercon.driver` (its
-  `google-services.json` and the FCM v1 key in Expo). Until then, builds work
-  but drivers get no push notifications.
+  is in **`docs/IOS_DISTRIBUTION_AND_PUSH.md`**. Android push is set up:
+  Firebase project `mercon-driver`, Android app `tech.mercon.driver`
+  (`driver-app/google-services.json`), FCM v1 key in Expo.
+- **Play Store builds of the driver app come from EAS, not Codemagic.** Play
+  only accepts files signed with the EAS upload key (SHA-1 `E9:F7:09:B1…`); the
+  Codemagic `mercon_driver_keystore` is a different key. See
+  `docs/ANDROID_PLAY_RELEASE.md`.

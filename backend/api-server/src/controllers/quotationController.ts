@@ -1,4 +1,6 @@
 import { Request, Response } from 'express';
+import { formatQuotationRef } from '@mercon/shared-types';
+import { nextQuotationNumber } from '../services/quotationNumber';
 import { prisma } from '../db';
 import { resolveLocation } from './locationController';
 import { findQuotationForLane, quotationInclude } from '../services/rateLookup';
@@ -131,6 +133,7 @@ export const createQuotation = async (req: Request, res: Response) => {
 
       const newQuotation = await tx.quotation.create({
         data: {
+          quotation_number: await nextQuotationNumber(tx),
           name: quotationName,
           rate: price,
           driver_payout: payoutVal,
@@ -805,7 +808,7 @@ export const bulkImportQuotations = async (req: Request, res: Response) => {
               data: { ...data, updated_by: userId, version: existing.version + 1 },
             });
           } else {
-            const createdQuotation = await tx.quotation.create({ data: { ...data, created_by: userId } });
+            const createdQuotation = await tx.quotation.create({ data: { ...data, quotation_number: await nextQuotationNumber(tx), created_by: userId } });
             targetId = createdQuotation.id;
           }
 
@@ -913,7 +916,7 @@ export const getLanePriceHistory = async (req: Request, res: Response) => {
 
       return {
         id: q.id,
-        quotation_number: (q as any).quotation_number || q.name || `QT-${q.id.substring(0, 6)}`,
+        quotation_number: formatQuotationRef((q as any).quotation_number) || q.name || `QT-${q.id.substring(0, 6)}`,
         customer_name: q.customer?.name || 'Customer',
         origin: originName,
         destination: destName,

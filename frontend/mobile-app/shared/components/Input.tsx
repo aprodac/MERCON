@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { forwardRef, useState } from 'react';
 import {
   View, TextInput, Text, TouchableOpacity,
   StyleSheet, ViewStyle, TextStyle, KeyboardTypeOptions, TextInputProps,
@@ -27,13 +27,18 @@ interface InputProps {
   numberOfLines?: number;
   maxLength?: number;
   style?: ViewStyle;
+  /** Small grey hint under the field (hidden while an error is shown). */
+  helperText?: string;
+  /** Extra TextInput props: returnKeyType, onSubmitEditing, textContentType, autoComplete, editable… */
+  inputProps?: Omit<TextInputProps, 'value' | 'onChangeText' | 'onBlur' | 'onFocus' | 'style'>;
 }
 
-export function Input({
+export const Input = forwardRef<TextInput, InputProps>(function Input({
   label, value, onChangeText, onBlur, placeholder, state = 'default',
   errorText, successText, iconLeft, iconRight, secureTextEntry,
   keyboardType, autoCapitalize, autoCorrect, multiline, numberOfLines, maxLength, style,
-}: InputProps) {
+  helperText, inputProps,
+}, ref) {
   const [focused, setFocused] = useState(false);
   const effectiveState = state === 'default' && focused ? 'focused' : state;
   const isDisabled = state === 'disabled';
@@ -44,6 +49,7 @@ export function Input({
       <View style={[styles.container, stateStyles[effectiveState]]}>
         {iconLeft && <View style={styles.iconLeft}>{iconLeft}</View>}
         <TextInput
+          ref={ref}
           style={[
             styles.input,
             multiline && styles.multiline,
@@ -58,7 +64,7 @@ export function Input({
             setFocused(false);
             if (onBlur) onBlur();
           }}
-          editable={!isDisabled}
+          editable={!isDisabled && inputProps?.editable !== false}
           secureTextEntry={secureTextEntry}
           keyboardType={keyboardType}
           autoCapitalize={autoCapitalize}
@@ -66,6 +72,7 @@ export function Input({
           multiline={multiline}
           numberOfLines={numberOfLines}
           maxLength={maxLength}
+          {...inputProps}
         />
         {iconRight && <View style={styles.iconRight}>{iconRight}</View>}
       </View>
@@ -75,9 +82,12 @@ export function Input({
       {effectiveState === 'success' && successText && (
         <Text style={styles.successText}>{successText}</Text>
       )}
+      {helperText && effectiveState !== 'error' && (
+        <Text style={styles.helperText}>{helperText}</Text>
+      )}
     </View>
   );
-}
+});
 
 /** Search input with magnifier icon slot */
 export function SearchInput({
@@ -117,6 +127,7 @@ const styles = StyleSheet.create({
   iconRight:   { marginLeft: Spacing.sm },
   errorText:   { ...Typography.caption, color: Colors.danger },
   successText: { ...Typography.caption, color: Colors.success },
+  helperText:  { ...Typography.caption, color: Colors.gray500 },
 });
 
 const stateStyles: Record<InputState, ViewStyle> = {

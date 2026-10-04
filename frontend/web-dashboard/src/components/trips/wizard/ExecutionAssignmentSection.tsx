@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Truck, User, Users, Plus, TrendingUp, Tag, AlertCircle, X } from 'lucide-react';
+import { Truck, User, Users, Plus, TrendingUp, Tag, AlertCircle, X, Check } from 'lucide-react';
 import { Combobox, ComboboxOption } from '@/components/ui/combobox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import DriverAvatar from '@/components/ui/DriverAvatar';
 import { CoDriverPaySplit, type PaySplitValue } from './CoDriverPaySplit';
 import { FactChip, StatusTag, type DriverFacts } from './DriverPickerRow';
-import { DISPATCH_RULES, truckClassOfVehicle, compareTruckClass } from '@mercon/shared-types';
+import { DISPATCH_RULES, truckClassOfVehicle, compareTruckClass, normalizeSaudiPlate } from '@mercon/shared-types';
 import { thirdPartyService, ProviderRateCard, Previous3PLDriver } from '@/services/thirdPartyService';
 import { cn } from '@/lib/utils';
 
@@ -96,6 +96,8 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
 }) => {
   // The co-driver lives in the form (it was local here and never reached the saved trip).
   const [localCoDriver, setLocalCoDriver] = useState('');
+  // The 3PL plate is checked once the operator leaves the field (or on submit), not on every key.
+  const [plateTouched, setPlateTouched] = useState(false);
   const coDriver = setMasterCoDriver ? masterCoDriver : localCoDriver;
   const setCoDriver = (id: string) => (setMasterCoDriver ? setMasterCoDriver(id) : setLocalCoDriver(id));
   const [showCoDriverRaw, setShowCoDriver] = useState(false);
@@ -695,17 +697,42 @@ export const ExecutionAssignmentSection: React.FC<ExecutionAssignmentSectionProp
                   )
                 )}
               </div>
-              <input
-                type="text"
-                disabled={isAssignmentLocked}
-                value={thirdPartyVehiclePlate}
-                onChange={(e) => setThirdPartyVehiclePlate(e.target.value)}
-                placeholder="Plate number or Assign Later..."
-                className={cn(
-                  "h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 text-xs font-semibold w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100",
-                  isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
-                )}
-              />
+              {(() => {
+                const typed = thirdPartyVehiclePlate.trim();
+                const checkable = typed !== '' && !/^assign later$/i.test(typed);
+                const check = checkable ? normalizeSaudiPlate(typed) : null;
+                const showError = Boolean(check && !check.ok && (plateTouched || fieldErrors?.['thirdPartyVehiclePlate']));
+                return (
+                  <>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        id="third-party-vehicle-plate"
+                        disabled={isAssignmentLocked}
+                        value={thirdPartyVehiclePlate}
+                        onChange={(e) => setThirdPartyVehiclePlate(e.target.value)}
+                        onBlur={() => {
+                          setPlateTouched(true);
+                          // "dra 6484" → "DRA-6484", the way plates are kept everywhere else.
+                          if (check?.ok && check.plate !== typed) setThirdPartyVehiclePlate(check.plate);
+                        }}
+                        placeholder="DRA-6484 or Assign Later"
+                        aria-invalid={showError}
+                        aria-describedby={showError ? 'third-party-vehicle-plate-error' : undefined}
+                        className={cn(
+                          "h-8 rounded-lg border border-slate-200 dark:border-slate-700 px-2.5 pr-7 text-xs font-semibold uppercase w-full shadow-2xs bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100",
+                          showError && "border-rose-400 ring-2 ring-rose-400/20",
+                          isAssignmentLocked && "bg-slate-100/90 dark:bg-slate-800/60 text-slate-400 cursor-not-allowed pointer-events-none border-slate-200 dark:border-slate-800"
+                        )}
+                      />
+                      {check?.ok && <Check className="absolute right-2 top-1/2 size-3.5 -translate-y-1/2 text-emerald-600" aria-hidden />}
+                    </div>
+                    {showError && check && !check.ok && (
+                      <p id="third-party-vehicle-plate-error" className="text-[11px] font-medium text-rose-600 dark:text-rose-400">{check.reason}</p>
+                    )}
+                  </>
+                );
+              })()}
             </div>
 
             <div className="space-y-1">

@@ -1,10 +1,8 @@
 # iOS distribution + push notifications — setup checklist
 
 **For:** whoever owns the Apple Developer / App Store Connect / Expo accounts (Hysam).
-**Apps:** Mercon Driver (`tech.mercon.driver`) and Mercon Operator (`tech.mercon.operator`).
-**Builds:** from **Hysam's Mac with Xcode** (Part C). Codemagic (`codemagic.yaml` →
-`driver-ios`, `operator-ios`) can do the same in the cloud later — see Part C-alt and
-`docs/CODEMAGIC_SETUP.md` §3.
+**Apps:** Mercon Driver (`tech.merconapp.driver`) and Mercon Operator (`tech.mercon.operator`).
+**Builds:** from **Hysam's Mac with Xcode** only (Part C). Codemagic builds Android only.
 
 Order: **A** (Apple Developer) → **B** (Expo push key) → **C** (build + upload on the Mac) →
 **TestFlight** → **D** (test pushes).
@@ -31,7 +29,7 @@ MERCON API ──▶ Expo push service (exp.host) ──▶ Apple APNs ──▶
 
 ### A1. Turn on Push Notifications for the App IDs
 Certificates, Identifiers & Profiles → **Identifiers**:
-1. Open `tech.mercon.driver` → **Capabilities** → tick **Push Notifications** → **Save**.
+1. Open `tech.merconapp.driver` → **Capabilities** → tick **Push Notifications** → **Save**.
 2. Do the same for `tech.mercon.operator` (not used yet, but saves a re-sign later).
 
 If an identifier doesn't exist yet, create it (App IDs → App, explicit bundle ID) with
@@ -41,7 +39,7 @@ Push Notifications ticked.
 Profiles made *before* A1 don't include push, and a build signed with them either fails or
 gets no pushes.
 - Certificates, Identifiers & Profiles → **Profiles** → delete (or **Edit → Save** to
-  regenerate) any existing **App Store** profiles for `tech.mercon.driver` and
+  regenerate) any existing **App Store** profiles for `tech.merconapp.driver` and
   `tech.mercon.operator`.
 - With **Automatically manage signing** in Xcode (Part C5) Xcode then creates a fresh profile
   that includes push. (Codemagic does the same through its API integration.)
@@ -66,7 +64,7 @@ The driver app's Expo project is `2697c85a-0ac8-4a2e-9225-5cc84a5b518d`
 account `alan32`. You need to be a member of that account (or have its owner do this).
 
 Either:
-- **expo.dev** → the driver project → **Credentials** → iOS → `tech.mercon.driver` →
+- **expo.dev** → the driver project → **Credentials** → iOS → `tech.merconapp.driver` →
   **Push Notifications** → **Add a Push Key** → upload the `.p8`, enter Key ID + Team ID.
 
 Or, from a terminal (no Mac needed):
@@ -76,7 +74,7 @@ npx eas-cli login
 npx eas-cli credentials   # iOS → production → Push Notifications: Manage your Apple Push Notifications Key → Add
 ```
 
-Check: the project's Credentials page shows a push key for `tech.mercon.driver`.
+Check: the project's Credentials page shows a push key for `tech.merconapp.driver`.
 
 ---
 
@@ -90,7 +88,7 @@ Check: the project's Credentials page shows a push key for `tech.mercon.driver`.
   team (Admin or App Manager role). Select the team → **Manage Certificates → + → Apple
   Distribution** if there isn't one yet.
 - **App Store Connect → Apps → +** → create the app records if they don't exist:
-  *Mercon Driver* (`tech.mercon.driver`) and *Mercon Operator* (`tech.mercon.operator`).
+  *Mercon Driver* (`tech.merconapp.driver`) and *Mercon Operator* (`tech.mercon.operator`).
 
 ### C2. Get the code and install
 ```bash
@@ -124,16 +122,37 @@ Check the push setting landed: `ios/<AppName>/<AppName>.entitlements` should con
 `aps-environment` = **production**.
 
 ### C5. Sign, archive, upload
+**After pulling new code, regenerate `ios/` before archiving** — new code can add native
+modules (e.g. `expo-battery` on 2026-10-01), and an old `ios/` still builds but the app then
+crashes on launch ("Cannot find native module"). Driver build 101 shipped like that:
+```bash
+npx expo prebuild --platform ios
+cd ios && LANG=en_US.UTF-8 pod install && cd ..
+```
+`npm run version:bump` refuses to bump while `ios/` is missing a native module the app uses
+(`npm run version:check` runs only the check).
+
+Every upload needs a new build number. Bump it first — from the app folder:
+```bash
+npm run version:bump              # build +1, e.g. 1.1.0 (100) → 1.1.0 (101)
+npm run version:bump -- patch     # new release: 1.1.0 → 1.1.1 (also minor / major)
+```
+This updates the app's `version.json` (commit it — it is the record of what was uploaded) and
+writes the numbers into `ios/` so the archive carries them. `expo prebuild` reads `version.json`
+too, so regenerating `ios/` keeps them. If you prebuilt *after* bumping, nothing more to do; if
+`ios/` looks out of date, `npm run version:sync` rewrites it without bumping.
 ```bash
 open ios/*.xcworkspace            # the .xcworkspace, not the .xcodeproj
 ```
 In Xcode:
 1. Select the app target → **Signing & Capabilities** → tick **Automatically manage signing**
-   → **Team** = the MERCON team. The Bundle Identifier must stay `tech.mercon.driver`
+   → **Team** = the MERCON team. The Bundle Identifier must stay `tech.merconapp.driver`
    (or `tech.mercon.operator`). **Push Notifications** should be listed under capabilities
    (driver app).
-2. **General** → bump **Build** (e.g. 2, 3, …) for every upload — App Store Connect rejects a
-   repeated build number for the same version. Change **Version** (`1.0.0`) only for a new release.
+2. **General** → check **Version** / **Build** match what `version:bump` printed. Don't edit them
+   here — Xcode edits live in the git-ignored `ios/` and are lost; use `npm run version:bump`.
+   In the Organizer's distribute options, untick **Manage Version and Build Number** so Xcode
+   uploads exactly these numbers.
 3. Top bar device selector → **Any iOS Device (arm64)**.
 4. **Product → Archive** (a few minutes). The Organizer opens when it's done.
 5. Organizer → the new archive → **Distribute App → App Store Connect → Upload** → keep the
@@ -149,16 +168,11 @@ xcodebuild -workspace ios/*.xcworkspace -scheme <AppName> -configuration Release
 ### C6. Common Mac build errors
 | Error | Fix |
 |---|---|
-| `No profiles for 'tech.mercon.driver' were found` | Signing & Capabilities → pick the Team; Xcode creates the profile (needs A1 done) |
+| `No profiles for 'tech.merconapp.driver' were found` | Signing & Capabilities → pick the Team; Xcode creates the profile (needs A1 done) |
 | `Provisioning profile … doesn't include the aps-environment entitlement` | Push not enabled on the App ID (A1), or an old profile — Xcode → Settings → Accounts → Download Manual Profiles / delete old profile (A2) |
 | `pod install` fails | `cd ios && pod repo update && pod install` |
 | App opens but talks to the wrong server | `.env.local` missing or wrong `EXPO_PUBLIC_API_URL` → fix, then `npx expo prebuild --platform ios --clean` and archive again |
-| `The bundle version must be higher` on upload | Bump **Build** (C5 step 2) |
-
-### C-alt. Codemagic instead of the Mac
-Codemagic's `driver-ios` / `operator-ios` workflows do C2–C5 in the cloud (setup in
-`docs/CODEMAGIC_SETUP.md` §3). They already set `APS_ENVIRONMENT=production` and pick the API
-from the branch (`main` → production, anything else → dev).
+| `The bundle version must be higher` on upload | `npm run version:bump`, then archive again (C5) |
 
 ## TestFlight
 After upload, the build appears in **App Store Connect → the app → TestFlight** once Apple has
@@ -203,10 +217,11 @@ Internal testers (App Store Connect users on the team) don't need Beta App Revie
 
 ## Android (for completeness)
 
-Expo push on Android needs **FCM**: a Firebase project with an Android app for
-`tech.mercon.driver`, its `google-services.json` referenced in the app config, and the FCM
-v1 service-account key uploaded to the same Expo project (expo.dev → Credentials →
-Android → FCM V1). Not set up yet.
+Android uses a **different package**, `tech.mercon.driver` (the Play Console app, its EAS upload
+key and Firebase are on it — do not change it to the iOS ID). Expo push on Android uses **FCM**:
+Firebase project `mercon-driver` with an Android app for `tech.mercon.driver`, its
+`google-services.json` in `driver-app/`, and the FCM v1 key in the Expo project. Set up and
+tested on a real phone (2026-10-03).
 
 ## Operator app — push not built yet
 

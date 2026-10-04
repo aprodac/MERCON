@@ -15,7 +15,7 @@ export const OPS_TABS: { id: OpsTab; label: string }[] = [
   { id: 'attention', label: 'Attention' },
   { id: 'scheduled', label: 'Scheduled' },
   { id: 'fleet', label: 'Fleet' },
-  { id: 'done', label: 'Done today' },
+  { id: 'done', label: 'Done' },
 ];
 
 export const ACTIVE_STATUSES = ['Loading', 'InTransit', 'Delayed'] as const;
@@ -63,6 +63,40 @@ export function nextStatuses(status: string): { forward: string[]; back: string[
     else back.push(s);
   }
   return { forward, back, cancel: allowed.includes('Cancelled') };
+}
+
+/** Wording for the confirm box of a status change that needsConfirm() flags (live map + trip page). */
+export function statusChangeCopy(ref: string, from: string, to: string): { title: string; message: string; label: string; destructive: boolean } {
+  if (to === 'Cancelled') {
+    return {
+      title: `Cancel ${ref}?`,
+      message: 'The trip leaves the live board. It can be restored to Draft or Scheduled later.',
+      label: 'Cancel trip',
+      destructive: true,
+    };
+  }
+  if (to === 'Completed') {
+    return {
+      title: `Complete ${ref}?`,
+      message: 'This closes the trip and frees the driver and truck. You can add extra charges straight after.',
+      label: 'Mark completed',
+      destructive: false,
+    };
+  }
+  if (to === 'Draft') {
+    return {
+      title: `Send ${ref} back to Draft?`,
+      message: 'The driver and truck are freed for other trips.',
+      label: 'Move to Draft',
+      destructive: false,
+    };
+  }
+  return {
+    title: `Reopen ${ref}?`,
+    message: `It moves from ${STATUS_LABEL[from] ?? from} back to ${STATUS_LABEL[to] ?? to}.`,
+    label: 'Reopen',
+    destructive: false,
+  };
 }
 
 /** Moves that are easy to get wrong and hard to undo ask first. */

@@ -57,11 +57,12 @@ export default function AssignTruckPanel({ trip, candidates, selectedKey, format
       onAssigned();
     },
     onError: (err: unknown, c) => {
-      const code = (err as { response?: { data?: { error?: { message?: string } } } })?.response?.data?.error?.message;
+      const error = (err as { response?: { data?: { error?: { code?: string; message?: string } } } })?.response?.data?.error;
+      const code = error?.code;
       const msg =
         code === 'VEHICLE_UNAVAILABLE' ? `${c.unit.vehicle!.plate_number} was just taken — pick another` :
         code === 'DRIVER_UNAVAILABLE' ? `${c.driver?.name ?? 'The driver'} is no longer available` :
-        code ?? `Couldn't assign ${c.unit.vehicle!.plate_number}`;
+        error?.message ?? `Couldn't assign ${c.unit.vehicle!.plate_number}`;
       toast.error(msg);
     },
   });

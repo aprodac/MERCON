@@ -40,7 +40,7 @@ const LiveNavigationScreen = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t, language, tr } = useLanguage();
-  const { trip, loading, refetch } = useCurrentTrip();
+  const { trip, loading, error, refetch } = useCurrentTrip();
   const [position, setPosition] = useState<{ lat: number; lng: number; heading?: number | null; speedKph?: number | null } | null>(null);
   // Map camera: follow the truck in a tilted driver view by default; night map after dark.
   const [follow, setFollow] = useState(true);
@@ -92,6 +92,14 @@ const LiveNavigationScreen = () => {
   // stops were never stamped, so finishing the last stop (→ IN_TRANSIT)
   // bounced the driver straight back to stop #1 — the stop ↔ navigate loop.
   const pendingStop = parseStopWorkflowState(ws);
+
+  // The trip was cancelled or given to another driver: the server now says
+  // there is no current trip. Go home instead of a map of placeholders
+  // ("Pickup Location, Pickup Point, Saudi Arabia") — seen on a real phone
+  // after "Change driver". Only on a clean answer, never on a network error.
+  useEffect(() => {
+    if (!loading && !error && !trip) router.replace('/' as any);
+  }, [loading, error, trip]);
 
   useEffect(() => {
     if (loading || !trip || !pendingStop) return;
@@ -164,7 +172,6 @@ const LiveNavigationScreen = () => {
 
 
 
-  const lastPostTimeRef = useRef<number>(0);
 
   // Stream live position to backend and track distance to the destination.
   useEffect(() => {
@@ -228,19 +235,9 @@ const LiveNavigationScreen = () => {
             speedKph: speedMs != null ? Math.round(speedMs * 3.6) : null,
           }));
 
-          // Send throttled location update to backend every 15 seconds
-          const now = Date.now();
-          if (trip?.id && now - lastPostTimeRef.current >= 15000) {
-            lastPostTimeRef.current = now;
-            tripService.sendLocationUpdate(trip.id, {
-              latitude: lat,
-              longitude: lng,
-              speed_kph: loc.coords.speed != null && loc.coords.speed >= 0 ? loc.coords.speed * 3.6 : null,
-              heading_deg: loc.coords.heading != null && loc.coords.heading >= 0 ? loc.coords.heading : null,
-              accuracy_m: loc.coords.accuracy != null ? loc.coords.accuracy : null,
-              recorded_at: new Date(loc.timestamp).toISOString(),
-            });
-          }
+          // This watch only moves the map. GPS goes to the server from the
+          // trip location service (DriverLiveTracking), which keeps running
+          // when the driver leaves this screen or the app.
 
           if (activeStop && isValidCoordinate(activeStop.location_lat, activeStop.location_lng)) {
             setDistanceToTarget(distanceMeters(lat, lng, activeStop.location_lat, activeStop.location_lng));

@@ -9,11 +9,15 @@ import { trashService, TrashItem } from '@/services/trashService';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import DataTable from '@/components/ui/DataTable';
 import { cn } from '@/lib/utils';
+import { authStore } from '@/store/authStore';
 
 
 type EntityFilter = 'ALL' | 'Trip' | 'Driver' | 'Vehicle' | 'MaintenanceRecord' | 'Customer' | 'FINANCIALS';
 
 export default function RecycleBinPage() {
+  // Deleting for good can't be undone — Admins only (the API enforces it too).
+  const role = authStore.getUser()?.role;
+  const canPurge = role === 'Admin' || role === 'SuperAdmin';
   const queryClient = useQueryClient();
   const [selectedCategory, setSelectedCategory] = useState<EntityFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -176,7 +180,7 @@ export default function RecycleBinPage() {
           >
             <RotateCcw className="h-3.5 w-3.5" /> Restore
           </button>
-          <button
+          {canPurge && <button
             onClick={() => {
               setConfirmModal({
                 isOpen: true,
@@ -191,7 +195,7 @@ export default function RecycleBinPage() {
             className="h-8 w-8 inline-flex items-center justify-center rounded-lg text-muted-foreground hover:text-[#DC2626] hover:bg-[#FEF2F2] transition-colors"
           >
             <Trash2 className="h-4 w-4" />
-          </button>
+          </button>}
         </div>
       ),
     },
@@ -307,7 +311,7 @@ export default function RecycleBinPage() {
         <>
           <Btn label="Refresh" variant="ghost" size="sm" icon={<RefreshCw size={13} className={cn(isRefetching && 'animate-spin')} />} onClick={() => queryClient.invalidateQueries({ queryKey: ['trash'] })} />
           <Btn label="Export CSV" variant="outline" size="sm" icon={<Download size={13} />} onClick={handleExportCSV} disabled={filteredItems.length === 0} />
-          <Btn label="Empty recycle bin" variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={handlePurgeAll} disabled={trashItems.length === 0} />
+          {canPurge && <Btn label="Empty recycle bin" variant="danger" size="sm" icon={<Trash2 size={13} />} onClick={handlePurgeAll} disabled={trashItems.length === 0} />}
         </>
       }
     >
@@ -336,7 +340,7 @@ export default function RecycleBinPage() {
         columns={columns}
         data={filteredItems}
         enableSelection={true}
-        bulkActions={bulkActions}
+        bulkActions={canPurge ? bulkActions : bulkActions.filter((a) => a.variant !== 'danger')}
         compact={true}
         isLoading={isLoading}
         searchPlaceholder="Search by name or ID"

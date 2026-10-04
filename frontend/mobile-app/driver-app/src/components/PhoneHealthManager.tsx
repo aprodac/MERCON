@@ -18,6 +18,8 @@ import { Colors, Radius, Spacing, Typography, Shadows } from '@mercon/mobile-sha
 import { getPhoneHealthState, reportPhoneHealth, subscribePhoneHealth, type PhoneHealthState } from '@/services/phoneHealth';
 
 const HEARTBEAT_MS = 5 * 60_000;
+/** A system dialog (permission, "turn on location") also pauses the app; don't count each one as an open. */
+const APP_OPENED_MIN_GAP_MS = 60_000;
 
 export function usePhoneHealthState(): PhoneHealthState {
   const [s, setS] = useState(getPhoneHealthState());
@@ -29,8 +31,12 @@ export function PhoneHealthWatcher() {
   useEffect(() => {
     // The first report is sent by the session start (services/auth.ts → syncPushToken).
     let wasBackground = false;
+    let lastOpened = Date.now();
     const sub = AppState.addEventListener('change', (next) => {
-      if (next === 'active' && wasBackground) void reportPhoneHealth('AppOpened');
+      if (next === 'active' && wasBackground && Date.now() - lastOpened >= APP_OPENED_MIN_GAP_MS) {
+        lastOpened = Date.now();
+        void reportPhoneHealth('AppOpened');
+      }
       wasBackground = next !== 'active';
     });
     const timer = setInterval(() => {

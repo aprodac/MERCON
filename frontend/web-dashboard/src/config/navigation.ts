@@ -5,7 +5,7 @@ import {
   FolderTree, CalendarCheck, BarChart3, FileBarChart, Coins, TrendingUp,
   SlidersHorizontal, Files, GraduationCap, Bell, Settings, Palette, UserCog, ShieldCheck, Smile,
   Map as MapIcon, MapPin, Layers, Tags, FileType, Trash2, ScrollText, AlertTriangle, Activity, FolderArchive, FileCheck2,
-  ArrowLeftRight, Percent, Banknote,
+  ArrowLeftRight, Percent, Banknote, Eraser,
 } from 'lucide-react';
 import type { ModuleKey } from '@mercon/shared-types';
 
@@ -159,7 +159,7 @@ export const NAV_PAGES: NavPage[] = [
 
   // Fleet
   {
-    id: 'vehicles', label: 'Vehicles', path: '/vehicles', icon: Car, section: 'fleet', moduleKey: 'vehicles', keywords: ['trucks', 'trailers', 'fleet'],
+    id: 'vehicles', label: 'Trucks', path: '/vehicles', icon: Car, section: 'fleet', moduleKey: 'vehicles', keywords: ['vehicles', 'trailers', 'fleet'],
     match: (p) => (p === '/vehicles' || p.startsWith('/vehicles/')) && !isVehicleFinancials(p),
   },
   { id: 'drivers', label: 'Drivers', path: '/drivers', icon: Users, section: 'fleet', moduleKey: 'drivers' },
@@ -249,6 +249,7 @@ export const SETTINGS_PAGES: SettingsNavPage[] = [
   { id: 'audit-log', label: 'Audit log', path: '/settings/audit-log', icon: ScrollText, settingsGroup: 'safety', superAdminOnly: true, keywords: ['audit trail', 'history'] },
   { id: 'error-console', label: 'Error console', path: '/settings/error-console', icon: AlertTriangle, settingsGroup: 'safety', adminOnly: true, keywords: ['errors', 'logs'] },
   { id: 'system-health', label: 'System health', path: '/settings/system-health', icon: Activity, settingsGroup: 'safety', superAdminOnly: true, keywords: ['status', 'diagnostics'] },
+  { id: 'data-cleanup', label: 'Clean up data', path: '/settings/data-cleanup', icon: Eraser, settingsGroup: 'safety', superAdminOnly: true, keywords: ['reset', 'test data', 'demo data', 'wipe', 'purge'] },
   { id: 'aprodac-vault', label: 'Aprodac vault', path: '/aprodac-documents', icon: FolderArchive, settingsGroup: 'aprodac', moduleKey: 'aprodac-documents', keywords: ['aprodac', 'shared documents', 'vendor'], match: (p) => p === '/aprodac-documents' || p === '/aprodac' },
 ];
 

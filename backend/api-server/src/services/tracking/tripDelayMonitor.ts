@@ -5,6 +5,8 @@ import { DELAY_THRESHOLD_MINUTES } from '../tripLifecycle';
 import { notifyOperatorsOfDelay, createNotification, createDriverNotification } from '../../controllers/notificationController';
 
 let monitorInterval: NodeJS.Timeout | null = null;
+/** Trips already marked Delayed still get the driver prompt only this long after the stop was due. */
+const ALREADY_DELAYED_PROMPT_WINDOW_MIN = 12 * 60;
 let isChecking = false;
 
 /**
@@ -68,6 +70,12 @@ export async function notifyOperatorsOfStaleScheduled(
   }
 }
 
+function startsIn(plannedStart: Date | null, now: Date): string {
+  const min = plannedStart ? Math.round((plannedStart.getTime() - now.getTime()) / 60000) : 30;
+  if (min <= 1) return 'starts now';
+  return `starts in ${min} minutes`;
+}
+
 /**
  * Checks for trips starting within the next 30 minutes and sends an automated
  * TripStartingSoon push notification/reminder to the assigned driver.
@@ -120,7 +128,9 @@ export async function checkTripsStartingSoon(now: Date = new Date()): Promise<nu
         await createDriverNotification(
           trip.driverId,
           'Trip Starting Soon',
-          `Your trip ${trip.ref_id ?? ''} starts in 30 minutes. Open the app to prepare.`.replace('  ', ' '),
+          // Real time left: a trip given to a driver 2 minutes before it starts
+          // used to say "starts in 30 minutes".
+          `Your trip ${trip.ref_id ?? ''} ${startsIn(trip.planned_start, now)}. Open the app to prepare.`.replace('  ', ' '),
           'TripStartingSoon',
           'Trip',
           trip.id,
@@ -168,7 +178,10 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
 
     const activeTrips = await prisma.trip.findMany({
       where: {
-        status: { in: [TripStatus.Scheduled, TripStatus.Loading, TripStatus.InTransit] },
+        // Delayed too: a trip that is already late when it is created or given a
+        // driver is marked Delayed straight away, and its driver must still get
+        // the "report the reason" prompt (seen on dev: none was ever sent).
+        status: { in: [TripStatus.Scheduled, TripStatus.Loading, TripStatus.InTransit, TripStatus.Delayed] },
         deletedAt: null,
       },
       include: {
@@ -180,11 +193,23 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
     });
 
     for (const trip of activeTrips) {
+      const alreadyDelayed = trip.status === TripStatus.Delayed;
+      // A Delayed trip is judged like the stage it is really at.
+      const firstPickup = trip.stops.find((s) => s.stop_type === StopType.Pickup) || trip.stops[0];
+      const stage: TripStatus = !alreadyDelayed
+        ? trip.status
+        : !firstPickup || firstPickup.actual_arrival === null
+          ? TripStatus.Scheduled
+          : firstPickup.actual_departure === null
+            ? TripStatus.Loading
+            : TripStatus.InTransit;
       let isDelayed = false;
       let delayMinutes = 0;
       let targetStop: (typeof trip.stops)[number] | null = trip.stops[0] || null;
+      // Every case below is "not there yet", except a pickup that was reached but not left.
+      let situation: 'not_arrived' | 'not_departed' = 'not_arrived';
 
-      if (trip.status === TripStatus.Scheduled) {
+      if (stage === TripStatus.Scheduled) {
         const pickupStop = trip.stops.find((s) => s.stop_type === StopType.Pickup) || trip.stops[0];
         const plannedTime = pickupStop?.planned_arrival || trip.planned_start;
 
@@ -213,7 +238,7 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
             }
           }
         }
-      } else if (trip.status === TripStatus.Loading) {
+      } else if (stage === TripStatus.Loading) {
         const pickupStop = trip.stops.find((s) => s.stop_type === StopType.Pickup) || trip.stops[0];
 
         // If actual pickup arrival has occurred, the arrival deadline is complete!
@@ -229,6 +254,7 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
               isDelayed = true;
               delayMinutes = diffMinutes;
               targetStop = pickupStop;
+              situation = 'not_departed';
             }
           }
         } else {
@@ -244,7 +270,7 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
             }
           }
         }
-      } else if (trip.status === TripStatus.InTransit) {
+      } else if (stage === TripStatus.InTransit) {
         // Evaluate the first unreached stop in sequence
         const pendingStop = trip.stops.find((s) => s.actual_arrival === null);
         const plannedTime = pendingStop?.planned_arrival || trip.planned_end;
@@ -260,19 +286,25 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
         }
       }
 
+      // An already-Delayed trip only still owes its driver the prompt, and only
+      // while the delay is fresh: old trips left Delayed for days must not start
+      // alerting drivers or the office when this runs.
+      if (alreadyDelayed && delayMinutes > ALREADY_DELAYED_PROMPT_WINDOW_MIN) isDelayed = false;
+
       if (isDelayed) {
-        logger.warn(
+        if (!alreadyDelayed) logger.warn(
           { tripId: trip.id, refId: trip.ref_id, delayMinutes, currentStatus: trip.status },
           '[TripDelayMonitor] Trip detected as delayed due to schedule overrun',
         );
 
         // Update database Trip.status to Delayed, preserving driver_workflow_state
-        await prisma.trip.update({
-          where: { id: trip.id },
-          data: { status: TripStatus.Delayed },
-        });
-
-        delayedCount++;
+        if (!alreadyDelayed) {
+          await prisma.trip.update({
+            where: { id: trip.id },
+            data: { status: TripStatus.Delayed },
+          });
+          delayedCount++;
+        }
 
         // Idempotent notification: max 1 per 6 hours for ongoing delay condition
         const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000);
@@ -285,7 +317,7 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
           },
         });
 
-        if (!existingNotif) {
+        if (!existingNotif && !alreadyDelayed) {
           await notifyOperatorsOfDelay({
             tripId: trip.id,
             tripRefId: trip.ref_id,
@@ -293,6 +325,7 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
             stopType: targetStop?.stop_type || StopType.Pickup,
             locationName: targetStop?.location_name || null,
             delayMinutes,
+            situation,
           });
         }
 
@@ -306,7 +339,8 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
               entity_type: 'Trip',
               type: 'TripDelayPrompt',
               message: { contains: targetStopId ? `[stop:${targetStopId}]` : '' },
-              createdAt: { gte: sixHoursAgo },
+              // Already Delayed: once per stop, ever (this runs every minute).
+              ...(alreadyDelayed ? {} : { createdAt: { gte: sixHoursAgo } }),
             },
           });
 
@@ -334,7 +368,7 @@ export async function checkTripsForDelay(now: Date = new Date()): Promise<number
         }
 
         // Broadcast status update to sockets
-        try {
+        if (!alreadyDelayed) try {
           const { io } = require('../../index');
           if (io) {
             io.to(`trip:${trip.id}`).emit('trip:status_change', {

@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { formatQuotationRef } from '@mercon/shared-types';
 import { toast } from 'sonner';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
@@ -51,6 +52,7 @@ import QuotationFormDialog from '@/components/quotations/RateCardFormDialog';
 import { CustomerSurchargesSection } from '@/components/quotations/CustomerSurchargesSection';
 import ExcelImportDialog from '@/components/fleet/ExcelImportDialog';
 import { QuotationRouteDrawer } from './QuotationRouteDrawer';
+import { QuotationRouteMatrix, quotationRef, quotationStopNames, quotationOffLabel, isMonthlyQuotation } from '@/components/quotations/QuotationRouteMatrix';
 import { RATE_CARD_COLUMNS } from '@/utils/importUtils';
 import ExportModal, { ExportColumn } from '@/components/ui/ExportModal';
 import { exportExcelTable, exportPDFTable } from '@/utils/exportUtils';
@@ -61,7 +63,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -111,227 +112,24 @@ function getVehicleClassBadge(vehicleClass?: string | null) {
   return <TaxonomyBadge category="VEHICLE_CLASS" value={vehicleClass} fallbackText="Standard" />;
 }
 
-function getLineTypeBadge(lineType?: string | null) {
-  return <TaxonomyBadge category="LINE_TYPE" value={lineType} fallbackText="Single Trip" />;
-}
-
-function getOperationTypeBadge(billingType?: string | null) {
-  return <TaxonomyBadge category="OPERATION_TYPE" value={billingType} fallbackText="Extra" />;
-}
-
-function RouteStopsCell({ quotation, onOpenDrawer }: { quotation: Quotation; onOpenDrawer: (q: Quotation) => void }) {
-  const stops = (quotation.stops || (quotation as any).via_stops || (quotation as any).viaStops || []) as any[];
-
-  // Determine stop details in exact sequence
-  const stopDetails = useMemo(() => {
-    if (stops.length > 0) {
-      return stops.map((s: any) => {
-        const shortName = s.source_label || s.location?.code || s.name || s.label || 'Location';
-        const canonicalName =
-          s.location?.name && s.location.name.trim().toLowerCase() !== shortName.trim().toLowerCase()
-            ? s.location.name
-            : null;
-        return {
-          shortName,
-          canonicalName,
-          city: s.location?.city || null,
-        };
-      });
-    }
-    const origin = quotation.route_origin || 'Origin';
-    const dest = quotation.route_destination || 'Destination';
-    return [
-      { shortName: origin, canonicalName: null, city: null },
-      { shortName: dest, canonicalName: null, city: null },
-    ];
-  }, [stops, quotation]);
-
-  const stopNames = useMemo(() => stopDetails.map((s) => s.shortName), [stopDetails]);
-
-  const firstStop = stopDetails[0]?.shortName || 'Origin';
-  const lastStop = stopDetails[stopDetails.length - 1]?.shortName || 'Destination';
-  const intermediateStops = stopNames.slice(1, -1);
-  const totalStops = Math.max(stopDetails.length, 2);
-
-  // Line 2 subtitle generation
-  let viaText = 'Direct';
-  if (intermediateStops.length > 0) {
-    if (intermediateStops.length <= 2) {
-      viaText = `via ${intermediateStops.join(', ')}`;
-    } else {
-      viaText = `via ${intermediateStops[0]}, ${intermediateStops[1]}...`;
-    }
-  }
-
+function RouteStopsCell({ quotation }: { quotation: Quotation }) {
+  const names = quotationStopNames(quotation);
+  const off = quotationOffLabel(quotation);
   return (
-    <HoverCard>
-      <HoverCardTrigger>
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenDrawer(quotation);
-          }}
-          className="text-left group cursor-pointer p-2 rounded-xl bg-slate-50/50 hover:bg-[#EEF1F6] dark:bg-slate-800/30 dark:hover:bg-slate-800 border border-slate-200/60 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 transition-all min-w-[220px] max-w-sm block shadow-2xs"
-        >
-          {/* Primary Line: First Stop → Last Stop */}
-          <div className="flex items-center gap-1.5 text-xs font-bold text-[#3E3C3D] dark:text-slate-100 group-hover:text-[#FA634E] transition-colors">
-            <span className="truncate">{firstStop}</span>
-            <ArrowRight className="h-3 w-3 text-slate-400 group-hover:text-[#FA634E] shrink-0 transition-colors" />
-            <span className="truncate">{lastStop}</span>
-          </div>
-
-          {/* Secondary Subtitle: via Intermediate Stops · N stops · Inspect › */}
-          <div className="text-[11px] text-slate-500 font-normal flex items-center justify-between gap-1.5 mt-1">
-            <div className="flex items-center gap-1 truncate min-w-0">
-              <span className="truncate">{viaText}</span>
-              <span className="text-slate-300 dark:text-slate-700">·</span>
-              <span className="font-mono font-bold text-[#3E3C3D] dark:text-slate-300 shrink-0 group-hover:text-[#FA634E] transition-colors">
-                {totalStops} {totalStops === 1 ? 'stop' : 'stops'}
-              </span>
-            </div>
-
-            {/* Permanent MERCON Orange Inspect affordance indicator */}
-            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-[#FA634E] shrink-0 transition-all group-hover:translate-x-0.5">
-              <span>Inspect</span>
-              <ChevronRight className="w-3.5 h-3.5 text-[#FA634E]" />
-            </span>
-          </div>
-        </div>
-      </HoverCardTrigger>
-
-      <HoverCardContent align="start" side="bottom" sideOffset={6} className="w-80 p-3.5 shadow-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-xl space-y-2.5 z-[9999]">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Quick Route Preview</span>
-          <Badge variant="outline" className="text-[10px] font-mono font-bold px-1.5 py-0 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-            {totalStops} Stops
-          </Badge>
-        </div>
-
-        <div className="text-xs font-black text-[#3E3C3D] dark:text-slate-100 flex items-center gap-1.5">
-          <span>{firstStop}</span>
-          <ArrowRight className="w-3 h-3 text-[#FA634E]" />
-          <span>{lastStop}</span>
-        </div>
-
-        <div className="space-y-1.5 pt-1 max-h-40 overflow-y-auto">
-          {stopDetails.map((stop, idx) => (
-            <div key={idx} className="flex flex-col text-[11px] text-slate-700 dark:text-slate-300 py-1 px-2 rounded-md bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800/60">
-              <div className="flex items-center gap-2">
-                <span className="w-4 text-slate-400 font-mono text-[10px] font-bold">{idx + 1}.</span>
-                <span className="font-bold text-[#3E3C3D] dark:text-slate-100 truncate">{stop.shortName}</span>
-              </div>
-              {(stop.canonicalName || stop.city) && (
-                <div className="pl-6 text-[10px] font-medium text-slate-500 truncate flex items-center gap-1">
-                  {stop.canonicalName && <span>{stop.canonicalName}</span>}
-                  {stop.canonicalName && stop.city && <span>·</span>}
-                  {stop.city && <span className="font-mono text-[9px] text-slate-400">{stop.city}</span>}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="text-[10px] font-medium text-slate-400 italic pt-1 border-t border-slate-100 dark:border-slate-800 text-center">
-          Click route to open full details drawer →
-        </div>
-      </HoverCardContent>
-    </HoverCard>
-  );
-}
-
-function SurchargesCell({ quotation, onOpenCustomerSurcharges }: { quotation: Quotation; onOpenCustomerSurcharges?: () => void }) {
-  const rules = ((quotation as any).surchargeRules || (quotation as any).surcharge_rules || []) as any[];
-  if (!rules || rules.length === 0) {
-    return (
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={() => onOpenCustomerSurcharges?.()}
-        className="h-6 px-1.5 text-[11px] text-slate-400 hover:text-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md gap-1 font-normal"
-      >
-        <Tag className="w-3 h-3 text-slate-300 dark:text-slate-600" />
-        <span>0 fees</span>
-      </Button>
-    );
-  }
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-6 px-2 text-[11px] font-medium border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md gap-1 cursor-pointer"
-        >
-          <Tag className="w-3 h-3 text-[#FA634E]" />
-          <span>{rules.length} {rules.length === 1 ? 'rule' : 'rules'}</span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-64 p-3 shadow-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-lg space-y-2">
-        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1.5">
-          <span className="text-xs font-bold text-slate-900 dark:text-slate-100">Surcharge Rules</span>
-          <Badge variant="outline" className="text-[10px] font-mono font-semibold px-1.5 py-0">
-            {rules.length} Total
-          </Badge>
-        </div>
-        <div className="space-y-1.5 text-xs max-h-48 overflow-y-auto">
-          {rules.map((rule: any, idx: number) => {
-            const feeType = rule.fee_name || rule.fee_type || rule.charge_type || rule.name || 'Additional Fee';
-            const amount = rule.amount != null ? `SAR ${Number(rule.amount).toLocaleString()}` : rule.rate != null ? `SAR ${Number(rule.rate).toLocaleString()}` : '—';
-            const unit = rule.unit ? `/ ${rule.unit}` : '';
-            return (
-              <div key={idx} className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
-                <span className="font-medium text-slate-800 dark:text-slate-200">{feeType}</span>
-                <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">{amount} {unit}</span>
-              </div>
-            );
-          })}
-        </div>
-
-        {onOpenCustomerSurcharges && (
-          <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onOpenCustomerSurcharges()}
-              className="w-full h-7 text-[11px] font-bold text-[#FA634E] hover:text-[#DF4834] hover:bg-orange-50 dark:hover:bg-orange-950/30 justify-between px-2"
-            >
-              <span>Manage Customer Surcharges</span>
-              <ArrowRight className="w-3 h-3" />
-            </Button>
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function ValidityStatusCell({ quotation }: { quotation: Quotation }) {
-  const now = new Date();
-  const validFrom = quotation.valid_from ? new Date(quotation.valid_from) : null;
-  const validTo = quotation.valid_to ? new Date(quotation.valid_to) : null;
-
-  const isExpired = validTo ? validTo < now : false;
-  const isFuture = validFrom ? validFrom > now : false;
-
-  let statusBadge = <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 font-medium text-[10px] px-2 py-0.5">Active</Badge>;
-  if (!quotation.is_active) {
-    statusBadge = <Badge variant="outline" className="text-slate-400 text-[10px] px-2 py-0.5">Inactive</Badge>;
-  } else if (isExpired) {
-    statusBadge = <Badge className="bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 font-medium text-[10px] px-2 py-0.5">Expired</Badge>;
-  } else if (isFuture) {
-    statusBadge = <Badge className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 font-medium text-[10px] px-2 py-0.5">Future</Badge>;
-  }
-
-  const fromStr = quotation.valid_from ? new Date(quotation.valid_from).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
-  const toStr = quotation.valid_to ? new Date(quotation.valid_to).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Ongoing';
-
-  const dateText = fromStr ? `${fromStr} → ${toStr}` : 'Ongoing';
-
-  return (
-    <div className="space-y-0.5">
-      <div>{statusBadge}</div>
-      <div className="text-[10px] text-slate-500 font-mono whitespace-nowrap">{dateText}</div>
+    <div className="min-w-[200px]">
+      <div className="flex flex-wrap items-center gap-1 font-semibold text-[#3E3C3D] dark:text-slate-100">
+        {names.map((n, i) => (
+          <span key={i} className="inline-flex items-center gap-1">
+            {i > 0 && <ArrowRight className="h-3 w-3 text-slate-400" />}
+            {n}
+          </span>
+        ))}
+      </div>
+      <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[10px] text-slate-400">
+        <span>{quotationRef(quotation)}</span>
+        {names.length > 2 && <span>· {names.length} stops</span>}
+        {off && <span className={cn('font-sans font-semibold', off === 'Expired' ? 'text-rose-600' : 'text-amber-600')}>· {off}</span>}
+      </div>
     </div>
   );
 }
@@ -345,6 +143,9 @@ export default function QuotationListPage() {
 
   // Customer Workspace Sub-Tab State ('routes' | 'surcharges')
   const [customerWorkspaceTab, setCustomerWorkspaceTab] = useState<'routes' | 'surcharges'>('routes');
+
+  // 'list' = one row per quotation (always the default, owner 2026-10-04); 'routes' = one row per route with a price per truck.
+  const [ledgerView, setLedgerView] = useState<'routes' | 'list'>('list');
 
   const handleOpenCustomerSurcharges = (id: string, _name: string) => {
     setSelectedCustomerId(id);
@@ -490,7 +291,7 @@ export default function QuotationListPage() {
         const matchRef = (q.agreement_ref || '').toLowerCase().includes(term);
         const matchName = (q.name || '').toLowerCase().includes(term);
         const qNum = (q as any).quotation_number != null ? String((q as any).quotation_number) : '';
-        const qCode = qNum ? `qt-${qNum}` : `qt-${q.id.substring(0, 8).toLowerCase()}`;
+        const qCode = qNum ? `${(formatQuotationRef(qNum) || '').toLowerCase()} qt-${qNum}` : `qt-${q.id.substring(0, 8).toLowerCase()}`;
         const matchQNum = qNum.includes(term) || qCode.includes(term) || (q.id || '').toLowerCase().includes(term);
         if (!matchRoute && !matchVehicle && !matchRef && !matchName && !matchQNum) return false;
       }
@@ -654,8 +455,8 @@ export default function QuotationListPage() {
         q.is_active ? 'Active' : 'Inactive',
       ]);
       toast.dismiss(toastId);
-      if (format === 'xlsx') await exportExcelTable('MERCON Commercial Quotations', headers, rows, `quotations_${new Date().toISOString().slice(0, 10)}.xlsx`);
-      else exportPDFTable('MERCON Commercial Quotations', headers, rows, `quotations_${new Date().toISOString().slice(0, 10)}.pdf`);
+      if (format === 'xlsx') await exportExcelTable('MERCON Quotations', headers, rows, `quotations_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      else exportPDFTable('MERCON Quotations', headers, rows, `quotations_${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch {
       toast.dismiss(toastId);
       toast.error('Failed to generate export');
@@ -663,7 +464,7 @@ export default function QuotationListPage() {
   };
 
   return (
-    <DashboardLayout active="Quotations" title="Quotations Workspace">
+    <DashboardLayout active="Quotations" title="Quotations">
       <div className="px-4 sm:px-6 pb-10 w-full flex flex-col animate-fade-in gap-4">
         
         {/* 1. Page Header */}
@@ -672,7 +473,7 @@ export default function QuotationListPage() {
             <Calculator className="w-7 h-7 text-[#FA634E] shrink-0" />
             <div>
               <h1 className="text-xl sm:text-2xl font-black text-[#3E3C3D] dark:text-slate-100 tracking-tight uppercase">
-                COMMERCIAL QUOTATIONS
+                QUOTATIONS
               </h1>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-normal">
                 Customer rates, route terms, and surcharge rules.
@@ -710,7 +511,7 @@ export default function QuotationListPage() {
               onClick={() => navigate(selectedGroup ? `/quotations/new?customer_id=${selectedGroup.id}` : '/quotations/new')}
             >
               <Plus className="h-4 w-4 stroke-[2.5]" />
-              <span>New Commercial Route</span>
+              <span>New quotation</span>
             </Button>
           </div>
         </div>
@@ -806,8 +607,13 @@ export default function QuotationListPage() {
                           <h2 className="text-base font-black text-[#3E3C3D] dark:text-slate-100 tracking-tight">
                             {selectedGroup.name}
                           </h2>
-                          <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-                            Commercial Workspace & Rate Ledger
+                          <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                            {(() => {
+                              const qs = selectedGroup.quotations;
+                              const monthly = qs.filter(isMonthlyQuotation).length;
+                              const withPay = qs.filter((q) => q.driver_payout != null).length;
+                              return `${qs.length} quotation${qs.length === 1 ? '' : 's'} · ${qs.length - monthly} per trip · ${monthly} monthly · ${withPay} with driver pay`;
+                            })()}
                           </p>
                         </div>
                       </div>
@@ -825,7 +631,7 @@ export default function QuotationListPage() {
                           )}
                         >
                           <RouteIcon className="w-3.5 h-3.5 text-[#FA634E]" />
-                          <span>Commercial Routes</span>
+                          <span>Quotations</span>
                           <span className="font-mono text-[10px] bg-slate-100 dark:bg-slate-800 px-1.5 py-0.2 rounded font-bold">
                             {selectedGroup.quotations.length}
                           </span>
@@ -842,7 +648,7 @@ export default function QuotationListPage() {
                           )}
                         >
                           <Tag className="w-3.5 h-3.5 text-amber-500" />
-                          <span>Standing Surcharges</span>
+                          <span>Extra charges</span>
                         </button>
                       </div>
                     </div>
@@ -894,6 +700,22 @@ export default function QuotationListPage() {
                             clearLabel="All Line Types"
                             size="sm"
                           />
+                        </div>
+
+                        <div className="flex items-center rounded-lg border border-slate-200 p-0.5 dark:border-slate-700" role="group" aria-label="Layout">
+                          {([['list', 'List'], ['routes', 'By route']] as const).map(([v, label]) => (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => { setLedgerView(v); setSelectedIds(new Set()); }}
+                              className={cn(
+                                'h-7 rounded-md px-2.5 text-xs font-semibold transition-colors',
+                                ledgerView === v ? 'bg-[#3E3C3D] text-white dark:bg-slate-100 dark:text-slate-900' : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                              )}
+                            >
+                              {label}
+                            </button>
+                          ))}
                         </div>
 
                         {isFiltersActive && (
@@ -951,7 +773,7 @@ export default function QuotationListPage() {
                       /* Empty State */
                       <div className="p-12 text-center flex flex-col items-center justify-center gap-2 max-w-md mx-auto">
                         <RouteIcon className="w-5 h-5 text-slate-400 shrink-0" />
-                        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">No Commercial Routes Yet</h3>
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">No quotations yet</h3>
                         <p className="text-xs text-slate-400">
                           {isFiltersActive ? 'No routes match your current active filters.' : 'This customer does not have any agreed commercial routes.'}
                         </p>
@@ -965,42 +787,39 @@ export default function QuotationListPage() {
                             onClick={() => navigate(`/quotations/new?customer_id=${selectedGroup.id}`)}
                             className="mt-2 h-8 px-3 text-xs font-semibold bg-[#FA634E] hover:bg-[#DF4834] text-white rounded-lg border-0"
                           >
-                            <Plus size={13} className="mr-1" /> Add Commercial Route
+                            <Plus size={13} className="mr-1" /> New quotation
                           </Button>
                         )}
                       </div>
+                    ) : ledgerView === 'routes' ? (
+                      <QuotationRouteMatrix quotations={filteredWorkspaceRoutes} onOpen={handleOpenDrawer} />
                     ) : (
                       <table className="w-full text-left text-xs">
                         <thead>
-                          <tr className="border-b border-slate-200 dark:border-slate-800 text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-50/50 dark:bg-slate-800/20">
+                          <tr className="border-b border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-500 bg-slate-50/50 dark:bg-slate-800/20">
                             <th className="py-2.5 px-3.5 w-10 text-center" onClick={(e) => e.stopPropagation()}>
                               <Checkbox
                                 checked={isAllSelected ? true : isSomeSelected ? "indeterminate" : false}
                                 onCheckedChange={handleToggleSelectAll}
-                                aria-label="Select all commercial routes"
+                                aria-label="Select all quotations"
                                 className="translate-y-[1px]"
                               />
                             </th>
-                            <th className="py-2.5 px-3.5 w-10">#</th>
-                            <th className="py-2.5 px-3.5 whitespace-nowrap">Quotation ID</th>
-                            <th className="py-2.5 px-3.5">Route / Stops</th>
-                            <th className="py-2.5 px-3.5">Vehicle Class</th>
-                            <th className="py-2.5 px-3.5">Operation Type</th>
-                            <th className="py-2.5 px-3.5">Line Type</th>
-                            <th className="py-2.5 px-3.5">Billing Rate</th>
-                            <th className="py-2.5 px-3.5">Driver Charge</th>
-                            <th className="py-2.5 px-3.5">Validity</th>
-                            <th className="py-2.5 px-3.5">Surcharges</th>
-                            <th className="py-2.5 px-3.5 text-right">Actions</th>
+                            <th className="py-2.5 px-3.5">Route</th>
+                            <th className="py-2.5 px-3.5">Truck</th>
+                            <th className="py-2.5 px-3.5">Line type</th>
+                            <th className="py-2.5 px-3.5">Operation</th>
+                            <th className="py-2.5 px-3.5 text-right">Price</th>
+                            <th className="py-2.5 px-3.5 text-right">Driver pay</th>
+                            <th className="py-2.5 px-3.5 w-10"><span className="sr-only">Actions</span></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-medium">
-                          {paginatedWorkspaceRoutes.map((row, idx) => {
-                            const rowNumber = (workspacePage - 1) * workspacePerPage + idx + 1;
-                            const driverChargeText = row.driver_payout != null && !isNaN(Number(row.driver_payout))
-                              ? `SAR ${Number(row.driver_payout).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                              : '—';
+                          {paginatedWorkspaceRoutes.map((row) => {
                             const isSelectedRow = selectedIds.has(row.id);
+                            const rawRate = Number(row.rate ?? row.base_price ?? 0);
+                            const monthly = isMonthlyQuotation(row);
+                            const pay = row.driver_payout != null && !isNaN(Number(row.driver_payout)) ? Number(row.driver_payout) : null;
 
                             return (
                               <tr
@@ -1026,133 +845,80 @@ export default function QuotationListPage() {
                                   isSelectedRow && "bg-rose-50/30 dark:bg-rose-950/20 hover:bg-rose-50/50"
                                 )}
                               >
-                                <td className="py-3 px-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                <td className="py-2.5 px-3.5 text-center" onClick={(e) => e.stopPropagation()}>
                                   <Checkbox
                                     checked={isSelectedRow}
                                     onCheckedChange={() => handleToggleSelectRow(row.id)}
-                                    aria-label={`Select route ${row.name || row.id}`}
+                                    aria-label={`Select ${quotationRef(row)}`}
                                     className="translate-y-[1px]"
                                   />
                                 </td>
 
-                                <td className="py-3 px-3.5 font-mono text-slate-400 text-[11px]">
-                                  {rowNumber}
+                                <td className="py-2.5 px-3.5">
+                                  <RouteStopsCell quotation={row} />
                                 </td>
 
-                                <td className="py-3 px-3.5 whitespace-nowrap">
-                                  <span className="font-mono text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700 inline-flex items-center gap-1">
-                                    <FileText className="w-3 h-3 text-[#FA634E]" />
-                                    {(row as any).quotation_number ? `QT-${(row as any).quotation_number}` : (row as any).agreement_ref || `QT-${row.id.substring(0, 8).toUpperCase()}`}
-                                  </span>
-                                </td>
-
-                                <td className="py-3 px-3.5">
-                                  <RouteStopsCell quotation={row} onOpenDrawer={handleOpenDrawer} />
-                                </td>
-
-                                <td className="py-3 px-3.5">
+                                <td className="py-2.5 px-3.5">
                                   {getVehicleClassBadge(row.vehicle_class)}
                                 </td>
 
-                                <td className="py-3 px-3.5">
-                                  {getOperationTypeBadge(row.operation_type || row.billing_type)}
+                                <td className="py-2.5 px-3.5">
+                                  <TaxonomyBadge category="LINE_TYPE" value={row.line_type || row.rate_category} fallbackText="Single Trip" />
                                 </td>
 
-                                <td className="py-3 px-3.5">
-                                  {getLineTypeBadge(row.line_type || row.rate_category)}
+                                <td className="py-2.5 px-3.5">
+                                  <TaxonomyBadge category="OPERATION_TYPE" value={row.operation_type || row.billing_type} fallbackText="Extra" />
                                 </td>
 
-                                <td className="py-3 px-3.5 font-mono text-xs whitespace-nowrap">
-                                  {(() => {
-                                    const rawRate = Number(row.rate ?? row.base_price ?? 0);
-                                    const isMonthly = row.pricing_basis === 'PER_TRIP'
-                                      ? false
-                                      : row.pricing_basis === 'PER_MONTH'
-                                      ? true
-                                      : (row.operation_type || row.billing_type || '').toLowerCase().includes('monthly');
-
-                                    if (isMonthly && rawRate > 0) {
-                                      const dailyEq = rawRate / 30;
-                                      return (
-                                        <div className="space-y-0.5">
-                                          <div className="font-bold text-slate-900 dark:text-slate-100">
-                                            SAR {rawRate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-[10px] font-semibold text-slate-500">/ mo</span>
-                                          </div>
-                                          <div className="text-[10px] text-slate-500 font-medium">
-                                            ≈ SAR {dailyEq.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / day
-                                          </div>
-                                        </div>
-                                      );
-                                    }
-                                    return (
-                                      <span className="font-bold text-slate-900 dark:text-slate-100">
-                                        SAR {rawRate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-[10px] font-semibold text-slate-500">/ trip</span>
-                                      </span>
-                                    );
-                                  })()}
+                                <td className="py-2.5 px-3.5 text-right font-mono whitespace-nowrap">
+                                  <span className="font-bold text-slate-900 dark:text-slate-100">{rawRate.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                                  <span className="ml-1 text-[10px] font-semibold text-slate-500">{monthly ? '/mo' : '/trip'}</span>
+                                  {monthly && rawRate > 0 && (
+                                    <div className="text-[10px] text-slate-400">≈ {(rawRate / 30).toLocaleString(undefined, { maximumFractionDigits: 0 })} / day</div>
+                                  )}
                                 </td>
 
-                                <td className="py-3 px-3.5 font-mono text-slate-500 dark:text-slate-400 text-xs whitespace-nowrap">
-                                  {driverChargeText}
+                                <td className="py-2.5 px-3.5 text-right font-mono whitespace-nowrap">
+                                  {pay != null
+                                    ? <span className="text-slate-700 dark:text-slate-300">{pay.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                                    : <span className="font-sans text-[11px] text-slate-400">set at booking</span>}
                                 </td>
 
-                                <td className="py-3 px-3.5">
-                                  <ValidityStatusCell quotation={row} />
-                                </td>
-
-                                <td className="py-3 px-3.5" onClick={(e) => e.stopPropagation()}>
-                                  <SurchargesCell
-                                    quotation={row}
-                                    onOpenCustomerSurcharges={() => handleOpenCustomerSurcharges(row.customerId || selectedGroup.id, selectedGroup.name)}
-                                  />
-                                </td>
-
-                                <td className="py-3 px-3.5 text-right" onClick={(e) => e.stopPropagation()}>
-                                  <div className="flex items-center justify-end gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => navigate(`/quotations/${row.id}/edit`)}
-                                      className="h-7 px-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:text-blue-600 rounded-md border border-slate-200/80 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800"
-                                    >
-                                      Edit
-                                    </Button>
-
-                                    <DropdownMenu>
-                                      <DropdownMenuTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-md cursor-pointer">
-                                          <MoreHorizontal className="h-4 w-4" />
-                                        </Button>
-                                      </DropdownMenuTrigger>
-                                      <DropdownMenuContent align="end" className="w-48 p-1.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-lg z-[9999]">
-                                        <DropdownMenuItem onClick={() => handleOpenDrawer(row)} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-                                          <Eye className="h-3.5 w-3.5 mr-2 text-slate-500" />
-                                          <span>Inspect Route Details</span>
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => navigate(`/quotations/${row.id}/edit`)} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-                                          <Edit2 className="h-3.5 w-3.5 mr-2 text-blue-600" />
-                                          <span>Edit Commercial Line</span>
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => navigate(`/quotations/new?customer_id=${row.customerId}&origin_id=${row.originLocationId || ''}&dest_id=${row.destinationLocationId || ''}`)} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-                                          <Copy className="h-3.5 w-3.5 mr-2 text-slate-500" />
-                                          <span>Duplicate Route</span>
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => handleToggleActive(row)} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-                                          <Power className="h-3.5 w-3.5 mr-2 text-emerald-600" />
-                                          <span>{row.is_active ? 'Deactivate' : 'Activate'}</span>
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator className="my-1 border-slate-100 dark:border-slate-800" />
-                                        <DropdownMenuItem
-                                          onSelect={(e) => e.preventDefault()}
-                                          onClick={() => { setSelectedQuotation(row); setIsDeleteModalOpen(true); }}
-                                          className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                                        >
-                                          <Trash2 className="h-3.5 w-3.5 mr-2" />
-                                          <span>Delete Route</span>
-                                        </DropdownMenuItem>
-                                      </DropdownMenuContent>
-                                    </DropdownMenu>
-                                  </div>
+                                <td className="py-2.5 px-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 rounded-md cursor-pointer" aria-label={`Actions for ${quotationRef(row)}`}>
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-48 p-1.5 shadow-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-lg z-[9999]">
+                                      <DropdownMenuItem onClick={() => handleOpenDrawer(row)} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
+                                        <Eye className="h-3.5 w-3.5 mr-2 text-slate-500" />
+                                        <span>Open</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => navigate(`/quotations/${row.id}/edit`)} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
+                                        <Edit2 className="h-3.5 w-3.5 mr-2 text-blue-600" />
+                                        <span>Edit</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => navigate(`/quotations/new?customer_id=${row.customerId}&origin_id=${row.originLocationId || ''}&dest_id=${row.destinationLocationId || ''}`)} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
+                                        <Copy className="h-3.5 w-3.5 mr-2 text-slate-500" />
+                                        <span>Duplicate</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleToggleActive(row)} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
+                                        <Power className="h-3.5 w-3.5 mr-2 text-emerald-600" />
+                                        <span>{row.is_active ? 'Switch off' : 'Switch on'}</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator className="my-1 border-slate-100 dark:border-slate-800" />
+                                      <DropdownMenuItem
+                                        onSelect={(e) => e.preventDefault()}
+                                        onClick={() => { setSelectedQuotation(row); setIsDeleteModalOpen(true); }}
+                                        className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5 mr-2" />
+                                        <span>Delete</span>
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 </td>
                               </tr>
                             );
@@ -1163,7 +929,7 @@ export default function QuotationListPage() {
                   </div>
 
                   {/* Pagination Footer */}
-                  {filteredWorkspaceRoutes.length > 0 && (
+                  {filteredWorkspaceRoutes.length > 0 && ledgerView === 'list' && (
                     <div className="p-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 flex items-center justify-between text-xs text-slate-500">
                       <div>
                         Showing <span className="font-semibold text-slate-900 dark:text-slate-100">{(workspacePage - 1) * workspacePerPage + 1}–{Math.min(workspacePage * workspacePerPage, filteredWorkspaceRoutes.length)}</span> of <span className="font-semibold text-slate-900 dark:text-slate-100">{filteredWorkspaceRoutes.length}</span> routes
@@ -1226,7 +992,7 @@ export default function QuotationListPage() {
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleDelete}
-        title="Delete Commercial Route"
+        title="Delete quotation"
         message="Are you sure you want to delete this commercial route quotation? Historical trips billed with this quotation will retain their commercial snapshot."
         confirmLabel="Delete Route"
         isDestructive
@@ -1237,7 +1003,7 @@ export default function QuotationListPage() {
         isOpen={isBulkDeleteModalOpen}
         onClose={() => setIsBulkDeleteModalOpen(false)}
         onConfirm={handleBulkDelete}
-        title={`Delete ${selectedIds.size} Commercial Routes`}
+        title={`Delete ${selectedIds.size} quotations`}
         message={`Are you sure you want to delete ${selectedIds.size} selected commercial route(s)? Historical trips billed with these quotations will retain their commercial rate snapshots.`}
         confirmLabel={isBulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size} Routes`}
         isDestructive
@@ -1264,7 +1030,7 @@ export default function QuotationListPage() {
         allData={rawQuotations}
         columns={QUOTATION_EXPORT_COLUMNS}
         fileNamePrefix="Mercon_Commercial_Quotations"
-        title="Export Commercial Quotations"
+        title="Export quotations"
       />
 
       {/* Right-Side Route Details Inspection Drawer */}

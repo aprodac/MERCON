@@ -47,6 +47,18 @@ export const settingsService = {
     return res.data.data;
   },
 
+  /** SuperAdmin: what "Clean up data" would remove (changes nothing). */
+  async getDataCleanup(): Promise<DataCleanupPreview> {
+    const res = await api.get<ApiResponse<DataCleanupPreview>>('/settings/data-cleanup');
+    return res.data.data;
+  },
+
+  /** SuperAdmin, dev databases only: remove the chosen data. */
+  async runDataCleanup(body: { allTrips: boolean; finance: boolean; customerIds: string[]; driverIds: string[]; locationIds: string[]; confirm: string }): Promise<DataCleanupResult> {
+    const res = await api.post<ApiResponse<DataCleanupResult>>('/settings/data-cleanup', body, { timeout: 180_000 });
+    return res.data.data;
+  },
+
   async getHealth(): Promise<any> {
     const res = await api.get<ApiResponse<any>>('/settings/health');
     return res.data.data;
@@ -102,3 +114,20 @@ export const settingsService = {
     return res.data.data.file_url;
   },
 };
+
+export interface DataCleanupPreview {
+  allowed: boolean;
+  database: string;
+  trips: { live: number; inRecycleBin: number; stops: number; gpsPoints: number; charges: number; documents: number; extraFiles: number };
+  finance: Record<string, number>;
+  customers: Array<{ id: string; name: string; phone: string | null; trips: number; quotations: number; locations: number; suggested: boolean; reason: string | null }>;
+  drivers: Array<{ id: string; name: string; phone: string | null; trips: number; suggested: boolean; reason: string | null }>;
+  locations: Array<{ id: string; name: string; customer: string | null; quotations: number; reason: string }>;
+}
+
+export interface DataCleanupResult {
+  database: string;
+  counts: Record<string, number>;
+  filesMoved: number;
+  filesFolder: string | null;
+}

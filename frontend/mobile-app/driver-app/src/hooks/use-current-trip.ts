@@ -41,6 +41,9 @@ export function useCurrentTrip(opts?: { pollMs?: number }) {
       queryClient.setQueryData(driverKeys.currentTrip, toCache(value));
       const at = queryClient.getQueryState(driverKeys.currentTrip)?.dataUpdatedAt ?? 0;
       setLocal(toCache(value) === value ? null : { trip: value, at });
+      // A trip that just finished belongs in Trips → History right away; the
+      // lists otherwise only refreshed when stale or on pull-to-refresh.
+      if (value && isFinished(value)) void queryClient.invalidateQueries({ queryKey: ['driver', 'trips'] });
     },
     [],
   );

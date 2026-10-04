@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db';
+import { sumDriverTripCharges } from '../services/driverCharges';
 import { DOCUMENT_LIST_SELECT, DOCUMENT_FILES_SELECT } from '../utils/documentSelect';
 import { generateRefId } from '../utils/refId';
 import { buildSearchAnd } from '../utils/search';
@@ -146,6 +147,13 @@ async function attachDriverGpsStatus<
   });
 }
 
+/** The linked user without its password hash — the hash is only read to set `hasAccountPassword`. */
+function withoutPasswordHash<U extends { password_hash?: string | null }>(user: U | null): Omit<U, 'password_hash'> | null {
+  if (!user) return null;
+  const { password_hash: _hash, ...rest } = user;
+  return rest;
+}
+
 export const getDrivers = async (req: Request, res: Response) => {
   try {
     const { page = '1', per_page = '20' } = req.query;
@@ -188,10 +196,15 @@ export const getDrivers = async (req: Request, res: Response) => {
         prisma.driver.count({ where: whereClause })
       ]);
 
-      const driversWithGps = await attachDriverGpsStatus(drivers);
+      // `gps=false` skips the live-location lookup for pickers that never show it
+      // (operator app create trip).
+      const driversWithGps = req.query.gps === 'false'
+        ? drivers.map((d) => ({ ...d, trips: [] as any[] }))
+        : await attachDriverGpsStatus(drivers);
 
       const formatted = driversWithGps.map(d => ({
         ...d,
+        user: withoutPasswordHash(d.user),
         hasAccountPassword: Boolean(d.user?.password_hash),
       }));
 
@@ -250,50 +263,13 @@ export const getDrivers = async (req: Request, res: Response) => {
 
     const driversWithGps = await attachDriverGpsStatus(drivers);
 
-    // Lifetime driver payout for the roster's Total Trip Charge column.
-    const driverIds = drivers.map((d) => d.id);
-    const ELIGIBLE_TRIP_STATUSES = ['Completed', 'Invoiced'];
-
-    const [primarySums, coDriverSums] = await Promise.all([
-      prisma.trip.groupBy({
-        by: ['driverId'],
-        where: {
-          driverId: { in: driverIds },
-          deletedAt: null,
-          status: { in: ELIGIBLE_TRIP_STATUSES as any },
-        },
-        _sum: { driver_payout: true },
-      }),
-      prisma.trip.groupBy({
-        by: ['co_driver_id'],
-        where: {
-          co_driver_id: { in: driverIds },
-          deletedAt: null,
-          status: { in: ELIGIBLE_TRIP_STATUSES as any },
-        },
-        _sum: { co_driver_payout: true },
-      }),
-    ]);
-
-    const tripChargeByDriver = new Map<string, number>();
-
-    for (const s of primarySums) {
-      if (s.driverId) {
-        const val = s._sum.driver_payout ? Number(s._sum.driver_payout) : 0;
-        tripChargeByDriver.set(s.driverId, (tripChargeByDriver.get(s.driverId) || 0) + val);
-      }
-    }
-
-    for (const s of coDriverSums) {
-      if (s.co_driver_id) {
-        const val = s._sum.co_driver_payout ? Number(s._sum.co_driver_payout) : 0;
-        tripChargeByDriver.set(s.co_driver_id, (tripChargeByDriver.get(s.co_driver_id) || 0) + val);
-      }
-    }
+    // Lifetime driver payout for the roster's Total Trip Charge column (finished trips only).
+    const tripChargeByDriver = await sumDriverTripCharges(drivers.map((d) => d.id));
 
     const formatted = driversWithGps.map(d => ({
       ...d,
       total_trip_charges: tripChargeByDriver.get(d.id) || 0,
+      user: withoutPasswordHash(d.user),
       hasAccountPassword: Boolean(d.user?.password_hash || d.user),
     }));
 
@@ -565,7 +541,7 @@ export const updateDriver = async (req: Request, res: Response) => {
 export const deleteDriver = async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user?.id;
-    const { password } = req.body;
+    const { password } = req.body || {};
 
     if (!password) {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Password is required to confirm deletion' } });
@@ -1092,21 +1068,9 @@ export const getDriverPayouts = async (req: Request, res: Response) => {
       return res.json({ success: true, data: { payouts: {} } });
     }
 
-    const tripChargeSums = await prisma.trip.groupBy({
-      by: ['driverId'],
-      where: { driverId: { in: validIds }, deletedAt: null },
-      _sum: { driver_payout: true },
-    });
-
-    const payouts: Record<string, number> = {};
-    for (const id of validIds) {
-      payouts[id] = 0;
-    }
-    for (const s of tripChargeSums) {
-      if (s.driverId) {
-        payouts[s.driverId] = Number(s._sum.driver_payout) || 0;
-      }
-    }
+    // Same rule as the Drivers list: finished trips only (a cancelled trip earns
+    // nothing), co-driver pay included. It used to add every trip.
+    const payouts: Record<string, number> = Object.fromEntries(await sumDriverTripCharges(validIds));
 
     res.json({ success: true, data: { payouts } });
   } catch (error) {

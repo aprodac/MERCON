@@ -12,7 +12,13 @@ import { isDateTimeInPast } from '@/utils/pastDateTripUtils';
 import { useDeploymentTimezone } from '@/lib/datetime';
 import { dutyShiftMinutes } from '@/services/travelTimeService';
 import { cn, isUuid } from '@/lib/utils';
-import { STOP_ROLE_COLORS } from '@mercon/shared-types';
+import { formatQuotationRef, STOP_ROLE_COLORS } from '@mercon/shared-types';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { locationService, type Location } from '@/services/locationService';
+import PinChip, { isExactPin } from '@/components/locations/PinChip';
+import SetPinDialog from '@/components/locations/SetPinDialog';
+import { pinCustomerLocation } from '@/components/locations/pinCustomerLocation';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 
 interface RouteWorkspaceProps {
   slot: any;
@@ -92,20 +98,75 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
   const hhmm = (t?: string) => (t ? t.slice(0, 5) : '');
   const retLoad = (slot.returnOrigin || '').trim();
   const retEnd = (!slot.returnDestination || isUuid(slot.returnDestination) ? slot.origin : slot.returnDestination) || '';
-  const routePoints: Array<{ name: string; role: 'origin' | 'stop' | 'destination'; label: string; time?: string; returning?: boolean }> = [
-    { name: slot.origin, role: 'origin', label: 'Pickup', time: hhmm(slot.pickupTime) },
-    ...outStops.map((n: string) => ({ name: n, role: 'stop' as const, label: 'Stop' })),
-    { name: slot.destination, role: 'destination', label: isRoundTrip ? 'Drop' : 'Delivery', time: hhmm(slot.dropoffTime) },
+  // Location ids of the named stops, lined up with outStops / retStops.
+  const idsOfNamed = (names: string[] | undefined, ids: Array<string | null> | undefined) =>
+    (names || []).flatMap((n, i) => (n ? [ids?.[i] ?? null] : []));
+  const outStopIds = idsOfNamed(slot.intermediateLocations, slot.intermediateLocationIds);
+  const retStopIds = idsOfNamed(slot.returnIntermediateLocations, slot.returnIntermediateLocationIds);
+  const routePoints: Array<{ name: string; role: 'origin' | 'stop' | 'destination'; label: string; time?: string; returning?: boolean; locationId?: string | null }> = [
+    { name: slot.origin, role: 'origin', label: 'Pickup', time: hhmm(slot.pickupTime), locationId: slot.originLocationId },
+    ...outStops.map((n: string, i: number) => ({ name: n, role: 'stop' as const, label: 'Stop', locationId: outStopIds[i] })),
+    { name: slot.destination, role: 'destination', label: isRoundTrip ? 'Drop' : 'Delivery', time: hhmm(slot.dropoffTime), locationId: slot.destinationLocationId },
     ...(isRoundTrip
       ? [
           ...(retLoad && retLoad.toLowerCase() !== String(slot.destination || '').toLowerCase()
-            ? [{ name: retLoad, role: 'origin' as const, label: 'Return loading', time: hhmm(slot.returnPickupTime), returning: true }]
+            ? [{ name: retLoad, role: 'origin' as const, label: 'Return loading', time: hhmm(slot.returnPickupTime), returning: true, locationId: slot.returnOriginLocationId }]
             : []),
-          ...retStops.map((n: string) => ({ name: n, role: 'stop' as const, label: 'Stop', returning: true })),
-          { name: retEnd, role: 'destination' as const, label: 'Back', time: hhmm(slot.returnDropoffTime), returning: true },
+          ...retStops.map((n: string, i: number) => ({ name: n, role: 'stop' as const, label: 'Stop', returning: true, locationId: retStopIds[i] })),
+          {
+            name: retEnd,
+            role: 'destination' as const,
+            label: 'Back',
+            time: hhmm(slot.returnDropoffTime),
+            returning: true,
+            locationId: !slot.returnDestination || isUuid(slot.returnDestination) ? slot.originLocationId : slot.returnDestinationLocationId,
+          },
         ]
       : []),
   ].filter((p) => p.name);
+
+  // Pin status on the folded route, from the same location list the pickers load (shared cache).
+  const queryClient = useQueryClient();
+  const { data: locationsRes } = useQuery({
+    queryKey: ['locations', contractCustomer],
+    queryFn: () => locationService.getAll({ customerId: contractCustomer, active_only: true }),
+    enabled: showRoute && Boolean(contractCustomer),
+  });
+  const locationById = React.useMemo(() => {
+    const m = new Map<string, Location>();
+    for (const l of locationsRes?.data || []) m.set(l.id, l);
+    return m;
+  }, [locationsRes]);
+  const [pinning, setPinning] = React.useState<Location | null>(null);
+
+  // A pinned location goes onto this trip's pickup / delivery in place. It is
+  // the same place, so the quotation stays (picking another location drops it).
+  const applyPin = (loc: Location) => {
+    const patch: Record<string, unknown> = {};
+    if (slot.originLocationId === loc.id) {
+      Object.assign(patch, { originLat: loc.lat ?? null, originLng: loc.lng ?? null, originPrecision: 'EXACT', ...(loc.address ? { originAddress: loc.address } : {}) });
+    }
+    if (slot.destinationLocationId === loc.id) {
+      Object.assign(patch, { destinationLat: loc.lat ?? null, destinationLng: loc.lng ?? null, destinationPrecision: 'EXACT', ...(loc.address ? { destinationAddress: loc.address } : {}) });
+    }
+    if (Object.keys(patch).length > 0) handleUpdateTripSlot(slot.id, patch);
+  };
+
+  // Another pickup / delivery while a quotation is applied drops that quotation
+  // (its price is for its own route) — ask first.
+  const [pendingChange, setPendingChange] = React.useState<{ field: 'origin' | 'destination'; locName: string; locObj: any } | null>(null);
+  const changeLocation = (field: 'origin' | 'destination', locName: string, locObj: any) => {
+    const currentId = field === 'origin' ? slot.originLocationId : slot.destinationLocationId;
+    const nextId = locObj?.id ?? (isUuid(locName) ? locName : null);
+    if (slot.rateMatched && slot.matchedRateCard && nextId !== currentId) {
+      setPendingChange({ field, locName, locObj });
+      return;
+    }
+    handleSlotLocationChange(slot.id, field, locName, locObj);
+  };
+  const quotationLabel = formatQuotationRef(slot.matchedRateCard?.quotation_number) ?? 'The selected quotation';
+  const pendingFrom = pendingChange ? (pendingChange.field === 'origin' ? slot.origin : slot.destination) : '';
+  const pendingTo = pendingChange ? pendingChange.locObj?.name || pendingChange.locName : '';
   const lineTypeTaxonomyOptions = getAllTaxonomyOptions('LINE_TYPE');
   const selectedTaxonomyOption = resolveTaxonomyOption('LINE_TYPE', contractRateCategory);
   const isMonthly = contractBillingType?.toLowerCase() === 'monthly';
@@ -228,7 +289,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                 )}
                 {slot.matchedRateCard?.quotation_number != null && (
                   <span className="rounded-full bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 text-[11px] font-semibold text-[#c2410c] dark:text-orange-300">
-                    QT-{slot.matchedRateCard.quotation_number}
+                    {formatQuotationRef(slot.matchedRateCard.quotation_number)}
                   </span>
                 )}
                 {stopCount > 0 && (
@@ -262,6 +323,13 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                       {pt.label}
                       {pt.time && <span className="font-semibold text-slate-700 dark:text-slate-200"> · {pt.time}</span>}
                     </span>
+                    {pt.locationId && locationById.get(pt.locationId) && (
+                      <PinChip
+                        className="mt-1"
+                        exact={isExactPin(locationById.get(pt.locationId)!.coordinate_precision, locationById.get(pt.locationId)!.lat, locationById.get(pt.locationId)!.lng)}
+                        onClick={() => setPinning(locationById.get(pt.locationId!)!)}
+                      />
+                    )}
                   </div>
                   {i < routePoints.length - 1 && (
                     <span
@@ -357,7 +425,8 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                 value={slot.origin}
                 disabled={isRouteLocked}
                 hasError={Boolean(fieldErrors?.[`origin-${slot.id}`] || fieldErrors?.['origin'])}
-                onChange={(locName, locObj) => handleSlotLocationChange(slot.id, 'origin', locName, locObj)}
+                onChange={(locName, locObj) => changeLocation('origin', locName, locObj)}
+                onPinned={applyPin}
                 placeholder="Search starting origin (e.g. Riyadh Distribution Centre)..."
                 triggerClassName={cn(
                   "h-9 border-slate-200 bg-white text-xs font-bold text-[#3E3C3D] dark:text-slate-100 shadow-2xs w-full",
@@ -455,7 +524,8 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                 value={slot.destination}
                 disabled={isRouteLocked}
                 hasError={Boolean(fieldErrors?.[`destination-${slot.id}`] || fieldErrors?.['destination'])}
-                onChange={(locName, locObj) => handleSlotLocationChange(slot.id, 'destination', locName, locObj)}
+                onChange={(locName, locObj) => changeLocation('destination', locName, locObj)}
+                onPinned={applyPin}
                 placeholder="Search delivery destination (e.g. Al Baha Station)..."
                 triggerClassName={cn(
                   "h-9 border-slate-200 bg-white text-xs font-bold text-[#3E3C3D] dark:text-slate-100 shadow-2xs w-full",
@@ -898,6 +968,34 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
             </p>
           )}
         </div>
+      )}
+
+      {showRoute && (
+        <>
+          <SetPinDialog
+            open={!!pinning}
+            onOpenChange={(o) => !o && setPinning(null)}
+            placeName={pinning?.name || ''}
+            lat={pinning?.lat ?? null}
+            lng={pinning?.lng ?? null}
+            footnote={pinning ? `Saved to ${pinning.name}, so every trip and quotation going there uses it.` : undefined}
+            onSave={async (pin) => {
+              applyPin(await pinCustomerLocation(queryClient, pinning!, pin));
+            }}
+          />
+          <ConfirmModal
+            isOpen={!!pendingChange}
+            onClose={() => setPendingChange(null)}
+            onConfirm={() => {
+              if (pendingChange) handleSlotLocationChange(slot.id, pendingChange.field, pendingChange.locName, pendingChange.locObj);
+              setPendingChange(null);
+            }}
+            title={`Change ${pendingChange?.field === 'origin' ? 'pickup' : 'delivery'} to ${pendingTo}?`}
+            message={`${quotationLabel} is priced for ${pendingFrom}. Changing it removes ${quotationLabel} from this trip and you will set a new price. Only marking the exact gate of ${pendingFrom}? Keep it and use its "Pin needed" button instead.`}
+            confirmLabel="Change and drop quotation"
+            cancelLabel={`Keep ${quotationLabel}`}
+          />
+        </>
       )}
       </div>
     );

@@ -660,6 +660,12 @@ export const operatorService = {
     return (data.data ?? []) as OperatorCustomer[];
   },
 
+  /** Picker shape (`mode=lookup`): no per-customer trip and invoice stats. */
+  async customersLookup(): Promise<OperatorCustomer[]> {
+    const { data } = await api.get('/customers', { params: { per_page: 100, mode: 'lookup' } });
+    return (data.data ?? []) as OperatorCustomer[];
+  },
+
   async customerById(id: string): Promise<OperatorCustomer> {
     const { data } = await api.get(`/customers/${id}`);
     return data.data as OperatorCustomer;
@@ -781,9 +787,9 @@ export const operatorService = {
 
   /* ─── Create trip (same endpoints and parameters as the web wizard) ─── */
 
-  /** Every driver with their assigned truck — the web wizard's `mode: 'lookup'` list. */
+  /** Every driver with their assigned truck — the web wizard's `mode: 'lookup'` list, without live GPS (pickers don't show it). */
   async driversLookup(): Promise<OperatorDriverOption[]> {
-    const { data } = await api.get('/drivers', { params: { per_page: 1000, mode: 'lookup' } });
+    const { data } = await api.get('/drivers', { params: { per_page: 1000, mode: 'lookup', gps: 'false' } });
     const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.data?.data) ? data.data.data : [];
     return list as OperatorDriverOption[];
   },

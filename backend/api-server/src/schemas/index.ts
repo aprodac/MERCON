@@ -1,4 +1,9 @@
 import { z } from 'zod';
+import { normalizeSaudiPlate } from '@mercon/shared-types';
+
+/** Heaviest payload a truck in this fleet can carry (40 ft trailer ≈ 30 t) — anything above is a typo. */
+const MAX_PAYLOAD_KG = 60000;
+const MAX_PAYLOAD_MSG = 'Payload is in kilograms and can be at most 60,000 (e.g. 20000 for a 20-ton truck).';
 
 /* ─── Shared building blocks ─────────────────────────────────────────────── */
 
@@ -98,6 +103,36 @@ const saudiPlateSchema = z.preprocess((val) => {
   message: 'Invalid Saudi vehicle plate (e.g., DRA-6484 or 1234 ABC)',
 }));
 
+/**
+ * A real Saudi plate (3 allowed letters + 1–4 digits, Latin or Arabic, any order)
+ * stored as "DRA-6484". Used where people type plates by hand: add / edit truck
+ * and the 3PL plate on a trip. Imports keep the looser saudiPlateSchema.
+ */
+const strictSaudiPlateSchema = z.string().trim().transform((val, ctx) => {
+  const checked = normalizeSaudiPlate(val);
+  if (!checked.ok) {
+    ctx.addIssue({ code: 'custom', message: checked.reason });
+    return z.NEVER;
+  }
+  return checked.plate;
+});
+
+/** The 3PL plate: optional, "Assign Later" allowed, otherwise a real plate. */
+const thirdPartyPlateSchema = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((val, ctx) => {
+    const v = (val ?? '').trim();
+    if (!v) return val === null ? null : undefined;
+    if (/^assign later$/i.test(v)) return v;
+    const checked = normalizeSaudiPlate(v);
+    if (!checked.ok) {
+      ctx.addIssue({ code: 'custom', message: `3PL plate: ${checked.reason}` });
+      return z.NEVER;
+    }
+    return checked.plate;
+  });
+
 const saudiTrailerPlateSchema = z.preprocess((val) => {
   if (val === null || val === undefined || val === '') return undefined;
   if (typeof val !== 'string') return val;
@@ -190,7 +225,7 @@ export const createTripBody = z.object({
   third_party_provider_id: z.string().uuid('Invalid provider').nullable().optional(),
   third_party_driver_name: z.string().trim().optional(),
   third_party_driver_phone: z.string().trim().optional(),
-  third_party_vehicle_plate: z.string().trim().optional(),
+  third_party_vehicle_plate: thirdPartyPlateSchema,
   third_party_vehicle_type: z.string().trim().optional(),
   third_party_cost: z.coerce.number().optional(),
   charges: z.array(z.object({
@@ -338,7 +373,7 @@ export const bulkImportVehiclesBody = z.object({
     asset_type: z.preprocess(normaliseAssetType, z.enum(['Flatbed', 'Reefer', 'Box', 'Tanker'], {
       message: 'Asset type must be Flatbed, Reefer, Box or Tanker',
     })),
-    capacity_kg: coercedNumber(z.number().int().positive('Capacity must be a positive whole number')),
+    capacity_kg: coercedNumber(z.number().int().positive('Capacity must be a positive whole number').max(MAX_PAYLOAD_KG, MAX_PAYLOAD_MSG)),
     current_odometer: coercedNumber(z.number().min(0).optional()),
     icces_device_id: safeImportString(z.string().trim().max(64).optional()),
     trailer_number: saudiTrailerPlateSchema,
@@ -381,7 +416,7 @@ export const bulkImportTripsBody = z.object({
     third_party_provider_id: z.preprocess((val) => (val === '' ? null : val), z.string().uuid().nullable().optional()),
     third_party_driver_name: z.string().trim().nullable().optional(),
     third_party_driver_phone: z.string().trim().nullable().optional(),
-    third_party_vehicle_plate: z.string().trim().nullable().optional(),
+    third_party_vehicle_plate: thirdPartyPlateSchema,
     third_party_vehicle_type: z.string().trim().nullable().optional(),
     third_party_cost: z.coerce.number().nullable().optional(),
     rate_card_id: z.string().trim().nullable().optional(),
@@ -565,9 +600,9 @@ export const updateCustomerBody = z.object({
 
 /* ─── Vehicles ───────────────────────────────────────────────────────────── */
 export const createVehicleBody = z.object({
-  plate_number: saudiPlateSchema,
+  plate_number: strictSaudiPlateSchema,
   asset_type: z.enum(['Flatbed', 'Reefer', 'Box', 'Tanker']),
-  capacity_kg: z.coerce.number().int().positive('Capacity must be a whole number of kg'),
+  capacity_kg: z.coerce.number().int().positive('Capacity must be a whole number of kg').max(MAX_PAYLOAD_KG, MAX_PAYLOAD_MSG),
   trailer_number: saudiTrailerPlateSchema,
   trailer_type: z.enum(['Flatbed', 'Reefer', 'Box', 'Tanker']).optional().nullable(),
   trailer_capacity_kg: z.coerce.number().int().positive().optional().nullable(),
@@ -576,9 +611,9 @@ export const createVehicleBody = z.object({
 });
 
 export const updateVehicleBody = z.object({
-  plate_number: saudiPlateSchema.optional(),
+  plate_number: strictSaudiPlateSchema.optional(),
   asset_type: z.enum(['Flatbed', 'Reefer', 'Box', 'Tanker']).optional(),
-  capacity_kg: z.coerce.number().int().positive().optional(),
+  capacity_kg: z.coerce.number().int().positive().max(MAX_PAYLOAD_KG, MAX_PAYLOAD_MSG).optional(),
   current_odometer: z.coerce.number().min(0).optional(),
   trailer_number: saudiTrailerPlateSchema,
   trailer_type: z.enum(['Flatbed', 'Reefer', 'Box', 'Tanker']).optional().nullable(),

@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import { formatInDeploymentTz, useDeploymentTimezone } from '@/lib/datetime';
 import { LIVE_FILTERS, isOffline, matchesFilter, matchesQuery, timeAgo, type LiveFilter } from '@/lib/fleetLive';
 import {
-  OPS_TABS, STATUS_LABEL, attentionReasons, groupSchedule, isActiveTrip, isPlannedTrip, isThirdParty, matchesTripQuery, needsConfirm,
+  OPS_TABS, STATUS_LABEL, statusChangeCopy, attentionReasons, groupSchedule, isActiveTrip, isPlannedTrip, isThirdParty, matchesTripQuery, needsConfirm,
   nextStopIndex, sortActive, toLiveStops, type AttentionReason, type OpsTab,
 } from '@/lib/liveOps';
 import { defaultRadiusKm, isFreeTruck, lookupCity, tripsOnRoute, tripsTouching, unitsNear } from '@/lib/placeSearch';
@@ -74,38 +74,7 @@ function readPanelPref(): boolean {
 
 type ConfirmState = { trip: Trip; status: string } | null;
 
-function confirmCopy(trip: Trip, to: string): { title: string; message: string; label: string; destructive: boolean } {
-  if (to === 'Cancelled') {
-    return {
-      title: `Cancel ${trip.ref_id}?`,
-      message: 'The trip leaves the live board. It can be restored to Draft or Scheduled later.',
-      label: 'Cancel trip',
-      destructive: true,
-    };
-  }
-  if (to === 'Completed') {
-    return {
-      title: `Complete ${trip.ref_id}?`,
-      message: 'This closes the trip and generates its invoice. You can add extra charges straight after.',
-      label: 'Mark completed',
-      destructive: false,
-    };
-  }
-  if (to === 'Draft') {
-    return {
-      title: `Send ${trip.ref_id} back to Draft?`,
-      message: 'Its driver and truck are released back to Available.',
-      label: 'Move to Draft',
-      destructive: false,
-    };
-  }
-  return {
-    title: `Reopen ${trip.ref_id}?`,
-    message: `It moves from ${STATUS_LABEL[trip.status] ?? trip.status} back to ${STATUS_LABEL[to] ?? to}.`,
-    label: 'Reopen',
-    destructive: false,
-  };
-}
+const confirmCopy = (trip: Trip, to: string) => statusChangeCopy(trip.ref_id ?? 'this trip', trip.status, to);
 
 const SEARCH_EXAMPLES = ['riyadh to jeddah', 'near dammam', 'jubail'];
 
@@ -174,7 +143,9 @@ export default function LiveMapPage() {
     queryFn: async () =>
       (await tripService.getAll({
         status: 'Completed,Invoiced',
-        start_date: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+        // Finished in the last 3 days. Filtering on the planned start hid a late trip
+        // completed today (planned last week), so "Completed" looked like it hadn't saved.
+        ended_since: new Date(Date.now() - 3 * 86_400_000).toISOString(),
         per_page: 500,
       })).data ?? [],
     refetchInterval: 60_000,
@@ -402,7 +373,8 @@ export default function LiveMapPage() {
     },
     onSuccess: (updated, { trip, status }) => {
       toast.success(`${trip.ref_id} → ${STATUS_LABEL[status] ?? status}`);
-      if (status === 'Completed') setSettlementTrip(updated ?? { ...trip, status });
+      // The status reply has no customer / driver / truck — keep the ones the card already has.
+      if (status === 'Completed') setSettlementTrip({ ...trip, ...(updated ?? {}), status } as Trip);
     },
     onError: (err: unknown, { trip }, ctx) => {
       if (ctx?.prev) queryClient.setQueryData(['live-ops-trips', 'open'], ctx.prev);
