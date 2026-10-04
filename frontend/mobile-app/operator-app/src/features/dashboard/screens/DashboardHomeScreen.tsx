@@ -7,21 +7,20 @@
  * operator screen shares one persistent nav instead of remounting it.
  */
 import React, { useEffect, useState } from 'react';
-import { Linking, RefreshControl, ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 
 import { useDashboardRefresh } from '../hooks';
-import { useMarkNotificationsRead, useNotifications } from '@/features/notifications/hooks/useNotifications';
 import { AppTopBar } from '@/components/AppTopBar';
 import { FleetMapCard } from '@/features/fleet/FleetMapCard';
 import { Search } from 'lucide-react-native';
 import { ErrorState } from '@mercon/mobile-shared/ui';
 import { useActionInbox } from '../actions/useActionInbox';
 import { HomeStatus, NeedsActionList, UpNext } from '../actions/NeedsAction';
-import type { ActionIntent } from '../actions/actionModel';
+import { useActionIntent } from '../actions/useActionIntent';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { ChargeAssistant } from '@/features/charges/ChargeAssistant';
 
@@ -35,54 +34,9 @@ export default function DashboardHomeScreen() {
   }, []);
   const { refreshing, refresh } = useDashboardRefresh();
 
-  const notifications = useNotifications();
-  const { markRead } = useMarkNotificationsRead();
   const inbox = useActionInbox();
   const { data: me } = useCurrentUser();
-
-
-  const openTrip = (id: string, extra: Record<string, string> = {}) =>
-    router.push({ pathname: '/trip-details', params: { id, ...extra } });
-
-  // Only for actions that finish right here on Home — never for ones that
-  // just open another screen or app, which hasn't done anything yet.
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-
-  const onIntent = (intent: ActionIntent) => {
-    switch (intent.type) {
-      case 'call':
-        Linking.openURL(`tel:${intent.phone}`).catch(() => setToast({ message: "Couldn't start the call", type: 'error' }));
-        return;
-      case 'whatsapp':
-        Linking.openURL(`https://wa.me/${(intent.phone ?? '').replace(/[^0-9]/g, '')}?text=${encodeURIComponent(intent.text)}`)
-          .catch(() => setToast({ message: "Couldn't open WhatsApp", type: 'error' }));
-        return;
-      case 'trip': {
-        const extra: Record<string, string> = {};
-        if (intent.tab) extra.tab = intent.tab;
-        if (intent.share) extra.share = intent.share;
-        if (intent.assign) extra.assign = intent.assign;
-        if (intent.times) extra.times = '1';
-        openTrip(intent.tripId, extra);
-        return;
-      }
-      case 'handled':
-        markRead(intent.notificationId);
-        setToast({ message: 'Marked as handled', type: 'success' });
-        return;
-      case 'driver':
-        router.push({ pathname: '/driver-details', params: { id: intent.id } });
-        return;
-      case 'vehicle':
-        router.push({ pathname: '/vehicle-details', params: { id: intent.id } });
-        return;
-      case 'customer':
-        router.push({ pathname: '/customer-details', params: { id: intent.id } });
-        return;
-      case 'invoices':
-        router.push('/invoices');
-    }
-  };
+  const { onIntent, openTrip, toast, setToast } = useActionIntent();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>

@@ -135,7 +135,8 @@ export function buildActions(src: ActionSources): ActionItem[] {
       kind: 'emergency',
       urgency: 'now',
       group: 'trips',
-      title: n.title || 'Emergency reported',
+      // Without a leading emoji — the row's icon already says it.
+      title: n.title.replace(/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+/u, '').trim() || 'Emergency reported',
       detail: n.message,
       at: n.createdAt,
       tripId,

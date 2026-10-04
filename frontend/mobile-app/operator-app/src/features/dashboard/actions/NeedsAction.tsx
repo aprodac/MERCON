@@ -34,7 +34,7 @@ const tap = () => Haptics.selectionAsync().catch(() => {});
 
 const NEUTRAL = '#F4F4F5';
 const SEV = { red: '#D92D20', amber: '#B54708', gray: '#52525B' };
-const KIND: Record<ActionKind, { icon: LucideIcon; fg: string }> = {
+export const KIND: Record<ActionKind, { icon: LucideIcon; fg: string }> = {
   emergency: { icon: Siren, fg: SEV.red },
   delayed: { icon: Clock3, fg: SEV.red },
   'late-start': { icon: AlarmClock, fg: SEV.red },
@@ -48,7 +48,7 @@ const KIND: Record<ActionKind, { icon: LucideIcon; fg: string }> = {
 };
 
 /** How a group of one kind reads: "9 trips delayed". */
-const GROUP_NOUN: Record<ActionKind, [string, string]> = {
+export const GROUP_NOUN: Record<ActionKind, [string, string]> = {
   emergency: ['emergency', 'emergencies'],
   delayed: ['trip delayed', 'trips delayed'],
   'late-start': ['trip not started', 'trips not started'],
@@ -62,11 +62,11 @@ const GROUP_NOUN: Record<ActionKind, [string, string]> = {
 };
 
 /** Oldest first = the one that's been wrong longest ("most late"); undated last. */
-const worstFirst = (a: ActionItem, b: ActionItem) =>
+export const worstFirst = (a: ActionItem, b: ActionItem) =>
   (a.at ? new Date(a.at).getTime() : Infinity) - (b.at ? new Date(b.at).getTime() : Infinity);
 
 /** One entry per kind, keeping the list's urgency order: a single item stays a row, several become a group. */
-function groupByKind(items: ActionItem[]): ({ type: 'item'; item: ActionItem } | { type: 'group'; kind: ActionKind; items: ActionItem[] })[] {
+export function groupByKind(items: ActionItem[]): ({ type: 'item'; item: ActionItem } | { type: 'group'; kind: ActionKind; items: ActionItem[] })[] {
   const order: ActionKind[] = [];
   const byKind = new Map<ActionKind, ActionItem[]>();
   for (const i of items) {
@@ -188,18 +188,12 @@ export function NeedsActionList({ items, loading, onIntent, onOpenTrip, now }: {
 }) {
   const [laterOpen, setLaterOpen] = useState(false);
   const [sheet, setSheet] = useState<ActionKind | null>(null);
-  const { height } = useWindowDimensions();
-
   // Only urgent items make the list (the same count the status card shows);
   // everything lower-priority waits, folded, under "Later".
   const urgent = useMemo(() => items.filter((i) => i.urgency === 'now'), [items]);
   const later = useMemo(() => items.filter((i) => i.urgency !== 'now'), [items]);
   const urgentRows = useMemo(() => groupByKind(urgent), [urgent]);
   const laterRows = useMemo(() => groupByKind(later), [later]);
-
-  const sheetItems = sheet ? items.filter((i) => i.kind === sheet).sort(worstFirst) : [];
-  // Actions inside the sheet close it first, so the next screen isn't hidden behind it.
-  const fromSheet = <T,>(fn: (x: T) => void) => (x: T) => { setSheet(null); setTimeout(() => fn(x), 250); };
 
   const render = (rows: ReturnType<typeof groupByKind>, firstBorder: boolean) =>
     rows.map((r, i) =>
@@ -240,28 +234,45 @@ export function NeedsActionList({ items, loading, onIntent, onOpenTrip, now }: {
         </View>
       ) : null}
 
-      <AppModal
-        visible={sheet != null}
-        onClose={() => setSheet(null)}
-        type="bottom-sheet"
-        title={sheet ? `${sheetItems.length} ${GROUP_NOUN[sheet][1]}` : ''}
-      >
-        {/* A modal is its own native window, so swipe gestures need their own root inside it. */}
-        {/* flex: 0 — the root view defaults to flex: 1, which collapses to nothing in a sheet sized by its content. */}
-        <GestureHandlerRootView style={{ flex: 0 }}>
-          <ScrollView style={{ maxHeight: height * 0.65 }} showsVerticalScrollIndicator={false}>
-            {sheetItems.map((item, i) => (
-              <ActionRow key={item.key} item={item} first={i === 0} now={now} flat onIntent={fromSheet(onIntent)} onOpenTrip={fromSheet(onOpenTrip)} />
-            ))}
-          </ScrollView>
-        </GestureHandlerRootView>
-      </AppModal>
+      <KindSheet kind={sheet} items={items} now={now} onClose={() => setSheet(null)} onIntent={onIntent} onOpenTrip={onOpenTrip} />
     </View>
   );
 }
 
+/** Every item of one kind, worst first, in a bottom sheet. Actions close the sheet first so the next screen isn't hidden behind it. */
+export function KindSheet({ kind, items, now, onClose, onIntent, onOpenTrip }: {
+  kind: ActionKind | null;
+  items: ActionItem[];
+  now: number;
+  onClose: () => void;
+  onIntent: (intent: ActionIntent) => void;
+  onOpenTrip: (tripId: string) => void;
+}) {
+  const { height } = useWindowDimensions();
+  const sheetItems = kind ? items.filter((i) => i.kind === kind).sort(worstFirst) : [];
+  const fromSheet = <T,>(fn: (x: T) => void) => (x: T) => { onClose(); setTimeout(() => fn(x), 250); };
+  return (
+    <AppModal
+      visible={kind != null}
+      onClose={onClose}
+      type="bottom-sheet"
+      title={kind ? `${sheetItems.length} ${GROUP_NOUN[kind][sheetItems.length === 1 ? 0 : 1]}` : ''}
+    >
+      {/* A modal is its own native window, so swipe gestures need their own root inside it. */}
+      {/* flex: 0 — the root view defaults to flex: 1, which collapses to nothing in a sheet sized by its content. */}
+      <GestureHandlerRootView style={{ flex: 0 }}>
+        <ScrollView style={{ maxHeight: height * 0.65 }} showsVerticalScrollIndicator={false}>
+          {sheetItems.map((item, i) => (
+            <ActionRow key={item.key} item={item} first={i === 0} now={now} flat onIntent={fromSheet(onIntent)} onOpenTrip={fromSheet(onOpenTrip)} />
+          ))}
+        </ScrollView>
+      </GestureHandlerRootView>
+    </AppModal>
+  );
+}
+
 /** Several items of one kind as a single row: "9 trips delayed · worst TRP-0267, 3d late". */
-function GroupRow({ kind, items, first, now, onPress }: { kind: ActionKind; items: ActionItem[]; first: boolean; now: number; onPress: () => void }) {
+export function GroupRow({ kind, items, first, now, onPress }: { kind: ActionKind; items: ActionItem[]; first: boolean; now: number; onPress: () => void }) {
   const k = KIND[kind];
   const Icon = k.icon;
   const worst = items[0];
@@ -290,7 +301,7 @@ type RowProps = { item: ActionItem; first: boolean; now: number; flat?: boolean;
  * row's main action (Notify, Assign, Send…). The same buttons stay on the row,
  * so swiping is only ever a shortcut.
  */
-function ActionRow(props: RowProps) {
+export function ActionRow(props: RowProps) {
   const { item, onIntent } = props;
   const call = item.secondary?.intent.type === 'call' ? item.secondary : null;
   const run = (intent: ActionIntent, m: SwipeableMethods) => {

@@ -1,45 +1,140 @@
 /**
- * Operator notifications — shared list UI (@mercon/mobile-shared), operator API.
- * Tapping marks the notification read and, like the web dashboard, opens the
- * trip / driver / maintenance record it refers to when there is one.
+ * Operator Notifications, in two tabs:
+ *   To do    — what needs someone to act (delays, trips without a driver,
+ *              GPS silence, photos to send, expiring documents, overdue
+ *              invoices), the same live items as Home's Needs action list.
+ *   Activity — the notification feed from the API, by day.
+ * Opens on To do; `?tab=activity` opens the feed.
  */
-import { useRouter, type Href } from 'expo-router';
-import SharedNotificationsScreen from '@mercon/mobile-shared/screens/NotificationsScreen';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Toast } from '@mercon/mobile-shared/components/Toast';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import type { AppNotification } from '@mercon/mobile-shared/lib/notifications';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { AppTopBar } from '@/components/AppTopBar';
+import { useActionInbox } from '../../dashboard/actions/useActionInbox';
+import { useActionIntent } from '../../dashboard/actions/useActionIntent';
+import { useDashboardRefresh } from '../../dashboard/hooks';
 import { useMarkNotificationsRead, useNotifications } from '../hooks/useNotifications';
+import { targetFor } from '../notificationModel';
+import { TodoTab } from '../components/TodoTab';
+import { ActivityTab } from '../components/ActivityTab';
+import { BG, INK, LINE, MUTED, tap } from '../components/parts';
 
-function targetFor(n: AppNotification): Href | null {
-  if (!n.entity_type) return null;
-  switch (n.entity_type) {
-    case 'Trip':
-      return n.entity_id ? { pathname: '/trip-details', params: { id: n.entity_id } } : null;
-    case 'Driver':
-      return n.entity_id ? { pathname: '/driver-details', params: { id: n.entity_id } } : null;
-    default:
-      return null;
-  }
-}
+type Tab = 'todo' | 'activity';
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const { data, isLoading, isFetching, error, refetch } = useNotifications();
-  const { markRead, markAllRead } = useMarkNotificationsRead();
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const [tab, setTab] = useState<Tab>(params.tab === 'activity' ? 'activity' : 'todo');
 
-  const handlePress = (item: AppNotification) => {
-    if (!item.is_read) markRead(item.id);
-    const target = targetFor(item);
+  // Ticks each minute so "12m late" / "5 min" stay current.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const inbox = useActionInbox();
+  const { onIntent, openTrip, toast, setToast } = useActionIntent();
+  const { refreshing, refresh } = useDashboardRefresh();
+
+  const feed = useNotifications();
+  const { markRead, markIds } = useMarkNotificationsRead();
+  const items = feed.data ?? [];
+  const unread = items.filter((n) => !n.is_read).length;
+
+  // Emergencies stay unread until someone presses Handled on To do — reading
+  // one is what clears it there, so a bulk "Mark all read" mustn't dismiss it.
+  const isEmergency = (n: AppNotification) => n.type.toLowerCase() === 'emergency';
+  const markable = items.filter((n) => !n.is_read && !isEmergency(n));
+  const markAllRead = () => markIds(markable.map((n) => n.id));
+
+  const openNotification = (n: AppNotification) => {
+    if (!n.is_read && !isEmergency(n)) markRead(n.id);
+    const target = targetFor(n);
     if (target) router.push(target);
   };
 
+  const urgent = inbox.counts.now;
+  const tabs: { value: Tab; label: string; count: number; hot: boolean }[] = [
+    { value: 'todo', label: 'To do', count: inbox.items.length, hot: urgent > 0 },
+    { value: 'activity', label: 'Activity', count: unread, hot: false },
+  ];
+
   return (
-    <SharedNotificationsScreen
-      items={data ?? []}
-      loading={isLoading || isFetching}
-      error={error ? getApiErrorMessage(error) : null}
-      onRefresh={() => refetch()}
-      onPressItem={handlePress}
-      onMarkAllRead={markAllRead}
-    />
+    <SafeAreaView style={{ flex: 1, backgroundColor: BG }} edges={['top']}>
+      <AppTopBar title="Notifications" hideBell />
+
+      <View style={s.tabs} accessibilityRole="tablist">
+        {tabs.map((t) => {
+          const on = tab === t.value;
+          return (
+            <TouchableOpacity
+              key={t.value}
+              style={[s.tab, on && s.tabOn]}
+              onPress={() => { tap(); setTab(t.value); }}
+              activeOpacity={0.7}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on }}
+              accessibilityLabel={`${t.label}${t.count ? `, ${t.count}` : ''}`}
+            >
+              <Text style={[s.tabText, on && s.tabTextOn]}>{t.label}</Text>
+              {t.count > 0 ? (
+                <View style={[s.badge, t.hot ? s.badgeHot : on ? s.badgeOn : null]}>
+                  <Text style={[s.badgeText, (t.hot || on) && { color: Colors.white }]}>{t.count > 99 ? '99+' : t.count}</Text>
+                </View>
+              ) : null}
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      <View style={{ flex: 1 }}>
+        {tab === 'todo' ? (
+          <TodoTab
+            items={inbox.items}
+            loading={inbox.loading}
+            liveError={inbox.liveError}
+            onRetry={inbox.retry}
+            now={now}
+            refreshing={refreshing}
+            onRefresh={refresh}
+            onIntent={onIntent}
+            onOpenTrip={(id) => openTrip(id)}
+          />
+        ) : (
+          <ActivityTab
+            items={items}
+            loading={feed.isLoading}
+            error={feed.error ? getApiErrorMessage(feed.error) : null}
+            now={now}
+            refreshing={feed.isRefetching}
+            onRefresh={() => feed.refetch()}
+            onOpen={openNotification}
+            onMarkRead={markRead}
+            canMarkAll={markable.length > 0}
+            onMarkAllRead={markAllRead}
+          />
+        )}
+      </View>
+
+      <Toast visible={!!toast} message={toast?.message ?? ''} type={toast?.type ?? 'success'} onDismiss={() => setToast(null)} />
+    </SafeAreaView>
   );
 }
+
+const s = StyleSheet.create({
+  tabs: { flexDirection: 'row', marginHorizontal: 16, marginTop: 4, padding: 3, borderRadius: 12, backgroundColor: '#EDEDF0', gap: 3 },
+  tab: { flex: 1, height: 38, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  tabOn: { backgroundColor: Colors.white, borderWidth: 1, borderColor: LINE, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  tabText: { fontSize: 14, fontWeight: '600', color: MUTED },
+  tabTextOn: { color: INK },
+  badge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: '#DCDCE0' },
+  badgeOn: { backgroundColor: INK },
+  badgeHot: { backgroundColor: '#D92D20' },
+  badgeText: { fontSize: 11, fontWeight: '700', color: '#3F3F46', fontVariant: ['tabular-nums'] },
+});
