@@ -152,7 +152,9 @@ export default function CreateTripScreen() {
             <Animated.View key={form.step} entering={entering}>
               {form.step === 1 ? <StepJob form={form} showErrors={showErrors[1]} /> : null}
               {form.step === 2 ? <StepSchedule form={form} showErrors={showErrors[2]} /> : null}
-              {form.step === 3 ? <StepAssign form={form} showErrors={showErrors[3]} /> : null}
+              {form.step === 3 ? (
+                form.fleetLoading ? <SkeletonRows rows={3} height={96} /> : <StepAssign form={form} showErrors={showErrors[3]} />
+              ) : null}
             </Animated.View>
           </ScrollView>
 
