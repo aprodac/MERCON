@@ -29,7 +29,7 @@ function DriverChargePillContent({ amount, style }: { amount: number; style?: Vi
         <Text style={[styles.chargeAmount, { writingDirection: 'ltr' }]}>
           {formatCurrency(amount)}
         </Text>
-        <Text style={styles.chargeLabel}>{t('label_driver_charge', 'Driver Charge')}</Text>
+        <Text style={styles.chargeLabel} numberOfLines={1}>{t('label_driver_charge', 'Driver Charge')}</Text>
       </View>
       {language === 'ur' ? (
         <ChevronLeft size={14} color="#9898A4" strokeWidth={2.2} />
@@ -82,6 +82,7 @@ const styles = StyleSheet.create({
   },
   chargeTextCol: {
     justifyContent: 'center',
+    flexShrink: 1,
   },
   chargeAmount: {
     fontSize: 13,
