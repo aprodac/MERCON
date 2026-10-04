@@ -27,6 +27,14 @@ const LINE = '#E9E9EC';
 const BRAND = '#FA634E';
 const BRAND_LIGHT = '#FFF0EB';
 
+/** What the truck is doing right now — same words as the web live map. */
+const MOTION: Record<NonNullable<LiveUnit['motion']>, { label: string; color: string }> = {
+  moving: { label: 'Moving', color: '#16A34A' },
+  idle: { label: 'Stopped', color: INK },
+  stale: { label: 'Offline', color: '#9898A4' },
+  no_signal: { label: 'No signal', color: '#9898A4' },
+};
+
 /** How far a finger has to travel before a swipe or drag counts. */
 const SWIPE_PX = 70;
 const DRAG_PX = 50;
@@ -164,6 +172,7 @@ export function UnitSheet({
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={s.plate}>{u.vehicle?.plate_number ?? 'No truck'}</Text>
           <Text style={s.driver}>{u.driver ? niceName(u.driver.name) : 'No driver'}</Text>
+          <MotionLine unit={u} now={now} />
         </View>
         <StateChip unit={u} now={now} />
         <TouchableOpacity onPress={onClose} hitSlop={8} style={s.close} accessibilityLabel="Close"><X size={16} color={MUTED} /></TouchableOpacity>
@@ -239,6 +248,22 @@ export function UnitSheet({
         ) : null}
       </View>
     </SheetFrame>
+  );
+}
+
+/** "● Moving · 72 km/h · GPS 1 min ago" */
+function MotionLine({ unit: u, now }: { unit: LiveUnit; now: number }) {
+  const m = u.motion ? MOTION[u.motion] : null;
+  const parts = [
+    m?.label,
+    u.motion === 'moving' && u.position?.speed_kph != null ? `${Math.round(u.position.speed_kph)} km/h` : null,
+    u.position ? `GPS ${agoText(u.position.recorded_at, now)}` : 'No GPS yet',
+  ].filter(Boolean);
+  return (
+    <View style={s.motion}>
+      {m ? <View style={[s.motionDot, { backgroundColor: m.color }]} /> : null}
+      <Text style={s.motionText} numberOfLines={1}>{parts.join(' · ')}</Text>
+    </View>
   );
 }
 
@@ -336,6 +361,9 @@ const s = StyleSheet.create({
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
   plate: { fontSize: 19, fontWeight: '800', color: INK, letterSpacing: 0.3 },
   driver: { fontSize: 14, fontWeight: '500', color: '#3F3F46' },
+  motion: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 },
+  motionDot: { width: 7, height: 7, borderRadius: 4 },
+  motionText: { fontSize: 12, color: MUTED },
   close: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F1F1F3', alignItems: 'center', justifyContent: 'center' },
   line: { fontSize: 13, color: MUTED, lineHeight: 19 },
   eta: { flexDirection: 'row', gap: 8 },

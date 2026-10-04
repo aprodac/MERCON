@@ -10,9 +10,13 @@
  *   show reliably where SVG icons came out blank.
  *   A truck whose GPS has gone quiet is drawn faded, whatever its colour
  *   (independent of delay, same as Home). A moving truck shows its heading.
- *   The selected truck gets its plate label, its road route to the next stop
- *   (real roads when routing is up, dashed straight line otherwise) and its
- *   trip's numbered stops.
+ *   Zoomed in, trucks carry their plate — most urgent first, skipping any
+ *   label that would overlap another. The selected truck gets its road route
+ *   to the next stop (real roads when routing is up, dashed straight line
+ *   otherwise), a faint line through the rest of the trip (only when it
+ *   follows real roads), and its trip's numbered stops. While following, the
+ *   camera moves with the truck as fresh positions arrive; dragging the map
+ *   stops that until recenter().
  *
  * Views (driven through the ref, like the web map's controls):
  *   2D / 3D       flat, or tilted 55° — Liberty's 3D buildings rise from ~z14
@@ -27,7 +31,7 @@ import { View, Text, Image, StyleSheet, TurboModuleRegistry, useWindowDimensions
 import { MapPin } from 'lucide-react-native';
 import Supercluster from 'supercluster';
 import type { LiveUnit } from '../../lib/operator';
-import { isDelayed, isFree, isSilent, located } from './fleetModel';
+import { isDelayed, isFree, isSilent, located, unitPriority } from './fleetModel';
 import { quietOfflineTileErrors } from '../../lib/mapLogs';
 
 const hasNativeMap = (() => {
@@ -74,6 +78,8 @@ const ICONS = {
 const GROUP_RADIUS_PX = 50;
 /** From this zoom up every truck is drawn on its own. */
 const GROUP_MAX_ZOOM = 14;
+/** From this zoom up trucks carry their plate. */
+const LABEL_MIN_ZOOM = 8;
 
 type GroupProps = { key: string; delayed: number };
 
@@ -89,6 +95,42 @@ function boundsOf(pts: { lat: number; lng: number }[], minSpan = 0.05, pad = 0.1
   if (e - w < minSpan) { w -= pad; e += pad; }
   if (n - s < minSpan) { s -= pad; n += pad; }
   return [w, s, e, n];
+}
+
+/** Screen pixel of a point at a zoom (Web Mercator, 512 px tiles), turned to the map's bearing. */
+function toScreen(p: { lat: number; lng: number }, zoom: number, bearing: number): [number, number] {
+  const size = 512 * 2 ** zoom;
+  const x = ((p.lng + 180) / 360) * size;
+  const r = (p.lat * Math.PI) / 180;
+  const y = ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * size;
+  const b = (-bearing * Math.PI) / 180;
+  return [x * Math.cos(b) - y * Math.sin(b), x * Math.sin(b) + y * Math.cos(b)];
+}
+
+/**
+ * Which trucks get a plate label: most urgent first, each placed under its
+ * pin and dropped when it would cover another label or pin.
+ */
+function pickLabels(
+  items: { key: string; x: number; y: number; text: string; priority: number }[],
+  /** Group bubbles: labels must not cover them either. */
+  others: { x: number; y: number }[],
+): Set<string> {
+  type Box = [number, number, number, number];
+  const hit = (a: Box, b: Box) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+  const pinBox = (p: { x: number; y: number }): Box => [p.x - 18, p.y - 18, p.x + 18, p.y + 18];
+  const pins = items.map((i) => ({ key: i.key, box: pinBox(i) }));
+  const groups = others.map(pinBox);
+  const taken: Box[] = [];
+  const out = new Set<string>();
+  for (const i of [...items].sort((a, b) => b.priority - a.priority)) {
+    const w = i.text.length * 7 + 12;
+    const box: Box = [i.x - w / 2, i.y + 18, i.x + w / 2, i.y + 38];
+    if (taken.some((t) => hit(t, box)) || groups.some((g) => hit(g, box)) || pins.some((p) => p.key !== i.key && hit(p.box, box))) continue;
+    taken.push(box);
+    out.add(i.key);
+  }
+  return out;
 }
 
 /** Compass bearing from a to b, degrees clockwise from north. */
@@ -110,6 +152,8 @@ export interface FleetMapHandle {
   set3D(on: boolean): void;
   driverView(): void;
   tripOverview(): void;
+  /** Back on the selected truck in the current view, following it again. */
+  recenter(): void;
 }
 
 interface Props {
@@ -131,11 +175,17 @@ interface Props {
   onViewChange?: (v: MapView) => void;
   /** A group of trucks that sit on the same spot was tapped — show them as a list. */
   onGroupPress?: (keys: string[]) => void;
+  /** The rest of the trip after the next stop, along real roads; nothing drawn when null. */
+  restLine?: LngLat[] | null;
+  /** Keep the camera on the selected truck as it moves. */
+  follow?: boolean;
+  /** The user moved the map by hand (the page turns follow off). */
+  onUserMove?: () => void;
 }
 
 export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   units, selected, onSelect, interactive = false, theme = 'light', tilted = false, focusMode = 'none',
-  routeLine, focus, padding = { top: 40, bottom: 40 }, onViewChange, onGroupPress,
+  routeLine, focus, padding = { top: 40, bottom: 40 }, onViewChange, onGroupPress, restLine, follow = true, onUserMove,
 }, ref) {
   const { height } = useWindowDimensions();
   const points = useMemo(() => units.filter(located), [units]);
@@ -194,6 +244,21 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     return out;
   }, [groupIndex, points, area, bounds, focusMode, sel]);
 
+  // Plates on the trucks standing alone, once zoomed in far enough to read them.
+  const labelled = useMemo(() => {
+    const zoom = area?.zoom ?? 0;
+    if (zoom < LABEL_MIN_ZOOM) return new Set(selected ? [selected] : []);
+    const items = singles.filter((u) => u.vehicle?.plate_number).map((u) => {
+      const [x, y] = toScreen(u.position!, zoom, view.bearing);
+      return { key: u.key, x, y, text: u.vehicle!.plate_number, priority: unitPriority(u) + (u.key === selected ? 100 : 0) };
+    });
+    const others = groups.map((g) => {
+      const [x, y] = toScreen(g, zoom, view.bearing);
+      return { x, y };
+    });
+    return pickLabels(items, others);
+  }, [singles, groups, area?.zoom, view.bearing, selected]);
+
   const pressGroup = (g: { id: number; lng: number; lat: number }) => {
     const keys = groupIndex.getLeaves(g.id, Infinity).map((f) => (f.properties as GroupProps).key);
     const zoom = groupIndex.getClusterExpansionZoom(g.id);
@@ -220,6 +285,25 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     });
   };
 
+  const driverView = () => {
+    if (!sel?.position) return;
+    camera.current?.easeTo?.({
+      center: [sel.position.lng, sel.position.lat],
+      zoom: 17,
+      pitch: 70,
+      bearing: headingOf(sel),
+      // The truck sits low on screen with the road ahead above it.
+      padding: { ...pad, top: Math.round(height * 0.45) },
+      duration: 1400,
+    });
+  };
+
+  const tripOverview = () => {
+    if (!sel?.position) return;
+    const b = boundsOf([sel.position, ...stops.map((s) => ({ lat: s.lat!, lng: s.lng! }))], 0.02, 0.05);
+    if (b) camera.current?.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration: 1000 });
+  };
+
   useImperativeHandle(ref, () => ({
     fitAll() {
       if (bounds) camera.current?.fitBounds(bounds, { padding: pad, pitch: 0, bearing: 0, duration: 800 });
@@ -236,23 +320,14 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
         .then((center: LngLat) => camera.current?.easeTo({ center, pitch: on ? 55 : 0, zoom: on ? Math.max(zoomRef.current, 6) : zoomRef.current, duration: 700 }))
         .catch(() => {});
     },
-    driverView() {
+    driverView,
+    recenter() {
       if (!sel?.position) return;
-      camera.current?.easeTo?.({
-        center: [sel.position.lng, sel.position.lat],
-        zoom: 17,
-        pitch: 70,
-        bearing: headingOf(sel),
-        // The truck sits low on screen with the road ahead above it.
-        padding: { ...pad, top: Math.round(height * 0.45) },
-        duration: 1400,
-      });
+      if (focusMode === 'driver') driverView();
+      else if (focusMode === 'overview') tripOverview();
+      else flyToSelected(sel, tilted ? 55 : 0);
     },
-    tripOverview() {
-      if (!sel?.position) return;
-      const b = boundsOf([sel.position, ...stops.map((s) => ({ lat: s.lat!, lng: s.lng! }))], 0.02, 0.05);
-      if (b) camera.current?.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration: 1000 });
-    },
+    tripOverview,
   }));
 
   // Picking a truck flies to it (tilted when 3D is on); a city search frames the city.
@@ -266,6 +341,25 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     // Only a new selection or search moves the camera, not padding/tilt changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [interactive, sel?.key, focus?.lat, focus?.lng, focus?.km]);
+
+  // Follow the selected truck as fresh positions arrive (a new pick is handled above).
+  const followLat = sel?.position?.lat;
+  const followLng = sel?.position?.lng;
+  const lastFollowed = useRef<{ key: string | null; lat?: number; lng?: number }>({ key: null });
+  useEffect(() => {
+    const prev = lastFollowed.current;
+    lastFollowed.current = { key: sel?.key ?? null, lat: followLat, lng: followLng };
+    if (!interactive || !follow || !sel || followLat == null || followLng == null) return;
+    if (prev.key !== sel.key || (prev.lat === followLat && prev.lng === followLng)) return;
+    if (focusMode === 'overview') return; // the whole trip is framed — the truck stays in it
+    if (focusMode === 'driver') {
+      camera.current?.easeTo?.({ center: [followLng, followLat], bearing: headingOf(sel), padding: { ...pad, top: Math.round(height * 0.45) }, duration: 1200 });
+    } else {
+      camera.current?.easeTo?.({ center: [followLng, followLat], padding: pad, duration: 1200 });
+    }
+    // Only a new position moves the camera.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [followLat, followLng, sel?.key, follow, interactive]);
 
   if (!ML || !bounds) {
     return (
@@ -303,6 +397,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
         setView(v);
         setArea({ bbox: e.nativeEvent.bounds, zoom: v.zoom });
         onViewChange?.(v);
+        if (e.nativeEvent.userInteraction) onUserMove?.();
       }}
     >
       {interactive ? (
@@ -310,6 +405,12 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       ) : (
         <Camera bounds={bounds} padding={{ top: padding.top, bottom: padding.bottom, left: 30, right: 30 }} duration={0} />
       )}
+
+      {restLine && restLine.length > 1 && sel ? (
+        <GeoJSONSource id="trip-rest" data={{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: restLine } }}>
+          <Layer id="trip-rest-line" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': dark ? '#FF8A78' : '#FA634E', 'line-width': 4, 'line-opacity': 0.35 }} />
+        </GeoJSONSource>
+      ) : null}
 
       {toNext ? (
         <GeoJSONSource id="to-next" data={toNext}>
@@ -358,7 +459,9 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
             key={u.key}
             id={`unit-${u.key}`}
             lngLat={[u.position!.lng, u.position!.lat]}
-            anchor="center"
+            // Pinned by the pin's centre, so a plate label below doesn't shift it.
+            anchor="top"
+            offset={[0, -(on ? 21 : 16)]}
             onPress={interactive && onSelect ? () => onSelect(u.key) : undefined}
           >
             <View style={{ alignItems: 'center' }}>
@@ -371,7 +474,9 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
                 {/* No signal: a small grey badge, so the pin itself stays readable */}
                 {silent ? <View style={st.silent} /> : null}
               </View>
-              {on && u.vehicle?.plate_number ? <View style={st.label}><Text style={st.labelText}>{u.vehicle.plate_number}</Text></View> : null}
+              {labelled.has(u.key) && u.vehicle?.plate_number ? (
+                <View style={[st.label, !on && st.labelQuiet]}><Text style={[st.labelText, !on && st.labelTextQuiet]}>{u.vehicle.plate_number}</Text></View>
+              ) : null}
             </View>
           </Marker>
         );
@@ -392,6 +497,8 @@ const st = StyleSheet.create({
   silent: { position: 'absolute', top: -3, right: -3, width: 11, height: 11, borderRadius: 6, backgroundColor: '#9898A4', borderWidth: 2, borderColor: '#FFFFFF' },
   label: { marginTop: 3, backgroundColor: '#3E3C3D', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   labelText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF', fontFamily: 'monospace' },
+  labelQuiet: { backgroundColor: 'rgba(255,255,255,0.95)', borderWidth: 1, borderColor: '#E4E4E7' },
+  labelTextQuiet: { color: '#3E3C3D', fontWeight: '600' },
   group: {
     minWidth: 38, height: 38, borderRadius: 19, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center',
     backgroundColor: '#3E3C3D', borderWidth: 3, borderColor: '#FFFFFF',
