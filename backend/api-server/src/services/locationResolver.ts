@@ -1,4 +1,4 @@
-import { PrismaClient, TripStatus } from '@prisma/client';
+import { Prisma, PrismaClient, TripStatus } from '@prisma/client';
 
 export type LocationSource = 'DRIVER_GPS' | 'PHYSICAL_GPS' | 'NONE';
 export type LocationDisplayState = 'CURRENT' | 'LAST_KNOWN' | 'UNAVAILABLE';
@@ -262,11 +262,15 @@ export async function resolveVehicleLocationsForTrips(
   let latestLocMap = new Map<string, any>();
   if (operationalTripIds.length > 0) {
     try {
-      const locs = await db.tripLocation.findMany({
-        where: { tripId: { in: operationalTripIds } },
-        orderBy: [{ tripId: 'asc' }, { recordedAt: 'desc' }],
-        distinct: ['tripId'],
-      });
+      // Latest ping per trip in Postgres (DISTINCT ON, served by the
+      // [tripId, recordedAt] index). Prisma's `distinct` dedupes in Node, so it
+      // loaded every ping of every active trip — tens of thousands of rows.
+      const locs: any[] = await db.$queryRaw(Prisma.sql`
+        SELECT DISTINCT ON ("tripId") *
+        FROM "TripLocation"
+        WHERE "tripId" IN (${Prisma.join(operationalTripIds.map((id) => Prisma.sql`${id}::uuid`))})
+        ORDER BY "tripId", "recordedAt" DESC
+      `);
       for (const loc of locs) {
         latestLocMap.set(loc.tripId, loc);
       }

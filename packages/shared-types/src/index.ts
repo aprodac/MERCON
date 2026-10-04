@@ -1272,3 +1272,5 @@ export * from './mapsLink';
 export * from './evidenceTimes';
 export * from './chargeReview';
 export * from './assistantConfig';
+export * from './saudiPlate';
+export * from './quotationRef';

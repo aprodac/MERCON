@@ -1,4 +1,5 @@
 import { lineTypeLabel, normalizeLineTypeToken, type RateReportFieldKey } from '@mercon/shared-types';
+import { formatQuotationRef } from '@mercon/shared-types';
 import { prisma } from '../../../db';
 
 const BASIS_LABEL: Record<string, string> = { PER_TRIP: 'Per trip', PER_MONTH: 'Per month' };
@@ -30,7 +31,7 @@ export async function fetchRateRows(customerId: string, lineType?: string): Prom
       const dropoff = [...q.stops].reverse().find((s) => s.stop_type === 'Dropoff');
       const nameOf = (s?: (typeof q.stops)[number]) => s?.location?.name || s?.source_label || '';
       return {
-        quotation_no: q.quotation_number != null ? `QT-${q.quotation_number}` /* as on the Quotations list */ : '',
+        quotation_no: formatQuotationRef(q.quotation_number) ?? '', /* as on the Quotations list */
         quotation_name: q.name,
         origin: nameOf(pickup) || names[0] || '',
         destination: nameOf(dropoff) || names[names.length - 1] || '',

@@ -125,9 +125,11 @@ export default function CustomerDetailsPage() {
     try {
       await customerService.delete(id!);
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      toast.success(`${customer?.name ?? 'Customer'} moved to the Recycle bin`);
       navigate('/customers');
-    } catch {
-      toast.error('Failed to delete customer account.');
+    } catch (err: any) {
+      setIsDeleteModalOpen(false);
+      toast.error(err?.response?.data?.error?.message || "Couldn't delete this customer.");
     }
   };
 
@@ -229,7 +231,7 @@ export default function CustomerDetailsPage() {
     { id: 'trips', label: 'Trips', count: totalTripsCount },
     { id: 'tracking', label: 'Live tracking', dot: true },
     ...(exportsEnabled ? [{ id: 'exports' as CustomerTabId, label: 'Trip sheets' }] : []),
-    { id: 'financials', label: 'Invoices', count: openInvoicesCount || undefined },
+    ...(financeEnabled ? [{ id: 'financials' as CustomerTabId, label: 'Invoices', count: openInvoicesCount || undefined }] : []),
     { id: 'quotations', label: 'Quotations', count: customerQuotations.length },
     { id: 'locations', label: 'Locations', count: customerLocations.length },
   ];
@@ -272,6 +274,9 @@ export default function CustomerDetailsPage() {
       onClick={() => setActiveTab('financials')}
     />,
   ];
+
+  // Money owed comes from Finance invoices; with Finance off the figure means nothing.
+  const shownStats = financeEnabled ? stats : stats.filter((cell) => cell.key !== 'owed');
 
   return (
     <DashboardLayout active="Customers" title={customer.name} breadcrumb="Customers" compactHeader>
@@ -350,8 +355,8 @@ export default function CustomerDetailsPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 border-t border-slate-100 lg:grid-cols-4 dark:border-slate-800">
-            {stats.map((cell, i) => (
+          <div className={cn('grid grid-cols-2 border-t border-slate-100 dark:border-slate-800', shownStats.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3')}>
+            {shownStats.map((cell, i) => (
               <div key={i} className={cn('min-w-0 border-slate-100 dark:border-slate-800', CELL_BORDER[i])}>{cell}</div>
             ))}
           </div>
@@ -436,7 +441,7 @@ export default function CustomerDetailsPage() {
           <DialogHeader className="px-6 pt-6 pb-2">
             <DialogTitle className="text-base font-semibold">Delete {customer.name}?</DialogTitle>
             <DialogDescription className="text-[13px] text-slate-500">
-              Their trips and invoices stay, marked as from a deleted customer.
+              Their past trips, quotations and invoices stay. You can restore them from Settings → Recycle bin.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex justify-end gap-2 px-6 pt-2 pb-5">

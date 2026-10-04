@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { AlarmClock, CalendarCheck, Check, CircleAlert, FileText, ListOrdered, Phone, PlayCircle, Plus, Receipt, Route, Smartphone, Timer, Truck, UploadCloud, UserRound, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -351,6 +352,7 @@ export function FinancialSummary({
   onCharges,
   onTripCosts,
   addTripCostHref,
+  costsEnabled = true,
 }: {
   f: FinancialFigures;
   onCharges: () => void;
@@ -358,10 +360,12 @@ export function FinancialSummary({
   onTripCosts?: () => void;
   /** Record an expense against this trip; absent for subcontracted trips. */
   addTripCostHref?: string;
+  /** Costs come from the Expenses module — with it switched off there is nothing to show or add. */
+  costsEnabled?: boolean;
 }) {
   const payout = f.driverPayout + f.coDriverPayout;
   const tripCosts = f.tripCosts ?? 0;
-  const showCosts = !f.is3PL;
+  const showCosts = !f.is3PL && costsEnabled;
   const total = Math.max(payout + f.charges + (showCosts ? tripCosts : 0) + Math.max(f.margin, 0), 1);
   const settled = f.balanceDue <= 0;
   const parts = [
@@ -404,7 +408,7 @@ export function FinancialSummary({
                   {p.label}
                 </button>
               ) : (
-                <span className="truncate">{p.label}</span>
+                <span className="truncate" title={p.key === 'costs' ? 'Fuel, tolls and other expenses recorded against this trip' : undefined}>{p.label}</span>
               )}
               {p.key === 'costs' && addTripCostHref && (
                 <Link
@@ -441,6 +445,22 @@ export function FinancialSummary({
 }
 
 /** The trip's paperwork, at the bottom of the stops panel. Driver photos stay under their stops. */
+const DOC_NAME: Record<string, string> = { CustomsClearance: 'Customs', Emergency: 'Incident', POD: 'Delivery proof', Waybill: 'Loading papers' };
+
+/** A file's preview: the photo itself, or a document tile — also when the photo can't be loaded. */
+export function FileThumb({ url, mime }: { url: string; mime?: string | null }) {
+  const [broken, setBroken] = useState(false);
+  const looksImage = (mime ?? '').startsWith('image/') || /\.(jpe?g|png|webp|gif|heic|heif|bmp)$/i.test(url);
+  if (!looksImage || broken) {
+    return (
+      <span className="flex size-full items-center justify-center bg-slate-50 dark:bg-slate-800" title={broken ? "This file can't be loaded" : undefined}>
+        <FileText className={cn('size-3.5', broken ? 'text-amber-500' : 'text-slate-400')} />
+      </span>
+    );
+  }
+  return <img src={url} alt="" loading="lazy" onError={() => setBroken(true)} className="size-full object-cover" />;
+}
+
 export function PaperworkSection({ documents, onUpload, onActivity }: { documents: any[]; onUpload: () => void; onActivity: () => void }) {
   const paperwork = documents.filter((d) => !['POD', 'Waybill'].includes(d.doc_type));
   return (
@@ -458,14 +478,25 @@ export function PaperworkSection({ documents, onUpload, onActivity }: { document
       </div>
       {paperwork.length > 0 && (
         <ul className="space-y-1">
-          {paperwork.map((d) => (
-            <li key={d.id} className="flex items-center gap-2 text-xs">
-              <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-              <a href={resolveFileUrl(d.file_url)} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-foreground hover:underline">
-                {d.documentType?.name || d.doc_type || d.title || 'Document'}
-              </a>
-            </li>
-          ))}
+          {paperwork.map((d) => {
+            const files: Array<{ id: string; file_url: string; mime_type?: string | null }> = d.files?.length ? d.files : [{ id: d.id, file_url: d.file_url, mime_type: d.mime_type }];
+            const name = d.documentType?.name || DOC_NAME[d.doc_type] || d.doc_type || d.title || 'Document';
+            return (
+              <li key={d.id} className="flex items-center gap-2 text-xs">
+                <div className="flex shrink-0 gap-1">
+                  {files.slice(0, 3).map((f) => (
+                    <a key={f.id} href={resolveFileUrl(f.file_url)} target="_blank" rel="noreferrer" title={`Open ${name}`} className="block size-8 overflow-hidden rounded-md ring-1 ring-black/10 hover:ring-blue-500 dark:ring-white/10">
+                      <FileThumb url={resolveFileUrl(f.file_url)} mime={f.mime_type} />
+                    </a>
+                  ))}
+                </div>
+                <a href={resolveFileUrl(d.file_url)} target="_blank" rel="noreferrer" className="min-w-0 flex-1 truncate text-foreground hover:underline">
+                  {name}{files.length > 1 ? ` · ${files.length} files` : ''}
+                </a>
+                {d.createdAt && <span className="shrink-0 text-[11px] text-muted-foreground">{new Date(d.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</span>}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

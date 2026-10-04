@@ -7,6 +7,7 @@
  */
 import { buildTripStops, isRoundTripCategory, type BuiltTripStop } from './tripRoute';
 import { quotationMatchesRoute, type RouteLegs, type RouteStopRef } from './quotationMatching';
+import { normalizeSaudiPlate } from './saudiPlate';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -726,7 +727,7 @@ export function buildTripRows(input: TripRowsInput): TripImportRow[] {
           third_party_provider_id: safeUuid(thirdPartyProviderId) || undefined,
           third_party_driver_name: thirdPartyDriverName.trim() || undefined,
           third_party_driver_phone: thirdPartyDriverPhone.trim() || undefined,
-          third_party_vehicle_plate: thirdPartyVehiclePlate.trim() || undefined,
+          third_party_vehicle_plate: tidyPlate(thirdPartyVehiclePlate),
           third_party_vehicle_type: vehicleType || undefined,
           third_party_cost: costVal,
           trip_charges: costVal,
@@ -852,6 +853,8 @@ export interface TripValidationInput {
   thirdPartyProviderId: string;
   thirdPartyDriverName: string;
   thirdPartyCost: string;
+  /** Optional: when given, must be a Saudi plate (or empty / "Assign Later"). */
+  thirdPartyVehiclePlate?: string;
   selectedDates: string[];
   toUtcIso: (date: string, time: string) => string;
 }
@@ -866,6 +869,14 @@ export interface TripValidationIssue {
 }
 
 const hasValue = (v: unknown) => v !== undefined && v !== null && v !== '';
+
+/** "dra 6484" → "DRA-6484"; anything that isn't a plate is sent as typed (the API refuses it). */
+function tidyPlate(v: string): string | undefined {
+  const t = v.trim();
+  if (!t) return undefined;
+  const checked = normalizeSaudiPlate(t);
+  return checked.ok ? checked.plate : t;
+}
 
 /**
  * Everything that must be right before a trip can be created. Sections let
@@ -948,6 +959,11 @@ export function validateTripDraft(input: TripValidationInput): TripValidationIss
   if (is3PL) {
     if (!input.thirdPartyProviderId && !input.thirdPartyDriverName) {
       issues.push({ section: 'assignment', field: 'thirdPartyProvider', message: '3PL Logistics Partner selection is required' });
+    }
+    const plate = (input.thirdPartyVehiclePlate ?? '').trim();
+    if (plate && !/^assign later$/i.test(plate)) {
+      const checked = normalizeSaudiPlate(plate);
+      if (!checked.ok) issues.push({ section: 'assignment', field: 'thirdPartyVehiclePlate', message: `3PL plate: ${checked.reason}` });
     }
   } else if (!input.masterDriver && !input.masterVehicle) {
     issues.push({ section: 'assignment', field: 'assignment', message: 'Select an assignment choice: Driver & Vehicle or Assign Later' });

@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { customersApi } from '../api/customersApi';
-import { sortCustomers, statusFilterToIsActive, toCustomerListItem } from '../services/customersService';
+import { isDemoCustomer, sortCustomers, statusFilterToIsActive, toCustomerListItem } from '../services/customersService';
 import { useCustomerAggregates } from './useCustomerAggregates';
 import type { CustomerListItem, CustomerSortOption, CustomerStatusFilter } from '../types';
 
@@ -62,7 +62,7 @@ export function useCustomers({
 
   const customers = useMemo(() => {
     const flat = (list.data?.pages ?? []).flatMap((page) =>
-      page.data.map((raw) =>
+      page.data.filter((raw) => !isDemoCustomer(raw)).map((raw) =>
         toCustomerListItem(
           raw,
           aggregates.tripsByCustomer,
@@ -82,7 +82,8 @@ export function useCustomers({
 
   return {
     customers,
-    total: list.data?.pages[0]?.meta.total ?? 0,
+    // Minus the hidden demo rows seen so far (see isDemoCustomer).
+    total: Math.max(0, (list.data?.pages[0]?.meta.total ?? 0) - (list.data?.pages ?? []).reduce((n, pg) => n + pg.data.filter(isDemoCustomer).length, 0)),
     pagination: {
       page: meta?.page ?? 1,
       perPage: meta?.per_page ?? PAGE_SIZE,

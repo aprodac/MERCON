@@ -188,8 +188,9 @@ export default function TripLocationField({
         onNameChange(resolved.name);
         onAddressChange(resolved.address || resolved.name);
         onCoordsChange(resolved.lat, resolved.lng);
-        setIsTripOverrideExact(true);
-        onPrecisionChange?.('EXACT');
+        // A search pick is the area, not the gate — "Pin needed" until it's pinned.
+        setIsTripOverrideExact(false);
+        onPrecisionChange?.('APPROXIMATE');
       }
     } catch (e) {
       console.error('Failed to resolve place', e);

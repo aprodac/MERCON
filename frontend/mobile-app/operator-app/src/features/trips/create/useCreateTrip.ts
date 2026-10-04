@@ -158,19 +158,26 @@ const classOf = (q: OperatorQuotation) => {
   return raw ? normalizeTruckClass(raw) : null;
 };
 
+/** Pick lists kept between visits to the form, so it opens without waiting on the network. */
+const listCache: {
+  customers?: OperatorCustomer[];
+  fleet?: { drivers: OperatorDriverOption[]; vehicles: OperatorVehicleOption[]; providers: OperatorThirdPartyProvider[] };
+} = {};
+
 export function useCreateTrip(params: { customerId?: string; billingType?: string; assignment?: string }) {
   const [tz, setTz] = useState('Asia/Riyadh');
   const [today, setToday] = useState(() => dateInZone(Date.now(), 'Asia/Riyadh'));
 
   /* ── Data ── */
-  const [customers, setCustomers] = useState<OperatorCustomer[]>([]);
-  const [drivers, setDrivers] = useState<OperatorDriverOption[]>([]);
-  const [vehicles, setVehicles] = useState<OperatorVehicleOption[]>([]);
-  const [providers, setProviders] = useState<OperatorThirdPartyProvider[]>([]);
+  const [customers, setCustomers] = useState<OperatorCustomer[]>(() => listCache.customers ?? []);
+  const [drivers, setDrivers] = useState<OperatorDriverOption[]>(() => listCache.fleet?.drivers ?? []);
+  const [vehicles, setVehicles] = useState<OperatorVehicleOption[]>(() => listCache.fleet?.vehicles ?? []);
+  const [providers, setProviders] = useState<OperatorThirdPartyProvider[]>(() => listCache.fleet?.providers ?? []);
   const [locations, setLocations] = useState<OperatorLocation[]>([]);
   const [quotations, setQuotations] = useState<OperatorQuotation[]>([]);
   const [quotationsLoading, setQuotationsLoading] = useState(Boolean(params.customerId));
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !listCache.customers);
+  const [fleetLoading, setFleetLoading] = useState(() => !listCache.fleet);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recommended, setRecommended] = useState<RecommendedDriver[]>([]);
 
@@ -239,27 +246,32 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const toUtcIso = useCallback((date: string, time: string) => zonedWallTimeToUtcIso(date, time, tz), [tz]);
 
   /* ── Load ── */
+  // Step 1 needs only customers and the timezone; the fleet (drivers, trucks,
+  // partners) is for step 3 and loads behind it. Lists from the last visit show
+  // at once and are refreshed in the background.
   useEffect(() => {
     let alive = true;
-    Promise.all([
-      operatorService.customers(),
-      operatorService.driversLookup(),
-      operatorService.vehiclesLookup(),
-      operatorService.thirdPartyProviders(),
-      operatorService.deploymentTimezone(),
-    ])
-      .then(([c, d, v, p, zone]) => {
+    const fail = (e: any) => alive && setLoadError(e?.message || 'Could not load customers and fleet');
+    Promise.all([operatorService.customersLookup(), operatorService.deploymentTimezone()])
+      .then(([c, zone]) => {
         if (!alive) return;
-        setCustomers(c || []);
-        setDrivers(d || []);
-        setVehicles((v || []).filter((x) => x.isActive !== false));
-        setProviders(p || []);
+        listCache.customers = c || [];
+        setCustomers(listCache.customers);
         setTz(zone);
-        const zoneToday = dateInZone(Date.now(), zone);
-        setToday(zoneToday);
+        setToday(dateInZone(Date.now(), zone));
       })
-      .catch((e) => alive && setLoadError(e?.message || 'Could not load customers and fleet'))
+      .catch(fail)
       .finally(() => alive && setLoading(false));
+    Promise.all([operatorService.driversLookup(), operatorService.vehiclesLookup(), operatorService.thirdPartyProviders()])
+      .then(([d, v, p]) => {
+        if (!alive) return;
+        listCache.fleet = { drivers: d || [], vehicles: (v || []).filter((x) => x.isActive !== false), providers: p || [] };
+        setDrivers(listCache.fleet.drivers);
+        setVehicles(listCache.fleet.vehicles);
+        setProviders(listCache.fleet.providers);
+      })
+      .catch(fail)
+      .finally(() => alive && setFleetLoading(false));
     return () => {
       alive = false;
     };
@@ -593,10 +605,11 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
         thirdPartyProviderId,
         thirdPartyDriverName,
         thirdPartyCost,
+        thirdPartyVehiclePlate,
         selectedDates,
         toUtcIso,
       }),
-    [customerId, slot, billingType, rateCategory, assignmentType, driverId, vehicleId, thirdPartyProviderId, thirdPartyDriverName, thirdPartyCost, selectedDates, toUtcIso, rotationActive, rotationDrivers],
+    [customerId, slot, billingType, rateCategory, assignmentType, driverId, vehicleId, thirdPartyProviderId, thirdPartyDriverName, thirdPartyCost, thirdPartyVehiclePlate, selectedDates, toUtcIso, rotationActive, rotationDrivers],
   );
 
   const stepIssues = useCallback(
@@ -730,6 +743,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     tz,
     today,
     loading,
+    fleetLoading,
     loadError,
     step,
     setStep,

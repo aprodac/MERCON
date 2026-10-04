@@ -28,6 +28,7 @@ import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure
 import { triggerGPayHapticsAndSound } from '../services/sound';
 import { getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops } from '../utils/routeParser';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
@@ -571,7 +572,7 @@ const PickupVerificationScreen = () => {
                 ? t('msg_processing', 'PROCESSING…')
                 : (isReturnLoading ? t('action_return_loading_complete', 'RETURN LOADING COMPLETE') : t('action_loading_complete', 'LOADING COMPLETE'))}
             </Text>
-            <ArrowRight size={20} color={hasAllPhotos ? "#FFFFFF" : "#94A3B8"} strokeWidth={2.2} />
+            <ArrowRight size={20} color={hasAllPhotos ? "#FFFFFF" : "#94A3B8"} strokeWidth={2.2} style={flipInRTL} />
           </TouchableOpacity>
         </View>
 

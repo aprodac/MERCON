@@ -6,6 +6,7 @@ import { getSocket } from '@/services/socket';
 import { tripService, type MobileTrip } from '@mercon/mobile-shared/lib/trips';
 import { notificationService, isNotificationsAvailable } from '@/services/notifications';
 import { DelayReportModal } from './DelayReportModal';
+import { stopTripTrackingFor } from '@/services/tripLocationTask';
 import { queryClient } from '@mercon/mobile-shared/lib/query-client';
 
 let Notifications: typeof import('expo-notifications') | null = null;
@@ -171,6 +172,7 @@ export function DriverNotificationManager() {
               ]
             );
           } else if (eventType === 'TripCancelled') {
+            void stopTripTrackingFor(tripId);
             queryClient.invalidateQueries();
             Alert.alert(
               payload?.title || 'Trip Cancelled',
@@ -185,6 +187,7 @@ export function DriverNotificationManager() {
               ]
             );
           } else if (eventType === 'TripReassigned') {
+            void stopTripTrackingFor(tripId);
             queryClient.invalidateQueries();
             Alert.alert(
               payload?.title || 'Trip Reassigned',
@@ -220,6 +223,10 @@ export function DriverNotificationManager() {
     const appStateSub = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
       if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
         connectAndListen();
+        // Alerts sent while away (cancelled, reassigned) only arrive as pushes;
+        // refetch so the screen matches the office without a manual refresh.
+        // Not after 'inactive' alone — system dialogs cause that.
+        if (appStateRef.current === 'background') queryClient.invalidateQueries();
       } else if (nextAppState.match(/inactive|background/)) {
         cleanupSocket();
       }
@@ -266,9 +273,11 @@ export function DriverNotificationManager() {
           navigateToTripDetails(tripId);
         }
       } else if (eventType === 'TripCancelled') {
+        void stopTripTrackingFor(tripId);
         queryClient.invalidateQueries();
         Alert.alert('Trip Cancelled', 'This trip has been cancelled.');
       } else if (eventType === 'TripReassigned') {
+        void stopTripTrackingFor(tripId);
         queryClient.invalidateQueries();
         Alert.alert('Trip Reassigned', 'This trip is no longer assigned to you.');
       }

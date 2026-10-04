@@ -1,25 +1,30 @@
 /**
  * Route: /profile — the last tab: the signed-in operator's own account.
  *
- * Who you are (name, role), your contact details (editable), password and
- * sign out. Pages (vehicles, quotations, customers…) live in the side menu,
- * not here. Data is GET /auth/me; edits go to PATCH /auth/me and
- * POST /auth/change-password.
+ * One light header card (who you are, how to reach you, edit), then one list
+ * of everything you can do from here, grouped: Account (edit profile, change
+ * password, access level), Workspace (notifications, user management, web
+ * dashboard), App (settings, help, about) and Log out.
+ * Data is GET /auth/me and GET /settings/public; edits go to PATCH /auth/me
+ * and POST /auth/change-password.
  */
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, RefreshControl, TextInput, Alert, ActivityIndicator, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
-import { ChevronRight, KeyRound, LogOut, SquarePen, type LucideIcon } from 'lucide-react-native';
+import { Bell, ChevronRight, Globe, HelpCircle, Info, Lock, LogOut, Mail, Phone, Settings, ShieldCheck, SquarePen, User, UserCog, type LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
-import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { api, API_URL, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { ErrorState } from '@mercon/mobile-shared/ui';
 import { AppTopBar } from '@/components/AppTopBar';
-import { ACTION, Chip, INK, MUTED, PAGE, tap } from '../trips/details/components/parts';
+import { FactRow, Tile } from '@/components/pageCues';
+import { useNotifications } from '@/features/notifications/hooks/useNotifications';
+import type { Tone } from '@/features/trips/details/tripDetailsModel';
+import { ACTION, Card, Chip, INK, MUTED, PAGE, tap } from '../trips/details/components/parts';
 import { initialsOf, niceName } from '../trips/create/components/ui';
 
 interface Me {
@@ -29,20 +34,40 @@ interface Me {
   email: string | null;
   phone: string | null;
   role: string;
+  isSuperAdmin?: boolean;
+}
+
+interface Company {
+  appName?: string | null;
+  companyLegalName?: string | null;
+  vatNumber?: string | null;
+  crNumber?: string | null;
+  timezone?: string | null;
+  supportWhatsapp?: string | null;
 }
 
 const ME_KEY = ['auth', 'me'] as const;
+
+type Link = { icon: LucideIcon; tone: Tone | 'brand'; label: string; sub: string; onPress: () => void; badge?: number; disabled?: boolean; danger?: boolean };
 
 export default function ProfileScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { profile, role, signOut } = useAuth();
-  const [sheet, setSheet] = useState<'edit' | 'password' | null>(null);
+  const [sheet, setSheet] = useState<'edit' | 'password' | 'about' | 'access' | null>(null);
 
   const me = useQuery({
     queryKey: ME_KEY,
     queryFn: async () => (await api.get('/auth/me')).data.data as Me,
   });
+
+  const company = useQuery({
+    queryKey: ['settings', 'public'],
+    queryFn: async () => (await api.get('/settings/public')).data.data as Company,
+    staleTime: 5 * 60_000,
+  });
+  const notifications = useNotifications();
+  const unread = notifications.data?.filter((n) => !n.is_read).length ?? 0;
 
   // Until /auth/me answers, show what sign-in already gave us.
   const name = me.data?.name ?? profile?.name ?? 'Operator';
@@ -56,52 +81,102 @@ export default function ProfileScreen() {
     ]);
   };
 
-  const account: Link[] = [
-    { icon: KeyRound, label: 'Change password', sub: 'Use at least 8 characters', onPress: () => setSheet('password') },
+  const support = (company.data?.supportWhatsapp ?? '').replace(/[^0-9]/g, '');
+  // The web dashboard lives on the same host as the API this app talks to.
+  const webUrl = (API_URL || '').replace(/\/api\/?$/, '');
+  const isAdmin = userRole === 'Admin';
+  const version = Constants.expoConfig?.version;
+
+  const groups: { title: string; rows: Link[] }[] = [
+    {
+      title: 'Account',
+      rows: [
+        { icon: User, tone: 'blue', label: 'Edit profile', sub: 'Name, phone and email', onPress: () => setSheet('edit'), disabled: !me.data },
+        { icon: Lock, tone: 'amber', label: 'Change password', sub: 'Use at least 8 characters', onPress: () => setSheet('password') },
+        { icon: ShieldCheck, tone: 'violet', label: 'Access level', sub: `${userRole}${me.data?.isSuperAdmin ? ' · platform admin' : ''}`, onPress: () => setSheet('access') },
+      ],
+    },
+    {
+      title: 'Workspace',
+      rows: [
+        { icon: Bell, tone: 'brand', label: 'Notifications', sub: unread ? `${unread} unread` : 'You’re all caught up', badge: unread || undefined, onPress: () => router.push('/notifications') },
+        { icon: UserCog, tone: 'violet', label: 'User management', sub: 'Team accounts and driver logins', onPress: () => router.push('/user-management') },
+        { icon: Globe, tone: 'sky', label: 'Web dashboard', sub: webUrl ? webUrl.replace(/^https?:\/\//, '') : 'Not available', onPress: () => { Linking.openURL(webUrl).catch(() => Alert.alert('Couldn’t open the dashboard')); }, disabled: !webUrl },
+      ],
+    },
+    {
+      title: 'App',
+      rows: [
+        { icon: Settings, tone: 'gray', label: 'App settings', sub: 'Notifications and location permissions', onPress: () => { Linking.openSettings().catch(() => Alert.alert('Couldn’t open settings')); } },
+        {
+          icon: HelpCircle, tone: 'green', label: 'Help & support',
+          sub: support ? 'Message support on WhatsApp' : 'No support number set yet',
+          onPress: () => { Linking.openURL(`https://wa.me/${support}`).catch(() => Alert.alert('Couldn’t open WhatsApp')); },
+          disabled: !support,
+        },
+        { icon: Info, tone: 'sky', label: 'About', sub: version ? `Version ${version}` : 'Company details', onPress: () => setSheet('about') },
+        { icon: LogOut, tone: 'red', label: 'Log out', sub: 'Sign out of your account', onPress: confirmSignOut, danger: true },
+      ],
+    },
   ];
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: PAGE }} edges={['top']}>
-      <AppTopBar title="Profile" actions={me.data ? [{ icon: SquarePen, label: 'Edit profile', onPress: () => setSheet('edit') }] : []} />
+      <AppTopBar title="Profile" />
 
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 120, gap: 24 }}
+        contentContainerStyle={s.scroll}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={me.isRefetching} onRefresh={() => me.refetch()} tintColor={Colors.primary} />}
+        refreshControl={<RefreshControl refreshing={me.isRefetching} onRefresh={() => { me.refetch(); company.refetch(); }} tintColor={Colors.primary} />}
       >
-        {/* 0 · who you are */}
-        <View style={s.hero}>
-          <View style={s.avatar}><Text style={s.avatarText}>{initialsOf(name)}</Text></View>
-          <Text style={s.name} numberOfLines={2}>{niceName(name)}</Text>
-          {/* A username that is just the email would repeat the Contact card. */}
-          {username && username !== me.data?.email ? <Text style={s.sub} selectable>{username}</Text> : null}
-          <Chip label={userRole} tone={userRole === 'Admin' ? 'violet' : 'blue'} style={{ alignSelf: 'center', marginTop: 4 }} />
-        </View>
-
-        {/* 1 · how to reach you */}
-        <View style={s.block}>
-          <Text style={s.heading}>Contact</Text>
-          <View style={s.card}>
-            {me.isLoading ? <ActivityIndicator style={{ paddingVertical: 20 }} color={MUTED} />
-              : me.isError ? <ErrorState message="Could not load your profile." onRetry={() => me.refetch()} />
-              : (
-                <>
-                  <Row label="Phone" value={me.data?.phone || 'Not added'} muted={!me.data?.phone} />
-                  <Row label="Email" value={me.data?.email || 'Not added'} muted={!me.data?.email} border />
-                </>
-              )}
+        {/* Who you are and how to reach you */}
+        <Card style={s.head}>
+          <View style={s.who}>
+            <View style={s.avatar}><Text style={s.avatarText}>{initialsOf(name)}</Text></View>
+            <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
+              <Text style={s.name} numberOfLines={1}>{niceName(name)}</Text>
+              {/* A username that is just the email would repeat the row below. */}
+              {username && username !== me.data?.email ? <Text style={s.sub} numberOfLines={1} selectable>{username}</Text> : null}
+              <View style={s.heroMeta}>
+                <Chip label={userRole} tone={isAdmin ? 'violet' : 'blue'} />
+                {me.data?.isSuperAdmin ? <Chip label="Platform admin" tone="amber" /> : null}
+              </View>
+            </View>
+            {me.data ? (
+              <TouchableOpacity style={s.editBtn} onPress={() => { tap(); setSheet('edit'); }} accessibilityRole="button" accessibilityLabel="Edit profile" activeOpacity={0.7} hitSlop={4}>
+                <SquarePen size={17} color={INK} strokeWidth={2} />
+              </TouchableOpacity>
+            ) : null}
           </View>
-        </View>
+          {me.isError ? <ErrorState message="Could not load your profile." onRetry={() => me.refetch()} /> : (
+            <View style={s.contact}>
+              <ContactRow icon={Phone} label="Phone" value={me.data?.phone} loading={me.isLoading} />
+              <ContactRow icon={Mail} label="Email" value={me.data?.email} loading={me.isLoading} border />
+            </View>
+          )}
+        </Card>
 
-        {/* 2 · account */}
-        <LinkList title="Account" links={account} />
+        {/* Everything you can do from here, in one list */}
+        <Card style={s.menu}>
+          {groups.map((g, gi) => (
+            <View key={g.title} style={gi > 0 ? s.group : null}>
+              <Text style={s.groupTitle}>{g.title}</Text>
+              {g.rows.map((r) => (
+                <TouchableOpacity key={r.label} style={[s.item, r.disabled && { opacity: 0.5 }]} disabled={r.disabled} activeOpacity={0.7} onPress={() => { tap(); r.onPress(); }}>
+                  <Tile icon={r.icon} tone={r.tone} size={36} />
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[s.itemTitle, r.danger && { color: '#B42318' }]}>{r.label}</Text>
+                    <Text style={s.itemSub} numberOfLines={1}>{r.sub}</Text>
+                  </View>
+                  {r.badge ? <View style={s.badge}><Text style={s.badgeText}>{r.badge}</Text></View> : null}
+                  {r.danger ? null : <ChevronRight size={18} color="#A1A1AA" />}
+                </TouchableOpacity>
+              ))}
+            </View>
+          ))}
+        </Card>
 
-        <TouchableOpacity style={s.signOut} activeOpacity={0.8} onPress={confirmSignOut}>
-          <LogOut size={17} color="#B42318" strokeWidth={2.2} />
-          <Text style={s.signOutText}>Sign out</Text>
-        </TouchableOpacity>
-
-        {Constants.expoConfig?.version ? <Text style={s.version}>Version {Constants.expoConfig.version}</Text> : null}
+        <Text style={s.footer}>{[Constants.expoConfig?.name, version ? `Version ${version}` : null].filter(Boolean).join('  ·  ')}</Text>
       </ScrollView>
 
       <EditSheet
@@ -111,37 +186,42 @@ export default function ProfileScreen() {
         onSaved={(next) => queryClient.setQueryData(ME_KEY, (old: Me | undefined) => ({ ...(old as Me), ...next }))}
       />
       <PasswordSheet visible={sheet === 'password'} onClose={() => setSheet(null)} />
+      <AppModal visible={sheet === 'access'} onClose={() => setSheet(null)} type="bottom-sheet" title="Access level">
+        <View style={{ gap: 12, paddingBottom: 8 }}>
+          <View style={s.heroMeta}>
+            <Chip label={userRole} tone={isAdmin ? 'violet' : 'blue'} />
+            {me.data?.isSuperAdmin ? <Chip label="Platform admin" tone="amber" /> : null}
+          </View>
+          <Text style={s.body}>
+            {isAdmin
+              ? 'Admins can use every page of this app and the web dashboard, including company settings on the web.'
+              : 'Operators can use every page of this app and the web dashboard. Company settings on the web are for admins.'}
+          </Text>
+          <Text style={s.sub}>Signed in as {username || name}. Roles are changed in User management.</Text>
+        </View>
+      </AppModal>
+      <AppModal visible={sheet === 'about'} onClose={() => setSheet(null)} type="bottom-sheet" title="About">
+        <View style={{ paddingBottom: 8 }}>
+          <FactRow first label="Company" value={company.data?.companyLegalName || '—'} />
+          {company.data?.vatNumber ? <FactRow label="VAT number" value={company.data.vatNumber} /> : null}
+          {company.data?.crNumber ? <FactRow label="CR number" value={company.data.crNumber} /> : null}
+          {company.data?.timezone ? <FactRow label="Time zone" value={company.data.timezone} /> : null}
+          <FactRow label="App version" value={version ?? '—'} />
+        </View>
+      </AppModal>
     </SafeAreaView>
   );
 }
 
-type Link = { icon: LucideIcon; label: string; sub: string; onPress: () => void };
-
-function LinkList({ title, links }: { title: string; links: Link[] }) {
+/** One contact line in the header card: icon tile, label, and the value on the right. */
+function ContactRow({ icon, label, value, loading, border }: { icon: LucideIcon; label: string; value?: string | null; loading?: boolean; border?: boolean }) {
   return (
-    <View style={s.block}>
-      <Text style={s.heading}>{title}</Text>
-      <View style={s.card}>
-        {links.map((l, i) => (
-          <TouchableOpacity key={l.label} style={[s.line, i > 0 && s.lineBorder]} activeOpacity={0.6} onPress={() => { tap(); l.onPress(); }}>
-            <View style={s.icon}><l.icon size={18} color={INK} strokeWidth={2} /></View>
-            <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-              <Text style={s.rowTitle}>{l.label}</Text>
-              <Text style={s.sub} numberOfLines={1}>{l.sub}</Text>
-            </View>
-            <ChevronRight size={18} color="#A1A1AA" />
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function Row({ label, value, muted, border }: { label: string; value: string; muted?: boolean; border?: boolean }) {
-  return (
-    <View style={[s.info, border && s.lineBorder]}>
-      <Text style={s.infoLabel}>{label}</Text>
-      <Text style={[s.infoValue, muted && { color: MUTED, fontWeight: '400' }]} numberOfLines={1} selectable>{value}</Text>
+    <View style={[s.contactRow, border && s.contactBorder]}>
+      <Tile icon={icon} tone={icon === Mail ? 'sky' : undefined} size={32} />
+      <Text style={s.contactLabel}>{label}</Text>
+      <Text style={[s.contactValue, !value && { color: MUTED, fontWeight: '400' }]} numberOfLines={1} selectable={!!value}>
+        {value || (loading ? '…' : 'Not added')}
+      </Text>
     </View>
   );
 }
@@ -227,24 +307,32 @@ function PasswordForm({ onClose }: { onClose: () => void }) {
 }
 
 const s = StyleSheet.create({
-  hero: { alignItems: 'center', gap: 6, backgroundColor: Colors.white, borderRadius: 20, borderWidth: 1, borderColor: '#E9E9EC', paddingVertical: 22, paddingHorizontal: 16 },
-  avatar: { width: 84, height: 84, borderRadius: 42, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 28, fontWeight: '700', color: Colors.white, letterSpacing: 0.5 },
-  name: { fontSize: 22, fontWeight: '700', color: INK, letterSpacing: -0.4, textAlign: 'center', marginTop: 8 },
+  scroll: { paddingHorizontal: 16, paddingTop: 6, paddingBottom: 130, gap: 12 },
+  head: { paddingVertical: 14 },
+  who: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatar: { width: 58, height: 58, borderRadius: 29, backgroundColor: Colors.primaryLight, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 21, fontWeight: '700', color: Colors.primary, letterSpacing: 0.5 },
+  name: { fontSize: 18, fontWeight: '700', color: INK, letterSpacing: -0.2 },
+  heroMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  editBtn: { width: 38, height: 38, borderRadius: 12, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E9E9EC', alignSelf: 'flex-start' },
+  contact: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#F1F1F3', paddingTop: 4, marginBottom: -6 },
+  contactRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  contactBorder: { borderTopWidth: 1, borderTopColor: '#F1F1F3' },
+  contactLabel: { fontSize: 14, color: MUTED },
+  contactValue: { flex: 1, textAlign: 'right', fontSize: 14, fontWeight: '600', color: INK },
+
+  menu: { paddingVertical: 12 },
+  group: { marginTop: 10, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F1F1F3' },
+  groupTitle: { fontSize: 12, fontWeight: '700', color: MUTED, letterSpacing: 0.6, textTransform: 'uppercase', marginBottom: 2 },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
+  itemTitle: { fontSize: 15, fontWeight: '600', color: INK },
+  itemSub: { fontSize: 12, color: MUTED, marginTop: 1 },
+  badge: { minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6, backgroundColor: Colors.primary, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { fontSize: 12, fontWeight: '700', color: Colors.white },
+  footer: { fontSize: 12, color: MUTED, textAlign: 'center', marginTop: 2 },
+
   sub: { fontSize: 13, color: MUTED },
-  block: { gap: 10 },
-  heading: { fontSize: 17, fontWeight: '700', color: INK, letterSpacing: -0.2, marginLeft: 2 },
-  card: { backgroundColor: Colors.white, borderRadius: 16, borderWidth: 1, borderColor: '#E9E9EC', paddingHorizontal: 16 },
-  line: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
-  lineBorder: { borderTopWidth: 1, borderTopColor: '#F1F1F3' },
-  icon: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#F4F4F5', alignItems: 'center', justifyContent: 'center' },
-  rowTitle: { fontSize: 15, fontWeight: '600', color: INK },
-  info: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingVertical: 14 },
-  infoLabel: { fontSize: 14, color: MUTED },
-  infoValue: { flex: 1, textAlign: 'right', fontSize: 14, fontWeight: '600', color: INK },
-  signOut: { height: 50, borderRadius: 15, backgroundColor: '#FEF3F2', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  signOutText: { fontSize: 15, fontWeight: '700', color: '#B42318' },
-  version: { fontSize: 12, color: MUTED, textAlign: 'center', marginTop: -10 },
+  body: { fontSize: 15, lineHeight: 21, color: INK },
   form: { gap: 14, paddingBottom: 8 },
   fieldLabel: { fontSize: 13, fontWeight: '600', color: MUTED },
   input: { height: 48, borderRadius: 12, borderWidth: 1, borderColor: '#E4E4E7', paddingHorizontal: 14, fontSize: 15, color: INK, backgroundColor: Colors.white },

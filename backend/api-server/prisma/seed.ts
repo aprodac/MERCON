@@ -336,15 +336,17 @@ async function seedDocumentTypesAndBackfill() {
     allowsMultipleFiles?: boolean;
   };
 
+  // Trip paperwork has no expiry and usually comes as several photos.
+  const TRIP_PAPERWORK = { requiresExpiryDate: false, allowsMultipleFiles: true };
   const types: TypeSeed[] = [
     // Legacy-compat: existing Document rows link here via their doc_type.
     { code: 'DriverLicense', name: 'Driver License', ownerType: 'Driver', requirementStatus: 'MANDATORY', legacyDocType: 'DriverLicense' },
     { code: 'Isthimara', name: 'Isthimara', ownerType: 'Vehicle', requirementStatus: 'MANDATORY', legacyDocType: 'VehicleRegistration' },
     { code: 'Insurance', name: 'Insurance', ownerType: 'Vehicle', requirementStatus: 'MANDATORY', legacyDocType: 'Insurance' },
-    { code: 'POD', name: 'Proof of Delivery', ownerType: 'Trip', requirementStatus: 'OPTIONAL', legacyDocType: 'POD' },
-    { code: 'CustomsClearance', name: 'Customs Clearance', ownerType: 'Trip', requirementStatus: 'OPTIONAL', legacyDocType: 'CustomsClearance' },
-    { code: 'Waybill', name: 'Waybill', ownerType: 'Trip', requirementStatus: 'OPTIONAL', legacyDocType: 'Waybill' },
-    { code: 'Emergency', name: 'Emergency', ownerType: 'Trip', requirementStatus: 'OPTIONAL', legacyDocType: 'Emergency' },
+    { code: 'POD', name: 'Proof of Delivery', ownerType: 'Trip', requirementStatus: 'OPTIONAL', legacyDocType: 'POD', ...TRIP_PAPERWORK },
+    { code: 'CustomsClearance', name: 'Customs Clearance', ownerType: 'Trip', requirementStatus: 'OPTIONAL', legacyDocType: 'CustomsClearance', ...TRIP_PAPERWORK },
+    { code: 'Waybill', name: 'Waybill', ownerType: 'Trip', requirementStatus: 'OPTIONAL', legacyDocType: 'Waybill', ...TRIP_PAPERWORK },
+    { code: 'Emergency', name: 'Emergency', ownerType: 'Trip', requirementStatus: 'OPTIONAL', legacyDocType: 'Emergency', ...TRIP_PAPERWORK },
     { code: 'Contract', name: 'Contract', ownerType: 'Company', requirementStatus: 'OPTIONAL', legacyDocType: 'Contract' },
     { code: 'Invoice', name: 'Invoice', ownerType: 'Company', requirementStatus: 'OPTIONAL', legacyDocType: 'Invoice' },
     // Net-new Mercon-mandatory types (no legacy documents to backfill).

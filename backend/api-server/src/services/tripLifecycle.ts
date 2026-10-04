@@ -183,10 +183,53 @@ export async function completeTrip(
     },
   });
 
-  if (trip.driverId) await tx.driver.update({ where: { id: trip.driverId }, data: { status: DriverStatus.Available } });
-  if (trip.vehicleId) await tx.vehicle.update({ where: { id: trip.vehicleId }, data: { status: AssetStatus.Available } });
+  await releaseDriversIfFree(tx, [trip.driverId, trip.co_driver_id]);
+  await releaseVehiclesIfFree(tx, [trip.vehicleId]);
 
   return updatedTrip;
+}
+
+/** Trip statuses that keep a driver and truck "On trip". */
+const RUNNING_TRIP_STATUSES: TripStatus[] = [TripStatus.Loading, TripStatus.InTransit, TripStatus.Delayed];
+
+/**
+ * Put drivers back to Available once a trip lets go of them — but only when
+ * they have no other trip running. Releasing unconditionally (on complete,
+ * cancel, reassign, …) freed drivers who were still on another trip, so the
+ * roster and every picker showed busy drivers as free. Only OnTrip is flipped:
+ * OffDuty / Inactive are someone's decision and stay.
+ */
+export async function releaseDriversIfFree(tx: Prisma.TransactionClient, driverIds: Array<string | null | undefined>, exceptTripIds: string[] = []) {
+  for (const driverId of [...new Set(driverIds.filter((id): id is string => !!id))]) {
+    const running = await tx.trip.count({
+      where: {
+        deletedAt: null,
+        status: { in: RUNNING_TRIP_STATUSES },
+        ...(exceptTripIds.length ? { id: { notIn: exceptTripIds } } : {}),
+        OR: [{ driverId }, { co_driver_id: driverId }],
+      },
+    });
+    if (running === 0) {
+      await tx.driver.updateMany({ where: { id: driverId, status: DriverStatus.OnTrip }, data: { status: DriverStatus.Available } });
+    }
+  }
+}
+
+/** The truck twin of releaseDriversIfFree. Only OnTrip is flipped, so a truck in the workshop stays in Maintenance. */
+export async function releaseVehiclesIfFree(tx: Prisma.TransactionClient, vehicleIds: Array<string | null | undefined>, exceptTripIds: string[] = []) {
+  for (const vehicleId of [...new Set(vehicleIds.filter((id): id is string => !!id))]) {
+    const running = await tx.trip.count({
+      where: {
+        deletedAt: null,
+        vehicleId,
+        status: { in: RUNNING_TRIP_STATUSES },
+        ...(exceptTripIds.length ? { id: { notIn: exceptTripIds } } : {}),
+      },
+    });
+    if (running === 0) {
+      await tx.vehicle.updateMany({ where: { id: vehicleId, status: AssetStatus.OnTrip }, data: { status: AssetStatus.Available } });
+    }
+  }
 }
 
 /**

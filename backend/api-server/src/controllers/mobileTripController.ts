@@ -14,6 +14,7 @@ import { queueVideoCompression } from '../services/media/videoCompressor';
 import { calculateBackendTripFinancials } from '../utils/tripFinancials';
 import { splitDelayReason } from '../utils/delayReason';
 import { isUuid } from '../utils/uuid';
+import { deliveryPunctuality, historyFinishedAt } from '../services/driverPerformance';
 
 /**
  * Everything the driver's app needs about a trip, in one shape.
@@ -129,9 +130,13 @@ export const getCurrentTrip = async (req: Request, res: Response) => {
         status: {
           in: [TripStatus.Loading, TripStatus.InTransit, TripStatus.Delayed]
         },
-        NOT: {
-          driver_workflow_state: 'COMPLETED'
-        }
+        // NOT { state: 'COMPLETED' } alone drops rows where the state is NULL
+        // (SQL: NULL = 'COMPLETED' is unknown), i.e. every trip the office
+        // started before the driver touched it — the driver saw "No active trip".
+        OR: [
+          { driver_workflow_state: null },
+          { driver_workflow_state: { not: 'COMPLETED' } }
+        ]
       },
       include,
       orderBy: { updatedAt: 'desc' },
@@ -163,7 +168,11 @@ export const getCurrentTrip = async (req: Request, res: Response) => {
 
 /**
  * Past trips for the logged-in driver: finished, invoiced, or cancelled,
- * newest first. Supports ?limit (default 30, max 100).
+ * newest first by when they ended (`finished_at`). Supports ?limit (default
+ * 30, max 100). Each trip also carries `punctuality` (on_time / late / null).
+ *
+ * Sorting by actual_end alone put every cancelled trip (no actual_end) above
+ * the completed ones, whatever their dates.
  */
 export const getTripHistory = async (req: Request, res: Response) => {
   const driverId = (req as any).user?.driver_id;
@@ -173,18 +182,36 @@ export const getTripHistory = async (req: Request, res: Response) => {
   const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 100) : 30;
 
   try {
-    const trips = await prisma.trip.findMany({
-      where: {
-        driverId,
-        deletedAt: null,
-        status: { in: [TripStatus.Completed, TripStatus.Invoiced, TripStatus.Cancelled] },
-      },
-      include: tripInclude,
-      orderBy: [{ actual_end: 'desc' }, { createdAt: 'desc' }],
-      take: limit,
+    const where = {
+      driverId,
+      deletedAt: null,
+      status: { in: [TripStatus.Completed, TripStatus.Invoiced, TripStatus.Cancelled] },
+    };
+    // Order by the finish time first (four small columns), then load only the page.
+    const keys = await prisma.trip.findMany({
+      where,
+      select: { id: true, status: true, actual_end: true, updatedAt: true },
     });
+    const finishedAt = new Map(keys.map((k) => [k.id, historyFinishedAt(k)]));
+    const pageIds = keys
+      .sort((a, b) => finishedAt.get(b.id)!.getTime() - finishedAt.get(a.id)!.getTime())
+      .slice(0, limit)
+      .map((k) => k.id);
 
-    res.json({ success: true, data: trips.map(formatMobileTrip) });
+    const trips = await prisma.trip.findMany({ where: { id: { in: pageIds } }, include: tripInclude });
+    const byId = new Map(trips.map((t) => [t.id, t]));
+
+    res.json({
+      success: true,
+      data: pageIds
+        .map((id) => byId.get(id))
+        .filter(Boolean)
+        .map((t: any) => ({
+          ...formatMobileTrip(t),
+          finished_at: finishedAt.get(t.id)!.toISOString(),
+          punctuality: t.status === TripStatus.Cancelled ? null : deliveryPunctuality(t.stops),
+        })),
+    });
   } catch (error) {
     logger.error({ err: error }, 'getTripHistory error:');
     res.status(500).json({ success: false, error: { message: 'Internal server error' } });
@@ -342,7 +369,9 @@ export const updateTripStatus = async (req: Request, res: Response) => {
       return tx.trip.update({
         where: { id },
         data: {
-          status,
+          // Start Trip sends "Scheduled"; a trip the office already sees as
+          // Delayed stays Delayed until the driver reaches the pickup.
+          status: trip.status === TripStatus.Delayed && status === TripStatus.Scheduled ? TripStatus.Delayed : status,
           driver_workflow_state: workflowState !== undefined ? workflowState : undefined,
           actual_start: status === TripStatus.InTransit && !trip.actual_start ? new Date() : undefined,
         },
@@ -609,7 +638,8 @@ export const recordDriverLocation = async (req: Request, res: Response) => {
     if (!trip) {
       return res.status(404).json({
         success: false,
-        error: { message: 'Active trip not found or not assigned to you' },
+        // The app stops sharing location on these two codes (trip moved to another driver / ended).
+        error: { code: 'TRIP_NOT_ASSIGNED', message: 'Active trip not found or not assigned to you' },
       });
     }
 
@@ -617,7 +647,7 @@ export const recordDriverLocation = async (req: Request, res: Response) => {
     if (terminalStatuses.includes(trip.status)) {
       return res.status(400).json({
         success: false,
-        error: { message: `Cannot record location for trip in state ${trip.status}` },
+        error: { code: 'TRIP_CLOSED', message: `Cannot record location for trip in state ${trip.status}` },
       });
     }
 

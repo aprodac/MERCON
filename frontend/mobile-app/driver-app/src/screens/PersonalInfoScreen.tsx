@@ -17,11 +17,13 @@ import {
   Calendar,
   ShieldCheck,
 } from 'lucide-react-native';
-import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
+import { useLanguage, getLocalizedStatus } from '@mercon/mobile-shared/lib/language-context';
 import { useProfile } from '../hooks/use-profile';
 import { Avatar } from '@mercon/mobile-shared/components/Avatar';
 import { initialsOf } from '../services/profile';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
+import { formatCalendarDate, formatDay } from '@mercon/mobile-shared/lib/dates';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
@@ -35,22 +37,10 @@ function resolveAvatarUrl(rawUrl?: string | null): string | null {
   return trimmed;
 }
 
-function formatDate(isoStr?: string | null): string {
-  if (!isoStr) return '—';
-  try {
-    return new Date(isoStr).toLocaleDateString('en-GB', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    });
-  } catch {
-    return '—';
-  }
-}
 
 export default function PersonalInfoScreen() {
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { profile } = useProfile();
 
   const avatarUrl = useMemo(
@@ -71,7 +61,7 @@ export default function PersonalInfoScreen() {
           activeOpacity={0.8}
           onPress={() => router.back()}
         >
-          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} />
+          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} style={flipInRTL} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
           {t('nav_personal_info', 'Personal Information')}
@@ -89,7 +79,7 @@ export default function PersonalInfoScreen() {
           </View>
           <Text style={styles.nameText}>{name}</Text>
           <Text style={styles.refIdText}>
-            {profile?.ref_id ? `ID: ${profile.ref_id}` : '—'}
+            {profile?.ref_id ? `${t('label_driver_id', 'ID')}: ${profile.ref_id}` : '—'}
           </Text>
         </View>
 
@@ -134,7 +124,7 @@ export default function PersonalInfoScreen() {
             </View>
             <View style={styles.rowTextCol}>
               <Text style={styles.rowLabel}>{t('label_license_expiry', 'License Expiry')}</Text>
-              <Text style={styles.rowValue}>{formatDate(profile?.license_expiry)}</Text>
+              <Text style={styles.rowValue}>{formatCalendarDate(profile?.license_expiry)}</Text>
             </View>
           </View>
         </View>
@@ -148,7 +138,7 @@ export default function PersonalInfoScreen() {
             <View style={styles.rowTextCol}>
               <Text style={styles.rowLabel}>{t('label_status', 'Status')}</Text>
               <View style={styles.statusPill}>
-                <Text style={styles.statusText}>{profile?.status || 'Active'}</Text>
+                <Text style={styles.statusText}>{profile?.status ? getLocalizedStatus(profile.status, language) : '—'}</Text>
               </View>
             </View>
           </View>
@@ -159,7 +149,7 @@ export default function PersonalInfoScreen() {
             </View>
             <View style={styles.rowTextCol}>
               <Text style={styles.rowLabel}>{t('label_joined_date', 'Joined Date')}</Text>
-              <Text style={styles.rowValue}>{formatDate(profile?.createdAt)}</Text>
+              <Text style={styles.rowValue}>{formatDay(profile?.createdAt)}</Text>
             </View>
           </View>
         </View>

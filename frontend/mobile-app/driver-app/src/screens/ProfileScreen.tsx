@@ -9,7 +9,7 @@ import Svg, { Path, G, Circle } from 'react-native-svg';
 import {
   FileText, Truck, Settings, IdCard, Globe, ShieldCheck,
   ChevronRight, ChevronLeft, ChevronDown, Camera, CheckCircle2, Award, Check, Wallet, X, Lock, ExternalLink,
-User, HeartPulse, HelpCircle, LogOut, ChevronRight as ChevronRightIcon } from 'lucide-react-native';
+User, HeartPulse, HelpCircle, LogOut, Bell, Siren, ChevronRight as ChevronRightIcon } from 'lucide-react-native';
 import { Avatar } from '@mercon/mobile-shared/components/Avatar';
 import { DriverChargePill } from '../components/DriverChargePill';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
@@ -18,6 +18,9 @@ import { initialsOf } from '../services/profile';
 import { useDocuments, docTypeLabel, docStatus } from '@mercon/mobile-shared/lib/documents';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
 import { useLanguage, formatCurrency } from '@mercon/mobile-shared/lib/language-context';
+import { useNotifications } from '../hooks/use-notifications';
+import { HelpSupportSheet } from '../components/HelpSupportSheet';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
@@ -147,6 +150,27 @@ export default function ProfileScreen() {
   const { documents: backendDocs, refetch: refetchDocs } = useDocuments();
   const [avatarZoomed, setAvatarZoomed] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<any | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const { items: notifications } = useNotifications();
+  const unreadCount = notifications.filter((n) => !n.is_read).length;
+
+  const confirmSignOut = () => {
+    Alert.alert(
+      t('title_sign_out_confirm', 'Sign out?'),
+      t('msg_sign_out_confirm', 'You will need your password or licence number to sign in again.'),
+      [
+        { text: t('action_cancel', 'Cancel'), style: 'cancel' },
+        {
+          text: t('action_sign_out', 'Logout'),
+          style: 'destructive',
+          onPress: () => {
+            signOut();
+            router.replace('/login');
+          },
+        },
+      ],
+    );
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -165,11 +189,6 @@ export default function ProfileScreen() {
   }, [rawAvatar]);
 
   const langTag = language === 'ur' ? 'اردو / EN' : 'EN / اردو';
-
-  // Performance metrics — read strictly from backend driver stats
-  const totalTrips = (profile as any)?.stats?.total_trips != null ? String((profile as any).stats.total_trips) : '18';
-  const tripsOnTime = (profile as any)?.stats?.on_time_rate != null ? String((profile as any).stats.on_time_rate) : '98%' ;
-  const totalDistance = (profile as any)?.stats?.total_distance != null ? String((profile as any).stats.total_distance) : '3450 km';
 
   // Vehicle details — read strictly from active vehicle assignment
   const vehicle = profile?.current_vehicle as any;
@@ -295,7 +314,7 @@ export default function ProfileScreen() {
               >
                 <Avatar initials={initialsOf(name)} imageUri={avatarUrl} size={84} />
               </TouchableOpacity>
-              <Text style={styles.driverNameTextCentered} numberOfLines={1}>{name}</Text>
+              <Text style={styles.driverNameTextCentered} numberOfLines={2}>{name}</Text>
               <Text style={styles.driverVehicleSubText}>{t('label_vehicle', 'Vehicle')}: {plateNumber}</Text>
             </View>
           </SafeAreaView>
@@ -310,7 +329,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('nav_personal_info', 'Personal Information')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_personal_info', 'View your profile details')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -322,7 +341,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('title_assigned_vehicle', 'Assigned Vehicle')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_assigned_vehicle', 'View your current vehicle')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -334,7 +353,28 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('title_my_documents', 'My Documents')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_documents', 'Manage uploaded documents')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
+          </TouchableOpacity>
+          <View style={styles.menuDivider} />
+
+          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/notifications' as any)}>
+            <View style={[styles.iconCircle, { backgroundColor: '#FFF0ED' }]}>
+              <Bell size={20} color="#FA634E" strokeWidth={1.8} />
+            </View>
+            <View style={styles.menuTextCol}>
+              <Text style={styles.menuItemTitle}>{t('nav_notifications', 'Notifications')}</Text>
+              <Text style={styles.menuItemSub}>
+                {unreadCount > 0
+                  ? t('label_unread_count', '{count} unread').replace('{count}', String(unreadCount))
+                  : t('sub_notifications', 'Trip alerts from the office')}
+              </Text>
+            </View>
+            {unreadCount > 0 && (
+              <View style={styles.unreadBadge}>
+                <Text style={styles.unreadBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+              </View>
+            )}
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -346,7 +386,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('title_performance_overview', 'Performance Overview')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_performance', 'View your trip statistics')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -355,10 +395,10 @@ export default function ProfileScreen() {
               <Wallet size={20} color="#DB2777" strokeWidth={1.8} />
             </View>
             <View style={styles.menuTextCol}>
-              <Text style={styles.menuItemTitle}>{t('title_earnings_charges', 'Earnings & Charges')}</Text>
+              <Text style={styles.menuItemTitle}>{t('title_driver_charges', 'Driver Charges')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_earnings', 'View driver charges and payouts')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -370,7 +410,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('action_change_password', 'Change Password')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_change_password', 'Update your security')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -382,11 +422,11 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('nav_settings', 'App Settings')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_settings', 'Language and preferences')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
-          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => {}}>
+          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => setHelpOpen(true)}>
             <View style={[styles.iconCircle, { backgroundColor: '#FFF7ED' }]}>
               <HelpCircle size={20} color="#EA580C" strokeWidth={1.8} />
             </View>
@@ -394,18 +434,23 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('nav_help_support', 'Help & Support')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_help', 'Get assistance from admin')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
-          <TouchableOpacity 
-            style={styles.menuItem} 
-            activeOpacity={0.7} 
-            onPress={() => {
-              signOut();
-              router.replace('/login');
-            }}
-          >
+          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={() => router.push('/trip/emergency' as any)}>
+            <View style={[styles.iconCircle, { backgroundColor: '#FEE2E2' }]}>
+              <Siren size={20} color="#DC2626" strokeWidth={1.8} />
+            </View>
+            <View style={styles.menuTextCol}>
+              <Text style={[styles.menuItemTitle, { color: '#DC2626' }]}>{t('title_emergency', 'Emergency')}</Text>
+              <Text style={styles.menuItemSub}>{t('sub_emergency', 'Report an accident, breakdown or other incident')}</Text>
+            </View>
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
+          </TouchableOpacity>
+          <View style={styles.menuDivider} />
+
+          <TouchableOpacity style={styles.menuItem} activeOpacity={0.7} onPress={confirmSignOut}>
             <View style={[styles.iconCircle, { backgroundColor: '#FEF2F2' }]}>
               <LogOut size={20} color="#DC2626" strokeWidth={1.8} />
             </View>
@@ -413,7 +458,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('action_sign_out', 'Logout')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_sign_out', 'Sign out of your account')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -569,6 +614,8 @@ export default function ProfileScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      <HelpSupportSheet visible={helpOpen} onClose={() => setHelpOpen(false)} />
 
       {/* ── 5. Avatar Zoom Lightbox Modal ── */}
       <Modal
@@ -726,6 +773,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#FFFFFF',
     marginTop: 12,
+    textAlign: 'center',
   },
   driverVehicleSubText: {
     fontSize: 13,
@@ -757,6 +805,21 @@ const styles = StyleSheet.create({
   menuTextCol: {
     flex: 1,
     justifyContent: 'center',
+  },
+  unreadBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: 6,
+    backgroundColor: '#FA634E',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  unreadBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
   },
   menuItemTitle: {
     fontSize: 16,

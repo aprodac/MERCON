@@ -10,6 +10,12 @@ export interface RefIdOptions {
   padLength?: number;
   /** Include the current year, e.g. "INV-2026-0001". Default false. */
   year?: boolean;
+  /**
+   * Treat numbers of soft-deleted records (renamed "TRP-DEL-0289-…") as taken,
+   * so a number is never handed out twice. Trips use it: a reused number made
+   * old WhatsApp shares, notifications and tracking links point at another trip.
+   */
+  keepDeletedNumbers?: boolean;
 }
 
 /**
@@ -21,7 +27,8 @@ export async function generateSequentialRefId(
   getAllRefIds: () => Promise<{ ref_id: string | null }[]>,
   opts: RefIdOptions = {},
 ): Promise<string> {
-  const { padLength = 4, year = false } = opts;
+  const { padLength = 4, year = false, keepDeletedNumbers = false } = opts;
+  const deletedPrefix = `${prefix}-DEL-`;
   const yearPart = year ? `${new Date().getFullYear()}-` : '';
   const fullPrefix = `${prefix}-${yearPart}`;
 
@@ -29,8 +36,16 @@ export async function generateSequentialRefId(
   const existingNumbers = new Set<number>();
 
   for (const record of records) {
-    if (!record.ref_id || !record.ref_id.startsWith(fullPrefix)) continue;
-    if (record.ref_id.includes('-DEL-') || record.ref_id.startsWith(`${prefix}-DEL-`)) continue;
+    if (!record.ref_id) continue;
+    if (record.ref_id.startsWith(deletedPrefix)) {
+      if (!keepDeletedNumbers) continue;
+      // "TRP-DEL-0289-45fde4bb" → 289
+      const num = parseInt(record.ref_id.slice(deletedPrefix.length + yearPart.length), 10);
+      if (!isNaN(num) && num > 0) existingNumbers.add(num);
+      continue;
+    }
+    if (!record.ref_id.startsWith(fullPrefix)) continue;
+    if (record.ref_id.includes('-DEL-')) continue;
     const numPart = record.ref_id.slice(fullPrefix.length);
     const num = parseInt(numPart, 10);
     if (!isNaN(num) && num > 0) {

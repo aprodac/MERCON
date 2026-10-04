@@ -382,14 +382,16 @@ export default function DriverDetailsPage() {
     const totalCount = trips.length;
     const finished = trips.filter((t: any) => ['completed', 'delivered', 'invoiced'].includes((t.status || '').toLowerCase()));
     const onTimeCount = finished.filter((t: any) => (t.status || '').toLowerCase() !== 'delayed' && !t.is_delayed).length;
-    const totalPayout = trips.reduce((acc: number, t: any) => acc + toNum(t.driver_payout ?? t.driver_charge), 0);
+    // Only finished trips earn the driver charge — a cancelled trip pays nothing
+    // (same rule as the Drivers list and GET /drivers/payouts).
+    const totalPayout = finished.reduce((acc: number, t: any) => acc + toNum(t.driver_payout ?? t.driver_charge), 0);
     const totalDist = trips.reduce((acc: number, t: any) => acc + toNum(t.planned_distance ?? t.distance), 0);
 
     return {
       onTimePct: finished.length > 0 ? `${((onTimeCount / finished.length) * 100).toFixed(1)}%` : EMPTY,
       onTimePill: finished.length > 0 ? `${onTimeCount} of ${finished.length} finished trips` : 'No finished trips yet',
       driverPayoutFormatted: fmtSar(totalPayout),
-      driverPayoutPill: totalCount > 0 && totalPayout > 0 ? `Avg ${fmtSar(Math.round(totalPayout / totalCount))} / trip` : 'No payouts recorded',
+      driverPayoutPill: finished.length > 0 && totalPayout > 0 ? `Avg ${fmtSar(Math.round(totalPayout / finished.length))} / finished trip` : 'No payouts recorded',
       distanceFormatted: totalDist > 0 ? `${Math.round(totalDist).toLocaleString('en-US')} km` : EMPTY,
       distancePill: totalDist > 0 && totalCount > 0 ? `Avg ${Math.round(totalDist / totalCount).toLocaleString('en-US')} km / trip` : 'Distance not recorded',
     };
@@ -614,13 +616,30 @@ export default function DriverDetailsPage() {
                   </div>
                 ) : undefined}
               />
-              <KpiCard
-                icon={TrendingUp}
-                iconClass="text-indigo-600 dark:text-indigo-400"
-                label="Total Trips"
-                value={trips.length}
-                sub={activeTrip ? '1 trip in progress' : 'Completed & active'}
-              />
+              {(() => {
+                // Licence number + expiry were required on create but shown nowhere.
+                const expiry = driver.license_expiry ? new Date(driver.license_expiry) : null;
+                const days = expiry ? Math.floor((expiry.getTime() - Date.now()) / 86_400_000) : null;
+                const tone = days == null ? '' : days < 0 ? 'text-rose-600 dark:text-rose-400' : days <= 30 ? 'text-amber-600 dark:text-amber-400' : '';
+                return (
+                  <KpiCard
+                    icon={ShieldCheck}
+                    iconClass={days != null && days < 0 ? 'text-rose-600' : days != null && days <= 30 ? 'text-amber-600' : 'text-indigo-600 dark:text-indigo-400'}
+                    label="Licence"
+                    value={driver.license_number || 'Not recorded'}
+                    mono={!!driver.license_number}
+                    sub={
+                      expiry ? (
+                        <span className={tone}>
+                          {days! < 0 ? 'Expired ' : 'Expires '}
+                          {formatInDeploymentTz(driver.license_expiry, tz, 'd MMM yyyy')}
+                          {days! >= 0 && days! <= 30 ? ` · in ${days} day${days === 1 ? '' : 's'}` : ''}
+                        </span>
+                      ) : 'No expiry date'
+                    }
+                  />
+                );
+              })()}
               <KpiCard
                 icon={Smartphone}
                 iconClass={phone?.status.level === 'red' ? 'text-rose-600' : phone?.status.level === 'amber' ? 'text-amber-600' : 'text-emerald-600 dark:text-emerald-400'}

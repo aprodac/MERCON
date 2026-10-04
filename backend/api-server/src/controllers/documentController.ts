@@ -196,6 +196,19 @@ export const uploadDocument = async (req: Request, res: Response) => {
     // Compress images to save disk space & mobile data bandwidth
     for (const f of uploaded) await compressUploadedImage(f.path);
 
+    // A trip upload from the office can say which stop / step it belongs to, the
+    // same tags the driver app writes, so it shows under that stop on the trip.
+    let tripMeta: Record<string, string> | null = null;
+    if (entity_type === 'Trip' && (req.body.stop_id || req.body.operation)) {
+      tripMeta = { source: 'office' };
+      if (typeof req.body.stop_id === 'string' && req.body.stop_id) {
+        const stop = await prisma.tripStop.findFirst({ where: { id: req.body.stop_id, tripId: entity_id, deletedAt: null }, select: { id: true } });
+        if (!stop) return reject('That stop is not on this trip');
+        tripMeta.stop_id = stop.id;
+      }
+      if (typeof req.body.operation === 'string' && /^[a-z_]{1,40}$/.test(req.body.operation)) tripMeta.operation = req.body.operation;
+    }
+
     const urlFor = (f: Express.Multer.File) => (env.BASE_URL ? `${env.BASE_URL}/uploads/${f.filename}` : `/uploads/${f.filename}`);
     const primary = uploaded[0];
     const userId = (req as any).user?.id;
@@ -214,6 +227,7 @@ export const uploadDocument = async (req: Request, res: Response) => {
         issue_date: parsedIssue,
         expiry_date: parsedExpiry,
         is_confidential: is_confidential === 'true' || is_confidential === true,
+        ...(tripMeta ? { ai_extracted_json: tripMeta } : {}),
         created_by: userId,
         files: {
           create: uploaded.map((f, i) => ({

@@ -349,8 +349,27 @@ export interface OperatorThirdPartyProvider {
   total_trips?: number;
   active_trips?: number;
   total_cost?: number | string;
-  /** Only on GET /third-party-providers/:id — the provider's 20 most recent trips. */
-  trips?: OperatorTrip[];
+  createdAt?: string;
+  /** Only on GET /third-party-providers/:id — the provider's 20 most recent trips, each with what the carrier is paid for it. */
+  trips?: (OperatorTrip & { third_party_cost?: number | string | null })[];
+}
+
+/** One negotiated price with a carrier (GET /third-party-providers/:id/rates). */
+export interface OperatorProviderRate {
+  id: string;
+  origin_city: string;
+  destination_city: string;
+  originLocation?: { id: string; name: string; city?: string | null } | null;
+  destinationLocation?: { id: string; name: string; city?: string | null } | null;
+  vehicle_class: string;
+  line_type: string;
+  operation_type?: string | null;
+  pricing_basis: string;
+  cost: number | string;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  /** "active", "expired" or "archived". */
+  status: string;
 }
 
 export interface ThirdPartyProviderInput {
@@ -641,6 +660,12 @@ export const operatorService = {
     return (data.data ?? []) as OperatorCustomer[];
   },
 
+  /** Picker shape (`mode=lookup`): no per-customer trip and invoice stats. */
+  async customersLookup(): Promise<OperatorCustomer[]> {
+    const { data } = await api.get('/customers', { params: { per_page: 100, mode: 'lookup' } });
+    return (data.data ?? []) as OperatorCustomer[];
+  },
+
   async customerById(id: string): Promise<OperatorCustomer> {
     const { data } = await api.get(`/customers/${id}`);
     return data.data as OperatorCustomer;
@@ -712,6 +737,11 @@ export const operatorService = {
     return data.data as OperatorThirdPartyProvider;
   },
 
+  async thirdPartyProviderRates(id: string): Promise<OperatorProviderRate[]> {
+    const { data } = await api.get(`/third-party-providers/${id}/rates`);
+    return (data.data ?? []) as OperatorProviderRate[];
+  },
+
   async thirdPartyStats(): Promise<ThirdPartyStats> {
     const { data } = await api.get('/third-party-providers/stats');
     return data.data as ThirdPartyStats;
@@ -757,9 +787,9 @@ export const operatorService = {
 
   /* ─── Create trip (same endpoints and parameters as the web wizard) ─── */
 
-  /** Every driver with their assigned truck — the web wizard's `mode: 'lookup'` list. */
+  /** Every driver with their assigned truck — the web wizard's `mode: 'lookup'` list, without live GPS (pickers don't show it). */
   async driversLookup(): Promise<OperatorDriverOption[]> {
-    const { data } = await api.get('/drivers', { params: { per_page: 1000, mode: 'lookup' } });
+    const { data } = await api.get('/drivers', { params: { per_page: 1000, mode: 'lookup', gps: 'false' } });
     const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.data?.data) ? data.data.data : [];
     return list as OperatorDriverOption[];
   },

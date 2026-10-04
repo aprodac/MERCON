@@ -89,7 +89,9 @@ export function useTripSubmission(
             duration: 15000,
           });
         }
-        navigate('/trips');
+        // One trip made: open it (the next things are its pins, documents, sharing).
+        const created = (data?.results || []).filter((r: any) => r.success && r.created_id);
+        navigate(data.imported === 1 && !data.failed && created.length === 1 ? `/trips/${created[0].created_id}` : '/trips');
       } else {
         toast.error(`Trip creation failed (${data.failed || 1} rows)`, {
           description: errDetails || 'Check inputs and try again.',
@@ -268,6 +270,7 @@ export function useTripSubmission(
       thirdPartyProviderId,
       thirdPartyDriverName,
       thirdPartyCost,
+      thirdPartyVehiclePlate,
       selectedDates,
       toUtcIso,
     })
@@ -324,6 +327,7 @@ export function useTripSubmission(
       thirdPartyProviderId,
       thirdPartyDriverName,
       thirdPartyCost,
+      thirdPartyVehiclePlate,
       selectedDates,
       toUtcIso,
     });
@@ -332,6 +336,15 @@ export function useTripSubmission(
       const onStep2 = isMonthly && (first.field === 'selectedDates' || (first.section === 'assignment' && first.field !== 'thirdPartyCost'));
       setContractStep(onStep2 ? 2 : 1);
       toast.error(first.message);
+      if (first.field === 'thirdPartyVehiclePlate') {
+        // Point at the field, not just a toast.
+        setFieldErrors((prev) => ({ ...prev, thirdPartyVehiclePlate: true }));
+        setTimeout(() => {
+          const el = document.getElementById('third-party-vehicle-plate');
+          el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          (el as HTMLInputElement | null)?.focus();
+        }, 100);
+      }
       return false;
     }
 

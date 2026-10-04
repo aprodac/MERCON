@@ -31,7 +31,7 @@ const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFi
 export function parseHealth(body: any) {
   if (!body || typeof body !== 'object') return null;
   const battery = num(body.battery_level);
-  return {
+  const parsed = {
     app_version: str(body.app_version),
     build_number: str(body.build_number),
     os_name: str(body.os_name),
@@ -44,6 +44,11 @@ export function parseHealth(body: any) {
     low_power_mode: bool(body.low_power_mode),
     network_type: oneOf(body.network_type, NETWORK),
   };
+  // Only what this request actually reported: the push-token call at sign-in
+  // carries no health fields and must not blank what the health report just
+  // saved (model, permissions, battery all showed empty after every login).
+  const reported = Object.fromEntries(Object.entries(parsed).filter(([, v]) => v !== null)) as Partial<typeof parsed>;
+  return Object.keys(reported).length ? reported : null;
 }
 
 const INSTALL_ID_RE = /^[A-Za-z0-9-]{8,64}$/;

@@ -10,16 +10,20 @@ import { AuthProvider, useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { queryClient } from '@mercon/mobile-shared/lib/query-client';
 import { DriverBottomNav } from '@/navigation/DriverBottomNav';
 
-import { LanguageProvider } from '@mercon/mobile-shared/lib/language-context';
+import { LanguageProvider, type LanguageMode } from '@mercon/mobile-shared/lib/language-context';
 import { ThemeProvider } from '@mercon/mobile-shared/lib/theme-context';
 import { DriverLiveTracking } from '@/components/DriverLiveTracking';
 import { DriverNotificationManager } from '@/components/DriverNotificationManager';
 import { AppToastHost } from '@/components/AppToast';
 import { AcknowledgeTripsPrompt } from '@/components/AcknowledgeTripsPrompt';
 import { PhoneHealthWatcher, PhoneSetupBanner, UpdateRequiredScreen } from '@/components/PhoneHealthManager';
+import { PhoneSetupGuide } from '@/components/PhoneSetupGuide';
 import { signInDriver, syncPushToken, unregisterPushToken } from '@/services/auth';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+/** Urdu lays the driver app out right-to-left (Urdu + English stays left-to-right). */
+const RTL_LANGUAGES: LanguageMode[] = ['ur'];
 
 const TAB_ROUTES = [
   '/', '/trips', '/profile', '/notifications', '/documents', '/vehicle', '/settings', '/driver-charges',
@@ -85,6 +89,8 @@ function RootNavigator() {
       {isLoggedIn && <DriverNotificationManager />}
       {isLoggedIn && <PhoneHealthWatcher />}
       {isLoggedIn && <AcknowledgeTripsPrompt />}
+      {/* After the trip prompt so it opens on top: without these settings new trips can arrive late. */}
+      {isLoggedIn && <PhoneSetupGuide />}
 
       {showBottomNav && (
         <View style={styles.floatingNavOverlay} pointerEvents="box-none">
@@ -110,7 +116,7 @@ export default function RootLayout() {
         onSessionStart={syncPushToken}
         onSignOut={unregisterPushToken}
       >
-        <LanguageProvider>
+        <LanguageProvider rtlLanguages={RTL_LANGUAGES}>
           <ThemeProvider>
             <RootNavigator />
           </ThemeProvider>

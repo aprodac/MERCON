@@ -20,6 +20,10 @@ export function isSilent(u: LiveUnit, now = Date.now()): boolean {
   return !u.position || now - seen > QUIET_MS;
 }
 
+/** Has a real fix (not missing, not the 0,0 a dead tracker reports). */
+export const located = (u: LiveUnit) =>
+  !!u.position && Number.isFinite(u.position.lat) && Number.isFinite(u.position.lng) && !(u.position.lat === 0 && u.position.lng === 0);
+
 export function matchesFilter(u: LiveUnit, f: FleetFilter, now = Date.now()): boolean {
   switch (f) {
     case 'all': return true;

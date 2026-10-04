@@ -512,6 +512,18 @@ const STATUS_TABS: { label: string; value: TripStatusFilter }[] = [
   { label: 'Issues', value: 'Issues' },
 ];
 
+/** Colour dot per status in the quick status picker. */
+const STATUS_DOT: Record<string, string> = {
+  Draft: 'bg-slate-400',
+  Scheduled: 'bg-indigo-400',
+  Loading: 'bg-sky-500',
+  InTransit: 'bg-amber-500',
+  Delayed: 'bg-rose-400',
+  Completed: 'bg-emerald-500',
+  Invoiced: 'bg-emerald-600',
+  Cancelled: 'bg-rose-500',
+};
+
 const STATUS_LABELS: Record<string, string> = {
   All: 'All Statuses',
   Active: 'Active',
@@ -723,7 +735,7 @@ export default function TripListPage() {
       });
 
       if (targetStatus === 'Completed') {
-        setSettlementModalTrip(updated || { ...trip, status: 'Completed' });
+        setSettlementModalTrip({ ...trip, ...(updated || {}), status: 'Completed' } as Trip);
       }
     } catch (e: any) {
       // Revert the local override on error so the card snaps back to its correct column
@@ -922,6 +934,8 @@ export default function TripListPage() {
       customer_id: selectedCustomerId !== 'All' ? selectedCustomerId : undefined,
       driver_id: selectedDriverId !== 'All' ? selectedDriverId : undefined,
       date_filter: dateFilter === 'All' || dateFilter === 'Custom' ? undefined : dateFilter,
+      // "Last 3 days" etc. still lists unfinished trips from earlier — they need action.
+      include_open: dateFilter !== 'All' && dateFilter !== 'Custom' ? true : undefined,
       start_date: startDateStr,
       end_date: endDateStr,
       search: debouncedSearch || undefined,
@@ -1230,6 +1244,10 @@ export default function TripListPage() {
     if (!statusDialogTrip) return;
     const targetTrip = statusDialogTrip;
     const targetStatus = newStatus;
+    if (targetStatus === targetTrip.status) {
+      setStatusDialogTrip(null);
+      return;
+    }
     try {
       setIsUpdatingStatus(true);
       const updated = await tripService.updateStatus(targetTrip.id, targetStatus);
@@ -1241,10 +1259,10 @@ export default function TripListPage() {
       toast.success('Trip status updated successfully');
 
       if (targetStatus === 'Completed') {
-        setSettlementModalTrip(updated || { ...targetTrip, status: 'Completed' });
+        setSettlementModalTrip({ ...targetTrip, ...(updated || {}), status: 'Completed' } as Trip);
       }
-    } catch (e) {
-      toast.error('Failed to update trip status');
+    } catch (e: any) {
+      toast.error(e?.response?.data?.error?.message || 'Failed to update trip status');
     } finally {
       setIsUpdatingStatus(false);
     }
@@ -2298,50 +2316,20 @@ export default function TripListPage() {
                 </SelectTrigger>
                 <SelectContent className="w-full p-1.5 shadow-lg border border-slate-200 bg-white rounded-xl">
                   {(() => {
-                    const currentStatus = statusDialogTrip?.status as TripStatus;
-                    
-                    const ALLOWED_TRANSITIONS: Record<string, TripStatus[]> = {
-                      Draft: ['Dispatched', 'Cancelled'] as TripStatus[],
-                      Dispatched: ['AtPickup', 'Draft', 'Cancelled'] as TripStatus[],
-                      AtPickup: ['InTransit', 'Cancelled'] as TripStatus[],
-                      InTransit: ['AtDelivery', 'Cancelled'] as TripStatus[],
-                      AtDelivery: ['Completed', 'Cancelled'] as TripStatus[],
-                      Completed: ['Invoiced'] as TripStatus[],
-                      Invoiced: [] as TripStatus[],
-                      Cancelled: ['Draft'] as TripStatus[],
-                    };
-
-                    const allowed = ALLOWED_TRANSITIONS[currentStatus] || [];
-                    const isValid = (status: string) => status === currentStatus || allowed.includes(status as TripStatus);
-
-                    return (
-                      <>
-                        <SelectItem value="Draft" disabled={!isValid('Draft')} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-                          <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />Scheduled</span>
-                        </SelectItem>
-                        <SelectItem value="Dispatched" disabled={!isValid('Dispatched')} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-                          <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />Dispatched</span>
-                        </SelectItem>
-                        <SelectItem value="AtPickup" disabled={!isValid('AtPickup')} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-                          <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-sky-500 shrink-0" />Loading</span>
-                        </SelectItem>
-                        <SelectItem value="InTransit" disabled={!isValid('InTransit')} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-                          <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />In Transit</span>
-                        </SelectItem>
-                        <SelectItem value="AtDelivery" disabled={!isValid('AtDelivery')} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-                          <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />At Delivery</span>
-                        </SelectItem>
-                        <SelectItem value="Completed" disabled={!isValid('Completed')} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-                          <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />Completed</span>
-                        </SelectItem>
-                        <SelectItem value="Invoiced" disabled={!isValid('Invoiced')} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-                          <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0" />Invoiced</span>
-                        </SelectItem>
-                        <SelectItem value="Cancelled" disabled={!isValid('Cancelled')} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
-                          <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-rose-500 shrink-0" />Cancelled</span>
-                        </SelectItem>
-                      </>
-                    );
+                    // The current status plus the moves the API accepts from it (liveOps mirrors
+                    // tripLifecycle.ALLOWED_TRANSITIONS). The old list used statuses that no
+                    // longer exist (Dispatched, AtPickup, AtDelivery), so nothing could be picked.
+                    const currentStatus = statusDialogTrip?.status || '';
+                    const choices = [currentStatus, ...(TRIP_TRANSITIONS[currentStatus] || [])].filter(Boolean);
+                    return choices.map((st) => (
+                      <SelectItem key={st} value={st} className="cursor-pointer text-xs font-medium py-1.5 px-2 rounded-md">
+                        <span className="flex items-center gap-2">
+                          <span className={cn('w-2 h-2 rounded-full shrink-0', STATUS_DOT[st] || 'bg-slate-400')} />
+                          {STATUS_LABELS[st] || st}
+                          {st === currentStatus && <span className="text-slate-400">(now)</span>}
+                        </span>
+                      </SelectItem>
+                    ));
                   })()}
                 </SelectContent>
               </Select>
