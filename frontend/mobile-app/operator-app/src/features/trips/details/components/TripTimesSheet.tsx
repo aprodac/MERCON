@@ -1,18 +1,20 @@
 /**
  * Copy a customer-app trip's real stop times off the driver's screenshots, all
  * stops in one pass. The customer's app lists every stop's arrive / departure
- * time on one screen, so the rows follow the same order: the operator types
- * "054426" and the cursor moves on. An empty box keeps the driver's tapped time.
+ * time on one screen, so the rows follow the same order: the operator taps a
+ * time, rolls the hour / minute / second wheels to the screenshot's value and
+ * hits "Next" to move on. An untouched time keeps the driver's tapped time.
  */
-import React, { useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, ScrollView, TextInput } from 'react-native';
-import { formatClockTyping, isoToWall, resolveStopTimes, type StopTimeRow } from '@mercon/shared-types';
+import React, { useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Image, Alert, ScrollView } from 'react-native';
+import { isoToWall, resolveStopTimes, type StopTimeRow } from '@mercon/shared-types';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { operatorService, type OperatorTripDetail, type OperatorTripDocument } from '../../../../lib/operator';
 import { sortedStops, stopName } from '../tripDetailsModel';
 import { ACTION, INK, MUTED } from './parts';
+import { TimeWheel } from './TimeWheel';
 
 /** A screenshot from the customer's app (EXTERNAL_APP trips). */
 export const isAppScreenshot = (d: OperatorTripDocument) => d.ai_extracted_json?.source === 'external_app_screenshot';
@@ -28,6 +30,8 @@ interface Props {
 }
 
 type Field = 'arrival' | 'departure';
+const FIELDS: Field[] = ['arrival', 'departure'];
+const FIELD_LABEL: Record<Field, string> = { arrival: 'Arrived', departure: 'Left' };
 
 export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
   const stops = useMemo(() => sortedStops(trip), [trip]);
@@ -41,13 +45,14 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
   const [shotIdx, setShotIdx] = useState(0);
   const [tall, setTall] = useState(false);
   const [saving, setSaving] = useState(false);
-  const inputs = useRef<(TextInput | null)[]>([]);
+  /** Which time the wheels are editing: index into stops × FIELDS. */
+  const [active, setActive] = useState<number | null>(null);
 
   // Start clean each time the sheet opens.
   const [shownFor, setShownFor] = useState(false);
   if (visible !== shownFor) {
     setShownFor(visible);
-    if (visible) { setTyped({}); setShotIdx(0); setTall(false); }
+    if (visible) { setTyped({}); setShotIdx(0); setTall(false); setActive(null); }
   }
 
   const rows: StopTimeRow[] = stops.map((s) => ({
@@ -64,11 +69,24 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
 
   const clock = (iso: string | null) => (iso ? isoToWall(iso, tz).clock : null);
 
-  const set = (stopId: string, field: Field, value: string, idx: number) => {
-    const v = formatClockTyping(value);
-    setTyped((t) => ({ ...t, [stopId]: { ...(t[stopId] ?? { arrival: '', departure: '' }), [field]: v } }));
-    if (v.length === 8) inputs.current[idx + 1]?.focus();
+  const set = (stopId: string, field: Field, value: string) =>
+    setTyped((t) => ({ ...t, [stopId]: { ...(t[stopId] ?? { arrival: '', departure: '' }), [field]: value } }));
+
+  /** What a time box shows: the picked time, else the time on record. */
+  const shown = (idx: number) => {
+    const st = stops[Math.floor(idx / 2)];
+    const field = FIELDS[idx % 2];
+    return typed[st.id]?.[field] || clock(resolved[Math.floor(idx / 2)][field].iso);
   };
+  /** Where the wheels start: this time, else the nearest earlier one (times only move forward). */
+  const wheelStart = (idx: number) => {
+    for (let i = idx; i >= 0; i--) {
+      const v = shown(i);
+      if (v) return v;
+    }
+    return clock(fallback) ?? '00:00:00';
+  };
+  const lastIdx = stops.length * 2 - 1;
 
   const confirm = async () => {
     if (hasError) return;
@@ -96,12 +114,12 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
     <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title={`Check times · ${trip.ref_id}`} maxHeight="94%">
       {shotUrl ? (
         <View style={{ gap: 6 }}>
-          <TouchableOpacity activeOpacity={0.9} onPress={() => setTall((t) => !t)}>
-            <Image source={{ uri: shotUrl }} style={[s.shot, tall && s.shotTall]} resizeMode="contain" />
+          <TouchableOpacity activeOpacity={0.9} onPress={() => { if (active !== null) { setActive(null); setTall(true); } else setTall((t) => !t); }}>
+            <Image source={{ uri: shotUrl }} style={[s.shot, tall && active === null && s.shotTall]} resizeMode="contain" />
           </TouchableOpacity>
           <View style={s.shotBar}>
             <Text style={s.hint} numberOfLines={1}>
-              {shotStop >= 0 ? stopName(stops[shotStop], shotStop) : 'Trip'} · tap to {tall ? 'shrink' : 'enlarge'}
+              {shotStop >= 0 ? stopName(stops[shotStop], shotStop) : 'Trip'} · tap to {tall && active === null ? 'shrink' : 'enlarge'}
             </Text>
             {shots.length > 1 ? (
               <View style={s.pager}>
@@ -132,22 +150,21 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
                   {st.actual_arrival ? `tapped ${clock(st.actual_arrival)?.slice(0, 5)}${st.actual_departure ? `–${clock(st.actual_departure)?.slice(0, 5)}` : ''}` : 'not reached'}
                 </Text>
               </View>
-              {(['arrival', 'departure'] as Field[]).map((field, f) => {
+              {FIELDS.map((field, f) => {
                 const t = r[field];
                 const recorded = field === 'arrival' ? st.actual_arrival : st.actual_departure;
                 const idx = i * 2 + f;
+                const value = typed[st.id]?.[field] || clock(recorded);
                 return (
                   <View key={field} style={s.col}>
-                    <TextInput
-                      ref={(el) => { inputs.current[idx] = el; }}
-                      value={typed[st.id]?.[field] ?? ''}
-                      onChangeText={(v) => set(st.id, field, v, idx)}
-                      placeholder={clock(recorded) ?? 'hh:mm:ss'}
-                      placeholderTextColor="#A1A1AA"
-                      keyboardType="number-pad"
-                      maxLength={8}
-                      style={[s.input, t.changed && s.inputChanged, !!t.error && s.inputError]}
-                    />
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => setActive(active === idx ? null : idx)}
+                      accessibilityLabel={`${stopName(st, i)} ${FIELD_LABEL[field]}`}
+                      style={[s.input, t.changed && s.inputChanged, !!t.error && s.inputError, active === idx && s.inputActive]}
+                    >
+                      <Text style={[s.inputText, !typed[st.id]?.[field] && { color: '#A1A1AA' }]}>{value ?? 'set'}</Text>
+                    </TouchableOpacity>
                     <Text style={[s.note, !!t.error && { color: '#B42318' }]} numberOfLines={1}>
                       {t.error ?? (t.changed ? [recorded ? `was ${clock(recorded)?.slice(0, 5)}` : 'new', t.dayOffset ? `+${t.dayOffset}d` : ''].filter(Boolean).join(' · ') : ' ')}
                     </Text>
@@ -159,9 +176,43 @@ export function TripTimesSheet({ visible, trip, tz, onClose, onDone }: Props) {
         })}
       </ScrollView>
 
-      <Text style={[s.hint, { marginTop: 8 }]}>
-        {pending > 0 ? `${pending} screenshot${pending === 1 ? '' : 's'} to check` : 'All screenshots checked'} · type 054426 for 05:44:26 · empty keeps the tapped time
-      </Text>
+      {active !== null && stops[Math.floor(active / 2)] ? (() => {
+        const i = Math.floor(active / 2);
+        const st = stops[i];
+        const field = FIELDS[active % 2];
+        const recorded = field === 'arrival' ? st.actual_arrival : st.actual_departure;
+        const picked = !!typed[st.id]?.[field];
+        const next = active < lastIdx ? active + 1 : null;
+        return (
+          <View style={s.panel}>
+            <View style={s.panelHead}>
+              <Text style={s.name} numberOfLines={1}>{stopName(st, i)} · {FIELD_LABEL[field]}</Text>
+              {picked ? (
+                <TouchableOpacity onPress={() => set(st.id, field, '')} hitSlop={8}>
+                  <Text style={s.link}>{recorded ? `Undo · tapped ${clock(recorded)}` : 'Clear'}</Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+            <TimeWheel key={active} value={wheelStart(active)} onChange={(v) => set(st.id, field, v)} />
+            <View style={s.panelBtns}>
+              <TouchableOpacity style={s.ghostBtn} onPress={() => setActive(null)}>
+                <Text style={s.ghostText}>Done</Text>
+              </TouchableOpacity>
+              {next !== null ? (
+                <TouchableOpacity style={[s.ghostBtn, { flex: 2 }]} onPress={() => setActive(next)}>
+                  <Text style={s.ghostText} numberOfLines={1}>
+                    Next: {stopName(stops[Math.floor(next / 2)], Math.floor(next / 2))} · {FIELD_LABEL[FIELDS[next % 2]]} ›
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </View>
+        );
+      })() : (
+        <Text style={[s.hint, { marginTop: 8 }]}>
+          {pending > 0 ? `${pending} screenshot${pending === 1 ? '' : 's'} to check` : 'All screenshots checked'} · tap a time to change it · untouched times stay as tapped
+        </Text>
+      )}
       <TouchableOpacity style={[s.btn, (saving || hasError) && { opacity: 0.5 }]} onPress={confirm} disabled={saving || hasError}>
         <Text style={s.btnText}>
           {saving ? 'Saving…' : changes.length ? `Save ${changes.length} stop${changes.length === 1 ? '' : 's'}` : 'Times are right'}
@@ -185,9 +236,17 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', gap: 8, paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: '#ECECEF' },
   col: { width: 84 },
   name: { fontSize: 13, fontWeight: '700', color: INK },
-  input: { height: 36, borderRadius: 9, borderWidth: 1, borderColor: '#D4D4D8', paddingHorizontal: 8, fontSize: 14, fontVariant: ['tabular-nums'], color: INK, backgroundColor: '#FAFAFB' },
+  input: { height: 36, borderRadius: 9, borderWidth: 1, borderColor: '#D4D4D8', paddingHorizontal: 8, justifyContent: 'center', backgroundColor: '#FAFAFB' },
+  inputText: { fontSize: 14, fontVariant: ['tabular-nums'], color: INK },
+  inputActive: { borderColor: INK, borderWidth: 2 },
   inputChanged: { borderColor: '#F59E0B', backgroundColor: '#FFFBEB' },
   inputError: { borderColor: '#F04438', backgroundColor: '#FEF3F2' },
+  panel: { marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#D4D4D8', gap: 4 },
+  panelHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  link: { fontSize: 12, fontWeight: '700', color: '#2563EB' },
+  panelBtns: { flexDirection: 'row', gap: 8 },
+  ghostBtn: { flex: 1, height: 40, borderRadius: 12, backgroundColor: '#F1F1F3', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10 },
+  ghostText: { fontSize: 13, fontWeight: '700', color: INK },
   note: { fontSize: 10.5, color: '#8A5200', marginTop: 2 },
   btn: { height: 50, borderRadius: 14, backgroundColor: ACTION, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   btnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
