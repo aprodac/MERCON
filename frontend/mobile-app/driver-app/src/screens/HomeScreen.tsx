@@ -16,6 +16,7 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-sha
 import { Badge } from '@mercon/mobile-shared/components/Badge';
 import { DelayReportModal } from '../components/DelayReportModal';
 import { DriverChargePill } from '../components/DriverChargePill';
+import { NotificationBell } from '../components/NotificationBell';
 import { showToast } from '../components/AppToast';
 import { BilingualText } from '@mercon/mobile-shared/components/BilingualText';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
@@ -410,8 +411,11 @@ const HomeScreen = () => {
                 <ChevronDown size={14} color="#3E3C3D" strokeWidth={2.2} />
               </TouchableOpacity>
 
-              {/* Driver Charge on Top-Right */}
-              <DriverChargePill />
+              {/* Notifications bell + Driver Charge on Top-Right */}
+              <View style={styles.topRightGroup}>
+                <NotificationBell />
+                <DriverChargePill style={styles.topChargePill} />
+              </View>
             </View>
 
             {/* Welcome back / Greeting below Language on the Left */}
@@ -835,6 +839,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
+  },
+  topRightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
+  topChargePill: {
+    flexShrink: 1,
   },
   driverChargePill: {
     height: 38,

@@ -18,18 +18,13 @@ import { statusLabel, stopLabel, getTripChargeValue, getMonthlyDriverPayout, typ
 import { matchesSearch } from '@mercon/mobile-shared/lib/search';
 import { useLanguage, formatCurrency, getLocalizedStatus, LanguageMode } from '@mercon/mobile-shared/lib/language-context';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
+import { formatDayTime } from '@mercon/mobile-shared/lib/dates';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
 const TABS = ['Scheduled', 'Completed'] as const;
 type Tab = typeof TABS[number];
 
-function formatDateTime(iso?: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-}
 
 function formatRelativeDate(iso?: string | null, lang: LanguageMode = 'en'): string {
   if (!iso) return lang === 'ur' ? 'شیڈول شدہ' : 'Scheduled';
@@ -86,7 +81,12 @@ function resolveLogoUrl(rawLogo?: string | null): string | null {
 }
 
 function toCard(t: MobileTrip, isCompletedTab: boolean, lang: LanguageMode = 'en', tr: any = (k: string, fb?: string) => fb || k): CardData {
-  const dateSource = t.actual_end ?? t.planned_end ?? t.actual_start ?? t.planned_start ?? null;
+  // History: when the trip ended (delivery, or the cancellation) — the server's
+  // finished_at, which also sets the list order. Cancelled trips used to show
+  // their planned delivery time, often hours after they were cancelled.
+  const dateSource = isCompletedTab
+    ? t.finished_at ?? t.actual_end ?? t.planned_end ?? null
+    : t.actual_end ?? t.planned_end ?? t.actual_start ?? t.planned_start ?? null;
   const pickup = t.stops?.find((s) => s.stop_type === 'Pickup');
   const dropoff = t.stops?.find((s) => s.stop_type === 'Dropoff');
   const fromCity = stopLabel(pickup, tr('label_pickup_point', 'Pickup Point')) ?? tr('label_pickup_point', 'Pickup Point');
@@ -108,7 +108,7 @@ function toCard(t: MobileTrip, isCompletedTab: boolean, lang: LanguageMode = 'en
     rawStatus: t.status,
     isCompleted: isComp,
     isCancelled,
-    dateFormatted: formatDateTime(dateSource),
+    dateFormatted: formatDayTime(dateSource),
     relativeDate: formatRelativeDate(dateSource, lang),
     chargeText: isCancelled ? '—' : formatCurrency(chargeValue, lang),
   };

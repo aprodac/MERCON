@@ -188,6 +188,17 @@ export interface MobileTrip {
    * web dashboard about a trip's route again.
    */
   route_timeline?: unknown[] | null;
+  /**
+   * History only (GET /mobile/trips/history): when the trip ended — delivery
+   * time for a finished trip, cancellation for a cancelled one. The list is
+   * sorted newest first by this.
+   */
+  finished_at?: string | null;
+  /**
+   * History only: final drop-off reached on time (within the office's delay
+   * threshold) or late; null when cancelled or the times are missing.
+   */
+  punctuality?: 'on_time' | 'late' | null;
   documents?: Array<{
     id: string;
     doc_type?: string;
