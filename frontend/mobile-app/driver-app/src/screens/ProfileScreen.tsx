@@ -20,6 +20,7 @@ import { API_URL } from '@mercon/mobile-shared/lib/api';
 import { useLanguage, formatCurrency } from '@mercon/mobile-shared/lib/language-context';
 import { useNotifications } from '../hooks/use-notifications';
 import { HelpSupportSheet } from '../components/HelpSupportSheet';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
@@ -328,7 +329,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('nav_personal_info', 'Personal Information')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_personal_info', 'View your profile details')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -340,7 +341,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('title_assigned_vehicle', 'Assigned Vehicle')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_assigned_vehicle', 'View your current vehicle')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -352,7 +353,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('title_my_documents', 'My Documents')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_documents', 'Manage uploaded documents')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -373,7 +374,7 @@ export default function ProfileScreen() {
                 <Text style={styles.unreadBadgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
               </View>
             )}
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -385,7 +386,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('title_performance_overview', 'Performance Overview')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_performance', 'View your trip statistics')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -397,7 +398,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('title_driver_charges', 'Driver Charges')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_earnings', 'View driver charges and payouts')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -409,7 +410,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('action_change_password', 'Change Password')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_change_password', 'Update your security')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -421,7 +422,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('nav_settings', 'App Settings')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_settings', 'Language and preferences')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -433,7 +434,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('nav_help_support', 'Help & Support')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_help', 'Get assistance from admin')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -445,7 +446,7 @@ export default function ProfileScreen() {
               <Text style={[styles.menuItemTitle, { color: '#DC2626' }]}>{t('title_emergency', 'Emergency')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_emergency', 'Report an accident, breakdown or other incident')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.menuDivider} />
 
@@ -457,7 +458,7 @@ export default function ProfileScreen() {
               <Text style={styles.menuItemTitle}>{t('action_sign_out', 'Logout')}</Text>
               <Text style={styles.menuItemSub}>{t('sub_sign_out', 'Sign out of your account')}</Text>
             </View>
-            <ChevronRightIcon size={18} color="#A1A1AA" />
+            <ChevronRightIcon size={18} color="#A1A1AA" style={flipInRTL} />
           </TouchableOpacity>
         </View>
       </ScrollView>

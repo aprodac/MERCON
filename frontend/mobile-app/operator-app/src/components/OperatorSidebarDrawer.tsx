@@ -2,14 +2,14 @@
  * The operator side menu (from the ☰ button). A flat, shadcn-style list:
  * brand header, "Go to…" filter, the main pages, then Fleet / Finance /
  * Records groups, each row one line with a count badge where something needs
- * attention, and the account with Sign out at the bottom.
+ * attention, and the account at the bottom (tap it for Profile, where Log out lives).
  *
  * Badges read the same React Query caches the home uses, so opening the menu
  * doesn't fire a burst of requests.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, Modal, Animated, ScrollView, Alert,
+  View, Text, TouchableOpacity, StyleSheet, Modal, Animated, ScrollView,
   TouchableWithoutFeedback, Image, TextInput, Easing, useWindowDimensions,
 } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
@@ -18,7 +18,7 @@ import { useQuery } from '@tanstack/react-query';
 import Constants from 'expo-constants';
 import {
   Map as MapIcon,
-  Bell, Building2, CreditCard, FileText, FolderOpen, House, LogOut, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
+  Bell, Building2, CreditCard, FileText, FolderOpen, House, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
   type LucideIcon,
 } from 'lucide-react-native';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
@@ -137,7 +137,7 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { profile, role, signOut } = useAuth();
+  const { profile, role } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
   const drawerWidth = Math.min(screenWidth * 0.82, 320);
 
@@ -201,21 +201,6 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
     if (route === pathname) return;
     // Let the drawer start closing before the next screen mounts.
     setTimeout(() => router.push(route as never), 150);
-  };
-
-  const handleSignOut = () => {
-    Alert.alert('Sign out?', 'You will need to log in again.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign out',
-        style: 'destructive',
-        onPress: async () => {
-          onClose();
-          await signOut();
-          router.replace('/login');
-        },
-      },
-    ]);
   };
 
   if (!mounted) return null;
@@ -314,10 +299,6 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
                   <Text style={styles.role} numberOfLines={1}>{role ?? 'Operator'}</Text>
                 </View>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.signOut} onPress={handleSignOut} activeOpacity={0.7}>
-                <LogOut size={14} color="#B42318" strokeWidth={2} />
-                <Text style={styles.signOutText}>Sign out</Text>
-              </TouchableOpacity>
             </View>
             {version ? <Text style={styles.version}>Version {version}</Text> : null}
           </View>
@@ -393,7 +374,5 @@ const styles = StyleSheet.create({
   name: { fontSize: 14, fontWeight: '600', color: ZINC.fg },
   role: { fontSize: 12, color: ZINC.muted },
   accountLink: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  signOut: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: ZINC.border, backgroundColor: '#FFFFFF' },
-  signOutText: { fontSize: 13, fontWeight: '500', color: '#B42318' },
   version: { fontSize: 11, color: ZINC.faint, paddingHorizontal: 6 },
 });

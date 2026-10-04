@@ -67,6 +67,7 @@ export function useCustomerDetail(id: string, now: number) {
     notFound: (customerQ.error as any)?.response?.status === 404,
     failed: Boolean(customerQ.error),
     money,
+    statement: statementQ.data ?? null,
     moneyLoading: statementQ.isLoading,
     moneyFailed: Boolean(statementQ.error),
     trips,

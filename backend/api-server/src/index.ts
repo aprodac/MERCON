@@ -138,6 +138,10 @@ app.use(helmet.hsts({
 app.use(express.json({ limit: '250mb' }));
 app.use(express.urlencoded({ limit: '250mb', extended: true }));
 import { getUploadDir } from './middlewares/upload';
+import { uploadsGuard, apiFileLinks } from './middlewares/fileLinks';
+// Private documents (driver / vehicle / customer / company) need a signed link;
+// signed links are checked and handed to the static handlers below.
+app.use('/uploads', uploadsGuard);
 app.use('/uploads', express.static(getUploadDir()));
 app.use('/uploads', express.static(path.resolve(process.cwd(), 'uploads')));
 app.use('/uploads', express.static('/tmp/uploads'));
@@ -150,6 +154,8 @@ apiRouter.use((_req, res, next) => {
   res.setHeader('Expires', '0');
   next();
 });
+// Signs links to private documents for signed-in users; strips signatures from request bodies.
+apiRouter.use(apiFileLinks);
 apiRouter.use('/auth', authRoutes);
 apiRouter.use('/drivers', driverRoutes);
 apiRouter.use('/vehicles', vehicleRoutes);

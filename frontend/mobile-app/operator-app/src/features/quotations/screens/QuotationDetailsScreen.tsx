@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowLeft, SquarePen, Tag, Truck } from 'lucide-react-native';
+import { EmptyHint, PageTitle, SectionLabel, TabIcon, Tile, FactRow } from '@/components/pageCues';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { EmptyState, ErrorState, SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { niceName } from '@/features/trips/create/components/ui';
@@ -141,18 +142,13 @@ export default function QuotationDetailsScreen() {
 
         {/* 1 · the terms */}
         <Card style={{ paddingVertical: 4 }}>
-          {facts.map((f, i) => (
-            <View key={f.label} style={[s.fact, i > 0 && s.lineBorder]}>
-              <Text style={s.factLabel}>{f.label}</Text>
-              <Text style={[s.factValue, f.accent && { color: Colors.primary }]} numberOfLines={1}>{f.value}</Text>
-            </View>
-          ))}
+          {facts.map((f, i) => <FactRow key={f.label} label={f.label} value={f.value} accent={f.accent} first={i === 0} />)}
         </Card>
 
         {/* 2 · every stop, only when the lane has more than its two ends */}
         {q.stops.length > 2 ? (
           <Card style={{ paddingBottom: 4 }}>
-            <Text style={s.label}>Stops</Text>
+            <SectionLabel>Stops</SectionLabel>
             {q.stops.map((stop, i) => {
               const last = i === q.stops.length - 1;
               const end = i === 0 || last;
@@ -181,12 +177,12 @@ export default function QuotationDetailsScreen() {
         {charges.length > 0 ? (
         <Card style={{ paddingBottom: 4 }}>
           <View style={s.row}>
-            <Text style={[s.label, { flex: 1 }]}>Extra charges</Text>
+            <SectionLabel flat>Extra charges</SectionLabel>
             {charges.length ? <Text style={s.count}>{charges.length}</Text> : null}
           </View>
-          {chargesQ.isLoading ? <Text style={[s.empty, s.listEmpty]}>Loading…</Text>
-            : chargesQ.isError ? <Text style={[s.empty, s.listEmpty]}>Couldn’t load. Pull down to try again.</Text>
-            : charges.length === 0 ? <Text style={[s.empty, s.listEmpty]}>None agreed with this customer.</Text>
+          {chargesQ.isLoading ? <EmptyHint>Loading…</EmptyHint>
+            : chargesQ.isError ? <EmptyHint>Couldn’t load. Pull down to try again.</EmptyHint>
+            : charges.length === 0 ? <EmptyHint>None agreed with this customer.</EmptyHint>
             : charges.map((r, i) => (
               <View key={r.id} style={[s.line, i > 0 && s.lineBorder]}>
                 <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
@@ -208,12 +204,12 @@ export default function QuotationDetailsScreen() {
         {trips.length > 0 ? (
         <Card style={{ paddingBottom: 4 }}>
           <View style={s.row}>
-            <Text style={[s.label, { flex: 1 }]}>Trips on this rate</Text>
+            <SectionLabel flat>Trips on this rate</SectionLabel>
             {tripTotal ? <Text style={s.count}>{tripTotal}</Text> : null}
           </View>
-          {tripsQ.isLoading ? <Text style={[s.empty, s.listEmpty]}>Loading…</Text>
-            : tripsQ.isError ? <Text style={[s.empty, s.listEmpty]}>Couldn’t load. Pull down to try again.</Text>
-            : trips.length === 0 ? <Text style={[s.empty, s.listEmpty]}>No trips have used this rate yet.</Text>
+          {tripsQ.isLoading ? <EmptyHint>Loading…</EmptyHint>
+            : tripsQ.isError ? <EmptyHint>Couldn’t load. Pull down to try again.</EmptyHint>
+            : trips.length === 0 ? <EmptyHint>No trips have used this rate yet.</EmptyHint>
             : trips.slice(0, 6).map((t, i) => {
               const d = new Date(t.planned_start ?? t.createdAt);
               const driver = t.driver ? niceName(`${t.driver.first_name ?? ''} ${t.driver.last_name ?? ''}`.trim()) : '';
@@ -244,7 +240,7 @@ export default function QuotationDetailsScreen() {
         <TouchableOpacity style={s.barBtn} onPress={back} accessibilityLabel="Back">
           <ArrowLeft size={20} color={INK} strokeWidth={2.4} />
         </TouchableOpacity>
-        <Text style={s.barTitle}>Quotation</Text>
+        <PageTitle title="Quotation" />
         {q ? (
           <TouchableOpacity style={s.barBtn} onPress={() => router.push({ pathname: '/quotation-edit', params: { id: q.id } })} accessibilityLabel="Edit quotation">
             <SquarePen size={18} color={INK} strokeWidth={2.2} />
@@ -334,7 +330,7 @@ const s = StyleSheet.create({
 
   tabsWrap: { paddingHorizontal: 16, paddingVertical: 12 },
   tabs: { flexDirection: 'row', gap: 4, backgroundColor: '#EAEAED', borderRadius: 12, padding: 3 },
-  tab: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 38, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 2 },
+  tab: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 52, borderRadius: 9, alignItems: 'center', justifyContent: 'center', gap: 3, paddingHorizontal: 1 },
   tabOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   tabText: { fontSize: 13, fontWeight: '600', color: MUTED },
   tabTextOn: { color: INK, fontWeight: '700' },

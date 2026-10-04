@@ -136,7 +136,18 @@ export const getThirdPartyProviderById = async (req: Request, res: Response) => 
         subcontracts: {
           take: 20,
           orderBy: { createdAt: 'desc' },
-          include: { trip: { include: { customer: true } } },
+          include: {
+            trip: {
+              include: {
+                customer: true,
+                // Just enough of the route to label the trip "from → to".
+                stops: {
+                  orderBy: { stop_sequence: 'asc' },
+                  select: { stop_sequence: true, stop_type: true, location_name: true, location: { select: { name: true, city: true } } },
+                },
+              },
+            },
+          },
         },
         _count: { select: { subcontracts: true } },
       },
@@ -170,7 +181,8 @@ export const getThirdPartyProviderById = async (req: Request, res: Response) => 
       success: true,
       data: {
         ...provider,
-        trips: (provider.subcontracts || []).map((sc: any) => sc.trip),
+        // Each trip carries what this carrier is paid for it (the subcontract's cost).
+        trips: (provider.subcontracts || []).map((sc: any) => ({ ...sc.trip, third_party_cost: sc.cost })),
         total_trips: provider._count?.subcontracts || 0,
         active_trips: activeTripsCount,
         total_cost: totalCostAggregate._sum.cost || 0,
