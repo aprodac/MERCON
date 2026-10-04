@@ -26,6 +26,7 @@ import { tripService, statusLabel, stopAddress, stopLabel, isRoundTrip, getEffec
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { useLanguage, getLocalizedStatus, bilingual, translate } from '@mercon/mobile-shared/lib/language-context';
 import { parseTripRouteNodes, getIntermediateStops, getOutboundIntermediateStops, getReturnIntermediateStops, targetFromWorkflowState, type TimelineStop } from '../utils/routeParser';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 
 const WORKFLOW_URDU_LABEL: Record<string, string> = {
@@ -776,7 +777,7 @@ const HomeScreen = () => {
 
                   <View style={styles.scheduledRouteRow}>
                     <Text style={styles.scheduledCityText} numberOfLines={1}>{originLabel}</Text>
-                    <ArrowRight size={14} color="#FA634E" strokeWidth={2.2} />
+                    <ArrowRight size={14} color="#FA634E" strokeWidth={2.2} style={flipInRTL} />
                     <Text style={styles.scheduledCityText} numberOfLines={1}>{destLabel}</Text>
                   </View>
 
@@ -792,7 +793,7 @@ const HomeScreen = () => {
                       onPress={() => router.push({ pathname: '/trip/details', params: { tripId: st.id } } as any)}
                     >
                       <Text style={styles.viewTripSmallBtnText}>{t('action_view_trip', 'View Trip')}</Text>
-                      <ChevronRight size={14} color="#3E3C3D" strokeWidth={2.4} />
+                      <ChevronRight size={14} color="#3E3C3D" strokeWidth={2.4} style={flipInRTL} />
                     </TouchableOpacity>
                   </View>
                 </View>

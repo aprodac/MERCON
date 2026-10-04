@@ -18,6 +18,7 @@ import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { takePhoto, pickFromGallery, type CapturedPhoto } from '@mercon/mobile-shared/lib/camera';
 
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 /** `p`, or null if it has not settled within `ms`. */
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
@@ -141,7 +142,7 @@ const EmergencyScreen = () => {
       {/* Header — kept short so the call button is right there */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-          <ArrowLeft size={22} color={Colors.white} strokeWidth={2.2} />
+          <ArrowLeft size={22} color={Colors.white} strokeWidth={2.2} style={flipInRTL} />
         </TouchableOpacity>
         <View style={styles.headerText}>
           <Text style={styles.headerTitle}>{t('title_emergency', 'Emergency')}</Text>
