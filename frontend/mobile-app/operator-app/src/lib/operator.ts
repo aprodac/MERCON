@@ -269,6 +269,22 @@ export interface LiveUnit {
   motion?: 'moving' | 'idle' | 'stale' | 'no_signal';
 }
 
+/** What a driver sent from a trip's stops (backend services/fleetLiveMap.ts `LiveTripMedia`). */
+export interface TripMediaItem {
+  id: string;
+  /** A delivery note (POD) as well as photos and videos. */
+  kind: 'pod' | 'photo' | 'video';
+  stage: LiveMediaStage;
+  url: string;
+  mime: string | null;
+  captured_at: string;
+}
+export interface LiveTripMedia {
+  stops: { stop_id: string; sequence: number; delay: { reason: string | null; note: string | null; logged_at: string | null } | null; media: TripMediaItem[] }[];
+  /** Uploads that can't be tied to a stop (older driver-app builds). */
+  unplaced: TripMediaItem[];
+}
+
 /** A document or licence that has expired or expires soon (backend services/operatorInbox.ts). */
 export interface ExpiryItem {
   key: string;
@@ -1101,6 +1117,12 @@ export const operatorService = {
   },
 
   /** Road distance and drive time between two points (null when routing is down) — the web map's route call. */
+  /** Photos, POD and delay videos per stop of a trip (same as the web live map's details panel). */
+  async tripMedia(tripId: string): Promise<LiveTripMedia> {
+    const { data } = await api.get(`/vehicles/live-map/trips/${tripId}/media`);
+    return (data?.data ?? { stops: [], unplaced: [] }) as LiveTripMedia;
+  },
+
   async routeEstimate(from: { lat: number; lng: number }, to: { lat: number; lng: number }): Promise<{ distanceMeters: number; durationSeconds: number } | null> {
     try {
       const { data } = await api.get('/vehicles/live-map/route', { params: { from: `${from.lat},${from.lng}`, to: `${to.lat},${to.lng}` } });

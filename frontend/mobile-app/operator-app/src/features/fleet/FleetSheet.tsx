@@ -3,7 +3,9 @@
  *
  *   UnitSheet   the picked truck. Peek shows who, where to, the ETA and the
  *               actions; drag up (or "Stops & GPS") for the stop timeline and
- *               both GPS feeds. Swipe sideways — or the ‹ › arrows — for the
+ *               both GPS feeds, with what the driver sent from each stop
+ *               (photos, POD, delay videos and the delay reason; tap to view).
+ *               Swipe sideways — or the ‹ › arrows — for the
  *               next / previous truck in the current filter; drag down to
  *               shrink, then to close.
  *   GroupSheet  trucks parked on the same spot (a map group that never parts);
@@ -12,10 +14,12 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert, Animated, LayoutAnimation, Linking, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
+  Alert, Animated, Image, LayoutAnimation, Linking, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Smartphone, Truck, X } from 'lucide-react-native';
-import type { LiveUnit } from '../../lib/operator';
+import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Play, Smartphone, Truck, X } from 'lucide-react-native';
+import type { LiveTripMedia, LiveUnit, TripMediaItem } from '../../lib/operator';
+import type { ViewerItem } from '../trips/details/components/MediaViewer';
 import { niceName } from '../trips/create/components/ui';
 import type { makeTime } from '../trips/list/tripListModel';
 import { STATE_STYLE, unitState } from './FleetMap';
@@ -40,6 +44,17 @@ const SWIPE_PX = 70;
 const DRAG_PX = 50;
 
 type Time = ReturnType<typeof makeTime>;
+
+/** Opens the full-screen viewer on one stop's uploads. */
+export type OpenMedia = (items: ViewerItem[], index: number, title: string) => void;
+
+/** Order under a stop: the sequence a driver works through. */
+const STAGE_ORDER: TripMediaItem['stage'][] = ['arrived', 'loaded', 'stop', 'delivered', 'delay', 'other'];
+const STAGE_LABEL: Record<TripMediaItem['stage'], string> = {
+  arrived: 'Arrived', loaded: 'Loaded', stop: 'At stop', delivered: 'Delivered', delay: 'Delay', other: 'Photo',
+};
+/** "VehicleBreakdown" → "Vehicle breakdown". */
+const humanize = (v: string) => v.replace(/[_-]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().replace(/^./, (c) => c.toUpperCase());
 
 export function StateChip({ unit, now }: { unit: LiveUnit; now: number }) {
   const st = unitState(unit, now);
@@ -87,7 +102,7 @@ function SheetFrame({ children, onHeight, panHandlers, style }: {
 }
 
 export function UnitSheet({
-  unit: u, eta, routeLoading, now, f, expanded, onExpand, position, onPrev, onNext, onClose, onOpen, onHeight,
+  unit: u, eta, routeLoading, now, f, expanded, onExpand, position, onPrev, onNext, onClose, onOpen, onHeight, media, onOpenMedia,
 }: {
   unit: LiveUnit; eta: EtaInfo | null; routeLoading: boolean; now: number; f: Time;
   expanded: boolean; onExpand: (v: boolean) => void;
@@ -95,6 +110,9 @@ export function UnitSheet({
   position: { index: number; total: number };
   onPrev: (() => void) | null; onNext: (() => void) | null;
   onClose: () => void; onOpen: (tripId: string) => void; onHeight: (h: number) => void;
+  /** What the driver sent per stop — loaded only while the sheet is expanded. */
+  media?: LiveTripMedia | null;
+  onOpenMedia?: OpenMedia;
 }) {
   const { width } = useWindowDimensions();
   const t = u.trip;
@@ -207,7 +225,7 @@ export function UnitSheet({
             <Feed icon={Smartphone} label="Phone" iso={u.driver_gps?.recorded_at} missing={!u.driver ? 'No driver' : isFree(u) ? 'Off trip' : 'Silent'} now={now} />
           </View>
           {u.feeds_gap_m != null && u.feeds_gap_m > 1000 ? <Text style={[s.note, { color: BRAND, fontWeight: '600' }]}>Tracker and phone are {formatKm(u.feeds_gap_m / 1000)} apart</Text> : null}
-          {t && t.stops.length ? <StopTimeline stops={t.stops} nextId={next?.id ?? null} f={f} /> : null}
+          {t && t.stops.length ? <StopTimeline stops={t.stops} nextId={next?.id ?? null} f={f} media={media ?? null} onOpenMedia={onOpenMedia} /> : null}
         </>
       ) : null}
 
@@ -268,9 +286,13 @@ function MotionLine({ unit: u, now }: { unit: LiveUnit; now: number }) {
 }
 
 /** Every stop in order: done (ink), next (red), still to come (outline) — planned vs actual arrival. */
-function StopTimeline({ stops, nextId, f }: { stops: NonNullable<LiveUnit['trip']>['stops']; nextId: string | null; f: Time }) {
+function StopTimeline({ stops, nextId, f, media, onOpenMedia }: {
+  stops: NonNullable<LiveUnit['trip']>['stops']; nextId: string | null; f: Time; media: LiveTripMedia | null; onOpenMedia?: OpenMedia;
+}) {
+  const byStop = new Map((media?.stops ?? []).map((m) => [m.stop_id, m]));
+  const unplaced = media?.unplaced ?? [];
   return (
-    <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+    <ScrollView style={{ maxHeight: 260 }} nestedScrollEnabled>
       {stops.map((st, i) => {
         const done = !!st.actual_arrival;
         const isNext = st.id === nextId;
@@ -293,8 +315,63 @@ function StopTimeline({ stops, nextId, f }: { stops: NonNullable<LiveUnit['trip'
                 {done ? `  ·  arrived ${f.time(st.actual_arrival)}` : ''}
                 {late != null && late > 5 ? <Text style={{ color: BRAND, fontWeight: '600' }}>{`  (${formatDuration(late * 60)} late)`}</Text> : null}
               </Text>
+              <StopMedia
+                stop={byStop.get(st.id) ?? null}
+                title={niceName(st.name) || `Stop ${i + 1}`}
+                f={f}
+                onOpenMedia={onOpenMedia}
+              />
             </View>
           </View>
+        );
+      })}
+      {unplaced.length ? (
+        <View style={{ paddingLeft: 32, paddingBottom: 6 }}>
+          <Text style={s.stopMeta}>Other uploads</Text>
+          <Thumbs items={unplaced} title="Other uploads" f={f} onOpenMedia={onOpenMedia} />
+        </View>
+      ) : null}
+    </ScrollView>
+  );
+}
+
+/** The delay the driver reported, then thumbnails in the order the driver works through a stop. */
+function StopMedia({ stop, title, f, onOpenMedia }: { stop: LiveTripMedia['stops'][number] | null; title: string; f: Time; onOpenMedia?: OpenMedia }) {
+  if (!stop || (!stop.delay && !stop.media.length)) return null;
+  const items = [...stop.media].sort((a, b) => STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage) || a.captured_at.localeCompare(b.captured_at));
+  return (
+    <View style={{ gap: 4, marginTop: 4 }}>
+      {stop.delay?.reason || stop.delay?.note ? (
+        <Text style={s.delayText} numberOfLines={2}>
+          Delay: {[stop.delay.reason ? humanize(stop.delay.reason) : null, stop.delay.note].filter(Boolean).join(' — ')}
+          {stop.delay.logged_at ? `  ·  ${f.time(stop.delay.logged_at)}` : ''}
+        </Text>
+      ) : null}
+      {items.length ? <Thumbs items={items} title={title} f={f} onOpenMedia={onOpenMedia} /> : null}
+    </View>
+  );
+}
+
+function Thumbs({ items, title, f, onOpenMedia }: { items: TripMediaItem[]; title: string; f: Time; onOpenMedia?: OpenMedia }) {
+  const viewer: ViewerItem[] = items.map((m) => ({
+    id: m.id,
+    url: m.url,
+    kind: m.kind === 'video' ? 'video' : 'photo',
+    caption: `${m.kind === 'pod' ? 'POD' : STAGE_LABEL[m.stage]} · ${f.time(m.captured_at)}`,
+  }));
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+      {items.map((m, i) => {
+        const uri = resolveMediaUrl(m.url);
+        return (
+          <TouchableOpacity key={m.id} onPress={() => onOpenMedia?.(viewer, i, title)} activeOpacity={0.8} accessibilityLabel={`Open ${viewer[i].caption}`}>
+            <View style={s.thumb}>
+              {m.kind === 'video' || !uri ? (
+                <View style={[s.thumbFill, s.thumbVideo]}><Play size={13} color="#FFFFFF" fill="#FFFFFF" /></View>
+              ) : <Image source={{ uri }} style={s.thumbFill} />}
+            </View>
+            <Text style={s.thumbLabel} numberOfLines={1}>{m.kind === 'pod' ? 'POD' : STAGE_LABEL[m.stage]}</Text>
+          </TouchableOpacity>
         );
       })}
     </ScrollView>
@@ -398,4 +475,9 @@ const s = StyleSheet.create({
   stopRail: { width: 2, flex: 1, minHeight: 10, backgroundColor: '#E4E4E7', marginVertical: 2 },
   stopName: { fontSize: 13, fontWeight: '600', color: INK },
   stopMeta: { fontSize: 12, color: MUTED, marginTop: 1 },
+  delayText: { fontSize: 12, color: BRAND, fontWeight: '600' },
+  thumb: { width: 52, height: 52, borderRadius: 10, overflow: 'hidden', backgroundColor: '#F1F1F3' },
+  thumbFill: { width: '100%', height: '100%' },
+  thumbVideo: { backgroundColor: INK, alignItems: 'center', justifyContent: 'center' },
+  thumbLabel: { fontSize: 10, color: MUTED, textAlign: 'center', marginTop: 2, width: 52 },
 });
