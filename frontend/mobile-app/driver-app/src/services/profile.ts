@@ -1,9 +1,19 @@
 /**
  * Driver profile — GET /mobile/profile.
- * Assigned vehicle comes from the driver's current active trip (drivers have
- * no standing vehicle assignment), so it's null when there's no active trip.
+ * current_vehicle is the current trip's truck, else the truck the office
+ * assigned to the driver (same rule as GET /mobile/vehicle).
  */
 import { api } from '@mercon/mobile-shared/lib/api';
+
+/** Real trip numbers from the server (backend services/driverPerformance.ts). */
+export interface DriverStats {
+  completed_trips: number;
+  /** Completed trips whose final drop-off has both a planned and an actual arrival. */
+  on_time_measured_trips: number;
+  on_time_trips: number;
+  /** null when no completed trip has the times to judge — show "—", not a number. */
+  on_time_percentage: number | null;
+}
 
 export interface DriverProfile {
   id: string;
@@ -17,7 +27,7 @@ export interface DriverProfile {
   license_expiry: string;
   avatar_url?: string | null;
   createdAt: string;
-  stats?: { totalTrips: number; onTimePercentage: number; totalDistanceKm: number; };
+  stats?: DriverStats;
 
   current_vehicle: { id: string; plate_number: string; asset_type: string } | null;
 }

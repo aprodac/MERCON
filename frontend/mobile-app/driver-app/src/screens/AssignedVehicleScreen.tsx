@@ -31,9 +31,11 @@ const AssignedVehicleScreen = () => {
     : [];
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }}>
+    // Only the top edge is padded, and it is painted the header's dark colour so
+    // the phone's white clock and icons stay readable (they sat on light grey).
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: '#1A1A1A' }}>
       <StatusBar barStyle="light-content" backgroundColor="#1A1A1A" />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView style={{ backgroundColor: Colors.gray100 }} contentContainerStyle={styles.scroll}>
         {/* Dark Header */}
         <View style={styles.darkHeader}>
           <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
@@ -68,7 +70,7 @@ const AssignedVehicleScreen = () => {
             <Truck size={48} color={Colors.gray400} strokeWidth={1.6} />
             <Text style={styles.emptyTitle}>{error ? t('err_could_not_load_vehicle', 'Could not load vehicle') : t('msg_no_vehicle_assigned', 'No vehicle assigned')}</Text>
             <Text style={styles.emptyText}>
-              {error ?? t('msg_no_vehicle_assigned_desc', "You'll see your truck here once you're assigned to a trip.")}
+              {error ?? t('msg_no_vehicle_assigned_desc', 'No truck is assigned to you or your current trip. Ask the office if this is wrong.')}
             </Text>
           </View>
         ) : (

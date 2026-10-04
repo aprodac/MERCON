@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db';
-import { TripStatus } from '@prisma/client';
+import { findDriverVehicle } from '../services/driverVehicle';
+import { FINISHED_TRIP_STATUSES, summarisePerformance } from '../services/driverPerformance';
 
 export const getProfile = async (req: Request, res: Response) => {
   const driverId = (req as any).user?.driver_id;
@@ -13,40 +14,29 @@ export const getProfile = async (req: Request, res: Response) => {
   try {
     let driver = null;
     if (driverId) {
-      driver = await prisma.driver.findFirst({
-        where: { id: driverId, deletedAt: null },
-        include: { assignedVehicle: { select: { id: true, plate_number: true, asset_type: true } } },
-      });
+      driver = await prisma.driver.findFirst({ where: { id: driverId, deletedAt: null } });
     }
     if (!driver && userId) {
-      driver = await prisma.driver.findFirst({
-        where: { userId, deletedAt: null },
-        include: { assignedVehicle: { select: { id: true, plate_number: true, asset_type: true } } },
-      });
+      driver = await prisma.driver.findFirst({ where: { userId, deletedAt: null } });
     }
 
     if (!driver) return res.status(404).json({ success: false, error: { message: 'Driver profile not found' } });
 
-    const activeTrip = await prisma.trip.findFirst({
-      where: {
-        driverId: driver.id,
-        deletedAt: null,
-        status: { in: [TripStatus.Draft, TripStatus.Scheduled, TripStatus.Loading, TripStatus.InTransit, TripStatus.Delayed] },
+    // Same rule as GET /mobile/vehicle: the current trip's truck, else the assigned truck.
+    const vehicle = await findDriverVehicle(driver.id);
+
+    // Real numbers only (they used to be "98%" and trips × 120 km placeholders).
+    // There is no stored driven distance, so no distance figure is sent.
+    const finishedTrips = await prisma.trip.findMany({
+      where: { driverId: driver.id, deletedAt: null, status: { in: [...FINISHED_TRIP_STATUSES] } },
+      select: {
+        status: true,
+        stops: {
+          where: { deletedAt: null },
+          select: { stop_sequence: true, stop_type: true, planned_arrival: true, actual_arrival: true },
+        },
       },
-      select: { vehicle: { select: { id: true, plate_number: true, asset_type: true } } },
-      orderBy: { createdAt: 'desc' },
     });
-
-    const currentVehicle = activeTrip?.vehicle ?? driver.assignedVehicle ?? null;
-
-    // Compute stats
-    const totalTrips = await prisma.trip.count({
-      where: { driverId: driver.id, status: TripStatus.Completed, deletedAt: null }
-    });
-
-    // Dummy values for now for distance and on time
-    const onTimeRate = totalTrips > 0 ? "98%" : "100%";
-    const totalDistance = `${totalTrips * 120} km`;
 
     res.json({
       success: true,
@@ -62,12 +52,8 @@ export const getProfile = async (req: Request, res: Response) => {
         license_expiry: driver.license_expiry,
         avatar_url: driver.avatar_url,
         createdAt: driver.createdAt,
-        current_vehicle: currentVehicle,
-        stats: {
-          total_trips: totalTrips,
-          on_time_rate: onTimeRate,
-          total_distance: totalDistance
-        }
+        current_vehicle: vehicle ? { id: vehicle.id, plate_number: vehicle.plate_number, asset_type: vehicle.asset_type } : null,
+        stats: summarisePerformance(finishedTrips),
       },
     });
   } catch (error) {

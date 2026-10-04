@@ -7,20 +7,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, TriangleAlert } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
-import { StatusBadge } from '@mercon/mobile-shared/components/Badge';
+import { Badge } from '@mercon/mobile-shared/components/Badge';
+import { formatCalendarDate } from '@mercon/mobile-shared/lib/dates';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
-import { useDocuments, docTypeLabel, docIcon, docStatus, type DriverDocument } from '@mercon/mobile-shared/lib/documents';
+import { useDocuments, docTypeLabel, docIcon, docStatus, type DriverDocument, type DocKind } from '@mercon/mobile-shared/lib/documents';
 
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
-function formatDate(iso?: string | null): string {
-  if (!iso) return 'No expiry';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
-}
+const BADGE_COLORS: Record<DocKind, { color: string; bg: string }> = {
+  expired: { color: '#B91C1C', bg: '#FEE2E2' },
+  expiring: { color: '#B45309', bg: '#FEF3C7' },
+  pending: { color: '#52525B', bg: '#F4F4F5' },
+  valid: { color: '#15803D', bg: '#DCFCE7' },
+};
 
 function openFile(fileUrl: string) {
   const url = fileUrl.startsWith('http') ? fileUrl : `${FILE_BASE}${fileUrl}`;
@@ -38,9 +39,9 @@ const DocumentCard = ({ doc }: { doc: DriverDocument }) => {
         </View>
         <View style={styles.cardInfo}>
           <Text style={styles.docTitle}>{doc.documentType?.name || docTypeLabel(doc.doc_type)}</Text>
-          {doc.issue_date ? <Text style={styles.docNumber}>{language === 'ur' ? `تاریخ اجراء ${formatDate(doc.issue_date)}` : `Issued ${formatDate(doc.issue_date)}`}</Text> : null}
+          {doc.issue_date ? <Text style={styles.docNumber}>{language === 'ur' ? `تاریخ اجراء ${formatCalendarDate(doc.issue_date)}` : `Issued ${formatCalendarDate(doc.issue_date)}`}</Text> : null}
         </View>
-        <StatusBadge status={st.label} />
+        <Badge label={t(st.labelKey, st.label)} color={BADGE_COLORS[st.kind].color} bg={BADGE_COLORS[st.kind].bg} />
       </View>
 
       <View style={styles.expiryRow}>
@@ -51,7 +52,7 @@ const DocumentCard = ({ doc }: { doc: DriverDocument }) => {
             st.kind === 'expired' ? styles.expiredText : st.kind === 'expiring' ? styles.expiringText : null,
           ]}
         >
-          {formatDate(doc.expiry_date)}
+          {formatCalendarDate(doc.expiry_date, t('label_no_expiry', 'No expiry'))}
         </Text>
       </View>
 
@@ -81,7 +82,7 @@ const DocumentsScreen = () => {
         <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
           <ArrowLeft size={22} color={Colors.gray900} strokeWidth={2.2} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('nav_documents', 'My Documents')}</Text>
+        <Text style={styles.headerTitle}>{t('title_my_documents', 'My Documents')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -90,8 +91,8 @@ const DocumentsScreen = () => {
         <View style={styles.alertBanner}>
           <TriangleAlert size={18} color="#D97706" strokeWidth={2} />
           <Text style={styles.alertText}>
-            {expiredCount > 0 && `${expiredCount} document(s) expired. `}
-            {expiringCount > 0 && `${expiringCount} document(s) expiring soon.`}
+            {expiredCount > 0 && `${t('msg_docs_expired', '{count} document(s) expired.').replace('{count}', String(expiredCount))} `}
+            {expiringCount > 0 && t('msg_docs_expiring', '{count} document(s) expire within 30 days.').replace('{count}', String(expiringCount))}
           </Text>
         </View>
       )}

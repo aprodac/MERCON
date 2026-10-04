@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { createNotification } from './notificationController';
 import { recordDriverActivity } from '../services/driverPhone/activity';
+import { findDriverVehicle } from '../services/driverVehicle';
 import { Role, TripStatus, DocType } from '@prisma/client';
 
 /**
@@ -30,7 +31,7 @@ export const raiseEmergency = async (req: Request, res: Response) => {
   try {
     const driver = await prisma.driver.findUnique({
       where: { id: driverId },
-      select: { first_name: true, last_name: true, ref_id: true },
+      select: { first_name: true, last_name: true, ref_id: true, phone_primary: true },
     });
     if (!driver) return res.status(404).json({ success: false, error: { message: 'Driver not found' } });
 
@@ -47,10 +48,17 @@ export const raiseEmergency = async (req: Request, res: Response) => {
     const driverName = `${driver.first_name} ${driver.last_name}`;
     const hasCoords = typeof lat === 'number' && !Number.isNaN(lat) && typeof lng === 'number' && !Number.isNaN(lng);
     const locationStr = hasCoords ? ` Location: ${lat!.toFixed(5)}, ${lng!.toFixed(5)}.` : '';
-    const tripStr = activeTrip?.ref_id ? ` Trip ${activeTrip.ref_id}.` : '';
+    // Drivers can now raise an emergency from Profile with no trip running; then
+    // name their own truck so the office still knows what is affected.
+    let tripStr = activeTrip?.ref_id ? ` Trip ${activeTrip.ref_id}.` : '';
+    if (!activeTrip) {
+      const truck = await findDriverVehicle(driverId).catch(() => null);
+      tripStr = ` No trip running${truck?.plate_number ? `; driver's truck ${truck.plate_number}` : ''}.`;
+    }
+    const phoneStr = driver.phone_primary ? ` Phone ${driver.phone_primary}.` : '';
     const notesStr = notes && typeof notes === 'string' && notes.trim() ? ` Notes: ${notes.trim()}` : '';
     const photosStr = files.length ? ` (${files.length} photo${files.length > 1 ? 's' : ''} attached)` : '';
-    const message = `${driverName} reported: ${incident_type}.${tripStr}${locationStr}${notesStr}${photosStr}`;
+    const message = `${driverName} reported: ${incident_type}.${tripStr}${phoneStr}${locationStr}${notesStr}${photosStr}`;
 
     const entityType = activeTrip ? 'Trip' : 'Driver';
     const entityId = activeTrip?.id ?? driverId;
