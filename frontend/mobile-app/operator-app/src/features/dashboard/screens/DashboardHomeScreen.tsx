@@ -1,5 +1,6 @@
 /**
- * Operator Home ("today at a glance"), top to bottom:
+ * Operator Home ("today at a glance"), under the MERCON top bar:
+ *   greeting        today's date over "Good afternoon, <name>"
  *   EmergencyStrip  only while a driver emergency is open
  *   TodayCard       ring of done / on the road / to start, and how many
  *                   things need you (delayed · no driver or truck · photos)
@@ -14,7 +15,7 @@
  * operator screen shares one persistent nav instead of remounting it.
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView } from 'react-native';
+import { RefreshControl, ScrollView, Text, View } from 'react-native';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -60,16 +61,16 @@ export default function DashboardHomeScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
-      <AppTopBar
-        eyebrow={dateLabel(inbox.tz, now)}
-        title={hello}
-        urgent={inbox.counts.now}
-        actions={[{ icon: Search, label: 'Search trips', onPress: () => router.push('/trips') }]}
-      />
+      <AppTopBar urgent={inbox.counts.now} actions={[{ icon: Search, label: 'Search trips', onPress: () => router.push('/trips') }]} />
       <ScrollView
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120, gap: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#FA634E" />}
       >
+        <View style={{ gap: 2, paddingHorizontal: 2 }}>
+          <Text style={{ fontSize: 13, fontWeight: '500', color: '#6B6B76' }}>{dateLabel(inbox.tz, now)}</Text>
+          <Text style={{ fontSize: 24, fontWeight: '700', color: '#3E3C3D', letterSpacing: -0.4 }} accessibilityRole="header">{hello}</Text>
+        </View>
+
         <EmergencyStrip
           items={emergencies}
           now={now}
