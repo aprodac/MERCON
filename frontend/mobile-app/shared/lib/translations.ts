@@ -474,6 +474,7 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   phone_banner_battery_saver: { en: 'Battery saver is on — the app may stop updating.', ur: 'بیٹری سیور آن ہے — ایپ اپڈیٹ ہونا بند ہو سکتی ہے۔' },
   phone_banner_fix: { en: 'Fix', ur: 'ٹھیک کریں' },
   // Phone setup guide (driver app, after sign-in)
+  tab_trip_history: { en: 'History', ur: 'تاریخچہ' },
   setup_title: { en: 'Set up your phone for trips', ur: 'ٹرپس کے لیے اپنا فون سیٹ کریں' },
   setup_subtitle: { en: 'Do these steps once so you get new trips instantly and the office can follow your trip, even when MERCON is closed.', ur: 'یہ مراحل ایک بار مکمل کریں تاکہ نئے ٹرپس فوراً ملیں اور دفتر آپ کا ٹرپ دیکھ سکے، چاہے MERCON بند ہو۔' },
   setup_notif_title: { en: 'Allow notifications', ur: 'نوٹیفکیشنز کی اجازت دیں' },

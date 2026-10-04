@@ -1643,6 +1643,13 @@ export const replaceDriver = async (req: Request, res: Response) => {
     if (!new_driver_id) {
       return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'new_driver_id required' } });
     }
+    // An unknown or deleted driver used to fail deep in the update with a 500.
+    const newDriver = isUuid(String(new_driver_id))
+      ? await prisma.driver.findFirst({ where: { id: new_driver_id, deletedAt: null }, select: { id: true } })
+      : null;
+    if (!newDriver) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'New driver not found' } });
+    }
 
     let oldDriverIdToNotify: string | null = null;
 

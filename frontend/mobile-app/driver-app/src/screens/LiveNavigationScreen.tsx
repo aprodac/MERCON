@@ -40,7 +40,7 @@ const LiveNavigationScreen = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t, language, tr } = useLanguage();
-  const { trip, loading, refetch } = useCurrentTrip();
+  const { trip, loading, error, refetch } = useCurrentTrip();
   const [position, setPosition] = useState<{ lat: number; lng: number; heading?: number | null; speedKph?: number | null } | null>(null);
   // Map camera: follow the truck in a tilted driver view by default; night map after dark.
   const [follow, setFollow] = useState(true);
@@ -92,6 +92,14 @@ const LiveNavigationScreen = () => {
   // stops were never stamped, so finishing the last stop (→ IN_TRANSIT)
   // bounced the driver straight back to stop #1 — the stop ↔ navigate loop.
   const pendingStop = parseStopWorkflowState(ws);
+
+  // The trip was cancelled or given to another driver: the server now says
+  // there is no current trip. Go home instead of a map of placeholders
+  // ("Pickup Location, Pickup Point, Saudi Arabia") — seen on a real phone
+  // after "Change driver". Only on a clean answer, never on a network error.
+  useEffect(() => {
+    if (!loading && !error && !trip) router.replace('/' as any);
+  }, [loading, error, trip]);
 
   useEffect(() => {
     if (loading || !trip || !pendingStop) return;
