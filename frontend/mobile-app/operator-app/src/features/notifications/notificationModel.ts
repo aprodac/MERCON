@@ -58,6 +58,12 @@ export function matchesFilter(n: AppNotification, f: ActivityFilter): boolean {
 /** The record a notification is about, if the app has a page for it. */
 export function targetFor(n: AppNotification): Href | null {
   if (!n.entity_id) return null;
+  // "Trip delayed" and "Driver app silent" are about where a truck is — open the
+  // Fleet map on it (it falls back to the trip page when the truck isn't on the map).
+  const type = (n.type ?? '').toLowerCase();
+  if (n.entity_type === 'Trip' && (type === 'delay' || type === 'driversilent')) {
+    return { pathname: '/fleet-map', params: { trip: n.entity_id } };
+  }
   switch (n.entity_type) {
     case 'Trip':
       return { pathname: '/trip-details', params: { id: n.entity_id } };

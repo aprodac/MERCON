@@ -17,6 +17,11 @@
  *             the next truck (FleetSheet.tsx).
  *   Groups    nearby trucks merge into a numbered bubble; tap to zoom in, or
  *             to list trucks parked on the same spot.
+ *   Trail     a grey line of where the picked truck has driven on its trip
+ *             (the driver phone's GPS — the truck tracker keeps no history).
+ *   Deep link /fleet-map?trip=<id> (from a "Trip delayed" / "Driver app
+ *             silent" notification) opens on that trip's truck, or on the
+ *             trip page when the truck has no position.
  *   Camera    follows the picked truck as it moves; dragging the map stops
  *             that and shows Recenter. Zoomed in, trucks carry their plates.
  *             The ⓘ control explains colours, shapes and lines.
@@ -26,10 +31,10 @@
  *             attention item) gets Find a truck — nearest free trucks and a
  *             one-tap assign (FleetActions.tsx). Each asks to confirm first.
  */
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import {
@@ -105,6 +110,9 @@ export default function FleetMapScreen() {
   const groupUnits = useMemo(() => (group ? all.filter((u) => group.includes(u.key)).sort((a, b) => unitPriority(b) - unitPriority(a)) : []), [all, group]);
   const [expanded, setExpanded] = useState(false);
   const [sheetH, setSheetH] = useState(0);
+  // Driver view / trip overview, and whether the camera follows the picked truck (until the map is dragged by hand).
+  const [focusMode, setFocusMode] = useState<FocusMode>('none');
+  const [following, setFollowing] = useState(true);
   const pick = (key: string | null) => {
     if (key && key !== selected) Haptics.selectionAsync().catch(() => {});
     setSelected(key); setFocusMode('none'); setGroup(null); setFollowing(true);
@@ -144,14 +152,23 @@ export default function FleetMapScreen() {
     pick(u.key);
   };
 
+  // Opened from a notification: pick that trip's truck once the live data is in.
+  const params = useLocalSearchParams<{ trip?: string }>();
+  const handledTrip = useRef<string | null>(null);
+  useEffect(() => {
+    const id = typeof params.trip === 'string' ? params.trip : null;
+    if (!id || handledTrip.current === id || !live.data) return;
+    handledTrip.current = id;
+    showTrip(id);
+    // showTrip reads the latest data; only a new trip param or the first data should run it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.trip, live.data]);
+
   // Map view state (the web map's controls): theme, 2D/3D, driver view / trip overview.
   const mapRef = useRef<FleetMapHandle>(null);
   const [theme, setTheme] = useState<MapTheme>('light');
   const [is3D, setIs3D] = useState(false);
-  const [focusMode, setFocusMode] = useState<FocusMode>('none');
   const [camera, setCamera] = useState<MapView>({ zoom: 5, pitch: 0, bearing: 0 });
-  // The camera follows the picked truck until the map is dragged by hand.
-  const [following, setFollowing] = useState(true);
   const [legend, setLegend] = useState(false);
   const enterView = (mode: FocusMode) => {
     setFocusMode(mode); setFollowing(true);
@@ -182,6 +199,21 @@ export default function FleetMapScreen() {
     enabled: restStops.length >= 2,
     staleTime: 10 * 60_000,
   });
+  // Breadcrumb trail: the trip's driven path (same endpoint as the trip page's map), joined to where the truck is now.
+  const trailQ = useQuery({
+    queryKey: ['fleet', 'trail', unit?.trip?.id],
+    queryFn: () => operatorService.tripOverview(unit!.trip!.id),
+    enabled: !!unit && onTrip(unit),
+    refetchInterval: 60_000,
+    retry: false,
+  });
+  const here = unit?.position ?? null;
+  const trail = useMemo(() => {
+    const path = trailQ.data?.path ?? [];
+    if (path.length < 2) return null;
+    return here ? [...path, [here.lng, here.lat] as [number, number]] : path;
+  }, [trailQ.data, here]);
+
   // What the driver sent from each stop — only while the sheet is open full.
   const mediaQ = useQuery({
     queryKey: ['fleet', 'trip-media', unit?.trip?.id],
@@ -270,6 +302,7 @@ export default function FleetMapScreen() {
             onViewChange={setCamera}
             onGroupPress={openGroup}
             restLine={restStops.length >= 2 ? restQ.data?.geometry ?? null : null}
+            trail={trail}
             follow={following}
             onUserMove={() => { if (unit) setFollowing(false); }}
           />
