@@ -146,6 +146,13 @@ async function attachDriverGpsStatus<
   });
 }
 
+/** The linked user without its password hash — the hash is only read to set `hasAccountPassword`. */
+function withoutPasswordHash<U extends { password_hash?: string | null }>(user: U | null): Omit<U, 'password_hash'> | null {
+  if (!user) return null;
+  const { password_hash: _hash, ...rest } = user;
+  return rest;
+}
+
 export const getDrivers = async (req: Request, res: Response) => {
   try {
     const { page = '1', per_page = '20' } = req.query;
@@ -188,10 +195,15 @@ export const getDrivers = async (req: Request, res: Response) => {
         prisma.driver.count({ where: whereClause })
       ]);
 
-      const driversWithGps = await attachDriverGpsStatus(drivers);
+      // `gps=false` skips the live-location lookup for pickers that never show it
+      // (operator app create trip).
+      const driversWithGps = req.query.gps === 'false'
+        ? drivers.map((d) => ({ ...d, trips: [] as any[] }))
+        : await attachDriverGpsStatus(drivers);
 
       const formatted = driversWithGps.map(d => ({
         ...d,
+        user: withoutPasswordHash(d.user),
         hasAccountPassword: Boolean(d.user?.password_hash),
       }));
 
@@ -294,6 +306,7 @@ export const getDrivers = async (req: Request, res: Response) => {
     const formatted = driversWithGps.map(d => ({
       ...d,
       total_trip_charges: tripChargeByDriver.get(d.id) || 0,
+      user: withoutPasswordHash(d.user),
       hasAccountPassword: Boolean(d.user?.password_hash || d.user),
     }));
 
