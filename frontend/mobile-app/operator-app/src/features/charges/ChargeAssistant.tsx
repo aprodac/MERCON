@@ -9,12 +9,14 @@ import {
   ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { Minus, Plus, Sparkles, X } from 'lucide-react-native';
+import { CalendarCheck, Minus, Plus, Sparkles, Truck, X } from 'lucide-react-native';
 import { SUGGESTED_CHARGE_TYPES, SUGGESTED_UNIT_BY_CHARGE_TYPE, buildChargeHints, daysWaiting } from '@mercon/shared-types';
 import CrewChief, { type CrewChiefHandle, type CrewChiefMood } from './CrewChief';
 import {
-  useChargeReviewQueue, useCustomerChargeRules, useAssistantConfig, tripRef, routeLabel, driverLabel, reviewErrorMessage, type NewSubCharge,
+  useChargeReviewQueue, useCustomerChargeRules, useCustomerLogo, useAssistantConfig, tripRef, driverLabel, reviewErrorMessage, type ChargeReviewTrip, type NewSubCharge,
 } from './chargeReviewApi';
+import { CompanyAvatar, initialsOf, niceName, shortName } from '../trips/create/components/ui';
+import { DriverAvatar } from '../drivers/components/DriverAvatar';
 
 const BRAND = '#FA634E';
 const INK = '#2D2B2C';
@@ -27,6 +29,16 @@ interface DraftLine { surchargeRuleId: string | null; charge_type: string; unit:
 
 const sar = (n: number) => `SAR ${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 const pick = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
+const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
+
+/** First pickup → last drop, and how many work stops sit in between. */
+function routeOf(trip: ChargeReviewTrip) {
+  const stops = trip.stops ?? [];
+  const name = (st?: ChargeReviewTrip['stops'][number]) => niceName(st?.location?.name || st?.location_name) || '—';
+  const work = stops.filter((st) => st.stop_type === 'Pickup' || st.stop_type === 'Dropoff');
+  return { from: name(work[0] || stops[0]), to: name(work[work.length - 1] || stops[stops.length - 1]), extra: Math.max(0, work.length - 2) };
+}
+
 const SNOOZE = [{ label: '15 min', minutes: 15 }, { label: '1 hour', minutes: 60 }, { label: '4 hours', minutes: 240 }, { label: 'Tomorrow', minutes: 1440 }];
 
 export function ChargeAssistant({ userName }: { userName?: string }) {
@@ -50,6 +62,7 @@ export function ChargeAssistant({ userName }: { userName?: string }) {
   const oldest = queue.trips.reduce((m, t) => Math.max(m, daysWaiting(t)), 0);
 
   const { data: rules = [] } = useCustomerChargeRules(trip?.customerId, trip?.quotationId, open);
+  const customerLogo = useCustomerLogo(trip?.customerId, open);
   const habits = (trip?.customerId && queue.habits[trip.customerId]) || [];
   const hints = useMemo(() => (trip ? buildChargeHints(trip, rules, habits) : []), [trip, rules, habits]);
   const sortedRules = useMemo(() => {
@@ -157,6 +170,11 @@ export function ChargeAssistant({ userName }: { userName?: string }) {
   })();
   const askLine = left === 1 ? 'Last one. Anything extra on this trip?' : answered === 0 ? 'Quick one: any extra charges on this trip?' : 'Next up. Anything extra on this one?';
   const waited = trip ? daysWaiting(trip) : 0;
+  const route = trip ? routeOf(trip) : null;
+  const crew = trip ? shortName(driverLabel(trip)) : '';
+  const plate = trip?.vehicle?.plate_number || trip?.subcontract?.vehiclePlate;
+  const finishedOn = trip?.actual_end || trip?.planned_start;
+  const price = Number(trip?.billing_amount) || 0;
 
   return (
     <>
@@ -173,13 +191,14 @@ export function ChargeAssistant({ userName }: { userName?: string }) {
           <View style={s.sheet}>
             <View style={s.grabber} />
             <View style={s.head}>
-              <CrewChief ref={chief} size={46} look={config.look} />
+              <CrewChief ref={chief} size={44} look={config.look} />
               <View style={{ flex: 1 }}>
-                <Text style={s.headTitle}>{trip && !flash ? `Extra charges · ${Math.min(answered + 1, of)} of ${of}` : 'Extra charges'}</Text>
-                <View style={s.progress}><View style={[s.progressFill, { width: `${of ? (answered / of) * 100 : 100}%` }]} /></View>
+                <Text style={s.headTitle}>Extra charges</Text>
+                {trip && !flash ? <Text style={s.headSub}>{Math.min(answered + 1, of)} of {of} to check</Text> : null}
               </View>
-              <TouchableOpacity onPress={() => setOpen(false)} accessibilityLabel="Close" style={s.iconBtn}><X size={18} color={MUTED} /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setOpen(false)} accessibilityLabel="Close" style={s.iconBtn} hitSlop={6}><X size={18} color={MUTED} /></TouchableOpacity>
             </View>
+            <View style={s.progress}><View style={[s.progressFill, { width: `${of ? (answered / of) * 100 : 100}%` }]} /></View>
 
             <ScrollView contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
               {flash ? (
@@ -193,41 +212,85 @@ export function ChargeAssistant({ userName }: { userName?: string }) {
                 </>
               ) : (
                 <>
-                  <View style={{ gap: 3 }}>
-                    <View style={s.row}>
-                      <Text style={s.cust} numberOfLines={1}>{trip.customer?.name || 'No customer'}</Text>
-                      <Text style={s.ref}>{tripRef(trip)}</Text>
-                      {waited >= OLD_TRIP_DAYS && <Text style={s.old}>waiting {waited} days</Text>}
+                  {/* Which trip: customer, route, crew */}
+                  <View style={s.card}>
+                    <View style={s.cardTop}>
+                      <CompanyAvatar name={trip.customer?.name} url={customerLogo} size={40} />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={s.cust} numberOfLines={1}>{niceName(trip.customer?.name) || 'No customer'}</Text>
+                        <View style={s.refRow}>
+                          <Text style={s.ref}>{tripRef(trip)}</Text>
+                          {waited >= OLD_TRIP_DAYS && <Text style={s.old}>waiting {waited} days</Text>}
+                        </View>
+                      </View>
+                      {price > 0 && (
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <Text style={s.priceLabel}>Trip price</Text>
+                          <Text style={s.price}>{sar(price)}</Text>
+                        </View>
+                      )}
                     </View>
-                    <Text style={s.route}>{routeLabel(trip)}</Text>
-                    <Text style={s.muted}>{driverLabel(trip)}{trip.charges.length ? ` · already has ${trip.charges.map((c) => c.charge_type).join(', ')}` : ''}</Text>
+
+                    {route && (
+                      <View style={s.routeRow}>
+                        <View style={[s.dot, { backgroundColor: INK }]} />
+                        <Text style={s.place} numberOfLines={1}>{route.from}</Text>
+                        <View style={s.routeLine}>
+                          {route.extra > 0 && <View style={s.extraPill}><Text style={s.extraText}>+{route.extra}</Text></View>}
+                        </View>
+                        <View style={[s.dot, { backgroundColor: BRAND }]} />
+                        <Text style={s.place} numberOfLines={1}>{route.to}</Text>
+                      </View>
+                    )}
+
+                    <View style={s.crew}>
+                      <View style={s.crewWho}>
+                        {trip.is_third_party ? (
+                          <View style={s.tpl}><Text style={s.tplText}>3PL</Text></View>
+                        ) : (
+                          <DriverAvatar initials={initialsOf(crew)} avatarUrl={trip.driver?.avatar_url} size={24} />
+                        )}
+                        <Text style={s.crewName} numberOfLines={1}>{crew}</Text>
+                      </View>
+                      {plate ? (
+                        <View style={s.plate}><Truck size={11} color={MUTED} /><Text style={s.plateText}>{plate}</Text></View>
+                      ) : null}
+                      {finishedOn ? (
+                        <View style={s.finished}>
+                          <CalendarCheck size={11} color={MUTED} />
+                          <Text style={s.finishedText}>Finished {new Date(finishedOn).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    {trip.charges.length > 0 && (
+                      <Text style={s.already}>Already on the trip: {trip.charges.map((c) => `${c.charge_type} ${sar(Number(c.amount) || 0)}`).join(', ')}</Text>
+                    )}
                   </View>
 
                   {view === 'ask' && (
                     <>
                       {answered === 0 && activeId === null && (
-                        <Text style={s.muted}>{greeting} <Text style={{ color: INK, fontWeight: '700' }}>{left} finished {left === 1 ? 'trip is' : 'trips are'}</Text> waiting for an answer on extra charges.</Text>
+                        <Text style={s.greet}>{greeting} <Text style={{ color: INK, fontWeight: '600' }}>{left} finished {left === 1 ? 'trip is' : 'trips are'}</Text> waiting for an answer on extra charges.</Text>
                       )}
                       {hints.length > 0 && (
                         <View style={s.hints}>
                           {hints.map((h) => (
-                            <View key={h.key} style={s.row}><Sparkles size={12} color="#9A3412" /><Text style={s.hintText}>{h.text}</Text></View>
+                            <View key={h.key} style={s.hint}><Sparkles size={13} color="#9A3412" style={{ marginTop: 2 }} /><Text style={s.hintText}>{h.text}</Text></View>
                           ))}
                         </View>
                       )}
                       <Text style={s.q}>{askLine} <Text style={s.qSub}>Labour, extra stops, waiting time.</Text></Text>
-                      <View style={s.row}>
-                        <TouchableOpacity style={[s.btn, s.primary]} disabled={queue.isSubmitting} onPress={() => { goTo('charges'); hints.forEach((h) => addLine(h.line)); }}>
+                      <View style={s.actions}>
+                        <TouchableOpacity style={[s.btn, s.primary, { flex: 1 }]} disabled={queue.isSubmitting} onPress={() => { goTo('charges'); hints.forEach((h) => addLine(h.line)); }}>
                           <Text style={s.primaryText}>{hints.length ? 'Review charges' : 'Add charges'}</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={[s.btn, s.secondary]} disabled={queue.isSubmitting} onPress={() => submit([], pick([`Noted. Nothing extra on ${tripRef(trip)}.`, `Got it, ${tripRef(trip)} is clear.`]), 'nod')}>
+                        <TouchableOpacity style={[s.btn, s.secondary, { minWidth: 76 }]} disabled={queue.isSubmitting} onPress={() => submit([], pick([`Noted. Nothing extra on ${tripRef(trip)}.`, `Got it, ${tripRef(trip)} is clear.`]), 'nod')}>
                           {queue.isSubmitting ? <ActivityIndicator size="small" color={INK} /> : <Text style={s.secondaryText}>None</Text>}
                         </TouchableOpacity>
-                        <View style={{ flex: 1 }} />
-                        <TouchableOpacity style={s.btn} onPress={() => goTo('later')}><Text style={s.ghostText}>Later</Text></TouchableOpacity>
+                        <TouchableOpacity style={[s.btn, s.soft]} onPress={() => goTo('later')}><Text style={s.ghostText}>Later</Text></TouchableOpacity>
                       </View>
                       {queue.trips.length > 1 && (
-                        <TouchableOpacity onPress={() => { const i = queue.trips.indexOf(trip); setActiveId(queue.trips[(i + 1) % queue.trips.length].id); chief.current?.mood('ask'); }}>
+                        <TouchableOpacity style={{ alignSelf: 'center' }} hitSlop={8} onPress={() => { const i = queue.trips.indexOf(trip); setActiveId(queue.trips[(i + 1) % queue.trips.length].id); chief.current?.mood('ask'); }}>
                           <Text style={s.link}>Skip to next trip</Text>
                         </TouchableOpacity>
                       )}
@@ -327,23 +390,48 @@ const s = StyleSheet.create({
   sheetWrap: { flex: 1, justifyContent: 'flex-end' },
   sheet: { backgroundColor: '#fff', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingBottom: 28, maxHeight: '88%' },
   grabber: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, backgroundColor: '#DDD8D5', marginTop: 8 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingTop: 22 }, // room for the cap and flag
-  headTitle: { fontSize: 12.5, fontWeight: '600', color: MUTED },
-  progress: { height: 3, borderRadius: 2, backgroundColor: '#EFEDEB', marginTop: 7, overflow: 'hidden' },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingTop: 18 }, // room for the cap and flag
+  headTitle: { fontSize: 15, fontWeight: '700', color: INK, letterSpacing: -0.2 },
+  headSub: { fontSize: 12.5, fontWeight: '500', color: MUTED, marginTop: 1 },
+  progress: { height: 3, borderRadius: 2, backgroundColor: '#EFEDEB', marginTop: 12, marginHorizontal: 18, overflow: 'hidden' },
   progressFill: { height: 3, borderRadius: 2, backgroundColor: BRAND },
   iconBtn: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  body: { paddingHorizontal: 18, paddingTop: 16, gap: 14 },
+  body: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 4, gap: 14 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  cust: { fontSize: 16, fontWeight: '700', color: INK, letterSpacing: -0.2, flexShrink: 1 },
-  ref: { fontSize: 12, color: MUTED, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
-  old: { fontSize: 11, fontWeight: '600', color: '#B45309', backgroundColor: '#FFFBEB', paddingHorizontal: 6, borderRadius: 5, overflow: 'hidden' },
-  route: { fontSize: 13.5, fontWeight: '500', color: INK },
+  card: { borderWidth: 1, borderColor: LINE, borderRadius: 14, overflow: 'hidden' },
+  cardTop: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 10 },
+  cust: { fontSize: 15.5, fontWeight: '700', color: INK, letterSpacing: -0.2 },
+  refRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  ref: { fontSize: 11.5, color: MUTED, fontFamily: MONO },
+  old: { fontSize: 10.5, fontWeight: '600', color: '#B45309', backgroundColor: '#FFFBEB', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 5, overflow: 'hidden' },
+  priceLabel: { fontSize: 10.5, fontWeight: '500', color: '#A8A3A5' },
+  price: { fontSize: 13, fontWeight: '600', color: INK, fontFamily: MONO },
+  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingBottom: 12 },
+  dot: { width: 8, height: 8, borderRadius: 4 },
+  place: { fontSize: 13.5, fontWeight: '500', color: INK, flexShrink: 1 },
+  routeLine: { flex: 1, minWidth: 24, height: 1, backgroundColor: '#D8D3D0', alignItems: 'center', justifyContent: 'center' },
+  extraPill: { position: 'absolute', borderWidth: 1, borderColor: LINE, backgroundColor: '#fff', borderRadius: 999, paddingHorizontal: 6 },
+  extraText: { fontSize: 10.5, fontWeight: '600', color: MUTED, lineHeight: 15 },
+  crew: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 10, rowGap: 6, borderTopWidth: 1, borderTopColor: '#F1EFEE', backgroundColor: '#FAF9F8', paddingHorizontal: 12, paddingVertical: 8 },
+  crewWho: { flexDirection: 'row', alignItems: 'center', gap: 7, flexShrink: 1 },
+  crewName: { fontSize: 12.5, fontWeight: '600', color: INK, flexShrink: 1 },
+  tpl: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#E7E3E1', alignItems: 'center', justifyContent: 'center' },
+  tplText: { fontSize: 8.5, fontWeight: '700', color: '#5C5759' },
+  plate: { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderColor: LINE, backgroundColor: '#fff', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  plateText: { fontSize: 11, fontWeight: '600', color: '#5C5759', fontFamily: MONO },
+  finished: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  finishedText: { fontSize: 11.5, color: MUTED },
+  already: { fontSize: 11.5, color: MUTED, borderTopWidth: 1, borderTopColor: '#F1EFEE', paddingHorizontal: 12, paddingVertical: 7 },
+  greet: { fontSize: 13, color: MUTED, lineHeight: 19 },
   muted: { fontSize: 13, color: MUTED, lineHeight: 19 },
-  hints: { backgroundColor: '#FFF7F2', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, gap: 5 },
-  hintText: { fontSize: 13, color: '#9A3412', flexShrink: 1 },
+  hints: { backgroundColor: '#FFF7F2', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, gap: 6 },
+  hint: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  hintText: { fontSize: 13, color: '#9A3412', flexShrink: 1, lineHeight: 18 },
   q: { fontSize: 15.5, fontWeight: '600', color: INK, lineHeight: 22 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  soft: { backgroundColor: '#F4F2F1' },
   qSub: { fontWeight: '500', color: MUTED },
-  btn: { borderRadius: 11, paddingHorizontal: 15, paddingVertical: 11, alignItems: 'center', justifyContent: 'center' },
+  btn: { borderRadius: 12, paddingHorizontal: 16, height: 46, alignItems: 'center', justifyContent: 'center' },
   primary: { backgroundColor: INK },
   primaryText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   secondary: { borderWidth: 1, borderColor: '#D8D3D0', backgroundColor: '#fff' },
@@ -356,7 +444,7 @@ const s = StyleSheet.create({
   chipText: { fontSize: 13, color: INK, fontWeight: '500' },
   chipRule: { borderColor: 'transparent', backgroundColor: '#FFF1EE' },
   chipRuleText: { fontSize: 13, color: '#C2410C', fontWeight: '500' },
-  mono: { fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }), fontSize: 12.5, fontWeight: '600', color: INK },
+  mono: { fontFamily: MONO, fontSize: 12.5, fontWeight: '600', color: INK },
   lines: { borderWidth: 1, borderColor: LINE, borderRadius: 14, padding: 4, gap: 2 },
   line: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, paddingLeft: 10, paddingRight: 6 },
   lineName: { fontSize: 14, fontWeight: '600', color: INK },
@@ -364,7 +452,7 @@ const s = StyleSheet.create({
   step: { width: 28, height: 28, borderRadius: 8, backgroundColor: '#F1EFEE', alignItems: 'center', justifyContent: 'center' },
   rate: { width: 76, height: 36, borderWidth: 1, borderColor: '#D8D3D0', borderRadius: 9, paddingHorizontal: 8, textAlign: 'right', fontSize: 14, fontWeight: '600', color: INK },
   error: { fontSize: 13, color: '#C53030', fontWeight: '500' },
-  total: { fontSize: 20, fontWeight: '700', color: INK, fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }) },
+  total: { fontSize: 20, fontWeight: '700', color: INK, fontFamily: MONO },
   flash: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
   check: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#1F9D55', alignItems: 'center', justifyContent: 'center' },
   flashText: { fontSize: 15, fontWeight: '600', color: INK, flex: 1, lineHeight: 21 },

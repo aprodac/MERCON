@@ -170,7 +170,13 @@ export function QuotationReviewDialog({
 
         <DialogFooter className="flex flex-row items-center justify-between gap-3 px-5 py-3 sm:justify-between">
           <span className="text-[11px] text-slate-500">
-            {missingPay > 0 && `${missingPay === rows.length ? 'No' : `${missingPay} of ${rows.length}`} route${rows.length === 1 ? '' : 's'} without driver pay — asked when the trip is booked.`}
+            {missingPay > 0 && (
+              rows.length === 1
+                ? 'No driver pay yet — it’s asked when the trip is booked.'
+                : missingPay === rows.length
+                ? `None of the ${rows.length} routes has driver pay yet — it’s asked when the trip is booked.`
+                : `${missingPay} of ${rows.length} routes ${missingPay === 1 ? 'has' : 'have'} no driver pay yet — it’s asked when the trip is booked.`
+            )}
           </span>
           <div className="flex shrink-0 items-center gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="h-9 rounded-xl px-4 text-xs font-semibold">

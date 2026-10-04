@@ -115,10 +115,11 @@ export default function LocationCombobox({
 
   const canCreate = trimmedSearch.length > 0 && !alreadyExists && !isGoogleMapsUrl(trimmedSearch);
 
-  const displayLabel = selected 
-    ? `${selected.code} — ${selected.name}` 
+  // The chosen place shows by name only ("Tabuk", not "TABUK — Tabuk"); codes stay in the dropdown list.
+  const displayLabel = selected
+    ? selected.name
     : createdLocation && (createdLocation.id === value || createdLocation.code === value)
-    ? `${createdLocation.code} — ${createdLocation.name}`
+    ? createdLocation.name
     : value && !isUuid(value) 
     ? value 
     : '';

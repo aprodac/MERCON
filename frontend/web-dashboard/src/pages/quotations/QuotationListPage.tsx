@@ -143,14 +143,8 @@ export default function QuotationListPage() {
   // Customer Workspace Sub-Tab State ('routes' | 'surcharges')
   const [customerWorkspaceTab, setCustomerWorkspaceTab] = useState<'routes' | 'surcharges'>('routes');
 
-  // 'routes' = one row per route with a price per truck; 'list' = one row per quotation (bulk select).
-  const [ledgerView, setLedgerViewState] = useState<'routes' | 'list'>(() => {
-    try { return localStorage.getItem('mercon.quotations.view') === 'list' ? 'list' : 'routes'; } catch { return 'routes'; }
-  });
-  const setLedgerView = (v: 'routes' | 'list') => {
-    setLedgerViewState(v);
-    try { localStorage.setItem('mercon.quotations.view', v); } catch { /* per-browser preference only */ }
-  };
+  // 'list' = one row per quotation (always the default, owner 2026-10-04); 'routes' = one row per route with a price per truck.
+  const [ledgerView, setLedgerView] = useState<'routes' | 'list'>('list');
 
   const handleOpenCustomerSurcharges = (id: string, _name: string) => {
     setSelectedCustomerId(id);
@@ -708,7 +702,7 @@ export default function QuotationListPage() {
                         </div>
 
                         <div className="flex items-center rounded-lg border border-slate-200 p-0.5 dark:border-slate-700" role="group" aria-label="Layout">
-                          {([['routes', 'By route'], ['list', 'List']] as const).map(([v, label]) => (
+                          {([['list', 'List'], ['routes', 'By route']] as const).map(([v, label]) => (
                             <button
                               key={v}
                               type="button"
@@ -811,7 +805,9 @@ export default function QuotationListPage() {
                               />
                             </th>
                             <th className="py-2.5 px-3.5">Route</th>
-                            <th className="py-2.5 px-3.5">Truck · type</th>
+                            <th className="py-2.5 px-3.5">Truck</th>
+                            <th className="py-2.5 px-3.5">Line type</th>
+                            <th className="py-2.5 px-3.5">Operation</th>
                             <th className="py-2.5 px-3.5 text-right">Price</th>
                             <th className="py-2.5 px-3.5 text-right">Driver pay</th>
                             <th className="py-2.5 px-3.5 w-10"><span className="sr-only">Actions</span></th>
@@ -862,10 +858,15 @@ export default function QuotationListPage() {
                                 </td>
 
                                 <td className="py-2.5 px-3.5">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    {getVehicleClassBadge(row.vehicle_class)}
-                                    <span className="text-[11px] text-slate-500">{row.line_type || row.rate_category || 'Single Trip'}</span>
-                                  </div>
+                                  {getVehicleClassBadge(row.vehicle_class)}
+                                </td>
+
+                                <td className="py-2.5 px-3.5">
+                                  <TaxonomyBadge category="LINE_TYPE" value={row.line_type || row.rate_category} fallbackText="Single Trip" />
+                                </td>
+
+                                <td className="py-2.5 px-3.5">
+                                  <TaxonomyBadge category="OPERATION_TYPE" value={row.operation_type || row.billing_type} fallbackText="Extra" />
                                 </td>
 
                                 <td className="py-2.5 px-3.5 text-right font-mono whitespace-nowrap">
