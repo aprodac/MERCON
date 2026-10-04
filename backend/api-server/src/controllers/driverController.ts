@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db';
+import { sumDriverTripCharges } from '../services/driverCharges';
 import { DOCUMENT_LIST_SELECT, DOCUMENT_FILES_SELECT } from '../utils/documentSelect';
 import { generateRefId } from '../utils/refId';
 import { buildSearchAnd } from '../utils/search';
@@ -250,46 +251,8 @@ export const getDrivers = async (req: Request, res: Response) => {
 
     const driversWithGps = await attachDriverGpsStatus(drivers);
 
-    // Lifetime driver payout for the roster's Total Trip Charge column.
-    const driverIds = drivers.map((d) => d.id);
-    const ELIGIBLE_TRIP_STATUSES = ['Completed', 'Invoiced'];
-
-    const [primarySums, coDriverSums] = await Promise.all([
-      prisma.trip.groupBy({
-        by: ['driverId'],
-        where: {
-          driverId: { in: driverIds },
-          deletedAt: null,
-          status: { in: ELIGIBLE_TRIP_STATUSES as any },
-        },
-        _sum: { driver_payout: true },
-      }),
-      prisma.trip.groupBy({
-        by: ['co_driver_id'],
-        where: {
-          co_driver_id: { in: driverIds },
-          deletedAt: null,
-          status: { in: ELIGIBLE_TRIP_STATUSES as any },
-        },
-        _sum: { co_driver_payout: true },
-      }),
-    ]);
-
-    const tripChargeByDriver = new Map<string, number>();
-
-    for (const s of primarySums) {
-      if (s.driverId) {
-        const val = s._sum.driver_payout ? Number(s._sum.driver_payout) : 0;
-        tripChargeByDriver.set(s.driverId, (tripChargeByDriver.get(s.driverId) || 0) + val);
-      }
-    }
-
-    for (const s of coDriverSums) {
-      if (s.co_driver_id) {
-        const val = s._sum.co_driver_payout ? Number(s._sum.co_driver_payout) : 0;
-        tripChargeByDriver.set(s.co_driver_id, (tripChargeByDriver.get(s.co_driver_id) || 0) + val);
-      }
-    }
+    // Lifetime driver payout for the roster's Total Trip Charge column (finished trips only).
+    const tripChargeByDriver = await sumDriverTripCharges(drivers.map((d) => d.id));
 
     const formatted = driversWithGps.map(d => ({
       ...d,
@@ -1092,21 +1055,9 @@ export const getDriverPayouts = async (req: Request, res: Response) => {
       return res.json({ success: true, data: { payouts: {} } });
     }
 
-    const tripChargeSums = await prisma.trip.groupBy({
-      by: ['driverId'],
-      where: { driverId: { in: validIds }, deletedAt: null },
-      _sum: { driver_payout: true },
-    });
-
-    const payouts: Record<string, number> = {};
-    for (const id of validIds) {
-      payouts[id] = 0;
-    }
-    for (const s of tripChargeSums) {
-      if (s.driverId) {
-        payouts[s.driverId] = Number(s._sum.driver_payout) || 0;
-      }
-    }
+    // Same rule as the Drivers list: finished trips only (a cancelled trip earns
+    // nothing), co-driver pay included. It used to add every trip.
+    const payouts: Record<string, number> = Object.fromEntries(await sumDriverTripCharges(validIds));
 
     res.json({ success: true, data: { payouts } });
   } catch (error) {
