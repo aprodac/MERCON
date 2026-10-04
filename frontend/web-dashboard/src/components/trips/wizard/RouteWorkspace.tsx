@@ -12,7 +12,7 @@ import { isDateTimeInPast } from '@/utils/pastDateTripUtils';
 import { useDeploymentTimezone } from '@/lib/datetime';
 import { dutyShiftMinutes } from '@/services/travelTimeService';
 import { cn, isUuid } from '@/lib/utils';
-import { STOP_ROLE_COLORS } from '@mercon/shared-types';
+import { formatQuotationRef, STOP_ROLE_COLORS } from '@mercon/shared-types';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { locationService, type Location } from '@/services/locationService';
 import PinChip, { isExactPin } from '@/components/locations/PinChip';
@@ -164,7 +164,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
     }
     handleSlotLocationChange(slot.id, field, locName, locObj);
   };
-  const quotationLabel = slot.matchedRateCard?.quotation_number != null ? `QT-${slot.matchedRateCard.quotation_number}` : 'The selected quotation';
+  const quotationLabel = formatQuotationRef(slot.matchedRateCard?.quotation_number) ?? 'The selected quotation';
   const pendingFrom = pendingChange ? (pendingChange.field === 'origin' ? slot.origin : slot.destination) : '';
   const pendingTo = pendingChange ? pendingChange.locObj?.name || pendingChange.locName : '';
   const lineTypeTaxonomyOptions = getAllTaxonomyOptions('LINE_TYPE');
@@ -289,7 +289,7 @@ export const RouteWorkspace: React.FC<RouteWorkspaceProps> = ({
                 )}
                 {slot.matchedRateCard?.quotation_number != null && (
                   <span className="rounded-full bg-orange-50 dark:bg-orange-950/40 px-2 py-0.5 text-[11px] font-semibold text-[#c2410c] dark:text-orange-300">
-                    QT-{slot.matchedRateCard.quotation_number}
+                    {formatQuotationRef(slot.matchedRateCard.quotation_number)}
                   </span>
                 )}
                 {stopCount > 0 && (

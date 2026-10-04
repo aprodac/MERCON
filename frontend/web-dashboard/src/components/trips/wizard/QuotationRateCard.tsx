@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatQuotationRef } from '@mercon/shared-types';
 import { cn } from '@/lib/utils';
 import { normalizeRateCategory, normalizeVehicleClass, normalizeBillingType } from '@/utils/taxonomyRegistry';
 
@@ -44,7 +45,7 @@ export interface RateCardItem {
 
 export function getCardId(rc: any): string | null {
   if (!rc) return null;
-  const rawId = rc.id || rc.quotation_id || rc.quotationId || rc.rateCardId || rc.rate_card_id || rc.agreement_ref || (rc.quotation_number != null ? `QT-${rc.quotation_number}` : null);
+  const rawId = rc.id || rc.quotation_id || rc.quotationId || rc.rateCardId || rc.rate_card_id || rc.agreement_ref || formatQuotationRef(rc.quotation_number);
   if (rawId == null) return null;
   return String(rawId).trim();
 }
@@ -134,7 +135,7 @@ export const QuotationRateCard: React.FC<QuotationRateCardProps> = ({
   const finalOrigName = isValidEndpoint(origName) ? origName.trim() : 'Origin';
   const finalDestName = isValidEndpoint(destName) ? destName.trim() : 'Destination';
 
-  const qNum = (rc as any).quotation_number != null && !isNaN(Number((rc as any).quotation_number)) ? `QT-${(rc as any).quotation_number}` : null;
+  const qNum = formatQuotationRef((rc as any).quotation_number);
   const quotationDisplayCode =
     qNum ||
     (rc as any).agreement_ref ||

@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatQuotationRef } from '@mercon/shared-types';
 import { DollarSign, CheckCircle2, Plus, Tag, AlertCircle, ChevronLeft, ChevronRight, Building2, Search, X, Calendar, Zap, Layers, Pencil, Lock as LockIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Combobox, ComboboxOption } from '@/components/ui/combobox';
@@ -480,7 +481,7 @@ export const CommercialSection: React.FC<CommercialSectionProps> = ({
               <Tag className="w-3.5 h-3.5 text-[#FA634E]" />
               <span>Quotation Ref:</span>
               <span className="font-mono text-brand font-black">
-                {primarySlot.matchedRateCard?.quotation_number ? `Q-${primarySlot.matchedRateCard.quotation_number}` : 'Fixed Commercial Rate'}
+                {formatQuotationRef(primarySlot.matchedRateCard?.quotation_number) ?? 'Fixed Commercial Rate'}
               </span>
             </div>
             <span className="text-slate-300 dark:text-slate-700">•</span>

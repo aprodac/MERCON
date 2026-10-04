@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { formatQuotationRef } from '@mercon/shared-types';
 import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,7 @@ const tidy = (v: string) => (v === v.toLowerCase() ? v.replace(/\b\w/g, (c) => c
 
 export const quotationRef = (q: Quotation) => {
   const no = (q as any).quotation_number;
-  return no != null ? `QT-${no}` : (q as any).agreement_ref || `QT-${q.id.substring(0, 8).toUpperCase()}`;
+  return formatQuotationRef(no) ?? ((q as any).agreement_ref || `QT-${q.id.substring(0, 8).toUpperCase()}`);
 };
 
 /** Place names of a quotation's stops in order, falling back to its origin/destination. */
