@@ -14,7 +14,8 @@
  *   label that would overlap another. The selected truck gets its road route
  *   to the next stop (real roads when routing is up, dashed straight line
  *   otherwise), a faint line through the rest of the trip (only when it
- *   follows real roads), and its trip's numbered stops. While following, the
+ *   follows real roads), a grey breadcrumb trail of where it has driven on
+ *   this trip, and its trip's numbered stops. While following, the
  *   camera moves with the truck as fresh positions arrive; dragging the map
  *   stops that until recenter().
  *
@@ -177,6 +178,8 @@ interface Props {
   onGroupPress?: (keys: string[]) => void;
   /** The rest of the trip after the next stop, along real roads; nothing drawn when null. */
   restLine?: LngLat[] | null;
+  /** Where the selected truck has driven on this trip (driver phone GPS), oldest first. */
+  trail?: LngLat[] | null;
   /** Keep the camera on the selected truck as it moves. */
   follow?: boolean;
   /** The user moved the map by hand (the page turns follow off). */
@@ -185,7 +188,7 @@ interface Props {
 
 export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   units, selected, onSelect, interactive = false, theme = 'light', tilted = false, focusMode = 'none',
-  routeLine, focus, padding = { top: 40, bottom: 40 }, onViewChange, onGroupPress, restLine, follow = true, onUserMove,
+  routeLine, focus, padding = { top: 40, bottom: 40 }, onViewChange, onGroupPress, restLine, trail, follow = true, onUserMove,
 }, ref) {
   const { height } = useWindowDimensions();
   const points = useMemo(() => units.filter(located), [units]);
@@ -405,6 +408,14 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       ) : (
         <Camera bounds={bounds} padding={{ top: padding.top, bottom: padding.bottom, left: 30, right: 30 }} duration={0} />
       )}
+
+      {/* Breadcrumb trail: where the picked truck has been on this trip, under everything else. */}
+      {trail && trail.length > 1 && sel ? (
+        <GeoJSONSource id="trip-trail" data={{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: trail } }}>
+          <Layer id="trip-trail-casing" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': '#FFFFFF', 'line-width': 6, 'line-opacity': dark ? 0.15 : 0.8 }} />
+          <Layer id="trip-trail-line" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': dark ? '#C9C9D1' : '#3E3C3D', 'line-width': 3, 'line-opacity': 0.55 }} />
+        </GeoJSONSource>
+      ) : null}
 
       {restLine && restLine.length > 1 && sel ? (
         <GeoJSONSource id="trip-rest" data={{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: restLine } }}>

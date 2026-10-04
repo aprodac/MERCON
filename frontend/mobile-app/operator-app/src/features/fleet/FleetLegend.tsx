@@ -55,6 +55,7 @@ export function FleetLegend({ style, onClose }: { style?: ViewStyle; onClose: ()
       <Row icon={<View style={[s.group, { borderColor: BRAND }]}><Text style={s.groupText}>5</Text></View>}>Red ring — some of them are delayed</Row>
       <Row icon={<View style={s.line} />}>Road route to the next stop</Row>
       <Row icon={<View style={[s.line, { opacity: 0.35 }]} />}>Rest of the trip</Row>
+      <Row icon={<View style={[s.line, { backgroundColor: INK, opacity: 0.55, height: 3 }]} />}>Where it has driven on this trip</Row>
       <Row icon={<View style={[s.line, s.dashed]} />}>Straight line — road routing unavailable</Row>
       <Row icon={<View style={s.stopsRow}><View style={[s.stop, s.stopDone]} /><View style={[s.stop, s.stopNext]} /><View style={s.stop} /></View>}>
         Stops: done · next · still to come
