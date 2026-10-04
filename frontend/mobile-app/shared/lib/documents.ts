@@ -50,16 +50,35 @@ export function docIcon(t: string): LucideIcon {
 
 export type DocKind = 'valid' | 'expiring' | 'expired' | 'pending';
 
-/** Display status derived from expiry (<=30d = expiring), with backend status overrides. */
-export function docStatus(doc: DriverDocument): { label: string; kind: DocKind } {
-  if (doc.status === 'Rejected') return { label: 'Rejected', kind: 'expired' };
-  if (doc.status === 'PendingReview') return { label: 'Pending Review', kind: 'pending' };
-  if (doc.expiry_date) {
-    const days = Math.floor((new Date(doc.expiry_date).getTime() - Date.now()) / 86400000);
-    if (days < 0) return { label: 'Expired', kind: 'expired' };
-    if (days <= 30) return { label: 'Expiring Soon', kind: 'expiring' };
-  }
-  return { label: 'Valid', kind: 'valid' };
+/** A document within this many days of its expiry date shows "Expires soon". */
+export const DOC_EXPIRING_SOON_DAYS = 30;
+
+/**
+ * Whole days from today to the expiry date (negative once expired). The expiry
+ * is a calendar date stored as midnight UTC, and a document is still valid on
+ * its expiry day.
+ */
+export function daysUntilExpiry(expiry: string, now: Date = new Date()): number | null {
+  const d = new Date(expiry);
+  if (Number.isNaN(d.getTime())) return null;
+  const expiryDay = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((expiryDay - today) / 86400000);
+}
+
+/**
+ * What the driver sees on a document. Expiry wins: an expired document is
+ * "Expired" whether or not the office has reviewed it (a pending review used
+ * to hide an Iqama that had expired weeks before). `labelKey` is the
+ * translation key for `label`.
+ */
+export function docStatus(doc: DriverDocument, now: Date = new Date()): { label: string; labelKey: string; kind: DocKind } {
+  const days = doc.expiry_date ? daysUntilExpiry(doc.expiry_date, now) : null;
+  if ((days !== null && days < 0) || doc.status === 'Expired') return { label: 'Expired', labelKey: 'status_expired', kind: 'expired' };
+  if (days !== null && days <= DOC_EXPIRING_SOON_DAYS) return { label: 'Expires soon', labelKey: 'status_expires_soon', kind: 'expiring' };
+  if (doc.status === 'Rejected') return { label: 'Rejected', labelKey: 'status_rejected', kind: 'expired' };
+  if (doc.status === 'PendingReview') return { label: 'Pending Review', labelKey: 'status_pending_review', kind: 'pending' };
+  return { label: 'Valid', labelKey: 'label_valid', kind: 'valid' };
 }
 
 export function useDocuments() {
