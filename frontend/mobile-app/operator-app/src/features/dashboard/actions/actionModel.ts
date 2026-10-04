@@ -111,7 +111,7 @@ function nextStopName(u: LiveUnit): string | null {
   return t.stops[t.next_stop_index]?.name ?? null;
 }
 
-const STAGE_TITLE: Record<string, string> = {
+export const STAGE_TITLE: Record<string, string> = {
   loaded: 'Loading photos',
   arrived: 'Arrival photos',
   stop: 'Stop photos',
@@ -244,7 +244,8 @@ export function buildActions(src: ActionSources): ActionItem[] {
     if (u.unsent_count <= 0) continue;
     const unsent = u.items.filter((m) => !u.sent_ids.includes(m.id));
     out.push({
-      key: `photos-${u.key}`,
+      // An update key is only unique within its trip ("<stop>:<stage>").
+      key: `photos-${u.trip.id}-${u.key}`,
       kind: 'photos',
       urgency: u.stage === 'delivered' || u.stage === 'delay' ? 'today' : 'watch',
       group: 'whatsapp',

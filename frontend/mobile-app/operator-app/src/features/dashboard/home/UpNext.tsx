@@ -9,26 +9,22 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CalendarCheck, ChevronRight } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import type { ActionSources } from '../actions/actionModel';
+import { toStartToday } from './today';
 import { niceName } from '../../trips/create/components/ui';
 import { INK, LINE, MUTED, tap } from '../../notifications/components/parts';
 
 const RED = '#D92D20';
 const SHOWN = 3;
 
-export function UpNext({ trips, tz, now, onOpenTrip, onAll }: {
+export function UpNext({ trips, tz, now, onOpenTrip, onAssign, onAll }: {
   trips: ActionSources['unassigned'];
   tz: string;
   now: number;
   onOpenTrip: (id: string) => void;
+  /** Opens the trip on its assign sheet for what's missing first. */
+  onAssign: (id: string, what: 'driver' | 'truck') => void;
   onAll: () => void;
 }) {
-  const dayOf = (ms: number) => {
-    try {
-      return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
-    } catch {
-      return new Date(ms).toDateString();
-    }
-  };
   const time = (iso: string | null) => {
     if (!iso) return '—';
     try {
@@ -45,10 +41,7 @@ export function UpNext({ trips, tz, now, onOpenTrip, onAll }: {
     if (min <= 1) return { text: 'due now', hot: true };
     return { text: `in ${span(min)}`, hot: false };
   };
-  const today = dayOf(now);
-  const upcoming = trips
-    .filter((t) => t.planned_start && dayOf(new Date(t.planned_start).getTime()) === today && ['Draft', 'Scheduled'].includes(t.status))
-    .sort((a, b) => new Date(a.planned_start!).getTime() - new Date(b.planned_start!).getTime());
+  const upcoming = toStartToday(trips, tz, now);
   const next = upcoming.slice(0, SHOWN);
 
   return (
@@ -90,7 +83,11 @@ export function UpNext({ trips, tz, now, onOpenTrip, onAll }: {
                     </View>
                   ) : null}
                 </View>
-                <ChevronRight size={18} color="#C4C4CC" />
+                {missing.length ? (
+                  <TouchableOpacity style={s.assign} onPress={() => { tap(); onAssign(t.id, t.driver ? 'truck' : 'driver'); }} hitSlop={6}>
+                    <Text style={s.assignText}>Assign</Text>
+                  </TouchableOpacity>
+                ) : <ChevronRight size={18} color="#C4C4CC" />}
               </TouchableOpacity>
             );
           })}
@@ -120,4 +117,6 @@ const s = StyleSheet.create({
   tags: { flexDirection: 'row', gap: 6, marginTop: 2 },
   tag: { paddingHorizontal: 8, height: 22, borderRadius: 6, backgroundColor: '#FEF3F2', justifyContent: 'center' },
   tagText: { fontSize: 12, fontWeight: '700', color: RED },
+  assign: { height: 34, paddingHorizontal: 14, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: INK },
+  assignText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 });

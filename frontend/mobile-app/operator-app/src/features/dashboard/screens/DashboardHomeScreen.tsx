@@ -1,11 +1,12 @@
 /**
- * Operator Home — kept to what you glance at:
- *   1. HomeHeader     greeting, date, "12 on the road · 2 delayed"
- *   2. EmergencyStrip only while a driver emergency is open
- *   3. FleetMapCard   where the trucks are
- *   4. UpNext         the next trips starting today
- * Everything to act on (delays, unassigned trips, photos, documents,
- * invoices) lives on Notifications → To do; the bell's dot says when.
+ * Operator Home ("today at a glance"), top to bottom:
+ *   EmergencyStrip  only while a driver emergency is open
+ *   TodayCard       ring of done / on the road / to start, and how many
+ *                   things need you (delayed · no driver or truck · photos)
+ *   LiveNow         fleet map + the trips on the road, late ones first
+ *   UpNext          trips still to start today, with Assign when one is short
+ *   FromDrivers     photo sets drivers sent that the customer hasn't had yet
+ * Everything to act on in full lives on Notifications → To do.
  * Composes hooks + components only — no direct API calls here.
  *
  * The bottom tab bar isn't rendered by this screen: it's mounted once, above
@@ -20,19 +21,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Search } from 'lucide-react-native';
 import { ErrorState } from '@mercon/mobile-shared/ui';
 import { AppTopBar } from '@/components/AppTopBar';
-import { FleetMapCard } from '@/features/fleet/FleetMapCard';
 import { ChargeAssistant } from '@/features/charges/ChargeAssistant';
 import { useDashboardRefresh } from '../hooks';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { useActionInbox } from '../actions/useActionInbox';
 import { useActionIntent } from '../actions/useActionIntent';
-import { HomeHeader } from '../home/HomeHeader';
 import { EmergencyStrip } from '../home/EmergencyStrip';
+import { TodayCard } from '../home/TodayCard';
+import { LiveNow } from '../home/LiveNow';
 import { UpNext } from '../home/UpNext';
+import { FromDrivers } from '../home/FromDrivers';
+import { dateLabel, greeting, toStartToday } from '../home/today';
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
-  // Ticks each minute so "in 20 min" / "5m ago" stay current.
+  // Ticks each minute so "in 20 min" / "2h late" stay current.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 60_000);
@@ -43,26 +46,30 @@ export default function DashboardHomeScreen() {
   const inbox = useActionInbox();
   const { data: me } = useCurrentUser();
   const { onIntent, openTrip, toast, setToast } = useActionIntent();
+
   const emergencies = useMemo(() => inbox.items.filter((i) => i.kind === 'emergency'), [inbox.items]);
+  const needs = useMemo(() => {
+    const count = (...kinds: string[]) => inbox.items.filter((i) => kinds.includes(i.kind)).length;
+    return { total: inbox.items.length, delayed: count('delayed', 'late-start'), unassigned: count('unassigned'), photos: count('photos') };
+  }, [inbox.items]);
+  const toStart = useMemo(() => toStartToday(inbox.scheduled, inbox.tz, now).length, [inbox.scheduled, inbox.tz, now]);
+
+  const first = (me?.name || me?.username || '').trim().split(/\s+/)[0];
+  const hello = `${greeting(inbox.tz, now)}${first ? `, ${first[0].toUpperCase()}${first.slice(1)}` : ''}`;
+  const trips = (view: string) => router.push({ pathname: '/trips', params: { view } });
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
-      <AppTopBar urgent={inbox.counts.now} actions={[{ icon: Search, label: 'Search trips', onPress: () => router.push('/trips') }]} />
+      <AppTopBar
+        eyebrow={dateLabel(inbox.tz, now)}
+        title={hello}
+        urgent={inbox.counts.now}
+        actions={[{ icon: Search, label: 'Search trips', onPress: () => router.push('/trips') }]}
+      />
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120, gap: 20 }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120, gap: 24 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor="#FA634E" />}
       >
-        <HomeHeader
-          name={me?.name || me?.username || null}
-          tz={inbox.tz}
-          now={now}
-          running={inbox.counts.running}
-          delayed={inbox.counts.delayed}
-          loading={inbox.loading}
-          onRunning={() => router.push({ pathname: '/trips', params: { view: 'now' } })}
-          onDelayed={() => router.push({ pathname: '/trips', params: { view: 'delayed' } })}
-        />
-
         <EmergencyStrip
           items={emergencies}
           now={now}
@@ -71,17 +78,37 @@ export default function DashboardHomeScreen() {
           onAll={() => router.push('/notifications')}
         />
 
+        <TodayCard
+          done={inbox.finishedToday}
+          running={inbox.counts.running}
+          toStart={toStart}
+          needs={needs}
+          loading={inbox.loading}
+          onTrips={trips}
+          onTodo={(filter) => router.push({ pathname: '/notifications', params: filter ? { filter } : {} })}
+        />
+
         {inbox.liveError ? <ErrorState message="Couldn't load live trips." onRetry={inbox.retry} /> : null}
 
-        <FleetMapCard units={inbox.units} now={now} onOpen={() => router.push('/fleet-map')} />
+        <LiveNow
+          units={inbox.units}
+          tz={inbox.tz}
+          now={now}
+          onOpenMap={() => router.push('/fleet-map')}
+          onOpenTrip={(id) => openTrip(id)}
+          onAll={() => trips('now')}
+        />
 
         <UpNext
           trips={inbox.scheduled}
           tz={inbox.tz}
           now={now}
           onOpenTrip={(id) => openTrip(id)}
-          onAll={() => router.push({ pathname: '/trips', params: { view: 'schedule' } })}
+          onAssign={(id, what) => openTrip(id, { assign: what })}
+          onAll={() => trips('schedule')}
         />
+
+        <FromDrivers updates={inbox.updates} now={now} onSend={(id) => openTrip(id, { tab: 'updates' })} />
       </ScrollView>
       {/* Finished trips waiting for an answer on extra charges */}
       <ChargeAssistant userName={me?.name || me?.username || undefined} />

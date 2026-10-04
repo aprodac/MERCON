@@ -10,6 +10,7 @@ import { api } from '@mercon/mobile-shared/lib/api';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
 import { operatorService } from '../../../lib/operator';
 import { buildActions, type ActionItem, type ActionSources } from './actionModel';
+import { makeTime } from '../../trips/list/tripListModel';
 
 const LIVE_REFRESH_MS = 30_000;
 const SLOW_REFRESH_MS = 120_000;
@@ -21,6 +22,14 @@ const safe = <T,>(fn: () => Promise<T>, fallback: T) => async () => {
     return fallback;
   }
 };
+
+/** Trips that ended today in `tz` (the 100 most recent finished ones are enough for a day). */
+async function countFinishedToday(tz: string): Promise<number> {
+  const f = makeTime(tz);
+  const today = f.dayKey(Date.now());
+  const { data } = await api.get('/trips', { params: { status: 'Completed,Invoiced', per_page: 100 } });
+  return ((data.data ?? []) as { actual_end?: string | null }[]).filter((t) => t.actual_end && f.dayKey(t.actual_end) === today).length;
+}
 
 export function useActionInbox() {
   const live = useQuery({
@@ -61,6 +70,15 @@ export function useActionInbox() {
   const tzQuery = useQuery({ queryKey: ['dashboard', 'tz'], queryFn: () => operatorService.deploymentTimezone(), staleTime: Infinity });
   const tz = tzQuery.data ?? 'Asia/Riyadh';
 
+  // Trips finished today, for Home's progress ring. "Today" is worked out
+  // when the query runs (every 2 min), so the count rolls over at midnight.
+  const finished = useQuery({
+    queryKey: ['dashboard', 'actions', 'finished-today', tz],
+    queryFn: safe(() => countFinishedToday(tz), 0),
+    enabled: tzQuery.isSuccess,
+    refetchInterval: SLOW_REFRESH_MS,
+  });
+
   const units = useMemo(() => live.data ?? [], [live.data]);
 
   const items = useMemo<ActionItem[]>(
@@ -83,8 +101,12 @@ export function useActionInbox() {
 
   return {
     items,
-    /** Not-started trips (Draft / Scheduled), for Home's Up next. */
+    /** Not-started trips (Draft / Scheduled), for Home's Up next and today's ring. */
     scheduled: unassigned.data ?? [],
+    /** Driver photo sets, newest first on Home's "From drivers" strip. */
+    updates: updates.data ?? [],
+    /** Trips finished today; null until known. */
+    finishedToday: finished.isSuccess ? finished.data : null,
     units,
     tz,
     counts: {

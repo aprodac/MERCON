@@ -4,7 +4,8 @@
  *              GPS silence, photos to send, expiring documents, overdue
  *              invoices), the same live items as Home's Needs action list.
  *   Activity — the notification feed from the API, by day.
- * Opens on To do; `?tab=activity` opens the feed.
+ * Opens on To do; `?tab=activity` opens the feed, `?filter=trips|whatsapp|
+ * documents|money` opens To do on that chip.
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
@@ -20,7 +21,7 @@ import { useActionIntent } from '../../dashboard/actions/useActionIntent';
 import { useDashboardRefresh } from '../../dashboard/hooks';
 import { useMarkNotificationsRead, useNotifications } from '../hooks/useNotifications';
 import { targetFor } from '../notificationModel';
-import { TodoTab } from '../components/TodoTab';
+import { TodoTab, type GroupFilter } from '../components/TodoTab';
 import { ActivityTab } from '../components/ActivityTab';
 import { BG, INK, LINE, MUTED, tap } from '../components/parts';
 
@@ -28,7 +29,8 @@ type Tab = 'todo' | 'activity';
 
 export default function NotificationsScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ tab?: string }>();
+  const params = useLocalSearchParams<{ tab?: string; filter?: string }>();
+  const initialFilter: GroupFilter = (['trips', 'whatsapp', 'documents', 'money'] as const).find((g) => g === params.filter) ?? 'all';
   const [tab, setTab] = useState<Tab>(params.tab === 'activity' ? 'activity' : 'todo');
 
   // Ticks each minute so "12m late" / "5 min" stay current.
@@ -97,6 +99,7 @@ export default function NotificationsScreen() {
         {tab === 'todo' ? (
           <TodoTab
             items={inbox.items}
+            initialFilter={initialFilter}
             loading={inbox.loading}
             liveError={inbox.liveError}
             onRetry={inbox.retry}

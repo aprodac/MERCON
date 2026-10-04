@@ -11,7 +11,7 @@ import type { ActionGroup, ActionIntent, ActionItem, ActionKind, Urgency } from 
 import { ActionRow, GroupRow, KindSheet, groupByKind } from '../../dashboard/actions/NeedsAction';
 import { Chips, EmptyState, SectionLabel, SkeletonCard, p, tap, INK } from './parts';
 
-type GroupFilter = 'all' | ActionGroup;
+export type GroupFilter = 'all' | ActionGroup;
 
 const GROUP_LABEL: Record<ActionGroup, string> = { trips: 'Trips', whatsapp: 'Photos', documents: 'Documents', money: 'Money' };
 
@@ -21,8 +21,10 @@ const SECTIONS: { urgency: Urgency; title: string }[] = [
   { urgency: 'watch', title: 'Can wait' },
 ];
 
-export function TodoTab({ items, loading, liveError, onRetry, now, refreshing, onRefresh, onIntent, onOpenTrip }: {
+export function TodoTab({ items, initialFilter = 'all', loading, liveError, onRetry, now, refreshing, onRefresh, onIntent, onOpenTrip }: {
   items: ActionItem[];
+  /** Chip to start on, e.g. Home's "Photos to send" opens on Photos. */
+  initialFilter?: GroupFilter;
   loading: boolean;
   liveError: boolean;
   onRetry: () => void;
@@ -32,7 +34,7 @@ export function TodoTab({ items, loading, liveError, onRetry, now, refreshing, o
   onIntent: (intent: ActionIntent) => void;
   onOpenTrip: (tripId: string) => void;
 }) {
-  const [filter, setFilter] = useState<GroupFilter>('all');
+  const [filter, setFilter] = useState<GroupFilter>(initialFilter);
   // A folded row's sheet shows that kind within its own section, so its count matches the row.
   const [sheet, setSheet] = useState<{ kind: ActionKind; urgency: Urgency } | null>(null);
 
