@@ -1,6 +1,6 @@
 /**
  * 3rd party fleet — the subcontracted carriers (3PL) trips can be handed to.
- * Three tiles (All · Active · Inactive) that also filter, search, then one
+ * A slim status filter (All · Active · Inactive), search, then one
  * compact row per carrier; tap a row for its details, + adds a carrier.
  */
 import React, { useCallback, useMemo, useState } from 'react';
@@ -8,12 +8,12 @@ import { View, Text, FlatList, RefreshControl, TouchableOpacity, TextInput, Styl
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Building2, ChevronRight, Phone, Plus, Search, X } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { EmptyState, ErrorState, SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { useOperatorThirdPartyProviders, type OperatorThirdPartyProvider } from '@/lib/operator';
 import { AppTopBar } from '@/components/AppTopBar';
-import { initialsOf, niceName } from '@/features/trips/create/components/ui';
+import { FilterChips } from '@/components/FilterChips';
+import { CompanyAvatar, niceName } from '@/features/trips/create/components/ui';
 import { compactSar } from '../format';
 
 type Filter = 'all' | 'active' | 'inactive';
@@ -72,28 +72,12 @@ export default function ThirdPartyScreen() {
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={loading && providers.length > 0} onRefresh={refetch} tintColor={Colors.primary} />}
           ListHeaderComponent={
-            <View style={{ gap: 14, marginBottom: 14 }}>
-              <View style={s.tiles}>
-                {tiles.map((t) => {
-                  const on = filter === t.id;
-                  return (
-                    <TouchableOpacity
-                      key={t.id}
-                      style={[s.tile, on && s.tileOn]}
-                      activeOpacity={0.8}
-                      onPress={() => { Haptics.selectionAsync().catch(() => {}); setFilter(t.id); }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: on }}
-                    >
-                      <Text style={[s.tileValue, on && { color: '#FFFFFF' }]}>{first ? '—' : counts[t.id]}</Text>
-                      <View style={s.tileLabelRow}>
-                        {t.dot ? <View style={[s.dot, { backgroundColor: t.dot }]} /> : null}
-                        <Text style={[s.tileLabel, on && { color: '#D4D4D8' }]}>{t.label}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+            <View style={{ gap: 12, marginBottom: 12 }}>
+              <FilterChips<Filter>
+                value={filter}
+                onChange={setFilter}
+                items={tiles.map((t) => ({ key: t.id, label: t.label, dot: t.dot, count: first ? '–' : counts[t.id] }))}
+              />
 
               <View style={s.search}>
                 <Search size={17} color={MUTED} />
@@ -154,7 +138,7 @@ function ProviderRow({ provider: p, onPress }: { provider: OperatorThirdPartyPro
 
   return (
     <TouchableOpacity style={s.row} activeOpacity={0.8} onPress={onPress} accessibilityRole="button" accessibilityLabel={`Open ${p.name}`}>
-      <View style={s.avatar}><Text style={s.avatarText}>{initialsOf(p.name)}</Text></View>
+      <CompanyAvatar name={p.name} size={46} />
       <View style={s.rowText}>
         <Text style={s.name} numberOfLines={2}>{niceName(p.name)}</Text>
         <View style={s.metaRow}>
@@ -181,19 +165,11 @@ function ProviderRow({ provider: p, onPress }: { provider: OperatorThirdPartyPro
 const s = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F6F6F7' },
   list: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 },
-  tiles: { flexDirection: 'row', gap: 8 },
-  tile: { flex: 1, backgroundColor: '#FFFFFF', borderRadius: 14, borderWidth: 1, borderColor: '#E9E9EC', paddingVertical: 12, paddingHorizontal: 12, gap: 3 },
-  tileOn: { backgroundColor: INK, borderColor: INK },
-  tileValue: { fontSize: 20, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'], letterSpacing: -0.3 },
-  tileLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  tileLabel: { fontSize: 12, color: MUTED },
   dot: { width: 7, height: 7, borderRadius: 4 },
   search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E9E9EC', paddingHorizontal: 14 },
   searchInput: { flex: 1, fontSize: 15, color: INK, paddingVertical: 0 },
   count: { fontSize: 16, fontWeight: '700', color: INK },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E9E9EC', paddingVertical: 12, paddingHorizontal: 14 },
-  avatar: { width: 46, height: 46, borderRadius: 14, backgroundColor: '#F1EFE8', alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 15, fontWeight: '700', color: '#5F5E5A' },
   rowText: { flex: 1, minWidth: 0, gap: 3 },
   name: { fontSize: 16, fontWeight: '600', color: INK, letterSpacing: -0.2 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },

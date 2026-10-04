@@ -1,4 +1,7 @@
-/** Driver's assigned vehicle (from the current active trip) — GET /mobile/vehicle. */
+/**
+ * The driver's truck — GET /mobile/vehicle: the current trip's truck, else the
+ * truck the office assigned to the driver (same rule as the Profile header).
+ */
 import { useCallback, useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from './api';
 
@@ -21,7 +24,10 @@ export interface AssignedVehicle {
   current_odometer: number;
   trailer_number: string | null;
   trailer_type: string | null;
+  /** Set only when the truck comes from the current trip. */
   trip_ref_id: string | null;
+  /** 'trip' = the current trip's truck, 'assigned' = the driver's own truck. */
+  source?: 'trip' | 'assigned';
   /** Active or upcoming maintenance window for this vehicle, if any. */
   active_maintenance?: ActiveMaintenance | null;
 }

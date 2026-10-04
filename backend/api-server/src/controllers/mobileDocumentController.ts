@@ -1,7 +1,19 @@
 import { Request, Response } from 'express';
 import { prisma } from '../db';
 
-/** The logged-in driver's compliance documents (License, Iqama, Medical, Insurance), newest first. */
+/**
+ * Doc types on a Driver that are not the driver's papers: incident photos from
+ * an emergency report raised with no trip running. Delivery/loading photos
+ * (POD, Waybill) live on the Trip, so they never reach this Driver-only query.
+ */
+export const DRIVER_MEDIA_DOC_TYPES = ['Emergency'] as const;
+
+/**
+ * The logged-in driver's own documents (licence, Iqama, passport, driver
+ * card, …), newest first — every document the office attached to the driver,
+ * whatever its type. Filtering out POD hid a Driver Card the office had
+ * saved with type POD.
+ */
 export const getDriverDocuments = async (req: Request, res: Response) => {
   const driverId = (req as any).user?.driver_id;
   if (!driverId) return res.status(403).json({ success: false, error: { message: 'Driver not authenticated' } });
@@ -12,7 +24,7 @@ export const getDriverDocuments = async (req: Request, res: Response) => {
         entity_type: 'Driver',
         entity_id: driverId,
         deletedAt: null,
-        doc_type: { notIn: ['POD', 'Waybill'] },
+        doc_type: { notIn: [...DRIVER_MEDIA_DOC_TYPES] },
       },
       orderBy: [{ createdAt: 'desc' }],
       select: {

@@ -382,14 +382,16 @@ export default function DriverDetailsPage() {
     const totalCount = trips.length;
     const finished = trips.filter((t: any) => ['completed', 'delivered', 'invoiced'].includes((t.status || '').toLowerCase()));
     const onTimeCount = finished.filter((t: any) => (t.status || '').toLowerCase() !== 'delayed' && !t.is_delayed).length;
-    const totalPayout = trips.reduce((acc: number, t: any) => acc + toNum(t.driver_payout ?? t.driver_charge), 0);
+    // Only finished trips earn the driver charge — a cancelled trip pays nothing
+    // (same rule as the Drivers list and GET /drivers/payouts).
+    const totalPayout = finished.reduce((acc: number, t: any) => acc + toNum(t.driver_payout ?? t.driver_charge), 0);
     const totalDist = trips.reduce((acc: number, t: any) => acc + toNum(t.planned_distance ?? t.distance), 0);
 
     return {
       onTimePct: finished.length > 0 ? `${((onTimeCount / finished.length) * 100).toFixed(1)}%` : EMPTY,
       onTimePill: finished.length > 0 ? `${onTimeCount} of ${finished.length} finished trips` : 'No finished trips yet',
       driverPayoutFormatted: fmtSar(totalPayout),
-      driverPayoutPill: totalCount > 0 && totalPayout > 0 ? `Avg ${fmtSar(Math.round(totalPayout / totalCount))} / trip` : 'No payouts recorded',
+      driverPayoutPill: finished.length > 0 && totalPayout > 0 ? `Avg ${fmtSar(Math.round(totalPayout / finished.length))} / finished trip` : 'No payouts recorded',
       distanceFormatted: totalDist > 0 ? `${Math.round(totalDist).toLocaleString('en-US')} km` : EMPTY,
       distancePill: totalDist > 0 && totalCount > 0 ? `Avg ${Math.round(totalDist / totalCount).toLocaleString('en-US')} km / trip` : 'Distance not recorded',
     };

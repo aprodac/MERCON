@@ -22,6 +22,7 @@ import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { openInGoogleMaps } from '../services/maps';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 // Side Map Tile Box Component (matching Pickup and Delivery screens)
 const SideMapTileBox = () => (
@@ -383,7 +384,7 @@ export default function StopVerificationScreen() {
                     ? t('action_complete_stop_next', 'COMPLETE STOP & NEXT')
                     : t('action_complete_stop_proceed', 'COMPLETE STOP & PROCEED')}
                 </Text>
-                <ArrowRight size={18} color="#FFFFFF" strokeWidth={2.5} />
+                <ArrowRight size={18} color="#FFFFFF" strokeWidth={2.5} style={flipInRTL} />
               </>
             )}
           </TouchableOpacity>

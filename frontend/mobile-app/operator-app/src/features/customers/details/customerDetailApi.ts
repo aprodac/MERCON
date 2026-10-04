@@ -23,6 +23,9 @@ export interface CustomerDetail {
   driver_workflow: 'NATIVE' | 'EXTERNAL_APP' | string;
   isActive: boolean;
   createdAt: string;
+  /** The latest 100 trips, newest first (GET /customers/:id). `_count.trips` is the true total. */
+  trips?: (CustomerTrip & { is_delayed?: boolean; createdAt?: string })[];
+  _count?: { trips?: number };
 }
 
 export interface StatementInvoice {
@@ -54,7 +57,36 @@ async function trips(params: Record<string, string | number>): Promise<{ trips: 
   return { trips: (data.data ?? []) as CustomerTrip[], total: Number(data.meta?.total ?? data.pagination?.total ?? (data.data ?? []).length) };
 }
 
+/** The customer's all-trucks tracking page link (mirrors the web's trackingService.CustomerTrackingLink). */
+export interface CustomerTrackingLink {
+  /** False when tracking is switched off for this customer — then url is null. */
+  enabled: boolean;
+  url: string | null;
+  open_count: number;
+  last_opened_at: string | null;
+}
+
+export interface TrackingOpen {
+  id: string;
+  opened_at: string;
+  /** e.g. "iPhone · Safari"; null when the browser didn't say. */
+  device: string | null;
+  link: { kind: 'all_trucks' } | { kind: 'trip'; trip_id: string | null; ref_id: string | null };
+}
+
 export const customerDetailApi = {
+  /** POST /customers/:id/tracking-link — the all-trucks link, created on first ask (same call the web makes). */
+  async trackingLink(id: string): Promise<CustomerTrackingLink> {
+    const { data } = await api.post(`/customers/${id}/tracking-link`, { renew: false });
+    return data.data as CustomerTrackingLink;
+  },
+
+  /** GET /customers/:id/tracking-opens — every time the customer opened a link, newest first. */
+  async trackingOpens(id: string): Promise<{ total: number; opens: TrackingOpen[] }> {
+    const { data } = await api.get(`/customers/${id}/tracking-opens`, { params: { limit: 50 } });
+    return { total: Number(data.data?.total ?? 0), opens: (data.data?.opens ?? []) as TrackingOpen[] };
+  },
+
   async customer(id: string): Promise<CustomerDetail> {
     const { data } = await api.get(`/customers/${id}`);
     return data.data as CustomerDetail;

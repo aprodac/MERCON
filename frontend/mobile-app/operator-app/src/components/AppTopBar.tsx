@@ -2,10 +2,11 @@
  * The one top bar every main operator page uses, so the menu, title and bell
  * are always in the same place:
  *
- *   [☰]  MERCON  (Home)   or   Page title (every other page)   [page actions] [🔔]
+ *   [☰]  MERCON  (Home)   or   [page icon] Page title (every other page)   [page actions] [🔔]
  *
  * ☰ opens the side drawer (owned here, so pages don't each wire their own),
- * the bell opens notifications and shows a dot for unread ones. Pages pass
+ * the bell opens notifications and shows a dot for unread ones (and, on Home,
+ * for urgent To do items). Pages pass
  * their own icon buttons (search, filter, add…) through `actions`.
  */
 import React, { useState } from 'react';
@@ -14,6 +15,7 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft, Bell, Menu, type LucideIcon } from 'lucide-react-native';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
 import { OperatorSidebarDrawer } from './OperatorSidebarDrawer';
+import { PageIconTile } from './pageCues';
 
 const FG = '#3E3C3D';
 const BORDER = '#E9E9EC';
@@ -27,16 +29,20 @@ export interface TopBarAction {
 }
 
 interface AppTopBarProps {
-  /** Page title. Leave out on Home to show the MERCON brand instead. */
+  /** Page title. Leave out to show the MERCON brand instead. */
   title?: string;
+  /** Small line above the title (Home: today's date over the greeting). */
+  eyebrow?: string;
   actions?: TopBarAction[];
   /** Hide the bell (on the notifications page itself). */
   hideBell?: boolean;
+  /** Urgent items on Notifications → To do — lights the bell's dot even when every notification is read. */
+  urgent?: number;
   /** Show a back arrow instead of the menu (pages opened from another page). */
   onBack?: () => void;
 }
 
-export function AppTopBar({ title, actions = [], hideBell, onBack }: AppTopBarProps) {
+export function AppTopBar({ title, eyebrow, actions = [], hideBell, urgent = 0, onBack }: AppTopBarProps) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const notifications = useNotifications();
@@ -48,7 +54,15 @@ export function AppTopBar({ title, actions = [], hideBell, onBack }: AppTopBarPr
         {onBack ? <IconBtn icon={ArrowLeft} label="Back" onPress={onBack} /> : <IconBtn icon={Menu} label="Open menu" onPress={() => setMenuOpen(true)} />}
 
         {title ? (
-          <Text style={s.title} numberOfLines={1}>{title}</Text>
+          <View style={s.titleRow}>
+            <PageIconTile title={title} />
+            {eyebrow ? (
+              <View style={{ flexShrink: 1, minWidth: 0 }}>
+                <Text style={s.eyebrow} numberOfLines={1}>{eyebrow}</Text>
+                <Text style={s.title} numberOfLines={1}>{title}</Text>
+              </View>
+            ) : <Text style={s.title} numberOfLines={1}>{title}</Text>}
+          </View>
         ) : (
           <View style={s.brand}>
             <Image source={require('@mercon/mobile-shared/assets/images/merconclosed.png')} style={s.mark} resizeMode="contain" accessibilityLabel="MERCON" />
@@ -60,9 +74,9 @@ export function AppTopBar({ title, actions = [], hideBell, onBack }: AppTopBarPr
         {hideBell ? null : (
           <IconBtn
             icon={Bell}
-            label={unread ? `Notifications, ${unread} unread` : 'Notifications'}
+            label={['Notifications', urgent ? `${urgent} urgent` : '', unread ? `${unread} unread` : ''].filter(Boolean).join(', ')}
             onPress={() => router.push('/notifications')}
-            dot={unread > 0}
+            dot={unread > 0 || urgent > 0}
             dotColor="#F04438"
           />
         )}
@@ -84,7 +98,9 @@ function IconBtn({ icon: Icon, label, onPress, dot, dotColor = FG }: { icon: Luc
 const s = StyleSheet.create({
   bar: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 56, paddingHorizontal: 16 },
   btn: { width: 40, height: 40, borderRadius: 12, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: BORDER },
-  title: { flex: 1, fontSize: 20, fontWeight: '700', color: FG, letterSpacing: -0.3, marginLeft: 4 },
+  titleRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9, marginLeft: 4 },
+  title: { flexShrink: 1, fontSize: 20, fontWeight: '700', color: FG, letterSpacing: -0.3 },
+  eyebrow: { fontSize: 12, fontWeight: '500', color: '#6B6B76' },
   brand: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 4 },
   mark: { width: 36, height: 24 },
   word: { fontSize: 15, fontWeight: '700', color: FG, letterSpacing: 1.5 },

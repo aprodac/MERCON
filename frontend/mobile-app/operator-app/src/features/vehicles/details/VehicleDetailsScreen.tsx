@@ -8,6 +8,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, I
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, ChevronRight, FileText, MapPin, MessageCircle, Navigation, Phone, Satellite, SquarePen, Truck, UserRoundCog, Wrench, type LucideIcon } from 'lucide-react-native';
+import { EmptyHint, SectionLabel, TabIcon, Tile, FactRow } from '@/components/pageCues';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
@@ -16,7 +17,7 @@ import { DriverAvatar } from '../../drivers/components/DriverAvatar';
 import { operatorService, type OperatorDriverOption } from '../../../lib/operator';
 import { SAUDI_CITY_COORDS } from '../../trips/services/travelTimeService';
 import { TONE, statusChip, haversineKm, type Tone } from '../../trips/details/tripDetailsModel';
-import { Card, Chip, InfoRow, INK, MUTED, PAGE, tap } from '../../trips/details/components/parts';
+import { Card, Chip, INK, MUTED, PAGE, tap } from '../../trips/details/components/parts';
 import { PickerSheet, SkeletonRows, fmtDay, fmtSar, initialsOf, niceName } from '../../trips/create/components/ui';
 import { VehicleLocationMap, mapsUrl } from './VehicleLocationMap';
 import { daysUntil, slotState, useVehicleDetail } from './useVehicleDetail';
@@ -261,9 +262,7 @@ export default function VehicleDetailsScreen() {
             <View style={s.actions}>
               {actions.map((a) => (
                 <TouchableOpacity key={a.key} style={[s.action, !a.onPress && { opacity: 0.35 }]} disabled={!a.onPress} onPress={() => { tap(); a.onPress?.(); }} activeOpacity={0.7}>
-                  <View style={s.actionIcon}>
-                    <a.icon size={19} color={INK} strokeWidth={2} />
-                  </View>
+                  <Tile icon={a.icon} size={46} round />
                   <Text style={s.actionText} numberOfLines={1}>{a.label}</Text>
                 </TouchableOpacity>
               ))}
@@ -278,6 +277,7 @@ export default function VehicleDetailsScreen() {
               const on = t.id === tab;
               return (
                 <TouchableOpacity key={t.id} style={[s.tab, on && s.tabOn]} onPress={() => { if (!on) tap(); setTab(t.id); }} activeOpacity={0.8} accessibilityRole="tab" accessibilityState={{ selected: on }}>
+                  <TabIcon label={t.label} on={on} />
                   <Text style={[s.tabText, on && s.tabTextOn]} numberOfLines={1}>{t.label}</Text>
                   {t.badge ? <View style={s.badge}><Text style={s.badgeText}>{t.badge}</Text></View> : null}
                 </TouchableOpacity>
@@ -292,11 +292,9 @@ export default function VehicleDetailsScreen() {
             <>
               {/* Where it is, in words, and whether the tracker is talking */}
               <Card>
-                <Text style={s.label}>Location</Text>
+                <SectionLabel>Location</SectionLabel>
                 <View style={s.row}>
-                  <View style={s.iconTile}>
-                    <MapPin size={17} color={INK} strokeWidth={2.1} />
-                  </View>
+                  <Tile icon={MapPin} />
                   <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                     <Text style={s.rowTitle} numberOfLines={1} selectable>{place ?? 'Location not available'}</Text>
                     <Text style={s.sub} numberOfLines={1}>
@@ -307,9 +305,7 @@ export default function VehicleDetailsScreen() {
                   </View>
                 </View>
                 <View style={s.gpsRow}>
-                  <View style={s.iconTile}>
-                    <Satellite size={17} color={INK} strokeWidth={2.1} />
-                  </View>
+                  <Tile icon={Satellite} />
                   <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                     <Text style={s.rowTitle}>GPS tracker</Text>
                     <Text style={s.sub} numberOfLines={1}>{gps.note}</Text>
@@ -320,7 +316,7 @@ export default function VehicleDetailsScreen() {
 
               {/* Who drives it */}
               <Card>
-                <Text style={s.label}>Driver</Text>
+                <SectionLabel>Driver</SectionLabel>
                 {driver ? (
                   <TouchableOpacity style={s.row} activeOpacity={0.7} onPress={() => router.push({ pathname: '/driver-details', params: { id: driver.id } })}>
                     <DriverAvatar initials={initialsOf(fullName(driver))} avatarUrl={v.driverPhoto} size={44} />
@@ -331,7 +327,7 @@ export default function VehicleDetailsScreen() {
                     <ChevronRight size={18} color="#A1A1AA" />
                   </TouchableOpacity>
                 ) : (
-                  <Text style={s.empty}>No driver yet — tap “Assign driver” above.</Text>
+                  <EmptyHint>No driver yet — tap “Assign driver” above.</EmptyHint>
                 )}
                 {v.reassign.isPending ? <Text style={s.sub}>Saving…</Text> : null}
               </Card>
@@ -352,7 +348,7 @@ export default function VehicleDetailsScreen() {
 
               {/* This month */}
               <Card>
-                <Text style={s.label}>This month</Text>
+                <SectionLabel>This month</SectionLabel>
                 {v.monthLoading ? (
                   <SkeletonRows rows={1} height={44} />
                 ) : v.month ? (
@@ -367,14 +363,14 @@ export default function VehicleDetailsScreen() {
                     />
                   </View>
                 ) : (
-                  <Text style={s.empty}>{v.monthError ? 'Couldn’t load this month’s numbers.' : 'No numbers yet.'}</Text>
+                  <EmptyHint>{v.monthError ? 'Couldn’t load this month’s numbers.' : 'No numbers yet.'}</EmptyHint>
                 )}
               </Card>
 
               {/* The truck itself */}
               <Card style={{ paddingVertical: 4 }}>
                 <TouchableOpacity disabled={!odoStale} onPress={editVehicle} activeOpacity={0.6}>
-                  <InfoRow label="Odometer" value={`${Math.round(vehicle.current_odometer || 0).toLocaleString('en-US')} km`} last={odoStale} />
+                  <FactRow first label="Odometer" value={`${Math.round(vehicle.current_odometer || 0).toLocaleString('en-US')} km`} />
                 </TouchableOpacity>
                 {odoStale ? (
                   <TouchableOpacity style={s.hint} onPress={editVehicle} activeOpacity={0.6}>
@@ -382,14 +378,14 @@ export default function VehicleDetailsScreen() {
                     <Text style={s.link}>Update</Text>
                   </TouchableOpacity>
                 ) : null}
-                <InfoRow label="Capacity" value={`${cls}  ·  ${(vehicle.capacity_kg || 0).toLocaleString('en-US')} kg`} />
+                <FactRow label="Capacity" value={`${cls}  ·  ${(vehicle.capacity_kg || 0).toLocaleString('en-US')} kg`} />
                 {vehicle.trailer_number ? (
-                  <InfoRow
+                  <FactRow
                     label="Trailer"
                     value={[vehicle.trailer_number, niceName(vehicle.trailer_type), vehicle.trailer_capacity_kg ? `${vehicle.trailer_capacity_kg.toLocaleString('en-US')} kg` : null].filter(Boolean).join(' · ')}
                   />
                 ) : null}
-                <InfoRow label="Tracker ID" value={vehicle.icces_device_id || 'None'} last />
+                <FactRow label="Tracker ID" value={vehicle.icces_device_id || 'None'} />
               </Card>
             </>
           ) : null}
@@ -398,7 +394,7 @@ export default function VehicleDetailsScreen() {
             <>
               <Card style={s.listCard}>
                 {v.trips.recent.length === 0 ? (
-                  <Text style={[s.empty, s.listEmpty]}>No trips yet.</Text>
+                  <EmptyHint>No trips yet.</EmptyHint>
                 ) : (
                   v.trips.recent.map((t, i) => {
                     const r = routeOf(t);
@@ -438,9 +434,9 @@ export default function VehicleDetailsScreen() {
               {v.docSlotsLoading ? (
                 <View style={s.listEmpty}><SkeletonRows rows={3} height={32} /></View>
               ) : v.docSlotsError ? (
-                <Text style={[s.empty, s.listEmpty]}>Couldn’t load the documents. Pull down to try again.</Text>
+                <EmptyHint>Couldn’t load the documents. Pull down to try again.</EmptyHint>
               ) : v.docSlots.length === 0 ? (
-                <Text style={[s.empty, s.listEmpty]}>No document types are set up for trucks.</Text>
+                <EmptyHint>No document types are set up for trucks.</EmptyHint>
               ) : (
                 v.docSlots.map((x, i) => <DocRow key={x.documentType.id} slot={x} first={i === 0} />)
               )}
@@ -452,7 +448,7 @@ export default function VehicleDetailsScreen() {
               {v.maintenanceLoading ? (
                 <View style={s.listEmpty}><SkeletonRows rows={2} height={32} /></View>
               ) : v.maintenance.all.length === 0 ? (
-                <Text style={[s.empty, s.listEmpty]}>No maintenance recorded.</Text>
+                <EmptyHint>No maintenance recorded.</EmptyHint>
               ) : (
                 v.maintenance.all.map((m, i) => {
                   const open = m.status !== 'Completed';
@@ -522,7 +518,7 @@ function TripNow({ trip, upcoming, onOpen }: { trip: VehicleTrip; upcoming: bool
     <TouchableOpacity activeOpacity={0.75} onPress={onOpen}>
       <Card>
         <View style={[s.row, { marginBottom: 12 }]}>
-          <Text style={[s.label, { flex: 1, marginBottom: 0 }]}>{upcoming ? 'Next trip' : 'Current trip'}</Text>
+          <SectionLabel flat>{upcoming ? 'Next trip' : 'Current trip'}</SectionLabel>
           <Chip label={chip.label} tone={chip.tone} dot />
         </View>
 
@@ -617,11 +613,11 @@ const s = StyleSheet.create({
 
   tabsWrap: { backgroundColor: PAGE, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 12 },
   tabs: { flexDirection: 'row', gap: 4, backgroundColor: '#EAEAED', borderRadius: 12, padding: 3 },
-  tab: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 38, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 2 },
+  tab: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 52, borderRadius: 9, alignItems: 'center', justifyContent: 'center', gap: 3, paddingHorizontal: 1 },
   tabOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   tabText: { fontSize: 13, fontWeight: '600', color: MUTED },
   tabTextOn: { color: INK, fontWeight: '700' },
-  badge: { minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 4, backgroundColor: TONE.amber.dot, alignItems: 'center', justifyContent: 'center' },
+  badge: { position: 'absolute', top: 4, right: 6, minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 4, backgroundColor: TONE.amber.dot, alignItems: 'center', justifyContent: 'center' },
   badgeText: { fontSize: 10, fontWeight: '800', color: Colors.white },
 
   body: { paddingHorizontal: 16, gap: 10 },

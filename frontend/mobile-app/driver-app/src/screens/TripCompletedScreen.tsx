@@ -13,6 +13,7 @@ import { tripService, isRoundTrip, getTripChargeValue, stopLabel, type MobileTri
 import { useScheduledTrips } from '../hooks/use-scheduled-trips';
 import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 const FILE_BASE = API_URL ? API_URL.replace(/\/api\/?$/, '') : '';
 
@@ -391,7 +392,7 @@ const TripCompletedScreen = () => {
                 <Text style={styles.detailLabel}>{tr('Next trip', 'اگلا ٹرپ')}</Text>
                 <Text style={styles.nextTripText} numberOfLines={1}>{nextTripText}</Text>
               </View>
-              <ChevronRight size={18} color="#64748B" strokeWidth={2.2} />
+              <ChevronRight size={18} color="#64748B" strokeWidth={2.2} style={flipInRTL} />
             </TouchableOpacity>
           ) : null}
 
@@ -440,7 +441,7 @@ const TripCompletedScreen = () => {
       {/* Top Header Bar for Detailed View */}
       <View style={styles.detailedHeader}>
         <TouchableOpacity style={styles.detailedBackBtn} activeOpacity={0.8} onPress={() => setShowDetails(false)}>
-          <ArrowLeft size={20} color="#0F172A" strokeWidth={2.2} />
+          <ArrowLeft size={20} color="#0F172A" strokeWidth={2.2} style={flipInRTL} />
         </TouchableOpacity>
         <Text style={styles.detailedHeaderTitle}>{t('title_trip_summary', 'Trip Details Summary')}</Text>
         <View style={{ width: 36 }} />
@@ -734,7 +735,7 @@ const TripCompletedScreen = () => {
         {/* 3. Bottom Action Buttons in Detailed View */}
         <View style={styles.actionButtonsRow}>
           <TouchableOpacity style={styles.shareBtn} activeOpacity={0.8} onPress={() => setShowDetails(false)}>
-            <ArrowLeft size={16} color="#10B981" strokeWidth={2.2} />
+            <ArrowLeft size={16} color="#10B981" strokeWidth={2.2} style={flipInRTL} />
             <Text style={styles.shareBtnText}>{t('action_back', 'BACK TO SUMMARY')}</Text>
           </TouchableOpacity>
 

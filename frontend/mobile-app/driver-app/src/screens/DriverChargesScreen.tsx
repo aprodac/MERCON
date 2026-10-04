@@ -16,15 +16,12 @@ import { useTripHistory } from '../hooks/use-trip-history';
 import { statusLabel, stopLabel, getTripChargeValue, getMonthlyDriverPayout, type MobileTrip, type TripStatus } from '@mercon/mobile-shared/lib/trips';
 import { useLanguage, formatCurrency, LanguageMode } from '@mercon/mobile-shared/lib/language-context';
 import { API_URL } from '@mercon/mobile-shared/lib/api';
+import { formatDay, formatDayTime } from '@mercon/mobile-shared/lib/dates';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 const FILE_BASE = API_URL.replace(/\/api\/?$/, '');
 
-function formatDateTime(iso?: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-}
+const formatDateTime = (iso?: string | null): string => formatDayTime(iso);
 
 function formatRelativeDate(iso?: string | null, lang: LanguageMode = 'en'): string {
   if (!iso) return lang === 'ur' ? 'شیڈول شدہ' : 'Scheduled';
@@ -33,9 +30,11 @@ function formatRelativeDate(iso?: string | null, lang: LanguageMode = 'en'): str
   const now = new Date();
   const diffDays = Math.round((d.getTime() - now.getTime()) / (1000 * 3600 * 24));
   if (diffDays === 0) return lang === 'ur' ? 'آج' : 'Today';
-  if (diffDays === 1) return lang === 'ur' ? 'کل، 09:00 AM' : 'Tomorrow, 09:00 AM';
+  // The trip's real time (this used to say "09:00 AM" whatever the time was).
+  const time = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+  if (diffDays === 1) return lang === 'ur' ? `کل، ${time}` : `Tomorrow, ${time}`;
   if (diffDays > 1 && diffDays <= 7) return lang === 'ur' ? `${diffDays} دنوں میں` : `In ${diffDays} days`;
-  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  return formatDay(d);
 }
 
 function isValidUri(url?: string | null): boolean {
@@ -223,7 +222,7 @@ const DriverChargesScreen = ({ navigation }: any) => {
       {/* 1. Header: Back Arrow + Page Title (NO balance pill, NO duplicate chip) */}
       <View style={styles.topHeaderBar}>
         <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} />
+          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} style={flipInRTL} />
         </TouchableOpacity>
         <Text style={styles.screenTitle}>{t('title_driver_charges', 'Driver Charges')}</Text>
       </View>
@@ -241,7 +240,7 @@ const DriverChargesScreen = ({ navigation }: any) => {
           </View>
 
           <Text style={styles.totalLabelOrange}>{t('label_total_driver_charges', 'Total Driver Charges')}</Text>
-          <Text style={[styles.totalAmountOrange, { writingDirection: 'ltr' }]}>
+          <Text style={[styles.totalAmountOrange, { writingDirection: 'ltr' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
             {formatCurrency(totalCharges, language)}
           </Text>
 
@@ -253,8 +252,8 @@ const DriverChargesScreen = ({ navigation }: any) => {
                 <CheckCircle2 size={16} color="#15803D" strokeWidth={2.2} />
               </View>
               <View style={styles.subColTextCol}>
-                <Text style={styles.subLabelWhiteBox}>{t('label_earned', 'Earned')}</Text>
-                <Text style={[styles.earnedAmountWhiteBox, { writingDirection: 'ltr' }]}>
+                <Text style={styles.subLabelWhiteBox} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{t('label_earned', 'Earned')}</Text>
+                <Text style={[styles.earnedAmountWhiteBox, { writingDirection: 'ltr' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
                   {formatCurrency(earnedTotal, language)}
                 </Text>
               </View>
@@ -268,8 +267,8 @@ const DriverChargesScreen = ({ navigation }: any) => {
                 <CalendarClock size={16} color="#FA634E" strokeWidth={2.2} />
               </View>
               <View style={styles.subColTextCol}>
-                <Text style={styles.subLabelWhiteBox}>{t('label_upcoming', 'Upcoming')}</Text>
-                <Text style={[styles.upcomingAmountWhiteBox, { writingDirection: 'ltr' }]}>
+                <Text style={styles.subLabelWhiteBox} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{t('label_upcoming', 'Upcoming')}</Text>
+                <Text style={[styles.upcomingAmountWhiteBox, { writingDirection: 'ltr' }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>
                   {formatCurrency(upcomingTotal, language)}
                 </Text>
               </View>
@@ -465,16 +464,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
     marginBottom: -12,
   },
+  // The title wraps and "View All" keeps its width, so large phone text and
+  // Urdu+English labels no longer push "View All" off the screen.
   sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: '#3E3C3D',
+    flexShrink: 1,
   },
   viewAllBtn: {
     paddingVertical: 4,
     paddingHorizontal: 6,
+    flexShrink: 0,
   },
   viewAllText: {
     fontSize: 13,

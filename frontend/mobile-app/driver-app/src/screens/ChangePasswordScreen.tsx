@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft, Lock, Eye, EyeOff } from 'lucide-react-native';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 export default function ChangePasswordScreen() {
   const router = useRouter();
@@ -27,25 +28,28 @@ export default function ChangePasswordScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [forgotLoading, setForgotLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // The request carries the driver's sign-in, so the office notification names
+  // the driver and links to their page.
   const handleForgotPassword = async () => {
     setForgotLoading(true);
     try {
       await api.post('/auth/request-reset', {});
       Alert.alert(
-        'Request Sent',
-        'Your password reset request has been sent to your fleet administrator. They will reset it for you shortly.',
-        [{ text: 'OK' }],
+        t('title_reset_request_sent', 'Request sent'),
+        t('msg_reset_request_sent', 'Your operator has been told you need a new password. They will reset it and tell you.'),
+        [{ text: t('action_ok', 'OK') }],
       );
-    } catch {
+    } catch (e) {
       Alert.alert(
-        'Request Sent',
-        'Your password reset request has been sent to your fleet administrator.',
-        [{ text: 'OK' }],
+        t('title_reset_request_failed', 'Not sent'),
+        `${t('err_reset_request_failed', "Couldn't send the request. Check your connection and try again.")}\n\n${getApiErrorMessage(e)}`,
+        [{ text: t('action_ok', 'OK') }],
       );
     } finally {
       setForgotLoading(false);
@@ -83,7 +87,11 @@ export default function ChangePasswordScreen() {
         router.back();
       }, 2000);
     } catch (e: any) {
-      setError(getApiErrorMessage(e));
+      setError(
+        e?.response?.data?.error?.code === 'INVALID_CURRENT_PASSWORD'
+          ? t('error_current_password_incorrect', 'Current password is incorrect')
+          : getApiErrorMessage(e),
+      );
     } finally {
       setLoading(false);
     }
@@ -99,7 +107,7 @@ export default function ChangePasswordScreen() {
           activeOpacity={0.8}
           onPress={() => router.back()}
         >
-          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} />
+          <ArrowLeft size={22} color="#3E3C3D" strokeWidth={2.2} style={flipInRTL} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
           {t('nav_change_password', 'Change Password')}
@@ -181,7 +189,7 @@ export default function ChangePasswordScreen() {
                 value={newPassword}
                 onChangeText={setNewPassword}
                 secureTextEntry={!showNew}
-                placeholder={tp('placeholder_new_password', 'Enter new password (min 8 chars)')}
+                placeholder={tp('placeholder_new_password', 'At least 8 characters')}
                 placeholderTextColor="#A1A1AA"
                 autoCapitalize="none"
               />
@@ -205,11 +213,21 @@ export default function ChangePasswordScreen() {
                 style={styles.input}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
-                secureTextEntry={!showNew}
-                placeholder={tp('placeholder_confirm_password', 'Confirm new password')}
+                secureTextEntry={!showConfirm}
+                placeholder={tp('placeholder_confirm_password', 'Type it again')}
                 placeholderTextColor="#A1A1AA"
                 autoCapitalize="none"
               />
+              <TouchableOpacity
+                onPress={() => setShowConfirm(!showConfirm)}
+                style={styles.eyeBtn}
+              >
+                {showConfirm ? (
+                  <EyeOff size={20} color="#71717A" />
+                ) : (
+                  <Eye size={20} color="#71717A" />
+                )}
+              </TouchableOpacity>
             </View>
           </View>
 

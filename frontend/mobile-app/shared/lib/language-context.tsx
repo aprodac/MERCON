@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { View, Text, Modal, TouchableOpacity, StyleSheet, SafeAreaView, Pressable } from 'react-native';
+import { View, Text, Modal, TouchableOpacity, StyleSheet, SafeAreaView, Pressable, I18nManager } from 'react-native';
+import { reloadAppAsync } from 'expo';
 import { Globe, Check, X } from 'lucide-react-native';
 import { safeSecureStore as SecureStore } from './secure-store';
 import { TRANSLATIONS, LanguageMode, TranslationItem } from './translations';
@@ -8,6 +9,35 @@ import { Colors, Radius, Spacing, Typography, Shadows } from '../theme/tokens';
 export type { LanguageMode };
 
 const LANGUAGE_KEY = 'mercon_user_language';
+const RTL_RELOAD_KEY = 'mercon_rtl_reload_at';
+
+/**
+ * Right-to-left layout for the languages an app asks for (the driver app:
+ * Urdu). React Native only changes direction after a restart, so the app
+ * reloads itself once when the direction must change — at most once a minute,
+ * so a phone that refuses right-to-left can never loop. Apps that pass no
+ * list keep whatever direction the phone gives them.
+ */
+async function applyLayoutDirection(mode: LanguageMode, rtlLanguages?: LanguageMode[]): Promise<void> {
+  if (!rtlLanguages) return;
+  const wantRTL = rtlLanguages.includes(mode);
+  if (I18nManager.isRTL === wantRTL) return;
+  I18nManager.allowRTL(wantRTL);
+  I18nManager.forceRTL(wantRTL);
+  try {
+    const last = Number(await SecureStore.getItemAsync(RTL_RELOAD_KEY)) || 0;
+    if (Date.now() - last < 60_000) return;
+    await SecureStore.setItemAsync(RTL_RELOAD_KEY, String(Date.now()));
+    await reloadAppAsync(wantRTL ? 'Switching to right-to-left for Urdu' : 'Switching to left-to-right');
+  } catch (err) {
+    console.warn('Could not reload to change layout direction:', err);
+  }
+}
+
+/** True when the current layout is right-to-left (the driver app in Urdu). */
+export function isRTLLayout(): boolean {
+  return I18nManager.isRTL;
+}
 
 interface LanguageContextType {
   language: LanguageMode;
@@ -67,6 +97,14 @@ const STATUS_BADGE_MAP: Record<string, { en: string; ur: string }> = {
   AtDelivery: { en: 'At Delivery', ur: 'ڈلیوری پر' },
   Completed: { en: 'Completed', ur: 'مکمل' },
   Cancelled: { en: 'Cancelled', ur: 'منسوخ' },
+  // Driver and truck statuses (Personal Information, Vehicle page)
+  Available: { en: 'Available', ur: 'دستیاب' },
+  OnTrip: { en: 'On Trip', ur: 'ٹرپ پر' },
+  ON_TRIP: { en: 'On Trip', ur: 'ٹرپ پر' },
+  OffDuty: { en: 'Off Duty', ur: 'ڈیوٹی ختم' },
+  OFF_DUTY: { en: 'Off Duty', ur: 'ڈیوٹی ختم' },
+  Inactive: { en: 'Inactive', ur: 'غیر فعال' },
+  Maintenance: { en: 'Maintenance', ur: 'مرمت میں' },
 };
 
 /** Short labels ("ٹرپس / Trips") stay on one line; longer text stacks. */
@@ -105,8 +143,9 @@ export function formatCurrency(amount: number | string | null | undefined, mode?
   if (Number.isNaN(num)) return '—';
   const numStr = num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const targetMode = mode || currentAppLanguage;
+  // Urdu spelling of riyal (ی), not the Arabic ريال.
   if (targetMode === 'ur') {
-    return `${numStr} ريال`;
+    return `${numStr} ریال`;
   }
   return `SAR ${numStr}`;
 }
@@ -120,7 +159,7 @@ export function translate(key: string, fallback?: string, mode?: LanguageMode): 
   return item.en;
 }
 
-export const LanguageProvider = ({ children }: { children: ReactNode }) => {
+export const LanguageProvider = ({ children, rtlLanguages }: { children: ReactNode; rtlLanguages?: LanguageMode[] }) => {
   const [language, setLanguageState] = useState<LanguageMode>('en');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -129,15 +168,18 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
     (async () => {
       try {
         const stored = await SecureStore.getItemAsync(LANGUAGE_KEY);
+        let mode: LanguageMode = 'en';
         if (stored && (stored === 'en' || stored === 'ur' || stored === 'ur-en')) {
-          currentAppLanguage = stored as LanguageMode;
-          setLanguageState(stored as LanguageMode);
+          mode = stored as LanguageMode;
+          currentAppLanguage = mode;
+          setLanguageState(mode);
         }
+        await applyLayoutDirection(mode, rtlLanguages);
       } catch (err) {
         console.warn('Failed to load language setting:', err);
       }
     })();
-  }, []);
+  }, [rtlLanguages]);
 
   const setLanguage = async (mode: LanguageMode) => {
     currentAppLanguage = mode;
@@ -147,6 +189,7 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
     } catch (err) {
       console.warn('Failed to save language setting:', err);
     }
+    await applyLayoutDirection(mode, rtlLanguages);
   };
 
   /**

@@ -35,6 +35,8 @@
     "test:maintenance": "node -r ts-node/register --test src/services/maintenance/engine.test.ts",
     "test:fleet-live-map": "node -r ts-node/register --test src/tests/fleetLiveMap.test.ts",
     "test:driver-phone": "node -r ts-node/register --test src/services/driverPhone/rules.test.ts",
+    "test:driver-app-phase3": "node -r ts-node/register --test src/tests/driverAppPhase3.test.ts",
+    "test:file-links": "node -r ts-node/register --test src/tests/fileLinks.test.ts",
     "test:operator-inbox": "node -r ts-node/register --test src/tests/operatorInbox.test.ts",
     "test:trip-overview": "node -r ts-node/register --test src/tests/tripOverview.test.ts",
     "test:location-pin": "node -r ts-node/register --test src/tests/locationPin.test.ts src/tests/tripStopPin.test.ts",

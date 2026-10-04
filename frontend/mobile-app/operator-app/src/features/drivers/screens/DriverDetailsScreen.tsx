@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft, ChevronLeft, ChevronRight, FileText, IdCard, MessageCircle, Phone, SquarePen, Truck, UserX,
 } from 'lucide-react-native';
+import { EmptyHint, PageTitle, SectionLabel, TabIcon, Tile } from '@/components/pageCues';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 import { documentTypeLabel } from '@/features/dashboard/components/DocumentTypeIcon';
@@ -104,7 +105,7 @@ export default function DriverDetailsScreen() {
             </View>
 
             <View style={[s.line, s.lineBorder]}>
-              <View style={s.iconTile}><Phone size={16} color={INK} strokeWidth={2.1} /></View>
+              <Tile icon={Phone} />
               <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                 <Text style={s.rowLabel}>Phone</Text>
                 <Text style={s.rowTitle} numberOfLines={1} selectable>{driver.phone || 'No phone number'}</Text>
@@ -123,7 +124,7 @@ export default function DriverDetailsScreen() {
               activeOpacity={0.6}
               onPress={() => vehicle && router.push({ pathname: '/vehicle-details', params: { id: vehicle.id } })}
             >
-              <View style={s.iconTile}><Truck size={16} color={INK} strokeWidth={2.1} /></View>
+              <Tile icon={Truck} />
               <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                 <Text style={s.rowLabel}>Truck</Text>
                 <Text style={[s.rowTitle, !vehicle && { color: MUTED }]} numberOfLines={1}>{vehicle ? vehicle.plateNumber : 'No truck right now'}</Text>
@@ -140,6 +141,7 @@ export default function DriverDetailsScreen() {
               const on = t.id === tab;
               return (
                 <TouchableOpacity key={t.id} style={[s.tab, on && s.tabOn]} onPress={() => { if (!on) tap(); setTab(t.id); }} activeOpacity={0.8} accessibilityRole="tab" accessibilityState={{ selected: on }}>
+                  <TabIcon label={t.label} on={on} />
                   <Text style={[s.tabText, on && s.tabTextOn]} numberOfLines={1}>{t.label}</Text>
                   {t.badge ? <View style={s.badge}><Text style={s.badgeText}>{t.badge}</Text></View> : null}
                 </TouchableOpacity>
@@ -156,7 +158,7 @@ export default function DriverDetailsScreen() {
                 <TouchableOpacity activeOpacity={0.75} onPress={() => openTrip(assignment.tripId)}>
                   <Card>
                     <View style={[s.row, { marginBottom: 10 }]}>
-                      <Text style={[s.label, { flex: 1, marginBottom: 0 }]}>Right now</Text>
+                      <SectionLabel flat>Right now</SectionLabel>
                       <Chip label={trip.label} tone={trip.tone} dot />
                     </View>
                     <View style={s.row}>
@@ -170,8 +172,8 @@ export default function DriverDetailsScreen() {
                 </TouchableOpacity>
               ) : (
                 <Card>
-                  <Text style={s.label}>Right now</Text>
-                  <Text style={s.empty}>Free — not on a trip.</Text>
+                  <SectionLabel>Right now</SectionLabel>
+                  <EmptyHint>Free — not on a trip.</EmptyHint>
                 </Card>
               )}
 
@@ -186,9 +188,9 @@ export default function DriverDetailsScreen() {
 
               {/* Licence, once */}
               <Card>
-                <Text style={s.label}>Licence</Text>
+                <SectionLabel>Licence</SectionLabel>
                 <View style={s.row}>
-                  <View style={s.iconTile}><IdCard size={17} color={INK} strokeWidth={2.1} /></View>
+                  <Tile icon={IdCard} />
                   <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
                     <Text style={s.mono} selectable>{driver.licenseNumber || '—'}</Text>
                     <Text style={[s.sub, licenceBad && { color: TONE.red.fg, fontWeight: '600' }]}>{expiryText(driver.licenseExpiry, driver.licenseDaysLeft)}</Text>
@@ -200,7 +202,7 @@ export default function DriverDetailsScreen() {
 
           {tab === 'pay' ? (
             pay.error ? (
-              <Card><Text style={s.empty}>Couldn’t load the payouts. Pull down to try again.</Text></Card>
+              <Card><EmptyHint>Couldn’t load the payouts. Pull down to try again.</EmptyHint></Card>
             ) : (
               <>
                 <Card>
@@ -226,7 +228,7 @@ export default function DriverDetailsScreen() {
                   </View>
                 </Card>
                 <Card style={s.listCard}>
-                  {pay.rows.length === 0 ? <Text style={[s.empty, s.listEmpty]}>{pay.loading ? 'Loading…' : 'No trip pay in this month.'}</Text> : pay.rows.map((x, i) => {
+                  {pay.rows.length === 0 ? <EmptyHint>{pay.loading ? 'Loading…' : 'No trip pay in this month.'}</EmptyHint> : pay.rows.map((x, i) => {
                     const d = new Date(x.day);
                     return (
                       <TouchableOpacity key={x.key} style={[s.line, i > 0 && s.lineBorder]} activeOpacity={0.6} onPress={() => openTrip(x.tripId)}>
@@ -252,9 +254,9 @@ export default function DriverDetailsScreen() {
 
           {tab === 'documents' ? (
             <Card style={s.listCard}>
-              {documentsLoading ? <Text style={[s.empty, s.listEmpty]}>Loading…</Text>
+              {documentsLoading ? <EmptyHint>Loading…</EmptyHint>
                 : documentsError ? <ErrorState message={documentsError} onRetry={refresh} />
-                : documents.length === 0 ? <Text style={[s.empty, s.listEmpty]}>Nothing uploaded yet.</Text>
+                : documents.length === 0 ? <EmptyHint>Nothing uploaded yet.</EmptyHint>
                 : documents.map((d, i) => {
                   const st = DOC_STATUS[d.displayStatus];
                   const ok = d.displayStatus === 'Valid';
@@ -276,7 +278,7 @@ export default function DriverDetailsScreen() {
 
           {tab === 'trips' ? (
             <Card style={s.listCard}>
-              {recent.length === 0 ? <Text style={[s.empty, s.listEmpty]}>No trips yet.</Text> : recent.map((t, i) => {
+              {recent.length === 0 ? <EmptyHint>No trips yet.</EmptyHint> : recent.map((t, i) => {
                 const chip = statusChip(t.status);
                 const d = new Date(t.planned_start ?? t.createdAt);
                 return (
@@ -306,7 +308,7 @@ export default function DriverDetailsScreen() {
         <TouchableOpacity style={s.barBtn} onPress={back} accessibilityLabel="Back">
           <ArrowLeft size={20} color={INK} strokeWidth={2.4} />
         </TouchableOpacity>
-        <Text style={s.barTitle}>Driver</Text>
+        <PageTitle title="Driver" />
         {driver ? (
           <TouchableOpacity style={s.barBtn} onPress={() => router.push({ pathname: '/driver-edit', params: { id } })} accessibilityLabel="Edit driver">
             <SquarePen size={18} color={INK} strokeWidth={2.2} />
@@ -371,11 +373,11 @@ const s = StyleSheet.create({
 
   tabsWrap: { paddingHorizontal: 16, paddingVertical: 12 },
   tabs: { flexDirection: 'row', gap: 4, backgroundColor: '#EAEAED', borderRadius: 12, padding: 3 },
-  tab: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 38, borderRadius: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 2 },
+  tab: { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0, height: 52, borderRadius: 9, alignItems: 'center', justifyContent: 'center', gap: 3, paddingHorizontal: 1 },
   tabOn: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   tabText: { fontSize: 13, fontWeight: '600', color: MUTED },
   tabTextOn: { color: INK, fontWeight: '700' },
-  badge: { minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 4, backgroundColor: TONE.amber.dot, alignItems: 'center', justifyContent: 'center' },
+  badge: { position: 'absolute', top: 4, right: 6, minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 4, backgroundColor: TONE.amber.dot, alignItems: 'center', justifyContent: 'center' },
   badgeText: { fontSize: 10, fontWeight: '800', color: Colors.white },
 
   body: { paddingHorizontal: 16, gap: 10 },

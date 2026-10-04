@@ -10,6 +10,7 @@ import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-sha
 import { useAssignedVehicle } from '@mercon/mobile-shared/lib/vehicle';
 
 import { useLanguage, getLocalizedStatus } from '@mercon/mobile-shared/lib/language-context';
+import { flipInRTL } from '@mercon/mobile-shared/lib/rtl';
 
 const AssignedVehicleScreen = () => {
   const router = useRouter();
@@ -21,8 +22,8 @@ const AssignedVehicleScreen = () => {
         { labelKey: 'label_plate_number', defaultLabel: 'Plate', value: vehicle.plate_number },
         { labelKey: 'label_vehicle_type', defaultLabel: 'Type', value: vehicle.asset_type },
         { labelKey: 'label_status', defaultLabel: 'Status', value: getLocalizedStatus(vehicle.status, language) },
-        { labelKey: 'label_capacity', defaultLabel: 'Capacity', value: `${vehicle.capacity_kg.toLocaleString()} kg` },
-        { labelKey: 'label_odometer', defaultLabel: 'Odometer', value: `${Math.round(vehicle.current_odometer).toLocaleString()} km` },
+        { labelKey: 'label_capacity', defaultLabel: 'Capacity', value: `${vehicle.capacity_kg.toLocaleString()} ${t('unit_kg', 'kg')}` },
+        { labelKey: 'label_odometer', defaultLabel: 'Odometer', value: `${Math.round(vehicle.current_odometer).toLocaleString()} ${t('unit_km', 'km')}` },
         ...(vehicle.trailer_number
           ? [{ labelKey: 'label_trailer', defaultLabel: 'Trailer', value: `${vehicle.trailer_number}${vehicle.trailer_type ? ` (${vehicle.trailer_type})` : ''}` }]
           : []),
@@ -31,13 +32,15 @@ const AssignedVehicleScreen = () => {
     : [];
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }}>
+    // Only the top edge is padded, and it is painted the header's dark colour so
+    // the phone's white clock and icons stay readable (they sat on light grey).
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: '#1A1A1A' }}>
       <StatusBar barStyle="light-content" backgroundColor="#1A1A1A" />
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView style={{ backgroundColor: Colors.gray100 }} contentContainerStyle={styles.scroll}>
         {/* Dark Header */}
         <View style={styles.darkHeader}>
           <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-            <ArrowLeft size={24} color={Colors.white} strokeWidth={2.2} />
+            <ArrowLeft size={24} color={Colors.white} strokeWidth={2.2} style={flipInRTL} />
           </TouchableOpacity>
           <View style={styles.headerContent}>
             <View style={styles.vehicleIconBox}>
@@ -68,7 +71,7 @@ const AssignedVehicleScreen = () => {
             <Truck size={48} color={Colors.gray400} strokeWidth={1.6} />
             <Text style={styles.emptyTitle}>{error ? t('err_could_not_load_vehicle', 'Could not load vehicle') : t('msg_no_vehicle_assigned', 'No vehicle assigned')}</Text>
             <Text style={styles.emptyText}>
-              {error ?? t('msg_no_vehicle_assigned_desc', "You'll see your truck here once you're assigned to a trip.")}
+              {error ?? t('msg_no_vehicle_assigned_desc', 'No truck is assigned to you or your current trip. Ask the office if this is wrong.')}
             </Text>
           </View>
         ) : (

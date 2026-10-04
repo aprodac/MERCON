@@ -109,6 +109,25 @@ export function aggregateRateCards(rateCards: RawCustomerRateCard[]): Map<string
 }
 
 /** Only `isActive` exists in the schema, so only these two values are ever produced. */
+/**
+ * TEMPORARY: the finance demo script (docs/finance-redesign/local-demo/finance_demo_data.sql,
+ * meant for local databases only) was run against the dev server, so its six
+ * made-up customers come back from GET /customers. They are hidden here until
+ * the rows are removed from that database — delete this list then.
+ */
+const DEMO_CUSTOMER_NAMES = new Set([
+  'al noor trading co.',
+  'gulf cement supply',
+  'red sea logistics',
+  'najd steel works',
+  'eastern petro services',
+  'tabuk agro farms',
+]);
+
+export function isDemoCustomer(c: { name?: string | null }): boolean {
+  return DEMO_CUSTOMER_NAMES.has((c.name ?? '').trim().toLowerCase());
+}
+
 export function customerDisplayStatus(customer: Pick<RawCustomer, 'isActive'>): CustomerDisplayStatus {
   return customer.isActive ? 'Active' : 'Inactive';
 }
