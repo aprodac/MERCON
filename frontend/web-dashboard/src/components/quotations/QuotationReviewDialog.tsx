@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { formatQuotationRef } from '@mercon/shared-types';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, ArrowRight, CheckCircle2, Info, Loader2 } from 'lucide-react';
 
@@ -81,7 +82,7 @@ export function QuotationReviewDialog({
       if (same.length > 0) {
         const q = same[0] as any;
         const qRate = Number(q.rate ?? q.base_price ?? 0);
-        const ref = q.quotation_number != null ? `QT-${q.quotation_number}` : 'another quotation';
+        const ref = formatQuotationRef(q.quotation_number) ?? 'another quotation';
         notes.push(qRate === rate
           ? { tone: 'info', text: `${customerName} already has this route and truck at the same price (${ref}). Saving adds a duplicate.` }
           : { tone: 'warn', text: `${customerName} already has this route and truck at SAR ${money(qRate)} (${ref}). Saving adds a second price.` });
@@ -170,7 +171,13 @@ export function QuotationReviewDialog({
 
         <DialogFooter className="flex flex-row items-center justify-between gap-3 px-5 py-3 sm:justify-between">
           <span className="text-[11px] text-slate-500">
-            {missingPay > 0 && `${missingPay === rows.length ? 'No' : `${missingPay} of ${rows.length}`} route${rows.length === 1 ? '' : 's'} without driver pay — asked when the trip is booked.`}
+            {missingPay > 0 && (
+              rows.length === 1
+                ? 'No driver pay yet — it’s asked when the trip is booked.'
+                : missingPay === rows.length
+                ? `None of the ${rows.length} routes has driver pay yet — it’s asked when the trip is booked.`
+                : `${missingPay} of ${rows.length} routes ${missingPay === 1 ? 'has' : 'have'} no driver pay yet — it’s asked when the trip is booked.`
+            )}
           </span>
           <div className="flex shrink-0 items-center gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="h-9 rounded-xl px-4 text-xs font-semibold">
