@@ -12,6 +12,9 @@
  *             the next truck (FleetSheet.tsx).
  *   Groups    nearby trucks merge into a numbered bubble; tap to zoom in, or
  *             to list trucks parked on the same spot.
+ *   Camera    follows the picked truck as it moves; dragging the map stops
+ *             that and shows Recenter. Zoomed in, trucks carry their plates.
+ *             The ⓘ control explains colours, shapes and lines.
  * Live feed refreshes every 30 s, the same one as Home.
  * Not ported from the web: assigning trucks and changing trip status —
  * those stay on the trip's own page.
@@ -23,13 +26,14 @@ import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import {
-  Compass, Focus, List, Map as MapIcon, Minus, Moon, Navigation, Plus, Search, Sun, Truck, X, type LucideIcon,
+  Compass, Focus, Info, List, LocateFixed, Map as MapIcon, Minus, Moon, Navigation, Plus, Search, Sun, Truck, X, type LucideIcon,
 } from 'lucide-react-native';
 import { operatorService } from '../../lib/operator';
 import { AppTopBar } from '@/components/AppTopBar';
 import { makeTime } from '../trips/list/tripListModel';
 import { FleetMap, type FleetMapHandle, type FocusMode, type MapTheme, type MapView } from './FleetMap';
 import { GroupSheet, UnitRow, UnitSheet } from './FleetSheet';
+import { FleetLegend } from './FleetLegend';
 import {
   NEAR_KM, agoText, computeEta, haversineKm, located, matchesFilter, matchesQuery, nextStop, onTrip, placeFromQuery, unitPriority, type FleetFilter,
 } from './fleetModel';
@@ -89,7 +93,7 @@ export default function FleetMapScreen() {
   const [sheetH, setSheetH] = useState(0);
   const pick = (key: string | null) => {
     if (key && key !== selected) Haptics.selectionAsync().catch(() => {});
-    setSelected(key); setFocusMode('none'); setGroup(null);
+    setSelected(key); setFocusMode('none'); setGroup(null); setFollowing(true);
     if (key) setView('map'); else setExpanded(false);
   };
   const openGroup = (keys: string[]) => {
@@ -109,6 +113,13 @@ export default function FleetMapScreen() {
   const [is3D, setIs3D] = useState(false);
   const [focusMode, setFocusMode] = useState<FocusMode>('none');
   const [camera, setCamera] = useState<MapView>({ zoom: 5, pitch: 0, bearing: 0 });
+  // The camera follows the picked truck until the map is dragged by hand.
+  const [following, setFollowing] = useState(true);
+  const [legend, setLegend] = useState(false);
+  const enterView = (mode: FocusMode) => {
+    setFocusMode(mode); setFollowing(true);
+    if (mode === 'driver') mapRef.current?.driverView(); else if (mode === 'overview') mapRef.current?.tripOverview();
+  };
   const turned = Math.abs(camera.bearing) > 1 || camera.pitch > 1;
 
   // One road route for the selected truck: drawn on the map and used for its ETA.
@@ -121,6 +132,18 @@ export default function FleetMapScreen() {
     queryFn: () => operatorService.liveRoute([from!, target!]),
     enabled: !!from && !!target && !!unit && onTrip(unit),
     staleTime: 60_000,
+  });
+  // The rest of the trip, next stop onwards — drawn faintly, and only along real roads.
+  const restStops = useMemo(() => {
+    const t = unit?.trip;
+    if (!t || t.next_stop_index == null) return [];
+    return t.stops.slice(t.next_stop_index).filter((x) => x.lat != null && x.lng != null && !(x.lat === 0 && x.lng === 0)).map((x) => ({ lat: x.lat!, lng: x.lng! }));
+  }, [unit?.trip]);
+  const restQ = useQuery({
+    queryKey: ['fleet', 'trip-rest', unit?.trip?.id, unit?.trip?.next_stop_index, restStops.length],
+    queryFn: () => operatorService.liveRoute(restStops),
+    enabled: restStops.length >= 2,
+    staleTime: 10 * 60_000,
   });
   const eta = unit && onTrip(unit) && (routeQ.isFetched || !target) ? computeEta(unit, routeQ.data ?? null, live.dataUpdatedAt || now) : null;
 
@@ -190,6 +213,9 @@ export default function FleetMapScreen() {
             padding={{ top: 70, bottom: sheetOpen ? sheetH + 30 : 70 }}
             onViewChange={setCamera}
             onGroupPress={openGroup}
+            restLine={restStops.length >= 2 ? restQ.data?.geometry ?? null : null}
+            follow={following}
+            onUserMove={() => { if (unit) setFollowing(false); }}
           />
 
           {/* Top-left: live status (and speed while a picked truck is moving) */}
@@ -211,10 +237,13 @@ export default function FleetMapScreen() {
           {unit?.position ? (
             <View style={[s.viewBar, { bottom: focusMode === 'none' ? sheetH + 28 : 28 }]}>
               <Text style={s.viewPlate} numberOfLines={1}>{unit.vehicle?.plate_number ?? 'Truck'}</Text>
-              <ViewChip icon={Navigation} label="Driver view" on={focusMode === 'driver'} onPress={() => { setFocusMode('driver'); mapRef.current?.driverView(); }} />
-              {unit.trip ? <ViewChip icon={MapIcon} label="Trip" on={focusMode === 'overview'} onPress={() => { setFocusMode('overview'); mapRef.current?.tripOverview(); }} /> : null}
+              {!following ? (
+                <ViewChip icon={LocateFixed} label="Recenter" on={false} onPress={() => { setFollowing(true); mapRef.current?.recenter(); }} />
+              ) : null}
+              <ViewChip icon={Navigation} label="Driver view" on={focusMode === 'driver'} onPress={() => enterView('driver')} />
+              {unit.trip ? <ViewChip icon={MapIcon} label="Trip" on={focusMode === 'overview'} onPress={() => enterView('overview')} /> : null}
               {focusMode !== 'none' ? (
-                <TouchableOpacity style={s.exit} onPress={() => { setFocusMode('none'); mapRef.current?.set3D(is3D); }}>
+                <TouchableOpacity style={s.exit} onPress={() => { setFocusMode('none'); setFollowing(true); mapRef.current?.set3D(is3D); }}>
                   <Text style={s.exitText}>Exit</Text>
                 </TouchableOpacity>
               ) : null}
@@ -246,8 +275,12 @@ export default function FleetMapScreen() {
               ) : null}
               <View style={s.ctlRule} />
               <Ctl icon={theme === 'light' ? Moon : Sun} label={theme === 'light' ? 'Dark map' : 'Light map'} onPress={() => setTheme(theme === 'light' ? 'dark' : 'light')} />
+              <View style={s.ctlRule} />
+              <Ctl icon={Info} label="How to read the map" onPress={() => setLegend(!legend)} />
             </View>
           </View>
+
+          {legend ? <FleetLegend style={sheetOpen ? { top: 12 } : { bottom: 84 }} onClose={() => setLegend(false)} /> : null}
 
           {unit && focusMode === 'none' ? (
             <UnitSheet
