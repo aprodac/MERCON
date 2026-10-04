@@ -1,28 +1,21 @@
 /**
- * Operator home, in three blocks:
- *   1. HomeStatus     — one card: how many things need you now, and the fleet
- *                       at a glance (on the road · delayed · today).
- *   2. NeedsActionList — urgent items only, one row per kind of problem:
- *                       a lone item shows its action; several of one kind
- *                       fold into "9 trips delayed · worst …" that opens a
- *                       sheet, worst first. Lower-priority items under Later.
- *   3. UpNext         — the next few trips today; the full list is on Trips.
- * Each fact appears once; nothing is folded behind tabs.
+ * Action-item rows shared by Notifications → To do and Home's emergency strip:
+ * a row per item with its buttons and swipe shortcuts, a folded row for
+ * several of one kind ("9 trips delayed · worst …"), and the sheet listing
+ * them worst first.
  */
-import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
+import React from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Image, ScrollView, useWindowDimensions } from 'react-native';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable, { type SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import {
-  AlarmClock, ChevronDown, ChevronRight, CircleCheckBig, Clock3, FileClock, Images, Phone, Play, Receipt, MapPinOff, Siren, Split, UserX,
+  AlarmClock, ChevronRight, Clock3, FileClock, Images, Phone, Play, Receipt, MapPinOff, Siren, Split, UserX,
   type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
-import type { LiveUnit } from '../../../lib/operator';
-import { niceName } from '../../trips/create/components/ui';
 import { whenLabel, type ActionIntent, type ActionItem, type ActionKind } from './actionModel';
 
 const INK = '#3E3C3D';
@@ -91,153 +84,7 @@ function tidy(text: string): string {
 }
 
 
-// ── 1 · Status ────────────────────────────────────────────────────────────────
-
-export function HomeStatus({ needNow, running, delayed, today, day, loading, updatedAt, now, onRunning, onDelayed, onToday }: {
-  needNow: number; running: number; delayed: number; today: number; loading: boolean; updatedAt: number | null; now: number;
-  day: { total: number; done: number; running: number; toStart: number } | null;
-  onRunning: () => void; onDelayed: () => void; onToday: () => void;
-}) {
-  const clear = !loading && needNow === 0;
-  const cells = [
-    { key: 'run', label: 'On the road', value: running, onPress: onRunning },
-    { key: 'late', label: 'Delayed', value: delayed, onPress: onDelayed, hot: delayed > 0 },
-    { key: 'today', label: 'Trips today', value: day?.total ?? today, onPress: onToday },
-  ];
-  return (
-    <View style={s.hero}>
-      <View style={s.heroTop}>
-        {clear ? (
-          <>
-            <CircleCheckBig size={28} color="#16A34A" strokeWidth={2.2} />
-            <View style={{ flex: 1 }}>
-              <Text style={s.heroBig}>All clear</Text>
-              <Text style={s.heroSub}>{updatedText(updatedAt, now)}</Text>
-            </View>
-          </>
-        ) : (
-          <>
-            {loading ? <View style={[s.skel, { width: 46, height: 44 }]} /> : <Text style={s.heroNumber}>{needNow}</Text>}
-            <View style={{ flex: 1, gap: loading ? 8 : 0 }}>
-              {loading ? (
-                <>
-                  <View style={[s.skel, { width: '80%', height: 16 }]} />
-                  <View style={[s.skel, { width: '45%', height: 12 }]} />
-                </>
-              ) : (
-                <>
-                  <Text style={s.heroBig}>{needNow === 1 ? 'thing needs' : 'things need'} your attention</Text>
-                  <Text style={s.heroSub}>{updatedText(updatedAt, now)}</Text>
-                </>
-              )}
-            </View>
-          </>
-        )}
-      </View>
-      <View style={s.heroStats}>
-        {cells.map((c, i) => (
-          <TouchableOpacity key={c.key} style={[s.stat, i > 0 && s.statBorder]} onPress={() => { tap(); c.onPress(); }} activeOpacity={0.6}>
-            {loading ? <View style={[s.skel, { width: 28, height: 20, marginBottom: 3 }]} /> : <Text style={[s.statValue, c.hot && { color: RED }]}>{c.value}</Text>}
-            <Text style={s.statLabel}>{c.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      {day && day.total > 0 ? <DayBar day={day} /> : null}
-    </View>
-  );
-}
-
-/** How today is going: one bar split done / running / to start. */
-function DayBar({ day }: { day: { total: number; done: number; running: number; toStart: number } }) {
-  const parts = [
-    { key: 'done', n: day.done, color: '#16A34A', label: 'done' },
-    { key: 'run', n: day.running, color: '#3E3C3D', label: 'running' },
-    { key: 'next', n: day.toStart, color: '#D4D4D8', label: 'to start' },
-  ];
-  return (
-    <View style={s.day}>
-      <View style={s.dayTrack}>
-        {parts.filter((p) => p.n > 0).map((p) => <View key={p.key} style={{ flex: p.n, backgroundColor: p.color }} />)}
-      </View>
-      <View style={s.dayLegend}>
-        {parts.map((p) => (
-          <View key={p.key} style={s.dayItem}>
-            <View style={[s.dayDot, { backgroundColor: p.color }]} />
-            <Text style={s.dayText}><Text style={s.dayNum}>{p.n}</Text> {p.label}</Text>
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function updatedText(at: number | null, now: number): string {
-  if (!at) return 'Live';
-  const min = Math.floor((now - at) / 60000);
-  return min < 1 ? 'Updated just now' : `Updated ${min} min ago`;
-}
-
 // ── 2 · Needs action ──────────────────────────────────────────────────────────
-
-export function NeedsActionList({ items, loading, onIntent, onOpenTrip, now }: {
-  items: ActionItem[];
-  loading: boolean;
-  onIntent: (intent: ActionIntent) => void;
-  onOpenTrip: (tripId: string) => void;
-  now: number;
-}) {
-  const [laterOpen, setLaterOpen] = useState(false);
-  const [sheet, setSheet] = useState<ActionKind | null>(null);
-  // Only urgent items make the list (the same count the status card shows);
-  // everything lower-priority waits, folded, under "Later".
-  const urgent = useMemo(() => items.filter((i) => i.urgency === 'now'), [items]);
-  const later = useMemo(() => items.filter((i) => i.urgency !== 'now'), [items]);
-  const urgentRows = useMemo(() => groupByKind(urgent), [urgent]);
-  const laterRows = useMemo(() => groupByKind(later), [later]);
-
-  const render = (rows: ReturnType<typeof groupByKind>, firstBorder: boolean) =>
-    rows.map((r, i) =>
-      r.type === 'item' ? (
-        <ActionRow key={r.item.key} item={r.item} first={!firstBorder && i === 0} now={now} onIntent={onIntent} onOpenTrip={onOpenTrip} />
-      ) : (
-        <GroupRow key={r.kind} kind={r.kind} items={r.items} first={!firstBorder && i === 0} now={now} onPress={() => { tap(); setSheet(r.kind); }} />
-      ),
-    );
-
-  return (
-    <View style={{ gap: 12 }}>
-      <View style={s.headRow}>
-        <Text style={s.h2}>Needs action</Text>
-        {loading ? <ActivityIndicator size="small" color={MUTED} /> : <Text style={s.headCount}>{urgent.length}</Text>}
-      </View>
-
-      {urgentRows.length ? (
-        <View style={s.group}>{render(urgentRows, false)}</View>
-      ) : !loading ? (
-        <View style={s.clearRow}>
-          <CircleCheckBig size={18} color="#16A34A" strokeWidth={2.2} />
-          <Text style={s.clearText}>Nothing urgent right now</Text>
-        </View>
-      ) : null}
-
-      {later.length ? (
-        <View style={s.group}>
-          <TouchableOpacity style={s.laterHead} onPress={() => { tap(); setLaterOpen((v) => !v); }} activeOpacity={0.6}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.laterTitle}>Later</Text>
-              <Text style={s.laterSub}>Photos, documents and invoices that can wait</Text>
-            </View>
-            <Text style={s.laterCount}>{later.length}</Text>
-            <ChevronDown size={18} color={MUTED} style={laterOpen ? { transform: [{ rotate: '180deg' }] } : undefined} />
-          </TouchableOpacity>
-          {laterOpen ? render(laterRows, true) : null}
-        </View>
-      ) : null}
-
-      <KindSheet kind={sheet} items={items} now={now} onClose={() => setSheet(null)} onIntent={onIntent} onOpenTrip={onOpenTrip} />
-    </View>
-  );
-}
 
 /** Every item of one kind, worst first, in a bottom sheet. Actions close the sheet first so the next screen isn't hidden behind it. */
 export function KindSheet({ kind, items, now, onClose, onIntent, onOpenTrip }: {
@@ -379,69 +226,6 @@ function ActionRowBody({ item, first, now, flat, onIntent, onOpenTrip }: RowProp
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
-  );
-}
-
-// ── 3 · Up next ───────────────────────────────────────────────────────────────
-
-export function UpNext({ rows, tz, onOpenTrip, onAll }: {
-  rows: { trip: NonNullable<LiveUnit['trip']>; unit: LiveUnit }[];
-  tz: string;
-  onOpenTrip: (id: string) => void;
-  onAll: () => void;
-}) {
-  const time = (iso: string | null) => {
-    if (!iso) return '—';
-    try {
-      return new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
-    } catch {
-      return '—';
-    }
-  };
-  // Soonest first, not-yet-started before running ones already covered above.
-  const next = rows.filter((r) => r.trip.phase === 'upcoming').slice(0, 3);
-  const nowMs = Date.now();
-  const startsIn = (iso: string | null) => {
-    if (!iso) return null;
-    const min = Math.round((new Date(iso).getTime() - nowMs) / 60000);
-    if (min <= 0) return 'now';
-    return min < 60 ? `in ${min} min` : `in ${Math.floor(min / 60)} h${min % 60 && min < 600 ? ` ${min % 60} min` : ''}`;
-  };
-  return (
-    <View style={{ gap: 10 }}>
-      <View style={s.headRow}>
-        <Text style={s.h2}>Up next today</Text>
-        <TouchableOpacity onPress={onAll} hitSlop={8} style={s.link}>
-          <Text style={s.linkText}>All trips</Text>
-          <ChevronRight size={15} color={MUTED} />
-        </TouchableOpacity>
-      </View>
-      {next.length === 0 ? (
-        <View style={s.emptyNext}><Text style={s.detailSm}>No more trips starting today.</Text></View>
-      ) : (
-        <View style={s.nextCard}>
-          {next.map(({ trip: t, unit }, i) => (
-            <TouchableOpacity key={t.id} style={[s.nextRow, i > 0 && s.nextBorder]} onPress={() => onOpenTrip(t.id)} activeOpacity={0.7}>
-              <View style={{ width: 58 }}>
-                <Text style={s.nextTime}>{time(t.planned_start)}</Text>
-                {startsIn(t.planned_start) ? <Text style={s.nextIn}>{startsIn(t.planned_start)}</Text> : null}
-              </View>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={s.nextName} numberOfLines={2}>{niceName(t.customer_name) || '—'}</Text>
-                <Text style={s.detailSm} numberOfLines={1}>
-                  {t.ref_id}
-                  {' · '}
-                  {unit.vehicle ? unit.vehicle.plate_number : <Text style={{ color: RED, fontWeight: '600' }}>No truck</Text>}
-                  {' · '}
-                  {unit.driver ? niceName(unit.driver.name) : <Text style={{ color: RED, fontWeight: '600' }}>No driver</Text>}
-                </Text>
-              </View>
-              <ChevronRight size={18} color="#C4C4CC" />
-            </TouchableOpacity>
-          ))}
-        </View>
-      )}
-    </View>
   );
 }
 

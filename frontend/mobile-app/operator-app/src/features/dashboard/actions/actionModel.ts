@@ -62,9 +62,10 @@ export interface ActionSources {
     ref_id: string | null;
     planned_start: string | null;
     customer?: { name: string } | null;
-    driver?: unknown;
-    vehicle?: unknown;
+    driver?: { first_name?: string | null; last_name?: string | null } | null;
+    vehicle?: { plate_number?: string | null } | null;
     is_third_party?: boolean;
+    carrier_name?: string | null;
     status: string;
   }[];
   updates: DriverUpdate[];
@@ -328,22 +329,6 @@ export function buildActions(src: ActionSources): ActionItem[] {
     const tb = b.at ? new Date(b.at).getTime() : 0;
     return tb - ta;
   });
-}
-
-/** Today's trips for the timeline: running first, then the next to start today. */
-export function todaysTrips(units: LiveUnit[], tz: string, now = Date.now()) {
-  const dayOf = (ms: number) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms));
-  const today = dayOf(now);
-  return units
-    .filter((u) => u.trip && (u.trip.phase !== 'upcoming' || (u.trip.planned_start && dayOf(new Date(u.trip.planned_start).getTime()) === today)))
-    .map((u) => u.trip!)
-    .sort((a, b) => {
-      const ra = a.phase === 'upcoming' ? 1 : 0;
-      const rb = b.phase === 'upcoming' ? 1 : 0;
-      if (ra !== rb) return ra - rb;
-      return new Date(a.planned_start ?? 0).getTime() - new Date(b.planned_start ?? 0).getTime();
-    })
-    .map((t) => ({ trip: t, unit: units.find((u) => u.trip?.id === t.id)! }));
 }
 
 /** The small time on a row, worded for its kind: "42h late", "in 3h", "10m ago", "expired 2d". */
