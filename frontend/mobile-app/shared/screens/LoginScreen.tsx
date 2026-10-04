@@ -22,7 +22,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
 import {
   User, Lock, Eye, EyeOff, ArrowRight, Headset, Globe, ChevronDown, Check,
-  IdCard, WifiOff, AlertCircle, Mail, X,
+  WifiOff, AlertCircle, Mail, X,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '../theme/tokens';
 import { Button } from '../components/Button';
@@ -31,6 +31,7 @@ import { useAuth } from '../lib/auth-context';
 import { api, getApiErrorMessage } from '../lib/api';
 import { useLanguage } from '../lib/language-context';
 import { safeSecureStore } from '../lib/secure-store';
+import { SUPPORT_EMAIL } from '../lib/support';
 
 import { useRouter } from 'expo-router';
 
@@ -51,8 +52,6 @@ const COUNTRIES: CountryOption[] = [
   { code: '+966', flag: '🇸🇦', name: 'Saudi Arabia (+966)' },
   { code: '+91', flag: '🇮🇳', name: 'India (+91)' },
 ];
-
-const SUPPORT_EMAIL = 'support@mercon.sa';
 
 /** Remembered between launches so a returning user only types the secret. */
 const lastIdentifierKey = (variant: LoginVariant) => `mercon.login.last.${variant}`;
@@ -89,7 +88,8 @@ const LoginScreen = ({ variant }: LoginScreenProps) => {
 
   const [identifier, setIdentifier] = useState('');
   const [secret, setSecret] = useState('');
-  // A licence number is not a password — showing it lets drivers spot typos.
+  // Drivers start with the box shown so they can spot typos (a licence number is
+  // not secret); the eye button hides it when they type a password.
   const [showSecret, setShowSecret] = useState(isDriver);
 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -150,7 +150,7 @@ const LoginScreen = ({ variant }: LoginScreenProps) => {
     }
     if (!secret.trim()) {
       errors.secret = isDriver
-        ? t('err_enter_licence', 'Enter your licence number')
+        ? t('err_enter_licence', 'Enter your password or licence number')
         : t('err_enter_password', 'Enter your password');
     }
     setFieldErrors(errors);
@@ -176,7 +176,7 @@ const LoginScreen = ({ variant }: LoginScreenProps) => {
       } else if (axios.isAxiosError(err) && err.response?.status === 401) {
         setFormError({
           text: isDriver
-            ? t('err_driver_credentials', "Phone number and licence number don't match. Check both and try again.")
+            ? t('err_driver_credentials', "Phone number and password or licence number don't match. Check both and try again.")
             : t('err_operator_credentials', 'Username or password is incorrect. Check both and try again.'),
           offline: false,
         });
@@ -276,7 +276,7 @@ const LoginScreen = ({ variant }: LoginScreenProps) => {
               {!keyboardOpen && (
                 <Text style={styles.subtitle}>
                   {isDriver
-                    ? t('subtitle_driver_login', 'Use the phone number and licence number your company registered.')
+                    ? t('subtitle_driver_login', 'Use the phone number your company registered and your password or licence number.')
                     : t('subtitle_operator_login', 'Use the same account you use on the Mercon dashboard.')}
                 </Text>
               )}
@@ -320,7 +320,7 @@ const LoginScreen = ({ variant }: LoginScreenProps) => {
 
                 <Input
                   ref={secretRef}
-                  label={isDriver ? t('label_licence', 'Licence number') : t('label_password_only', 'Password')}
+                  label={isDriver ? t('label_licence', 'Password or licence number') : t('label_password_only', 'Password')}
                   value={secret}
                   onChangeText={(v) => {
                     setSecret(v);
@@ -328,16 +328,18 @@ const LoginScreen = ({ variant }: LoginScreenProps) => {
                   }}
                   placeholder={
                     isDriver
-                      ? t('placeholder_licence', 'As printed on your driving licence')
+                      ? t('placeholder_licence', 'Password or licence number')
                       : t('placeholder_password_only', 'Your password')
                   }
-                  autoCapitalize={isDriver ? 'characters' : 'none'}
+                  // Never change what is typed: a password must reach the server exactly. The
+                  // server ignores case, spaces and dashes only when it compares a licence number.
+                  autoCapitalize="none"
                   autoCorrect={false}
                   secureTextEntry={!showSecret}
                   state={fieldErrors.secret ? 'error' : 'default'}
                   errorText={fieldErrors.secret}
-                  helperText={isDriver ? t('hint_licence', 'Capitals, spaces and dashes don\'t matter.') : undefined}
-                  iconLeft={isDriver ? <IdCard size={20} color={Colors.gray400} /> : <Lock size={20} color={Colors.gray400} />}
+                  helperText={isDriver ? t('hint_licence', "Type a password exactly. For a licence number, spaces and dashes don't matter.") : undefined}
+                  iconLeft={<Lock size={20} color={Colors.gray400} />}
                   iconRight={
                     <TouchableOpacity
                       onPress={() => setShowSecret((v) => !v)}
@@ -357,7 +359,7 @@ const LoginScreen = ({ variant }: LoginScreenProps) => {
                     textContentType: isDriver ? 'none' : 'password',
                     autoComplete: isDriver ? 'off' : 'current-password',
                     importantForAutofill: isDriver ? 'no' : 'yes',
-                    accessibilityLabel: isDriver ? 'Licence number' : 'Password',
+                    accessibilityLabel: isDriver ? 'Password or licence number' : 'Password',
                   }}
                 />
 
@@ -412,7 +414,7 @@ const LoginScreen = ({ variant }: LoginScreenProps) => {
 
               <Text style={styles.sheetBody}>
                 {isDriver
-                  ? t('help_driver_login', 'Sign in with the phone number your company registered and the licence number on your driving licence. If it still does not work, ask your operator to check your details.')
+                  ? t('help_driver_login', 'Sign in with the phone number your company registered and your password, or the licence number on your driving licence. If it still does not work, ask your operator to check your details.')
                   : t('help_operator_login', 'Use the username, email or phone number and password of your Mercon dashboard account. If you forgot your password, an admin can reset it.')}
               </Text>
 
