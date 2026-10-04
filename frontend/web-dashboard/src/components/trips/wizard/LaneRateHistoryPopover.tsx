@@ -1,4 +1,5 @@
 import React from 'react';
+import { formatQuotationRef } from '@mercon/shared-types';
 import { History, TrendingUp, Loader2, Check, ArrowRight, DollarSign } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Button } from '@/components/ui/button';
@@ -134,7 +135,7 @@ export const LaneRateHistoryPopover: React.FC<LaneRateHistoryPopoverProps> = ({
                 <div key={item.id || idx} className="p-3 hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors text-xs space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1">
-                      {item.quotation_number ? `QT-${item.quotation_number}` : item.name || 'Quotation Rate'}
+                      {formatQuotationRef(item.quotation_number) ?? (item.name || 'Quotation Rate')}
                     </span>
                     <span className="text-[10px] font-semibold text-slate-400">{formattedDate}</span>
                   </div>

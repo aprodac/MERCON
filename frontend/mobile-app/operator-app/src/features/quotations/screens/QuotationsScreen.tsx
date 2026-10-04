@@ -5,6 +5,7 @@
  * tap a quotation for its page; + adds one.
  */
 import React, { useMemo, useState } from 'react';
+import { formatQuotationRef } from '@mercon/shared-types';
 import { FlatList, RefreshControl, Text, TextInput, TouchableOpacity, View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -54,7 +55,7 @@ export default function QuotationsScreen() {
     const list = quotations.filter((q) => {
       if (customerId && q.customerId !== customerId) return false;
       if (!needle) return true;
-      return `${q.firstStop} ${q.lastStop} ${q.customerName} ${q.name} ${q.vehicleClass} ${q.quotationNumber ?? ''}`.toLowerCase().includes(needle);
+      return `${q.firstStop} ${q.lastStop} ${q.customerName} ${q.name} ${q.vehicleClass} ${q.quotationNumber ?? ''} ${formatQuotationRef(q.quotationNumber) ?? ''}`.toLowerCase().includes(needle);
     });
     return sortQuotations(list, 'route');
   }, [quotations, needle, customerId]);
