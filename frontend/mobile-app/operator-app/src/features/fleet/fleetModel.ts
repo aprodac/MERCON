@@ -193,3 +193,50 @@ export function placeFromQuery(raw: string): Place | null {
 
 /** Catchment around a city centre. */
 export const NEAR_KM = 50;
+
+// ── Nearest free truck for a trip ──────────────────────────────────────────
+// Same rules as the web's "Find a truck" (web-dashboard lib/placeSearch.ts).
+
+export interface TruckCandidate {
+  unit: LiveUnit;
+  /** Straight-line km to the pickup. */
+  km: number;
+  /** Who goes with the truck — the trip's own driver, or the truck's standing driver. */
+  driver: { id: string; name: string } | null;
+  /** Why a one-tap assign would need a human instead. */
+  blocker: string | null;
+  /** Soft warnings shown on the row. */
+  notes: string[];
+}
+
+export const isFreeTruck = (u: LiveUnit) => !!u.vehicle && u.vehicle.status === 'Available' && (!u.trip || u.trip.phase === 'upcoming');
+
+/**
+ * Free trucks ranked for a trip's pickup, closest first. A stale position or a
+ * truck already booked for a later trip costs it a little; one that can't be
+ * sent in one tap (no driver to go with it) sinks to the bottom.
+ */
+export function rankTrucksForTrip(
+  trip: { id: string; driver: { id: string; name: string } | null },
+  pickup: { lat: number; lng: number },
+  units: LiveUnit[],
+  now = Date.now(),
+): TruckCandidate[] {
+  const out: TruckCandidate[] = [];
+  for (const u of units) {
+    if (!u.vehicle || !located(u) || !isFreeTruck(u) || u.trip?.id === trip.id) continue;
+    const notes: string[] = [];
+    let blocker: string | null = null;
+    let driver = trip.driver;
+    if (!driver) {
+      if (!u.driver) blocker = 'No driver on this truck';
+      else if (u.driver.status && u.driver.status !== 'Available') blocker = `${u.driver.name} is ${u.driver.status === 'OnTrip' ? 'on a trip' : u.driver.status}`;
+      else driver = { id: u.driver.id, name: u.driver.name };
+    }
+    if (u.trip?.phase === 'upcoming') notes.push(`Booked for ${u.trip.ref_id ?? 'another trip'}`);
+    if (isSilent(u, now)) notes.push('Position may be old');
+    out.push({ unit: u, km: haversineKm(u.position!, pickup), driver, blocker, notes });
+  }
+  const score = (c: TruckCandidate) => c.km + (isSilent(c.unit, now) ? 30 : 0) + (c.unit.trip ? 40 : 0) + (c.blocker ? 1000 : 0);
+  return out.sort((a, b) => score(a) - score(b));
+}

@@ -9,7 +9,8 @@
  *                   map when it has one there, else opens the trip.
  *   ScheduledList   Draft / Scheduled trips by start day: time, how soon (or
  *                   how late), customer, and truck + driver — or a red tag for
- *                   what's missing. Drafts that never got a start date, or
+ *                   what's missing, and Find truck when it has none. Drafts
+ *                   that never got a start date, or
  *                   whose start is over two weeks past, are left out.
  */
 import React, { useMemo } from 'react';
@@ -89,7 +90,9 @@ export function AttentionList({ items, now, onIntent, onOpenTrip }: {
   );
 }
 
-export function ScheduledList({ trips, f, now, onOpenTrip }: { trips: ScheduledTrip[]; f: Time; now: number; onOpenTrip: (tripId: string) => void }) {
+export function ScheduledList({ trips, f, now, onOpenTrip, onFindTruck }: {
+  trips: ScheduledTrip[]; f: Time; now: number; onOpenTrip: (tripId: string) => void; onFindTruck: (tripId: string) => void;
+}) {
   const sections = useMemo(() => {
     const today = f.dayKey(now);
     const tomorrow = f.dayKey(now + 86_400_000);
@@ -120,7 +123,7 @@ export function ScheduledList({ trips, f, now, onOpenTrip }: { trips: ScheduledT
         </View>
       )}
       ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#F1F1F3' }} />}
-      renderItem={({ item }) => <ScheduledRow trip={item} f={f} now={now} onPress={() => onOpenTrip(item.id)} />}
+      renderItem={({ item }) => <ScheduledRow trip={item} f={f} now={now} onPress={() => onOpenTrip(item.id)} onFindTruck={() => onFindTruck(item.id)} />}
       ListEmptyComponent={<Text style={s.empty}>Nothing scheduled.</Text>}
     />
   );
@@ -136,7 +139,7 @@ function startsIn(iso: string | null, now: number): { text: string; hot: boolean
   return { text: `in ${span(min)}`, hot: false };
 }
 
-function ScheduledRow({ trip: t, f, now, onPress }: { trip: ScheduledTrip; f: Time; now: number; onPress: () => void }) {
+function ScheduledRow({ trip: t, f, now, onPress, onFindTruck }: { trip: ScheduledTrip; f: Time; now: number; onPress: () => void; onFindTruck: () => void }) {
   const when = startsIn(t.planned_start, now);
   const driver = [t.driver?.first_name, t.driver?.last_name].filter(Boolean).join(' ');
   const plate = t.vehicle?.plate_number ?? null;
@@ -162,7 +165,11 @@ function ScheduledRow({ trip: t, f, now, onPress }: { trip: ScheduledTrip; f: Ti
           </View>
         )}
       </View>
-      <ChevronRight size={16} color="#A1A1AA" />
+      {!plate && !t.is_third_party ? (
+        <TouchableOpacity style={s.find} onPress={onFindTruck} hitSlop={6} accessibilityLabel={`Find a truck for ${t.ref_id ?? 'this trip'}`}>
+          <Text style={s.findText}>Find truck</Text>
+        </TouchableOpacity>
+      ) : <ChevronRight size={16} color="#A1A1AA" />}
     </TouchableOpacity>
   );
 }
@@ -190,4 +197,6 @@ const s = StyleSheet.create({
   sub: { fontSize: 13, color: MUTED },
   assign: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   missing: { fontSize: 12, fontWeight: '700', color: RED },
+  find: { height: 32, borderRadius: 9, backgroundColor: INK, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
+  findText: { fontSize: 12, fontWeight: '700', color: '#FFFFFF' },
 });

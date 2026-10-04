@@ -248,7 +248,8 @@ export interface ShareResult {
 export interface LiveUnit {
   key: string;
   vehicle: { id: string; ref_id: string | null; plate_number: string; asset_type: string; status: string; image_url: string | null; has_tracker: boolean } | null;
-  driver: { id: string; ref_id: string | null; name: string; phone: string | null; avatar_url: string | null } | null;
+  /** `status` is the driver's own (Available / OnTrip / …) — used to rank trucks for a trip. */
+  driver: { id: string; ref_id: string | null; name: string; phone: string | null; avatar_url: string | null; status?: string | null } | null;
   trip: {
     id: string;
     ref_id: string | null;
@@ -1039,6 +1040,11 @@ export const operatorService = {
 
   /** Reassign only the vehicle — same `/dispatch` endpoint the web dashboard's
    * ReassignTripModal calls for a vehicle-only reassignment. */
+  /** Send a truck — and, when the trip has none, the truck's driver — on a trip (POST /trips/:id/dispatch). */
+  async dispatchTrip(id: string, body: { vehicle_id: string; driver_id?: string }): Promise<OperatorTripDetail> {
+    const { data } = await api.post(`/trips/${id}/dispatch`, body);
+    return data.data as OperatorTripDetail;
+  },
   async replaceVehicle(id: string, newVehicleId: string): Promise<OperatorTripDetail> {
     const { data } = await api.post(`/trips/${id}/dispatch`, { vehicle_id: newVehicleId });
     return data.data as OperatorTripDetail;

@@ -5,6 +5,9 @@
  *               actions; drag up (or "Stops & GPS") for the stop timeline and
  *               both GPS feeds, with what the driver sent from each stop
  *               (photos, POD, delay videos and the delay reason; tap to view).
+ *               The trip's next step (Arrived at pickup, Loaded · depart,
+ *               Confirm delivery…) is the main button; Cancel trip sits in the
+ *               expanded part (FleetActions.tsx confirms both).
  *               Swipe sideways — or the ‹ › arrows — for the
  *               next / previous truck in the current filter; drag down to
  *               shrink, then to close.
@@ -14,7 +17,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert, Animated, Image, LayoutAnimation, Linking, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
+  ActivityIndicator, Alert, Animated, Image, LayoutAnimation, Linking, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Play, Smartphone, Truck, X } from 'lucide-react-native';
@@ -103,6 +106,7 @@ function SheetFrame({ children, onHeight, panHandlers, style }: {
 
 export function UnitSheet({
   unit: u, eta, routeLoading, now, f, expanded, onExpand, position, onPrev, onNext, onClose, onOpen, onHeight, media, onOpenMedia,
+  nextStep, onCancelTrip, busy,
 }: {
   unit: LiveUnit; eta: EtaInfo | null; routeLoading: boolean; now: number; f: Time;
   expanded: boolean; onExpand: (v: boolean) => void;
@@ -113,6 +117,11 @@ export function UnitSheet({
   /** What the driver sent per stop — loaded only while the sheet is expanded. */
   media?: LiveTripMedia | null;
   onOpenMedia?: OpenMedia;
+  /** The trip's next step from here, e.g. "Confirm delivery"; null when there is none. */
+  nextStep?: { label: string; onPress: () => void } | null;
+  onCancelTrip?: (() => void) | null;
+  /** A status change is on its way — the buttons wait. */
+  busy?: boolean;
 }) {
   const { width } = useWindowDimensions();
   const t = u.trip;
@@ -240,13 +249,28 @@ export function UnitSheet({
             <MessageCircle size={17} color="#3F3F46" strokeWidth={2.2} />
           </TouchableOpacity>
         ) : null}
-        {t ? (
+        {t && nextStep ? (
+          <>
+            <TouchableOpacity style={[s.open, busy && { opacity: 0.6 }]} onPress={nextStep.onPress} disabled={busy} activeOpacity={0.85}>
+              {busy ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={s.openText} numberOfLines={1}>{nextStep.label}</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity style={s.tripBtn} onPress={() => onOpen(t.id)} accessibilityLabel="Open trip">
+              <Text style={s.tripBtnText}>Trip</Text>
+              <ChevronRight size={15} color={INK} />
+            </TouchableOpacity>
+          </>
+        ) : t ? (
           <TouchableOpacity style={s.open} onPress={() => onOpen(t.id)} activeOpacity={0.85}>
             <Text style={s.openText}>Open trip</Text>
             <ChevronRight size={16} color="#FFFFFF" />
           </TouchableOpacity>
         ) : <View style={{ flex: 1 }} />}
       </View>
+      {expanded && t && onCancelTrip ? (
+        <TouchableOpacity onPress={onCancelTrip} disabled={busy} style={s.cancel} accessibilityLabel="Cancel trip">
+          <Text style={s.cancelText}>Cancel trip</Text>
+        </TouchableOpacity>
+      ) : null}
 
       <View style={s.footer}>
         <TouchableOpacity style={s.more} onPress={() => toggle(!expanded)} hitSlop={6} accessibilityLabel={expanded ? 'Show less' : 'Show stops and GPS'}>
@@ -459,6 +483,10 @@ const s = StyleSheet.create({
   iconBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: '#F1F1F3', alignItems: 'center', justifyContent: 'center' },
   open: { flex: 1, height: 44, borderRadius: 12, backgroundColor: INK, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4 },
   openText: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
+  tripBtn: { height: 44, borderRadius: 12, borderWidth: 1, borderColor: LINE, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: 12 },
+  tripBtnText: { fontSize: 14, fontWeight: '600', color: INK },
+  cancel: { alignSelf: 'flex-start', paddingVertical: 4 },
+  cancelText: { fontSize: 13, fontWeight: '600', color: '#D92D20' },
 
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: -2 },
   more: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 },

@@ -21,8 +21,10 @@
  *             that and shows Recenter. Zoomed in, trucks carry their plates.
  *             The ⓘ control explains colours, shapes and lines.
  * Live feed refreshes every 30 s, the same one as Home.
- * Not ported from the web: assigning trucks and changing trip status —
- * those stay on the trip's own page.
+ *   Actions   the truck sheet moves its trip to the next step or cancels it;
+ *             a trip without a truck (Scheduled row, or a "no truck"
+ *             attention item) gets Find a truck — nearest free trucks and a
+ *             one-tap assign (FleetActions.tsx). Each asks to confirm first.
  */
 import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, FlatList } from 'react-native';
@@ -40,6 +42,7 @@ import { makeTime } from '../trips/list/tripListModel';
 import { FleetMap, type FleetMapHandle, type FocusMode, type MapTheme, type MapView } from './FleetMap';
 import { GroupSheet, UnitRow, UnitSheet } from './FleetSheet';
 import { FleetLegend } from './FleetLegend';
+import { FindTruckSheet, useTripActions } from './FleetActions';
 import { AttentionList, ListTabs, ScheduledList, attentionItems, matchesTripText, scheduledTrips, type ListTab } from './FleetLists';
 import { useActionInbox } from '../dashboard/actions/useActionInbox';
 import { useActionIntent } from '../dashboard/actions/useActionIntent';
@@ -121,6 +124,11 @@ export default function FleetMapScreen() {
   // The other lists: Home's trip action items and the not-started trips (same queries, same cache).
   const inbox = useActionInbox();
   const { onIntent, toast, setToast } = useActionIntent();
+  // Trip-changing actions: next step / cancel from the sheet, Find a truck from the lists.
+  const tripActions = useTripActions((message) => setToast({ message, type: 'success' }));
+  const [findFor, setFindFor] = useState<string | null>(null);
+  // "Assign a truck" from an attention item opens Find a truck here instead of the trip page.
+  const fleetIntent = (i: Parameters<typeof onIntent>[0]) => (i.type === 'trip' && i.assign === 'truck' ? setFindFor(i.tripId) : onIntent(i));
   const attention = useMemo(() => {
     const q = query.trim().toLowerCase();
     return attentionItems(inbox.items).filter((i) => !q || `${i.title} ${i.detail}`.toLowerCase().includes(q));
@@ -232,9 +240,9 @@ export default function FleetMapScreen() {
       </View>
 
       {view === 'list' && listTab === 'attention' ? (
-        <AttentionList items={attention} now={now} onIntent={onIntent} onOpenTrip={showTrip} />
+        <AttentionList items={attention} now={now} onIntent={fleetIntent} onOpenTrip={showTrip} />
       ) : view === 'list' && listTab === 'scheduled' ? (
-        <ScheduledList trips={scheduled} f={f} now={now} onOpenTrip={showTrip} />
+        <ScheduledList trips={scheduled} f={f} now={now} onOpenTrip={showTrip} onFindTruck={setFindFor} />
       ) : view === 'list' ? (
         <FlatList
           data={shown}
@@ -347,6 +355,12 @@ export default function FleetMapScreen() {
               onHeight={setSheetH}
               media={mediaQ.data ?? null}
               onOpenMedia={(items, index, title) => setViewer({ items, index, title })}
+              nextStep={unit.trip && tripActions.nextLabel(unit.trip.status) ? {
+                label: tripActions.nextLabel(unit.trip.status)!,
+                onPress: () => tripActions.advance(unit.trip!.id, unit.trip!.status, unit.trip!.ref_id),
+              } : null}
+              onCancelTrip={unit.trip ? () => tripActions.cancel(unit.trip!.id, unit.trip!.ref_id) : null}
+              busy={tripActions.busy}
             />
           ) : unit ? null : groupUnits.length ? (
             <GroupSheet units={groupUnits} now={now} onPick={pick} onClose={() => setGroup(null)} onHeight={setSheetH} />
@@ -370,6 +384,7 @@ export default function FleetMapScreen() {
         </View>
       )}
 
+      <FindTruckSheet tripId={findFor} units={all} onClose={() => setFindFor(null)} onAssigned={(message) => setToast({ message, type: 'success' })} />
       <MediaViewer items={viewer?.items ?? null} startIndex={viewer?.index ?? 0} title={viewer?.title ?? ''} onClose={() => setViewer(null)} />
       <Toast visible={!!toast} message={toast?.message ?? ''} type={toast?.type ?? 'success'} onDismiss={() => setToast(null)} />
     </SafeAreaView>
