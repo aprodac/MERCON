@@ -1,7 +1,7 @@
 # Mercon Operator (mobile)
 
 Expo app for **Operators and Admins** — bundle ID `tech.mercon.operator`.
-Drivers use the separate driver app (`../driver-app`, `tech.merconapp.driver`).
+Drivers use the separate driver app (`../driver-app`; iOS `tech.merconapp.driver`, Android `tech.mercon.driver`).
 
 ## Run
 

@@ -54,6 +54,8 @@ interface CardData {
   statusText: string;
   rawStatus: TripStatus;
   isCompleted: boolean;
+  /** Cancelled trips also come back in the history list; they earn nothing. */
+  isCancelled: boolean;
   dateFormatted: string;
   relativeDate: string;
   chargeText: string;
@@ -89,7 +91,8 @@ function toCard(t: MobileTrip, isCompletedTab: boolean, lang: LanguageMode = 'en
   const dropoff = t.stops?.find((s) => s.stop_type === 'Dropoff');
   const fromCity = stopLabel(pickup, tr('label_pickup_point', 'Pickup Point')) ?? tr('label_pickup_point', 'Pickup Point');
   const toCity = stopLabel(dropoff, tr('label_delivery_point', 'Delivery Point')) ?? tr('label_delivery_point', 'Delivery Point');
-  const isComp = t.status === 'Completed' || t.status === 'Invoiced' || isCompletedTab;
+  const isCancelled = t.status === 'Cancelled';
+  const isComp = !isCancelled && (t.status === 'Completed' || t.status === 'Invoiced' || isCompletedTab);
   const logoUrl = resolveLogoUrl(t.customer?.logo_url || null);
   const chargeValue = getTripChargeValue(t);
 
@@ -104,9 +107,10 @@ function toCard(t: MobileTrip, isCompletedTab: boolean, lang: LanguageMode = 'en
     statusText: getLocalizedStatus(t.status, lang),
     rawStatus: t.status,
     isCompleted: isComp,
+    isCancelled,
     dateFormatted: formatDateTime(dateSource),
     relativeDate: formatRelativeDate(dateSource, lang),
-    chargeText: formatCurrency(chargeValue, lang),
+    chargeText: isCancelled ? '—' : formatCurrency(chargeValue, lang),
   };
 }
 
@@ -145,7 +149,13 @@ const TripCard = ({ item, onPress, t, language }: { item: CardData; onPress: () 
         </View>
 
         {/* Status Pill */}
-        {item.isCompleted ? (
+        {item.isCancelled ? (
+          <View style={styles.cancelledStatusPill}>
+            <Text style={styles.cancelledStatusText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              {item.statusText}
+            </Text>
+          </View>
+        ) : item.isCompleted ? (
           <View style={styles.completedStatusPill}>
             <CheckCircle2 size={13} color="#15803D" strokeWidth={2.5} />
             <Text style={styles.completedStatusText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
@@ -340,10 +350,10 @@ const TripsScreen = ({ navigation }: any) => {
           {language === 'ur-en' ? (
             <View style={styles.segmentCol}>
               <Text style={[styles.segmentTextTop, selectedTab === 'Completed' && styles.segmentTextActiveCompleted]} numberOfLines={1}>
-                مکمل شدہ
+                تاریخچہ
               </Text>
               <Text style={[styles.segmentTextSub, selectedTab === 'Completed' && styles.segmentTextActiveCompleted]} numberOfLines={1}>
-                Completed ({historyList.length})
+                History ({historyList.length})
               </Text>
             </View>
           ) : (
@@ -353,7 +363,8 @@ const TripsScreen = ({ navigation }: any) => {
               adjustsFontSizeToFit
               minimumFontScale={0.75}
             >
-              {t('status_completed', 'Completed')} ({historyList.length})
+              {/* Finished trips: completed and cancelled ones (cancelled show their own grey label). */}
+              {t('tab_trip_history', 'History')} ({historyList.length})
             </Text>
           )}
         </TouchableOpacity>
@@ -612,6 +623,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#15803D',
+  },
+  cancelledStatusPill: {
+    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+  },
+  cancelledStatusText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
   },
   routeRow: {
     flexDirection: 'row',
