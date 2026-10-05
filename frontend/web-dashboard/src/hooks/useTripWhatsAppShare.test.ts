@@ -97,12 +97,15 @@ describe('useTripWhatsAppShare', () => {
       result.current.openWhatsappShare([trip]);
     });
 
-    expect(result.current.whatsappMessageText).toContain('Acme Co');
-    expect(result.current.whatsappMessageText).toContain('Riyadh');
-    expect(result.current.whatsappMessageText).toContain('Jeddah');
+    // The one shared format (utils/statusMessage → @mercon/shared-types).
+    expect(result.current.whatsappMessageText).toContain('@ACME CO');
+    expect(result.current.whatsappMessageText).toContain('1. RIYADH >>> JEDDAH');
+    expect(result.current.whatsappMessageText).toContain('Driver Name # SAMI ALOTAIBI');
+    expect(result.current.whatsappMessageText).toContain('Number # +966 500000001');
+    expect(result.current.whatsappMessageText).toContain('Truck no # ABC-123');
   });
 
-  it('composes a multi-trip manifest summary when more than one trip is selected', () => {
+  it('composes one numbered message when several trips of one customer are selected', () => {
     const { result } = renderHook(() => useTripWhatsAppShare());
     const trips = [makeTrip({ id: 't1', ref_id: 'TRP-1' }), makeTrip({ id: 't2', ref_id: 'TRP-2' })];
 
@@ -110,9 +113,10 @@ describe('useTripWhatsAppShare', () => {
       result.current.openWhatsappShare(trips);
     });
 
-    expect(result.current.whatsappMessageText).toContain('Manifest Summary');
-    expect(result.current.whatsappMessageText).toContain('TRP-1');
-    expect(result.current.whatsappMessageText).toContain('TRP-2');
+    // Same customer → one message, each trip numbered in the shared format.
+    expect(result.current.whatsappMessageText.match(/@ACME CO/g)).toHaveLength(1);
+    expect(result.current.whatsappMessageText).toContain('1. RIYADH >>> JEDDAH');
+    expect(result.current.whatsappMessageText).toContain('2. RIYADH >>> JEDDAH');
   });
 
   it('handleWhatsappSend opens a WhatsApp URL with the driver phone and closes the dialog', () => {

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Trip } from '@/services/tripService';
-import { calculateRoadDistanceKm, resolveCityCoords } from '@/services/travelTimeService';
 import { openMultipleWhatsappMessages } from '@/utils/whatsappFormatter';
 import { useTrackingLinks } from '@/hooks/useTrackingLink';
+import { useDeploymentTimezone } from '@/lib/datetime';
+import { tripStatusMessage, tripsStatusMessage } from '@/utils/statusMessage';
 
 export type WhatsAppRecipientType = 'driver' | 'customer' | 'custom';
 
@@ -22,6 +23,7 @@ export function useTripWhatsAppShare() {
   // Customer tracking links for the chosen trips (only customers who want them in messages).
   const trackingLinks = useTrackingLinks(whatsappSelectedTrips.map((t) => t.id), whatsappDialogOpen);
   const [whatsappWithTailgate, setWhatsappWithTailgate] = useState(false);
+  const tz = useDeploymentTimezone();
 
   const openWhatsappShare = (selectedRows: Trip[]) => {
     setWhatsappSelectedTrips(selectedRows);
@@ -52,103 +54,18 @@ export function useTripWhatsAppShare() {
   useEffect(() => {
     if (!whatsappDialogOpen || whatsappSelectedTrips.length === 0) return;
 
+    // One format everywhere (utils/statusMessage → @mercon/shared-types), same as the operator app.
     if (whatsappSelectedTrips.length === 1) {
       const trip = whatsappSelectedTrips[0];
-      const customerName = trip.customer?.name || 'Unassigned';
-      const driverName = trip.is_third_party
-        ? (trip.third_party_driver_name || trip.thirdPartyProvider?.name || '3PL Driver')
-        : (trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name}` : 'Unassigned');
-      const plate = trip.is_third_party
-        ? (trip.third_party_vehicle_plate || '3PL Vehicle')
-        : (trip.vehicle?.plate_number || 'Unassigned');
-
-      const pickupName = trip.stops?.find((s) => s.stop_type === 'Pickup')?.location_name || trip.stops?.[0]?.location_name || 'Origin';
-      const dropoffStop = trip.stops?.find((s) => s.stop_type === 'Dropoff') || trip.stops?.[trip.stops.length - 1];
-      const dropoffName = dropoffStop?.location_name || 'Destination';
-
-      const isScheduled = ['Draft', 'Scheduled'].includes(trip.status);
-      let text = '';
-
-      if (isScheduled) {
-        const isMonthly = trip.billing_type?.toUpperCase().includes('MONTHLY') || trip.quotation_billing_type?.toUpperCase().includes('MONTHLY');
-        const billingLabel = isMonthly ? 'MONTHLY' : 'EXTRA';
-        const vClass = trip.quotation_vehicle_class || trip.vehicle_type || trip.vehicle?.asset_type || 'VEHICLE';
-        const lType = trip.quotation_line_type || 'ROUND TRIP';
-
-        text = `@${customerName}\n` +
-               `*(${billingLabel} VEHICLE)*\n` +
-               `1. ${pickupName}>>>${dropoffName} ${vClass} (${lType})\n` +
-               `Driver name # ${driverName}\n` +
-               `Number # ${trip.driver?.phone_primary || trip.third_party_driver_phone || 'Unassigned'}\n` +
-               `Truck no # ${plate}`;
-
-        if (whatsappWithTailgate) {
-           text += `\n\nWITH TAILGATE`;
-        }
-      } else {
-        let distanceText = 'Unavailable';
-        let etaText = 'Unavailable';
-
-        const vehicleLat = trip.vehicle?.resolved_location?.latitude;
-        const vehicleLng = trip.vehicle?.resolved_location?.longitude;
-
-        let destLat = dropoffStop?.location_lat;
-        let destLng = dropoffStop?.location_lng;
-
-        if (!destLat || !destLng) {
-          const resolvedDest = resolveCityCoords(dropoffName);
-          if (resolvedDest) {
-            destLat = resolvedDest.lat;
-            destLng = resolvedDest.lng;
-          }
-        }
-
-        if (vehicleLat && vehicleLng && destLat && destLng) {
-          const distKm = calculateRoadDistanceKm(vehicleLat, vehicleLng, destLat, destLng);
-          distanceText = `${distKm}KM TO ${dropoffName.toUpperCase()}`;
-          const etaHours = (distKm / 70).toFixed(1);
-          etaText = `${etaHours}HRS`;
-        }
-
-        let statusDisplay = trip.status;
-        if (trip.status === 'AtPickup') statusDisplay = 'Loading';
-        else if (trip.status === 'AtDelivery') statusDisplay = 'At Delivery';
-        else if (trip.status === 'InTransit') statusDisplay = 'In Transit';
-
-        text = `Vehicle Status Update\n\n` +
-               `Truck: *${plate}*\n` +
-               `Driver: ${driverName}\n` +
-               `Route: ${pickupName}>>>${dropoffName}\n` +
-               `Distance left: ${distanceText}\n` +
-               `ETA: ${etaText}\n` +
-               `Status: ${statusDisplay}`;
-      }
-      if (trackingLinks[trip.id]) text += `\n\nTrack live: ${trackingLinks[trip.id]}`;
-      setWhatsappMessageText(text);
+      setWhatsappMessageText(tripStatusMessage(trip, tz, trackingLinks[trip.id], whatsappWithTailgate ? ['WITH TAILGATE'] : undefined));
     } else {
-      let text = `*MERCON LOGISTICS - Manifest Summary*\n`;
-      whatsappSelectedTrips.forEach((t) => {
-        const cust = t.customer?.name || 'Unassigned';
-        const drv = t.is_third_party
-          ? (t.third_party_driver_name || t.thirdPartyProvider?.name || '3PL Driver')
-          : (t.driver ? `${t.driver.first_name} ${t.driver.last_name}` : 'Unassigned');
-        const plate = t.is_third_party
-          ? (t.third_party_vehicle_plate || '3PL Vehicle')
-          : (t.vehicle?.plate_number || 'Unassigned');
-        text += `\n*${t.ref_id || 'Draft'}* - ${cust}\n` +
-                (t.is_third_party ? `  • 3PL Provider: ${t.thirdPartyProvider?.name || '3PL'}\n` : '') +
-                `  • Driver: ${drv}\n` +
-                `  • Vehicle: ${plate}\n` +
-                `  • Status: ${t.status}\n` +
-                (trackingLinks[t.id] ? `  • Track live: ${trackingLinks[t.id]}\n` : '');
-      });
-      setWhatsappMessageText(text);
+      setWhatsappMessageText(tripsStatusMessage(whatsappSelectedTrips, tz, trackingLinks));
     }
-  }, [whatsappSelectedTrips, whatsappWithTailgate, whatsappDialogOpen, trackingLinks]);
+  }, [whatsappSelectedTrips, whatsappWithTailgate, whatsappDialogOpen, trackingLinks, tz]);
 
   const handleWhatsappSend = () => {
     if (whatsappSelectedTrips.length > 1) {
-      openMultipleWhatsappMessages(whatsappSelectedTrips, 'combined', trackingLinks);
+      openMultipleWhatsappMessages(whatsappSelectedTrips, 'combined', trackingLinks, tz);
       setWhatsappDialogOpen(false);
       return;
     }

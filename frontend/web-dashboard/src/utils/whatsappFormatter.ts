@@ -1,179 +1,19 @@
 import { Trip } from '@/services/tripService';
-import { calculateRoadDistanceKm, resolveCityCoords } from '@/services/travelTimeService';
 import { toast } from 'sonner';
-
-/** Ends a message with the customer tracking link, when there is one. */
-function withTrackingLink(text: string, url: string | null | undefined): string {
-  return url ? `${text}\n\nTrack live: ${url}` : text;
-}
+import { tripStatusMessage, tripsStatusMessage } from '@/utils/statusMessage';
 
 /**
- * Formats a single trip message for WhatsApp dispatch.
+ * One trip's WhatsApp status — the one shared format (utils/statusMessage →
+ * @mercon/shared-types), the same the trip page and the operator app send.
  */
-
-export function formatSingleTripWhatsappMessage(trip: Trip, withTailgate = false, trackingUrl?: string | null): string {
-  const customerName = trip.customer?.name || 'Unassigned';
-  const driverName = trip.is_third_party
-    ? (trip.third_party_driver_name || trip.thirdPartyProvider?.name || '3PL Driver')
-    : (trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name || ''}`.trim() : 'Unassigned');
-  const plate = trip.is_third_party
-    ? (trip.third_party_vehicle_plate || '3PL Vehicle')
-    : (trip.vehicle?.plate_number || 'Unassigned');
-
-  const pickupName = trip.stops?.find((s) => s.stop_type === 'Pickup')?.location_name || trip.stops?.[0]?.location_name || 'Origin';
-  const dropoffStop = trip.stops?.find((s) => s.stop_type === 'Dropoff') || trip.stops?.[trip.stops.length - 1];
-  const dropoffName = dropoffStop?.location_name || 'Destination';
-
-  const isScheduled = ['Draft', 'Scheduled'].includes(trip.status);
-
-  if (isScheduled) {
-    const isMonthly = trip.billing_type?.toUpperCase().includes('MONTHLY') || trip.quotation_billing_type?.toUpperCase().includes('MONTHLY');
-    const billingLabel = isMonthly ? 'MONTHLY' : 'EXTRA';
-    const vClass = trip.quotation_vehicle_class || trip.vehicle_type || trip.vehicle?.asset_type || 'VEHICLE';
-    const lType = trip.quotation_line_type || 'ROUND TRIP';
-
-    let text = `@${customerName}\n` +
-           `*(${billingLabel} VEHICLE)*\n` +
-           `1. ${pickupName}>>>${dropoffName} ${vClass} (${lType})\n` +
-           `Driver name # ${driverName}\n` +
-           `Number # ${trip.driver?.phone_primary || trip.third_party_driver_phone || 'Unassigned'}\n` +
-           `Truck no # ${plate}`;
-
-    if (withTailgate) {
-      text += `\n\nWITH TAILGATE`;
-    }
-    return withTrackingLink(text, trackingUrl);
-  } else {
-    let distanceText = 'Unavailable';
-    let etaText = 'Unavailable';
-
-    const vehicleLat = trip.vehicle?.resolved_location?.latitude;
-    const vehicleLng = trip.vehicle?.resolved_location?.longitude;
-
-    let destLat = dropoffStop?.location_lat;
-    let destLng = dropoffStop?.location_lng;
-
-    if (!destLat || !destLng) {
-      const resolvedDest = resolveCityCoords(dropoffName);
-      if (resolvedDest) {
-        destLat = resolvedDest.lat;
-        destLng = resolvedDest.lng;
-      }
-    }
-
-    if (vehicleLat && vehicleLng && destLat && destLng) {
-      const distKm = calculateRoadDistanceKm(vehicleLat, vehicleLng, destLat, destLng);
-      distanceText = `${distKm}KM TO ${dropoffName.toUpperCase()}`;
-      const etaHours = (distKm / 70).toFixed(1);
-      etaText = `${etaHours}HRS`;
-    }
-
-    let statusDisplay = trip.status;
-    if (trip.status === 'AtPickup') statusDisplay = 'Loading';
-    else if (trip.status === 'AtDelivery') statusDisplay = 'At Delivery';
-    else if (trip.status === 'InTransit') statusDisplay = 'In Transit';
-
-    return withTrackingLink(`🚛 Vehicle Status Update\n\n` +
-           `Truck: *${plate}*\n` +
-           `Driver: ${driverName}\n` +
-           `Route: ${pickupName}>>>${dropoffName}\n` +
-           `Distance left: ${distanceText}\n` +
-           `ETA: ${etaText}\n` +
-           `Status: ${statusDisplay}`, trackingUrl);
-  }
+export function formatSingleTripWhatsappMessage(trip: Trip, withTailgate = false, trackingUrl?: string | null, tz?: string): string {
+  return tripStatusMessage(trip, tz, trackingUrl, withTailgate ? ['WITH TAILGATE'] : undefined);
 }
 
-export function formatMultipleTripsWhatsappMessage(trips: Trip[], links: Record<string, string | null> = {}): string {
+/** Several trips in one message: one block per customer, each trip numbered with its own live link. */
+export function formatMultipleTripsWhatsappMessage(trips: Trip[], links: Record<string, string | null> = {}, tz?: string): string {
   if (!trips || trips.length === 0) return '';
-  if (trips.length === 1) return formatSingleTripWhatsappMessage(trips[0], false, links[trips[0].id]);
-
-  const firstTrip = trips[0];
-  const customerName = firstTrip.customer?.name || 'LOGISTICS DISPATCH';
-  const isScheduled = ['Draft', 'Scheduled'].includes(firstTrip.status);
-
-  if (isScheduled) {
-    const isMonthly = firstTrip.billing_type?.toUpperCase().includes('MONTHLY') || firstTrip.quotation_billing_type?.toUpperCase().includes('MONTHLY');
-    const billingLabel = isMonthly ? 'MONTHLY' : 'EXTRA';
-
-    let text = `@${customerName}\n` +
-               `*(${billingLabel} VEHICLE DISPATCH — ${trips.length} TRIPS)*\n\n`;
-
-    const items = trips.map((trip, idx) => {
-      const driverName = trip.is_third_party
-        ? (trip.third_party_driver_name || trip.thirdPartyProvider?.name || '3PL Driver')
-        : (trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name || ''}`.trim() : 'Unassigned');
-      const plate = trip.is_third_party
-        ? (trip.third_party_vehicle_plate || '3PL Vehicle')
-        : (trip.vehicle?.plate_number || 'Unassigned');
-
-      const pickupName = trip.stops?.find((s) => s.stop_type === 'Pickup')?.location_name || trip.stops?.[0]?.location_name || 'Origin';
-      const dropoffStop = trip.stops?.find((s) => s.stop_type === 'Dropoff') || trip.stops?.[trip.stops.length - 1];
-      const dropoffName = dropoffStop?.location_name || 'Destination';
-      const vClass = trip.quotation_vehicle_class || trip.vehicle_type || trip.vehicle?.asset_type || 'VEHICLE';
-      const lType = trip.quotation_line_type || 'ROUND TRIP';
-      const driverPhone = trip.driver?.phone_primary || trip.third_party_driver_phone || 'Unassigned';
-
-      return `${idx + 1}. *${trip.ref_id || 'TRIP'}* | ${pickupName}>>>${dropoffName} ${vClass} (${lType})\n` +
-             `   • Driver: ${driverName} (${driverPhone})\n` +
-             `   • Truck: ${plate}` +
-             (links[trip.id] ? `\n   • Track live: ${links[trip.id]}` : '');
-    });
-
-    return text + items.join('\n\n');
-  } else {
-    let text = `🚨 *VEHICLE STATUS REPORT (${trips.length} TRIPS)*\n\n`;
-
-    const items = trips.map((trip, idx) => {
-      const driverName = trip.is_third_party
-        ? (trip.third_party_driver_name || trip.thirdPartyProvider?.name || '3PL Driver')
-        : (trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name || ''}`.trim() : 'Unassigned');
-      const plate = trip.is_third_party
-        ? (trip.third_party_vehicle_plate || '3PL Vehicle')
-        : (trip.vehicle?.plate_number || 'Unassigned');
-
-      const pickupName = trip.stops?.find((s) => s.stop_type === 'Pickup')?.location_name || trip.stops?.[0]?.location_name || 'Origin';
-      const dropoffStop = trip.stops?.find((s) => s.stop_type === 'Dropoff') || trip.stops?.[trip.stops.length - 1];
-      const dropoffName = dropoffStop?.location_name || 'Destination';
-
-      let distanceText = 'Unavailable';
-      let etaText = 'Unavailable';
-
-      const vehicleLat = trip.vehicle?.resolved_location?.latitude;
-      const vehicleLng = trip.vehicle?.resolved_location?.longitude;
-
-      let destLat = dropoffStop?.location_lat;
-      let destLng = dropoffStop?.location_lng;
-
-      if (!destLat || !destLng) {
-        const resolvedDest = resolveCityCoords(dropoffName);
-        if (resolvedDest) {
-          destLat = resolvedDest.lat;
-          destLng = resolvedDest.lng;
-        }
-      }
-
-      if (vehicleLat && vehicleLng && destLat && destLng) {
-        const distKm = calculateRoadDistanceKm(vehicleLat, vehicleLng, destLat, destLng);
-        distanceText = `${distKm}KM TO ${dropoffName.toUpperCase()}`;
-        const etaHours = (distKm / 70).toFixed(1);
-        etaText = `${etaHours}HRS`;
-      }
-
-      let statusDisplay = trip.status;
-      if (trip.status === 'AtPickup') statusDisplay = 'Loading';
-      else if (trip.status === 'AtDelivery') statusDisplay = 'At Delivery';
-      else if (trip.status === 'InTransit') statusDisplay = 'In Transit';
-
-      return `${idx + 1}. *${trip.ref_id || 'TRIP'}* | Truck: *${plate}*\n` +
-             `   • Driver: ${driverName}\n` +
-             `   • Route: ${pickupName}>>>${dropoffName}\n` +
-             `   • Status: *${statusDisplay}*\n` +
-             `   • ETA: ${etaText} | Dist: ${distanceText}` +
-             (links[trip.id] ? `\n   • Track live: ${links[trip.id]}` : '');
-    });
-
-    return text + items.join('\n\n');
-  }
+  return tripsStatusMessage(trips, tz, links);
 }
 
 /**
@@ -181,11 +21,11 @@ export function formatMultipleTripsWhatsappMessage(trips: Trip[], links: Record<
  * Supports combined mode (recommended: 1 window with formatted summary)
  * or separate mode (opens windows synchronously within single user gesture to avoid popup blocking).
  */
-export function openMultipleWhatsappMessages(trips: Trip[], mode: 'combined' | 'separate' = 'combined', links: Record<string, string | null> = {}) {
+export function openMultipleWhatsappMessages(trips: Trip[], mode: 'combined' | 'separate' = 'combined', links: Record<string, string | null> = {}, tz?: string) {
   if (!trips || trips.length === 0) return;
 
   if (trips.length === 1 || mode === 'combined') {
-    const text = trips.length === 1 ? formatSingleTripWhatsappMessage(trips[0], false, links[trips[0].id]) : formatMultipleTripsWhatsappMessage(trips, links);
+    const text = trips.length === 1 ? formatSingleTripWhatsappMessage(trips[0], false, links[trips[0].id], tz) : formatMultipleTripsWhatsappMessage(trips, links, tz);
 
     // Pick customer phone if available
     const commonCustomer = trips[0].customer;
@@ -212,7 +52,7 @@ export function openMultipleWhatsappMessages(trips: Trip[], mode: 'combined' | '
     // Separate mode: Open windows synchronously in loop without setTimeout
     let opened = 0;
     trips.forEach((trip) => {
-      const text = formatSingleTripWhatsappMessage(trip, false, links[trip.id]);
+      const text = formatSingleTripWhatsappMessage(trip, false, links[trip.id], tz);
       let phone = '';
       if (!trip.is_third_party && trip.driver?.phone_primary) {
         phone = trip.driver.phone_primary;
@@ -231,7 +71,7 @@ export function openMultipleWhatsappMessages(trips: Trip[], mode: 'combined' | '
     });
 
     if (navigator.clipboard) {
-      const allText = formatMultipleTripsWhatsappMessage(trips, links);
+      const allText = formatMultipleTripsWhatsappMessage(trips, links, tz);
       navigator.clipboard.writeText(allText).catch(() => {});
     }
 

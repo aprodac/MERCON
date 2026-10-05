@@ -5,6 +5,7 @@
  * utils/financialCalculations.ts) so both show the same thing.
  */
 import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
+import { formatTripStatusMessage, type StatusTrip } from '@mercon/shared-types';
 import { operatorService, type DriverUpdate, type LiveMediaStage, type OperatorTripDetail, type OperatorTripStop, type TripPhase } from '../../../lib/operator';
 
 export type Stop = OperatorTripStop;
@@ -368,6 +369,63 @@ export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; l
   return 2 * R * Math.asin(Math.sqrt(x));
 }
 
+/** Truck class as the customer knows it ("10 TON"): the quotation's, the trip's, or the 3PL truck's. */
+export function vehicleClassOf(t: OperatorTripDetail): string | null {
+  return t.rateCard?.vehicle_type || t.vehicle_type || (t.is_third_party ? t.third_party_vehicle_type : null) || null;
+}
+
+/**
+ * A trip as the shared WhatsApp status message reads it. `remaining` is the live
+ * road distance / drive time to the destination, when the truck has a position.
+ */
+export function statusTripOf(
+  trip: OperatorTripDetail,
+  { phase, f, remaining, trackingUrl }: { phase: TripPhase; f: Formatters; remaining: Remaining | null; trackingUrl?: string | null },
+  now = Date.now(),
+): StatusTrip {
+  const stops = sortedStops(trip);
+  const last = stops.length - 1;
+  const driver = trip.is_third_party
+    ? trip.third_party_driver_name
+    : trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name}`.trim() : null;
+  const lastPlanned = stops[last]?.planned_arrival || trip.planned_end || null;
+  let eta: StatusTrip['eta'] = null;
+  if (phase === 'active' && remaining) {
+    const arrival = new Date(now + remaining.sec * 1000);
+    const lateMin = lastPlanned ? Math.round((arrival.getTime() - new Date(lastPlanned).getTime()) / 60000) : null;
+    eta = {
+      time: f.smart(arrival.toISOString()),
+      inText: formatDuration(remaining.sec),
+      kmLeft: remaining.approx ? null : remaining.km,
+      to: remaining.to,
+      late: lateMin != null && lateMin > ON_TIME_GRACE_MIN ? `${formatDuration(lateMin * 60)} late` : null,
+    };
+  }
+  return {
+    from: last >= 0 ? placeCode(stops[0], 0) : null,
+    to: last >= 0 ? placeCode(stops[last], last) : null,
+    vehicleClass: vehicleClassOf(trip),
+    lineType: lineType(trip),
+    driverName: driver,
+    driverPhone: trip.is_third_party ? trip.third_party_driver_phone : trip.driver?.phone_primary,
+    plate: trip.is_third_party ? trip.third_party_vehicle_plate : trip.vehicle?.plate_number,
+    status: trip.status,
+    startsAt: trip.planned_start ? f.dayTime(trip.planned_start) : null,
+    eta,
+    plannedArrival: lastPlanned ? f.smart(lastPlanned) : null,
+    deliveredAt: trip.actual_end ? f.smart(trip.actual_end) : null,
+    trackingUrl: trackingUrl ?? null,
+  };
+}
+
+/** The trip's status message for a customer: their name on top, the billing line while it hasn't started. */
+export function statusMessageOf(trip: OperatorTripDetail, ctx: { phase: TripPhase; f: Formatters; remaining: Remaining | null; trackingUrl?: string | null }): string {
+  return formatTripStatusMessage(statusTripOf(trip, ctx), {
+    customerName: trip.customer?.name,
+    billing: ctx.phase === 'planned' ? (isMonthly(trip) ? 'MONTHLY' : 'EXTRA') : null,
+  });
+}
+
 /** The message for a quick send — every line the operator can still edit before sending. */
 export function quickMessage(kind: QuickKind, { trip, phase, f, position, remaining, trackingUrl }: QuickContext): string {
   const stops = sortedStops(trip);
@@ -382,31 +440,8 @@ export function quickMessage(kind: QuickKind, { trip, phase, f, position, remain
   const lines: string[] = [];
 
   if (kind === 'status' || kind === 'eta') {
-    // The operators' own WhatsApp format:
-    //   🚛 Vehicle Status Update / Truck / Driver / Route / Distance left / ETA / Status
-    const last = stops.length - 1;
-    const codeRoute = stops.length >= 2 ? `${placeCode(stops[0], 0)} → ${placeCode(stops[last], last)}` : '';
-    const dest = remaining?.to ?? (last >= 0 ? placeCode(stops[last], last) : '');
-    lines.push('🚛 Vehicle Status Update', '');
-    lines.push(`Truck: ${(truck || '—').toUpperCase()}`);
-    lines.push(`Driver: ${(driver || '—').toUpperCase()}`);
-    if (codeRoute) lines.push(`Route: ${codeRoute}`);
-    if (phase === 'active') {
-      // Unknown distance (no fresh position yet): say where it's heading — the
-      // tracking link below carries the live distance and ETA.
-      if (remaining) {
-        lines.push(`Distance left: ${remaining.approx ? '~' : ''}${Math.round(remaining.km)} KM TO ${dest}`);
-        lines.push(`ETA: ${hoursText(remaining.sec)}`);
-      } else if (dest) {
-        lines.push(`Heading to: ${dest}`);
-      }
-    } else if (phase === 'planned' && trip.planned_start) {
-      lines.push(`Starts: ${f.dayTime(trip.planned_start)}`);
-    } else if (phase === 'done' && trip.actual_end) {
-      lines.push(`Delivered: ${f.dayTime(trip.actual_end)}`);
-    }
-    lines.push(`Status: ${statusChip(trip.status).label.replace(/\b\w/g, (c) => c.toUpperCase())}`);
-    if (trackingUrl) lines.push('', `Track live: ${trackingUrl}`);
+    // One format everywhere (@mercon/shared-types statusMessage) — the live link carries the rest.
+    return statusMessageOf(trip, { phase, f, remaining, trackingUrl });
   } else if (kind === 'location') {
     lines.push(`*${ref} · Truck location*`);
     if (position) lines.push(mapsLink(position.lat, position.lng));

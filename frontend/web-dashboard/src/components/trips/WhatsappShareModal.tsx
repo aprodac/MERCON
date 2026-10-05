@@ -40,6 +40,8 @@ import { Trip } from '@/services/tripService';
 import { customerService, Customer } from '@/services/customerService';
 import { useTrackingLink } from '@/hooks/useTrackingLink';
 import { galleryUrl } from '@/services/trackingService';
+import { useDeploymentTimezone } from '@/lib/datetime';
+import { tripStatusEntry, tripStatusMessage } from '@/utils/statusMessage';
 
 export interface WhatsappShareModalProps {
   isOpen: boolean;
@@ -50,70 +52,6 @@ export interface WhatsappShareModalProps {
   selectedCompany?: string;
 }
 
-const isUuidVal = (str?: string | null) =>
-  str ? /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim()) : false;
-
-const resolveStopLabel = (stop: any, fallback = '—') => {
-  if (!stop) return fallback;
-  const code = stop.location?.codes?.[0] || stop.location?.code;
-  const locName = !isUuidVal(stop.location?.name) ? stop.location?.name : null;
-  const locCity = !isUuidVal(stop.location?.city) ? stop.location?.city : null;
-  const rawLocName = !isUuidVal(stop.location_name) ? stop.location_name : null;
-  const rawSourceLabel = !isUuidVal(stop.source_label) ? stop.source_label : null;
-  const rawAddress = !isUuidVal(stop.location_address) ? stop.location_address : null;
-
-  const name =
-    code ||
-    locName ||
-    locCity ||
-    rawLocName ||
-    rawSourceLabel ||
-    rawAddress ||
-    fallback;
-
-  return String(name).replace(/🔁\s*/g, '').trim();
-};
-
-const getPickupName = (trip: Trip) => {
-  const pickup = trip.stops?.find((s) => s.stop_type === 'Pickup') || trip.stops?.[0];
-  return resolveStopLabel(pickup, 'Pickup Location');
-};
-
-const getDropoffName = (trip: Trip) => {
-  const dropoff =
-    trip.stops?.find((s) => s.stop_type === 'Dropoff') ||
-    (trip.stops && trip.stops.length > 1 ? trip.stops[trip.stops.length - 1] : undefined);
-  return resolveStopLabel(dropoff, 'Dropoff Location');
-};
-
-const formatTimeShort = (isoStr?: string | null) => {
-  if (!isoStr) return '—';
-  try {
-    const d = new Date(isoStr);
-    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-  } catch {
-    return '—';
-  }
-};
-
-const formatTripStatusLabel = (status: string) => {
-  switch (status) {
-    case 'Draft':
-    case 'Dispatched':
-      return 'Scheduled';
-    case 'AtPickup':
-      return 'Loading (At Pickup)';
-    case 'InTransit':
-      return 'In Transit';
-    case 'AtDelivery':
-    case 'Completed':
-      return 'Completed';
-    case 'Delayed':
-      return 'Delayed Alert';
-    default:
-      return status;
-  }
-};
 
 export default function WhatsappShareModal({
   isOpen,
@@ -134,9 +72,7 @@ export default function WhatsappShareModal({
   const tracking = useTrackingLink(selectedTrip?.id, isOpen && mode === 'single_trip');
 
   // Formatting toggles
-  const [includeDriver, setIncludeDriver] = useState(true);
-  const [includeVehicle, setIncludeVehicle] = useState(true);
-  const [includeEta, setIncludeEta] = useState(true);
+  const tz = useDeploymentTimezone();
   const [includeDelays, setIncludeDelays] = useState(true);
 
   // Query customers to fetch saved WhatsApp numbers & groups across all accounts
@@ -220,41 +156,10 @@ export default function WhatsappShareModal({
     });
 
     if (mode === 'single_trip' && selectedTrip) {
-      const pickup = getPickupName(selectedTrip);
-      const dropoff = getDropoffName(selectedTrip);
-      const driverName = selectedTrip.is_third_party
-        ? selectedTrip.third_party_driver_name || selectedTrip.carrier_name || '3PL Driver'
-        : selectedTrip.driver
-        ? `${selectedTrip.driver.first_name} ${selectedTrip.driver.last_name || ''}`.trim()
-        : 'Unassigned';
-      const vehiclePlate = selectedTrip.is_third_party
-        ? selectedTrip.third_party_vehicle_plate || '3PL Vehicle'
-        : selectedTrip.vehicle?.plate_number || 'Unassigned';
-      const customerName = selectedTrip.customer?.name || (selectedTrip as any).customerName || 'Logistics Partner';
-      const driverPhone = selectedTrip.driver?.phone_primary || (selectedTrip.driver as any)?.phone_number || '';
-      const vehicleClass = (selectedTrip.vehicle as any)?.vehicle_class || (selectedTrip.vehicle as any)?.vehicle_type || '';
-      const lineType = (selectedTrip as any)?.line_type || '';
-      const tripRef = selectedTrip.ref_id || selectedTrip.id;
-
-      let text = `🚛 *Vehicle Status Update*\n\n`;
-      text += `Truck # *${vehiclePlate}*\n`;
-      if (includeDriver) text += `Driver Name # ${driverName}\n`;
-      if (driverPhone && includeDriver) text += `Number # +${driverPhone.replace(/^\+/, '')}\n`;
-      text += `Route # ${pickup} >>> ${dropoff}\n`;
-      text += `Status # ${formatTripStatusLabel(selectedTrip.status)}\n`;
-      if (includeEta && selectedTrip.planned_end) {
-        text += `ETA # ${formatTimeShort(selectedTrip.planned_end)}\n`;
-      }
-      if (vehicleClass || lineType) {
-        text += `\n*(${[vehicleClass, lineType].filter(Boolean).join(' - ')})*\n`;
-      }
-      if ((selectedTrip as any).notes) {
-        text += `\nNotes # ${(selectedTrip as any).notes}\n`;
-      }
-      if (tracking.autoUrl) text += `\n📍 *Track live*:\n${tracking.autoUrl}\n`;
+      // One format everywhere (utils/statusMessage → @mercon/shared-types), same as the operator app.
+      const text = tripStatusMessage(selectedTrip, tz, tracking.autoUrl);
       const gallery = galleryUrl(tracking.link);
-      if (gallery) text += `\n🔗 *Evidence Gallery*:\n${gallery}`;
-      return text;
+      return gallery ? `${text}\n\nPhotos: ${gallery}` : text;
     }
 
     // Summary mode fallback
@@ -279,30 +184,8 @@ export default function WhatsappShareModal({
     text += `\n-----------------------------\n`;
 
     if (relevantTrips.length > 0) {
-      relevantTrips.slice(0, 10).forEach((t, index) => {
-        const pickup = getPickupName(t);
-        const dropoff = getDropoffName(t);
-        const driverName = t.is_third_party
-          ? t.third_party_driver_name || '3PL Driver'
-          : t.driver
-          ? `${t.driver.first_name} ${t.driver.last_name || ''}`.trim()
-          : 'Unassigned';
-        const vehiclePlate = t.vehicle?.plate_number || t.third_party_vehicle_plate || '—';
-        const driverPhone = t.driver?.phone_primary || (t.driver as any)?.phone_number || '';
-        const vehicleClass = (t.vehicle as any)?.vehicle_class || (t.vehicle as any)?.vehicle_type || '';
-        const lineType = (t as any)?.line_type || '';
-
-        text += `${index + 1}. ${pickup} >>> ${dropoff}`;
-        if (vehicleClass) text += ` ${vehicleClass}`;
-        if (lineType) text += `\n*(${lineType})*`;
-        text += `\n`;
-        if (includeDriver) text += `Driver Name # ${driverName}\n`;
-        if (includeDriver && driverPhone) text += `Number # +${driverPhone.replace(/^\+/, '')}\n`;
-        if (includeVehicle) text += `Truck No # ${vehiclePlate}\n`;
-        if (includeEta && t.planned_end) text += `ETA # ${formatTimeShort(t.planned_end)}\n`;
-        text += `Status # ${formatTripStatusLabel(t.status)}\n`;
-        text += `\n`;
-      });
+      text += relevantTrips.slice(0, 10).map((t, index) => tripStatusEntry(t, index + 1, tz)).join('\n\n');
+      text += `\n\n`;
     }
 
     text += `_MERCON Control Tower_`;
@@ -313,10 +196,8 @@ export default function WhatsappShareModal({
     relevantTrips,
     selectedCompany,
     breakdown,
-    includeDriver,
-    includeVehicle,
-    includeEta,
     includeDelays,
+    tz,
     tracking.autoUrl,
     tracking.link,
   ]);
@@ -606,33 +487,6 @@ export default function WhatsappShareModal({
               <SlidersHorizontal className="w-3 h-3" />
               Include:
             </span>
-            <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-900 dark:hover:text-slate-100">
-              <input
-                type="checkbox"
-                checked={includeDriver}
-                onChange={(e) => setIncludeDriver(e.target.checked)}
-                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-              />
-              <span>Driver</span>
-            </label>
-            <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-900 dark:hover:text-slate-100">
-              <input
-                type="checkbox"
-                checked={includeVehicle}
-                onChange={(e) => setIncludeVehicle(e.target.checked)}
-                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-              />
-              <span>Vehicle Plate</span>
-            </label>
-            <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-900 dark:hover:text-slate-100">
-              <input
-                type="checkbox"
-                checked={includeEta}
-                onChange={(e) => setIncludeEta(e.target.checked)}
-                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-              />
-              <span>ETA</span>
-            </label>
             <label className="flex items-center gap-1.5 cursor-pointer hover:text-slate-900 dark:hover:text-slate-100">
               <input
                 type="checkbox"

@@ -144,6 +144,8 @@ export interface OperatorTripDetail {
   quotationId?: string | null;
   quotation?: { id?: string; name?: string | null; rate?: number | null; driver_payout?: number | null; pricing_basis?: string | null } | null;
   rateCard?: { name?: string | null; rate_category?: string | null; vehicle_type?: string | null } | null;
+  /** The truck class booked for the trip ("10 TON"), when no quotation says it. */
+  vehicle_type?: string | null;
 
   // Third-party / subcontracted trips.
   is_third_party?: boolean;
