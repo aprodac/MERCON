@@ -223,11 +223,24 @@ Firebase project `mercon-driver` with an Android app for `tech.mercon.driver`, i
 `google-services.json` in `driver-app/`, and the FCM v1 key in the Expo project. Set up and
 tested on a real phone (2026-10-03).
 
-## Operator app — push not built yet
+## Operator app — push setup
 
-The operator app has no push code. To add it later: run `eas init` in
-`frontend/mobile-app/operator-app` (creates its Expo project; put the `projectId` in its
-`app.config.ts`), upload the **same** APNs key to that project (Part B), and the backend
-needs a device table for operators (a schema change — needs owner approval) plus the events
-that should push (emergencies, delays, photos to send). Parts A1–A3 above already cover the
-Apple side for `tech.mercon.operator`.
+Done on 2026-10-05:
+- Expo project **`@alan32/mercon-operator`** created with `eas init`; its
+  `projectId` (`fd61fc52-4ed8-4469-ab81-f681e6b2fda3`) is in
+  `operator-app/app.config.ts`. **Do not run `eas init` again** — from another
+  Expo login it would create a second, unrelated project.
+- APNs push key (Key ID `7SN8FSMQGT`, Team `Z83Y9VJTKH`) uploaded to that
+  project with `eas credentials -p ios` → Push Notifications, assigned to
+  `tech.mercon.operator`. The driver app (`tech.merconapp.driver`) already has
+  a push key on its Expo project (checked 2026-10-05), so nothing to add there. The `.p8` file itself never goes in git or chat.
+
+Still to do: tick **Push Notifications** on the `tech.mercon.operator`
+identifier (A2) and delete its old App Store profile; push code in the operator
+app; on the backend a device table for operators (a schema change — needs owner
+approval) plus the events that should push (emergencies, delays, photos to send).
+
+Expo access for other developers: `alan32` is a personal Expo account and can't
+add members. To let someone else build or manage keys on Expo, create an Expo
+organisation, invite them, transfer both projects there and update `owner` in
+both `app.config.ts` files.

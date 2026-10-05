@@ -156,8 +156,10 @@ export default (): ExpoConfig => ({
   },
   extra: {
     router: {},
-    // EAS project: run `eas init` in operator-app once to create it and add
-    // `eas: { projectId: '<id>' }` here.
+    // EAS project @alan32/mercon-operator (created with `eas init`, 2026-10-05).
+    eas: {
+      projectId: 'fd61fc52-4ed8-4469-ab81-f681e6b2fda3',
+    },
     // Read by shared/lib/api.ts (@mercon/mobile-shared) as the required fallback when EXPO_PUBLIC_API_URL
     // isn't set — per-client, so a misconfigured build can't silently talk to
     // another client's API.

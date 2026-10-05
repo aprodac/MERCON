@@ -104,6 +104,9 @@ export default (): ExpoConfig => ({
       'android.permission.ACCESS_COARSE_LOCATION',
       'android.permission.ACCESS_FINE_LOCATION',
       'android.permission.POST_NOTIFICATIONS',
+      // One-tap "Let MERCON always run in the background?" dialog in the phone setup
+      // guide (PhoneSetupGuide.tsx); without it new trips can arrive minutes late.
+      'android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
     ],
     package: client.androidPackage,
     versionCode: buildNumber,
