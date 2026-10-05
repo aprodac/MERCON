@@ -84,7 +84,7 @@ export async function buildStatusMessages(
         trackingUrl: links[t.id] ? autoTrackingUrl(links[t.id]) : null,
       })),
       {
-        customerName: customer?.name ?? null,
+        tag: customer?.name ?? null,
         billing: notStarted ? (list.every(isMonthly) ? 'MONTHLY' : 'EXTRA') : null,
         fleetUrl: fleet?.enabled ? fleet.url : null,
       },

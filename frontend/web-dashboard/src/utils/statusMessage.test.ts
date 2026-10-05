@@ -16,9 +16,9 @@ const base: StatusTrip = {
 
 describe('shared WhatsApp status message', () => {
   it('formats a scheduled trip in the dispatch format', () => {
-    expect(formatTripStatusMessage(base, { customerName: 'iMile Delivery Saudi Logistics' })).toBe(
+    expect(formatTripStatusMessage(base, { tag: 'iMile Delivery Saudi Logistics' })).toBe(
       [
-        '@IMILE DELIVERY SAUDI LOGISTICS',
+        '@iMile Delivery Saudi Logistics',
         '1. KHA >>> KHA(LOCAL) 10 TON (ROUND TRIP)',
         'Driver Name # MOHAMMED FAIZAN FAIZ AHMED',
         'Number # +966 550975991',
@@ -63,14 +63,42 @@ describe('shared WhatsApp status message', () => {
   it('numbers several trips, each with its own link, the fleet link first', () => {
     const text = formatFleetStatusMessage(
       [base, { ...base, plate: 'ABC-1234', trackingUrl: 'https://track.mercon.tech/t/def' }],
-      { customerName: 'iMile', fleetUrl: 'https://track.mercon.tech/c/all' },
+      { tag: 'iMile', fleetUrl: 'https://track.mercon.tech/c/all' },
     );
     const parts = text.split('\n\n');
-    expect(parts[0]).toBe('@IMILE\nTrack all 2 trucks live: https://track.mercon.tech/c/all');
+    expect(parts[0]).toBe('@iMile\nAll your trucks: https://track.mercon.tech/c/all');
     expect(parts[1].startsWith('1. KHA >>> KHA(LOCAL)')).toBe(true);
     expect(parts[1]).toContain('Track live: https://track.mercon.tech/t/abc');
     expect(parts[2].startsWith('2. KHA >>> KHA(LOCAL)')).toBe(true);
     expect(parts[2]).toContain('Truck no # ABC-1234');
+  });
+
+  it('writes local trips, truck classes and trip types the way the groups do', () => {
+    const text = formatTripStatusMessage({ ...base, from: 'RUH', to: 'RUH', local: true, vehicleClass: '5 ton', lineType: 'SINGLE_TRIP' });
+    expect(text).toContain('1. RUH >>> RUH(LOCAL) 05 TON (SINGLE TRIP)');
+  });
+
+  it('the assignment message is the same format without status or ETA', () => {
+    const text = formatTripStatusMessage(
+      { ...base, status: 'InTransit', eta: { time: '14:20' }, notes: ['With tailgate'] },
+      { tag: 'Rashed Ahmed', brief: true },
+    );
+    expect(text).toBe(
+      [
+        '@Rashed Ahmed',
+        '1. KHA >>> KHA(LOCAL) 10 TON (ROUND TRIP)',
+        'Driver Name # MOHAMMED FAIZAN FAIZ AHMED',
+        'Number # +966 550975991',
+        'Truck no # VSA-3071',
+        'WITH TAILGATE',
+        '',
+        'Track live: https://track.mercon.tech/t/abc',
+      ].join('\n'),
+    );
+  });
+
+  it('dates each trip when a message spans several days', () => {
+    expect(formatTripStatusMessage({ ...base, date: 'Tue 6 Oct 09:00' }).split('\n')[1]).toBe('Date # Tue 6 Oct 09:00');
   });
 
   it('normalises Saudi numbers', () => {

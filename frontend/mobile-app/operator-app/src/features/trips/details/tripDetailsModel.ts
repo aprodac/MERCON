@@ -4,7 +4,6 @@
  * Mirrors the web's TripDetailsPage (tripStatus.ts, stopEvidence.ts,
  * utils/financialCalculations.ts) so both show the same thing.
  */
-import { lineTypeLabel } from '@mercon/shared-types';
 import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
 import { formatTripStatusMessage, type StatusTrip } from '@mercon/shared-types';
 import { operatorService, type DriverUpdate, type LiveMediaStage, type OperatorTripDetail, type OperatorTripStop, type TripPhase } from '../../../lib/operator';
@@ -167,7 +166,7 @@ export function ago(iso: string): string {
 // ── Header facts ──────────────────────────────────────────────────────────────
 
 export function lineType(t: OperatorTripDetail): string {
-  const raw = t.quotation_line_type || t.rateCard?.rate_category;
+  const raw = t.rate_category || t.quotation_line_type || t.rateCard?.rate_category;
   if (raw) {
     const s = String(raw).trim();
     if (/round/i.test(s)) return 'Round trip';
@@ -429,7 +428,7 @@ export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; l
 
 /** Truck class as the customer knows it ("10 TON"): the quotation's, the trip's, or the 3PL truck's. */
 export function vehicleClassOf(t: OperatorTripDetail): string | null {
-  return t.rateCard?.vehicle_type || t.vehicle_type || (t.is_third_party ? t.third_party_vehicle_type : null) || null;
+  return t.vehicle_type || t.rateCard?.vehicle_type || (t.is_third_party ? t.third_party_vehicle_type : null) || null;
 }
 
 /**
@@ -462,6 +461,7 @@ export function statusTripOf(
   return {
     from: last >= 0 ? placeCode(stops[0], 0) : null,
     to: last >= 0 ? placeCode(stops[last], last) : null,
+    local: last > 0 && sameCity(stops[0], stops[last]),
     vehicleClass: vehicleClassOf(trip),
     lineType: lineType(trip),
     driverName: driver,
@@ -479,24 +479,9 @@ export function statusTripOf(
 /** The trip's status message for a customer: their name on top, the billing line while it hasn't started. */
 export function statusMessageOf(trip: OperatorTripDetail, ctx: { phase: TripPhase; f: Formatters; remaining: Remaining | null; trackingUrl?: string | null }): string {
   return formatTripStatusMessage(statusTripOf(trip, ctx), {
-    customerName: trip.customer?.name,
+    tag: trip.customer?.name,
     billing: ctx.phase === 'planned' ? (isMonthly(trip) ? 'MONTHLY' : 'EXTRA') : null,
   });
-}
-
-/** A phone as the operators write it in the group: "+966 580130492". */
-export function groupPhone(p?: string | null): string {
-  const d = digits(p);
-  if (d.startsWith('966') && d.length > 3) return `+966 ${d.slice(3)}`;
-  if (d.length === 10 && d.startsWith('05')) return `+966 ${d.slice(1)}`;
-  if (d.length === 9 && d.startsWith('5')) return `+966 ${d}`;
-  return (p ?? '').trim();
-}
-
-/** "5 TON" → "05 TON", the way the group writes truck classes; others unchanged. */
-function truckClassText(v?: string | null): string {
-  const t = (v ?? '').trim().toUpperCase();
-  return t.replace(/^(\d)(\s*TON)$/, '0$1$2');
 }
 
 /** Both stops in the same city — the route then reads "RUH >>> RUH(LOCAL)". */
@@ -512,34 +497,16 @@ function sameCity(a: Stop | undefined, b: Stop | undefined): boolean {
  *   Driver Name # RIZWAN / Number # +966 580130492 / Truck no # DRA-9973
  *   WITH TAILGATE (when the truck has one) · the tracking link
  */
-function assignmentMessage(trip: OperatorTripDetail, trackingUrl: string | null | undefined, tag: TagPerson | null | undefined): string {
-  const stops = sortedStops(trip);
-  const last = stops.length - 1;
-  const route = last >= 0
-    ? `${placeCode(stops[0], 0)} >>> ${placeCode(stops[last], last)}${sameCity(stops[0], stops[last]) ? '(LOCAL)' : ''}`
-    : '';
-  const truckClass = truckClassText(trip.vehicle_type || trip.rateCard?.vehicle_type || trip.third_party_vehicle_type);
-  const tripType = lineTypeLabel(trip.rate_category || trip.rateCard?.rate_category || trip.quotation_line_type).toUpperCase();
-  const driver = trip.is_third_party
-    ? trip.third_party_driver_name
-    : trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name}`.trim() : null;
-  const driverPhone = trip.is_third_party ? trip.third_party_driver_phone : trip.driver?.phone_primary;
-  const truck = trip.is_third_party ? trip.third_party_vehicle_plate : trip.vehicle?.plate_number;
-
-  const lines: string[] = [];
-  if (tag) lines.push(`@${tag.name}`);
-  lines.push(['1.', route, truckClass, tripType ? `(${tripType})` : ''].filter(Boolean).join(' '));
-  lines.push(`Driver Name # ${(driver || '—').toUpperCase()}`);
-  lines.push(`Number # ${groupPhone(driverPhone) || '—'}`);
-  lines.push(`Truck no # ${(truck || '—').toUpperCase()}`);
-  if (!trip.is_third_party && trip.vehicle?.has_tailgate) lines.push('', 'WITH TAILGATE');
-  if (trackingUrl) lines.push('', `Track live: ${trackingUrl}`);
-  return lines.join('\n');
+function assignmentMessage(trip: OperatorTripDetail, trackingUrl: string | null | undefined, tag: TagPerson | null | undefined, f: Formatters): string {
+  // The one shared format (@mercon/shared-types statusMessage), without the Status / ETA lines.
+  const t = statusTripOf(trip, { phase: 'planned', f, remaining: null, trackingUrl });
+  const notes = !trip.is_third_party && trip.vehicle?.has_tailgate ? ['WITH TAILGATE'] : null;
+  return formatTripStatusMessage({ ...t, notes }, { tag: tag?.name ?? null, brief: true });
 }
 
 /** The message for a quick send — every line the operator can still edit before sending. */
 export function quickMessage(kind: QuickKind, { trip, phase, f, position, remaining, trackingUrl, tag }: QuickContext): string {
-  if (kind === 'assignment') return assignmentMessage(trip, trackingUrl, tag);
+  if (kind === 'assignment') return assignmentMessage(trip, trackingUrl, tag, f);
   const stops = sortedStops(trip);
   const nextIdx = stops.findIndex((s) => !s.actual_arrival);
   const next = nextIdx >= 0 ? stops[nextIdx] : null;

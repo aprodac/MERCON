@@ -98,7 +98,7 @@ describe('useTripWhatsAppShare', () => {
     });
 
     // The one shared format (utils/statusMessage → @mercon/shared-types).
-    expect(result.current.whatsappMessageText).toContain('@ACME CO');
+    expect(result.current.whatsappMessageText).toContain('@Acme Co');
     expect(result.current.whatsappMessageText).toContain('1. RIYADH >>> JEDDAH');
     expect(result.current.whatsappMessageText).toContain('Driver Name # SAMI ALOTAIBI');
     expect(result.current.whatsappMessageText).toContain('Number # +966 500000001');
@@ -114,7 +114,7 @@ describe('useTripWhatsAppShare', () => {
     });
 
     // Same customer → one message, each trip numbered in the shared format.
-    expect(result.current.whatsappMessageText.match(/@ACME CO/g)).toHaveLength(1);
+    expect(result.current.whatsappMessageText.match(/@Acme Co/g)).toHaveLength(1);
     expect(result.current.whatsappMessageText).toContain('1. RIYADH >>> JEDDAH');
     expect(result.current.whatsappMessageText).toContain('2. RIYADH >>> JEDDAH');
   });

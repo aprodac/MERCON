@@ -4,7 +4,7 @@
  * page, Fleet map), for one trip or several. It follows the operators' own
  * dispatch format:
  *
- *   @IMILE DELIVERY SAUDI LOGISTICS
+ *   @Rashed Ahmed                         (whoever is tagged, or the customer)
  *   1. KHA >>> KHA(LOCAL) 10 TON (ROUND TRIP)
  *   Driver Name # MOHAMMED FAIZAN FAIZ AHMED
  *   Number # +966 550975991
@@ -16,8 +16,10 @@
  *
  * Several trips of one customer go in one message, numbered, each with its own
  * live link; the customer's all-trucks link (when given) goes first so the
- * WhatsApp preview card shows their whole fleet. Pure: callers format times in
- * the deployment time zone and pass ready strings.
+ * WhatsApp preview card shows their whole fleet. The assignment message (sent
+ * when a truck is assigned) is the same format without the Status / ETA lines
+ * (`brief`). Pure: callers format times in the deployment time zone and pass
+ * ready strings.
  */
 
 export interface StatusTrip {
@@ -25,6 +27,10 @@ export interface StatusTrip {
   from: string | null;
   /** Drop-off / last stop. */
   to: string | null;
+  /** Both ends in the same city — the route reads "RUH >>> RUH(LOCAL)". */
+  local?: boolean;
+  /** The trip's day, for a message whose trips fall on different days ("Mon 5 Oct 09:00"). */
+  date?: string | null;
   /** Truck class, e.g. "10 TON". */
   vehicleClass?: string | null;
   /** e.g. "Round trip", "Single trip", "12 hours duty". */
@@ -84,20 +90,32 @@ export function formatWhatsAppPhone(raw: string | null | undefined): string | nu
   return `+${d}`;
 }
 
+/** "5 TON" → "05 TON", the way the customer groups write truck classes. */
+const truckClass = (v: string | null | undefined) => up(v).replace(/^(\d)(\s*TON)$/, '0$1$2');
+
+/** "SINGLE_TRIP" / "Round trip" → "SINGLE TRIP" / "ROUND TRIP". */
+const lineTypeText = (v: string | null | undefined) => up((v ?? '').replace(/_/g, ' '));
+
 /** "KHA >>> KHA(LOCAL) 10 TON (ROUND TRIP)" */
-export function statusHeadline(t: Pick<StatusTrip, 'from' | 'to' | 'vehicleClass' | 'lineType'>): string {
-  const route = `${up(t.from) || 'ORIGIN'} >>> ${up(t.to) || 'DESTINATION'}`;
-  return [route, up(t.vehicleClass) || null, t.lineType ? `(${up(t.lineType)})` : null].filter(Boolean).join(' ');
+export function statusHeadline(t: Pick<StatusTrip, 'from' | 'to' | 'local' | 'vehicleClass' | 'lineType'>): string {
+  const route = `${up(t.from) || 'ORIGIN'} >>> ${up(t.to) || 'DESTINATION'}${t.local ? '(LOCAL)' : ''}`;
+  const type = lineTypeText(t.lineType);
+  return [route, truckClass(t.vehicleClass) || null, type ? `(${type})` : null].filter(Boolean).join(' ');
 }
 
-/** The lines for one trip, without its number or link. */
-function statusLines(t: StatusTrip): string[] {
+/** The lines for one trip, without its number or link. `brief` (assignment) leaves out status and ETA. */
+function statusLines(t: StatusTrip, brief = false): string[] {
   const lines: string[] = [];
+  if (t.date) lines.push(`Date # ${t.date}`);
   if (t.carrier) lines.push(`Carrier # ${up(t.carrier)}`);
   lines.push(`Driver Name # ${up(t.driverName) || 'NOT ASSIGNED YET'}`);
   const phone = formatWhatsAppPhone(t.driverPhone);
   if (phone) lines.push(`Number # ${phone}`);
   lines.push(`Truck no # ${up(t.plate) || 'NOT ASSIGNED YET'}`);
+  if (brief) {
+    for (const n of t.notes ?? []) if (n.trim()) lines.push(up(n));
+    return lines;
+  }
 
   const word = STATUS_WORD[t.status] ?? t.status;
   const done = t.status === 'Completed' || t.status === 'Invoiced';
@@ -121,38 +139,44 @@ function statusLines(t: StatusTrip): string[] {
 }
 
 export interface StatusMessageOptions {
-  customerName?: string | null;
+  /** The @ line: the person the message is for, or the customer — written as given. */
+  tag?: string | null;
   /** "MONTHLY" or "EXTRA" — adds the "*(MONTHLY VEHICLE)*" line operators use. */
   billing?: 'MONTHLY' | 'EXTRA' | null;
   /** The customer's all-trucks live page; goes first so WhatsApp previews it. */
   fleetUrl?: string | null;
+  /** The assignment message: who / which truck, no Status / ETA lines. */
+  brief?: boolean;
 }
 
 function header(o: StatusMessageOptions): string[] {
   const lines: string[] = [];
-  if (o.customerName?.trim()) lines.push(`@${up(o.customerName)}`);
+  if (o.tag?.trim()) lines.push(`@${o.tag.trim()}`);
   if (o.billing) lines.push(`*(${o.billing} VEHICLE)*`);
   return lines;
 }
 
 /** One trip's message. */
 export function formatTripStatusMessage(t: StatusTrip, o: StatusMessageOptions = {}): string {
-  const lines = [...header(o), `1. ${statusHeadline(t)}`, ...statusLines(t)];
+  const lines = [...header(o), `1. ${statusHeadline(t)}`, ...statusLines(t, o.brief)];
   if (t.trackingUrl) lines.push('', `Track live: ${t.trackingUrl}`);
   return lines.join('\n');
 }
 
 /** One numbered trip block of a multi-trip message, its live link on the last line. */
-export function formatStatusEntry(t: StatusTrip, index: number): string {
-  return [`${index}. ${statusHeadline(t)}`, ...statusLines(t), ...(t.trackingUrl ? [`Track live: ${t.trackingUrl}`] : [])].join('\n');
+export function formatStatusEntry(t: StatusTrip, index: number, brief = false): string {
+  return [`${index}. ${statusHeadline(t)}`, ...statusLines(t, brief), ...(t.trackingUrl ? [`Track live: ${t.trackingUrl}`] : [])].join('\n');
 }
+
+/** The customer's all-trucks page line — same words wherever it goes. */
+export const allTrucksLine = (url: string) => `All your trucks: ${url}`;
 
 /** Several trips of one customer in one message (one trip → the single format). */
 export function formatFleetStatusMessage(trips: StatusTrip[], o: StatusMessageOptions = {}): string {
   if (trips.length === 0) return '';
   if (trips.length === 1 && !o.fleetUrl) return formatTripStatusMessage(trips[0], o);
   const head = header(o);
-  if (o.fleetUrl) head.push(`Track all ${trips.length} trucks live: ${o.fleetUrl}`);
-  const blocks = trips.map((t, i) => formatStatusEntry(t, i + 1));
+  if (o.fleetUrl) head.push(allTrucksLine(o.fleetUrl));
+  const blocks = trips.map((t, i) => formatStatusEntry(t, i + 1, o.brief));
   return [head.join('\n'), ...blocks].filter(Boolean).join('\n\n');
 }

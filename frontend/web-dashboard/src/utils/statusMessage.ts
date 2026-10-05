@@ -25,6 +25,8 @@ function placeOf(s: Partial<TripStop> | undefined): string | null {
   return name.replace(/🔁\s*/g, '').split(',')[0].replace(/\]+$/, '').trim() || null;
 }
 
+const cityOf = (s: Partial<TripStop> | undefined) => (s?.location?.city || s?.location?.codes?.[0] || '').trim().toLowerCase();
+
 const sortedStops = (t: Trip): Partial<TripStop>[] =>
   [...(t.stops ?? [])].sort((a, b) => (a.stop_sequence ?? 0) - (b.stop_sequence ?? 0));
 
@@ -52,6 +54,8 @@ export function statusTripOf(t: Trip, tz = DEFAULT_TZ, trackingUrl?: string | nu
   return {
     from: placeOf(stops[0]),
     to: placeOf(last),
+    // Both ends in one city → "RUH >>> RUH(LOCAL)" (same rule as the operator app).
+    local: stops.length > 1 && !!cityOf(stops[0]) && cityOf(stops[0]) === cityOf(last),
     vehicleClass: t.quotation_vehicle_class || t.vehicle_type || t.rateCard?.vehicle_type || (t.is_third_party ? t.third_party_vehicle_type : null) || null,
     lineType: lineTypeOf(t),
     driverName: t.is_third_party
@@ -72,7 +76,7 @@ export function statusTripOf(t: Trip, tz = DEFAULT_TZ, trackingUrl?: string | nu
 /** One trip's message, headed by its customer. */
 export function tripStatusMessage(t: Trip, tz = DEFAULT_TZ, trackingUrl?: string | null, notes?: string[]): string {
   return formatTripStatusMessage(statusTripOf(t, tz, trackingUrl, notes), {
-    customerName: t.customer?.name,
+    tag: t.customer?.name,
     billing: notStarted(t) ? billingOf(t) : null,
   });
 }
@@ -86,7 +90,7 @@ export function tripsStatusMessage(trips: Trip[], tz = DEFAULT_TZ, links: Record
   }
   return [...groups.values()]
     .map((list) => formatFleetStatusMessage(list.map((t) => statusTripOf(t, tz, links[t.id])), {
-      customerName: list[0].customer?.name,
+      tag: list[0].customer?.name,
       billing: list.every(notStarted) ? (list.every((t) => billingOf(t) === 'MONTHLY') ? 'MONTHLY' : 'EXTRA') : null,
     }))
     .join('\n\n───────────────────\n\n');
