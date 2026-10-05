@@ -97,3 +97,30 @@ Target audience (adults, not for children), News app (no).
 - The upload goes to **Internal testing** first (up to 100 testers, by email
   list); closed testing with 12+ testers for 14 days is needed before a public
   production release on a new personal developer account.
+
+## 6. Store listing (Grow users → Store presence → Main store listing)
+
+Until the listing is filled and the app has passed review once, internal
+testers see a temporary name (the package id) and no logo.
+
+- **App name:** `MERCON Driver`
+- **Short description (max 80):** `Trips, live trip tracking and instant alerts for MERCON truck drivers.`
+- **Full description:**
+  > MERCON Driver is the app for drivers working with MERCON.
+  >
+  > • Get new trips instantly, with a notification the moment the office assigns one
+  > • See each trip's pickup and drop-off points, times and instructions
+  > • Update the trip step by step: start, arrived, loading done, delivered
+  > • Take photos of the cargo and proof of delivery
+  > • Share your location with the office only while a trip is running
+  > • Report delays and use SOS in an emergency
+  > • See your trip history, earnings and documents
+  > • English and Urdu
+  >
+  > This app is for MERCON drivers only. You need an account from your MERCON operator to sign in.
+- **App icon (512×512):** `docs/play-store/play-icon-512.png`
+- **Feature graphic (1024×500):** `docs/play-store/play-feature-graphic-1024x500.png`
+- **Phone screenshots:** at least 2 (e.g. login, trips list, trip details, live trip).
+  Take them from a real phone (`adb exec-out screencap -p > shot.png`) using
+  a test account. Never show real customer or driver data.
+- App category: **Business** (or Maps & Navigation). Contact email: the company email.
