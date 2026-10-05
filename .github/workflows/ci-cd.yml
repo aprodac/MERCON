@@ -87,6 +87,8 @@ jobs:
           # Studio and set the new value as the GEMINI_API_KEY repo secret.)
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-flash-latest' }}
+          # Repo variable; set it to https://track.mercon.tech once that address is live.
+          TRACKING_BASE_URL: ${{ vars.TRACKING_BASE_URL }}
           # Google address autocomplete. Reaches the frontend as a
           # docker-compose build arg, because Vite inlines VITE_* at build time
           # — a runtime env var would arrive after the bundle is written.
@@ -316,6 +318,16 @@ jobs:
           # Deploy production nginx config
           sudo cp nginx/mercon-api.conf /etc/nginx/sites-available/mercon-api.conf
           sudo ln -sf /etc/nginx/sites-available/mercon-api.conf /etc/nginx/sites-enabled/mercon-api.conf
+
+          # Customer-links address — only once its certificate has been issued
+          # (sudo certbot certonly --nginx -d track.mercon.tech); before that the
+          # block would fail `nginx -t`, so it stays off.
+          if [ -f /etc/letsencrypt/live/track.mercon.tech/fullchain.pem ]; then
+            sudo cp nginx/mercon-track.conf /etc/nginx/sites-available/mercon-track.conf
+            sudo ln -sf /etc/nginx/sites-available/mercon-track.conf /etc/nginx/sites-enabled/mercon-track.conf
+          else
+            echo "track.mercon.tech certificate not found — customer-links address stays off."
+          fi
 
           # Remove stale default config if it exists
           sudo rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true

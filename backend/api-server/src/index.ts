@@ -22,6 +22,10 @@ process.on('uncaughtException', (err) => {
 });
 
 const app = express();
+// One proxy hop (host nginx) sits in front: req.ip is the visitor's address from
+// the last X-Forwarded-For entry, which nginx sets itself and a client can't fake.
+// Rate limits are keyed on it — without this every request looked like nginx.
+app.set('trust proxy', 1);
 const httpServer = createServer(app);
 // CORS origin is left open here (tightened for the HTTP API in Phase 3) —
 // authentication below is what actually gates access to this socket server.
