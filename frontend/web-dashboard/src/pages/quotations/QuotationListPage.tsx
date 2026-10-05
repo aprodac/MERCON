@@ -46,7 +46,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { TaxonomyBadge } from '@/components/common/TaxonomyBadge';
 import { TaxonomySelect } from '@/components/common/TaxonomySelect';
-import { quotationService, Quotation } from '@/services/quotationService';
+import { quotationService, surchargeRuleService, Quotation } from '@/services/quotationService';
 import { customerService } from '@/services/customerService';
 import QuotationFormDialog from '@/components/quotations/RateCardFormDialog';
 import { CustomerSurchargesSection } from '@/components/quotations/CustomerSurchargesSection';
@@ -54,8 +54,7 @@ import ExcelImportDialog from '@/components/fleet/ExcelImportDialog';
 import { QuotationRouteDrawer } from './QuotationRouteDrawer';
 import { QuotationRouteMatrix, quotationRef, quotationStopNames, quotationOffLabel, isMonthlyQuotation } from '@/components/quotations/QuotationRouteMatrix';
 import { RATE_CARD_COLUMNS } from '@/utils/importUtils';
-import ExportModal, { ExportColumn } from '@/components/ui/ExportModal';
-import { exportExcelTable, exportPDFTable } from '@/utils/exportUtils';
+import { downloadQuotationWorkbook } from '@/utils/quotationWorkbook';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -71,19 +70,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-
-const QUOTATION_EXPORT_COLUMNS: ExportColumn<Quotation>[] = [
-  { id: 'name', label: 'Quotation Name', accessor: (q) => q.name || 'Quotation' },
-  { id: 'customer', label: 'Customer', accessor: (q) => q.customer?.name || 'Customer' },
-  { id: 'vehicle_class', label: 'Vehicle Class', accessor: (q) => q.vehicle_class || '—' },
-  { id: 'source_vehicle_label', label: 'Source Vehicle Label', accessor: (q) => q.source_vehicle_label || q.vehicle_type || '—' },
-  { id: 'line_type', label: 'Line Type', accessor: (q) => q.line_type || q.rate_category || 'Single Trip' },
-  { id: 'operation_type', label: 'Operation Type', accessor: (q) => q.operation_type || q.billing_type || 'EXTRA' },
-  { id: 'rate', label: 'Billing Rate (SAR)', accessor: (q) => `SAR ${Number(q.rate || q.base_price || 0).toLocaleString()}` },
-  { id: 'driver_payout', label: 'Driver Charge (SAR)', accessor: (q) => q.driver_payout != null ? `SAR ${Number(q.driver_payout).toLocaleString()}` : '—' },
-  { id: 'status', label: 'Status', accessor: (q) => (q.is_active ? 'Active' : 'Inactive') },
-  { id: 'validity', label: 'Validity', accessor: (q) => q.valid_from ? `${q.valid_from.substring(0, 10)} to ${q.valid_to ? q.valid_to.substring(0, 10) : 'Ongoing'}` : 'Ongoing' },
-];
 
 function CompanyLogo({ name, logoUrl, className = "w-8 h-8" }: { name: string; logoUrl?: string | null; className?: string }) {
   const [hasError, setHasError] = useState(false);
@@ -179,7 +165,7 @@ export default function QuotationListPage() {
   const [selectedQuotation, setSelectedQuotation] = useState<Quotation | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -439,27 +425,26 @@ export default function QuotationListPage() {
     lineTypeFilter !== 'ALL' ||
     statusFilter !== 'ALL';
 
-  const handleQuickExport = async (format: 'xlsx' | 'pdf') => {
-    const toastId = toast.loading('Preparing export…');
+  // Styled workbook: one sheet per customer (+ an "All customers" summary when exporting everyone).
+  const handleExportExcel = async (scope: 'customer' | 'all') => {
+    const groups = scope === 'customer' && selectedGroup ? [selectedGroup] : companyGroups;
+    setIsExporting(true);
+    const toastId = toast.loading('Preparing the Excel file…');
     try {
-      const dataToExport = selectedGroup ? selectedGroup.quotations : rawQuotations;
-      const headers = ['Customer', 'Vehicle Class', 'Source Vehicle', 'Line Type', 'Operation Type', 'Billing Rate (SAR)', 'Driver Charge (SAR)', 'Status'];
-      const rows = dataToExport.map((q) => [
-        q.customer?.name || 'Customer',
-        q.vehicle_class || 'Standard',
-        q.source_vehicle_label || q.vehicle_type || '—',
-        q.line_type || q.rate_category || 'Single Trip',
-        q.billing_type || 'EXTRA',
-        `SAR ${Number(q.rate ?? q.base_price ?? 0).toLocaleString()}`,
-        q.driver_payout != null ? `SAR ${Number(q.driver_payout).toLocaleString()}` : '—',
-        q.is_active ? 'Active' : 'Inactive',
-      ]);
-      toast.dismiss(toastId);
-      if (format === 'xlsx') await exportExcelTable('MERCON Quotations', headers, rows, `quotations_${new Date().toISOString().slice(0, 10)}.xlsx`);
-      else exportPDFTable('MERCON Quotations', headers, rows, `quotations_${new Date().toISOString().slice(0, 10)}.pdf`);
+      const rules = await surchargeRuleService.list().catch(() => []);
+      const customers = groups.map((g) => ({
+        name: g.name,
+        quotations: g.quotations,
+        charges: rules.filter((r) => r.customerId === g.id && r.is_active !== false),
+      }));
+      const day = new Date().toISOString().slice(0, 10);
+      const who = scope === 'customer' && selectedGroup ? selectedGroup.name.replace(/[^\w]+/g, '_').replace(/^_|_$/g, '') : 'All_customers';
+      await downloadQuotationWorkbook(customers, `MERCON_Quotations_${who}_${day}.xlsx`);
+      toast.success('Excel file ready', { id: toastId });
     } catch {
-      toast.dismiss(toastId);
-      toast.error('Failed to generate export');
+      toast.error("Couldn't create the Excel file. Try again.", { id: toastId });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -482,6 +467,33 @@ export default function QuotationListPage() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={isExporting || rawQuotations.length === 0}
+                  className="h-9 gap-1.5 text-xs font-medium border-slate-200 dark:border-slate-800 bg-white hover:bg-slate-50 dark:bg-slate-900 text-[#3E3C3D] dark:text-slate-200 rounded-lg px-3.5 cursor-pointer transition-all"
+                >
+                  <Download className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>{isExporting ? 'Exporting…' : 'Export Excel'}</span>
+                  <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64 p-1.5 z-[9999]">
+                {selectedGroup && (
+                  <DropdownMenuItem onClick={() => handleExportExcel('customer')} className="cursor-pointer flex-col items-start gap-0.5 py-2 text-xs">
+                    <span className="font-semibold">This customer</span>
+                    <span className="text-[11px] text-slate-500">{selectedGroup.name} · {selectedGroup.quotations.length} quotations</span>
+                  </DropdownMenuItem>
+                )}
+                <DropdownMenuItem onClick={() => handleExportExcel('all')} className="cursor-pointer flex-col items-start gap-0.5 py-2 text-xs">
+                  <span className="font-semibold">All customers</span>
+                  <span className="text-[11px] text-slate-500">A sheet per customer + a summary · {rawQuotations.length} quotations</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             {/* Excel Direct Import Action */}
             <Button
               size="sm"
@@ -1020,17 +1032,6 @@ export default function QuotationListPage() {
         templateUrl="/templates/MERCON_RateCards_Import_Template.xlsx"
         onImport={(rows) => quotationService.importRows(rows as any)}
         invalidateKeys={[['quotations']]}
-      />
-
-      {/* Export Modal */}
-      <ExportModal
-        isOpen={isExportModalOpen}
-        onClose={() => setIsExportModalOpen(false)}
-        filteredData={selectedGroup ? selectedGroup.quotations : rawQuotations}
-        allData={rawQuotations}
-        columns={QUOTATION_EXPORT_COLUMNS}
-        fileNamePrefix="Mercon_Commercial_Quotations"
-        title="Export quotations"
       />
 
       {/* Right-Side Route Details Inspection Drawer */}
