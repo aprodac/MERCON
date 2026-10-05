@@ -79,6 +79,8 @@ ends.
 
 ### 4c. Privacy policy
 
+**URL: https://mercon.tech/privacy.html** — page source `frontend/web-dashboard/public/privacy.html` (static, no login; MERCON Logistics Services Co., C.R. 1009152862, contact mail@merconlogisticssa.com). Keep it in step with what the apps collect.
+
 A public URL is required (any app collecting location). It must cover: what is
 collected (table above), why, that location is only collected during an active
 trip, retention (trip media 60 days), and a contact for deletion requests.
