@@ -2,10 +2,11 @@
  * Operator Home ("today at a glance"), under the MERCON top bar:
  *   greeting        today's date over "Good afternoon, <name>"
  *   EmergencyStrip  only while a driver emergency is open
- *   TodayCard       ring of done / on the road / to start, and how many
- *                   things need you (delayed · no driver or truck · photos)
+ *   TodayCard       ring of done / on the road / to start, and what needs
+ *                   you as tiles by kind, most important first
  *   LiveNow         fleet map + the trips on the road, late ones first
- *   UpNext          trips still to start today, with Assign when one is short
+ *   FreeTrucks      trucks that can take a job now, by class; Book opens
+ *                   Create trip with the truck chosen
  *   FromDrivers     photo sets drivers sent that the customer hasn't had yet
  * Everything to act on in full lives on Notifications → To do.
  * Composes hooks + components only — no direct API calls here.
@@ -30,9 +31,11 @@ import { useActionIntent } from '../actions/useActionIntent';
 import { EmergencyStrip } from '../home/EmergencyStrip';
 import { TodayCard } from '../home/TodayCard';
 import { LiveNow } from '../home/LiveNow';
-import { UpNext } from '../home/UpNext';
+import { FreeTrucks } from '../home/FreeTrucks';
+import { useTruckDetails } from '../hooks/useTruckDetails';
 import { FromDrivers } from '../home/FromDrivers';
 import { dateLabel, greeting, toStartToday } from '../home/today';
+import { needTiles } from '../home/needsTiles';
 
 export default function DashboardHomeScreen() {
   const router = useRouter();
@@ -46,13 +49,11 @@ export default function DashboardHomeScreen() {
 
   const inbox = useActionInbox();
   const { data: me } = useCurrentUser();
+  const truckDetails = useTruckDetails();
   const { onIntent, openTrip, toast, setToast } = useActionIntent();
 
   const emergencies = useMemo(() => inbox.items.filter((i) => i.kind === 'emergency'), [inbox.items]);
-  const needs = useMemo(() => {
-    const count = (...kinds: string[]) => inbox.items.filter((i) => kinds.includes(i.kind)).length;
-    return { total: inbox.items.length, delayed: count('delayed', 'late-start'), unassigned: count('unassigned'), photos: count('photos') };
-  }, [inbox.items]);
+  const needs = useMemo(() => needTiles(inbox.items), [inbox.items]);
   const toStart = useMemo(() => toStartToday(inbox.scheduled, inbox.tz, now).length, [inbox.scheduled, inbox.tz, now]);
 
   const first = (me?.name || me?.username || '').trim().split(/\s+/)[0];
@@ -76,7 +77,7 @@ export default function DashboardHomeScreen() {
           now={now}
           onIntent={onIntent}
           onOpenTrip={(id) => openTrip(id)}
-          onAll={() => router.push('/notifications')}
+          onAll={() => router.push({ pathname: '/notifications', params: { tab: 'todo' } })}
         />
 
         <TodayCard
@@ -86,7 +87,8 @@ export default function DashboardHomeScreen() {
           needs={needs}
           loading={inbox.loading}
           onTrips={trips}
-          onTodo={(filter) => router.push({ pathname: '/notifications', params: filter ? { filter } : {} })}
+          onTodo={() => router.push({ pathname: '/notifications', params: { tab: 'todo' } })}
+          onKind={(kind) => router.push({ pathname: '/needs-action', params: { kind } })}
         />
 
         {inbox.liveError ? <ErrorState message="Couldn't load live trips." onRetry={inbox.retry} /> : null}
@@ -100,16 +102,18 @@ export default function DashboardHomeScreen() {
           onAll={() => trips('now')}
         />
 
-        <UpNext
-          trips={inbox.scheduled}
+        <FreeTrucks
+          units={inbox.units}
+          details={truckDetails.data ?? []}
+          expiries={inbox.expiries}
           tz={inbox.tz}
           now={now}
-          onOpenTrip={(id) => openTrip(id)}
-          onAssign={(id, what) => openTrip(id, { assign: what })}
-          onAll={() => trips('schedule')}
+          onOpenTruck={(id) => router.push({ pathname: '/vehicle-details', params: { id } })}
+          onBook={(vehicleId) => router.push({ pathname: '/create-trip', params: { vehicleId } })}
+          onAll={() => router.push('/vehicles')}
         />
 
-        <FromDrivers updates={inbox.updates} now={now} onSend={(id) => openTrip(id, { tab: 'updates' })} />
+        <FromDrivers updates={inbox.updates} now={now} onSend={(u) => openTrip(u.trip.id, { share: 'update', update: u.key })} />
       </ScrollView>
       {/* Finished trips waiting for an answer on extra charges */}
       <ChargeAssistant userName={me?.name || me?.username || undefined} />

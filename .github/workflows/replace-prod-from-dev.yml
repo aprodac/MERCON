@@ -1,0 +1,243 @@
+# Replaces PRODUCTION (mercon.tech) with a copy of dev (dev.mercon.tech): every
+# table in the database and the uploaded files (truck / driver photos,
+# documents, POD photos). Manual only — never on push, never scheduled. Built
+# for the go-live switch-over (2026-10); the reverse of sync-dev-from-prod.yml.
+#
+# Production and dev run on different servers, so this is two jobs: `export`
+# on the dev runner dumps dev and packs its uploads into a 1-day workflow
+# artifact; `replace` on the prod runner restores them.
+#
+# Read before running:
+#   - EVERYTHING in production is replaced. Prod-only records are gone after
+#     this (a full dump + an uploads archive are kept on the server first, see
+#     "Undo" in the run summary).
+#   - Production logins become dev's (the users table is copied as-is). Prod's
+#     own JWT secret stays, so everyone signs in again once.
+#   - Release dev → main FIRST. The export refuses to run unless dev's
+#     migration ledger matches the migrations in this commit exactly, so prod's
+#     code and the copied schema always agree.
+name: Replace Production from Dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type REPLACE PRODUCTION to confirm — this deletes all production data and files and replaces them with dev'
+        required: true
+        type: string
+
+# Never alongside a production deploy.
+concurrency:
+  group: ci-cd-main
+  cancel-in-progress: false
+
+jobs:
+  export:
+    name: Export dev snapshot
+    runs-on: [dev]
+    outputs:
+      tables: ${{ steps.dump.outputs.tables }}
+      migrations: ${{ steps.dump.outputs.migrations }}
+
+    steps:
+      - name: Verify confirmation
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirm }}" != "REPLACE PRODUCTION" ]; then
+            echo "::error::Confirmation mismatch. You must type exactly 'REPLACE PRODUCTION'. Nothing was touched." >&2
+            exit 1
+          fi
+          if [ "$(docker inspect -f '{{.State.Running}}' dev-postgres 2>/dev/null)" != "true" ]; then
+            echo "::error::Container 'dev-postgres' is not running." >&2
+            exit 1
+          fi
+
+      - name: Check out this release's migrations
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: backend/api-server/prisma/migrations
+
+      - name: Dev's migration ledger must match this release exactly
+        env:
+          DEV_POSTGRES_USER: ${{ secrets.DEV_POSTGRES_USER }}
+          # Applied on production (and copied into dev by sync-dev-from-prod)
+          # from a branch that never reached dev/main; prod has run with it
+          # since 2026-09. Allowed by name only — any other mismatch still stops.
+          KNOWN_STRAY_MIGRATIONS: 20260903120000_add_team_work_session
+        run: |
+          set -euo pipefail
+          q() { docker exec dev-postgres psql -U "$DEV_POSTGRES_USER" -d mercon_dev_db -tAc "$1"; }
+          unfinished=$(q "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL")
+          if [ "$unfinished" != "0" ]; then
+            echo "::error::Dev has $unfinished failed/unfinished migration(s). Fix dev first." >&2
+            exit 1
+          fi
+          q "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL" \
+            | grep -vxF -f <(echo "$KNOWN_STRAY_MIGRATIONS" | tr ' ' '\n') | sort -u > "$RUNNER_TEMP/dev-ledger.txt" || true
+          find backend/api-server/prisma/migrations -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -u > "$RUNNER_TEMP/release.txt"
+          extra=$(comm -23 "$RUNNER_TEMP/dev-ledger.txt" "$RUNNER_TEMP/release.txt")
+          missing=$(comm -13 "$RUNNER_TEMP/dev-ledger.txt" "$RUNNER_TEMP/release.txt")
+          if [ -n "$extra" ] || [ -n "$missing" ]; then
+            [ -n "$extra" ] && echo "::error::Dev has migrations this release doesn't: $(echo $extra) — release dev → main first." >&2
+            [ -n "$missing" ] && echo "::error::This release has migrations dev hasn't applied: $(echo $missing) — let dev's deploy finish first." >&2
+            exit 1
+          fi
+          echo "Ledger matches: $(wc -l < "$RUNNER_TEMP/release.txt") migrations."
+
+      - name: Dump dev database and pack uploads
+        id: dump
+        env:
+          DEV_POSTGRES_USER: ${{ secrets.DEV_POSTGRES_USER }}
+        run: |
+          set -euo pipefail
+          S="$RUNNER_TEMP/dev-snapshot"; rm -rf "$S" && mkdir -p "$S"
+          docker exec dev-postgres pg_dump -U "$DEV_POSTGRES_USER" -Fc -d mercon_dev_db > "$S/db.dump"
+          test -s "$S/db.dump"
+          q() { docker exec dev-postgres psql -U "$DEV_POSTGRES_USER" -d mercon_dev_db -tAc "$1"; }
+          echo "tables=$(q "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")" >> "$GITHUB_OUTPUT"
+          echo "migrations=$(q "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")" >> "$GITHUB_OUTPUT"
+          # Same two mounts as docker-compose.yml with CLIENT_NAME=dev.
+          sudo tar -czf "$S/uploads-app.tgz" -C /var/lib/mercon/dev-app-uploads .
+          sudo tar -czf "$S/uploads-tmp.tgz" -C /var/lib/mercon/dev-uploads .
+          sudo chown -R "$(id -u)" "$S"
+          du -h "$S"/*
+
+      - name: Hand over to the prod server
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-snapshot-${{ github.run_id }}
+          path: ${{ runner.temp }}/dev-snapshot
+          retention-days: 1
+
+      - name: Remove local copy
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/dev-snapshot"
+
+  replace:
+    name: Replace production
+    needs: export
+    runs-on: [self-hosted, prod]
+
+    # Optional extra gate: create a "prod-replace" environment in
+    # Settings → Environments with a required reviewer to make a second person
+    # approve before production is touched. Until created, this is a no-op.
+    environment: prod-replace
+
+    steps:
+      - name: Fetch snapshot
+        uses: actions/download-artifact@v4
+        with:
+          name: dev-snapshot-${{ github.run_id }}
+          path: ${{ runner.temp }}/dev-snapshot
+
+      - name: Back up production first (database + uploads)
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+        run: |
+          set -euo pipefail
+          if [ "$(docker inspect -f '{{.State.Running}}' mercon-postgres 2>/dev/null)" != "true" ]; then
+            echo "::error::Container 'mercon-postgres' is not running. Nothing was touched." >&2
+            exit 1
+          fi
+          STAMP=$(date -u +%Y%m%d-%H%M%S)
+          sudo mkdir -p /var/backups/mercon
+          DUMP="/var/backups/mercon/mercon-db-before-dev-replace-$STAMP.dump"
+          UPL="/var/backups/mercon/mercon-uploads-before-dev-replace-$STAMP.tgz"
+          docker exec mercon-postgres pg_dump -U "$POSTGRES_USER" -Fc -d mercon_db | sudo tee "$DUMP" > /dev/null
+          if ! sudo test -s "$DUMP"; then
+            echo "::error::Production backup is empty. Stopping before anything is replaced." >&2
+            exit 1
+          fi
+          sudo tar -czf "$UPL" -C /var/lib/mercon mercon-app-uploads mercon-uploads
+          echo "DUMP=$DUMP" >> "$GITHUB_ENV"
+          echo "UPL=$UPL" >> "$GITHUB_ENV"
+          sudo du -h "$DUMP" "$UPL"
+
+      - name: Stop the production API (no writes during the swap)
+        run: docker stop mercon-api
+
+      - name: Replace production database
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+        run: |
+          set -euo pipefail
+          docker cp "$RUNNER_TEMP/dev-snapshot/db.dump" mercon-postgres:/tmp/dev-replace.dump
+          # A true replace: empty the schema, then load dev into it. --no-owner /
+          # --no-privileges: dev's Postgres role doesn't exist here.
+          docker exec mercon-postgres psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d mercon_db \
+            -c "DROP SCHEMA public CASCADE;" -c "CREATE SCHEMA public;"
+          docker exec mercon-postgres pg_restore --no-owner --no-privileges --exit-on-error \
+            -U "$POSTGRES_USER" -d mercon_db /tmp/dev-replace.dump
+          docker exec mercon-postgres rm -f /tmp/dev-replace.dump
+
+      - name: Check the copy
+        env:
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+        run: |
+          set -euo pipefail
+          q() { docker exec mercon-postgres psql -U "$POSTGRES_USER" -d mercon_db -tAc "$1"; }
+          tables=$(q "SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE'")
+          migrations=$(q "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL")
+          echo "tables: prod $tables / dev ${{ needs.export.outputs.tables }} · migrations: prod $migrations / dev ${{ needs.export.outputs.migrations }}"
+          if [ "$tables" != "${{ needs.export.outputs.tables }}" ] || [ "$migrations" != "${{ needs.export.outputs.migrations }}" ]; then
+            echo "::error::The copy doesn't match dev. Restore with the command in the summary." >&2
+            exit 1
+          fi
+
+      - name: Replace production uploaded files
+        run: |
+          set -euo pipefail
+          for pair in "uploads-app.tgz:/var/lib/mercon/mercon-app-uploads" "uploads-tmp.tgz:/var/lib/mercon/mercon-uploads"; do
+            archive="${pair%%:*}"; target="${pair#*:}"
+            sudo mkdir -p "$target"
+            sudo find "$target" -mindepth 1 -delete
+            sudo tar -xzf "$RUNNER_TEMP/dev-snapshot/$archive" -C "$target"
+            # The API runs as uid 1000 (node) and must be able to write here.
+            sudo chown -R 1000:1000 "$target" && sudo chmod 770 "$target"
+            echo "$target: $(sudo du -sh "$target" | cut -f1)"
+          done
+
+      - name: Start production and check health
+        run: |
+          set -euo pipefail
+          docker start mercon-api
+          docker restart mercon-frontend
+          for i in $(seq 1 45); do curl -fsS http://127.0.0.1:3050/health >/dev/null 2>&1 && break; sleep 2; done
+          if ! curl -fsS http://127.0.0.1:3050/health; then
+            echo "::error::Production API doesn't answer /health after the replace." >&2
+            docker logs --tail=100 mercon-api || true
+            exit 1
+          fi
+
+      - name: Clean up
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/dev-snapshot"
+          # Never leave production stopped because a step failed.
+          docker start mercon-api >/dev/null 2>&1 || true
+
+      - name: Summary (with undo)
+        if: always()
+        run: |
+          {
+            echo "## Production replaced from dev"
+            echo
+            echo "Status of this job: **${{ job.status }}** · $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo
+            echo "Backups taken before the replace (kept 7 days for the dump):"
+            echo "- Database: \`${DUMP:-not taken}\`"
+            echo "- Uploads: \`${UPL:-not taken}\`"
+            echo
+            echo "### Undo (on the prod server)"
+            echo '```bash'
+            echo "docker stop mercon-api"
+            echo "docker cp ${DUMP:-<dump>} mercon-postgres:/tmp/undo.dump"
+            echo 'docker exec mercon-postgres psql -U "$POSTGRES_USER" -d mercon_db -c "DROP SCHEMA public CASCADE;" -c "CREATE SCHEMA public;"'
+            echo 'docker exec mercon-postgres pg_restore --no-owner --no-privileges -U "$POSTGRES_USER" -d mercon_db /tmp/undo.dump'
+            echo "sudo find /var/lib/mercon/mercon-app-uploads /var/lib/mercon/mercon-uploads -mindepth 1 -delete"
+            echo "sudo tar -xzf ${UPL:-<uploads.tgz>} -C /var/lib/mercon"
+            echo "docker start mercon-api"
+            echo '```'
+            echo
+            echo "Production logins are now dev's. Everyone signs in again once."
+          } >> "$GITHUB_STEP_SUMMARY"

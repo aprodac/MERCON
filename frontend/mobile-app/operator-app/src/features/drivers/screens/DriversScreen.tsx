@@ -12,7 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Users } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 
-import { SearchBar } from '@/features/dashboard/components';
+import { ListSearch, listPage } from '@/components/ListSearch';
 import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 
 import {
@@ -58,8 +58,8 @@ export default function DriversScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
-      <DriversHeader />
+    <SafeAreaView style={listPage.page} edges={['top']}>
+      <DriversHeader onAddPress={() => router.push('/driver-edit')} />
 
       {error ? (
         <ErrorState message={error} onRetry={() => refresh()} className="flex-1" />
@@ -67,19 +67,20 @@ export default function DriversScreen() {
         <FlatList
           data={drivers}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 110 }}
+          contentContainerStyle={listPage.list}
+          keyboardShouldPersistTaps="handled"
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={Colors.primary} />}
           ListHeaderComponent={
-            <View className="gap-4 pb-3">
+            <View style={listPage.header}>
               <DriverStatsSection status={status} onSelect={setStatus} />
-              <SearchBar
+              <ListSearch
                 value={query}
                 onChangeText={setQuery}
                 placeholder="Search name or phone"
-                isLoading={isFetching && !isRefreshing}
+                loading={isFetching && !isRefreshing}
               />
-              <Text style={{ fontSize: 16, fontWeight: '700', color: '#3E3C3D' }}>{total} {total === 1 ? 'driver' : 'drivers'}</Text>
+              {!loading ? <Text style={listPage.count}>{total} {total === 1 ? 'driver' : 'drivers'}</Text> : null}
             </View>
           }
           renderItem={({ item }) => (

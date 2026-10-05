@@ -8,70 +8,12 @@ import { CarouselPagination } from './CarouselPagination';
 import { useActiveTrips } from '../hooks';
 import type { Trip } from '../types';
 import { deriveVehicleCardStatus } from '../services/dashboardService';
-import { autoTrackingUrl, operatorService } from '../../../lib/operator';
+import { buildStatusMessages } from '../../share/statusShare';
 
 interface ActiveTripsSectionProps {
   onViewAll?: () => void;
   onTripPress?: (trip: Trip) => void;
   className?: string;
-}
-
-export function formatWhatsAppMessage(trip: Trip, trackingUrl?: string | null): string {
-  const truck = (trip.vehicle?.ref_id || trip.vehicle?.plate_number || 'N/A').toUpperCase();
-  const driverName = trip.driver
-    ? `${trip.driver.first_name} ${trip.driver.last_name}`.toUpperCase()
-    : 'UNASSIGNED';
-
-  const stops = trip.stops || [];
-  const pickupStop = stops.find((s) => s.stop_type === 'Pickup') || stops[0];
-  const dropoffStop = [...stops].reverse().find((s) => s.stop_type === 'Dropoff') || stops[stops.length - 1];
-
-  const origin = pickupStop?.location_name
-    ? pickupStop.location_name.split(',')[0].replace(/\]+$/, '').trim().toUpperCase()
-    : 'ORIGIN';
-  const destination = dropoffStop?.location_name
-    ? dropoffStop.location_name.split(',')[0].replace(/\]+$/, '').trim().toUpperCase()
-    : 'DESTINATION';
-
-  const routeStr = `${origin} → ${destination}`;
-
-  const distanceStr = trip.planned_distance
-    ? `${Math.round(trip.planned_distance)} KM`
-    : '—';
-
-  let etaStr = '—';
-  if (trip.planned_end) {
-    const diffMs = new Date(trip.planned_end).getTime() - Date.now();
-    if (diffMs > 0) {
-      const hours = (diffMs / (1000 * 60 * 60)).toFixed(1);
-      etaStr = `${hours} HRS`;
-    } else {
-      etaStr = 'ARRIVING SOON';
-    }
-  }
-
-  const statusLabel =
-    trip.status === 'InTransit' ? 'In Transit' :
-    trip.status === 'Loading' ? 'Loading' :
-    trip.status === 'Scheduled' ? 'Scheduled' :
-    trip.status === 'AtPickup' ? 'At Pickup' :
-    trip.status === 'AtDelivery' ? 'At Delivery' :
-    trip.status;
-
-  // Planned figures, labelled as such — the live distance and ETA are on the tracking link.
-  const arrival = etaStr === '—' || etaStr === 'ARRIVING SOON' ? etaStr : `in ${etaStr}`;
-  const text = `🚛 Vehicle Status Update\n\nTruck: ${truck}\nDriver: ${driverName}\nRoute: ${routeStr}\nTrip distance: ${distanceStr}\nPlanned arrival: ${arrival}\nStatus: ${statusLabel}`;
-  return trackingUrl ? `${text}\n\nTrack live: ${trackingUrl}` : text;
-}
-
-/** Customer tracking links for these trips (only customers who want them in messages). Never blocks a share. */
-async function statusLinks(trips: Trip[]): Promise<Record<string, string | null>> {
-  try {
-    const links = await operatorService.trackingLinks(trips.map((t) => t.id));
-    return Object.fromEntries(Object.entries(links).map(([id, l]) => [id, autoTrackingUrl(l)]));
-  } catch {
-    return {};
-  }
 }
 
 export async function shareTextToWhatsApp(text: string, title = 'Vehicle Status Update') {
@@ -118,21 +60,19 @@ export async function shareTextToWhatsApp(text: string, title = 'Vehicle Status 
   }
 }
 
+/** One trip's status, in the shared format (features/share/statusShare.ts). */
 export async function shareTripToWhatsApp(trip: Trip) {
-  const links = await statusLinks([trip]);
-  const singleText = formatWhatsAppMessage(trip, links[trip.id]);
-  await shareTextToWhatsApp(singleText);
+  const [msg] = await buildStatusMessages([trip.id]);
+  if (msg) await shareTextToWhatsApp(msg.text);
+  else Alert.alert('Unable to Share', 'Could not load this trip.');
 }
 
+/** Several trips in one message — one block per customer, each in the shared format. */
 export async function shareMultipleCombinedToWhatsApp(trips: Trip[]) {
   if (trips.length === 0) return;
-  const links = await statusLinks(trips);
-  const itemsFormatted = trips
-    .map((t, idx) => `[TRIP ${idx + 1}/${trips.length}]\n` + formatWhatsAppMessage(t, links[t.id]))
-    .join('\n\n───────────────────\n\n');
-
-  const bulkText = `🚛 Vehicle Status Updates (${trips.length} Trips)\n\n${itemsFormatted}`;
-  await shareTextToWhatsApp(bulkText, `${trips.length} Vehicle Status Updates`);
+  const msgs = await buildStatusMessages(trips.map((t) => t.id));
+  if (!msgs.length) { Alert.alert('Unable to Share', 'Could not load these trips.'); return; }
+  await shareTextToWhatsApp(msgs.map((m) => m.text).join('\n\n───────────────────\n\n'), `${trips.length} Vehicle Status Updates`);
 }
 
 const GAP = 14;

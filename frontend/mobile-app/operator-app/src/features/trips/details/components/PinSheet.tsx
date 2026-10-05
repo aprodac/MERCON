@@ -40,29 +40,87 @@ interface Props {
 
 const hasPin = (s: Stop) => Number.isFinite(s.location_lat) && !!(s.location_lat || s.location_lng);
 
+/** A pin chosen on the sheet. `exact`: pasted link or the map moved by hand; a search pick is approximate. */
+export interface PickedPin {
+  lat: number;
+  lng: number;
+  address: string | null;
+  exact: boolean;
+}
+
+/** "Set pin" for a trip's stop — saved on the stop, its place and the place's other open trips. */
 export function PinSheet({ target, tripId, onClose, onSaved }: Props) {
+  const save = async (pin: PickedPin) => {
+    if (!target) return;
+    const r = await operatorService.pinStop(tripId, target.stop.id, { lat: pin.lat, lng: pin.lng, address: pin.address });
+    const others = r.other_trip_count;
+    if (r.location_pinned) {
+      Alert.alert('Pin saved', `Saved for ${target.stop.location?.name || target.label}${others > 0 ? ` and ${others} other open trip${others === 1 ? '' : 's'}` : ''}.`);
+    }
+    onSaved();
+    onClose();
+  };
+  return (
+    <PinPickerSheet
+      visible={!!target}
+      title={`Set pin · ${target?.label ?? ''}`}
+      start={target && hasPin(target.stop) ? { lat: target.stop.location_lat, lng: target.stop.location_lng } : null}
+      onSave={save}
+      onClose={onClose}
+    />
+  );
+}
+
+/**
+ * The pin picker itself: paste a link, search, or move the map. `onSave` gets
+ * the pin; when it throws the sheet stays open and the error is shown.
+ */
+export function PinPickerSheet({
+  visible,
+  title,
+  start: startPin,
+  initialQuery = '',
+  saveLabel = 'Save pin',
+  footer,
+  onSave,
+  onClose,
+}: {
+  visible: boolean;
+  title: string;
+  start?: { lat: number; lng: number } | null;
+  initialQuery?: string;
+  saveLabel?: string;
+  footer?: React.ReactNode;
+  onSave: (pin: PickedPin) => Promise<void>;
+  onClose: () => void;
+}) {
   const cameraRef = useRef<any>(null);
   const [center, setCenter] = useState<[number, number] | null>(null);
   const [moved, setMoved] = useState(false);
+  const [exact, setExact] = useState(false);
   const [address, setAddress] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{ id: string; label: string; lat: number; lng: number }[]>([]);
   const [busy, setBusy] = useState<'paste' | 'search' | 'save' | null>(null);
-  const [shownFor, setShownFor] = useState<Props['target']>(null);
+  const [shown, setShown] = useState(false);
 
-  // Start from the stop's current (guessed) pin each time the sheet opens.
-  if (target !== shownFor) {
-    setShownFor(target);
-    setCenter(target && hasPin(target.stop) ? [target.stop.location_lng, target.stop.location_lat] : null);
-    setMoved(false);
-    setAddress(null);
-    setQuery('');
-    setResults([]);
+  // Start from the current (guessed) pin each time the sheet opens.
+  if (visible !== shown) {
+    setShown(visible);
+    if (visible) {
+      setCenter(startPin ? [startPin.lng, startPin.lat] : null);
+      setMoved(false);
+      setExact(false);
+      setAddress(null);
+      setQuery(initialQuery);
+      setResults([]);
+    }
   }
 
-  const goTo = (lat: number, lng: number, addr?: string | null) => {
+  const goTo = (lat: number, lng: number, addr: string | null | undefined, isExact: boolean) => {
     setCenter([lng, lat]);
     setMoved(true);
+    setExact(isExact);
     setAddress(addr ?? null);
     setResults([]);
     cameraRef.current?.flyTo({ center: [lng, lat], zoom: 17, duration: 600 });
@@ -77,7 +135,7 @@ export function PinSheet({ target, tripId, onClose, onSaved }: Props) {
     setBusy('paste');
     try {
       const r = await operatorService.resolveLocationText(text);
-      goTo(r.lat, r.lng, r.address);
+      goTo(r.lat, r.lng, r.address, true);
     } catch (e) {
       Alert.alert('Could not read that location', getApiErrorMessage(e));
     } finally {
@@ -88,7 +146,7 @@ export function PinSheet({ target, tripId, onClose, onSaved }: Props) {
   // Search as the operator types, after a short pause.
   useEffect(() => {
     const q = query.trim();
-    if (q.length < 3) { setResults([]); return; }
+    if (!visible || q.length < 3) { setResults([]); return; }
     let live = true;
     const t = setTimeout(async () => {
       setBusy('search');
@@ -102,23 +160,16 @@ export function PinSheet({ target, tripId, onClose, onSaved }: Props) {
       }
     }, 450);
     return () => { live = false; clearTimeout(t); };
-  }, [query]);
+  }, [query, visible]);
 
   const save = async () => {
-    if (!target) return;
     if (!center || !moved) {
       Alert.alert('Set the pin first', 'Paste the location link, search, or move the map so the pin is on the gate.');
       return;
     }
     setBusy('save');
     try {
-      const r = await operatorService.pinStop(tripId, target.stop.id, { lat: center[1], lng: center[0], address });
-      const others = r.other_trip_count;
-      if (r.location_pinned) {
-        Alert.alert('Pin saved', `Saved for ${target.stop.location?.name || target.label}${others > 0 ? ` and ${others} other open trip${others === 1 ? '' : 's'}` : ''}.`);
-      }
-      onSaved();
-      onClose();
+      await onSave({ lat: center[1], lng: center[0], address, exact });
     } catch (e) {
       Alert.alert('Could not save the pin', getApiErrorMessage(e));
     } finally {
@@ -129,7 +180,7 @@ export function PinSheet({ target, tripId, onClose, onSaved }: Props) {
   const start = center ?? DEFAULT_CENTER;
 
   return (
-    <AppModal visible={!!target} onClose={onClose} type="bottom-sheet" title={`Set pin · ${target?.label ?? ''}`} maxHeight="94%">
+    <AppModal visible={visible} onClose={onClose} type="bottom-sheet" title={title} maxHeight="94%">
       <View style={{ gap: 10 }}>
         <TouchableOpacity style={s.paste} onPress={pasteLink} disabled={busy === 'paste'} activeOpacity={0.8}>
           {busy === 'paste' ? <ActivityIndicator size="small" color={INK} /> : <ClipboardIcon size={17} color={INK} />}
@@ -150,7 +201,7 @@ export function PinSheet({ target, tripId, onClose, onSaved }: Props) {
         {results.length > 0 ? (
           <View style={s.results}>
             {results.map((r) => (
-              <TouchableOpacity key={r.id} style={s.result} onPress={() => goTo(r.lat, r.lng, r.label)}>
+              <TouchableOpacity key={r.id} style={s.result} onPress={() => goTo(r.lat, r.lng, r.label, false)}>
                 <MapPin size={14} color={MUTED} />
                 <Text style={s.resultText} numberOfLines={2}>{r.label}</Text>
               </TouchableOpacity>
@@ -171,7 +222,11 @@ export function PinSheet({ target, tripId, onClose, onSaved }: Props) {
               onRegionDidChange={(e) => {
                 const ev = e.nativeEvent;
                 setCenter(ev.center as [number, number]);
-                if (ev.userInteraction) setMoved(true);
+                // Moving the map by hand puts the pin on the gate: exact.
+                if (ev.userInteraction) {
+                  setMoved(true);
+                  setExact(true);
+                }
               }}
             >
               <ML.Camera ref={cameraRef} initialViewState={{ center: start, zoom: center ? 15 : 5 }} />
@@ -193,8 +248,9 @@ export function PinSheet({ target, tripId, onClose, onSaved }: Props) {
         {address ? <Text style={s.address} numberOfLines={2}>{address}</Text> : null}
 
         <TouchableOpacity style={[s.btn, busy === 'save' && { opacity: 0.7 }]} onPress={save} disabled={busy === 'save'}>
-          <Text style={s.btnText}>{busy === 'save' ? 'Saving…' : 'Save pin'}</Text>
+          <Text style={s.btnText}>{busy === 'save' ? 'Saving…' : saveLabel}</Text>
         </TouchableOpacity>
+        {footer}
         <Text style={s.foot}>The driver's navigation, ETA and arrival use this pin.</Text>
       </View>
     </AppModal>

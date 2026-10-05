@@ -87,6 +87,8 @@ jobs:
           # Studio and set the new value as the GEMINI_API_KEY repo secret.)
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ secrets.GEMINI_MODEL || 'gemini-flash-latest' }}
+          # Repo variable; set it to https://track.mercon.tech once that address is live.
+          TRACKING_BASE_URL: ${{ vars.TRACKING_BASE_URL }}
           # Google address autocomplete. Reaches the frontend as a
           # docker-compose build arg, because Vite inlines VITE_* at build time
           # — a runtime env var would arrive after the bundle is written.
@@ -316,6 +318,21 @@ jobs:
           # Deploy production nginx config
           sudo cp nginx/mercon-api.conf /etc/nginx/sites-available/mercon-api.conf
           sudo ln -sf /etc/nginx/sites-available/mercon-api.conf /etc/nginx/sites-enabled/mercon-api.conf
+
+          # Customer-links address — only once its certificate exists; before
+          # that the block would fail `nginx -t`, so it stays off.
+          # Its certificate is requested here the first time the name resolves
+          # (DNS A record in Hostinger). certbot's timer renews it after that.
+          # A failure only means the address stays off — never a failed deploy.
+          if [ ! -f /etc/letsencrypt/live/track.mercon.tech/fullchain.pem ] && command -v certbot >/dev/null 2>&1 && getent hosts track.mercon.tech >/dev/null; then
+            sudo certbot certonly --nginx -d track.mercon.tech --non-interactive --agree-tos --register-unsafely-without-email || echo "::warning::Could not get a certificate for track.mercon.tech — check its DNS record points at this server."
+          fi
+          if [ -f /etc/letsencrypt/live/track.mercon.tech/fullchain.pem ]; then
+            sudo cp nginx/mercon-track.conf /etc/nginx/sites-available/mercon-track.conf
+            sudo ln -sf /etc/nginx/sites-available/mercon-track.conf /etc/nginx/sites-enabled/mercon-track.conf
+          else
+            echo "track.mercon.tech certificate not found — customer-links address stays off."
+          fi
 
           # Remove stale default config if it exists
           sudo rm -f /etc/nginx/sites-enabled/default 2>/dev/null || true

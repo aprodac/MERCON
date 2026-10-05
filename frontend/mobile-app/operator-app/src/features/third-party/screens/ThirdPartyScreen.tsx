@@ -4,15 +4,16 @@
  * compact row per carrier; tap a row for its details, + adds a carrier.
  */
 import React, { useCallback, useMemo, useState } from 'react';
-import { View, Text, FlatList, RefreshControl, TouchableOpacity, TextInput, StyleSheet, StatusBar, Linking } from 'react-native';
+import { View, Text, FlatList, RefreshControl, TouchableOpacity, StyleSheet, StatusBar, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Building2, ChevronRight, Phone, Plus, Search, X } from 'lucide-react-native';
+import { Building2, ChevronRight, Phone, Plus } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { EmptyState, ErrorState, SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { useOperatorThirdPartyProviders, type OperatorThirdPartyProvider } from '@/lib/operator';
 import { AppTopBar } from '@/components/AppTopBar';
 import { FilterChips } from '@/components/FilterChips';
+import { ListSearch, listPage } from '@/components/ListSearch';
 import { CompanyAvatar, niceName } from '@/features/trips/create/components/ui';
 import { compactSar } from '../format';
 
@@ -54,7 +55,7 @@ export default function ThirdPartyScreen() {
   ];
 
   return (
-    <SafeAreaView style={s.page} edges={['top']}>
+    <SafeAreaView style={listPage.page} edges={['top']}>
       <StatusBar barStyle="dark-content" backgroundColor="#F6F6F7" />
       <AppTopBar
         title="3rd party fleet"
@@ -67,37 +68,21 @@ export default function ThirdPartyScreen() {
         <FlatList
           data={first ? [] : shown}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={s.list}
+          contentContainerStyle={listPage.list}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           refreshControl={<RefreshControl refreshing={loading && providers.length > 0} onRefresh={refetch} tintColor={Colors.primary} />}
           ListHeaderComponent={
-            <View style={{ gap: 12, marginBottom: 12 }}>
+            <View style={listPage.header}>
               <FilterChips<Filter>
                 value={filter}
                 onChange={setFilter}
                 items={tiles.map((t) => ({ key: t.id, label: t.label, dot: t.dot, count: first ? '–' : counts[t.id] }))}
               />
 
-              <View style={s.search}>
-                <Search size={17} color={MUTED} />
-                <TextInput
-                  style={s.searchInput}
-                  value={query}
-                  onChangeText={setQuery}
-                  placeholder="Search carrier, contact or phone"
-                  placeholderTextColor="#9898A4"
-                  autoCorrect={false}
-                  returnKeyType="search"
-                />
-                {query ? (
-                  <TouchableOpacity onPress={() => setQuery('')} hitSlop={10} accessibilityLabel="Clear search">
-                    <X size={17} color={MUTED} />
-                  </TouchableOpacity>
-                ) : null}
-              </View>
+              <ListSearch value={query} onChangeText={setQuery} placeholder="Search carrier, contact or phone" />
 
-              {!first ? <Text style={s.count}>{shown.length} {shown.length === 1 ? 'carrier' : 'carriers'}</Text> : null}
+              {!first ? <Text style={listPage.count}>{shown.length} {shown.length === 1 ? 'carrier' : 'carriers'}</Text> : null}
             </View>
           }
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
@@ -163,12 +148,7 @@ function ProviderRow({ provider: p, onPress }: { provider: OperatorThirdPartyPro
 }
 
 const s = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F6F6F7' },
-  list: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 },
   dot: { width: 7, height: 7, borderRadius: 4 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E9E9EC', paddingHorizontal: 14 },
-  searchInput: { flex: 1, fontSize: 15, color: INK, paddingVertical: 0 },
-  count: { fontSize: 16, fontWeight: '700', color: INK },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E9E9EC', paddingVertical: 12, paddingHorizontal: 14 },
   rowText: { flex: 1, minWidth: 0, gap: 3 },
   name: { fontSize: 16, fontWeight: '600', color: INK, letterSpacing: -0.2 },

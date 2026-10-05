@@ -48,7 +48,7 @@ export default function TripDetailsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   // Links from the home's "Needs action" cards can open a tab, a message or a picker straight away.
-  const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; assign?: string; times?: string }>();
+  const params = useLocalSearchParams<{ id: string; tab?: string; share?: string; update?: string; assign?: string; times?: string }>();
   const { id } = params;
   const { trip, overview, updates, whatsappApi, tz, phase, remaining, tracking, trackingUrl, refreshTracking, renewTracking, loading, refreshing, error, refresh, reload } = useTripDetails(id);
   const f = useMemo(() => makeFormatters(tz), [tz]);
@@ -70,8 +70,18 @@ export default function TripDetailsScreen() {
   const [linkDone, setLinkDone] = useState(false);
   if (trip && !linkDone) {
     setLinkDone(true);
-    if (params.share === 'delay' || params.share === 'status') setShare({ type: 'quick', kind: params.share });
+    if (params.share === 'delay' || params.share === 'status' || params.share === 'assignment') setShare({ type: 'quick', kind: params.share });
     if (params.times === '1') setCheckingTimes(true);
+  }
+  // `share=update&update=<key>` (Notifications → From drivers → Send): open the share sheet on that
+  // photo set once the trip's updates have arrived (they load after the trip itself).
+  const [updateLinkDone, setUpdateLinkDone] = useState(false);
+  if (params.share === 'update' && params.update && !updateLinkDone && trip) {
+    const u = updates.find((x) => x.key === params.update);
+    if (u) {
+      setUpdateLinkDone(true);
+      setShare({ type: 'update', update: u });
+    }
   }
   const assignKind = params.assign === 'driver' || params.assign === 'truck' ? params.assign : null;
   const tripLoaded = !!trip;
@@ -382,6 +392,7 @@ export default function TripDetailsScreen() {
         onCancel={cancelTrip}
         onQuick={quick}
         active={phase === 'active'}
+        assignment={phase === 'planned' || phase === 'active'}
         tracking={tracking?.enabled && tracking.url ? { sub: trackingSub(tracking.open_count, tracking.last_opened_at), onPress: trackingActions } : null}
       />
       <UploadSheet visible={sheet === 'upload'} onClose={() => setSheet(null)} onPick={upload} />

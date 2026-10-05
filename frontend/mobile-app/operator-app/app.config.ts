@@ -93,7 +93,7 @@ export default (): ExpoConfig => ({
     versionCode: buildNumber,
   },
   web: {
-    output: 'static',
+    output: 'single',
     favicon: client.favicon,
   },
   plugins: [

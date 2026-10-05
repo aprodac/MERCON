@@ -112,23 +112,6 @@ export function punctuality(lateByMin: number | null): { label: string; good: bo
   return lateByMin <= 5 ? { label: 'On time', good: true } : { label: `${formatDuration(lateByMin * 60)} late`, good: false };
 }
 
-/** The share message: where it's going, the ETA, the driver — and the customer's live tracking link when there is one. */
-export function buildEtaShareText(u: LiveUnit, eta: EtaInfo | null, formatTime: (d: Date) => string, trackingUrl?: string | null): string {
-  const stop = nextStop(u);
-  const head = [u.trip?.ref_id, u.vehicle?.plate_number].filter(Boolean).join(' · ') || (u.vehicle?.plate_number ?? u.driver?.name ?? 'Truck');
-  const lines = [`*${head}*`];
-  if (stop) lines.push(`Next stop: ${stop.name || stop.address || `Stop ${stop.sequence}`}`);
-  if (eta?.arrival && eta.durationSeconds != null) {
-    const dist = eta.distanceKm != null ? ` · ${formatKm(eta.distanceKm)}` : '';
-    lines.push(`ETA: ${formatTime(eta.arrival)} (in ${formatDuration(eta.durationSeconds)})${dist}`);
-  } else if (eta?.distanceKm != null) {
-    lines.push(`Distance: about ${formatKm(eta.distanceKm)}`);
-  }
-  if (u.driver?.name) lines.push(`Driver: ${u.driver.name}`);
-  if (trackingUrl) lines.push(`Track live: ${trackingUrl}`);
-  return lines.join('\n');
-}
-
 // ── City search ─────────────────────────────────────────────────────────────
 
 export interface Place { label: string; lat: number; lng: number }

@@ -38,9 +38,14 @@ import {
   type OperatorDriverOption,
   type OperatorLocation,
   type OperatorQuotation,
+  type OperatorSurchargeRule,
   type OperatorThirdPartyProvider,
+  type OperatorTrip,
   type OperatorVehicleOption,
+  type Previous3PLDriver,
+  type ProviderRateMatch,
   type RecommendedDriver,
+  type VehicleCompatibilityRule,
 } from '../../../lib/operator';
 import { estimateRoute, routeKeyOf, routePoints, type RouteEstimate } from './routeEstimate';
 
@@ -67,6 +72,22 @@ export interface LocationPick {
   lng?: number | null;
 }
 
+/** A route this customer ran lately, offered as a one-tap start. */
+export interface RecentRoute {
+  key: string;
+  origin: LocationPick;
+  destination: LocationPick;
+  stops: LocationPick[];
+  count: number;
+  lastUsed: number;
+}
+
+/** How a single trip's payout is shared with the co-driver; empty = 50/50. */
+export interface CoDriverSplit {
+  driverPayoutOverride?: number;
+  coDriverPayoutOverride?: number;
+}
+
 /** A blank trip: no date or time is chosen for the operator. */
 function emptySlot(): TripSlotDraft {
   return {
@@ -91,6 +112,9 @@ function emptySlot(): TripSlotDraft {
     saveAsQuotation: false,
   };
 }
+
+/** A stop-fee list as long as its stops (older slots may hold fewer fees). */
+const padFees = (fees: string[] | undefined, n: number) => Array.from({ length: n }, (_, i) => fees?.[i] ?? '');
 
 const num = (v?: string | number | null) => {
   const n = Number(v);
@@ -127,6 +151,8 @@ function routeFromQuotation(q: OperatorQuotation): Partial<TripSlotDraft> {
     destinationLng: dest.lng ?? null,
     intermediateLocations: mids.map((m) => m.name),
     intermediateLocationIds: mids.map((m) => m.locationId ?? null),
+    intermediateStopFees: mids.map(() => ''),
+    returnIntermediateStopFees: retMids.map(() => ''),
     returnOrigin: ret.length ? ret[0].name : '',
     returnOriginLocationId: ret.length ? ret[0].locationId ?? null : null,
     returnDestination: ret.length > 1 ? ret[ret.length - 1].name : '',
@@ -162,9 +188,41 @@ const classOf = (q: OperatorQuotation) => {
 const listCache: {
   customers?: OperatorCustomer[];
   fleet?: { drivers: OperatorDriverOption[]; vehicles: OperatorVehicleOption[]; providers: OperatorThirdPartyProvider[] };
+  compatRules?: VehicleCompatibilityRule[];
 } = {};
 
-export function useCreateTrip(params: { customerId?: string; billingType?: string; assignment?: string }) {
+/** First stop → last stop of each recent one-way trip, with the stops in between; most used first. */
+function recentRoutesFrom(trips: OperatorTrip[]): RecentRoute[] {
+  const map = new Map<string, RecentRoute>();
+  const pick = (st: any): LocationPick => ({
+    name: st?.location?.name || st?.location_name || '',
+    locationId: st?.locationId || st?.location?.id || null,
+    lat: st?.location?.lat ?? st?.location_lat ?? null,
+    lng: st?.location?.lng ?? st?.location_lng ?? null,
+  });
+  trips.forEach((t: any) => {
+    // A round trip's last stop is back home — its route isn't origin → last stop.
+    if (isRoundTripCategory(t.rate_category || '')) return;
+    const stops = [...(t.stops || [])].sort((a: any, b: any) => (a.stop_sequence ?? 0) - (b.stop_sequence ?? 0));
+    if (stops.length < 2) return;
+    const origin = pick(stops[0]);
+    const destination = pick(stops[stops.length - 1]);
+    if (!origin.name || !destination.name) return;
+    const mids = stops.slice(1, -1).map(pick).filter((m) => m.name);
+    const key = [origin, ...mids, destination].map((p) => p.locationId || p.name.trim().toLowerCase()).join('>');
+    const when = t.createdAt ? new Date(t.createdAt).getTime() : 0;
+    const prev = map.get(key);
+    if (prev) {
+      prev.count += 1;
+      prev.lastUsed = Math.max(prev.lastUsed, when);
+    } else {
+      map.set(key, { key, origin, destination, stops: mids, count: 1, lastUsed: when });
+    }
+  });
+  return [...map.values()].sort((a, b) => b.count - a.count || b.lastUsed - a.lastUsed).slice(0, 4);
+}
+
+export function useCreateTrip(params: { customerId?: string; billingType?: string; assignment?: string; vehicleId?: string }) {
   const [tz, setTz] = useState('Asia/Riyadh');
   const [today, setToday] = useState(() => dateInZone(Date.now(), 'Asia/Riyadh'));
 
@@ -180,6 +238,13 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const [fleetLoading, setFleetLoading] = useState(() => !listCache.fleet);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recommended, setRecommended] = useState<RecommendedDriver[]>([]);
+  // Answers are kept with the request they belong to; a stale one is ignored instead of cleared.
+  const [recommendedFor, setRecommendedFor] = useState('');
+  const [compatRules, setCompatRules] = useState<VehicleCompatibilityRule[]>(() => listCache.compatRules ?? []);
+  const [recentTrips, setRecentTrips] = useState<OperatorTrip[]>([]);
+  const [surchargeRules, setSurchargeRules] = useState<OperatorSurchargeRule[]>([]);
+  const [partnerRateFor, setPartnerRateFor] = useState<{ key: string; rate: ProviderRateMatch | null }>({ key: '', rate: null });
+  const [partnerDriversFor, setPartnerDriversFor] = useState<{ providerId: string; list: Previous3PLDriver[] }>({ providerId: '', list: [] });
 
   /* ── Form ── */
   const [step, setStep] = useState<CreateTripStep>(1);
@@ -196,7 +261,13 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const [assignmentType, setAssignmentType] = useState<AssignmentType>(params.assignment === 'third_party' ? 'third_party' : 'own');
   const [driverId, setDriverId] = useState('');
   const [vehicleId, setVehicleId] = useState('');
-  const [coDriverId, setCoDriverId] = useState('');
+  const [coDriverId, setCoDriverIdRaw] = useState('');
+  const [coDriverSplit, setCoDriverSplit] = useState<CoDriverSplit>({});
+  // A new (or no) co-driver starts from the 50/50 split again.
+  const setCoDriverId = useCallback((id: string) => {
+    setCoDriverIdRaw(id);
+    setCoDriverSplit({});
+  }, []);
   const [awbNumber, setAwbNumber] = useState('');
   const [thirdPartyProviderId, setThirdPartyProviderId] = useState('');
   const [thirdPartyDriverName, setThirdPartyDriverName] = useState('');
@@ -246,6 +317,21 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   const toUtcIso = useCallback((date: string, time: string) => zonedWallTimeToUtcIso(date, time, tz), [tz]);
 
   /* ── Load ── */
+  /** Drivers, trucks and partners — loaded again after one is added from inside the form. */
+  const loadFleet = useCallback(
+    () =>
+      Promise.all([operatorService.driversLookup(), operatorService.vehiclesLookup(), operatorService.thirdPartyProviders()]).then(([d, v, p]) => {
+        listCache.fleet = { drivers: d || [], vehicles: (v || []).filter((x) => x.isActive !== false), providers: p || [] };
+        setDrivers(listCache.fleet.drivers);
+        setVehicles(listCache.fleet.vehicles);
+        setProviders(listCache.fleet.providers);
+      }),
+    [],
+  );
+  const refreshFleet = useCallback(() => {
+    loadFleet().catch(() => {});
+  }, [loadFleet]);
+
   // Step 1 needs only customers and the timezone; the fleet (drivers, trucks,
   // partners) is for step 3 and loads behind it. Lists from the last visit show
   // at once and are refreshed in the background.
@@ -262,20 +348,18 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
       })
       .catch(fail)
       .finally(() => alive && setLoading(false));
-    Promise.all([operatorService.driversLookup(), operatorService.vehiclesLookup(), operatorService.thirdPartyProviders()])
-      .then(([d, v, p]) => {
-        if (!alive) return;
-        listCache.fleet = { drivers: d || [], vehicles: (v || []).filter((x) => x.isActive !== false), providers: p || [] };
-        setDrivers(listCache.fleet.drivers);
-        setVehicles(listCache.fleet.vehicles);
-        setProviders(listCache.fleet.providers);
-      })
+    loadFleet()
       .catch(fail)
       .finally(() => alive && setFleetLoading(false));
+    operatorService.vehicleCompatibilityRules().then((r) => {
+      if (!alive || r.length === 0) return;
+      listCache.compatRules = r;
+      setCompatRules(r);
+    });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [loadFleet]);
 
   // A customer's quotations and saved places.
   useEffect(() => {
@@ -290,10 +374,23 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
       .locations(customerId)
       .then((l) => alive && setLocations(l || []))
       .catch(() => {});
+    operatorService.customerRecentTrips(customerId).then((t) => alive && setRecentTrips(t));
     return () => {
       alive = false;
     };
   }, [customerId]);
+
+  /** This customer's latest routes, most used first. */
+  const recentRoutes = useMemo(() => recentRoutesFrom(recentTrips), [recentTrips]);
+  /** How often each quotation was used on this customer's latest trips. */
+  const quotationUse = useMemo(() => {
+    const m = new Map<string, number>();
+    recentTrips.forEach((t: any) => {
+      const id = t.quotationId || t.quotation?.id || t.rate_card_id;
+      if (id) m.set(id, (m.get(id) || 0) + 1);
+    });
+    return m;
+  }, [recentTrips]);
 
   /* ── Quotation matching ── */
   const clearPrice = (s: TripSlotDraft, keepTyped: boolean): TripSlotDraft => ({
@@ -396,7 +493,18 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeKey, quotations]);
 
-  const priceState: PriceState = !routeComplete ? 'no_route' : slot.rateMatched && slot.matchedRateCard ? 'matched' : 'define';
+  // The customer's standing surcharges (and the applied quotation's) — offered when adding a charge.
+  const appliedQuotationId = slot.rateMatched ? (slot.matchedRateCard as OperatorQuotation | null)?.id : undefined;
+  useEffect(() => {
+    if (!customerId) return;
+    let alive = true;
+    operatorService.surchargeRules({ customerId, quotationId: appliedQuotationId }).then((r) => alive && setSurchargeRules(r));
+    return () => {
+      alive = false;
+    };
+  }, [customerId, appliedQuotationId]);
+
+  const priceState: PriceState =!routeComplete ? 'no_route' : slot.rateMatched && slot.matchedRateCard ? 'matched' : 'define';
 
   /** Own-fleet trips need a driver payout; a quotation saved without one leaves it empty. */
   const payoutMissing = assignmentType === 'own' && priceState !== 'no_route' && !(num(slot.driverPayout) > 0);
@@ -408,6 +516,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     setCustomerIdRaw(id);
     setQuotations([]);
     setLocations([]);
+    setRecentTrips([]);
+    setSurchargeRules([]);
     setQuotationsLoading(Boolean(id));
     setSlot((s) => clearPrice(s, false));
   }, []);
@@ -424,20 +534,74 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     }));
   }, []);
 
+  // Each stop can carry a fee billed on top of the rate (the arrays the web fills), kept in step with the stops.
   const addStop = useCallback((leg: 0 | 1, loc: LocationPick) => {
     setSlot((s) =>
       leg === 0
-        ? { ...s, intermediateLocations: [...s.intermediateLocations, loc.name], intermediateLocationIds: [...(s.intermediateLocationIds || []), loc.locationId ?? null] }
-        : { ...s, returnIntermediateLocations: [...(s.returnIntermediateLocations || []), loc.name], returnIntermediateLocationIds: [...(s.returnIntermediateLocationIds || []), loc.locationId ?? null] },
+        ? {
+            ...s,
+            intermediateLocations: [...s.intermediateLocations, loc.name],
+            intermediateLocationIds: [...(s.intermediateLocationIds || []), loc.locationId ?? null],
+            intermediateStopFees: [...padFees(s.intermediateStopFees, s.intermediateLocations.length), ''],
+          }
+        : {
+            ...s,
+            returnIntermediateLocations: [...(s.returnIntermediateLocations || []), loc.name],
+            returnIntermediateLocationIds: [...(s.returnIntermediateLocationIds || []), loc.locationId ?? null],
+            returnIntermediateStopFees: [...padFees(s.returnIntermediateStopFees, (s.returnIntermediateLocations || []).length), ''],
+          },
     );
   }, []);
 
   const removeStop = useCallback((leg: 0 | 1, index: number) => {
     setSlot((s) =>
       leg === 0
-        ? { ...s, intermediateLocations: s.intermediateLocations.filter((_, i) => i !== index), intermediateLocationIds: (s.intermediateLocationIds || []).filter((_, i) => i !== index) }
-        : { ...s, returnIntermediateLocations: (s.returnIntermediateLocations || []).filter((_, i) => i !== index), returnIntermediateLocationIds: (s.returnIntermediateLocationIds || []).filter((_, i) => i !== index) },
+        ? {
+            ...s,
+            intermediateLocations: s.intermediateLocations.filter((_, i) => i !== index),
+            intermediateLocationIds: (s.intermediateLocationIds || []).filter((_, i) => i !== index),
+            intermediateStopFees: padFees(s.intermediateStopFees, s.intermediateLocations.length).filter((_, i) => i !== index),
+          }
+        : {
+            ...s,
+            returnIntermediateLocations: (s.returnIntermediateLocations || []).filter((_, i) => i !== index),
+            returnIntermediateLocationIds: (s.returnIntermediateLocationIds || []).filter((_, i) => i !== index),
+            returnIntermediateStopFees: padFees(s.returnIntermediateStopFees, (s.returnIntermediateLocations || []).length).filter((_, i) => i !== index),
+          },
     );
+  }, []);
+
+  const setStopFee = useCallback((leg: 0 | 1, index: number, fee: string) => {
+    setSlot((s) => {
+      if (leg === 0) {
+        const fees = padFees(s.intermediateStopFees, s.intermediateLocations.length);
+        fees[index] = fee;
+        return { ...s, intermediateStopFees: fees };
+      }
+      const fees = padFees(s.returnIntermediateStopFees, (s.returnIntermediateLocations || []).length);
+      fees[index] = fee;
+      return { ...s, returnIntermediateStopFees: fees };
+    });
+  }, []);
+
+  /** Fills the route from a recent trip; the quotation check then runs as for a typed route. */
+  const applyRecentRoute = useCallback((r: RecentRoute) => {
+    setSlot((s) => ({
+      ...s,
+      origin: r.origin.name,
+      originName: r.origin.name,
+      originLocationId: r.origin.locationId ?? null,
+      originLat: r.origin.lat ?? null,
+      originLng: r.origin.lng ?? null,
+      destination: r.destination.name,
+      destinationName: r.destination.name,
+      destinationLocationId: r.destination.locationId ?? null,
+      destinationLat: r.destination.lat ?? null,
+      destinationLng: r.destination.lng ?? null,
+      intermediateLocations: r.stops.map((m) => m.name),
+      intermediateLocationIds: r.stops.map((m) => m.locationId ?? null),
+      intermediateStopFees: r.stops.map(() => ''),
+    }));
   }, []);
 
   const setReturnEndpoint = useCallback((which: 'returnOrigin' | 'returnDestination', loc: LocationPick | null) => {
@@ -452,6 +616,36 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     },
     [customerId],
   );
+
+  /** A new place saved for this customer with its map pin. */
+  const createPinnedLocation = useCallback(
+    async (name: string, pin: { lat: number; lng: number; address: string | null; exact: boolean }): Promise<LocationPick> => {
+      const created = await operatorService.createLocation({
+        name: name.trim(),
+        customer_id: customerId || undefined,
+        lat: pin.lat,
+        lng: pin.lng,
+        ...(pin.address ? { address: pin.address } : {}),
+        // A search pick is approximate; a pasted link or a hand-placed pin is exact (owner rule 2026-10-03).
+        coordinate_precision: pin.exact ? 'EXACT' : 'APPROXIMATE',
+      });
+      const loc = { ...created, lat: created.lat ?? pin.lat, lng: created.lng ?? pin.lng };
+      setLocations((prev) => [loc, ...prev]);
+      return { name: loc.name, locationId: loc.id, lat: loc.lat, lng: loc.lng };
+    },
+    [customerId],
+  );
+
+  /** Pins a saved place that had none; the route's pickup / drop-off use it at once. */
+  const pinSavedLocation = useCallback(async (locationId: string, pin: { lat: number; lng: number; address: string | null; exact: boolean }) => {
+    await operatorService.pinLocation(locationId, pin);
+    setLocations((prev) => prev.map((l) => (l.id === locationId ? { ...l, lat: pin.lat, lng: pin.lng } : l)));
+    setSlot((s) => ({
+      ...s,
+      ...(s.originLocationId === locationId ? { originLat: pin.lat, originLng: pin.lng } : {}),
+      ...(s.destinationLocationId === locationId ? { destinationLat: pin.lat, destinationLng: pin.lng } : {}),
+    }));
+  }, []);
 
   const updateSlot = useCallback((patch: Partial<TripSlotDraft>) => setSlot((s) => ({ ...s, ...patch })), []);
 
@@ -505,37 +699,146 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
       if (truck) setVehicleId(truck);
       if (coDriverId === id) setCoDriverId('');
     },
-    [driverTruckId, coDriverId],
+    [driverTruckId, coDriverId, setCoDriverId],
   );
 
   const assignLater = useCallback(() => {
     setDriverId(UNASSIGNED);
     setVehicleId(UNASSIGNED);
     setCoDriverId('');
-  }, []);
+  }, [setCoDriverId]);
 
+  // Opened with a truck (Home → Free trucks → Book trip): choose it, its class
+  // (so step 1's quotations match it) and its driver, once the fleet is here.
+  // Everything stays editable; it's only the starting point.
+  const [presetDone, setPresetDone] = useState(false);
+  if (!presetDone && params.vehicleId && vehicles.length > 0) {
+    setPresetDone(true);
+    const v = vehicles.find((x) => x.id === params.vehicleId);
+    if (v) {
+      setAssignmentType('own');
+      setVehicleId(v.id);
+      const cls = truckClassOfVehicle(v);
+      if (cls) setVehicleType(cls);
+      const driver = v.assignedDriver?.id || v.assignedDriverId || v.assigned_driver_id
+        || drivers.find((d) => driverTruckId(d.id) === v.id)?.id;
+      if (driver && drivers.some((d) => d.id === driver)) setDriverId(driver);
+    }
+  }
+
+  /**
+   * The trip's window for the ranking, as on the web: the day (a monthly
+   * contract's first operating day) at pickup, to the final drop-off.
+   */
+  const recWindow = useMemo(() => {
+    const day = (isMonthly ? [...selectedDates].sort()[0] : slot.date) || today;
+    if (!slot.pickupTime) return { start: undefined as string | undefined, end: undefined as string | undefined };
+    try {
+      const start = toUtcIso(day, slot.pickupTime);
+      const endTime = slot.returnDropoffTime || slot.dropoffTime;
+      const endDay = isMonthly
+        ? addDaysToDateStr(day, endTime && endTime < slot.pickupTime ? 1 : 0)
+        : slot.returnDropoffTime
+        ? slot.returnDropoffDate || slot.dropoffDate || day
+        : slot.dropoffDate || day;
+      const end = endTime ? toUtcIso(endDay, endTime) : undefined;
+      return { start, end };
+    } catch {
+      return { start: undefined, end: undefined };
+    }
+  }, [isMonthly, selectedDates, slot.date, slot.pickupTime, slot.dropoffDate, slot.dropoffTime, slot.returnDropoffDate, slot.returnDropoffTime, today, toUtcIso]);
+
+  // Ranked on the server with the whole trip — route, saved places, customer and window — the web's request.
+  const recRequest = useMemo(
+    () => ({
+      origin: slot.origin || undefined,
+      destination: slot.destination || undefined,
+      vehicleClass: vehicleType || undefined,
+      originLocationId: slot.originLocationId || undefined,
+      destinationLocationId: slot.destinationLocationId || undefined,
+      customerId: customerId || undefined,
+      plannedStart: recWindow.start,
+      plannedEnd: recWindow.end,
+    }),
+    [slot.origin, slot.destination, vehicleType, slot.originLocationId, slot.destinationLocationId, customerId, recWindow.start, recWindow.end],
+  );
+  const recKey = JSON.stringify(recRequest);
   useEffect(() => {
     if (step !== 3 || assignmentType !== 'own') return;
     let alive = true;
-    operatorService
-      .recommendedDrivers({
-        origin: slot.origin || undefined,
-        destination: slot.destination || undefined,
-        vehicleClass: vehicleType || undefined,
-        vehicleId: vehicleId && vehicleId !== UNASSIGNED ? vehicleId : undefined,
-      })
-      .then((r) => alive && setRecommended(r));
+    operatorService.recommendedDrivers(recRequest).then((r) => {
+      if (!alive) return;
+      setRecommended(r);
+      setRecommendedFor(recKey);
+    });
     return () => {
       alive = false;
     };
-    // vehicleId left out on purpose: picking a driver sets it, which shouldn't reshuffle the list.
+  }, [step, assignmentType, recRequest, recKey]);
+  const recommendedLoading = step === 3 && assignmentType === 'own' && recommendedFor !== recKey;
+
+  /* ── 3PL: the partner's agreed lane cost, and the drivers they sent before ── */
+  useEffect(() => {
+    if (assignmentType !== 'third_party' || !thirdPartyProviderId) return;
+    let alive = true;
+    operatorService.thirdPartyPreviousDrivers(thirdPartyProviderId).then((list) => alive && setPartnerDriversFor({ providerId: thirdPartyProviderId, list }));
+    return () => {
+      alive = false;
+    };
+  }, [assignmentType, thirdPartyProviderId]);
+
+  const partnerKey =
+    assignmentType === 'third_party' && thirdPartyProviderId && slot.origin.trim() && slot.destination.trim()
+      ? JSON.stringify([thirdPartyProviderId, slot.origin, slot.destination, slot.originLocationId, slot.destinationLocationId, slot.date, vehicleType, rateCategory, billingType])
+      : '';
+  useEffect(() => {
+    if (!partnerKey) return;
+    let alive = true;
+    operatorService
+      .thirdPartyMatchRate({
+        providerId: thirdPartyProviderId,
+        origin: slot.origin,
+        destination: slot.destination,
+        vehicle_class: vehicleType,
+        line_type: LINE_TYPE_LABELS[normalizeLineTypeToken(rateCategory)] || rateCategory,
+        operation_type: billingType,
+        // 3PL cost is per trip, monthly contract or not (owner decision 2026-09-28).
+        pricing_basis: 'Per Trip',
+        originLocationId: slot.originLocationId || undefined,
+        destinationLocationId: slot.destinationLocationId || undefined,
+        target_date: slot.date || undefined,
+      })
+      .then((m) => {
+        if (!alive) return;
+        setPartnerRateFor({ key: partnerKey, rate: m });
+        // Fill the cost only while nobody has typed one.
+        if (m && m.cost != null && Number(m.cost) > 0) setThirdPartyCost((c) => (c && c !== '0' ? c : String(Number(m.cost))));
+      });
+    return () => {
+      alive = false;
+    };
+    // partnerKey covers every input below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, assignmentType, slot.origin, slot.destination, vehicleType]);
+  }, [partnerKey]);
+  const partnerRate = partnerKey && partnerRateFor.key === partnerKey ? partnerRateFor.rate : null;
+  const partnerDrivers = assignmentType === 'third_party' && partnerDriversFor.providerId === thirdPartyProviderId ? partnerDriversFor.list : [];
+
+  const usePartnerDriver = useCallback((d: Previous3PLDriver) => {
+    setThirdPartyDriverName(d.driverName || '');
+    setThirdPartyDriverPhone(d.driverPhone || '');
+    setThirdPartyVehiclePlate(d.vehiclePlate || '');
+  }, []);
 
   /** Monthly: who drives which day. Single mode needs none — every day uses the chosen driver. */
+  const splitSet = Boolean(coDriverId && (coDriverSplit.driverPayoutOverride !== undefined || coDriverSplit.coDriverPayoutOverride !== undefined));
   const dayAssignments = useMemo<Record<string, DayAssignmentInput>>(() => {
-    if (!isMonthly || assignmentType !== 'own' || monthlyMode === 'single') return {};
-    if (monthlyMode === 'per_day') return dayOverrides;
+    // An edited co-driver split reaches the saved rows through the slot's assignment (and each changed day), as on the web.
+    const split: Record<string, DayAssignmentInput> = splitSet && assignmentType === 'own' ? { [rawSlot.id]: { driverId: '', vehicleId: '', ...coDriverSplit } } : {};
+    if (!isMonthly || assignmentType !== 'own' || monthlyMode === 'single') return split;
+    if (monthlyMode === 'per_day') {
+      if (!splitSet) return dayOverrides;
+      return { ...split, ...Object.fromEntries(Object.entries(dayOverrides).map(([d, a]) => [d, { ...coDriverSplit, ...a }])) };
+    }
     const active = rotationDrivers.filter(Boolean);
     if (active.length === 0) return {};
     if (active.length === 1) {
@@ -550,7 +853,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
       rotationVehicles: active.map((d) => driverTruckId(d) || ''),
     });
     return Object.fromEntries(Object.entries(computed).map(([date, a]) => [date, { driverId: a.driverId, vehicleId: a.vehicleId }]));
-  }, [isMonthly, assignmentType, monthlyMode, dayOverrides, rotationDrivers, selectedDates, driverTruckId]);
+  }, [isMonthly, assignmentType, monthlyMode, dayOverrides, rotationDrivers, selectedDates, driverTruckId, splitSet, coDriverSplit, rawSlot.id]);
 
   const setDayOverride = useCallback(
     (date: string, id: string | null) => {
@@ -657,7 +960,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
 
   /** Saves a newly defined quotation (if any), then creates the trip(s). Returns an error message or null. */
   const submit = useCallback(
-    async (pastChoice: 'Completed' | 'Incomplete' = 'Incomplete'): Promise<{ ok: boolean; partial?: boolean; message: string; step?: CreateTripStep }> => {
+    async (pastChoice: 'Completed' | 'Incomplete' = 'Incomplete'): Promise<{ ok: boolean; partial?: boolean; message: string; step?: CreateTripStep; tripIds?: string[] }> => {
       if (allIssues.length > 0) {
         const first = allIssues[0];
         return { ok: false, message: first.message, step: STEP_OF[first.section] };
@@ -716,6 +1019,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
         return {
           ok: true,
           message: (res.imported === 1 ? 'Trip created.' : `${res.imported} trips created.`) + quotationNote,
+          // Every trip made — the assignment message covers them all.
+          tripIds: (res.results ?? []).filter((r) => r.success && r.created_id).map((r) => r.created_id as string),
         };
       } catch (e: any) {
         return { ok: false, message: e?.response?.data?.error?.message || e?.message || 'Trip not created' };
@@ -756,7 +1061,14 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     quotations,
     quotationsLoading,
     recommended,
+    recommendedLoading,
+    compatRules,
     lineTypeOptions,
+    refreshFleet,
+    recentRoutes,
+    applyRecentRoute,
+    quotationUse,
+    surchargeRules,
     // customer + price
     customerId,
     setCustomerId,
@@ -784,6 +1096,9 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     removeStop,
     setReturnEndpoint,
     createLocation,
+    createPinnedLocation,
+    pinSavedLocation,
+    setStopFee,
     routeComplete,
     charges,
     setCharges,
@@ -804,6 +1119,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     setVehicleId,
     coDriverId,
     setCoDriverId,
+    coDriverSplit,
+    setCoDriverSplit,
     assignLater,
     awbNumber,
     setAwbNumber,
@@ -817,6 +1134,9 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
     setThirdPartyVehiclePlate,
     thirdPartyCost,
     setThirdPartyCost,
+    partnerRate,
+    partnerDrivers,
+    usePartnerDriver,
     monthlyMode,
     setMonthlyMode,
     rotationDrivers,

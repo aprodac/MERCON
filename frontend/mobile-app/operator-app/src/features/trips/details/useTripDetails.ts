@@ -9,22 +9,11 @@ import { AppState } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { autoTrackingUrl, operatorService, type DriverUpdate, type OperatorTripDetail, type TrackingLinkInfo, type TripOverview } from '../../../lib/operator';
-import { haversineKm, phaseOf, sortedStops, stopName, type Remaining } from './tripDetailsModel';
+import { phaseOf, remainingTo, sortedStops, stopName, type Remaining } from './tripDetailsModel';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ACTIVE_REFRESH_MS = 20_000;
 const IDLE_REFRESH_MS = 60_000;
-/** Average truck speed for the straight-line guess when routing is down. */
-const FALLBACK_KMH = 70;
-/** Straight line → road distance, roughly. */
-const ROAD_FACTOR = 1.25;
-/**
- * The router times a car; a loaded truck averages less. Same cap as the
- * customer tracking page (backend `customerTracking.ts`), so the ETA in the
- * status message matches what the customer's link shows.
- */
-const TRUCK_MAX_AVG_KMH = 80;
-const truckDriveSeconds = (meters: number, providerSec: number) => Math.max(providerSec, meters / (TRUCK_MAX_AVG_KMH / 3.6));
 
 export function useTripDetails(id: string | undefined) {
   const [trip, setTrip] = useState<OperatorTripDetail | null>(null);
@@ -95,14 +84,8 @@ export function useTripDetails(id: string | undefined) {
     let live = true;
     const [flat, flng] = posKey.split(',').map(Number);
     const [tlat, tlng] = destKey.split(',').map(Number);
-    operatorService.routeEstimate({ lat: flat, lng: flng }, { lat: tlat, lng: tlng }).then((r) => {
-      if (!live) return;
-      if (r) {
-        setRemaining({ km: r.distanceMeters / 1000, sec: truckDriveSeconds(r.distanceMeters, r.durationSeconds), to: destName, approx: false });
-      } else {
-        const km = haversineKm({ lat: flat, lng: flng }, { lat: tlat, lng: tlng }) * ROAD_FACTOR;
-        setRemaining({ km, sec: (km / FALLBACK_KMH) * 3600, to: destName, approx: true });
-      }
+    remainingTo({ lat: flat, lng: flng }, { lat: tlat, lng: tlng }, destName).then((r) => {
+      if (live) setRemaining(r);
     });
     return () => { live = false; };
   }, [posKey, destKey, destName]);

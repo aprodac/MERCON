@@ -17,16 +17,16 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Animated, Image, LayoutAnimation, Linking, PanResponder, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
+  ActivityIndicator, Animated, Image, LayoutAnimation, Linking, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Play, Smartphone, Truck, X } from 'lucide-react-native';
-import { operatorService, type LiveTripMedia, type LiveUnit, type TripMediaItem } from '../../lib/operator';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Play, Smartphone, Truck, X } from 'lucide-react-native';
+import type { LiveTripMedia, LiveUnit, TripMediaItem } from '../../lib/operator';
 import type { ViewerItem } from '../trips/details/components/MediaViewer';
 import { niceName } from '../trips/create/components/ui';
 import type { makeTime } from '../trips/list/tripListModel';
 import { STATE_STYLE, unitState } from './FleetMap';
-import { agoText, buildEtaShareText, formatDuration, formatKm, isFree, nextStop, onTrip, punctuality, type EtaInfo } from './fleetModel';
+import { agoText, formatDuration, formatKm, isFree, nextStop, punctuality, type EtaInfo } from './fleetModel';
 
 const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
@@ -71,14 +71,30 @@ export function StateChip({ unit, now }: { unit: LiveUnit; now: number }) {
   );
 }
 
-export function UnitRow({ unit: u, now, km, onPress }: { unit: LiveUnit; now: number; km: number | null; onPress: () => void }) {
+export function UnitRow({ unit: u, now, km, onPress, onLongPress, selected, time }: {
+  unit: LiveUnit; now: number; km: number | null; onPress: () => void;
+  /** Formats a clock time in the deployment time zone — adds "due 14:20" for the next stop. */
+  time?: (iso: string) => string;
+  /** Long-press starts picking trucks for a bulk status message. */
+  onLongPress?: () => void;
+  /** Picking mode: true / false shows a check box; undefined hides it. */
+  selected?: boolean;
+}) {
   const next = nextStop(u);
   return (
-    <TouchableOpacity style={s.row} onPress={onPress} activeOpacity={0.6}>
+    <TouchableOpacity style={[s.row, selected && s.rowPicked]} onPress={onPress} onLongPress={onLongPress} delayLongPress={350} activeOpacity={0.6}>
+      {selected !== undefined ? (
+        <View style={[s.check, selected && s.checkOn, !u.trip && { opacity: 0.3 }]}>{selected ? <Check size={13} color="#FFFFFF" strokeWidth={3} /> : null}</View>
+      ) : null}
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={s.rowPlate}>{u.vehicle?.plate_number ?? 'No truck'}<Text style={s.rowDriver}>{u.driver ? `  ·  ${niceName(u.driver.name)}` : ''}</Text></Text>
         <Text style={s.rowSub} numberOfLines={2}>
           {u.trip ? [u.trip.ref_id, niceName(u.trip.customer_name), next?.name ? `→ ${niceName(next.name)}` : null].filter(Boolean).join(' · ') : 'No trip'}
+          {time && next?.planned_arrival && !next.actual_arrival ? (
+            new Date(next.planned_arrival).getTime() < now
+              ? <Text style={{ color: BRAND, fontWeight: '600' }}>{`  ·  was due ${time(next.planned_arrival)}`}</Text>
+              : <Text style={{ color: INK, fontWeight: '600' }}>{`  ·  due ${time(next.planned_arrival)}`}</Text>
+          ) : null}
         </Text>
         <Text style={s.rowSeen}>
           {km != null ? `${formatKm(km)} away · ` : ''}{u.position ? `Seen ${agoText(u.position.recorded_at, now)}` : 'No location'}
@@ -86,7 +102,7 @@ export function UnitRow({ unit: u, now, km, onPress }: { unit: LiveUnit; now: nu
       </View>
       <View style={{ alignItems: 'flex-end', gap: 6 }}>
         <StateChip unit={u} now={now} />
-        <ChevronRight size={16} color="#A1A1AA" />
+        {selected === undefined ? <ChevronRight size={16} color="#A1A1AA" /> : null}
       </View>
     </TouchableOpacity>
   );
@@ -106,7 +122,7 @@ function SheetFrame({ children, onHeight, panHandlers, style }: {
 
 export function UnitSheet({
   unit: u, eta, routeLoading, now, f, expanded, onExpand, position, onPrev, onNext, onClose, onOpen, onHeight, media, onOpenMedia,
-  nextStep, onCancelTrip, busy,
+  nextStep, onCancelTrip, busy, onShare, finalEta,
 }: {
   unit: LiveUnit; eta: EtaInfo | null; routeLoading: boolean; now: number; f: Time;
   expanded: boolean; onExpand: (v: boolean) => void;
@@ -122,6 +138,10 @@ export function UnitSheet({
   onCancelTrip?: (() => void) | null;
   /** A status change is on its way — the buttons wait. */
   busy?: boolean;
+  /** WhatsApp: status, location or delay notice for this truck's trip (FleetShare.tsx). */
+  onShare?: (() => void) | null;
+  /** Arrival at the trip's last stop (next-stop ETA + road time for the rest), when it isn't the next one. */
+  finalEta?: { time: string; place: string | null } | null;
 }) {
   const { width } = useWindowDimensions();
   const t = u.trip;
@@ -188,29 +208,6 @@ export function UnitSheet({
     },
   }));
 
-  // ETA + the customer's live tracking link (the same link the trip page shares). The
-  // link is skipped when the customer has tracking switched off or it can't be fetched.
-  const [sharing, setSharing] = useState(false);
-  const shareEta = async () => {
-    if (!t || sharing) return;
-    setSharing(true);
-    let url: string | null = null;
-    try {
-      const link = await operatorService.trackingLink(t.id);
-      url = link.enabled ? link.url : null;
-    } catch {
-      // share without the link
-    }
-    setSharing(false);
-    const text = buildEtaShareText(u, eta, (d) => f.time(d.toISOString()), url);
-    const viaWhatsApp = () => Linking.openURL(`https://wa.me/?text=${encodeURIComponent(text)}`).catch(() => Alert.alert("Couldn't open WhatsApp"));
-    Alert.alert(url ? 'Share ETA and live link' : 'Share ETA', url ? 'The customer can follow the truck live from the link.' : 'Live tracking is off for this customer — the ETA goes without a link.', [
-      { text: 'WhatsApp', onPress: viaWhatsApp },
-      { text: 'Other apps', onPress: () => { Share.share({ message: text }).catch(() => {}); } },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
   return (
     <SheetFrame onHeight={onHeight} panHandlers={pan.panHandlers} style={{ transform: [{ translateX: tx }, { translateY: ty }] }}>
       <View style={s.cardTop}>
@@ -231,17 +228,26 @@ export function UnitSheet({
       ) : <Text style={s.line}>Free — no trip right now</Text>}
 
       {eta ? (
-        <>
-          <Text style={s.nextLine}>
-            Next: <Text style={s.nextName}>{niceName(next?.name) || `Stop ${next?.sequence ?? ''}`}</Text>
-            {p ? <Text style={{ color: p.good ? INK : BRAND, fontWeight: '600' }}>{`  ·  ${p.label}`}</Text> : null}
-          </Text>
-          <View style={s.eta}>
-            <Metric value={eta.arrival ? f.time(eta.arrival.toISOString()) : '—'} label="arrives" />
-            <Metric value={eta.durationSeconds != null ? formatDuration(eta.durationSeconds) : '—'} label="drive time" />
-            {eta.distanceKm != null ? <Metric value={formatKm(eta.distanceKm)} label={eta.distanceIsRoad ? 'by road' : 'direct'} /> : null}
+        <View style={s.etaCard}>
+          <View style={s.etaHead}>
+            <View style={{ flex: 1 }}>
+              <Text style={s.etaLabel} numberOfLines={1}>Arrives {niceName(next?.name) || `stop ${next?.sequence ?? ''}`}</Text>
+              <Text style={s.etaTime}>{eta.arrival ? f.time(eta.arrival.toISOString()) : '—'}</Text>
+            </View>
+            {p ? (
+              <View style={[s.pill, { backgroundColor: p.good ? '#E8F5EE' : BRAND_LIGHT }]}>
+                <Text style={[s.pillText, { color: p.good ? '#1F7A45' : BRAND }]}>{p.label}</Text>
+              </View>
+            ) : null}
           </View>
-        </>
+          <Text style={s.etaSub}>
+            {[eta.durationSeconds != null ? `in ${formatDuration(eta.durationSeconds)}` : null, eta.distanceKm != null ? `${formatKm(eta.distanceKm)} ${eta.distanceIsRoad ? 'by road' : 'straight line'}` : null].filter(Boolean).join('  ·  ')}
+          </Text>
+          {t && t.stops.length > 1 ? <StopProgress stops={t.stops} nextId={next?.id ?? null} /> : null}
+          {finalEta ? <Text style={s.etaFinal}>Delivery at {niceName(finalEta.place)} around <Text style={{ fontWeight: '700', color: INK }}>{finalEta.time}</Text></Text> : null}
+        </View>
+      ) : t && t.phase === 'upcoming' ? (
+        <StartCard plannedStart={t.planned_start} now={now} f={f} />
       ) : null}
       {eta && !eta.distanceIsRoad && !routeLoading ? <Text style={s.note}>Road routing unavailable — distance is a straight line.</Text> : null}
 
@@ -262,9 +268,9 @@ export function UnitSheet({
             <Phone size={17} color="#3F3F46" strokeWidth={2.2} />
           </TouchableOpacity>
         ) : null}
-        {t && onTrip(u) ? (
-          <TouchableOpacity style={s.iconBtn} onPress={shareEta} disabled={sharing} accessibilityLabel="Share ETA and live tracking link">
-            {sharing ? <ActivityIndicator size="small" color="#3F3F46" /> : <MessageCircle size={17} color="#3F3F46" strokeWidth={2.2} />}
+        {t && onShare ? (
+          <TouchableOpacity style={s.iconBtn} onPress={onShare} accessibilityLabel="Send on WhatsApp">
+            <MessageCircle size={17} color="#3F3F46" strokeWidth={2.2} />
           </TouchableOpacity>
         ) : null}
         {t && nextStep ? (
@@ -323,6 +329,45 @@ function MotionLine({ unit: u, now }: { unit: LiveUnit; now: number }) {
     <View style={s.motion}>
       {m ? <View style={[s.motionDot, { backgroundColor: m.color }]} /> : null}
       <Text style={s.motionText} numberOfLines={1}>{parts.join(' · ')}</Text>
+    </View>
+  );
+}
+
+/** Stops as a progress bar: done (ink), next (red), still to come (grey), and "1 of 3 done". */
+function StopProgress({ stops, nextId }: { stops: NonNullable<LiveUnit['trip']>['stops']; nextId: string | null }) {
+  const done = stops.filter((x) => x.actual_arrival).length;
+  return (
+    <View style={{ gap: 4 }}>
+      <View style={s.progress}>
+        {stops.map((x, i) => {
+          const isDone = !!x.actual_arrival;
+          const isNext = x.id === nextId;
+          return (
+            <React.Fragment key={x.id}>
+              {i > 0 ? <View style={[s.progressLine, isDone || isNext ? { backgroundColor: INK } : null]} /> : null}
+              <View style={[s.progressDot, isDone && { backgroundColor: INK, borderColor: INK }, isNext && { backgroundColor: BRAND, borderColor: BRAND }]} />
+            </React.Fragment>
+          );
+        })}
+      </View>
+      <Text style={s.progressText}>{done} of {stops.length} stops done</Text>
+    </View>
+  );
+}
+
+/** A trip that hasn't started: when it's due, or how late it is. */
+function StartCard({ plannedStart, now, f }: { plannedStart: string | null; now: number; f: Time }) {
+  if (!plannedStart) return <Text style={s.line}>Scheduled — no start time set</Text>;
+  const min = Math.round((new Date(plannedStart).getTime() - now) / 60000);
+  const late = min < -5;
+  const sameDay = f.dayKey(plannedStart) === f.dayKey(now);
+  return (
+    <View style={[s.etaCard, late && { backgroundColor: BRAND_LIGHT }]}>
+      <Text style={s.etaLabel}>{late ? 'Should have started' : 'Starts'}</Text>
+      <Text style={[s.etaTime, late && { color: BRAND }]}>{sameDay ? f.time(plannedStart) : `${f.day(plannedStart)} ${f.time(plannedStart)}`}</Text>
+      <Text style={[s.etaSub, late && { color: BRAND, fontWeight: '600' }]}>
+        {late ? `${formatDuration(-min * 60)} ago` : min <= 1 ? 'due now' : `in ${formatDuration(min * 60)}`}
+      </Text>
     </View>
   );
 }
@@ -441,15 +486,6 @@ export function GroupSheet({ units, now, onPick, onClose, onHeight }: {
   );
 }
 
-function Metric({ value, label }: { value: string; label: string }) {
-  return (
-    <View style={s.metric}>
-      <Text style={s.metricValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{value}</Text>
-      <Text style={s.metricLabel} numberOfLines={1}>{label}</Text>
-    </View>
-  );
-}
-
 function Feed({ icon: Icon, label, iso, missing, now }: { icon: typeof Truck; label: string; iso?: string | null; missing: string; now: number }) {
   const fresh = iso ? now - new Date(iso).getTime() < 30 * 60_000 : false;
   return (
@@ -470,6 +506,9 @@ const s = StyleSheet.create({
   stateText: { fontSize: 12, fontWeight: '600' },
 
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13 },
+  rowPicked: { backgroundColor: '#F6F6F7', marginHorizontal: -16, paddingHorizontal: 16 },
+  check: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#C4C4CC', alignItems: 'center', justifyContent: 'center' },
+  checkOn: { backgroundColor: INK, borderColor: INK },
   rowPlate: { fontSize: 15, fontWeight: '700', color: INK },
   rowDriver: { fontSize: 14, fontWeight: '500', color: '#3F3F46' },
   rowSub: { fontSize: 13, color: MUTED },
@@ -486,11 +525,18 @@ const s = StyleSheet.create({
   close: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F1F1F3', alignItems: 'center', justifyContent: 'center' },
   line: { fontSize: 13, color: MUTED, lineHeight: 19 },
   eta: { flexDirection: 'row', gap: 8 },
-  nextLine: { fontSize: 13, color: MUTED },
-  nextName: { fontWeight: '600', color: INK },
-  metric: { flex: 1, backgroundColor: '#F6F6F7', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 8 },
-  metricValue: { fontSize: 16, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
-  metricLabel: { fontSize: 11, color: MUTED, marginTop: 1 },
+  etaCard: { backgroundColor: '#F6F6F7', borderRadius: 14, padding: 12, gap: 6 },
+  etaHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  etaLabel: { fontSize: 12, fontWeight: '600', color: MUTED },
+  etaTime: { fontSize: 28, fontWeight: '800', color: INK, fontVariant: ['tabular-nums'], letterSpacing: -0.5 },
+  etaSub: { fontSize: 13, color: '#3F3F46' },
+  etaFinal: { fontSize: 12, color: MUTED },
+  pill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
+  pillText: { fontSize: 12, fontWeight: '700' },
+  progress: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  progressDot: { width: 10, height: 10, borderRadius: 5, borderWidth: 2, borderColor: '#C4C4CC', backgroundColor: '#FFFFFF' },
+  progressLine: { flex: 1, height: 2, backgroundColor: '#DCDCE0' },
+  progressText: { fontSize: 11, color: MUTED },
   note: { fontSize: 11, color: MUTED },
   feeds: { flexDirection: 'row', gap: 8 },
   feed: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: LINE, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 7 },

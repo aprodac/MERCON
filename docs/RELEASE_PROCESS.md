@@ -61,6 +61,18 @@ dev.mercon.tech); a release is a PR that moves `main` forward to `dev`.
   and the nightly `backup-db.yml` dumps; nightly ones are also stored as
   GitHub artifacts for 14 days).
 
+## Go-live: replace production with dev (one-off)
+
+`replace-prod-from-dev.yml` (Actions → *Replace Production from Dev*, type
+`REPLACE PRODUCTION`) copies dev's whole database and uploaded files onto
+production. Release `dev` → `main` first: the export refuses to run unless
+dev's migration ledger matches the release's migrations exactly. On the prod
+server it dumps the database and archives the uploads to `/var/backups/mercon/`
+(`*-before-dev-replace-*`), stops the API, empties the schema, restores dev,
+checks table / migration counts, swaps the uploads, starts the API and checks
+`/health`. The run summary prints the undo commands. Production logins become
+dev's. Not for routine use — releases never touch production data.
+
 ## Retired
 
 `promote-dev-to-prod.yml` (checkpoint + Sentinel promotion) was removed on

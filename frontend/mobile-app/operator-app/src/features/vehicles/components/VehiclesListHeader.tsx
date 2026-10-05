@@ -1,23 +1,8 @@
 import React from 'react';
-import { Text, View } from 'react-native';
-import { SortDropdown } from './SortDropdown';
-import type { VehicleSortOption } from '../types';
+import { Text } from 'react-native';
+import { listPage } from '@/components/ListSearch';
 
-interface VehiclesListHeaderProps {
-  total: number;
-  sort: VehicleSortOption;
-  onSortChange: (sort: VehicleSortOption) => void;
-  className?: string;
-}
-
-/** Header row sitting immediately above the list: total count on the left, sort dropdown on the right. */
-export function VehiclesListHeader({ total, sort, onSortChange, className }: VehiclesListHeaderProps) {
-  return (
-    <View className={`flex-row items-center justify-between pt-1 ${className ?? ''}`}>
-      <Text className="text-[13px] font-bold text-[#3E3C3D]">
-        {total} {total === 1 ? 'vehicle' : 'vehicles'}
-      </Text>
-      <SortDropdown value={sort} onChange={onSortChange} />
-    </View>
-  );
+/** The line immediately above the list: the total count. */
+export function VehiclesListHeader({ total }: { total: number }) {
+  return <Text style={listPage.count}>{total} {total === 1 ? 'vehicle' : 'vehicles'}</Text>;
 }

@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { linkInlineImage } from '../services/inlineImages';
 import { normalizeAssistantConfig } from '@mercon/shared-types';
 import { prisma } from '../db';
 import { generateRefId } from '../utils/refId';
@@ -484,6 +485,9 @@ export const getTrips = async (req: Request, res: Response) => {
 
     const mappedTrips = trips.map((t) => {
       const resolvedLocation = t.vehicle ? (vehicleLocationsMap.get(t.id) || null) : null;
+      // Inline logos / driver photos (up to MBs each) go out as cacheable links.
+      linkInlineImage(t.customer as any, 'customer');
+      linkInlineImage(t.driver as any, 'driver');
       return {
         ...t,
         vehicle: t.vehicle

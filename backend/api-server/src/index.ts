@@ -22,6 +22,10 @@ process.on('uncaughtException', (err) => {
 });
 
 const app = express();
+// One proxy hop (host nginx) sits in front: req.ip is the visitor's address from
+// the last X-Forwarded-For entry, which nginx sets itself and a client can't fake.
+// Rate limits are keyed on it — without this every request looked like nginx.
+app.set('trust proxy', 1);
 const httpServer = createServer(app);
 // CORS origin is left open here (tightened for the HTTP API in Phase 3) —
 // authentication below is what actually gates access to this socket server.
@@ -139,6 +143,7 @@ app.use(express.json({ limit: '250mb' }));
 app.use(express.urlencoded({ limit: '250mb', extended: true }));
 import { getUploadDir } from './middlewares/upload';
 import { uploadsGuard, apiFileLinks } from './middlewares/fileLinks';
+import mediaRoutes from './routes/mediaRoutes';
 // Private documents (driver / vehicle / customer / company) need a signed link;
 // signed links are checked and handed to the static handlers below.
 app.use('/uploads', uploadsGuard);
@@ -157,6 +162,8 @@ apiRouter.use((_req, res, next) => {
 // Signs links to private documents for signed-in users; strips signatures from request bodies.
 apiRouter.use(apiFileLinks);
 apiRouter.use('/auth', authRoutes);
+// Inline truck / driver / customer pictures behind signed links (no login, like /uploads).
+apiRouter.use('/media', mediaRoutes);
 apiRouter.use('/drivers', driverRoutes);
 apiRouter.use('/vehicles', vehicleRoutes);
 apiRouter.use('/customers', customerRoutes);

@@ -1,22 +1,32 @@
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet,
-  StatusBar, FlatList, ActivityIndicator, RefreshControl, Alert,
+  View, Text, StyleSheet,
+  StatusBar, FlatList, ActivityIndicator, RefreshControl, Alert, TextInput, TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  FileText, Hourglass, Siren, Wallet, Truck, Calendar, Clock, type LucideIcon,
+  FileText, Truck, Calendar, Clock,
 } from 'lucide-react-native';
 import { Colors, Spacing, Radius, Typography, Shadows } from '@mercon/mobile-shared/theme/tokens';
-import { StatusBadge, FilterChip } from '@mercon/mobile-shared/components/Badge';
-import { SearchInput } from '@mercon/mobile-shared/components/Input';
+import { StatusBadge } from '@mercon/mobile-shared/components/Badge';
 import { Button } from '@mercon/mobile-shared/components/Button';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
-import { operatorService, useOperatorInvoices, type OperatorInvoice } from '../../../lib/operator';
+import { operatorService, useOperatorInvoices, type OperatorInvoice, type OperatorPaymentAccount } from '../../../lib/operator';
+import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { matchesSearch } from '@mercon/mobile-shared/lib/search';
 import { AppTopBar } from '@/components/AppTopBar';
+import { FilterChips } from '@/components/FilterChips';
+import { ListSearch, listPage } from '@/components/ListSearch';
 
-const FILTERS = ['All', 'Pending', 'Paid', 'Overdue', 'Draft', 'Cancelled'];
+const FILTERS: { key: string; label?: string; dot?: string }[] = [
+  { key: 'All' },
+  // Keys are the backend's InvoiceStatus values.
+  { key: 'Issued', dot: Colors.warning },
+  { key: 'PartiallyPaid', label: 'Part paid', dot: Colors.error },
+  { key: 'Paid', dot: Colors.success },
+  { key: 'Draft', dot: '#9898A4' },
+  { key: 'Void', dot: '#9898A4' },
+];
 
 function money(currency: string, n: number): string {
   return `${currency} ${Math.round(n).toLocaleString()}`;
@@ -30,27 +40,51 @@ function formatDate(iso?: string | null): string {
 }
 
 const InvoiceCard = ({ item, onMarkPaid }: { item: OperatorInvoice; onMarkPaid: (id: string) => void }) => {
+  const [paying, setPaying] = useState(false);
   const [marking, setMarking] = useState(false);
-  const canMarkPaid = item.status === 'Pending' || item.status === 'Overdue';
+  const [accounts, setAccounts] = useState<OperatorPaymentAccount[] | null>(null);
+  const [accountId, setAccountId] = useState<string | null>(null);
+  const [amount, setAmount] = useState('');
+  // Only an issued invoice with money still owed can take a payment.
+  const due = Number(item.balance_due ?? item.total_amount) || 0;
+  const canMarkPaid = (item.status === 'Issued' || item.status === 'PartiallyPaid') && due > 0;
 
-  const handleMarkPaid = () => {
-    Alert.alert('Mark as Paid', `Mark invoice ${item.ref_id ?? item.id.slice(0, 8)} as paid?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Mark Paid',
-        onPress: async () => {
-          setMarking(true);
-          try {
-            await operatorService.updateInvoiceStatus(item.id, 'Paid');
-            onMarkPaid(item.id);
-          } catch (e) {
-            Alert.alert('Could not update invoice', getApiErrorMessage(e));
-          } finally {
-            setMarking(false);
-          }
-        },
-      },
-    ]);
+  const handleMarkPaid = async () => {
+    setAmount(String(due));
+    setPaying(true);
+    if (accounts) return;
+    try {
+      const list = await operatorService.paymentAccounts();
+      setAccounts(list);
+      if (list.length === 1) setAccountId(list[0].accountId);
+    } catch (e) {
+      setPaying(false);
+      Alert.alert('Could not load accounts', getApiErrorMessage(e));
+    }
+  };
+
+  // Overdue is not a stored status: it is an unpaid invoice past its due date.
+  const overdue = canMarkPaid && !!item.due_date && new Date(item.due_date).getTime() < Date.now();
+
+  const parsedAmount = Number(amount);
+  const amountOk = Number.isFinite(parsedAmount) && parsedAmount > 0 && parsedAmount <= due;
+
+  const submitPayment = async () => {
+    if (!accountId || !amountOk) return;
+    setMarking(true);
+    try {
+      await operatorService.recordInvoicePayment(item.id, {
+        amount: parsedAmount,
+        accountId,
+        payment_date: new Date().toISOString(),
+      });
+      setPaying(false);
+      onMarkPaid(item.id);
+    } catch (e) {
+      Alert.alert('Could not record payment', getApiErrorMessage(e));
+    } finally {
+      setMarking(false);
+    }
   };
 
   return (
@@ -77,8 +111,8 @@ const InvoiceCard = ({ item, onMarkPaid }: { item: OperatorInvoice; onMarkPaid: 
           <Text style={styles.metaText}>Issued: {formatDate(item.createdAt)}</Text>
         </View>
         <View style={styles.metaItem}>
-          <Clock size={13} color={item.status === 'Overdue' ? Colors.error : Colors.gray500} strokeWidth={2} />
-          <Text style={[styles.metaText, item.status === 'Overdue' ? styles.overdueText : null]}>
+          <Clock size={13} color={overdue ? Colors.error : Colors.gray500} strokeWidth={2} />
+          <Text style={[styles.metaText, overdue ? styles.overdueText : null]}>
             Due: {formatDate(item.due_date)}
           </Text>
         </View>
@@ -87,11 +121,46 @@ const InvoiceCard = ({ item, onMarkPaid }: { item: OperatorInvoice; onMarkPaid: 
         <Button
           variant="success"
           size="sm"
-          label={marking ? 'Marking…' : 'Mark as Paid'}
-          loading={marking}
+          label="Record Payment"
           onPress={handleMarkPaid}
         />
       )}
+      <AppModal visible={paying} onClose={() => setPaying(false)} type="bottom-sheet" title={`Payment · ${item.ref_id ?? item.id.slice(0, 8)}`}>
+        <View style={styles.payForm}>
+          <Text style={styles.payLabel}>Amount received ({item.currency}) — {money(item.currency, due)} due</Text>
+          <TextInput
+            style={styles.payInput}
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="decimal-pad"
+          />
+          <Text style={styles.payLabel}>Received into</Text>
+          {accounts === null ? (
+            <ActivityIndicator color={Colors.primary} />
+          ) : accounts.length === 0 ? (
+            <Text style={styles.payHint}>No cash or bank account is set up yet. Add one on the web dashboard under Finance.</Text>
+          ) : (
+            accounts.map((a) => (
+              <TouchableOpacity
+                key={a.accountId}
+                style={[styles.payAccount, accountId === a.accountId ? styles.payAccountOn : null]}
+                activeOpacity={0.7}
+                onPress={() => setAccountId(a.accountId)}
+              >
+                <Text style={styles.payAccountText}>{a.name}</Text>
+              </TouchableOpacity>
+            ))
+          )}
+          <Button
+            variant="success"
+            size="sm"
+            label={marking ? 'Saving…' : 'Save Payment'}
+            loading={marking}
+            disabled={!accountId || !amountOk}
+            onPress={submitPayment}
+          />
+        </View>
+      </AppModal>
     </View>
   );
 };
@@ -101,15 +170,8 @@ const InvoiceListScreen = () => {
   const [statusFilter, setStatusFilter] = useState('All');
   const { invoices, loading, error, refetch } = useOperatorInvoices();
 
-  const totalValue = invoices.reduce((sum, i) => sum + i.total_amount, 0);
+  const first = loading && invoices.length === 0;
   const count = (status: string) => invoices.filter((i) => i.status === status).length;
-
-  const STAT_CARDS: { label: string; value: string; Icon: LucideIcon; color: string }[] = [
-    { label: 'Total Invoices', value: String(invoices.length), Icon: FileText, color: Colors.charcoal },
-    { label: 'Pending', value: String(count('Pending')), Icon: Hourglass, color: Colors.warning },
-    { label: 'Overdue', value: String(count('Overdue')), Icon: Siren, color: Colors.error },
-    { label: 'Total Value', value: `SAR ${(totalValue / 1000).toFixed(0)}K`, Icon: Wallet, color: Colors.success },
-  ];
 
   const filtered = useMemo(() => {
     return invoices.filter((inv) => {
@@ -117,46 +179,40 @@ const InvoiceListScreen = () => {
       return matchesSearch(search, [inv.ref_id, inv.customer?.name, inv.trip?.ref_id]);
     });
   }, [invoices, statusFilter, search]);
+  const shownValue = filtered.reduce((sum, i) => sum + i.total_amount, 0);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
+    <SafeAreaView style={listPage.page} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F6F6F7" />
       <AppTopBar title="Invoices" />
-
-      {/* Stat Cards */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsRow}>
-        {STAT_CARDS.map((s) => (
-          <View key={s.label} style={styles.statCard}>
-            <s.Icon size={20} color={s.color} strokeWidth={2} />
-            <Text style={[styles.statValue, { color: s.color }]}>{s.value}</Text>
-            <Text style={styles.statLabel}>{s.label}</Text>
-          </View>
-        ))}
-      </ScrollView>
-
-      <SearchInput
-        value={search}
-        onChangeText={setSearch}
-        placeholder="Search invoices, customers..."
-        style={styles.search}
-      />
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersRow}>
-        {FILTERS.map((f) => (
-          <FilterChip
-            key={f}
-            label={f}
-            active={statusFilter === f}
-            onPress={() => setStatusFilter(f)}
-          />
-        ))}
-      </ScrollView>
 
       <FlatList
         data={filtered}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={listPage.list}
+        keyboardShouldPersistTaps="handled"
+        ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
         refreshControl={<RefreshControl refreshing={loading && invoices.length > 0} onRefresh={refetch} />}
+        ListHeaderComponent={
+          <View style={listPage.header}>
+            <FilterChips<string>
+              value={statusFilter}
+              onChange={setStatusFilter}
+              items={FILTERS.map((f) => ({
+                key: f.key,
+                label: f.label ?? f.key,
+                dot: f.dot,
+                count: first ? '–' : f.key === 'All' ? invoices.length : count(f.key),
+              }))}
+            />
+            <ListSearch value={search} onChangeText={setSearch} placeholder="Search invoice, customer or trip" />
+            {!first ? (
+              <Text style={listPage.count}>
+                {filtered.length} {filtered.length === 1 ? 'invoice' : 'invoices'}  ·  SAR {Math.round(shownValue).toLocaleString()}
+              </Text>
+            ) : null}
+          </View>
+        }
         renderItem={({ item }) => <InvoiceCard item={item} onMarkPaid={() => refetch()} />}
         ListEmptyComponent={
           loading ? (
@@ -174,64 +230,20 @@ const InvoiceListScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  header: {
-    backgroundColor: Colors.white,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
+  payForm: { gap: Spacing.md, paddingBottom: Spacing.lg },
+  payLabel: { fontSize: Typography.xs, fontWeight: '700', color: Colors.gray500 },
+  payHint: { fontSize: Typography.sm, color: Colors.gray500 },
+  payInput: {
+    borderWidth: 1, borderColor: Colors.gray400, borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
+    fontSize: Typography.sm, color: Colors.charcoal,
   },
-  headerTitle: {
-    fontSize: Typography.xl,
-    fontWeight: '800',
-    color: Colors.charcoal,
+  payAccount: {
+    borderWidth: 1, borderColor: Colors.gray400, borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.md, paddingVertical: Spacing.sm,
   },
-  statsRow: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    gap: Spacing.sm,
-    alignItems: 'center',
-  },
-  statCard: {
-    backgroundColor: Colors.white,
-    borderRadius: Radius.xl,
-    padding: Spacing.md,
-    alignItems: 'center',
-    minWidth: 90,
-    ...Shadows.sm,
-    gap: 2,
-  },
-  statIcon: {
-    fontSize: 20,
-  },
-  statValue: {
-    fontSize: Typography.lg,
-    fontWeight: '800',
-  },
-  statLabel: {
-    fontSize: Typography.xs,
-    color: Colors.gray500,
-    textAlign: 'center',
-  },
-  search: {
-    marginHorizontal: Spacing.lg,
-    marginBottom: Spacing.xs,
-  },
-  filtersRow: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    gap: Spacing.xs,
-    alignItems: 'center',
-  },
-  list: {
-    padding: Spacing.lg,
-    gap: Spacing.md,
-    paddingBottom: 100,
-    flexGrow: 1,
-  },
+  payAccountOn: { borderColor: Colors.primary, borderWidth: 2 },
+  payAccountText: { fontSize: Typography.sm, fontWeight: '700', color: Colors.charcoal },
   card: {
     backgroundColor: Colors.white,
     borderRadius: Radius.xl,
