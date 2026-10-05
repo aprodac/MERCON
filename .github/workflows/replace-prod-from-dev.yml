@@ -60,6 +60,10 @@ jobs:
       - name: Dev's migration ledger must match this release exactly
         env:
           DEV_POSTGRES_USER: ${{ secrets.DEV_POSTGRES_USER }}
+          # Applied on production (and copied into dev by sync-dev-from-prod)
+          # from a branch that never reached dev/main; prod has run with it
+          # since 2026-09. Allowed by name only — any other mismatch still stops.
+          KNOWN_STRAY_MIGRATIONS: 20260903120000_add_team_work_session
         run: |
           set -euo pipefail
           q() { docker exec dev-postgres psql -U "$DEV_POSTGRES_USER" -d mercon_dev_db -tAc "$1"; }
@@ -68,7 +72,8 @@ jobs:
             echo "::error::Dev has $unfinished failed/unfinished migration(s). Fix dev first." >&2
             exit 1
           fi
-          q "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL" | sort -u > "$RUNNER_TEMP/dev-ledger.txt"
+          q "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL" \
+            | grep -vxF -f <(echo "$KNOWN_STRAY_MIGRATIONS" | tr ' ' '\n') | sort -u > "$RUNNER_TEMP/dev-ledger.txt" || true
           find backend/api-server/prisma/migrations -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -u > "$RUNNER_TEMP/release.txt"
           extra=$(comm -23 "$RUNNER_TEMP/dev-ledger.txt" "$RUNNER_TEMP/release.txt")
           missing=$(comm -13 "$RUNNER_TEMP/dev-ledger.txt" "$RUNNER_TEMP/release.txt")
