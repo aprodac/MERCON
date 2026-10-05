@@ -15,6 +15,8 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { LanguageProvider } from '@mercon/mobile-shared/lib/language-context';
 import { ThemeProvider } from '@mercon/mobile-shared/lib/theme-context';
 import { OPERATOR_APP_ROLES, signInOperator } from '@/lib/auth';
+import { registerOperatorPush, unregisterOperatorPush } from '@/lib/push';
+import { OperatorPushManager } from '@/components/OperatorPushManager';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -61,6 +63,7 @@ function RootNavigator() {
 
   return (
     <View style={styles.container}>
+      <OperatorPushManager />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: '#F3F4F6' } }}>
         <Stack.Screen name="index" options={{ animation: 'none' }} />
         <Stack.Screen name="login" />
@@ -108,7 +111,12 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
-        <AuthProvider signIn={signInOperator} allowedRoles={OPERATOR_APP_ROLES}>
+        <AuthProvider
+          signIn={signInOperator}
+          allowedRoles={OPERATOR_APP_ROLES}
+          onSessionStart={registerOperatorPush}
+          onSignOut={unregisterOperatorPush}
+        >
           <LanguageProvider>
             <ThemeProvider>
               <RootNavigator />

@@ -12,6 +12,7 @@ import { TripStatus } from '@prisma/client';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { recordDriverActivity } from '../services/driverPhone/activity';
+import { notifyStaffOfTripAcknowledged } from '../services/staffAlerts/notify';
 import { getDriverAppMinVersion } from '../services/driverPhone/attention';
 import { isBelowMinVersion } from '../services/driverPhone/rules';
 
@@ -273,6 +274,7 @@ export const acknowledgeTrip = async (req: Request, res: Response) => {
       },
     });
     await recordDriverActivity(driverId, 'Acknowledged', { tripId: id, lat, lng });
+    void notifyStaffOfTripAcknowledged(driverId, id);
     res.status(201).json({ success: true, data: ack });
   } catch (error: any) {
     logger.error({ err: error }, 'acknowledgeTrip error');

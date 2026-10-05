@@ -2,11 +2,13 @@
  * How the Activity tab sorts and shows the operator's notifications. Pure.
  * Types are the ones the API creates for staff: Emergency, Delay,
  * StaleScheduled, DriverNotReady, TripNotAcknowledged, DriverSilent,
- * Security and system.
+ * Security and system, plus every step a driver takes on a trip
+ * (TripUpdate, DriverDelay, TripPhoto, TripAcknowledged).
  */
 import type { Href } from 'expo-router';
 import {
-  AlarmClock, Bell, Clock3, FileText, MessageSquareWarning, Settings, ShieldAlert, Siren, Smartphone, Truck, WifiOff,
+  AlarmClock, Bell, Camera, CircleCheckBig, Clock3, FileText, MessageSquareWarning, Settings, ShieldAlert, Siren, Smartphone, Truck,
+  WifiOff,
   type LucideIcon,
 } from 'lucide-react-native';
 import type { AppNotification } from '@mercon/mobile-shared/lib/notifications';
@@ -22,6 +24,10 @@ const STYLE: Record<string, { icon: LucideIcon; tone: Tone; category: Category }
   drivernotready: { icon: Smartphone, tone: 'amber', category: 'drivers' },
   tripnotacknowledged: { icon: MessageSquareWarning, tone: 'amber', category: 'drivers' },
   driversilent: { icon: WifiOff, tone: 'amber', category: 'drivers' },
+  tripupdate: { icon: Truck, tone: 'gray', category: 'trips' },
+  driverdelay: { icon: Clock3, tone: 'amber', category: 'trips' },
+  tripphoto: { icon: Camera, tone: 'gray', category: 'trips' },
+  tripacknowledged: { icon: CircleCheckBig, tone: 'gray', category: 'drivers' },
   security: { icon: ShieldAlert, tone: 'gray', category: 'system' },
   system: { icon: Settings, tone: 'gray', category: 'system' },
   document: { icon: FileText, tone: 'gray', category: 'system' },

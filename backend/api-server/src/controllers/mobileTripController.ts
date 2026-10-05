@@ -8,6 +8,7 @@ import { isValidTransition, completeTripAndInvoice, stampStopTransition, stampWo
 import { buildTripRouteTimeline, getLegEndpoints } from '../services/tripRouteTimeline';
 import { notifyOperatorsOfDelay } from './notificationController';
 import { recordDriverActivity } from '../services/driverPhone/activity';
+import { notifyStaffOfTripPhoto, notifyStaffOfTripStatus } from '../services/staffAlerts/notify';
 import { getDrivingRoute, RoutingUnavailableError } from '../services/routing/routeProvider';
 import { compressUploadedImage } from '../services/imageCompressor';
 import { queueVideoCompression } from '../services/media/videoCompressor';
@@ -328,6 +329,12 @@ export const updateTripStatus = async (req: Request, res: Response) => {
         tripId: id,
         metadata: { from: trip.status, to: status, workflow: driver_workflow_state ?? 'COMPLETED' },
       });
+      void notifyStaffOfTripStatus(driverId, id, {
+        fromStatus: trip.status,
+        toStatus: status,
+        fromWorkflow: trip.driver_workflow_state,
+        toWorkflow: driver_workflow_state ?? 'COMPLETED',
+      });
       return res.json({ success: true, data: await attachTripDocuments(full) });
     }
 
@@ -379,7 +386,19 @@ export const updateTripStatus = async (req: Request, res: Response) => {
       });
     });
 
+    // A late arrival/departure already alerts staff (and says where); a second
+    // "arrived at …" push for the same moment would only repeat it.
     if (delay) await notifyOperatorsOfDelay(delay);
+    else {
+      void notifyStaffOfTripStatus(driverId, id, {
+        fromStatus: trip.status,
+        toStatus: updatedTrip.status,
+        fromWorkflow: trip.driver_workflow_state,
+        toWorkflow: workflowState,
+        completedStopId: typeof completed_stop_id === 'string' ? completed_stop_id : null,
+        delayReason: delayReason ?? null,
+      });
+    }
 
     void recordDriverActivity(driverId, 'TripStatusChanged', {
       tripId: id,
@@ -508,6 +527,7 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
       lng: location_lng,
       metadata: { kind: isVideo ? 'video' : kind, operation: operation || null, documentId: document.id },
     });
+    void notifyStaffOfTripPhoto(driverId, id, { kind, isVideo, operation: operation || null, stopId: resolvedStopId ?? null });
 
     res.status(201).json({ success: true, data: document });
   } catch (error: any) {

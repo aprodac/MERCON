@@ -3,7 +3,7 @@ import { Role } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { prisma } from '../db';
 import type { DelayDetection } from '../services/tripLifecycle';
-import { sendDriverPushNotification, visibleNotificationMessage } from '../services/pushNotificationService';
+import { sendDriverPushNotification, sendUserPushNotification, visibleNotificationMessage } from '../services/pushNotificationService';
 
 const getIO = () => {
   try {
@@ -51,6 +51,70 @@ export const markAsRead = async (req: Request, res: Response) => {
     res.json({ success: true, data: updated });
   } catch (error) {
     res.status(500).json({ success: false, error: { message: 'Internal server error' } });
+  }
+};
+
+/**
+ * POST /notifications/devices — the operator app registers this install's
+ * push token for the signed-in Admin/Operator. Matched by install id, then
+ * token, so a phone handed to another staff member follows the new sign-in.
+ */
+export const registerUserDevice = async (req: Request, res: Response) => {
+  const userId = (req as any).user?.id;
+  if (!userId) return res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+
+  const { token, platform, install_id } = req.body ?? {};
+  const pushToken = typeof token === 'string' && token ? token.slice(0, 255) : null;
+  const installId = typeof install_id === 'string' && install_id ? install_id.slice(0, 64) : null;
+  if (!pushToken && !installId) {
+    return res.status(400).json({ success: false, error: { message: 'Device token is required' } });
+  }
+
+  try {
+    const byInstall = installId ? await prisma.userDevice.findUnique({ where: { install_id: installId } }) : null;
+    const byToken = pushToken ? await prisma.userDevice.findUnique({ where: { token: pushToken } }) : null;
+    // The same token on another row (an older registration of this phone): free it.
+    if (byInstall && byToken && byInstall.id !== byToken.id) {
+      await prisma.userDevice.update({ where: { id: byToken.id }, data: { token: null, isActive: false } });
+    }
+    const existing = byInstall ?? byToken;
+    const data = {
+      userId,
+      isActive: true,
+      lastSeenAt: new Date(),
+      ...(installId ? { install_id: installId } : {}),
+      ...(pushToken ? { token: pushToken } : {}),
+      platform: typeof platform === 'string' && platform ? platform.slice(0, 16) : existing?.platform ?? 'unknown',
+    };
+    const device = existing
+      ? await prisma.userDevice.update({ where: { id: existing.id }, data })
+      : await prisma.userDevice.create({ data });
+
+    res.json({ success: true, data: { id: device.id, isActive: device.isActive } });
+  } catch (error) {
+    logger.error({ err: error, userId }, 'Failed to register staff device');
+    res.status(500).json({ success: false, error: { message: 'Failed to register device' } });
+  }
+};
+
+/** POST /notifications/devices/logout — this install signed out; stop pushing to it. */
+export const logoutUserDevice = async (req: Request, res: Response) => {
+  const userId = (req as any).user?.id;
+  if (!userId) return res.status(401).json({ success: false, error: { message: 'Unauthorized' } });
+
+  const { token, install_id } = req.body ?? {};
+  const or = [
+    ...(typeof install_id === 'string' && install_id ? [{ install_id }] : []),
+    ...(typeof token === 'string' && token ? [{ token }] : []),
+  ];
+  if (or.length === 0) return res.json({ success: true });
+
+  try {
+    await prisma.userDevice.updateMany({ where: { userId, OR: or }, data: { isActive: false } });
+    res.json({ success: true });
+  } catch (error) {
+    logger.error({ err: error, userId }, 'Failed to sign out staff device');
+    res.status(500).json({ success: false, error: { message: 'Failed to sign out device' } });
   }
 };
 
@@ -104,6 +168,18 @@ export const createNotification = async (
 
     // Send to just this user's private room (they auto-join it on socket connect)
     getIO()?.to(`user:${userId}`).emit(`user:notification:${userId}`, notification);
+
+    // And to their phone(s) via the operator app. 'system' is the user's own
+    // confirmation of something they just did on screen — no push for that.
+    if (type !== 'system') {
+      sendUserPushNotification(
+        userId,
+        title,
+        message,
+        { type, entity_type, entity_id, notificationId: notification.id },
+        notification.id,
+      ).catch((err) => logger.error({ err, userId }, '[NotificationController] Background staff push failed'));
+    }
 
     return notification;
   } catch (error) {
