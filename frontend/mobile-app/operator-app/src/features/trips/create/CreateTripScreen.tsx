@@ -36,7 +36,7 @@ export default function CreateTripScreen() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   // After creating: offer the assignment message to the customer's group before leaving.
-  const [created, setCreated] = useState<{ tripId: string; message: string } | null>(null);
+  const [created, setCreated] = useState<{ tripIds: string[]; message: string } | null>(null);
   // Which way the steps slide: forward from the right, back from the left.
   const [direction, setDirection] = useState<1 | -1>(1);
 
@@ -103,8 +103,8 @@ export default function CreateTripScreen() {
       return;
     }
     setReviewOpen(false);
-    if (!res.partial && res.tripId) {
-      setCreated({ tripId: res.tripId, message: res.message });
+    if (!res.partial && res.tripIds?.length) {
+      setCreated({ tripIds: res.tripIds, message: res.message });
       return;
     }
     setToast({ message: res.message, type: res.partial ? 'error' : 'success' });
@@ -114,7 +114,8 @@ export default function CreateTripScreen() {
   const groupName = form.selectedCustomer?.whatsapp_group_name?.trim();
   const sendAssignment = () => {
     if (!created) return;
-    router.replace({ pathname: '/trip-details', params: { id: created.tripId, share: 'assignment' } } as any);
+    const [first, ...rest] = created.tripIds;
+    router.replace({ pathname: '/trip-details', params: { id: first, share: 'assignment', ...(rest.length ? { batch: created.tripIds.join(',') } : {}) } } as any);
   };
   const finish = () => {
     setCreated(null);
@@ -207,7 +208,7 @@ export default function CreateTripScreen() {
           {created && created.message.split('.').slice(1).join('.').trim() ? (
             <Text style={styles.doneSub}>{created.message.split('.').slice(1).join('.').trim()}</Text>
           ) : null}
-          <Text style={styles.doneSub}>Tell {groupName || form.selectedCustomer?.name || 'the customer'} which driver and truck are coming.</Text>
+          <Text style={styles.doneSub}>Tell {groupName || form.selectedCustomer?.name || 'the customer'} which {created && created.tripIds.length > 1 ? `drivers and trucks are coming — all ${created.tripIds.length} trips in one message, or one by one` : 'driver and truck are coming'}.</Text>
           <TouchableOpacity style={styles.doneSend} onPress={sendAssignment} activeOpacity={0.85}>
             <MessageCircle size={19} color={Colors.white} strokeWidth={2.3} />
             <Text style={styles.doneSendText} numberOfLines={1}>Send to {groupName || 'customer group'}</Text>

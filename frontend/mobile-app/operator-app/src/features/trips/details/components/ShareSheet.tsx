@@ -5,7 +5,8 @@
  * location, delay, assignment) just open WhatsApp with the message.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, Image, ScrollView, Linking, Alert, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, Image, ScrollView, Linking, Alert, Switch, ActivityIndicator } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { Check, MessageCircle, Play } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
@@ -15,6 +16,7 @@ import { operatorService, type DriverUpdate, type OperatorTripDetail, type Share
 import { customerContacts, digits, quickMessage, sortedStops, stopName, updateTitle, waLink, withTag, type Formatters, type QuickKind, type Remaining, type TagPerson } from '../tripDetailsModel';
 import { INK, MUTED, WA, tap } from './parts';
 import { shareMediaFiles } from '../shareMedia';
+import { batchMessage, batchSingle, loadBatch, type BatchItem } from '../assignmentBatch';
 
 export type ShareTarget = { type: 'update'; update: DriverUpdate } | { type: 'quick'; kind: QuickKind };
 
@@ -60,6 +62,16 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
     : tagPick === 'none' ? null
     : contacts[tagPick] ?? null;
 
+  // Several trips from one Create Trip (`batch` = their ids, set by the "Trip created" sheet):
+  // one numbered message for all, or one message per trip sent in a row.
+  const { batch } = useLocalSearchParams<{ batch?: string }>();
+  const batchIds = useMemo(() => (batch ?? '').split(',').filter(Boolean), [batch]);
+  const isBatch = isAssignment && batchIds.length > 1;
+  const [batchItems, setBatchItems] = useState<BatchItem[] | null>(null);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [oneByOne, setOneByOne] = useState(false);
+  const [step, setStep] = useState(0);
+
   const stops = sortedStops(trip);
   const nextIdx = stops.findIndex((s) => !s.actual_arrival);
   const nextLine = phase === 'active' && nextIdx >= 0
@@ -90,7 +102,12 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
       setText('');
     } else {
       const first = target.kind === 'assignment' && contacts.length ? contacts[0] : null;
-      const msg = quickMessage(target.kind, { trip, phase, f, position, remaining, trackingUrl, tag: first });
+      setOneByOne(false);
+      setStep(0);
+      // Batch: the message is written once the trips have loaded.
+      const msg = target.kind === 'assignment' && batchIds.length > 1
+        ? (batchItems ? batchMessage(batchItems, f, first) : '')
+        : quickMessage(target.kind, { trip, phase, f, position, remaining, trackingUrl, tag: first });
       generated.current = msg;
       setText(msg);
     }
@@ -99,7 +116,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   // The tracking link (and the distance / ETA) can arrive after the sheet opened —
   // rewrite the message with them, unless the operator has already edited it.
   useEffect(() => {
-    if (!target || target.type !== 'quick') return;
+    if (!target || target.type !== 'quick' || isBatch) return;
     if (text !== generated.current) return;
     const msg = quickMessage(target.kind, { trip, phase, f, position, remaining, trackingUrl, tag });
     if (msg !== text) {
@@ -108,6 +125,35 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackingUrl, remaining, position, phase]);
+
+  // Load the batch's trips once; write the numbered message as soon as they arrive.
+  useEffect(() => {
+    if (!isBatch || batchItems) return;
+    let live = true;
+    loadBatch(batchIds)
+      .then((items) => {
+        if (!live) return;
+        setBatchItems(items);
+        const msg = batchMessage(items, f, tag);
+        generated.current = msg;
+        setText(msg);
+      })
+      .catch((e) => { if (live) setBatchError(getApiErrorMessage(e)); });
+    return () => { live = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBatch, batchIds]);
+
+  const writeBatch = (byOne: boolean, at: number) => {
+    if (!batchItems) return;
+    const msg = byOne ? batchSingle(batchItems, at, f, tag) : batchMessage(batchItems, f, tag);
+    generated.current = msg;
+    setText(msg);
+  };
+  const switchOneByOne = (v: boolean) => {
+    setOneByOne(v);
+    setStep(0);
+    writeBatch(v, 0);
+  };
 
   // A different @tag swaps only the top line, so the operator's other edits stay.
   const pickTag = (pick: number | 'none' | 'other', typed = otherTag) => {
@@ -167,7 +213,14 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
       return;
     }
     if (!update) {
+      if (isBatch && !batchItems) return;
       Linking.openURL(waLink(phone, text)).catch(() => Alert.alert('Could not open WhatsApp'));
+      // One by one: stay open on the next trip for when the operator comes back from WhatsApp.
+      if (isBatch && oneByOne && batchItems && step < batchItems.length - 1) {
+        setStep(step + 1);
+        writeBatch(true, step + 1);
+        return;
+      }
       onClose();
       return;
     }
@@ -330,8 +383,23 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
                 ) : null}
               </>
             ) : null}
-            <Text style={s.label}>Message</Text>
-            <TextInput style={[s.input, s.message]} value={text} onChangeText={setText} multiline textAlignVertical="top" />
+            {isBatch ? (
+              <View style={s.switchRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.switchText}>Send one by one</Text>
+                  <Text style={s.optDetail}>{oneByOne ? `${batchIds.length} separate messages, one per trip` : `All ${batchIds.length} trips in one message`}</Text>
+                </View>
+                <Switch value={oneByOne} onValueChange={switchOneByOne} trackColor={{ true: WA }} disabled={!batchItems} />
+              </View>
+            ) : null}
+            <Text style={s.label}>{isBatch && oneByOne ? `Message · trip ${step + 1} of ${batchIds.length}` : 'Message'}</Text>
+            {isBatch && !batchItems ? (
+              batchError
+                ? <Text style={s.optDetail}>Couldn’t load the trips: {batchError}</Text>
+                : <View style={[s.input, s.message, { alignItems: 'center', justifyContent: 'center' }]}><ActivityIndicator color={WA} /></View>
+            ) : (
+              <TextInput style={[s.input, s.message]} value={text} onChangeText={setText} multiline textAlignVertical="top" />
+            )}
             {isAssignment && tag ? (
               <Text style={s.optDetail}>If @{tag.name} shows as plain text in WhatsApp, type @ and pick the name before sending.</Text>
             ) : null}
@@ -340,7 +408,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
 
         <TouchableOpacity style={[s.sendBtn, sending && { opacity: 0.7 }]} activeOpacity={0.85} onPress={send} disabled={sending}>
           <MessageCircle size={19} color={Colors.white} strokeWidth={2.3} />
-          <Text style={s.sendText}>{sending ? (update && !direct ? 'Getting photos ready…' : 'Sending…') : update ? (direct ? `Send ${attached}` : `Share ${attached || 'photos'}`) : 'Open WhatsApp'}</Text>
+          <Text style={s.sendText}>{sending ? (update && !direct ? 'Getting photos ready…' : 'Sending…') : update ? (direct ? `Send ${attached}` : `Share ${attached || 'photos'}`) : isBatch && oneByOne ? `Open WhatsApp · ${step + 1} of ${batchIds.length}` : 'Open WhatsApp'}</Text>
         </TouchableOpacity>
         {update ? <Text style={[s.optDetail, { textAlign: 'center' }]}>Marked as sent for everyone, so nothing goes out twice</Text> : null}
       </ScrollView>
