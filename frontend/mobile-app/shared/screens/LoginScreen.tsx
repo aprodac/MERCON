@@ -286,7 +286,7 @@ const LoginScreen = ({ variant }: LoginScreenProps) => {
             <View style={styles.card}>
               <View style={styles.form}>
                 <Input
-                  label={isDriver ? t('label_phone', 'Phone Number') : t('label_identifier', 'Username, email or phone')}
+                  label={isDriver ? t('label_phone', 'Phone number') : t('label_identifier', 'Username, email or phone')}
                   value={identifier}
                   onChangeText={(v) => {
                     setIdentifier(v);

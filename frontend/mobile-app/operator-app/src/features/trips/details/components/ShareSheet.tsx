@@ -276,7 +276,8 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
 
   return (
     <AppModal visible={!!target} onClose={onClose} type="bottom-sheet" title={update ? `Send · ${updateTitle(update)}` : target?.type === 'quick' ? QUICK_TITLE[target.kind] : ''} maxHeight="92%">
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
+      {/* flexShrink lets the options scroll while the send button below stays on screen */}
+      <ScrollView style={{ flexShrink: 1 }} keyboardShouldPersistTaps="handled" contentContainerStyle={{ gap: 12, paddingBottom: 8 }}>
         <Text style={s.label}>To</Text>
         <View style={{ gap: 6 }}>
           {options.map((o) => {
@@ -406,12 +407,15 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
           </>
         )}
 
+      </ScrollView>
+
+      <View style={s.footer}>
         <TouchableOpacity style={[s.sendBtn, sending && { opacity: 0.7 }]} activeOpacity={0.85} onPress={send} disabled={sending}>
           <MessageCircle size={19} color={Colors.white} strokeWidth={2.3} />
           <Text style={s.sendText}>{sending ? (update && !direct ? 'Getting photos ready…' : 'Sending…') : update ? (direct ? `Send ${attached}` : `Share ${attached || 'photos'}`) : isBatch && oneByOne ? `Open WhatsApp · ${step + 1} of ${batchIds.length}` : 'Open WhatsApp'}</Text>
         </TouchableOpacity>
         {update ? <Text style={[s.optDetail, { textAlign: 'center' }]}>Marked as sent for everyone, so nothing goes out twice</Text> : null}
-      </ScrollView>
+      </View>
     </AppModal>
   );
 }
@@ -447,6 +451,7 @@ const s = StyleSheet.create({
   bubbleThumbOne: { width: '100%', aspectRatio: 4 / 3 },
   bubbleMore: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
   bubbleMoreText: { color: Colors.white, fontSize: 20, fontWeight: '800' },
+  footer: { gap: 8, paddingTop: 10 },
   sendBtn: { height: 52, borderRadius: 14, backgroundColor: WA, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4 },
   sendText: { color: Colors.white, fontSize: 16, fontWeight: '800' },
 });

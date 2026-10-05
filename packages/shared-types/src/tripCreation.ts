@@ -895,24 +895,26 @@ export function validateTripDraft(input: TripValidationInput): TripValidationIss
   }
 
   (input.slots || []).forEach((slot, idx) => {
-    const label = slot.origin && slot.destination ? `${slot.origin} → ${slot.destination}` : `Slot #${idx + 1}`;
+    // Name the route only when a trip has several — "Slot #1: …" read like a code error to operators.
+    const many = (input.slots || []).length > 1;
+    const label = !many ? '' : slot.origin && slot.destination ? `${slot.origin} → ${slot.destination}: ` : `Route ${idx + 1}: `;
     const key = (f: string) => `${f}-${slot.id}`;
 
-    if (!slot.origin?.trim()) issues.push({ section: 'route', field: key('origin'), message: `${label}: Select an origin location` });
-    if (!slot.destination?.trim()) issues.push({ section: 'route', field: key('destination'), message: `${label}: Select a destination location` });
+    if (!slot.origin?.trim()) issues.push({ section: 'route', field: key('origin'), message: `${label}Choose the pickup place` });
+    if (!slot.destination?.trim()) issues.push({ section: 'route', field: key('destination'), message: `${label}Choose the drop-off place` });
 
     const hasRateMatched = Boolean(slot.matchedRateCard || slot.rateMatched);
     const hasBilling = hasValue(slot.billingAmount) && Number(slot.billingAmount) > 0;
     if (!hasRateMatched && !hasBilling) {
-      issues.push({ section: 'price', field: key('billingAmount'), message: `${label}: Select a Commercial Quotation card or enter Customer Billing Rate` });
+      issues.push({ section: 'price', field: key('billingAmount'), message: `${label}Choose a quotation or enter the customer price` });
     }
     if (!is3PL) {
-      if (!(resolveSlotDriverPayout(slot) > 0)) issues.push({ section: 'price', field: key('driverPayout'), message: `${label}: Enter Driver Payout / Charge` });
+      if (!(resolveSlotDriverPayout(slot) > 0)) issues.push({ section: 'price', field: key('driverPayout'), message: `${label}Enter the driver payout` });
     }
 
-    if (!isMonthly && !slot.date) issues.push({ section: 'schedule', field: key('date'), message: `${label}: Select a trip date` });
-    if (!slot.pickupTime) issues.push({ section: 'schedule', field: key('pickup'), message: `${label}: Select pickup time` });
-    if (!slot.dropoffTime) issues.push({ section: 'schedule', field: key('dropoff'), message: `${label}: Select drop-off time` });
+    if (!isMonthly && !slot.date) issues.push({ section: 'schedule', field: key('date'), message: `${label}Choose the trip date` });
+    if (!slot.pickupTime) issues.push({ section: 'schedule', field: key('pickup'), message: `${label}Choose the pickup time` });
+    if (!slot.dropoffTime) issues.push({ section: 'schedule', field: key('dropoff'), message: `${label}Choose the drop-off time` });
 
     if (isRoundTripCategory(input.rateCategory || '') && slot.returnPickupTime && slot.date) {
       try {
@@ -921,9 +923,9 @@ export function validateTripDraft(input: TripValidationInput): TripValidationIss
         const rp = ret.pickup ? new Date(ret.pickup).getTime() : NaN;
         const ra = ret.arrival ? new Date(ret.arrival).getTime() : NaN;
         if (!isNaN(out) && !isNaN(rp) && rp < out) {
-          issues.push({ section: 'schedule', field: key('returnPickup'), message: `${label}: Return loading must be after the outbound arrival` });
+          issues.push({ section: 'schedule', field: key('returnPickup'), message: `${label}Return loading must be after the outbound arrival` });
         } else if (!isNaN(rp) && !isNaN(ra) && ra <= rp) {
-          issues.push({ section: 'schedule', field: key('returnDropoff'), message: `${label}: Return arrival must be after return loading` });
+          issues.push({ section: 'schedule', field: key('returnDropoff'), message: `${label}Return arrival must be after return loading` });
         }
       } catch {
         /* times are validated above */
@@ -933,16 +935,16 @@ export function validateTripDraft(input: TripValidationInput): TripValidationIss
     if (!isMonthly && slot.date && slot.pickupTime && slot.dropoffTime) {
       const dropoffDate = slot.dropoffDate || slot.date;
       if (dropoffDate < slot.date) {
-        issues.push({ section: 'schedule', field: key('dropoff'), message: `${label}: Drop-off date cannot be before trip date` });
+        issues.push({ section: 'schedule', field: key('dropoff'), message: `${label}The drop-off date can't be before the trip date` });
       } else {
         try {
           const start = new Date(input.toUtcIso(slot.date, slot.pickupTime)).getTime();
           const end = new Date(input.toUtcIso(dropoffDate, slot.dropoffTime)).getTime();
           if (isNaN(start) || isNaN(end) || end <= start) {
-            issues.push({ section: 'schedule', field: key('dropoff'), message: `${label}: Drop-off time must be strictly after pickup time` });
+            issues.push({ section: 'schedule', field: key('dropoff'), message: `${label}The drop-off time must be after the pickup time` });
           }
         } catch {
-          issues.push({ section: 'schedule', field: key('dropoff'), message: `${label}: Invalid pickup or drop-off time format` });
+          issues.push({ section: 'schedule', field: key('dropoff'), message: `${label}Check the pickup and drop-off times` });
         }
       }
     }
