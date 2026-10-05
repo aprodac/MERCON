@@ -319,9 +319,14 @@ jobs:
           sudo cp nginx/mercon-api.conf /etc/nginx/sites-available/mercon-api.conf
           sudo ln -sf /etc/nginx/sites-available/mercon-api.conf /etc/nginx/sites-enabled/mercon-api.conf
 
-          # Customer-links address — only once its certificate has been issued
-          # (sudo certbot certonly --nginx -d track.mercon.tech); before that the
-          # block would fail `nginx -t`, so it stays off.
+          # Customer-links address — only once its certificate exists; before
+          # that the block would fail `nginx -t`, so it stays off.
+          # Its certificate is requested here the first time the name resolves
+          # (DNS A record in Hostinger). certbot's timer renews it after that.
+          # A failure only means the address stays off — never a failed deploy.
+          if [ ! -f /etc/letsencrypt/live/track.mercon.tech/fullchain.pem ] && command -v certbot >/dev/null 2>&1 && getent hosts track.mercon.tech >/dev/null; then
+            sudo certbot certonly --nginx -d track.mercon.tech --non-interactive --agree-tos --register-unsafely-without-email || echo "::warning::Could not get a certificate for track.mercon.tech — check its DNS record points at this server."
+          fi
           if [ -f /etc/letsencrypt/live/track.mercon.tech/fullchain.pem ]; then
             sudo cp nginx/mercon-track.conf /etc/nginx/sites-available/mercon-track.conf
             sudo ln -sf /etc/nginx/sites-available/mercon-track.conf /etc/nginx/sites-enabled/mercon-track.conf
