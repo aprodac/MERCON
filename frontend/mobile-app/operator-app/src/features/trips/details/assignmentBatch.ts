@@ -2,12 +2,14 @@
  * The assignment message for several trips made by one Create Trip (a monthly
  * roster, rotating drivers): one numbered message for all of them, or one
  * message per trip. Each block is the single-trip message, renumbered, with
- * the trip's date when the trips fall on different days. The message ends
- * with the customer's all-trucks page, which keeps every day of the roster
- * (live, due, delivered) on one bookmarkable link.
+ * the trip's date when the trips fall on different days. The customer's
+ * all-trucks page (every day of the roster — live, due, delivered — on one
+ * bookmarkable link) goes on top, as in every multi-trip message of the shared
+ * format (@mercon/shared-types statusMessage), so WhatsApp previews it.
  */
 import { operatorService, type OperatorTripDetail } from '../../../lib/operator';
 import { customerDetailApi } from '../../customers/details/customerDetailApi';
+import { allTrucksLine } from '@mercon/shared-types';
 import { quickMessage, withTag, type Formatters, type TagPerson } from './tripDetailsModel';
 
 export interface BatchItem {
@@ -62,16 +64,15 @@ export function batchBlock(item: BatchItem, n: number, f: Formatters, withDate: 
   return lines.join('\n');
 }
 
-const allTrucksLine = (url: string | null) => (url ? `\n\nAll your trucks: ${url}` : '');
+const allTrucks = (url: string | null) => (url ? `${allTrucksLine(url)}\n\n` : '');
 
-/** Every trip in one message, numbered 1, 2, 3 under the @tag, ending with the all-trucks page. */
+/** Every trip in one message, numbered 1, 2, 3 under the @tag, the all-trucks page on top. */
 export function batchMessage({ items, customerUrl }: Batch, f: Formatters, tag: TagPerson | null): string {
   const withDate = spansDays(items, f);
-  return withTag(items.map((it, i) => batchBlock(it, i + 1, f, withDate)).join('\n\n') + allTrucksLine(customerUrl), tag);
+  return withTag(allTrucks(customerUrl) + items.map((it, i) => batchBlock(it, i + 1, f, withDate)).join('\n\n'), tag);
 }
 
-/** One trip of the batch as its own message (sent one by one); the last one carries the all-trucks page. */
+/** One trip of the batch as its own message (sent one by one); the first one carries the all-trucks page. */
 export function batchSingle({ items, customerUrl }: Batch, index: number, f: Formatters, tag: TagPerson | null): string {
-  const last = index === items.length - 1;
-  return withTag(batchBlock(items[index], 1, f, spansDays(items, f)) + allTrucksLine(last ? customerUrl : null), tag);
+  return withTag(allTrucks(index === 0 ? customerUrl : null) + batchBlock(items[index], 1, f, spansDays(items, f)), tag);
 }

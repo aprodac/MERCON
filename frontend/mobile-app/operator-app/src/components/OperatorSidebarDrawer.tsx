@@ -81,7 +81,7 @@ const GROUPS: MenuGroup[] = [
   {
     title: 'Records',
     items: [
-      // { Icon: FolderOpen, label: 'Documents', route: '/documents', badge: 'documents', keywords: 'compliance files' },
+      { Icon: FolderOpen, label: 'Documents', route: '/documents', badge: 'documents', keywords: 'compliance files licence expiry papers' },
       { Icon: SquareUserRound, label: 'Customers', route: '/customers', keywords: 'clients contacts' },
     ],
   },
