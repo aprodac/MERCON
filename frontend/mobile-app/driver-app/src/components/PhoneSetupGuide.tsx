@@ -79,7 +79,7 @@ const MAKER_STEPS: Record<MakerFamily, { key: string; en: string }> = {
   },
   other: {
     key: 'setup_maker_other',
-    en: 'Tap "Open app settings" → Battery → allow background activity (or choose "Unrestricted").',
+    en: 'Tap "Open app settings" → "App battery usage" (or Battery) → choose "Unrestricted" or turn ON "Allow background usage".',
   },
 };
 

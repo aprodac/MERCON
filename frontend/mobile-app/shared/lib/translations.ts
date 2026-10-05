@@ -487,7 +487,7 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   setup_maker_vivo: { en: 'Tap "Open app settings" → Battery → allow "High background power consumption", and turn ON Auto-start.', ur: '"ایپ سیٹنگز کھولیں" دبائیں ← بیٹری ← "زیادہ بیک گراؤنڈ پاور" کی اجازت دیں، اور آٹو اسٹارٹ آن کریں۔' },
   setup_maker_huawei: { en: 'Tap "Open app settings" → App launch → turn OFF "Manage automatically", then allow Auto-launch and Run in background.', ur: '"ایپ سیٹنگز کھولیں" دبائیں ← ایپ لانچ ← "خودکار انتظام" بند کریں، پھر آٹو لانچ اور بیک گراؤنڈ میں چلنے کی اجازت دیں۔' },
   setup_maker_samsung: { en: 'Tap "Open app settings" → Battery → choose "Unrestricted".', ur: '"ایپ سیٹنگز کھولیں" دبائیں ← بیٹری ← "غیر محدود" منتخب کریں۔' },
-  setup_maker_other: { en: 'Tap "Open app settings" → Battery → allow background activity (or choose "Unrestricted").', ur: '"ایپ سیٹنگز کھولیں" دبائیں ← بیٹری ← بیک گراؤنڈ ایکٹیویٹی کی اجازت دیں (یا "غیر محدود" منتخب کریں)۔' },
+  setup_maker_other: { en: 'Tap "Open app settings" → "App battery usage" (or Battery) → choose "Unrestricted" or turn ON "Allow background usage".', ur: '"ایپ سیٹنگز کھولیں" دبائیں ← "ایپ بیٹری یوزیج" (یا بیٹری) ← "غیر محدود" منتخب کریں یا "بیک گراؤنڈ یوزیج کی اجازت" آن کریں۔' },
   setup_maker_confirm: { en: "I've done this", ur: 'میں نے یہ کر لیا' },
   setup_allow: { en: 'Allow', ur: 'اجازت دیں' },
   setup_open_settings: { en: 'Open settings', ur: 'سیٹنگز کھولیں' },
