@@ -23,6 +23,8 @@ describe('describeTripStatusChange', () => {
     assert.deepEqual(step('Scheduled', 'Scheduled', 'GOING_TO_PICKUP'), {
       title: 'Trip started',
       message: 'Trip TRP-0042 — Ahmed Ali started the trip and is driving to Jeddah Port.',
+      // The push's title is the driver's name, so its text leaves the name out.
+      pushBody: 'Trip TRP-0042: Started the trip and is driving to Jeddah Port.',
     });
     assert.equal(step('Scheduled', 'Loading', 'ARRIVED_AT_PICKUP')?.message, 'Trip TRP-0042 — Ahmed Ali arrived at Jeddah Port.');
     assert.equal(step('Loading', 'Loading', 'LOADING')?.title, 'Loading');
@@ -35,7 +37,8 @@ describe('describeTripStatusChange', () => {
       { fromStatus: 'InTransit', toStatus: 'InTransit', fromWorkflow: 'GOING_TO_STOP', toWorkflow: 'IN_TRANSIT', completedStopId: 'm' },
       oneWay,
     );
-    assert.deepEqual(a, { title: 'Stop done', message: 'Trip TRP-0042 — Ahmed Ali finished at Bahra Yard and is moving on.' });
+    assert.equal(a?.title, 'Stop done');
+    assert.equal(a?.message, 'Trip TRP-0042 — Ahmed Ali finished at Bahra Yard and is moving on.');
   });
 
   it('follows a round trip onto the return leg', () => {
@@ -47,12 +50,15 @@ describe('describeTripStatusChange', () => {
 
   it('names the last delivery on completion', () => {
     const a = describeTripStatusChange({ fromStatus: 'InTransit', toStatus: 'Completed', toWorkflow: 'COMPLETED' }, roundTrip);
-    assert.deepEqual(a, { title: 'Trip completed', message: 'Trip TRP-0042 — Ahmed Ali delivered at Jeddah Port and completed the trip.' });
+    assert.equal(a?.title, 'Trip completed');
+    assert.equal(a?.message, 'Trip TRP-0042 — Ahmed Ali delivered at Jeddah Port and completed the trip.');
   });
 
   it("passes on the driver's delay reason", () => {
     const a = describeTripStatusChange({ fromStatus: 'InTransit', toStatus: 'Delayed', delayReason: ' Traffic at the port gate ' }, oneWay);
-    assert.deepEqual(a, { title: 'Delay reported', message: 'Trip TRP-0042 — Ahmed Ali reported a delay: Traffic at the port gate' });
+    assert.equal(a?.title, 'Delay reported');
+    assert.equal(a?.message, 'Trip TRP-0042 — Ahmed Ali reported a delay: Traffic at the port gate');
+    assert.equal(a?.pushBody, 'Trip TRP-0042: Reported a delay: Traffic at the port gate');
   });
 
   it('stays quiet when the app re-sends a step it already sent', () => {
@@ -78,6 +84,7 @@ describe('describeTripPhoto', () => {
     assert.deepEqual(describeTripPhoto({ kind: 'cargo', isVideo: false, operation: 'pickup', stopId: 'p' }, oneWay), {
       title: 'Cargo photos',
       message: 'Trip TRP-0042 — Ahmed Ali sent cargo photos at Jeddah Port.',
+      pushBody: 'Trip TRP-0042: Sent cargo photos at Jeddah Port.',
     });
     assert.equal(describeTripPhoto({ kind: 'pod', isVideo: false, stopId: 'd' }, oneWay).title, 'Delivery photos');
     assert.equal(

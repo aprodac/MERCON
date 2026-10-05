@@ -265,3 +265,41 @@ Still needed before it delivers anything (Expo/Apple/Firebase side, not code):
    `.env.local` before the Xcode prebuild, as for the driver app.
 5. Release the backend: migration `20261006090000_staff_push_devices` (new `user_devices`
    table + a nullable column on `push_deliveries`; additive).
+
+### Driver updates look like a message from the driver (2026-10-06)
+
+A push about something a driver did (every trip step, photos, "Got it", emergencies) comes
+**from that driver**: their name is the title, and their profile photo replaces the Mercon
+icon — like a WhatsApp message from a contact. Drivers without a photo show the Mercon icon.
+
+- **Backend** (`services/staffAlerts/`, `sendUserPushNotification`): the push carries
+  `data.sender = { id, name, image }` (image = a signed https link to the driver's photo,
+  valid 1–2 h), `mutableContent: true` and `richContent.image`.
+- **Android**: shows `richContent.image` as the notification's picture — nothing to set up.
+- **iPhone**: Apple's *Communication Notifications*. A Notification Service Extension
+  (`operator-app/targets/notification-service/`, added to `ios/` by `@bacons/apple-targets`
+  on prebuild) downloads the photo and turns the push into a message from the driver; each
+  driver is one conversation, so iOS groups their updates. Needs:
+  - the **Communication Notifications** capability on App ID `tech.mercon.operator`
+    (app.config adds the entitlement + `NSUserActivityTypes: INSendMessageIntent`);
+  - an App ID + App Store profile for the extension, `tech.mercon.operator.NotificationService`
+    (with automatic signing, Xcode creates both on the first archive).
+- The extension version must match the app's: `npm run version:bump` / `version:sync`
+  write the numbers into every target, extension included.
+
+### Push log — did it arrive? (operator app, Admins; 2026-10-06)
+
+Side menu → Settings → **Push log** (`GET /notifications/push-log`, Admins only — server
+and app). Last 24 h in numbers (sent / arrived / failed / typical delay / slow), each staff
+member's phones ("no phone signed in" = gets no pushes), and every push of the last 7 days:
+
+- **Arrived · 2 s** — the phone said it got it. The iOS extension calls the signed link the
+  push carries (`data.receipt` → `POST /api/push-receipts/<id>/<sig>`, sets
+  `push_deliveries.received_at`); delay = alert created → phone got it. Over 1 min = slow.
+  iPhones on operator app **1.1.0 (104)+** only.
+- **Delivered to Apple / Google** — Expo's receipt (checked ~15 min after sending). The most
+  Android can show.
+- **Waiting / Retrying / Failed** (+ the reason in plain words) / **Unknown**.
+
+The phone's API address is saved at sign-in (`user_devices.api_base`) so the extension
+reports to the server that phone uses. Migration `20261006120000_push_receipts` (additive).

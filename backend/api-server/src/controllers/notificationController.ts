@@ -3,7 +3,16 @@ import { Role } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { prisma } from '../db';
 import type { DelayDetection } from '../services/tripLifecycle';
-import { sendDriverPushNotification, sendUserPushNotification, visibleNotificationMessage } from '../services/pushNotificationService';
+import {
+  sendDriverPushNotification,
+  sendUserPushNotification,
+  visibleNotificationMessage,
+  type StaffPushOptions,
+} from '../services/pushNotificationService';
+import { receiptBase } from '../services/pushReceipts';
+import { loadPushLog, type PushLogFilter } from '../services/pushLog';
+import { publicBaseUrl } from './operatorInboxController';
+import { isUuid } from '../utils/uuid';
 
 const getIO = () => {
   try {
@@ -84,6 +93,8 @@ export const registerUserDevice = async (req: Request, res: Response) => {
       lastSeenAt: new Date(),
       ...(installId ? { install_id: installId } : {}),
       ...(pushToken ? { token: pushToken } : {}),
+      // Where this phone reaches us — its iOS extension reports arrivals there.
+      api_base: receiptBase(publicBaseUrl(req)),
       platform: typeof platform === 'string' && platform ? platform.slice(0, 16) : existing?.platform ?? 'unknown',
     };
     const device = existing
@@ -94,6 +105,21 @@ export const registerUserDevice = async (req: Request, res: Response) => {
   } catch (error) {
     logger.error({ err: error, userId }, 'Failed to register staff device');
     res.status(500).json({ success: false, error: { message: 'Failed to register device' } });
+  }
+};
+
+/**
+ * GET /notifications/push-log?filter=all|failed|slow&user=<id> — Admins: did
+ * staff pushes reach the operator app, and how fast (services/pushLog).
+ */
+export const getPushLog = async (req: Request, res: Response) => {
+  const filter: PushLogFilter = req.query.filter === 'failed' || req.query.filter === 'slow' ? req.query.filter : 'all';
+  const user = typeof req.query.user === 'string' && isUuid(req.query.user) ? req.query.user : null;
+  try {
+    res.json({ success: true, data: await loadPushLog({ filter, userId: user }) });
+  } catch (error) {
+    logger.error({ err: error }, 'Failed to load push log');
+    res.status(500).json({ success: false, error: { message: 'Failed to load the push log' } });
   }
 };
 
@@ -152,7 +178,9 @@ export const createNotification = async (
   message: string, 
   type: string, 
   entity_type?: string, 
-  entity_id?: string
+  entity_id?: string,
+  /** How the phone push differs from the in-app row (e.g. a driver's update as a message from them). */
+  push?: StaffPushOptions,
 ) => {
   try {
     const notification = await prisma.notification.create({
@@ -178,6 +206,7 @@ export const createNotification = async (
         message,
         { type, entity_type, entity_id, notificationId: notification.id },
         notification.id,
+        push,
       ).catch((err) => logger.error({ err, userId }, '[NotificationController] Background staff push failed'));
     }
 

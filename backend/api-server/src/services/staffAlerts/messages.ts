@@ -18,6 +18,11 @@ export interface DriverUpdateContext {
 export interface StaffAlert {
   title: string;
   message: string;
+  /**
+   * The phone push's text. The push reads like a message from the driver —
+   * their name is its title — so the text leaves the name out.
+   */
+  pushBody: string;
 }
 
 export interface TripStatusChange {
@@ -44,6 +49,7 @@ const placeOf = (s: TripStopLike | null | undefined, fallback: string) => (s ? s
 const alert = (ctx: DriverUpdateContext, title: string, what: string): StaffAlert => ({
   title,
   message: `${ctx.trip} — ${ctx.driverName} ${what}`,
+  pushBody: `${ctx.trip}: ${what.charAt(0).toUpperCase()}${what.slice(1)}`,
 });
 
 /**

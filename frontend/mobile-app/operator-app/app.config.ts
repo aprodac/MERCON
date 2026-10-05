@@ -91,6 +91,13 @@ export default (): ExpoConfig => ({
     buildNumber: String(buildNumber),
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false,
+      // Driver updates arrive as "messages" from that driver: their photo and
+      // name instead of the app icon (iOS Communication Notifications, built by
+      // targets/notification-service). Apple requires this with the entitlement.
+      NSUserActivityTypes: ['INSendMessageIntent'],
+    },
+    entitlements: {
+      'com.apple.developer.usernotifications.communication': true,
     },
   },
   android: {
@@ -154,6 +161,9 @@ export default (): ExpoConfig => ({
         mode: process.env.APS_ENVIRONMENT === 'production' ? 'production' : 'development',
       },
     ],
+    // Native extension targets from ./targets — the Notification Service
+    // Extension that puts the driver's photo on their pushes.
+    '@bacons/apple-targets',
     [
       'expo-splash-screen',
       {

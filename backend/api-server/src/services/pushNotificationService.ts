@@ -2,6 +2,7 @@ import axios from 'axios';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { WATCH_TIMINGS } from './driverPhone/rules';
+import { pushReceiptLink, receiptBase } from './pushReceipts';
 
 export interface ExpoPushMessage {
   to: string;
@@ -11,6 +12,30 @@ export interface ExpoPushMessage {
   data?: Record<string, any>;
   channelId?: string;
   priority?: 'default' | 'normal' | 'high';
+  /** iOS: lets the operator app's Notification Service Extension rewrite the push. */
+  mutableContent?: boolean;
+  /** Android shows the image as the notification's picture. */
+  richContent?: { image?: string };
+}
+
+/** Who a staff push is from, when it is a driver's own update. */
+export interface PushSender {
+  id: string;
+  name: string;
+  /** Full https link to their photo (signed — the phone fetches it without signing in). */
+  image?: string | null;
+}
+
+/**
+ * How a staff alert looks on the phone when it differs from the in-app
+ * notification: a driver's update reads like a message from that driver
+ * (their name as the title, their photo on Android; the iOS extension puts
+ * the photo on iPhones).
+ */
+export interface StaffPushOptions {
+  title?: string;
+  body?: string;
+  sender?: PushSender;
 }
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
@@ -41,6 +66,8 @@ interface Target {
   token: string;
   /** Existing PushDelivery row when this is a retry. */
   deliveryId?: string;
+  /** Staff phones: the API address it uses, for the "it arrived" receipt link. */
+  apiBase?: string | null;
 }
 
 /**
@@ -56,8 +83,24 @@ async function deliver(
 ): Promise<void> {
   if (targets.length === 0) return;
 
+  // A staff phone reports arrival through a link naming its delivery row, so
+  // that row is created before the push goes out (status 'Sending').
+  const created = new Set<Target>();
+  for (const t of targets) {
+    if (t.deliveryId || !t.userDeviceId || !receiptBase(t.apiBase)) continue;
+    const row = await prisma.pushDelivery.create({
+      data: { notificationId, userDeviceId: t.userDeviceId, status: 'Sending' },
+      select: { id: true },
+    });
+    t.deliveryId = row.id;
+    created.add(t);
+  }
+  const receiptOf = (t: Target) => (t.userDeviceId && t.deliveryId ? pushReceiptLink(t.apiBase, t.deliveryId) : null);
+
   const record = async (t: Target, data: { status: string; expo_ticket_id?: string | null; error_code?: string | null; error_message?: string | null }) => {
-    if (t.deliveryId) {
+    if (created.has(t)) {
+      await prisma.pushDelivery.update({ where: { id: t.deliveryId }, data: { ...data, sent_at: new Date() } });
+    } else if (t.deliveryId) {
       await prisma.pushDelivery.update({
         where: { id: t.deliveryId },
         data: { ...data, attempts: { increment: 1 }, sent_at: new Date() },
@@ -73,7 +116,10 @@ async function deliver(
   try {
     const response = await axios.post(
       EXPO_PUSH_URL,
-      targets.map((t) => ({ to: t.token, ...message })),
+      targets.map((t) => {
+        const receipt = receiptOf(t);
+        return { to: t.token, ...message, ...(receipt ? { data: { ...message.data, receipt } } : {}) };
+      }),
       { headers: EXPO_HEADERS, timeout: 10000 },
     );
     tickets = Array.isArray(response.data?.data) ? response.data.data : null;
@@ -197,18 +243,31 @@ export async function sendUserPushNotification(
   body: string,
   data: Record<string, any>,
   notificationId: string,
+  options: StaffPushOptions = {},
 ): Promise<void> {
   try {
     const devices = await prisma.userDevice.findMany({
       where: { userId, isActive: true, user: { isActive: true, deletedAt: null } },
-      select: { id: true, token: true },
+      select: { id: true, token: true, api_base: true },
     });
     const targets: Target[] = devices
       .filter((d) => isExpoPushToken(d.token))
-      .map((d) => ({ userDeviceId: d.id, token: d.token as string }));
+      .map((d) => ({ userDeviceId: d.id, token: d.token as string, apiBase: d.api_base }));
     if (targets.length === 0) return;
 
-    await deliver(notificationId, targets, { sound: 'default', title, body, data, channelId: 'default', priority: 'high' });
+    const { sender } = options;
+    await deliver(notificationId, targets, {
+      sound: 'default',
+      title: options.title ?? title,
+      body: options.body ?? body,
+      data: sender ? { ...data, sender } : data,
+      channelId: 'default',
+      priority: 'high',
+      // iOS runs the operator app's extension only for mutable pushes: it
+      // reports the arrival, and for a driver's update shows them as the sender.
+      mutableContent: true,
+      ...(sender?.image ? { richContent: { image: sender.image } } : {}),
+    });
   } catch (error: any) {
     logger.error({ err: error?.message || error, userId }, '[PushService] Failed to send staff push notification');
   }
@@ -221,7 +280,7 @@ export async function retryPushDelivery(deliveryId: string): Promise<void> {
     include: {
       notification: true,
       device: { select: { id: true, token: true, isActive: true } },
-      userDevice: { select: { id: true, token: true, isActive: true } },
+      userDevice: { select: { id: true, token: true, isActive: true, api_base: true } },
     },
   });
   if (!row) return;
@@ -231,7 +290,7 @@ export async function retryPushDelivery(deliveryId: string): Promise<void> {
   await deliver(
     n.id,
     [{
-      ...(row.device ? { deviceId: phone.id } : { userDeviceId: phone.id }),
+      ...(row.device ? { deviceId: phone.id } : { userDeviceId: phone.id, apiBase: row.userDevice?.api_base }),
       token: phone.token,
       deliveryId: row.id,
     }],
@@ -248,6 +307,7 @@ export async function retryPushDelivery(deliveryId: string): Promise<void> {
       },
       channelId: 'default',
       priority: 'high',
+      ...(row.userDevice ? { mutableContent: true } : {}),
     },
   );
 }

@@ -9,6 +9,7 @@ import { buildTripRouteTimeline, getLegEndpoints } from '../services/tripRouteTi
 import { notifyOperatorsOfDelay } from './notificationController';
 import { recordDriverActivity } from '../services/driverPhone/activity';
 import { notifyStaffOfTripPhoto, notifyStaffOfTripStatus } from '../services/staffAlerts/notify';
+import { publicBaseUrl } from './operatorInboxController';
 import { getDrivingRoute, RoutingUnavailableError } from '../services/routing/routeProvider';
 import { compressUploadedImage } from '../services/imageCompressor';
 import { queueVideoCompression } from '../services/media/videoCompressor';
@@ -334,7 +335,7 @@ export const updateTripStatus = async (req: Request, res: Response) => {
         toStatus: status,
         fromWorkflow: trip.driver_workflow_state,
         toWorkflow: driver_workflow_state ?? 'COMPLETED',
-      });
+      }, publicBaseUrl(req));
       return res.json({ success: true, data: await attachTripDocuments(full) });
     }
 
@@ -397,7 +398,7 @@ export const updateTripStatus = async (req: Request, res: Response) => {
         toWorkflow: workflowState,
         completedStopId: typeof completed_stop_id === 'string' ? completed_stop_id : null,
         delayReason: delayReason ?? null,
-      });
+      }, publicBaseUrl(req));
     }
 
     void recordDriverActivity(driverId, 'TripStatusChanged', {
@@ -527,7 +528,7 @@ export const uploadTripPhoto = async (req: Request, res: Response) => {
       lng: location_lng,
       metadata: { kind: isVideo ? 'video' : kind, operation: operation || null, documentId: document.id },
     });
-    void notifyStaffOfTripPhoto(driverId, id, { kind, isVideo, operation: operation || null, stopId: resolvedStopId ?? null });
+    void notifyStaffOfTripPhoto(driverId, id, { kind, isVideo, operation: operation || null, stopId: resolvedStopId ?? null }, publicBaseUrl(req));
 
     res.status(201).json({ success: true, data: document });
   } catch (error: any) {
