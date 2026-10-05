@@ -2,7 +2,7 @@
 
 For whoever picks up the MERCON **driver Android app** next (a person or an AI
 chat). Read this first, then `docs/ANDROID_PLAY_RELEASE.md` (Play Store forms)
-and `CLAUDE.md` (repo rules).
+and `CLAUDE.md` (repo rules). For shipping later updates, see `docs/DRIVER_APP_UPDATES.md`.
 
 Logins and passwords are **not** in this file on purpose: ask the owner.
 
@@ -13,10 +13,10 @@ Logins and passwords are **not** in this file on purpose: ask the owner.
 | What | State |
 |---|---|
 | Live server (mercon.tech) | Released from `main` on 4 Oct, 8:26 PM IST (release PR #152 + follow-ups). Health OK. |
-| Play Store file (AAB) | **Ready, not uploaded yet.** Version 1.2.0, version code 3, built from `main` commit `6f1356e`, connects to `https://mercon.tech/api`. Signing SHA-1 checked. Link (valid till 3 Nov 2026): https://expo.dev/artifacts/eas/kLtG2iaBmhpGJnn38keujO-87UBIAtUSaEnfYUxJA3Y.aab |
+| Play Store file (AAB) | **Uploaded to Play Internal testing on 5 Oct 2026** (Play showed no errors, only the harmless deobfuscation warning). Version 1.2.0, version code 3, built from `main` commit `6f1356e`, connects to `https://mercon.tech/api`. Signing SHA-1 checked. Link (valid till 3 Nov 2026): https://expo.dev/artifacts/eas/kLtG2iaBmhpGJnn38keujO-87UBIAtUSaEnfYUxJA3Y.aab |
 | Test APK (dev server) | Version 1.2.0, commit `94398a3` (same driver-app code as the AAB), connects to `https://dev.mercon.tech/api`. Link (valid till 18 Oct 2026): https://expo.dev/artifacts/eas/eRiXQcu6W_R3jHqvnn4OpGimDsdlhf_7bhGyfn6prLU.apk |
 | Driver app code changes on `dev` since the AAB | None as of 5 Oct morning. Only operator app and quotation work landed since. |
-| Next | 1) Upload the AAB to Play internal testing (§4). 2) Run the Phase 4 test on the real phone with the test APK (§6). 3) Fix what it finds, release, build a new AAB (§3), upload as an update. |
+| Next | 1) Confirm the internal testing rollout is live and testers got the opt-in link. 2) Run the Phase 4 test on the real phone with the test APK (§6). 3) Fix what it finds, release, build a new AAB (§3), upload as an update. |
 
 ### Testing done so far (real Realme RMX2030 phone, Android 10)
 
@@ -158,7 +158,7 @@ its phone + password in the form.
 
 ## 5. Open to-dos
 
-- [ ] Upload AAB version code 3 to internal testing (§4).
+- [x] Upload AAB version code 3 to internal testing (5 Oct 2026). Confirm the rollout is live and testers are added.
 - [ ] Privacy policy page (public URL) for the Play form.
 - [ ] Run the Phase 4 test (§6). Fix the findings, release `dev` → `main`, build a new AAB, upload it.
 - [ ] Optional: block `SYSTEM_ALERT_WINDOW` ("display over other apps", pulled in by a library and unused) in `android.blockedPermissions` so reviewers don't ask.
