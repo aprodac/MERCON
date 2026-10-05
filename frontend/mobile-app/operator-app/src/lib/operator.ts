@@ -590,16 +590,31 @@ export interface OperatorCustomer {
   avatar_url?: string | null;
   isActive?: boolean;
   createdAt?: string;
+  secondary_contact_person?: string | null;
+  secondary_contact_phone?: string | null;
+  payment_terms?: string | null;
+  whatsapp_number?: string | null;
+  whatsapp_group_name?: string | null;
+  whatsapp_group_link?: string | null;
+  driver_workflow?: 'NATIVE' | 'EXTERNAL_APP' | null;
 }
 
+/** Same fields as the web's Add / Edit Customer pages (backend createCustomerBody). */
 export interface CreateCustomerInput {
   name: string;
   contact_phone: string;
+  primary_contact_person?: string;
+  primary_contact_phone?: string;
+  secondary_contact_person?: string;
+  secondary_contact_phone?: string;
+  payment_terms?: string;
+  whatsapp_number?: string;
+  whatsapp_group_name?: string;
+  whatsapp_group_link?: string;
+  driver_workflow?: 'NATIVE' | 'EXTERNAL_APP';
 }
 
-export interface UpdateCustomerInput {
-  name?: string;
-  contact_phone?: string;
+export interface UpdateCustomerInput extends Partial<CreateCustomerInput> {
   isActive?: boolean;
 }
 
@@ -994,14 +1009,31 @@ export const operatorService = {
     return data.data as OperatorDriver;
   },
 
+  async createVehicle(payload: CreateVehicleInput): Promise<OperatorVehicle> {
+    const { data } = await api.post('/vehicles', payload);
+    return data.data as OperatorVehicle;
+  },
+
   async updateVehicle(id: string, payload: UpdateVehicleInput): Promise<OperatorVehicle> {
     const { data } = await api.patch(`/vehicles/${id}`, payload);
     return data.data as OperatorVehicle;
   },
 
-  async updateInvoiceStatus(id: string, status: string): Promise<OperatorInvoice> {
-    const { data } = await api.patch(`/invoices/${id}/status`, { status });
-    return data.data as OperatorInvoice;
+  /**
+   * Records money received against an invoice (POST /invoices/:id/payments, as
+   * the web's Record Payment). An invoice has no "status" to set by hand: it
+   * becomes Paid when payments cover it, and each payment posts to the ledger.
+   */
+  async recordInvoicePayment(id: string, payload: { amount: number; accountId: string; payment_date: string }): Promise<void> {
+    await api.post(`/invoices/${id}/payments`, payload);
+  },
+
+  /** Cash and bank accounts a payment can be received into (GET /bank-accounts). */
+  async paymentAccounts(): Promise<OperatorPaymentAccount[]> {
+    const { data } = await api.get('/bank-accounts');
+    return ((data.data ?? []) as any[])
+      .filter((a) => a.isActive !== false && a.accountId)
+      .map((a) => ({ accountId: a.accountId, name: a.account?.name || a.bank_name || (a.is_cash ? 'Cash' : 'Bank account'), is_cash: Boolean(a.is_cash) }));
   },
 
   /** Generic trip status transition — drives most of the trip lifecycle. */
@@ -1220,12 +1252,21 @@ export const operatorService = {
   },
 };
 
+export interface OperatorPaymentAccount {
+  accountId: string;
+  name: string;
+  is_cash: boolean;
+}
+
 export interface OperatorInvoice {
   id: string;
   ref_id: string | null;
+  /** Draft | Issued | PartiallyPaid | Paid | Void (backend enum InvoiceStatus). */
   status: string;
   currency: string;
   total_amount: number;
+  /** What is still owed after payments and credit notes. */
+  balance_due?: number;
   due_date: string;
   createdAt: string;
   customerId?: string | null;
@@ -1241,6 +1282,11 @@ export interface OperatorVehicle {
   status: string;
   capacity_kg: number;
   current_odometer: number;
+  trailer_number?: string | null;
+  trailer_type?: string | null;
+  trailer_capacity_kg?: number | null;
+  icces_device_id?: string | null;
+  assignedDriver?: { id: string; first_name: string; last_name: string; phone_primary?: string | null } | null;
 }
 
 export interface OperatorDriver {
@@ -1289,6 +1335,8 @@ export interface UpdateDriverInput {
   license_number?: string;
   license_expiry?: string;
   status?: 'Available' | 'OnTrip' | 'OffDuty' | 'Inactive';
+  /** The truck this driver normally drives; null unassigns. */
+  assigned_vehicle_id?: string | null;
 }
 
 export interface CreateDriverInput {
@@ -1299,10 +1347,18 @@ export interface CreateDriverInput {
   license_expiry: string;
 }
 
-export interface UpdateVehicleInput {
-  plate_number?: string;
-  asset_type?: 'Flatbed' | 'Reefer' | 'Box' | 'Tanker';
-  capacity_kg?: number;
+/** Body of POST /vehicles — the fields the backend's createVehicleBody requires. */
+export interface CreateVehicleInput {
+  plate_number: string;
+  asset_type: 'Flatbed' | 'Reefer' | 'Box' | 'Tanker';
+  capacity_kg: number;
+  icces_device_id?: string | null;
+  trailer_number?: string | null;
+  trailer_type?: 'Flatbed' | 'Reefer' | 'Box' | 'Tanker' | null;
+  trailer_capacity_kg?: number | null;
+}
+
+export interface UpdateVehicleInput extends Partial<CreateVehicleInput> {
   status?: 'Available' | 'OnTrip' | 'Maintenance' | 'Inactive';
 }
 

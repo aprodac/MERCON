@@ -2,7 +2,7 @@
  * The operator side menu (from the ☰ button). A flat, shadcn-style list:
  * brand header, "Go to…" filter, the main pages, then Fleet / Finance /
  * Records groups, each row one line with a count badge where something needs
- * attention, and the account at the bottom (tap it for Profile, where Log out lives).
+ * attention. Account, version and Log out live on the Profile tab, not here.
  *
  * Badges read the same React Query caches the home uses, so opening the menu
  * doesn't fire a burst of requests.
@@ -15,13 +15,11 @@ import {
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
-import Constants from 'expo-constants';
 import {
   Map as MapIcon,
   Bell, Building2, CreditCard, FileText, FolderOpen, House, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
 import { operatorService } from '@/lib/operator';
 
@@ -127,17 +125,10 @@ function useMenuBadges(enabled: boolean): Record<BadgeKey, { text: string; tone:
   }, [notifications.data, live.data, expiries.data, invoices.data, now]);
 }
 
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return 'OP';
-  return ((parts[0][0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : parts[0][1] ?? '')).toUpperCase();
-}
-
 export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: OperatorSidebarDrawerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { profile, role } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
   const drawerWidth = Math.min(screenWidth * 0.82, 320);
 
@@ -204,9 +195,6 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
   };
 
   if (!mounted) return null;
-
-  const name = profile?.name ?? 'Operator';
-  const version = Constants.expoConfig?.version ?? '';
 
   return (
     <Modal transparent visible={mounted} onRequestClose={onClose} animationType="none" statusBarTranslucent>
@@ -289,19 +277,7 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
             {groups.length === 0 ? <Text style={styles.empty}>No page matches “{query}”</Text> : null}
           </ScrollView>
 
-          {/* Account */}
-          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
-            <View style={styles.account}>
-              <TouchableOpacity style={styles.accountLink} onPress={() => go('/profile')} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Open your profile">
-                <View style={styles.avatar}><Text style={styles.avatarText}>{initialsOf(name)}</Text></View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.name} numberOfLines={1}>{name}</Text>
-                  <Text style={styles.role} numberOfLines={1}>{role ?? 'Operator'}</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-            {version ? <Text style={styles.version}>Version {version}</Text> : null}
-          </View>
+          <View style={{ height: Math.max(insets.bottom, 12) }} />
         </Animated.View>
       </View>
     </Modal>
@@ -367,12 +343,4 @@ const styles = StyleSheet.create({
   badgeAmber: { backgroundColor: '#FFFAEB', borderColor: '#FEDF89' },
   badgeText: { fontSize: 11, fontWeight: '600', color: '#52525B' },
   empty: { fontSize: 13, color: ZINC.muted, paddingHorizontal: 10, paddingVertical: 12 },
-  footer: { borderTopWidth: 1, borderTopColor: ZINC.border, paddingHorizontal: 12, paddingTop: 10, gap: 4 },
-  account: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4, paddingVertical: 6 },
-  avatar: { width: 34, height: 34, borderRadius: 8, backgroundColor: ZINC.fg, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
-  name: { fontSize: 14, fontWeight: '600', color: ZINC.fg },
-  role: { fontSize: 12, color: ZINC.muted },
-  accountLink: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  version: { fontSize: 11, color: ZINC.faint, paddingHorizontal: 6 },
 });

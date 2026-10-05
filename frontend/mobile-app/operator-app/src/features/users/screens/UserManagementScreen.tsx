@@ -1,23 +1,34 @@
 /**
- * User management — two tabs over every account on the platform:
- *   Drivers → driver profiles; tap one to edit details and set its app password.
- *   Users   → Admin / Operator logins; Admins can add and edit them, Operators
- *             only view (the backend enforces the same: POST/PUT /users are Admin-only).
+ * User management — every account on the platform, behind three pills:
+ *   Drivers     → driver profiles; tap one to edit details and set its app password.
+ *   Users       → Admin / Operator logins; Admins can add and edit them, Operators
+ *                 only view (the backend enforces the same: POST/PUT /users are Admin-only).
+ *   No password → the drivers who can't sign in to the driver app yet.
+ *
+ * Rows follow the other list pages: avatar, name, a status line, a detail line.
  */
 import React, { useMemo, useState } from 'react';
-import { View, Text, FlatList, RefreshControl, TouchableOpacity, TextInput, SafeAreaView, StatusBar, StyleSheet } from 'react-native';
+import { View, Text, FlatList, RefreshControl, TouchableOpacity, StatusBar, StyleSheet } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, ChevronRight, KeyRound, Menu, Plus, Search, UserCog, Users } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography } from '@mercon/mobile-shared/theme/tokens';
+import { ChevronRight, Plus, UserCog, Users } from 'lucide-react-native';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
-import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
-import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
+import { EmptyState, ErrorState, SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { operatorService, type OperatorDriver, type PlatformUser } from '@/lib/operator';
 import { AppTopBar } from '@/components/AppTopBar';
+import { FilterChips } from '@/components/FilterChips';
+import { ListSearch, listPage } from '@/components/ListSearch';
+import { CompanyAvatar, niceName, shortName } from '@/features/trips/create/components/ui';
 
-type Tab = 'drivers' | 'users';
+type Tab = 'drivers' | 'nologin' | 'users';
+
+const INK = '#3E3C3D';
+const MUTED = '#6B6B76';
+const AMBER = '#F59E0B';
+
 
 export const USER_MANAGEMENT_KEYS = {
   drivers: ['user-management', 'drivers'] as const,
@@ -30,55 +41,42 @@ function matches(query: string, ...fields: (string | null | undefined)[]): boole
   return fields.some((f) => f?.toLowerCase().includes(q));
 }
 
-function Pill({ label, color, bg }: { label: string; color: string; bg: string }) {
-  return (
-    <View style={[styles.pill, { backgroundColor: bg }]}>
-      <Text style={[styles.pillText, { color }]}>{label}</Text>
-    </View>
-  );
-}
-
 export default function UserManagementScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ tab?: string }>();
   const { role } = useAuth();
   const isAdmin = role === 'Admin';
-  const [tab, setTab] = useState<Tab>(params.tab === 'users' ? 'users' : 'drivers');
+  const [tab, setTab] = useState<Tab>(params.tab === 'users' || params.tab === 'nologin' ? params.tab : 'drivers');
   const [query, setQuery] = useState('');
-  const [drawerVisible, setDrawerVisible] = useState(false);
 
   const drivers = useQuery({ queryKey: USER_MANAGEMENT_KEYS.drivers, queryFn: () => operatorService.driverAccounts() });
   const users = useQuery({ queryKey: USER_MANAGEMENT_KEYS.users, queryFn: () => operatorService.platformUsers() });
 
   const driverRows = useMemo(
     () => (drivers.data ?? []).filter((d) =>
-      matches(query, `${d.first_name} ${d.last_name}`, d.phone_primary, d.license_number, d.ref_id)),
-    [drivers.data, query],
+      (tab !== 'nologin' || !d.user)
+      && matches(query, `${d.first_name} ${d.last_name}`, d.phone_primary, d.license_number, d.ref_id)),
+    [drivers.data, query, tab],
   );
   const userRows = useMemo(
     () => (users.data ?? []).filter((u) => matches(query, u.name, u.username, u.phone, u.email, u.role)),
     [users.data, query],
   );
 
-  const active = tab === 'drivers' ? drivers : users;
+  const active = tab === 'users' ? users : drivers;
 
+  // One short line under the name; a tag only when something needs doing.
   const renderDriver = ({ item }: { item: OperatorDriver }) => {
-    const hasLogin = !!item.user;
+    const name = `${item.first_name} ${item.last_name}`.trim();
     return (
-      <TouchableOpacity style={styles.row} activeOpacity={0.75} onPress={() => router.push(`/driver-edit?id=${item.id}`)}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{(item.first_name[0] ?? '') + (item.last_name[0] ?? '')}</Text>
+      <TouchableOpacity style={styles.row} activeOpacity={0.8} onPress={() => router.push(`/driver-edit?id=${item.id}`)} accessibilityRole="button" accessibilityLabel={`Edit ${name}${item.user ? '' : ', no app password'}`}>
+        <CompanyAvatar name={name} url={item.avatar_url ?? item.photo_url} size={42} />
+        <View style={styles.rowText}>
+          <Text style={styles.name} numberOfLines={1}>{shortName(name)}</Text>
+          <Text style={styles.meta} numberOfLines={1}>{item.phone_primary || item.ref_id || 'No phone'}</Text>
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.name} numberOfLines={1}>{`${item.first_name} ${item.last_name}`.trim()}</Text>
-          <Text style={styles.sub} numberOfLines={1}>
-            {[item.phone_primary, item.license_number].filter(Boolean).join(' · ') || '—'}
-          </Text>
-        </View>
-        {hasLogin
-          ? <Pill label="App login" color="#047857" bg="#ECFDF5" />
-          : <Pill label="No password" color="#B45309" bg="#FFFBEB" />}
-        <ChevronRight size={18} color={Colors.gray400} />
+        {item.user || tab === 'nologin' ? null : <View style={styles.tag}><Text style={styles.tagText}>No password</Text></View>}
+        <ChevronRight size={18} color="#B4B4BD" />
       </TouchableOpacity>
     );
   };
@@ -86,96 +84,91 @@ export default function UserManagementScreen() {
   const renderUser = ({ item }: { item: PlatformUser }) => (
     <TouchableOpacity
       style={styles.row}
-      activeOpacity={isAdmin ? 0.75 : 1}
+      activeOpacity={isAdmin ? 0.8 : 1}
       disabled={!isAdmin}
       onPress={() => router.push(`/user-edit?id=${item.id}`)}
+      accessibilityRole="button"
+      accessibilityLabel={`${isAdmin ? 'Edit ' : ''}${item.name}, ${item.role}`}
     >
-      <View style={styles.avatar}>
-        <Text style={styles.avatarText}>{item.name.slice(0, 2).toUpperCase()}</Text>
+      <CompanyAvatar name={item.name} size={42} />
+      <View style={styles.rowText}>
+        <Text style={styles.name} numberOfLines={1}>{niceName(item.name)}</Text>
+        <Text style={styles.meta} numberOfLines={1}>{[item.role, item.username || item.phone].filter(Boolean).join('  ·  ')}</Text>
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-        <Text style={styles.sub} numberOfLines={1}>
-          {[item.username, item.phone].filter(Boolean).join(' · ') || '—'}
-        </Text>
-      </View>
-      <Pill label={item.role} color={item.role === 'Admin' ? '#6D28D9' : '#1D4ED8'} bg={item.role === 'Admin' ? '#F5F3FF' : '#EFF6FF'} />
-      {item.status === 'Inactive' && <Pill label="Inactive" color={Colors.gray500} bg={Colors.gray100} />}
-      {isAdmin && <ChevronRight size={18} color={Colors.gray400} />}
+      {item.status === 'Inactive' ? <View style={[styles.tag, styles.tagGray]}><Text style={[styles.tagText, { color: MUTED }]}>Inactive</Text></View> : null}
+      {isAdmin ? <ChevronRight size={18} color="#B4B4BD" /> : null}
     </TouchableOpacity>
   );
 
+  const onDrivers = tab !== 'users';
+  const shownCount = onDrivers ? driverRows.length : userRows.length;
+  const noLogin = drivers.data?.filter((d) => !d.user).length;
+  const header = (
+    <View style={listPage.header}>
+      <FilterChips<Tab>
+        value={tab}
+        onChange={setTab}
+        items={[
+          { key: 'drivers', label: 'Drivers', count: drivers.data?.length ?? '–' },
+          { key: 'users', label: 'Users', count: users.data?.length ?? '–' },
+          { key: 'nologin', label: 'No password', dot: AMBER, count: noLogin ?? '–' },
+        ]}
+      />
+      <ListSearch
+        value={query}
+        onChangeText={setQuery}
+        placeholder={onDrivers ? 'Search name, phone, license' : 'Search name, username, phone'}
+      />
+      {!active.isLoading ? (
+        <Text style={listPage.count}>
+          {shownCount} {onDrivers ? (shownCount === 1 ? 'driver' : 'drivers') : (shownCount === 1 ? 'user' : 'users')}
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  const skeleton = (
+    <View style={{ gap: 8 }}>
+      {[0, 1, 2, 3].map((i) => <SkeletonBlock key={i} height={66} radius={16} />)}
+    </View>
+  );
+
   const listProps = {
-    contentContainerStyle: { padding: Spacing.lg, paddingBottom: 120 },
+    contentContainerStyle: listPage.list,
+    ListHeaderComponent: header,
+    showsVerticalScrollIndicator: false,
+    ItemSeparatorComponent: () => <View style={{ height: 8 }} />,
     keyboardShouldPersistTaps: 'handled' as const,
     refreshControl: <RefreshControl refreshing={active.isRefetching} onRefresh={() => active.refetch()} tintColor={Colors.primary} />,
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
+    <SafeAreaView style={listPage.page} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#F6F6F7" />
 
-      <AppTopBar title="Users" />
-
-      <View style={styles.toolbar}>
-        <View style={styles.tabs}>
-          {(['drivers', 'users'] as Tab[]).map((t) => {
-            const count = t === 'drivers' ? drivers.data?.length : users.data?.length;
-            return (
-              <TouchableOpacity key={t} style={[styles.tab, tab === t && styles.tabActive]} activeOpacity={0.8} onPress={() => setTab(t)}>
-                <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-                  {t === 'drivers' ? 'Drivers' : 'Users'}{count != null ? ` · ${count}` : ''}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        <View style={styles.searchRow}>
-          <View style={styles.search}>
-            <Search size={16} color={Colors.gray400} />
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              placeholder={tab === 'drivers' ? 'Search name, phone, license' : 'Search name, username, phone'}
-              placeholderTextColor={Colors.gray400}
-              style={styles.searchInput}
-              autoCorrect={false}
-              autoCapitalize="none"
-            />
-          </View>
-          {(tab === 'drivers' || isAdmin) && (
-            <TouchableOpacity
-              style={styles.addBtn}
-              activeOpacity={0.8}
-              onPress={() => router.push(tab === 'drivers' ? '/driver-edit' : '/user-edit')}
-            >
-              <Plus size={16} color={Colors.white} strokeWidth={2.5} />
-              <Text style={styles.addText}>Add</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-        {tab === 'drivers' ? (
-          <View style={styles.hint}>
-            <KeyRound size={13} color={Colors.gray500} />
-            <Text style={styles.hintText}>Tap a driver to edit details or set their app password.</Text>
-          </View>
-        ) : !isAdmin ? (
-          <View style={styles.hint}>
-            <UserCog size={13} color={Colors.gray500} />
-            <Text style={styles.hintText}>Only Admins can add or edit platform users.</Text>
-          </View>
-        ) : null}
-      </View>
+      <AppTopBar
+        title="Users"
+        actions={onDrivers || isAdmin
+          ? [{ icon: Plus, label: onDrivers ? 'Add driver' : 'Add user', onPress: () => router.push(onDrivers ? '/driver-edit' : '/user-edit') }]
+          : []}
+      />
 
       {active.error ? (
         <ErrorState message={getApiErrorMessage(active.error)} onRetry={() => active.refetch()} className="flex-1" />
-      ) : tab === 'drivers' ? (
+      ) : onDrivers ? (
         <FlatList
           data={driverRows}
           keyExtractor={(d) => d.id}
           renderItem={renderDriver}
           {...listProps}
-          ListEmptyComponent={!drivers.isLoading ? <EmptyState title={query ? 'No matching drivers' : 'No drivers yet'} Icon={Users} className="mt-12" /> : null}
+          ListEmptyComponent={drivers.isLoading ? skeleton : (
+            <EmptyState
+              title={query ? 'No matching drivers' : tab === 'nologin' ? 'Every driver has an app password' : 'No drivers yet'}
+              subtitle={query ? 'Try another name, phone or license.' : tab === 'nologin' ? 'Nothing to set up here.' : 'Tap + to add the first driver.'}
+              Icon={Users}
+              className="mt-8"
+            />
+          )}
         />
       ) : (
         <FlatList
@@ -183,7 +176,7 @@ export default function UserManagementScreen() {
           keyExtractor={(u) => u.id}
           renderItem={renderUser}
           {...listProps}
-          ListEmptyComponent={!users.isLoading ? <EmptyState title={query ? 'No matching users' : 'No users yet'} Icon={UserCog} className="mt-12" /> : null}
+          ListEmptyComponent={users.isLoading ? skeleton : <EmptyState title={query ? 'No matching users' : 'No users yet'} subtitle={query ? 'Try another name, username or phone.' : undefined} Icon={UserCog} className="mt-8" />}
         />
       )}
 
@@ -192,88 +185,11 @@ export default function UserManagementScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    backgroundColor: Colors.white,
-  },
-  iconBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: Radius.md,
-    backgroundColor: Colors.gray100,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: { fontSize: Typography.lg, fontWeight: '800', color: Colors.charcoal },
-  subtitle: { fontSize: Typography.xs, color: Colors.gray500 },
-  toolbar: {
-    backgroundColor: Colors.white,
-    paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.md,
-    gap: Spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
-  },
-  tabs: {
-    flexDirection: 'row',
-    backgroundColor: Colors.gray100,
-    borderRadius: Radius.md,
-    padding: 3,
-  },
-  tab: { flex: 1, paddingVertical: 8, borderRadius: Radius.md - 2, alignItems: 'center' },
-  tabActive: { backgroundColor: Colors.white, shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  tabText: { fontSize: Typography.sm, fontWeight: '600', color: Colors.gray500 },
-  tabTextActive: { color: Colors.charcoal },
-  searchRow: { flexDirection: 'row', gap: Spacing.sm },
-  search: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: Colors.gray100,
-    borderRadius: Radius.md,
-    paddingHorizontal: 12,
-    height: 40,
-  },
-  searchInput: { flex: 1, fontSize: Typography.sm, color: Colors.charcoal, paddingVertical: 0 },
-  addBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: Colors.charcoal,
-    borderRadius: Radius.md,
-    paddingHorizontal: 14,
-    height: 40,
-  },
-  addText: { color: Colors.white, fontWeight: '700', fontSize: Typography.sm },
-  hint: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  hintText: { fontSize: 12, color: Colors.gray500 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: Colors.white,
-    borderRadius: Radius.lg,
-    borderWidth: 1,
-    borderColor: Colors.gray100,
-    padding: Spacing.md,
-    marginBottom: Spacing.sm,
-  },
-  avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: Colors.gray100,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: { fontSize: 13, fontWeight: '700', color: Colors.gray700 },
-  name: { fontSize: Typography.base, fontWeight: '700', color: Colors.charcoal },
-  sub: { fontSize: 12, color: Colors.gray500, marginTop: 1 },
-  pill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: Radius.full },
-  pillText: { fontSize: 11, fontWeight: '700' },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: '#E9E9EC', paddingVertical: 11, paddingHorizontal: 14 },
+  rowText: { flex: 1, minWidth: 0, gap: 2 },
+  name: { fontSize: 16, fontWeight: '600', color: INK, letterSpacing: -0.2 },
+  meta: { fontSize: 13, color: MUTED, fontVariant: ['tabular-nums'] },
+  tag: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, backgroundColor: '#FFF6E5' },
+  tagGray: { backgroundColor: '#F1F1F3' },
+  tagText: { fontSize: 12, fontWeight: '600', color: '#B45309' },
 });

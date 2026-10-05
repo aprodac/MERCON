@@ -5,16 +5,14 @@
 import React, { useEffect, useState } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { OperatorSidebarDrawer } from '@/components/OperatorSidebarDrawer';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Truck } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 
-import { SearchBar } from '@/features/dashboard/components';
+import { ListSearch, listPage } from '@/components/ListSearch';
 import { EmptyState, ErrorState } from '@mercon/mobile-shared/ui';
 
 import {
-  FilterBottomSheet,
   SkeletonVehicleCard,
   VehicleCard,
   VehiclePagination,
@@ -22,18 +20,15 @@ import {
   VehiclesListHeader,
   VehicleStatusTabs,
 } from '../components';
-import { useVehicleFilters, useVehicleSearch, useVehicleSorting, useVehicles } from '../hooks';
+import { useVehicleFilters, useVehicleSearch, useVehicles } from '../hooks';
 import type { VehicleListItem } from '../types';
 
 export default function VehiclesScreen() {
   const router = useRouter();
-  const [drawerVisible, setDrawerVisible] = useState(false);
-  const [filterVisible, setFilterVisible] = useState(false);
   const [page, setPage] = useState(1);
 
   const { query, debouncedQuery, setQuery } = useVehicleSearch();
   const { status, setStatus } = useVehicleFilters();
-  const { sort, setSort } = useVehicleSorting();
 
   // Reset to page 1 whenever search query or status filter changes
   useEffect(() => {
@@ -52,7 +47,7 @@ export default function VehiclesScreen() {
     isFetching,
     hasNextPage,
     hasPrevPage,
-  } = useVehicles({ search: debouncedQuery, status, sort, page });
+  } = useVehicles({ search: debouncedQuery, status, page });
 
   const isFiltered = Boolean(debouncedQuery || status);
 
@@ -64,18 +59,9 @@ export default function VehiclesScreen() {
     router.push({ pathname: '/trip-details', params: { id: tripId } });
   };
 
-  // Same sidebar the other operator pages open (documents, expenses, …).
-  // There is no drawer navigator, so dispatching DrawerActions did nothing,
-  // and importing @react-navigation from app code breaks the SDK 57 bundler.
-  const handleMenuPress = () => setDrawerVisible(true);
-
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F6F6F7' }} edges={['top']}>
-      <VehiclesHeader
-        onFilterPress={() => setFilterVisible(true)}
-        onMenuPress={handleMenuPress}
-        filterActive={status !== null}
-      />
+    <SafeAreaView style={listPage.page} edges={['top']}>
+      <VehiclesHeader onAddPress={() => router.push('/vehicle-edit')} />
 
       {error ? (
         <ErrorState message={error} onRetry={() => refresh()} className="flex-1" />
@@ -83,19 +69,20 @@ export default function VehiclesScreen() {
         <FlatList
           data={vehicles}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 10, paddingBottom: 110 }}
-          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+          contentContainerStyle={listPage.list}
+          keyboardShouldPersistTaps="handled"
+          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={refresh} tintColor={Colors.primary} />}
           ListHeaderComponent={
-            <View className="gap-3 pb-2">
+            <View style={listPage.header}>
               <VehicleStatusTabs value={status} onChange={setStatus} />
-              <SearchBar
+              <ListSearch
                 value={query}
                 onChangeText={setQuery}
-                placeholder="Search vehicles by plate or asset type…"
-                isLoading={isFetching && !isRefreshing}
+                placeholder="Search plate or truck type"
+                loading={isFetching && !isRefreshing}
               />
-              <VehiclesListHeader total={total} sort={sort} onSortChange={setSort} />
+              {!loading ? <VehiclesListHeader total={total} /> : null}
             </View>
           }
           renderItem={({ item }) => (
@@ -144,13 +131,6 @@ export default function VehiclesScreen() {
         />
       )}
 
-      <FilterBottomSheet
-        visible={filterVisible}
-        value={status}
-        onChange={setStatus}
-        onClose={() => setFilterVisible(false)}
-      />
-      <OperatorSidebarDrawer visible={drawerVisible} onClose={() => setDrawerVisible(false)} />
     </SafeAreaView>
   );
 }
