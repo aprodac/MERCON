@@ -232,8 +232,8 @@ Done on 2026-10-05:
   Expo login it would create a second, unrelated project.
 - APNs push key (Key ID `7SN8FSMQGT`, Team `Z83Y9VJTKH`) uploaded to that
   project with `eas credentials -p ios` → Push Notifications, assigned to
-  `tech.mercon.operator`. The same key can be reused for the driver app
-  ("Use an existing push key"). The `.p8` file itself never goes in git or chat.
+  `tech.mercon.operator`. The driver app (`tech.merconapp.driver`) already has
+  a push key on its Expo project (checked 2026-10-05), so nothing to add there. The `.p8` file itself never goes in git or chat.
 
 Still to do: tick **Push Notifications** on the `tech.mercon.operator`
 identifier (A2) and delete its old App Store profile; push code in the operator
