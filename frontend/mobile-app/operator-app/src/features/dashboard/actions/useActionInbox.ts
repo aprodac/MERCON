@@ -23,12 +23,18 @@ const safe = <T,>(fn: () => Promise<T>, fallback: T) => async () => {
   }
 };
 
-/** Trips that ended today in `tz` (the 100 most recent finished ones are enough for a day). */
+/**
+ * Trips that ended today in `tz`. The server counts them (`ended_since` +
+ * the list's total), so only one light row comes back — it used to download
+ * 100 full finished trips just to count them.
+ */
 async function countFinishedToday(tz: string): Promise<number> {
   const f = makeTime(tz);
-  const today = f.dayKey(Date.now());
-  const { data } = await api.get('/trips', { params: { status: 'Completed,Invoiced', per_page: 100 } });
-  return ((data.data ?? []) as { actual_end?: string | null }[]).filter((t) => t.actual_end && f.dayKey(t.actual_end) === today).length;
+  const since = f.startOfDay(f.dayKey(Date.now()));
+  const { data } = await api.get('/trips', {
+    params: { status: 'Completed,Invoiced', ended_since: since.toISOString(), per_page: 1, lite: true },
+  });
+  return Number(data.meta?.total ?? 0);
 }
 
 export function useActionInbox() {
