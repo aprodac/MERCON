@@ -103,6 +103,8 @@ export function useActionInbox() {
     items,
     /** Not-started trips (Draft / Scheduled), for Home's Up next and today's ring. */
     scheduled: unassigned.data ?? [],
+    /** Documents expired or expiring soon (Home's Free trucks shows a truck's). */
+    expiries: expiries.data ?? [],
     /** Driver photo sets, newest first on Home's "From drivers" strip. */
     updates: updates.data ?? [],
     /** Trips finished today; null until known. */

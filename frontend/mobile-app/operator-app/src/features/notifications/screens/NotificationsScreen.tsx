@@ -1,11 +1,13 @@
 /**
- * Operator Notifications, in two tabs:
+ * Operator Notifications, in three tabs:
+ *   From drivers — photo / video sets drivers sent, the ones still to pass on
+ *              to the customer's WhatsApp first (the default tab).
  *   To do    — what needs someone to act (delays, trips without a driver,
  *              GPS silence, photos to send, expiring documents, overdue
  *              invoices), the same live items as Home's Needs action list.
  *   Activity — the notification feed from the API, by day.
- * Opens on To do; `?tab=activity` opens the feed, `?filter=trips|whatsapp|
- * documents|money` opens To do on that chip.
+ * Opens on From drivers; `?tab=todo` / `?tab=activity` open the others, and
+ * `?filter=trips|whatsapp|documents|money` opens To do on that chip.
  */
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
@@ -23,15 +25,18 @@ import { useMarkNotificationsRead, useNotifications } from '../hooks/useNotifica
 import { targetFor } from '../notificationModel';
 import { TodoTab, type GroupFilter } from '../components/TodoTab';
 import { ActivityTab } from '../components/ActivityTab';
+import { DriversTab } from '../components/DriversTab';
 import { BG, INK, LINE, MUTED, tap } from '../components/parts';
 
-type Tab = 'todo' | 'activity';
+type Tab = 'drivers' | 'todo' | 'activity';
 
 export default function NotificationsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ tab?: string; filter?: string }>();
   const initialFilter: GroupFilter = (['trips', 'whatsapp', 'documents', 'money'] as const).find((g) => g === params.filter) ?? 'all';
-  const [tab, setTab] = useState<Tab>(params.tab === 'activity' ? 'activity' : 'todo');
+  const [tab, setTab] = useState<Tab>(
+    params.tab === 'activity' ? 'activity' : params.tab === 'todo' || params.filter ? 'todo' : 'drivers',
+  );
 
   // Ticks each minute so "12m late" / "5 min" stay current.
   const [now, setNow] = useState(() => Date.now());
@@ -62,7 +67,9 @@ export default function NotificationsScreen() {
   };
 
   const urgent = inbox.counts.now;
+  const toSend = inbox.updates.filter((u) => u.unsent_count > 0).length;
   const tabs: { value: Tab; label: string; count: number; hot: boolean }[] = [
+    { value: 'drivers', label: 'From drivers', count: toSend, hot: false },
     { value: 'todo', label: 'To do', count: inbox.items.length, hot: urgent > 0 },
     { value: 'activity', label: 'Activity', count: unread, hot: false },
   ];
@@ -96,7 +103,17 @@ export default function NotificationsScreen() {
       </View>
 
       <View style={{ flex: 1 }}>
-        {tab === 'todo' ? (
+        {tab === 'drivers' ? (
+          <DriversTab
+            updates={inbox.updates}
+            loading={inbox.loading}
+            now={now}
+            refreshing={refreshing}
+            onRefresh={refresh}
+            onSend={(u) => openTrip(u.trip.id, { share: 'update', update: u.key })}
+            onOpenTrip={(id) => openTrip(id)}
+          />
+        ) : tab === 'todo' ? (
           <TodoTab
             items={inbox.items}
             initialFilter={initialFilter}
