@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
  */
 
 type ErrorState =
-  | { kind: 'wrong' }
+  | { kind: 'wrong'; triesLeft: number | null }
   | { kind: 'missing'; field: 'username' | 'password' }
   | { kind: 'locked'; until: number }
   | { kind: 'offline' }
@@ -95,7 +95,11 @@ export default function LoginPage() {
     } catch (err: any) {
       const status = err?.response?.status;
       if (!err?.response) setError({ kind: 'offline' });
-      else if (status === 401) setError({ kind: 'wrong' });
+      else if (status === 401) {
+        // The server counts failed tries per account; warn when few are left.
+        const left = Number(err.response.headers?.['ratelimit-remaining']);
+        setError({ kind: 'wrong', triesLeft: Number.isFinite(left) && left <= 3 ? left : null });
+      }
       else if (status === 429) {
         const reset = Number(err.response.headers?.['ratelimit-reset']);
         setNow(Date.now());
@@ -187,7 +191,16 @@ export default function LoginPage() {
                   >
                     {error.kind === 'offline' ? <WifiOff className="mt-px size-4 shrink-0" /> : <AlertCircle className="mt-px size-4 shrink-0" />}
                     <span>
-                      {error.kind === 'wrong' && (<><b className="block font-semibold">That username or password isn't right.</b>Check them and try again.</>)}
+                      {error.kind === 'wrong' && (
+                        <>
+                          <b className="block font-semibold">That username or password isn't right.</b>
+                          {error.triesLeft === null
+                            ? 'Check them and try again.'
+                            : error.triesLeft === 0
+                              ? 'That was the last try. Sign-in is paused for 15 minutes.'
+                              : `${error.triesLeft} ${error.triesLeft === 1 ? 'try' : 'tries'} left before a 15-minute pause.`}
+                        </>
+                      )}
                       {error.kind === 'missing' && <b className="font-semibold">{error.field === 'username' ? 'Enter your username or phone number.' : 'Enter your password.'}</b>}
                       {error.kind === 'locked' && (<><b className="block font-semibold">Too many attempts.</b>For your security, try again in <span className="font-bold tabular-nums">{mmss}</span>.</>)}
                       {error.kind === 'offline' && (<><b className="block font-semibold">Can't reach MERCON.</b>Check your internet connection and try again.</>)}

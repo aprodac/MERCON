@@ -94,6 +94,8 @@ jobs:
           ICCES_ACCT: ${{ secrets.DEV_ICCES_ACCT }}
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ secrets.DEV_GEMINI_MODEL || 'gemini-flash-latest' }}
+          # Repo variable; set it to https://track-dev.mercon.tech once that address is live.
+          TRACKING_BASE_URL: ${{ vars.DEV_TRACKING_BASE_URL }}
         run: |
           echo "=== REBUILDING DEV STACK (mercon-dev) ==="
           echo "Target Project: mercon-dev (CLIENT_NAME=dev)"
@@ -228,6 +230,15 @@ jobs:
           if [ -f nginx/dev-mercon-api.conf ]; then
             sudo cp nginx/dev-mercon-api.conf /etc/nginx/sites-available/dev-mercon-api.conf
             sudo ln -sf /etc/nginx/sites-available/dev-mercon-api.conf /etc/nginx/sites-enabled/dev-mercon-api.conf
+          fi
+
+          # Customer-links address — only once its certificate has been issued
+          # (sudo certbot certonly --nginx -d track-dev.mercon.tech).
+          if [ -f nginx/dev-mercon-track.conf ] && [ -f /etc/letsencrypt/live/track-dev.mercon.tech/fullchain.pem ]; then
+            sudo cp nginx/dev-mercon-track.conf /etc/nginx/sites-available/dev-mercon-track.conf
+            sudo ln -sf /etc/nginx/sites-available/dev-mercon-track.conf /etc/nginx/sites-enabled/dev-mercon-track.conf
+          else
+            echo "track-dev.mercon.tech certificate not found — customer-links address stays off."
           fi
 
           # Update dev nginx site configs strictly (*dev*) to proxy to dev API port 3051 and dev Frontend port 3061

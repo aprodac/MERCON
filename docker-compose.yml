@@ -67,6 +67,9 @@ services:
       ICCES_ACCT: "${ICCES_ACCT:-}"
       GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
       GEMINI_MODEL: "${GEMINI_MODEL:-}"
+      # Customer links (/t/, /c/, /s/) on their own address, e.g.
+      # https://track.mercon.tech. Empty: links use the dashboard's address.
+      TRACKING_BASE_URL: "${TRACKING_BASE_URL:-}"
       # Encrypts stored integration secrets (ZATCA certificate key etc.).
       # Comes from this client's own server, not GitHub:
       # /etc/aprodac/clients/<client>/secrets.env, created and exported by
