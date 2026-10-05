@@ -3,14 +3,17 @@
  * location:
  *   1. Notifications allowed
  *   2. Location allowed (while using the app — enough for the trip service)
- *   3. The phone maker's own background / auto-launch switch (cannot be
- *      detected — the driver confirms it once on this install)
+ *   3. Android: MERCON allowed to run in the background — one tap opens
+ *      Android's own "Let app always run in background?" dialog
+ *      (REQUEST_IGNORE_BATTERY_OPTIMIZATIONS); detected with expo-battery.
+ *   +  Realme/Oppo, Xiaomi, Vivo, Huawei: an optional extra card for the
+ *      maker's own auto-start switch (not required, cannot be detected).
  *
  * Why 3: on a Realme phone the battery manager froze the swiped-away app; a
  * "Trip Assigned" push then arrived ~6 minutes late and Google Play services
- * was killed mid-trip, stopping trip GPS. The maker's "background activity"
- * switch is what fixes that. (Android's own "battery optimisation" list was a
- * separate step, dropped: on Realme/ColorOS MERCON never shows in that list.)
+ * was killed mid-trip, stopping trip GPS. The old "find MERCON in the battery
+ * optimisation list" step could not be done (MERCON never showed in that list
+ * on Realme or Nothing phones), hence the direct dialog.
  *
  * The full guide opens by itself only once per install. After "Later" it
  * stays closed and PhoneSetupReminder (above the bottom bar) offers a
@@ -23,7 +26,10 @@
 import React, { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { AppState, Linking, Modal, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Battery from 'expo-battery';
+import Constants from 'expo-constants';
 import * as Device from 'expo-device';
+import * as IntentLauncher from 'expo-intent-launcher';
 import * as Location from 'expo-location';
 import { Bell, CheckCircle2, ChevronRight, MapPin, ShieldCheck, Smartphone } from 'lucide-react-native';
 import { useLanguage } from '@mercon/mobile-shared/lib/language-context';
@@ -39,8 +45,6 @@ try {
   // Native module unavailable — the notification step is skipped.
 }
 
-/** Set once the driver confirms the phone maker's background setting on this install. */
-const MAKER_SETUP_KEY = 'phone_setup_maker_confirmed_v1';
 /** Set once the full guide has opened by itself; after that only the reminder button opens it. */
 const AUTO_OPENED_KEY = 'phone_setup_auto_opened_v1';
 
@@ -55,6 +59,11 @@ function makerFamily(): MakerFamily {
   if (/samsung/.test(m)) return 'samsung';
   return 'other';
 }
+
+const ANDROID_PACKAGE = Constants.expoConfig?.android?.package ?? 'tech.mercon.driver';
+
+/** Makers whose own battery manager also needs its auto-start switch (optional extra card). */
+const STRICT_MAKERS: MakerFamily[] = ['oppo', 'xiaomi', 'vivo', 'huawei'];
 
 const MAKER_STEPS: Record<MakerFamily, { key: string; en: string }> = {
   oppo: {
@@ -86,19 +95,20 @@ const MAKER_STEPS: Record<MakerFamily, { key: string; en: string }> = {
 interface SetupState {
   notif: boolean;
   location: boolean;
-  makerConfirmed: boolean;
+  /** Android lets MERCON run in the background (battery optimisation off). Always true on iOS. */
+  background: boolean;
 }
 
 async function readState(): Promise<SetupState> {
-  const [notif, location, maker] = await Promise.all([
+  const [notif, location, optimized] = await Promise.all([
     Notifications ? Notifications.getPermissionsAsync().then((p) => p.granted).catch(() => true) : Promise.resolve(true),
     Location.getForegroundPermissionsAsync().then((p) => p.granted).catch(() => false),
-    SecureStore.getItemAsync(MAKER_SETUP_KEY).catch(() => null),
+    Platform.OS === 'android' ? Battery.isBatteryOptimizationEnabledAsync().catch(() => false) : Promise.resolve(false),
   ]);
-  return { notif, location, makerConfirmed: Platform.OS !== 'android' || maker === '1' };
+  return { notif, location, background: !optimized };
 }
 
-const stepsDone = (s: SetupState) => [s.notif, s.location, s.makerConfirmed].filter(Boolean).length;
+const stepsDone = (s: SetupState) => [s.notif, s.location, s.background].filter(Boolean).length;
 const STEP_COUNT = 3;
 const isComplete = (s: SetupState) => stepsDone(s) === STEP_COUNT;
 
@@ -176,8 +186,11 @@ export function PhoneSetupGuide() {
     void refresh();
   };
 
-  const confirmMaker = async () => {
-    await SecureStore.setItemAsync(MAKER_SETUP_KEY, '1').catch(() => {});
+  // Android's own one-tap "Let app always run in background?" dialog.
+  const allowBackground = async () => {
+    await IntentLauncher.startActivityAsync(IntentLauncher.ActivityAction.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, {
+      data: `package:${ANDROID_PACKAGE}`,
+    }).catch(openAppSettings);
     void refresh();
   };
 
@@ -232,14 +245,21 @@ export function PhoneSetupGuide() {
               number={3}
               icon={<Smartphone size={20} color={Colors.primary} />}
               title={t('setup_maker_title', 'Let MERCON run in the background')}
-              body={t(maker.key, maker.en)}
-              done={state.makerConfirmed}
-              action={t('setup_open_app_settings', 'Open app settings')}
-              onPress={openAppSettings}
-              secondaryAction={t('setup_maker_confirm', "I've done this")}
-              onSecondaryPress={confirmMaker}
+              body={t('setup_background_body', 'Tap Allow, then choose "Allow" in the pop-up. New trips then arrive even when the phone is asleep.')}
+              done={state.background}
+              action={t('setup_allow', 'Allow')}
+              onPress={allowBackground}
               doneLabel={t('setup_done', 'Done')}
             />
+          )}
+          {Platform.OS === 'android' && STRICT_MAKERS.includes(family) && (
+            <View style={styles.extra}>
+              <Text style={styles.extraTitle}>{t('setup_extra_title', 'Optional — if new trips still arrive late')}</Text>
+              <Text style={styles.stepBody}>{t(maker.key, maker.en)}</Text>
+              <TouchableOpacity onPress={openAppSettings} activeOpacity={0.7}>
+                <Text style={styles.extraLink}>{t('setup_open_app_settings', 'Open app settings')}</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </ScrollView>
 
@@ -380,6 +400,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   secondaryBtnText: { ...Typography.buttonMedium, lineHeight: 20, color: Colors.primary },
+  extra: {
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    gap: Spacing.xs,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.gray200,
+  },
+  extraTitle: { ...Typography.bodySmall, color: Colors.gray900, fontWeight: '700' },
+  extraLink: { ...Typography.buttonMedium, lineHeight: 20, color: Colors.primary, marginTop: Spacing.xs },
   laterBtn: { padding: Spacing.lg, alignItems: 'center' },
   laterText: { ...Typography.buttonMedium, lineHeight: 20, color: Colors.gray500 },
   reminder: {

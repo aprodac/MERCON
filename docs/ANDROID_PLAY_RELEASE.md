@@ -89,6 +89,23 @@ App access (give reviewers a working **test driver login** on production with
 a sample trip, or Google cannot review the app), Ads (none), Content rating,
 Target audience (adults, not for children), News app (no).
 
+## 4e. Battery optimisation exemption (since 1.2.1)
+
+The app declares `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` and shows Android's
+"Let app always run in background?" dialog when the driver taps Allow in the
+phone setup guide. Play only allows this for apps whose core function breaks
+otherwise. If a reviewer asks, the reason is:
+
+> MERCON Driver is an internal fleet app. Drivers must receive newly assigned
+> delivery trips immediately and keep sharing trip location while a delivery
+> is running. On many Android phones (Realme, Oppo, Xiaomi, Vivo) the battery
+> manager froze the app: trip notifications arrived about 6 minutes late and
+> trip tracking stopped. The exemption is only requested when the driver taps
+> "Allow" in the setup screen, with an explanation, and the driver can refuse.
+
+If Play rejects it: remove the permission from `app.config.ts` and the step
+falls back to opening the app settings page.
+
 ## 5. Before uploading — open questions
 
 - `SYSTEM_ALERT_WINDOW` ("display over other apps") is in the APK, pulled in
