@@ -607,6 +607,7 @@ export const createVehicleBody = z.object({
   trailer_type: z.enum(['Flatbed', 'Reefer', 'Box', 'Tanker']).optional().nullable(),
   trailer_capacity_kg: z.coerce.number().int().positive().optional().nullable(),
   icces_device_id: z.string().trim().optional().nullable(),
+  has_tailgate: z.boolean().optional(),
   image_url: z.string().nullable().optional(),
 });
 
@@ -619,6 +620,7 @@ export const updateVehicleBody = z.object({
   trailer_type: z.enum(['Flatbed', 'Reefer', 'Box', 'Tanker']).optional().nullable(),
   trailer_capacity_kg: z.coerce.number().int().positive().optional().nullable(),
   icces_device_id: z.string().trim().optional().nullable(),
+  has_tailgate: z.boolean().optional(),
   status: z.enum(['Available', 'OnTrip', 'Maintenance', 'Inactive']).optional(),
   image_url: z.string().nullable().optional(),
   // Ownership (Vehicle P&L depreciation) — null clears a value.

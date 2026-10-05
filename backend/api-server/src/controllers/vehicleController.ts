@@ -576,7 +576,8 @@ export const createVehicle = async (req: Request, res: Response) => {
       trailer_type,
       trailer_capacity_kg,
       icces_device_id,
-      image_url
+      image_url,
+      has_tailgate
     } = req.body;
 
     const ref_id = await generateRefId('TRK', () =>
@@ -593,6 +594,7 @@ export const createVehicle = async (req: Request, res: Response) => {
         trailer_capacity_kg,
         icces_device_id,
         image_url,
+        has_tailgate: has_tailgate ?? false,
         odometer_updated_at: new Date(),
         created_by: (req as any).user?.id
       }

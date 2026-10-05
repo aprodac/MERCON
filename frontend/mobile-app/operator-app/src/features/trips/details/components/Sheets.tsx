@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Alert } from 'react-native';
 import {
-  FileText, Link2, MapPin, Pencil, TriangleAlert, Package, ShieldAlert, Trash2, Truck, XCircle, type LucideIcon,
+  FileText, Link2, MapPin, Pencil, Send, TriangleAlert, Package, ShieldAlert, Trash2, Truck, XCircle, type LucideIcon,
 } from 'lucide-react-native';
 import { SUGGESTED_CHARGE_TYPES, SUGGESTED_UNIT_BY_CHARGE_TYPE } from '@mercon/shared-types';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
@@ -14,11 +14,13 @@ import { ACTION, Divider, INK, MUTED, SheetRow } from './parts';
 // ── More ──────────────────────────────────────────────────────────────────────
 
 export function MoreSheet({
-  visible, trip, active, onClose, onEdit, onCancel, onQuick, tracking,
+  visible, trip, active, assignment, onClose, onEdit, onCancel, onQuick, tracking,
 }: {
   visible: boolean;
   trip: OperatorTripDetail;
   active: boolean;
+  /** Offer the assignment message (driver, number, truck) — planned or running trips. */
+  assignment: boolean;
   onClose: () => void;
   onEdit: () => void;
   onQuick: (kind: QuickKind) => void;
@@ -35,6 +37,9 @@ export function MoreSheet({
         ) : null}
         {tracking ? (
           <SheetRow icon={Link2} tint={TONE.blue.bg} fg={TONE.blue.fg} label="Customer tracking link" sub={tracking.sub} onPress={go(tracking.onPress)} />
+        ) : null}
+        {assignment ? (
+          <SheetRow icon={Send} tint="#E3F7EA" fg="#0F6B37" label="Send assignment" sub="Driver, number and truck to the customer group" onPress={go(() => onQuick('assignment'))} />
         ) : null}
         {active ? (
           <>

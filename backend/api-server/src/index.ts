@@ -143,6 +143,7 @@ app.use(express.json({ limit: '250mb' }));
 app.use(express.urlencoded({ limit: '250mb', extended: true }));
 import { getUploadDir } from './middlewares/upload';
 import { uploadsGuard, apiFileLinks } from './middlewares/fileLinks';
+import mediaRoutes from './routes/mediaRoutes';
 // Private documents (driver / vehicle / customer / company) need a signed link;
 // signed links are checked and handed to the static handlers below.
 app.use('/uploads', uploadsGuard);
@@ -161,6 +162,8 @@ apiRouter.use((_req, res, next) => {
 // Signs links to private documents for signed-in users; strips signatures from request bodies.
 apiRouter.use(apiFileLinks);
 apiRouter.use('/auth', authRoutes);
+// Inline truck / driver / customer pictures behind signed links (no login, like /uploads).
+apiRouter.use('/media', mediaRoutes);
 apiRouter.use('/drivers', driverRoutes);
 apiRouter.use('/vehicles', vehicleRoutes);
 apiRouter.use('/customers', customerRoutes);

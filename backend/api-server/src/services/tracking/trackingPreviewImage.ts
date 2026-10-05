@@ -2,12 +2,17 @@
  * The picture in a tracking link's WhatsApp preview: a clean white card.
  *
  *   trip link (/t/)     customer logo + name · "From → To" · status line ·
- *                       driver photo + truck · a drawing of the route · small company logo
+ *                       driver photo + truck · a details panel by phase (when it
+ *                       starts / when it arrives, how far, on time or late, stop
+ *                       progress / when it was delivered) stamped "As of 13:05",
+ *                       since WhatsApp keeps the picture from when it was sent ·
+ *                       small company logo
  *   customer link (/c/) customer logo + name · trucks on the road · driver photos ·
  *                       busiest routes · small company logo
  *
  * Built as one SVG (photos embedded, already resized) and rendered to PNG with
- * sharp. The route is drawn from the trip's own coordinates — no map service.
+ * sharp. No map: a drawn route on a blank grid said little (a scheduled trip
+ * was a dotted line between two dots), so the trip card shows the facts instead.
  * Text needs a system font (the API image installs Noto); without one the card
  * still renders, just without words.
  */
@@ -120,49 +125,100 @@ function companyMark(img: string | null, name: string): string {
   return `<text x="${W - PAD}" y="${H - PAD - 8}" text-anchor="end" font-family="${FONT}" font-weight="700" font-size="20" fill="${MUTED}" opacity="0.8">${esc(name)}</text>`;
 }
 
-/** The trip's route drawn in a panel: driven part solid, road ahead dashed, stops and the truck. */
-function routeDrawing(t: PublicTracking, x: number, y: number, w: number, h: number): string {
-  const done = t.path ?? [];
-  const ahead = t.ahead ?? [];
-  const whole = done.length + ahead.length > 1 ? [] : t.route ?? [];
-  const stops = t.stops.filter((s) => s.lat != null && s.lng != null).map((s) => ({ lng: s.lng as number, lat: s.lat as number, state: s.state }));
-  const truck = t.position ? [t.position.lng, t.position.lat] as [number, number] : null;
-  const all: [number, number][] = [...done, ...ahead, ...whole, ...stops.map((s) => [s.lng, s.lat] as [number, number]), ...(truck ? [truck] : [])];
-  const panel = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="28" fill="#f7f6f5"/>`;
-  if (all.length < 2) return panel;
+const dayKey = (iso: string | Date, tz: string) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso));
 
-  const lats = all.map((p) => p[1]);
-  const midLat = (Math.min(...lats) + Math.max(...lats)) / 2;
-  const k = Math.cos((midLat * Math.PI) / 180);
-  const xs = all.map((p) => p[0] * k);
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...lats), maxY = Math.max(...lats);
-  const inner = 52;
-  const scale = Math.min((w - inner * 2) / Math.max(maxX - minX, 1e-4), (h - inner * 2) / Math.max(maxY - minY, 1e-4));
-  const ox = x + (w - (maxX - minX) * scale) / 2;
-  const oy = y + (h - (maxY - minY) * scale) / 2;
-  const P = ([lng, lat]: [number, number]) => [ox + (lng * k - minX) * scale, oy + (maxY - lat) * scale] as const;
-  const thin = (pts: [number, number][]) => {
-    const step = Math.max(1, Math.ceil(pts.length / 400));
-    return pts.filter((_, i) => i % step === 0 || i === pts.length - 1);
+/** "Today", "Tomorrow", "Yesterday" or "Mon 5 Oct" in the deployment time zone. */
+function dayWord(iso: string, tz: string, now: Date): string {
+  const d = dayKey(iso, tz);
+  const shift = (days: number) => dayKey(new Date(now.getTime() + days * 86_400_000), tz);
+  if (d === shift(0)) return 'Today';
+  if (d === shift(1)) return 'Tomorrow';
+  if (d === shift(-1)) return 'Yesterday';
+  return new Intl.DateTimeFormat('en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short' }).format(new Date(iso));
+}
+
+/** "1 h 40 min", "35 min", "2 d 4 h". */
+function span(seconds: number): string {
+  const m = Math.max(1, Math.round(seconds / 60));
+  const h = Math.floor(m / 60);
+  if (h >= 48) return `${Math.floor(h / 24)} d ${h % 24} h`;
+  return h ? `${h} h${m % 60 ? ` ${m % 60} min` : ''}` : `${m} min`;
+}
+
+const km = (meters: number) => (meters < 10_000 ? `${(meters / 1000).toFixed(1)} km` : `${Math.round(meters / 1000)} km`);
+
+/**
+ * The right half of the trip card: what the customer wants to know at this
+ * stage, in large type. Every value is as of `generated_at`, printed at the bottom.
+ */
+function detailsPanel(t: PublicTracking, x: number, y: number, w: number, h: number): string {
+  const tz = t.timezone;
+  const now = new Date(t.generated_at);
+  const pad = 36;
+  const tx = x + pad;
+  const maxW = w - pad * 2;
+  const next = t.next_stop_index != null ? t.stops[t.next_stop_index] : null;
+  const doneStops = t.stops.filter((s) => s.state === 'done').length;
+  let svg = `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="28" fill="#f7f6f5"/>`;
+  const label = (text: string, yy: number, color = MUTED) =>
+    `<text x="${tx}" y="${yy}" font-family="${FONT}" font-weight="700" font-size="22" letter-spacing="1.5" fill="${color}">${esc(fit(text.toUpperCase(), 22, maxW))}</text>`;
+  const big = (text: string, yy: number, color = INK, size = 76) =>
+    `<text x="${tx}" y="${yy}" font-family="${FONT}" font-weight="800" font-size="${size}" fill="${color}">${esc(fit(text, size, maxW))}</text>`;
+  const line = (text: string, yy: number, color = INK, weight = 600, size = 26) =>
+    `<text x="${tx}" y="${yy}" font-family="${FONT}" font-weight="${weight}" font-size="${size}" fill="${color}">${esc(fit(text, size, maxW))}</text>`;
+  const pill = (text: string, yy: number, good: boolean) => {
+    const pw = Math.min(maxW, text.length * 24 * 0.58 + 40);
+    return `<rect x="${tx}" y="${yy - 32}" width="${pw}" height="44" rx="22" fill="${good ? '#e9f7ef' : '#fdecea'}"/>`
+      + `<text x="${tx + 20}" y="${yy - 3}" font-family="${FONT}" font-weight="700" font-size="24" fill="${good ? '#1f7a45' : '#c0392b'}">${esc(text)}</text>`;
   };
-  const line = (pts: [number, number][]) => thin(pts).map((p, i) => `${i ? 'L' : 'M'}${P(p)[0].toFixed(1)} ${P(p)[1].toFixed(1)}`).join(' ');
+  /** Stops as dots on a line: done ink, next brand, still to come hollow. */
+  const progress = (yy: number) => {
+    const n = t.stops.length;
+    if (n < 2) return '';
+    let out = `<line x1="${tx + 10}" y1="${yy}" x2="${tx + maxW - 10}" y2="${yy}" stroke="${LINE}" stroke-width="6" stroke-linecap="round"/>`;
+    const step = (maxW - 20) / (n - 1);
+    const reached = Math.max(doneStops - 1, 0);
+    if (doneStops > 1) out += `<line x1="${tx + 10}" y1="${yy}" x2="${tx + 10 + step * reached}" y2="${yy}" stroke="${INK}" stroke-width="6" stroke-linecap="round"/>`;
+    t.stops.forEach((s, i) => {
+      const cx = tx + 10 + step * i;
+      const fill = s.state === 'done' ? INK : s.state === 'next' ? BRAND : '#ffffff';
+      out += `<circle cx="${cx}" cy="${yy}" r="11" fill="${fill}" stroke="${s.state === 'upcoming' ? '#b9b4b1' : fill}" stroke-width="4"/>`;
+    });
+    return out + line(`${doneStops} of ${n} stops done`, yy + 44, MUTED, 500, 22);
+  };
 
-  let svg = panel;
-  // faint grid so the drawing reads as a map
-  for (let gx = x + 40; gx < x + w; gx += 48) svg += `<line x1="${gx}" y1="${y + 16}" x2="${gx}" y2="${y + h - 16}" stroke="#efecea" stroke-width="1"/>`;
-  for (let gy = y + 40; gy < y + h; gy += 48) svg += `<line x1="${x + 16}" y1="${gy}" x2="${x + w - 16}" y2="${gy}" stroke="#efecea" stroke-width="1"/>`;
-  if (whole.length > 1) svg += `<path d="${line(whole)}" fill="none" stroke="${INK}" stroke-opacity="0.35" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2 14"/>`;
-  if (ahead.length > 1) svg += `<path d="${line(ahead)}" fill="none" stroke="${INK}" stroke-opacity="0.4" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="2 14"/>`;
-  if (done.length > 1) svg += `<path d="${line(done)}" fill="none" stroke="${BRAND}" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>`;
-  stops.forEach((s, i) => {
-    const [cx, cy] = P([s.lng, s.lat]);
-    const last = i === stops.length - 1;
-    svg += `<circle cx="${cx}" cy="${cy}" r="13" fill="#fff"/><circle cx="${cx}" cy="${cy}" r="8" fill="${last ? BRAND : s.state === 'done' ? INK : '#fff'}" stroke="${INK}" stroke-width="${s.state === 'done' || last ? 0 : 3}"/>`;
-  });
-  if (truck && t.trip.phase !== 'done') {
-    const [cx, cy] = P(truck);
-    svg += `<circle cx="${cx}" cy="${cy}" r="24" fill="${BRAND}" fill-opacity="0.18"/><circle cx="${cx}" cy="${cy}" r="14" fill="${BRAND}" stroke="#fff" stroke-width="4"/>`;
+  const top = y + pad + 22;
+  if (t.trip.phase === 'done') {
+    svg += label('Delivered', top, '#1f7a45');
+    svg += big(t.trip.finished_at ? clock(t.trip.finished_at, tz) : '✓', top + 82, '#1f7a45');
+    if (t.trip.finished_at) svg += line(dayWord(t.trip.finished_at, tz, now), top + 126, INK, 600);
+    svg += line(`All ${t.stops.length} stops done`, top + 172, MUTED, 500, 24);
+    const photos = t.stops.reduce((n, s) => n + (s.photos?.length ?? 0), 0);
+    if (photos) svg += line(`${photos} delivery photo${photos === 1 ? '' : 's'} on the link`, top + 210, MUTED, 500, 24);
+  } else if (t.trip.phase === 'planned') {
+    svg += label('Starts', top);
+    svg += big(t.trip.planned_start ? clock(t.trip.planned_start, tz) : '—', top + 82);
+    if (t.trip.planned_start) svg += line(dayWord(t.trip.planned_start, tz, now), top + 126, INK, 600);
+    const crew = [t.driver_first_name, t.vehicle.plate].filter(Boolean).join(' · ');
+    if (crew) svg += line(crew, top + 172, MUTED, 500, 24);
+    if (t.eta && next) svg += line(`Truck ${km(t.eta.distance_m)} from ${next.name}`, top + 210, MUTED, 500, 24);
+  } else if (t.eta && next) {
+    const late = t.punctuality?.late_min ?? null;
+    svg += label(`Arrives ${next.name}`, top);
+    svg += big(clock(t.eta.arrival, tz), top + 82);
+    svg += line(`in ${span(t.eta.seconds)} · ${km(t.eta.distance_m)}`, top + 124, INK, 600);
+    let yy = top + 178;
+    if (late != null) { svg += pill(late > 0 ? `${span(late * 60)} late` : 'On time', yy, late <= 0); yy += 54; }
+    if (t.delay?.reason) { svg += line(t.delay.reason, yy, '#c0392b', 600, 22); yy += 36; }
+    svg += progress(Math.max(yy + 10, y + h - 118));
+  } else {
+    svg += label(next ? 'On the way to' : 'On the way', top);
+    if (next) svg += big(next.name, top + 72, INK, 52);
+    svg += line('Live position and ETA on the link', top + 120, MUTED, 500, 24);
+    svg += progress(y + h - 118);
   }
+  svg += `<text x="${tx}" y="${y + h - 24}" font-family="${FONT}" font-size="20" fill="${MUTED}">As of ${esc(clock(t.generated_at, tz))} · ${esc(dayWord(t.generated_at, tz, now))}</text>`;
   return svg;
 }
 
@@ -182,17 +238,18 @@ async function toPng(svg: string): Promise<Buffer> {
 const clock = (iso: string, tz: string) =>
   new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(iso));
 
-/** One short line for the card — no "tap to…", the picture isn't a button. */
-function cardStatus(t: PublicTracking): string {
-  const next = t.next_stop_index != null ? t.stops[t.next_stop_index] : null;
-  if (t.trip.phase === 'done') return t.trip.finished_at ? `Delivered at ${clock(t.trip.finished_at, t.timezone)}` : 'Delivered';
-  if (t.eta && next) return t.trip.phase === 'planned' ? `Loading at ${next.name} around ${clock(t.eta.arrival, t.timezone)}` : `Arrives at ${next.name} around ${clock(t.eta.arrival, t.timezone)}`;
-  if (t.trip.phase === 'planned') return t.trip.planned_start ? `Scheduled · ${clock(t.trip.planned_start, t.timezone)}` : 'Scheduled';
-  return next ? `On the way to ${next.name}` : 'On the way';
+/** The stage in a word or two — the details panel beside it has the times. */
+function cardStatus(t: PublicTracking): { text: string; tone: 'good' | 'bad' | 'live' } {
+  if (t.trip.phase === 'done') return { text: 'Delivered', tone: 'good' };
+  if (t.trip.phase === 'cancelled') return { text: 'Cancelled', tone: 'bad' };
+  if (t.trip.phase === 'planned') return { text: 'Scheduled', tone: 'live' };
+  if ((t.punctuality?.late_min ?? 0) > 0) return { text: 'Running late', tone: 'bad' };
+  // Still going to (or at) the pickup.
+  return { text: t.next_stop_index === 0 ? 'Loading' : 'On the way', tone: 'live' };
 }
 
 export async function tripPreviewImage(t: PublicTracking, baseUrl: string | null): Promise<Buffer> {
-  const statusLine = cardStatus(t);
+  const stage = cardStatus(t);
   const [custLogo, driverPhoto, companyLogo] = await Promise.all([
     embed(t.customer?.logo_url, 96, 96, 'contain', baseUrl),
     embed(t.driver_photo_url || t.vehicle.photo_url, 96, 96, 'cover', baseUrl),
@@ -204,7 +261,6 @@ export async function tripPreviewImage(t: PublicTracking, baseUrl: string | null
   const last = t.stops[t.stops.length - 1]?.name || '';
   const roundTrip = (t.trip.route_label || '').includes('⇄') || (first && first === last);
   const to = roundTrip ? (t.stops.find((s) => s.name !== first)?.name || last) : last;
-  const done = t.trip.phase === 'done';
 
   let body = logoTile('cl', custLogo, custName, PAD, PAD, 88);
   body += `<text x="${PAD + 112}" y="${PAD + 40}" font-family="${FONT}" font-weight="700" font-size="32" fill="${INK}">${esc(fit(custName, 32, left - 120))}</text>`;
@@ -219,10 +275,10 @@ export async function tripPreviewImage(t: PublicTracking, baseUrl: string | null
   body += `<text x="${PAD + 40}" y="${ry + 103}" font-family="${FONT}" font-weight="700" font-size="44" fill="${INK}">${esc(fit(to || '—', 44, left - 60))}${roundTrip ? `<tspan dx="16" font-weight="400" font-size="26" fill="${MUTED}">and back</tspan>` : ''}</text>`;
 
   // Status pill
-  const status = fit(statusLine, 24, left - 40);
+  const status = fit(stage.text, 24, left - 40);
   const pillW = Math.min(left, status.length * 24 * 0.56 + 48);
-  body += `<rect x="${PAD}" y="${ry + 140}" width="${pillW}" height="48" rx="24" fill="${done ? '#e9f7ef' : '#fff1ee'}"/>`;
-  body += `<text x="${PAD + 24}" y="${ry + 172}" font-family="${FONT}" font-weight="600" font-size="24" fill="${done ? '#1f7a45' : '#c2410c'}">${esc(status)}</text>`;
+  body += `<rect x="${PAD}" y="${ry + 140}" width="${pillW}" height="48" rx="24" fill="${stage.tone === 'good' ? '#e9f7ef' : stage.tone === 'bad' ? '#fdecea' : '#fff1ee'}"/>`;
+  body += `<text x="${PAD + 24}" y="${ry + 172}" font-family="${FONT}" font-weight="600" font-size="24" fill="${stage.tone === 'good' ? '#1f7a45' : stage.tone === 'bad' ? '#c0392b' : '#c2410c'}">${esc(status)}</text>`;
 
   // Crew
   const cy = H - PAD - 46;
@@ -231,7 +287,7 @@ export async function tripPreviewImage(t: PublicTracking, baseUrl: string | null
   body += `<text x="${PAD + 100}" y="${cy - 4}" font-family="${FONT}" font-weight="700" font-size="28" fill="${INK}">${esc(fit(t.driver_first_name || truck || 'Your truck', 28, left - 120))}</text>`;
   if (t.driver_first_name && truck) body += `<text x="${PAD + 100}" y="${cy + 30}" font-family="${FONT}" font-size="22" fill="${MUTED}">${esc(fit(truck, 22, left - 120))}</text>`;
 
-  body += routeDrawing(t, PAD + left + 24, PAD, W - PAD * 2 - left - 24, H - PAD * 2 - 84);
+  body += detailsPanel(t, PAD + left + 24, PAD, W - PAD * 2 - left - 24, H - PAD * 2 - 84);
   body += companyMark(companyLogo, t.brand.name);
   return toPng(frame(body));
 }

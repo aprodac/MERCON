@@ -45,6 +45,7 @@ export function ReviewSheet({
   const { slot, money } = form;
   const trips = money.trips;
   const multi = form.isMonthly && trips > 1;
+  const stopFees = [...(slot.intermediateStopFees || []), ...(slot.returnIntermediateStopFees || [])].reduce((a, f) => a + (Number(f) || 0), 0);
 
   const outbound = [
     { name: slot.origin, kind: 'start' as const },
@@ -144,6 +145,7 @@ export function ReviewSheet({
         {/* Money */}
         <Block icon={Receipt} tint="#EAF3DE" fg="#3B6D11" title={multi ? 'Money per trip' : 'Money'}>
           <MoneyRow label={form.isMonthly ? 'Rate (monthly ÷ 30)' : 'Customer rate'} value={money.perTrip} />
+          {stopFees > 0 ? <MoneyRow label="Stop fees" value={stopFees} /> : null}
           {form.charges.map((c, i) => (
             <MoneyRow key={i} label={c.charge_type} value={c.amount} />
           ))}
@@ -276,7 +278,7 @@ function WhoBlock({ form }: { form: CreateTripForm }) {
         <View style={[styles.person, { marginTop: 8 }]}>
           <Avatar d={form.selectedCoDriver} size={28} />
           <Text style={styles.muted}>
-            <Text style={{ color: Colors.charcoal, fontWeight: '600' }}>{shortName(fullName(form.selectedCoDriver))}</Text> co-driver · payout split 50/50
+            <Text style={{ color: Colors.charcoal, fontWeight: '600' }}>{shortName(fullName(form.selectedCoDriver))}</Text> co-driver · {splitText(form)}
           </Text>
         </View>
       ) : null}
@@ -284,6 +286,16 @@ function WhoBlock({ form }: { form: CreateTripForm }) {
       {form.awbNumber ? <Text style={styles.awb}>AWB {form.awbNumber}</Text> : null}
     </Block>
   );
+}
+
+/** "payout split 50/50", or the edited amounts. */
+function splitText(form: CreateTripForm): string {
+  const { driverPayoutOverride: d, coDriverPayoutOverride: c } = form.coDriverSplit;
+  if (d === undefined && c === undefined) return 'payout split 50/50';
+  const total = Number(form.slot.driverPayout) || 0;
+  const driverPay = d ?? total - (c ?? 0);
+  const coPay = c ?? total - (d ?? 0);
+  return `driver SAR ${fmtSar(driverPay)} · co-driver SAR ${fmtSar(coPay)}`;
 }
 
 function RouteLine({ name, kind, muted }: { name: string; kind: 'start' | 'stop' | 'end'; muted?: boolean }) {
