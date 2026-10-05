@@ -82,7 +82,7 @@ export function OperatorBottomNav({ activeTab: explicitActive, onTabPress, onFab
               activeOpacity={0.85}
               style={styles.fab}
             >
-              <Plus size={26} color={Colors.white} strokeWidth={2.8} />
+              <Plus size={26} color={Colors.primary} strokeWidth={2.8} />
             </TouchableOpacity>
           </View>
 
@@ -130,9 +130,10 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: Colors.primary, // #FA634E Coral Red accent (flat, no glow)
-    borderWidth: 2,
-    borderColor: Colors.charcoal, // #3E3C3D Dark Charcoal ring border
+    // White with an orange plus and ring, so it never reads as the active tab's orange capsule.
+    backgroundColor: Colors.white,
+    borderWidth: 2.5,
+    borderColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
