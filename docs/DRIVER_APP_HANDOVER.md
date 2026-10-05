@@ -31,8 +31,11 @@ Key findings that shaped the app:
 - A sleeping Realme phone delayed pushes by ~6 min because the maker's battery
   manager froze the app. Fix: the **phone setup guide** shown after sign-in
   (`driver-app/src/components/PhoneSetupGuide.tsx`): notifications, location,
-  battery optimisation off, maker auto-start. After it, a sleeping phone got its
-  push in 1.1 s.
+  maker background activity + auto-start. After it, a sleeping phone got its
+  push in 1.1 s. Since 1.2.1 there is no Android "battery optimisation" step:
+  MERCON never showed in that list on Realme. The full guide opens by itself
+  only once per install; after "Later" a highlighted "Finish phone setup"
+  button above the bottom bar reopens it until all steps are done.
 - A phone charging on USB never sleeps, so "instant on the cable" proves nothing
   about real-life delivery. Test unplugged when it matters.
 
@@ -275,12 +278,13 @@ A13 SOS with NO active trip reaches the office. Say where you found the alert.
 A14 Urdu: the layout flips right-to-left on Home, Trips, Trip details, Profile and Settings; labels are translated; nothing overlaps. Switch back to English.
 A15 Phone setup guide:
     - log out, run `adb shell pm clear tech.mercon.driver`, log in
-    - "Set up your phone for trips" shows 4 steps:
+    - "Set up your phone for trips" opens by itself with 3 steps and a progress bar:
       - notifications
       - location
-      - battery optimisation
       - maker background step (Realme: "Allow background activity" + "Allow auto startup")
-    - do each; the guide disappears when all are done and never loops or flickers
+    - tap "Later": the guide closes and an orange "Finish phone setup" button shows above the bottom bar
+    - close and reopen the app: the full guide must NOT open by itself again; only the button shows
+    - tap the button: the guide opens; do each step; the guide and the button disappear when all are done; it never loops or flickers
 
 ## PART B — PHASE 4: DASHBOARD vs APP
 For every check, write down the app value, the dashboard/API value, and the seconds it took to sync.
