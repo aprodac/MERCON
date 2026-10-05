@@ -1,13 +1,14 @@
 /** Step 1 — customer, their quotations, route and price. */
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, FlatList } from 'react-native';
-import { ArrowRight, Building2, CheckCircle2, Clock, FileText, Pencil, Repeat, Route, Search, X, Receipt, Plus, ChevronDown, type LucideIcon } from 'lucide-react-native';
+import { ArrowRight, Building2, CheckCircle2, Clock, FileText, MapPin, Pencil, Repeat, RotateCcw, Route, Search, X, Receipt, Plus, ChevronDown, type LucideIcon } from 'lucide-react-native';
 import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { TRUCK_CLASSES, lineTypeLabel, filterQuotationsBySearch, pricingFromQuotation } from '@mercon/shared-types';
 import { PriceHistory } from './PriceHistory';
-import { getQuotationRoute, type OperatorQuotation } from '../../../../lib/operator';
+import { PinPickerSheet, type PickedPin } from '../../details/components/PinSheet';
+import { getQuotationRoute, type OperatorQuotation, type OperatorSurchargeRule } from '../../../../lib/operator';
 import { quotationBilling, quotationClass, quotationLineType, type CreateTripForm, type LocationPick } from '../useCreateTrip';
 import { Chip, CompanyAvatar, ErrorText, FieldButton, Label, LinkButton, PickerSheet, Section, SkeletonRows, TextField, fmtSar, niceName, tap, ui } from './ui';
 
@@ -22,9 +23,15 @@ type LocationTarget =
 
 type Sheet = 'customer' | 'quotes' | 'lineType' | 'class' | 'billing' | 'charge' | null;
 
+/** What the pin sheet is for: a new place typed in the picker, or a pickup / drop-off without a pin. */
+type PinTarget =
+  | { kind: 'new'; name: string; target: LocationTarget }
+  | { kind: 'endpoint'; which: 'origin' | 'destination'; name: string; locationId: string | null };
+
 export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors: boolean }) {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [locationTarget, setLocationTarget] = useState<LocationTarget | null>(null);
+  const [pinTarget, setPinTarget] = useState<PinTarget | null>(null);
 
   const issues = form.stepIssues(1);
   const err = (field: string) => (showErrors ? issues.find((i) => i.field === field || i.field === `${field}-${form.slot.id}`)?.message : undefined);
@@ -43,19 +50,50 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
     () => (billingFilter === 'ALL' ? form.quotations : form.quotations.filter((q) => quotationBilling(q) === billingFilter)),
     [form.quotations, billingFilter],
   );
-  // The three most useful quotations: those fitting the route entered, else the first ones.
+  // The three most useful quotations: those fitting the route entered, then the ones this
+  // customer used most on recent trips, then the rest.
   const preview = useMemo(() => {
+    const used = (q: OperatorQuotation) => form.quotationUse.get(q.id) || 0;
     const fitting = form.routeMatches.filter((q) => filtered.includes(q));
-    const rest = filtered.filter((q) => !fitting.includes(q));
+    const rest = filtered.filter((q) => !fitting.includes(q)).sort((a, b) => used(b) - used(a));
     return [...fitting, ...rest].slice(0, 3);
-  }, [form.routeMatches, filtered]);
+  }, [form.routeMatches, filtered, form.quotationUse]);
 
-  const pickLocation = (loc: LocationPick) => {
-    const t = locationTarget;
-    if (!t) return;
+  const placeTo = (t: LocationTarget, loc: LocationPick) => {
     if (t.kind === 'origin' || t.kind === 'destination') form.setEndpoint(t.kind, loc);
     else if (t.kind === 'stop') form.addStop(t.leg, loc);
     else form.setReturnEndpoint(t.kind, loc);
+  };
+  const pickLocation = (loc: LocationPick) => {
+    if (locationTarget) placeTo(locationTarget, loc);
+  };
+
+  const hasPin = (lat?: number | null, lng?: number | null) => lat != null && lng != null && !(lat === 0 && lng === 0);
+  const savePin = async (pin: PickedPin) => {
+    const t = pinTarget;
+    if (!t) return;
+    if (t.kind === 'new') {
+      placeTo(t.target, await form.createPinnedLocation(t.name, pin));
+    } else if (t.locationId) {
+      await form.pinSavedLocation(t.locationId, pin);
+    } else {
+      form.setEndpoint(t.which, await form.createPinnedLocation(t.name, pin));
+    }
+    setPinTarget(null);
+  };
+  // A typed name with no pin: the old behaviour, the place is made from the name alone.
+  const skipPin = () => {
+    const t = pinTarget;
+    if (t?.kind === 'new') placeTo(t.target, { name: t.name, locationId: null });
+    setPinTarget(null);
+  };
+  const endpointPin = (which: 'origin' | 'destination') => {
+    const name = which === 'origin' ? form.slot.origin : form.slot.destination;
+    const lat = which === 'origin' ? form.slot.originLat : form.slot.destinationLat;
+    const lng = which === 'origin' ? form.slot.originLng : form.slot.destinationLng;
+    if (!name?.trim() || hasPin(lat, lng)) return undefined;
+    const locationId = (which === 'origin' ? form.slot.originLocationId : form.slot.destinationLocationId) ?? null;
+    return () => setPinTarget({ kind: 'endpoint', which, name, locationId });
   };
 
   const applyCard = (q: OperatorQuotation) => {
@@ -206,7 +244,9 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
               {preview.length === 0 ? (
                 <Text style={styles.sectionHint}>No {billingFilter === 'Monthly' ? 'monthly' : 'extra'} quotations for this customer.</Text>
               ) : (
-                preview.map((q, i) => <QuotationCard key={q.id} q={q} first={i === 0} fits={form.routeMatches.includes(q)} onPress={() => applyCard(q)} />)
+                preview.map((q, i) => (
+                  <QuotationCard key={q.id} q={q} first={i === 0} fits={form.routeMatches.includes(q)} used={form.quotationUse.get(q.id)} onPress={() => applyCard(q)} />
+                ))
               )}
             </>
           )}
@@ -214,7 +254,34 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
       ) : null}
 
       <Section icon={Route} tone="coral" title="Route" action={{ label: '+ Stop', onPress: () => setLocationTarget({ kind: 'stop', leg: 0 }) }}>
-        <RouteTimeline form={form} err={err} onPick={setLocationTarget} />
+        {!applied && !form.slot.origin.trim() && !form.slot.destination.trim() && form.recentRoutes.length > 0 ? (
+          <View style={styles.recentWrap}>
+            <View style={styles.recentHead}>
+              <RotateCcw size={12} color={Colors.gray500} />
+              <Text style={styles.recentTitle}>Recent routes</Text>
+            </View>
+            <View style={styles.chipRow}>
+              {form.recentRoutes.map((r) => (
+                <TouchableOpacity
+                  key={r.key}
+                  onPress={() => {
+                    tap();
+                    form.applyRecentRoute(r);
+                  }}
+                  style={styles.recentChip}
+                  activeOpacity={0.75}
+                >
+                  <Text style={styles.recentText} numberOfLines={1}>
+                    {niceName(r.origin.name)} → {niceName(r.destination.name)}
+                    {r.stops.length ? ` · ${r.stops.length} stop${r.stops.length > 1 ? 's' : ''}` : ''}
+                  </Text>
+                  {r.count > 1 ? <Text style={styles.recentCount}>{r.count}×</Text> : null}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        ) : null}
+        <RouteTimeline form={form} err={err} onPick={setLocationTarget} onPin={endpointPin} />
       </Section>
 
       {!applied ? priceSection : null}
@@ -290,19 +357,42 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
           value: l.id,
           label: niceName(l.name),
           sub: [niceName(l.city), l.address].filter(Boolean).join(' · ') || undefined,
+          badge: hasPin(l.lat, l.lng) ? undefined : { label: 'No pin', tone: 'warning' as const },
         }))}
         onSelect={(id) => {
           const l = form.locations.find((x) => x.id === id);
           if (l) pickLocation({ name: l.name, locationId: l.id, lat: l.lat ?? null, lng: l.lng ?? null });
         }}
-        onCreate={(text) => pickLocation({ name: text, locationId: null })}
-        createLabel="Use"
+        // A new place gets its pin straight away, so the ETA and the driver's navigation work.
+        // (After the list sheet has closed — iOS shows one modal at a time.)
+        onCreate={(text) => {
+          const target = locationTarget;
+          if (target) setTimeout(() => setPinTarget({ kind: 'new', name: text, target }), 300);
+        }}
+        createLabel="New place"
         onClose={() => setLocationTarget(null)}
         searchPlaceholder="Search this customer's places"
-        emptyText={form.customerId ? 'No saved places — type a name to use it' : 'Choose a customer first'}
+        emptyText={form.customerId ? 'No saved places — type a name to add one' : 'Choose a customer first'}
+      />
+      <PinPickerSheet
+        visible={pinTarget !== null}
+        title={`Pin · ${niceName(pinTarget?.name)}`}
+        initialQuery={pinTarget?.kind === 'new' ? pinTarget.name : ''}
+        saveLabel={pinTarget?.kind === 'new' ? 'Save place' : 'Save pin'}
+        onSave={savePin}
+        onClose={() => setPinTarget(null)}
+        footer={
+          pinTarget?.kind === 'new' ? (
+            <TouchableOpacity onPress={skipPin} style={{ alignSelf: 'center', paddingVertical: 4 }}>
+              <Text style={styles.link}>Use without a pin</Text>
+            </TouchableOpacity>
+          ) : null
+        }
       />
       <ChargeSheet
         visible={sheet === 'charge'}
+        standing={form.surchargeRules}
+        added={form.charges.map((c) => c.charge_type.toLowerCase())}
         onClose={() => setSheet(null)}
         onAdd={(charge_type, amount) => form.setCharges([...form.charges, { charge_type, amount }])}
       />
@@ -361,8 +451,22 @@ function PriceInputs({ form, err }: { form: CreateTripForm; err: (f: string) => 
 }
 
 /** The route as a vertical line of stops; the return leg of a round trip continues underneath. */
-function RouteTimeline({ form, err, onPick }: { form: CreateTripForm; err: (f: string) => string | undefined; onPick: (t: LocationTarget) => void }) {
+function RouteTimeline({
+  form,
+  err,
+  onPick,
+  onPin,
+}: {
+  form: CreateTripForm;
+  err: (f: string) => string | undefined;
+  onPick: (t: LocationTarget) => void;
+  /** Opens "set pin" for a pickup / drop-off that has none (undefined when it has one). */
+  onPin: (which: 'origin' | 'destination') => (() => void) | undefined;
+}) {
   const { slot } = form;
+  const fees = slot.intermediateStopFees || [];
+  const returnFees = slot.returnIntermediateStopFees || [];
+  const fee = (v: string) => v.replace(/[^0-9.]/g, '');
   const same = (a?: string | null, b?: string | null) => (a || '').trim().toLowerCase() === (b || '').trim().toLowerCase();
   const returnStart = slot.returnOrigin?.trim() || slot.destination;
   const returnEnd = slot.returnDestination?.trim() || slot.origin;
@@ -370,11 +474,11 @@ function RouteTimeline({ form, err, onPick }: { form: CreateTripForm; err: (f: s
   return (
     <View style={tl.wrap}>
       <View style={tl.rail} />
-      <Stop dot="start" value={niceName(slot.origin)} placeholder="Pickup" onPress={() => onPick({ kind: 'origin' })} error={Boolean(err('origin'))} />
+      <Stop dot="start" value={niceName(slot.origin)} placeholder="Pickup" onPress={() => onPick({ kind: 'origin' })} onPin={onPin('origin')} error={Boolean(err('origin'))} />
       {slot.intermediateLocations.map((name, i) => (
-        <Stop key={`o-${i}`} dot="stop" value={niceName(name)} tag="Stop" onRemove={() => form.removeStop(0, i)} />
+        <Stop key={`o-${i}`} dot="stop" value={niceName(name)} fee={fees[i] ?? ''} onFee={(v) => form.setStopFee(0, i, fee(v))} onRemove={() => form.removeStop(0, i)} />
       ))}
-      <Stop dot="end" value={niceName(slot.destination)} placeholder="Drop-off" onPress={() => onPick({ kind: 'destination' })} error={Boolean(err('destination'))} />
+      <Stop dot="end" value={niceName(slot.destination)} placeholder="Drop-off" onPress={() => onPick({ kind: 'destination' })} onPin={onPin('destination')} error={Boolean(err('destination'))} />
 
       {form.isRound ? (
         <>
@@ -389,7 +493,7 @@ function RouteTimeline({ form, err, onPick }: { form: CreateTripForm; err: (f: s
             onRemove={same(returnStart, slot.destination) ? undefined : () => form.setReturnEndpoint('returnOrigin', null)}
           />
           {(slot.returnIntermediateLocations || []).map((name, i) => (
-            <Stop key={`r-${i}`} dot="stop" muted value={niceName(name)} tag="Stop" onRemove={() => form.removeStop(1, i)} />
+            <Stop key={`r-${i}`} dot="stop" muted value={niceName(name)} fee={returnFees[i] ?? ''} onFee={(v) => form.setStopFee(1, i, fee(v))} onRemove={() => form.removeStop(1, i)} />
           ))}
           <AddRow label="+ Add return stop" onPress={() => onPick({ kind: 'stop', leg: 1 })} />
           <Stop
@@ -417,6 +521,9 @@ function Stop({
   tag,
   muted,
   error,
+  fee,
+  onFee,
+  onPin,
 }: {
   dot: 'start' | 'stop' | 'end';
   value: string;
@@ -426,6 +533,11 @@ function Stop({
   tag?: string;
   muted?: boolean;
   error?: boolean;
+  /** A stop's fee, billed on top of the rate. */
+  fee?: string;
+  onFee?: (v: string) => void;
+  /** Shown as "Set pin" when the place has no map pin. */
+  onPin?: () => void;
 }) {
   const color = dot === 'start' ? Colors.success : dot === 'end' ? Colors.primary : Colors.gray400;
   return (
@@ -441,6 +553,25 @@ function Stop({
           {value || placeholder}
         </Text>
         {tag ? <Text style={tl.tag}>{tag}</Text> : null}
+        {onPin ? (
+          <TouchableOpacity onPress={onPin} hitSlop={6} style={tl.pin}>
+            <MapPin size={12} color={Colors.warning} />
+            <Text style={tl.pinText}>Set pin</Text>
+          </TouchableOpacity>
+        ) : null}
+        {onFee ? (
+          <View style={tl.fee}>
+            <Text style={tl.feePrefix}>SAR</Text>
+            <TextInput
+              value={fee}
+              onChangeText={onFee}
+              placeholder="Fee"
+              placeholderTextColor={Colors.gray400}
+              keyboardType="decimal-pad"
+              style={tl.feeInput}
+            />
+          </View>
+        ) : null}
         {onRemove ? (
           <TouchableOpacity onPress={onRemove} hitSlop={8}>
             <X size={16} color={Colors.gray500} />
@@ -489,7 +620,7 @@ function typeLook(lineType: string): { Icon: LucideIcon; bg: string; fg: string 
 }
 
 /** One quotation as a card — also used on the customer details screen. */
-export function QuotationCard({ q, fits, first, onPress }: { q: OperatorQuotation; fits?: boolean; first?: boolean; onPress?: () => void }) {
+export function QuotationCard({ q, fits, first, used, onPress }: { q: OperatorQuotation; fits?: boolean; first?: boolean; used?: number; onPress?: () => void }) {
   const route = getQuotationRoute(q);
   const lineType = quotationLineType(q);
   const monthly = quotationBilling(q) === 'Monthly';
@@ -518,6 +649,11 @@ export function QuotationCard({ q, fits, first, onPress }: { q: OperatorQuotatio
           <View style={styles.fitsRow}>
             <CheckCircle2 size={12} color={Colors.success} />
             <Text style={styles.fitsText}>Fits this route</Text>
+          </View>
+        ) : used ? (
+          <View style={styles.fitsRow}>
+            <RotateCcw size={11} color={Colors.gray500} />
+            <Text style={styles.usedText}>Used on {used} recent trip{used > 1 ? 's' : ''}</Text>
           </View>
         ) : null}
       </View>
@@ -631,7 +767,21 @@ function QuotationSheet({
   );
 }
 
-function ChargeSheet({ visible, onClose, onAdd }: { visible: boolean; onClose: () => void; onAdd: (type: string, amount: number) => void }) {
+function ChargeSheet({
+  visible,
+  standing,
+  added,
+  onClose,
+  onAdd,
+}: {
+  visible: boolean;
+  /** The customer's standing surcharges at their agreed rate — one tap adds one. */
+  standing: OperatorSurchargeRule[];
+  /** Charge names already on the trip (lower case). */
+  added: string[];
+  onClose: () => void;
+  onAdd: (type: string, amount: number) => void;
+}) {
   const [type, setType] = useState('');
   const [amount, setAmount] = useState('');
   const [error, setError] = useState('');
@@ -643,7 +793,37 @@ function ChargeSheet({ visible, onClose, onAdd }: { visible: boolean; onClose: (
   };
   return (
     <AppModal visible={visible} onClose={close} type="bottom-sheet" title="Add charge">
-      <Label style={{ marginTop: 0 }}>What for</Label>
+      {standing.length > 0 ? (
+        <>
+          <Label style={{ marginTop: 0 }}>Standing surcharges</Label>
+          {standing.map((r) => {
+            const on = added.includes(r.charge_type.toLowerCase());
+            return (
+              <TouchableOpacity
+                key={r.id}
+                disabled={on}
+                onPress={() => {
+                  tap();
+                  onAdd(r.charge_type, r.rate);
+                  close();
+                }}
+                style={[styles.standing, on && { opacity: 0.5 }]}
+                activeOpacity={0.75}
+              >
+                <Text style={styles.chargeName} numberOfLines={1}>
+                  {r.charge_type}
+                </Text>
+                <Text style={styles.chargeAmt}>
+                  SAR {fmtSar(r.rate)}
+                  {r.unit ? <Text style={styles.quoteRateUnit}> /{r.unit.toLowerCase().replace('per ', '')}</Text> : null}
+                </Text>
+                {on ? <CheckCircle2 size={16} color={Colors.success} /> : <Plus size={16} color={Colors.primary} />}
+              </TouchableOpacity>
+            );
+          })}
+        </>
+      ) : null}
+      <Label style={standing.length > 0 ? undefined : { marginTop: 0 }}>{standing.length > 0 ? 'Or another charge' : 'What for'}</Label>
       <View style={styles.typeRow}>
         {CHARGE_PRESETS.map((p) => (
           <TouchableOpacity key={p} onPress={() => setType(p)} style={[styles.typeChip, type === p && styles.typeChipOn]}>
@@ -695,6 +875,11 @@ const tl = StyleSheet.create({
   placeholder: { color: Colors.gray400, fontWeight: '400' },
   tag: { fontSize: 11, color: Colors.gray500 },
   legLabel: { fontSize: 11, fontWeight: '700', color: Colors.gray500, marginTop: Spacing.md, marginBottom: 2 },
+  pin: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, backgroundColor: Colors.warningLight },
+  pinText: { fontSize: 11, fontWeight: '700', color: Colors.warning },
+  fee: { flexDirection: 'row', alignItems: 'center', gap: 3, width: 82, height: 30, paddingHorizontal: 7, borderRadius: 8, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.gray200 },
+  feePrefix: { fontSize: 10, color: Colors.gray500, fontWeight: '600' },
+  feeInput: { flex: 1, fontSize: 13, color: Colors.charcoal, paddingVertical: 0 },
 });
 
 const styles = StyleSheet.create({
@@ -747,6 +932,23 @@ const styles = StyleSheet.create({
   tagExtraText: { color: '#633806' },
   fitsRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   fitsText: { fontSize: 11, fontWeight: '700', color: Colors.success },
+  usedText: { fontSize: 11, fontWeight: '600', color: Colors.gray500 },
+  recentWrap: { marginBottom: Spacing.sm },
+  recentHead: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  recentTitle: { fontSize: 11, fontWeight: '700', color: Colors.gray500 },
+  recentChip: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: '100%', paddingHorizontal: 11, paddingVertical: 7, borderRadius: 10, backgroundColor: Colors.gray100 },
+  recentText: { fontSize: 12, fontWeight: '600', color: Colors.charcoal, flexShrink: 1 },
+  recentCount: { fontSize: 11, fontWeight: '700', color: Colors.gray500 },
+  standing: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 11,
+    paddingHorizontal: Spacing.md,
+    marginBottom: 6,
+    borderRadius: 12,
+    backgroundColor: Colors.gray100,
+  },
   filterRow: { flexDirection: 'row', gap: 6, marginBottom: 2 },
   filterChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 12, paddingRight: 6, paddingVertical: 5, borderRadius: Radius.full, backgroundColor: Colors.gray100 },
   filterChipOn: { backgroundColor: Colors.charcoal },

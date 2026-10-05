@@ -9,7 +9,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, L
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import * as Clipboard from 'expo-clipboard';
+import { setStringAsync } from '../../../lib/clipboard';
 import {
   ArrowLeft, ChevronRight, Copy, ExternalLink, MapPin, MessageCircle, Phone, ReceiptText, Share2, SquarePen, Tag, Users,
 } from 'lucide-react-native';
@@ -142,7 +142,7 @@ export default function CustomerDetailsScreen() {
 
   const waText = (text: string) => Linking.openURL(`https://wa.me/${waNumber(customer.whatsapp_number || mainPhone)}?text=${encodeURIComponent(text)}`).catch(() => {});
   const copy = async (url: string) => {
-    try { await Clipboard.setStringAsync(url); setToast('Link copied'); } catch { setToast('Couldn’t copy the link'); }
+    setToast((await setStringAsync(url)) ? 'Link copied' : 'Couldn’t copy the link');
   };
   const sendAll = (url: string) => waText(`*${name} · live trucks*\nAll your trucks on the road, live: ${url}`);
   const sendTrip = (t: CustomerTrip, url: string) => {

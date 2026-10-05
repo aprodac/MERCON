@@ -50,6 +50,7 @@ export default function EditVehiclePage() {
 
   const [error, setError] = useState<string | null>(null);
   const [hasTrailer, setHasTrailer] = useState(false);
+  const [hasTailgate, setHasTailgate] = useState(false);
   const [files, setFiles] = useState<VehicleDocumentFile[]>([]);
   const [previewDriver, setPreviewDriver] = useState<Driver | null>(null);
   const [previewVehicle, setPreviewVehicle] = useState<any | null>(null);
@@ -99,6 +100,7 @@ export default function EditVehiclePage() {
         image_url: vehicle.image_url || null,
       });
       setHasTrailer(!!vehicle.trailer_number);
+      setHasTailgate(!!vehicle.has_tailgate);
       setAssignedDriverId(currentDriver?.id || 'unassigned');
     }
   }, [vehicle]);
@@ -137,6 +139,7 @@ export default function EditVehiclePage() {
         image_url: vehicle.image_url || null,
       });
       setHasTrailer(!!vehicle.trailer_number);
+      setHasTailgate(!!vehicle.has_tailgate);
       setFiles([]);
       setError(null);
       toast.info('Form reset to original values');
@@ -219,6 +222,7 @@ export default function EditVehiclePage() {
       trailer_number: hasTrailer && formData.trailer_number ? cleanSaudiPlate(formData.trailer_number) : null,
       trailer_type: hasTrailer ? formData.trailer_type : null,
       trailer_capacity_kg: hasTrailer && formData.trailer_capacity_kg ? Number(formData.trailer_capacity_kg) : null,
+      has_tailgate: hasTailgate,
     };
 
     updateMutation.mutate(payload);
@@ -491,15 +495,26 @@ export default function EditVehiclePage() {
                     <h2 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                       <Layers className="w-3.5 h-3.5 text-purple-500" /> Trailer Unit Attachment
                     </h2>
-                    <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={hasTrailer}
-                        onChange={(e) => setHasTrailer(e.target.checked)}
-                        className="rounded border-slate-300 text-brand focus:ring-brand accent-brand"
-                      />
-                      <span>Attach Trailer</span>
-                    </label>
+                    <div className="flex items-center gap-4">
+                      <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer" title="Customer messages say WITH TAILGATE when this truck is on the trip">
+                        <input
+                          type="checkbox"
+                          checked={hasTailgate}
+                          onChange={(e) => setHasTailgate(e.target.checked)}
+                          className="rounded border-slate-300 text-brand focus:ring-brand accent-brand"
+                        />
+                        <span>Has tailgate</span>
+                      </label>
+                      <label className="flex items-center gap-2 text-xs font-semibold cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={hasTrailer}
+                          onChange={(e) => setHasTrailer(e.target.checked)}
+                          className="rounded border-slate-300 text-brand focus:ring-brand accent-brand"
+                        />
+                        <span>Attach Trailer</span>
+                      </label>
+                    </div>
                   </div>
 
                   {hasTrailer && (

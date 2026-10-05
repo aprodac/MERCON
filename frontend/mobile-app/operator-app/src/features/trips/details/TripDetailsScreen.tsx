@@ -70,7 +70,7 @@ export default function TripDetailsScreen() {
   const [linkDone, setLinkDone] = useState(false);
   if (trip && !linkDone) {
     setLinkDone(true);
-    if (params.share === 'delay' || params.share === 'status') setShare({ type: 'quick', kind: params.share });
+    if (params.share === 'delay' || params.share === 'status' || params.share === 'assignment') setShare({ type: 'quick', kind: params.share });
     if (params.times === '1') setCheckingTimes(true);
   }
   const assignKind = params.assign === 'driver' || params.assign === 'truck' ? params.assign : null;
@@ -382,6 +382,7 @@ export default function TripDetailsScreen() {
         onCancel={cancelTrip}
         onQuick={quick}
         active={phase === 'active'}
+        assignment={phase === 'planned' || phase === 'active'}
         tracking={tracking?.enabled && tracking.url ? { sub: trackingSub(tracking.open_count, tracking.last_opened_at), onPress: trackingActions } : null}
       />
       <UploadSheet visible={sheet === 'upload'} onClose={() => setSheet(null)} onPick={upload} />

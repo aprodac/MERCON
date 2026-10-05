@@ -1,20 +1,13 @@
 import React from 'react';
-import { SlidersHorizontal } from 'lucide-react-native';
+import { Plus } from 'lucide-react-native';
 import { AppTopBar } from '@/components/AppTopBar';
 
-interface VehiclesHeaderProps {
-  onFilterPress?: () => void;
-  onMenuPress?: () => void;
-  filterActive?: boolean;
-  className?: string;
-}
-
-/** The page's top bar: the shared AppTopBar with this page's filter button. */
-export function VehiclesHeader({ onFilterPress, filterActive }: VehiclesHeaderProps) {
+/** The page's top bar: the shared AppTopBar with the add button. Status filtering lives in the pills below it. */
+export function VehiclesHeader({ onAddPress }: { onAddPress?: () => void }) {
   return (
     <AppTopBar
       title="Vehicles"
-      actions={onFilterPress ? [{ icon: SlidersHorizontal, label: 'Filter', onPress: onFilterPress, active: filterActive }] : []}
+      actions={onAddPress ? [{ icon: Plus, label: 'Add vehicle', onPress: onAddPress }] : []}
     />
   );
 }

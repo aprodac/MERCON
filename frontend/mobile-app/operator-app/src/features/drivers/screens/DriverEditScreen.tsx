@@ -68,7 +68,7 @@ const DriverEditScreen = () => {
       <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
       <FormHeader
         title={isNew ? 'Add driver' : 'Edit driver'}
-        subtitle={isNew ? 'Profile, licence and app login' : driver ? `${driver.first_name} ${driver.last_name}` : undefined}
+        subtitle={!isNew && driver ? `${driver.first_name} ${driver.last_name}` : undefined}
         onBack={() => router.back()}
       />
       {body()}
@@ -149,6 +149,7 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
 
       invalidateOperatorDrivers();
       await queryClient.invalidateQueries({ queryKey: ['user-management', 'drivers'] });
+      await queryClient.invalidateQueries({ queryKey: ['drivers'] });
       onDone();
     } catch (err) {
       Alert.alert(isNew ? 'Could not add driver' : 'Could not save driver', getApiErrorMessage(err));
@@ -181,7 +182,6 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
             keyboardType="phone-pad"
             placeholder="05XXXXXXXX"
             error={errors.phone}
-            hint="The driver signs in to the Driver app with this number."
           />
         </Section>
 
@@ -219,21 +219,14 @@ function DriverForm({ driver, onDone }: { driver?: OperatorDriver; onDone: () =>
         <Section
           title="App login"
           Icon={KeyRound}
-          note={
-            isNew
-              ? 'Optional. Without a password the driver signs in with mobile number + licence number.'
-              : driver?.user
-                ? 'This driver already has a password. Type a new one to reset it, or leave blank.'
-                : 'No password yet — the driver signs in with mobile number + licence number until you set one.'
-          }
+          note={isNew ? 'Optional' : driver?.user ? 'Password is set' : 'No password yet'}
         >
           <PasswordField
             label={isNew || !driver?.user ? 'Password' : 'New password'}
             value={password}
             onChangeText={(v) => { setPassword(v); clear('password'); }}
             error={errors.password}
-            placeholder="Leave blank to skip"
-            hint={password ? 'Tap the eye to check it, or Copy to share it with the driver.' : undefined}
+            placeholder={isNew || !driver?.user ? 'Optional' : 'Leave blank to keep'}
           />
         </Section>
       </ScrollView>

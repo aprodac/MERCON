@@ -1,182 +1,185 @@
-import React, { useEffect, useState } from 'react';
-import {
-  View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, StatusBar, ActivityIndicator, Alert,
-} from 'react-native';
+/**
+ * Add / edit a customer. `/customer-edit` with no id creates one
+ * (POST /customers); with `?id=` it edits (PATCH /customers/:id).
+ * Same fields as the web's Add / Edit Customer pages.
+ */
+import React, { useState } from 'react';
+import { View, Text, ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft } from 'lucide-react-native';
-import { Colors, Spacing, Radius, Typography } from '@mercon/mobile-shared/theme/tokens';
-import { Button } from '@mercon/mobile-shared/components/Button';
-import { Card } from '@mercon/mobile-shared/components/Card';
-import { Input } from '@mercon/mobile-shared/components/Input';
+import { useQueryClient } from '@tanstack/react-query';
+import { Building2, MessageCircle, Phone, Smartphone, Truck } from 'lucide-react-native';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { FilterChip } from '@mercon/mobile-shared/components/Badge';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import {
   operatorService, invalidateOperatorCustomers, useOperatorCustomerById,
-} from '../../../lib/operator';
+  type CreateCustomerInput, type OperatorCustomer,
+} from '@/lib/operator';
+import { ChoiceCards, Field, FormHeader, SaveBar, Section, SwitchRow, formStyles } from '@/features/users/components/FormKit';
 
-const CustomerEditScreen = () => {
+const PAYMENT_TERMS = ['Net 15 Days', 'Net 30 Days', 'Net 45 Days', 'Net 60 Days'];
+type Workflow = NonNullable<CreateCustomerInput['driver_workflow']>;
+type Errors = Partial<Record<'name' | 'phone' | 'link', string>>;
+
+export default function CustomerEditScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
-  const isEditing = !!id;
+  const isNew = !id;
   const { customer, loading, error } = useOperatorCustomerById(id);
 
-  const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [isActive, setIsActive] = useState(true);
+  const body = () => {
+    if (isNew) return <CustomerForm onDone={() => router.back()} />;
+    if (loading && !customer) return <ActivityIndicator color={Colors.primary} style={{ marginTop: 48 }} />;
+    if (!customer) return <Text style={formStyles.errorText}>{error ?? 'Customer not found'}</Text>;
+    return <CustomerForm key={customer.id} customer={customer} onDone={() => router.back()} />;
+  };
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }} edges={['top']}>
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
+      <FormHeader title={isNew ? 'Add customer' : 'Edit customer'} subtitle={customer?.name} onBack={() => router.back()} />
+      {body()}
+    </SafeAreaView>
+  );
+}
+
+function CustomerForm({ customer, onDone }: { customer?: OperatorCustomer; onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const isNew = !customer;
+  const [name, setName] = useState(customer?.name ?? '');
+  const [terms, setTerms] = useState(customer?.payment_terms ?? '');
+  const [phone, setPhone] = useState(customer?.contact_phone ?? customer?.primary_contact_phone ?? '');
+  const [contact, setContact] = useState(customer?.primary_contact_person ?? '');
+  const [contact2, setContact2] = useState(customer?.secondary_contact_person ?? '');
+  const [phone2, setPhone2] = useState(customer?.secondary_contact_phone ?? '');
+  const [whatsapp, setWhatsapp] = useState(customer?.whatsapp_number ?? '');
+  const [groupName, setGroupName] = useState(customer?.whatsapp_group_name ?? '');
+  const [groupLink, setGroupLink] = useState(customer?.whatsapp_group_link ?? '');
+  const [workflow, setWorkflow] = useState<Workflow>(customer?.driver_workflow ?? 'NATIVE');
+  const [isActive, setIsActive] = useState(customer?.isActive ?? true);
+  const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    if (!customer) return;
-    setName(customer.name);
-    setPhone(customer.contact_phone ?? '');
-    setIsActive(customer.isActive ?? true);
-  }, [customer]);
+  const clear = (k: keyof Errors) => errors[k] && setErrors((prev) => ({ ...prev, [k]: undefined }));
 
-  const isValid = name.trim().length > 0 && phone.trim().length > 0;
+  const validate = (): Errors => {
+    const e: Errors = {};
+    if (!name.trim()) e.name = 'Enter the customer’s name';
+    if (phone.replace(/[^\d]/g, '').length < 7) e.phone = 'Enter a phone number';
+    if (groupLink.trim() && !/^https?:\/\//i.test(groupLink.trim())) e.link = 'Paste the full link, starting with https://';
+    return e;
+  };
 
   const handleSave = async () => {
-    if (!isValid || saving) return;
+    if (saving) return;
+    const e = validate();
+    setErrors(e);
+    if (Object.keys(e).length) return;
+
+    const values: CreateCustomerInput = {
+      name: name.trim(),
+      contact_phone: phone.trim(),
+      primary_contact_person: contact.trim(),
+      primary_contact_phone: phone.trim(),
+      secondary_contact_person: contact2.trim(),
+      secondary_contact_phone: phone2.trim(),
+      payment_terms: terms,
+      whatsapp_number: whatsapp.trim(),
+      whatsapp_group_name: groupName.trim(),
+      whatsapp_group_link: groupLink.trim(),
+      driver_workflow: workflow,
+    };
+
     setSaving(true);
     try {
-      if (isEditing && id) {
-        await operatorService.updateCustomer(id, {
-          name: name.trim(),
-          contact_phone: phone.trim(),
-          isActive,
-        });
-      } else {
-        await operatorService.createCustomer({
-          name: name.trim(),
-          contact_phone: phone.trim(),
-        });
-      }
+      if (customer) await operatorService.updateCustomer(customer.id, { ...values, isActive });
+      else await operatorService.createCustomer(values);
       invalidateOperatorCustomers();
-      router.back();
-    } catch (e) {
-      Alert.alert(`Could not ${isEditing ? 'save' : 'create'} customer`, getApiErrorMessage(e));
+      await queryClient.invalidateQueries({ queryKey: ['customers'] });
+      onDone();
+    } catch (err) {
+      Alert.alert(isNew ? 'Could not add the customer' : 'Could not save the customer', getApiErrorMessage(err));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.gray100 }}>
-      <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} activeOpacity={0.8} onPress={() => router.back()}>
-          <ArrowLeft size={22} color={Colors.charcoal} strokeWidth={2.2} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{isEditing ? 'Edit Customer' : 'New Customer'}</Text>
-        <View style={styles.placeholder} />
-      </View>
-
-      {isEditing && loading && !customer ? (
-        <ActivityIndicator color={Colors.primary} style={{ marginTop: Spacing['3xl'] }} />
-      ) : isEditing && !customer ? (
-        <Text style={styles.errorText}>{error ?? 'Customer not found'}</Text>
-      ) : (
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <Text style={styles.sectionTitle}>Details</Text>
-          <Card style={styles.formCard}>
-            <Input label="Customer Name" value={name} onChangeText={setName} placeholder="e.g. Almarai Fresh Distribution" />
-            <View style={styles.formDivider} />
-            <Input label="Contact Phone" value={phone} onChangeText={setPhone} placeholder="+9665XXXXXXXX" keyboardType="phone-pad" />
-          </Card>
-
-          {isEditing && (
-            <>
-              <Text style={styles.sectionTitle}>Status</Text>
-              <View style={styles.chipRow}>
-                <FilterChip label="Active" active={isActive} onPress={() => setIsActive(true)} />
-                <FilterChip label="Inactive" active={!isActive} onPress={() => setIsActive(false)} />
-              </View>
-            </>
-          )}
-
-          <Button
-            title={saving ? 'Saving…' : isEditing ? 'Save Changes' : 'Create Customer'}
-            onPress={handleSave}
-            disabled={!isValid || saving}
-            loading={saving}
-            style={{ marginTop: Spacing.lg }}
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={formStyles.scroll} keyboardShouldPersistTaps="handled">
+        <Section title="Company" Icon={Building2}>
+          <Field
+            label="Customer name"
+            required
+            value={name}
+            onChangeText={(v) => { setName(v); clear('name'); }}
+            autoCapitalize="words"
+            error={errors.name}
           />
+          <View>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.gray700, marginBottom: 6 }}>Payment terms</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {PAYMENT_TERMS.map((t) => (
+                <FilterChip key={t} label={t.replace(' Days', ' days')} active={terms === t} onPress={() => setTerms(terms === t ? '' : t)} />
+              ))}
+            </View>
+          </View>
+        </Section>
 
-          {!isValid && (
-            <Text style={styles.validationHint}>Fill in customer name and contact phone to continue.</Text>
-          )}
-        </ScrollView>
-      )}
-    </SafeAreaView>
+        <Section title="Contacts" Icon={Phone}>
+          <Field
+            label="Phone"
+            required
+            value={phone}
+            onChangeText={(v) => { setPhone(v); clear('phone'); }}
+            keyboardType="phone-pad"
+            placeholder="05XXXXXXXX"
+            error={errors.phone}
+          />
+          <Field label="Contact person" value={contact} onChangeText={setContact} autoCapitalize="words" />
+          <View style={formStyles.row}>
+            <View style={{ flex: 1 }}>
+              <Field label="Second contact" value={contact2} onChangeText={setContact2} autoCapitalize="words" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Field label="Their phone" value={phone2} onChangeText={setPhone2} keyboardType="phone-pad" />
+            </View>
+          </View>
+        </Section>
+
+        <Section title="WhatsApp" Icon={MessageCircle}>
+          <Field label="WhatsApp number" value={whatsapp} onChangeText={setWhatsapp} keyboardType="phone-pad" placeholder="05XXXXXXXX" />
+          <Field label="Group name" value={groupName} onChangeText={setGroupName} />
+          <Field
+            label="Group link"
+            value={groupLink}
+            onChangeText={(v) => { setGroupLink(v); clear('link'); }}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            placeholder="https://chat.whatsapp.com/…"
+            error={errors.link}
+          />
+        </Section>
+
+        <Section title="Driver app" Icon={Truck}>
+          <ChoiceCards<Workflow>
+            value={workflow}
+            onChange={setWorkflow}
+            options={[
+              { value: 'NATIVE', title: 'MERCON Driver app', description: 'Drivers update trips in our app', Icon: Truck },
+              { value: 'EXTERNAL_APP', title: 'Customer’s own app', description: 'Drivers update trips in the customer’s app', Icon: Smartphone },
+            ]}
+          />
+          {!isNew ? (
+            <SwitchRow title="Active" description="Inactive customers are kept for history." value={isActive} onChange={setIsActive} />
+          ) : null}
+        </Section>
+        <View />
+      </ScrollView>
+
+      <SaveBar label={isNew ? 'Add customer' : 'Save changes'} onPress={handleSave} saving={saving} />
+    </KeyboardAvoidingView>
   );
-};
-
-const styles = StyleSheet.create({
-  header: {
-    backgroundColor: Colors.white,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.gray100,
-  },
-  backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.gray100,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  headerTitle: {
-    fontSize: Typography.lg,
-    fontWeight: '700',
-    color: Colors.charcoal,
-  },
-  placeholder: {
-    width: 40,
-  },
-  errorText: {
-    fontSize: Typography.sm,
-    color: Colors.error,
-    textAlign: 'center',
-    marginTop: Spacing.xl,
-  },
-  scroll: {
-    padding: Spacing.lg,
-    paddingBottom: Spacing['3xl'],
-    gap: Spacing.sm,
-  },
-  sectionTitle: {
-    fontSize: Typography.sm,
-    fontWeight: '700',
-    color: Colors.gray500,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginTop: Spacing.md,
-    marginBottom: Spacing.xs,
-  },
-  formCard: {
-    borderRadius: Radius.xl,
-    padding: Spacing.lg,
-    gap: Spacing.md,
-  },
-  formDivider: {
-    height: 1,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    gap: Spacing.xs,
-  },
-  validationHint: {
-    fontSize: Typography.xs,
-    color: Colors.gray400,
-    textAlign: 'center',
-    marginTop: Spacing.xs,
-  },
-});
-
-export default CustomerEditScreen;
+}

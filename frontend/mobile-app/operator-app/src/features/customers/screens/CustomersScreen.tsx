@@ -6,23 +6,21 @@
  * transform and side effect lives in the feature's hooks.
  */
 import React, { useCallback } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, Text, TextInput, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { ActivityIndicator, FlatList, RefreshControl, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Building2, Plus, Search, X } from 'lucide-react-native';
+import { Building2, Plus } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { EmptyState, ErrorState, SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { AppTopBar } from '@/components/AppTopBar';
 import { FilterChips } from '@/components/FilterChips';
+import { ListSearch, listPage as s } from '@/components/ListSearch';
 import { customersApi } from '../api/customersApi';
 import { CustomerRow } from '../components/CustomerRow';
 import { isDemoCustomer } from '../services/customersService';
 import { useCustomerActions, useCustomerFilters, useCustomerPermissions, useCustomers, useCustomerSearch } from '../hooks';
 import type { CustomerListItem, CustomerStatusFilter } from '../types';
-
-const INK = '#3E3C3D';
-const MUTED = '#6B6B76';
 
 const TILES: { id: CustomerStatusFilter; label: string; dot?: string }[] = [
   { id: 'all', label: 'All' },
@@ -93,30 +91,14 @@ export default function CustomersScreen() {
           onEndReachedThreshold={0.4}
           onEndReached={() => { if (hasNextPage && !isFetchingNextPage) fetchNextPage(); }}
           ListHeaderComponent={
-            <View style={{ gap: 12, marginBottom: 12 }}>
+            <View style={s.header}>
               <FilterChips<CustomerStatusFilter>
                 value={status}
                 onChange={setStatus}
                 items={TILES.map((t) => ({ key: t.id, label: t.label, dot: t.dot, count: counts[t.id] ?? '–' }))}
               />
 
-              <View style={s.search}>
-                <Search size={17} color={MUTED} />
-                <TextInput
-                  style={s.searchInput}
-                  value={query}
-                  onChangeText={setQuery}
-                  placeholder="Search customer name"
-                  placeholderTextColor="#9898A4"
-                  autoCorrect={false}
-                  returnKeyType="search"
-                />
-                {query ? (
-                  <TouchableOpacity onPress={() => setQuery('')} hitSlop={10} accessibilityLabel="Clear search">
-                    <X size={17} color={MUTED} />
-                  </TouchableOpacity>
-                ) : null}
-              </View>
+              <ListSearch value={query} onChangeText={setQuery} placeholder="Search customer name" />
 
               {!loading ? <Text style={s.count}>{total} {total === 1 ? 'customer' : 'customers'}</Text> : null}
             </View>
@@ -141,11 +123,3 @@ export default function CustomersScreen() {
     </SafeAreaView>
   );
 }
-
-const s = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#F6F6F7' },
-  list: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 },
-  search: { flexDirection: 'row', alignItems: 'center', gap: 8, height: 46, borderRadius: 14, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#E9E9EC', paddingHorizontal: 14 },
-  searchInput: { flex: 1, fontSize: 15, color: INK, paddingVertical: 0 },
-  count: { fontSize: 16, fontWeight: '700', color: INK },
-});

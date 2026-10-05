@@ -7,7 +7,7 @@ import { ensureTrackingLink, ensureTrackingLinks, loadPublicTracking, type TripT
 import { ensureCustomerTrackingLink, loadCustomerFleetTracking } from '../services/tracking/customerFleetTracking';
 import { fleetPreview, renderPreviewTags, tripPreview } from '../services/tracking/trackingPreview';
 import { fleetPreviewImage, tripPreviewImage } from '../services/tracking/trackingPreviewImage';
-import { publicBaseUrl } from './operatorInboxController';
+import { trackingBaseUrl } from './operatorInboxController';
 import { deviceLabel } from '../utils/deviceLabel';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -27,7 +27,7 @@ export const trackingLinksBody = z.object({
 
 const withUrl = (req: Request, link: TripTrackingLinkInfo) => ({
   ...link,
-  url: link.token ? `${publicBaseUrl(req)}/t/${link.token}` : null,
+  url: link.token ? `${trackingBaseUrl(req)}/t/${link.token}` : null,
 });
 
 /**
@@ -76,7 +76,7 @@ export const getCustomerTrackingLink = async (req: Request, res: Response) => {
     }
     res.status(link.created ? 201 : 200).json({
       success: true,
-      data: { ...link, url: link.token ? `${publicBaseUrl(req)}/c/${link.token}` : null },
+      data: { ...link, url: link.token ? `${trackingBaseUrl(req)}/c/${link.token}` : null },
     });
   } catch (error) {
     logger.error({ err: error }, 'customer tracking link failed');
