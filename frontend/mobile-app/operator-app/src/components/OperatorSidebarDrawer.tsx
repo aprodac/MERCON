@@ -1,8 +1,10 @@
 /**
- * The operator side menu (from the ☰ button). A flat, shadcn-style list:
- * brand header, "Go to…" filter, the main pages, then Fleet / Finance /
- * Records groups, each row one line with a count badge where something needs
- * attention, and the account at the bottom (tap it for Profile, where Log out lives).
+ * The operator side menu (from the ☰ button): brand header, a live fleet
+ * strip (on the road / delayed / starting soon), "Go to…" filter, the main
+ * pages, then Fleet / Finance / Records / Settings groups, and a New trip
+ * button. Each row carries a coloured icon tile (Fleet blue, Finance amber,
+ * Records sky, Settings gray) and a badge where something needs attention.
+ * Account, version and Log out live on the Profile tab, not here.
  *
  * Badges read the same React Query caches the home uses, so opening the menu
  * doesn't fire a burst of requests.
@@ -15,15 +17,15 @@ import {
 import { useRouter, usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
-import Constants from 'expo-constants';
 import {
   Map as MapIcon,
-  Bell, Building2, CreditCard, FileText, FolderOpen, House, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
+  Bell, Building2, CreditCard, FileText, FolderOpen, House, Plus, Route, Search, SquareUserRound, Tag, Truck, UserCog, Users, Wrench, X,
   type LucideIcon,
 } from 'lucide-react-native';
-import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
 import { operatorService } from '@/lib/operator';
+import { Colors } from '@mercon/mobile-shared/theme/tokens';
+import { TONE, type Tone } from '@/features/trips/details/tripDetailsModel';
 
 const ZINC = {
   fg: '#3E3C3D',
@@ -35,8 +37,9 @@ const ZINC = {
   soft: '#FAFAFA',
 };
 
-type BadgeTone = 'neutral' | 'red' | 'amber';
-type BadgeKey = 'trips' | 'notifications' | 'invoices' | 'documents';
+type BadgeTone = 'neutral' | 'red' | 'amber' | 'green' | 'solidRed';
+type BadgeKey = 'trips' | 'tripsLate' | 'notifications' | 'invoices' | 'documents' | 'fleetMap';
+type Badge = { text: string; tone: BadgeTone; dot?: boolean };
 
 interface MenuItem {
   Icon: LucideIcon;
@@ -44,28 +47,34 @@ interface MenuItem {
   route: string;
   /** Extra words the "Go to…" filter matches. */
   keywords?: string;
-  badge?: BadgeKey;
+  badges?: BadgeKey[];
+  /** Icon tile colour; defaults to the group's. `brand` = MERCON orange. */
+  tone?: Tone | 'brand';
 }
 
 interface MenuGroup {
   title: string | null;
+  /** Colour of the group's dot and its rows' icon tiles. */
+  tone: Tone;
   items: MenuItem[];
 }
 
 const GROUPS: MenuGroup[] = [
   {
     title: null,
+    tone: 'gray',
     items: [
-      { Icon: House, label: 'Home', route: '/', keywords: 'dashboard needs action' },
-      { Icon: Route, label: 'Trips', route: '/trips', badge: 'trips', keywords: 'schedule history' },
-      { Icon: Users, label: 'Drivers', route: '/drivers' },
-      { Icon: Bell, label: 'Notifications', route: '/notifications', badge: 'notifications', keywords: 'alerts' },
+      { Icon: House, label: 'Home', route: '/', keywords: 'dashboard needs action', tone: 'brand' },
+      { Icon: Route, label: 'Trips', route: '/trips', badges: ['trips', 'tripsLate'], keywords: 'schedule history', tone: 'violet' },
+      { Icon: Users, label: 'Drivers', route: '/drivers', tone: 'green' },
+      { Icon: Bell, label: 'Notifications', route: '/notifications', badges: ['notifications'], keywords: 'alerts', tone: 'amber' },
     ],
   },
   {
     title: 'Fleet',
+    tone: 'blue',
     items: [
-      { Icon: MapIcon, label: 'Fleet map', route: '/fleet-map', keywords: 'live map trucks location gps tracking' },
+      { Icon: MapIcon, label: 'Fleet map', route: '/fleet-map', badges: ['fleetMap'], keywords: 'live map trucks location gps tracking' },
       { Icon: Truck, label: 'Vehicles', route: '/vehicles', keywords: 'trucks trailers' },
       { Icon: Building2, label: '3rd party fleet', route: '/third-party', keywords: 'subcontractors providers 3pl' },
       // Hidden until these screens can do more than list (owner, 2026-09-26).
@@ -74,21 +83,24 @@ const GROUPS: MenuGroup[] = [
   },
   {
     title: 'Finance',
+    tone: 'amber',
     items: [
       { Icon: Tag, label: 'Quotations', route: '/quotations', keywords: 'rates lanes' },
-      // { Icon: FileText, label: 'Invoices', route: '/invoices', badge: 'invoices', keywords: 'billing payments' },
+      // { Icon: FileText, label: 'Invoices', route: '/invoices', badges: ['invoices'], keywords: 'billing payments' },
       // { Icon: CreditCard, label: 'Expenses', route: '/expenses', keywords: 'costs receipts' },
     ],
   },
   {
     title: 'Records',
+    tone: 'sky',
     items: [
-      // { Icon: FolderOpen, label: 'Documents', route: '/documents', badge: 'documents', keywords: 'compliance files' },
+      { Icon: FolderOpen, label: 'Documents', route: '/documents', badges: ['documents'], keywords: 'compliance files licence expiry papers' },
       { Icon: SquareUserRound, label: 'Customers', route: '/customers', keywords: 'clients contacts' },
     ],
   },
   {
     title: 'Settings',
+    tone: 'gray',
     items: [
       { Icon: UserCog, label: 'User management', route: '/user-management', keywords: 'users accounts drivers passwords logins admin operator' },
     ],
@@ -102,8 +114,10 @@ interface OperatorSidebarDrawerProps {
   side?: 'left' | 'right';
 }
 
-/** Counts for the badges, from data the home screen already loads (same query keys). */
-function useMenuBadges(enabled: boolean): Record<BadgeKey, { text: string; tone: BadgeTone } | null> {
+interface FleetNow { onRoad: number; delayed: number; upcoming: number }
+
+/** Counts for the badges and the fleet strip, from data the home screen already loads (same query keys). */
+function useMenuBadges(enabled: boolean): { badges: Record<BadgeKey, Badge | null>; fleet: FleetNow | null } {
   const notifications = useNotifications();
   const live = useQuery({ queryKey: ['dashboard', 'actions', 'live-map'], queryFn: () => operatorService.liveMap(), enabled, staleTime: 60_000 });
   const expiries = useQuery({ queryKey: ['dashboard', 'actions', 'expiries'], queryFn: () => operatorService.documentExpiries().catch(() => []), enabled, staleTime: 5 * 60_000 });
@@ -112,32 +126,35 @@ function useMenuBadges(enabled: boolean): Record<BadgeKey, { text: string; tone:
 
   return useMemo(() => {
     const unread = (notifications.data ?? []).filter((n) => !n.is_read).length;
-    const running = (live.data ?? []).filter((u) => u.trip && u.trip.phase !== 'upcoming').length;
+    const units = live.data ?? [];
+    const running = units.filter((u) => u.trip && u.trip.phase !== 'upcoming').length;
+    const delayed = units.filter((u) => u.trip?.phase === 'delayed').length;
+    const upcoming = units.filter((u) => u.trip?.phase === 'upcoming').length;
+    const moving = units.filter((u) => u.motion === 'moving').length;
     const soon = (expiries.data ?? []).filter((e) => e.days <= 7);
     const expired = soon.filter((e) => e.days < 0).length;
     const overdue = (invoices.data ?? []).filter(
       (i) => ['Issued', 'PartiallyPaid', 'Overdue'].includes(i.status) && !!i.due_date && new Date(i.due_date).getTime() < now - 86_400_000,
     ).length;
     return {
-      notifications: unread ? { text: String(unread), tone: 'red' as const } : null,
-      trips: running ? { text: `${running} live`, tone: 'neutral' as const } : null,
-      documents: soon.length ? { text: String(soon.length), tone: expired ? ('red' as const) : ('amber' as const) } : null,
-      invoices: overdue ? { text: `${overdue} overdue`, tone: 'neutral' as const } : null,
+      badges: {
+        notifications: unread ? { text: unread > 99 ? '99+' : String(unread), tone: 'solidRed' } : null,
+        trips: running ? { text: `${running} live`, tone: 'green', dot: true } : null,
+        tripsLate: delayed ? { text: `${delayed} late`, tone: 'red' } : null,
+        fleetMap: moving ? { text: `${moving} moving`, tone: 'green', dot: true } : null,
+        documents: soon.length ? { text: String(soon.length), tone: expired ? 'red' : 'amber' } : null,
+        invoices: overdue ? { text: `${overdue} overdue`, tone: 'neutral' } : null,
+      },
+      // Hide the strip until the live map has answered, rather than flashing zeros.
+      fleet: live.data ? { onRoad: running, delayed, upcoming } : null,
     };
   }, [notifications.data, live.data, expiries.data, invoices.data, now]);
-}
-
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return 'OP';
-  return ((parts[0][0] ?? '') + (parts.length > 1 ? parts[parts.length - 1][0] : parts[0][1] ?? '')).toUpperCase();
 }
 
 export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: OperatorSidebarDrawerProps) {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { profile, role } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
   const drawerWidth = Math.min(screenWidth * 0.82, 320);
 
@@ -146,7 +163,7 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
   const slideAnim = useRef(new Animated.Value(hidden)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const [query, setQuery] = useState('');
-  const badges = useMenuBadges(visible);
+  const { badges, fleet } = useMenuBadges(visible);
 
   useEffect(() => {
     if (visible) {
@@ -205,9 +222,6 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
 
   if (!mounted) return null;
 
-  const name = profile?.name ?? 'Operator';
-  const version = Constants.expoConfig?.version ?? '';
-
   return (
     <Modal transparent visible={mounted} onRequestClose={onClose} animationType="none" statusBarTranslucent>
       <View style={styles.overlay}>
@@ -237,6 +251,15 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
             </TouchableOpacity>
           </View>
 
+          {/* Fleet right now — tap through to the live map. */}
+          {fleet ? (
+            <TouchableOpacity style={styles.fleetStrip} onPress={() => go('/fleet-map')} activeOpacity={0.7} accessibilityRole="link" accessibilityLabel={`${fleet.onRoad} on the road, ${fleet.delayed} delayed, ${fleet.upcoming} starting soon. Open fleet map`}>
+              <FleetStat value={fleet.onRoad} label="On the road" tone="green" />
+              <FleetStat value={fleet.delayed} label="Delayed" tone={fleet.delayed ? 'red' : 'gray'} />
+              <FleetStat value={fleet.upcoming} label="Starting soon" tone="violet" />
+            </TouchableOpacity>
+          ) : null}
+
           {/* Go to… */}
           <View style={styles.search}>
             <Search size={15} color={ZINC.muted} strokeWidth={2} />
@@ -261,10 +284,17 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
           <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.nav} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {groups.map((g) => (
               <View key={g.title ?? 'main'} style={{ marginBottom: 10 }}>
-                {g.title ? <Text style={styles.groupLabel}>{g.title}</Text> : null}
+                {g.title ? (
+                  <View style={styles.groupRow}>
+                    <View style={[styles.dot, { backgroundColor: TONE[g.tone].dot }]} />
+                    <Text style={styles.groupLabel}>{g.title}</Text>
+                  </View>
+                ) : null}
                 {g.items.map((item) => {
                   const active = item.route === '/' ? pathname === '/' : pathname === item.route || pathname.startsWith(`${item.route}/`);
-                  const badge = item.badge ? badges[item.badge] : null;
+                  const rowBadges = (item.badges ?? []).map((k) => badges[k]).filter((b): b is Badge => !!b);
+                  const tone = item.tone ?? g.tone;
+                  const tile = tone === 'brand' ? { bg: Colors.primaryLight, fg: Colors.primary } : TONE[tone];
                   return (
                     <TouchableOpacity
                       key={item.route}
@@ -274,13 +304,12 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
                       accessibilityRole="link"
                       accessibilityState={{ selected: active }}
                     >
-                      <item.Icon size={17} color={active ? ZINC.fg : ZINC.muted} strokeWidth={2} />
+                      {active ? <View style={styles.activeBar} /> : null}
+                      <View style={[styles.tile, { backgroundColor: active ? Colors.primary : tile.bg }]}>
+                        <item.Icon size={15} color={active ? '#FFFFFF' : tile.fg} strokeWidth={2.2} />
+                      </View>
                       <Text style={[styles.itemText, active && styles.itemTextActive]} numberOfLines={1}>{item.label}</Text>
-                      {badge ? (
-                        <View style={[styles.badge, badge.tone === 'red' && styles.badgeRed, badge.tone === 'amber' && styles.badgeAmber]}>
-                          <Text style={[styles.badgeText, badge.tone === 'red' && { color: '#B42318' }, badge.tone === 'amber' && { color: '#93370D' }]}>{badge.text}</Text>
-                        </View>
-                      ) : null}
+                      {rowBadges.map((b) => <MenuBadge key={b.text} badge={b} />)}
                     </TouchableOpacity>
                   );
                 })}
@@ -289,22 +318,47 @@ export function OperatorSidebarDrawer({ visible, onClose, side = 'right' }: Oper
             {groups.length === 0 ? <Text style={styles.empty}>No page matches “{query}”</Text> : null}
           </ScrollView>
 
-          {/* Account */}
-          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
-            <View style={styles.account}>
-              <TouchableOpacity style={styles.accountLink} onPress={() => go('/profile')} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="Open your profile">
-                <View style={styles.avatar}><Text style={styles.avatarText}>{initialsOf(name)}</Text></View>
-                <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={styles.name} numberOfLines={1}>{name}</Text>
-                  <Text style={styles.role} numberOfLines={1}>{role ?? 'Operator'}</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-            {version ? <Text style={styles.version}>Version {version}</Text> : null}
+          <View style={styles.footer}>
+            <TouchableOpacity style={styles.newTrip} onPress={() => go('/create-trip')} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="New trip">
+              <Plus size={17} color="#FFFFFF" strokeWidth={2.5} />
+              <Text style={styles.newTripText}>New trip</Text>
+            </TouchableOpacity>
           </View>
+          <View style={{ height: Math.max(insets.bottom, 12) }} />
         </Animated.View>
       </View>
     </Modal>
+  );
+}
+
+function FleetStat({ value, label, tone }: { value: number; label: string; tone: Tone }) {
+  const t = TONE[tone];
+  return (
+    <View style={[styles.stat, { backgroundColor: t.bg }]}>
+      <View style={styles.statTop}>
+        <View style={[styles.dot, { backgroundColor: t.dot }]} />
+        <Text style={[styles.statValue, { color: t.fg }]}>{value}</Text>
+      </View>
+      <Text style={[styles.statLabel, { color: t.fg }]} numberOfLines={1}>{label}</Text>
+    </View>
+  );
+}
+
+const BADGE_TONE: Record<BadgeTone, { bg: string; fg: string; border?: string }> = {
+  neutral: { bg: ZINC.accent, fg: '#52525B', border: ZINC.border },
+  red: { bg: TONE.red.bg, fg: TONE.red.fg },
+  amber: { bg: TONE.amber.bg, fg: TONE.amber.fg },
+  green: { bg: TONE.green.bg, fg: TONE.green.fg },
+  solidRed: { bg: TONE.red.dot, fg: '#FFFFFF' },
+};
+
+function MenuBadge({ badge }: { badge: Badge }) {
+  const t = BADGE_TONE[badge.tone];
+  return (
+    <View style={[styles.badge, { backgroundColor: t.bg, borderColor: t.border ?? t.bg }, badge.tone === 'solidRed' && styles.badgePill]}>
+      {badge.dot ? <View style={[styles.dot, { backgroundColor: TONE.green.dot }]} /> : null}
+      <Text style={[styles.badgeText, { color: t.fg }]}>{badge.text}</Text>
+    </View>
   );
 }
 
@@ -357,22 +411,25 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, fontSize: 14, color: ZINC.fg, paddingVertical: 0 },
   nav: { paddingHorizontal: 12, paddingTop: 4, paddingBottom: 12 },
-  groupLabel: { fontSize: 12, fontWeight: '500', color: ZINC.muted, paddingHorizontal: 10, height: 28, lineHeight: 28 },
-  item: { flexDirection: 'row', alignItems: 'center', gap: 11, height: 42, paddingHorizontal: 10, borderRadius: 8 },
-  itemActive: { backgroundColor: ZINC.accent },
+  fleetStrip: { flexDirection: 'row', gap: 6, marginHorizontal: 12, marginTop: 14 },
+  stat: { flex: 1, borderRadius: 9, paddingHorizontal: 8, paddingVertical: 6 },
+  statTop: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  statValue: { fontSize: 16, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  statLabel: { fontSize: 11, fontWeight: '500', marginTop: 1 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  groupRow: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, height: 28 },
+  groupLabel: { fontSize: 11, fontWeight: '700', color: ZINC.muted, letterSpacing: 0.6, textTransform: 'uppercase' },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, paddingHorizontal: 8, borderRadius: 9, overflow: 'hidden' },
+  itemActive: { backgroundColor: Colors.primaryLight },
+  activeBar: { position: 'absolute', left: 0, top: 8, bottom: 8, width: 3, borderRadius: 2, backgroundColor: Colors.primary },
+  tile: { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   itemText: { flex: 1, fontSize: 15, fontWeight: '500', color: ZINC.text },
-  itemTextActive: { color: ZINC.fg, fontWeight: '600' },
-  badge: { minWidth: 22, height: 21, borderRadius: 6, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: ZINC.accent, borderWidth: 1, borderColor: ZINC.border },
-  badgeRed: { backgroundColor: '#FEF3F2', borderColor: '#FECDCA' },
-  badgeAmber: { backgroundColor: '#FFFAEB', borderColor: '#FEDF89' },
-  badgeText: { fontSize: 11, fontWeight: '600', color: '#52525B' },
+  itemTextActive: { color: Colors.primary, fontWeight: '700' },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 4, minWidth: 22, height: 21, borderRadius: 6, paddingHorizontal: 6, justifyContent: 'center', borderWidth: 1 },
+  badgePill: { borderRadius: 11 },
+  badgeText: { fontSize: 11, fontWeight: '700' },
+  footer: { paddingHorizontal: 12, paddingTop: 8, borderTopWidth: 1, borderTopColor: ZINC.border },
+  newTrip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 44, borderRadius: 10, backgroundColor: Colors.primary },
+  newTripText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   empty: { fontSize: 13, color: ZINC.muted, paddingHorizontal: 10, paddingVertical: 12 },
-  footer: { borderTopWidth: 1, borderTopColor: ZINC.border, paddingHorizontal: 12, paddingTop: 10, gap: 4 },
-  account: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 4, paddingVertical: 6 },
-  avatar: { width: 34, height: 34, borderRadius: 8, backgroundColor: ZINC.fg, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
-  name: { fontSize: 14, fontWeight: '600', color: ZINC.fg },
-  role: { fontSize: 12, color: ZINC.muted },
-  accountLink: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  version: { fontSize: 11, color: ZINC.faint, paddingHorizontal: 6 },
 });

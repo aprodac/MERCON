@@ -1,7 +1,7 @@
 /**
  * "From drivers": the photo / video sets drivers sent that nobody has passed
  * on to the customer yet, newest first, as a sideways strip. Send opens the
- * trip's Updates tab, where the set is shared. Hidden when nothing is waiting.
+ * trip with its share sheet on that set. Hidden when nothing is waiting.
  */
 import React from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Image, StyleSheet } from 'react-native';
@@ -16,7 +16,7 @@ const SHOWN = 8;
 export function FromDrivers({ updates, now, onSend }: {
   updates: DriverUpdate[];
   now: number;
-  onSend: (tripId: string) => void;
+  onSend: (u: DriverUpdate) => void;
 }) {
   const waiting = updates
     .filter((u) => u.unsent_count > 0)
@@ -50,7 +50,7 @@ export function FromDrivers({ updates, now, onSend }: {
               : `${unsent.length} items`;
           return (
             <View key={`${u.trip.id}:${u.key}`} style={s.item}>
-              <TouchableOpacity style={s.thumb} onPress={() => { tap(); onSend(u.trip.id); }} activeOpacity={0.85}
+              <TouchableOpacity style={s.thumb} onPress={() => { tap(); onSend(u); }} activeOpacity={0.85}
                 accessibilityRole="button" accessibilityLabel={`${STAGE_TITLE[u.stage] ?? 'Photos'}, ${u.trip.ref_id ?? ''}, ${label}`}>
                 {uri ? (
                   <Image source={{ uri }} style={StyleSheet.absoluteFill} />

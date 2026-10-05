@@ -85,9 +85,9 @@ const LATE_START_GRACE_MIN = 15;
 /** Documents expiring within this many days show up (the rest wait). */
 const EXPIRY_DAYS = 7;
 
-const URGENCY_RANK: Record<Urgency, number> = { now: 0, today: 1, watch: 2 };
+export const URGENCY_RANK: Record<Urgency, number> = { now: 0, today: 1, watch: 2 };
 /** Within one urgency level: the most serious kind first. */
-const KIND_RANK: Record<ActionKind, number> = {
+export const KIND_RANK: Record<ActionKind, number> = {
   emergency: 0, delayed: 1, 'late-start': 2, 'gps-quiet': 3, unassigned: 4, photos: 5, 'time-check': 6, expiry: 7, 'gps-mismatch': 8, 'overdue-invoice': 9,
 };
 
@@ -111,6 +111,7 @@ function nextStopName(u: LiveUnit): string | null {
   return t.stops[t.next_stop_index]?.name ?? null;
 }
 
+/** The one name for each kind of driver photo set, everywhere in the app and in the WhatsApp caption. */
 export const STAGE_TITLE: Record<string, string> = {
   loaded: 'Loading photos',
   arrived: 'Arrival photos',

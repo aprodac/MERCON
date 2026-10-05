@@ -11,6 +11,7 @@ import AppShell from '@/components/layout/AppShell';
 import SettingsLayout from '@/components/layout/SettingsLayout';
 import { useApplyBranding } from '@/hooks/useBranding';
 import { lazyWithRetry } from '@/utils/lazyWithRetry';
+import { isTrackingHost } from '@/lib/trackingHost';
 
 /**
  * WithIdKey — wraps a page component and uses the `:id` URL param as the
@@ -174,9 +175,40 @@ function QuotationIdRedirect() {
   return <Navigate to={`/quotations/${id}/edit`} replace />;
 }
 
+/** Anything that isn't a customer link, on the customer-links address. */
+function LinkNotFound() {
+  return (
+    <main className="grid min-h-[100dvh] place-items-center bg-white px-6 text-center" style={{ colorScheme: 'light' }}>
+      <div className="max-w-sm">
+        <img src="/mercon-mark.webp" alt="MERCON" className="mx-auto h-10 w-auto" />
+        <h1 className="mt-6 text-xl font-bold text-[#2d2b2c]">This page isn't available</h1>
+        <p className="mt-2 text-sm leading-relaxed text-[#6e6a6b]">Open the full tracking link you were sent on WhatsApp. If it stopped working, ask MERCON for a new one.</p>
+      </div>
+    </main>
+  );
+}
+
+/** The customer-links address serves only the pages handed to customers. */
+function TrackingHostRouter() {
+  const page = (el: React.ReactNode) => <Suspense fallback={<FullPageSpinner />}>{el}</Suspense>;
+  return (
+    <BrowserRouter useTransitions={false}>
+      <ErrorBoundary>
+        <Routes>
+          <Route path="/t/:token" element={page(<TrackingPage />)} />
+          <Route path="/c/:token" element={page(<FleetTrackingPage />)} />
+          <Route path="/s/:token" element={page(<SharedUpdatePage />)} />
+          <Route path="*" element={<LinkNotFound />} />
+        </Routes>
+      </ErrorBoundary>
+    </BrowserRouter>
+  );
+}
+
 /* ─── App Router ─────────────────────────────────────────────────────────── */
 export default function AppRouter() {
   useApplyBranding();
+  if (isTrackingHost()) return <TrackingHostRouter />;
 
   // useTransitions={false} — React Router wraps its internal location state
   // update in React.startTransition by default. Under React 19 that update

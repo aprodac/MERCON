@@ -14,13 +14,17 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Constants from 'expo-constants';
+import * as Location from 'expo-location';
 import { Bell, ChevronRight, Globe, HelpCircle, Info, Lock, LogOut, Mail, Phone, Settings, ShieldCheck, SquarePen, User, UserCog, type LucideIcon } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
-import { api, API_URL, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
+import { api, API_URL, getApiErrorMessage, setAuthToken, TOKEN_KEY } from '@mercon/mobile-shared/lib/api';
+import { safeSecureStore as SecureStore } from '@mercon/mobile-shared/lib/secure-store';
 import { useAuth } from '@mercon/mobile-shared/lib/auth-context';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { ErrorState } from '@mercon/mobile-shared/ui';
 import { AppTopBar } from '@/components/AppTopBar';
+import { operatorService } from '@/lib/operator';
+import { USER_MANAGEMENT_KEYS } from '@/features/users/screens/UserManagementScreen';
 import { FactRow, Tile } from '@/components/pageCues';
 import { useNotifications } from '@/features/notifications/hooks/useNotifications';
 import type { Tone } from '@/features/trips/details/tripDetailsModel';
@@ -69,6 +73,11 @@ export default function ProfileScreen() {
   const notifications = useNotifications();
   const unread = notifications.data?.filter((n) => !n.is_read).length ?? 0;
 
+  // Same queries (and cache) as the User management page, so its row can say what's waiting there.
+  const driverAccounts = useQuery({ queryKey: USER_MANAGEMENT_KEYS.drivers, queryFn: () => operatorService.driverAccounts(), staleTime: 60_000 });
+  const platformUsers = useQuery({ queryKey: USER_MANAGEMENT_KEYS.users, queryFn: () => operatorService.platformUsers(), staleTime: 60_000 });
+  const locationAccess = useQuery({ queryKey: ['permissions', 'location'], queryFn: () => Location.getForegroundPermissionsAsync(), staleTime: 0 });
+
   // Until /auth/me answers, show what sign-in already gave us.
   const name = me.data?.name ?? profile?.name ?? 'Operator';
   const username = me.data?.username ?? profile?.username ?? '';
@@ -86,13 +95,28 @@ export default function ProfileScreen() {
   const webUrl = (API_URL || '').replace(/\/api\/?$/, '');
   const isAdmin = userRole === 'Admin';
   const version = Constants.expoConfig?.version;
+  const build = Constants.expoConfig?.ios?.buildNumber ?? Constants.expoConfig?.android?.versionCode;
+  const versionLabel = version ? `Version ${version}${build ? ` (${build})` : ''}` : null;
+  const server = (API_URL || '').replace(/^https?:\/\//, '').replace(/\/api\/?$/, '');
+  const companyName = company.data?.companyLegalName || company.data?.appName || '';
+
+  // What each row would otherwise only describe: say what is actually there.
+  const missing = me.data ? [!me.data.phone && 'phone', !me.data.email && 'email'].filter(Boolean) as string[] : [];
+  const profileSub = !me.data ? 'Name, phone and email' : missing.length ? `Add your ${missing.join(' and ')}` : 'Name, phone and email are filled in';
+  const noLogin = driverAccounts.data?.filter((d) => !d.user).length ?? 0;
+  const teamSub = driverAccounts.data && platformUsers.data
+    ? (noLogin ? `${noLogin} drivers have no app password` : `${driverAccounts.data.length} drivers  ·  ${platformUsers.data.length} users`)
+    : 'Team accounts and driver logins';
+  const locationSub = locationAccess.data
+    ? (locationAccess.data.granted ? 'Location allowed' : locationAccess.data.canAskAgain ? 'Location not allowed yet' : 'Location is off — turn it on in phone settings')
+    : 'Location permission';
 
   const groups: { title: string; rows: Link[] }[] = [
     {
       title: 'Account',
       rows: [
-        { icon: User, tone: 'blue', label: 'Edit profile', sub: 'Name, phone and email', onPress: () => setSheet('edit'), disabled: !me.data },
-        { icon: Lock, tone: 'amber', label: 'Change password', sub: 'Use at least 8 characters', onPress: () => setSheet('password') },
+        { icon: User, tone: 'blue', label: 'Edit profile', sub: profileSub, onPress: () => setSheet('edit'), disabled: !me.data },
+        { icon: Lock, tone: 'amber', label: 'Change password', sub: username ? `For the login ${username}` : 'Use at least 8 characters', onPress: () => setSheet('password') },
         { icon: ShieldCheck, tone: 'violet', label: 'Access level', sub: `${userRole}${me.data?.isSuperAdmin ? ' · platform admin' : ''}`, onPress: () => setSheet('access') },
       ],
     },
@@ -100,22 +124,22 @@ export default function ProfileScreen() {
       title: 'Workspace',
       rows: [
         { icon: Bell, tone: 'brand', label: 'Notifications', sub: unread ? `${unread} unread` : 'You’re all caught up', badge: unread || undefined, onPress: () => router.push('/notifications') },
-        { icon: UserCog, tone: 'violet', label: 'User management', sub: 'Team accounts and driver logins', onPress: () => router.push('/user-management') },
+        { icon: UserCog, tone: 'violet', label: 'User management', sub: teamSub, badge: noLogin || undefined, onPress: () => router.push(noLogin ? '/user-management?tab=nologin' : '/user-management') },
         { icon: Globe, tone: 'sky', label: 'Web dashboard', sub: webUrl ? webUrl.replace(/^https?:\/\//, '') : 'Not available', onPress: () => { Linking.openURL(webUrl).catch(() => Alert.alert('Couldn’t open the dashboard')); }, disabled: !webUrl },
       ],
     },
     {
       title: 'App',
       rows: [
-        { icon: Settings, tone: 'gray', label: 'App settings', sub: 'Notifications and location permissions', onPress: () => { Linking.openSettings().catch(() => Alert.alert('Couldn’t open settings')); } },
+        { icon: Settings, tone: 'gray', label: 'App settings', sub: locationSub, onPress: () => { Linking.openSettings().catch(() => Alert.alert('Couldn’t open settings')); } },
         {
           icon: HelpCircle, tone: 'green', label: 'Help & support',
-          sub: support ? 'Message support on WhatsApp' : 'No support number set yet',
+          sub: support ? `WhatsApp +${support}` : 'No support number set yet',
           onPress: () => { Linking.openURL(`https://wa.me/${support}`).catch(() => Alert.alert('Couldn’t open WhatsApp')); },
           disabled: !support,
         },
-        { icon: Info, tone: 'sky', label: 'About', sub: version ? `Version ${version}` : 'Company details', onPress: () => setSheet('about') },
-        { icon: LogOut, tone: 'red', label: 'Log out', sub: 'Sign out of your account', onPress: confirmSignOut, danger: true },
+        { icon: Info, tone: 'sky', label: 'About', sub: companyName || versionLabel || 'Company details', onPress: () => setSheet('about') },
+        { icon: LogOut, tone: 'red', label: 'Log out', sub: username ? `Signed in as ${username}` : 'Sign out of your account', onPress: confirmSignOut, danger: true },
       ],
     },
   ];
@@ -127,7 +151,7 @@ export default function ProfileScreen() {
       <ScrollView
         contentContainerStyle={s.scroll}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={me.isRefetching} onRefresh={() => { me.refetch(); company.refetch(); }} tintColor={Colors.primary} />}
+        refreshControl={<RefreshControl refreshing={me.isRefetching} onRefresh={() => { me.refetch(); company.refetch(); driverAccounts.refetch(); platformUsers.refetch(); locationAccess.refetch(); }} tintColor={Colors.primary} />}
       >
         {/* Who you are and how to reach you */}
         <Card style={s.head}>
@@ -150,8 +174,8 @@ export default function ProfileScreen() {
           </View>
           {me.isError ? <ErrorState message="Could not load your profile." onRetry={() => me.refetch()} /> : (
             <View style={s.contact}>
-              <ContactRow icon={Phone} label="Phone" value={me.data?.phone} loading={me.isLoading} />
-              <ContactRow icon={Mail} label="Email" value={me.data?.email} loading={me.isLoading} border />
+              <ContactRow icon={Phone} label="Phone" value={me.data?.phone} loading={me.isLoading} onAdd={() => setSheet('edit')} />
+              <ContactRow icon={Mail} label="Email" value={me.data?.email} loading={me.isLoading} border onAdd={() => setSheet('edit')} />
             </View>
           )}
         </Card>
@@ -176,7 +200,7 @@ export default function ProfileScreen() {
           ))}
         </Card>
 
-        <Text style={s.footer}>{[Constants.expoConfig?.name, version ? `Version ${version}` : null].filter(Boolean).join('  ·  ')}</Text>
+        <Text style={s.footer}>{[Constants.expoConfig?.name, versionLabel, server].filter(Boolean).join('  ·  ')}</Text>
       </ScrollView>
 
       <EditSheet
@@ -202,27 +226,31 @@ export default function ProfileScreen() {
       </AppModal>
       <AppModal visible={sheet === 'about'} onClose={() => setSheet(null)} type="bottom-sheet" title="About">
         <View style={{ paddingBottom: 8 }}>
-          <FactRow first label="Company" value={company.data?.companyLegalName || '—'} />
+          <FactRow first label="Company" value={companyName || '—'} />
           {company.data?.vatNumber ? <FactRow label="VAT number" value={company.data.vatNumber} /> : null}
           {company.data?.crNumber ? <FactRow label="CR number" value={company.data.crNumber} /> : null}
           {company.data?.timezone ? <FactRow label="Time zone" value={company.data.timezone} /> : null}
-          <FactRow label="App version" value={version ?? '—'} />
+          {support ? <FactRow label="Support" value={`+${support}`} /> : null}
+          <FactRow label="App version" value={version ? `${version}${build ? ` (${build})` : ''}` : '—'} />
+          {server ? <FactRow label="Server" value={server} /> : null}
+          {username ? <FactRow label="Signed in as" value={username} /> : null}
         </View>
       </AppModal>
     </SafeAreaView>
   );
 }
 
-/** One contact line in the header card: icon tile, label, and the value on the right. */
-function ContactRow({ icon, label, value, loading, border }: { icon: LucideIcon; label: string; value?: string | null; loading?: boolean; border?: boolean }) {
+/** One contact line in the header card: icon tile, label, and the value on the right — or "Add" when there is none yet. */
+function ContactRow({ icon, label, value, loading, border, onAdd }: { icon: LucideIcon; label: string; value?: string | null; loading?: boolean; border?: boolean; onAdd: () => void }) {
+  const empty = !value && !loading;
   return (
-    <View style={[s.contactRow, border && s.contactBorder]}>
+    <TouchableOpacity style={[s.contactRow, border && s.contactBorder]} disabled={!empty} activeOpacity={0.7} onPress={() => { tap(); onAdd(); }} accessibilityLabel={empty ? `Add ${label.toLowerCase()}` : `${label} ${value ?? ''}`}>
       <Tile icon={icon} tone={icon === Mail ? 'sky' : undefined} size={32} />
       <Text style={s.contactLabel}>{label}</Text>
-      <Text style={[s.contactValue, !value && { color: MUTED, fontWeight: '400' }]} numberOfLines={1} selectable={!!value}>
-        {value || (loading ? '…' : 'Not added')}
+      <Text style={[s.contactValue, empty && { color: Colors.primary }]} numberOfLines={1} selectable={!!value}>
+        {value || (loading ? '…' : `Add ${label.toLowerCase()}`)}
       </Text>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -263,12 +291,19 @@ function EditForm({ me, onClose, onSaved }: { me: Me; onClose: () => void; onSav
     onError: (e) => Alert.alert('Could not save', getApiErrorMessage(e)),
   });
 
+  const phoneBad = phone.trim().length > 0 && phone.replace(/[^0-9]/g, '').length < 9;
+  const emailBad = email.trim().length > 0 && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const changed = name.trim() !== (me.name ?? '') || phone.trim() !== (me.phone ?? '') || email.trim() !== (me.email ?? '');
+
   return (
     <View style={s.form}>
+      <Text style={s.sub}>You sign in as <Text style={{ fontWeight: '700', color: INK }}>{me.username}</Text>. The username can’t be changed here.</Text>
       <Field label="Name" value={name} onChangeText={setName} autoCapitalize="words" />
       <Field label="Phone" value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+966…" />
+      {phoneBad ? <Text style={s.error}>Enter the full phone number.</Text> : null}
       <Field label="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" placeholder="name@company.com" />
-      <SaveButton label="Save" busy={save.isPending} disabled={!name.trim()} onPress={() => save.mutate()} />
+      {emailBad ? <Text style={s.error}>That doesn’t look like an email address.</Text> : null}
+      <SaveButton label="Save" busy={save.isPending} disabled={!name.trim() || phoneBad || emailBad || !changed} onPress={() => save.mutate()} />
     </View>
   );
 }
@@ -287,7 +322,16 @@ function PasswordForm({ onClose }: { onClose: () => void }) {
   const [again, setAgain] = useState('');
 
   const save = useMutation({
-    mutationFn: () => api.post('/auth/change-password', { current_password: current, new_password: next }),
+    mutationFn: async () => {
+      const res = await api.post('/auth/change-password', { current_password: current, new_password: next });
+      // Changing the password ends every other session; the API hands this one a new token.
+      const token = res.data?.data?.token;
+      if (token) {
+        setAuthToken(token);
+        await SecureStore.setItemAsync(TOKEN_KEY, token);
+      }
+      return res;
+    },
     onSuccess: () => { onClose(); Alert.alert('Password changed', 'Use the new password next time you sign in.'); },
     onError: (e) => Alert.alert('Could not change password', getApiErrorMessage(e)),
   });

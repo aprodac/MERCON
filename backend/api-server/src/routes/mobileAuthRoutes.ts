@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { mobileLogin } from '../controllers/mobileAuthController';
-import { createAuthRateLimit } from '../middlewares/rateLimit';
+import { createLoginAccountLimit, createLoginIpLimit } from '../middlewares/rateLimit';
 
 const router = Router();
 
-router.post('/login', createAuthRateLimit(), mobileLogin);
+router.post('/login', createLoginIpLimit(), createLoginAccountLimit('phone_primary'), mobileLogin);
 
 export default router;

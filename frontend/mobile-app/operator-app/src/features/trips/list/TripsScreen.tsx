@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
-  Building2, CalendarDays, CircleCheckBig, History, AlertTriangle, MessageCircle, Phone, Radio, Search, Send, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
+  Building2, CalendarDays, CircleCheckBig, History, AlertTriangle, MessageCircle, Phone, Plus, Radio, Search, Send, Truck, UserRound, X, ArrowUpRight, type LucideIcon,
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
@@ -150,7 +150,7 @@ export default function TripsScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: PAGE }} edges={['top']}>
-      <AppTopBar title="Trips" />
+      <AppTopBar title="Trips" actions={[{ icon: Plus, label: 'New trip', onPress: () => router.push('/create-trip') }]} />
       {/* Scope chip (opened from a truck or customer) */}
       <View style={[s.header, !scope && { paddingTop: 0, paddingBottom: 4 }]}>
         <View style={{ flex: 1 }}>
