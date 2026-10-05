@@ -64,6 +64,7 @@ function VehicleForm({ vehicle, onDone }: { vehicle?: OperatorVehicle; onDone: (
   const [capacity, setCapacity] = useState(vehicle?.capacity_kg ? String(vehicle.capacity_kg) : '');
   const [status, setStatus] = useState<Status>((vehicle?.status as Status) ?? 'Available');
   const [gps, setGps] = useState(vehicle?.icces_device_id ?? '');
+  const [hasTailgate, setHasTailgate] = useState(!!vehicle?.has_tailgate);
   const [hasTrailer, setHasTrailer] = useState(!!vehicle?.trailer_number);
   const [trailerPlate, setTrailerPlate] = useState(vehicle?.trailer_number ?? '');
   const [trailerType, setTrailerType] = useState<AssetType>((vehicle?.trailer_type as AssetType) ?? 'Flatbed');
@@ -101,6 +102,7 @@ function VehicleForm({ vehicle, onDone }: { vehicle?: OperatorVehicle; onDone: (
       trailer_number: hasTrailer ? trailerPlate.trim() : null,
       trailer_type: hasTrailer ? trailerType : null,
       trailer_capacity_kg: hasTrailer && parseInt(trailerCapacity, 10) > 0 ? parseInt(trailerCapacity, 10) : null,
+      has_tailgate: hasTailgate,
     };
 
     setSaving(true);
@@ -177,6 +179,7 @@ function VehicleForm({ vehicle, onDone }: { vehicle?: OperatorVehicle; onDone: (
         </Section>
 
         <Section title="Trailer" Icon={Container}>
+          <SwitchRow title="Has a tailgate" description="Customer messages say WITH TAILGATE when this truck is on a trip." value={hasTailgate} onChange={setHasTailgate} />
           <SwitchRow title="Has a trailer" description="Adds the trailer’s plate and load." value={hasTrailer} onChange={(v) => { setHasTrailer(v); clear('trailer'); }} />
           {hasTrailer ? (
             <>

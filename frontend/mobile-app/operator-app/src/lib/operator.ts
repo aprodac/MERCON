@@ -96,6 +96,11 @@ export interface OperatorTripDetail {
     whatsapp_number?: string | null;
     whatsapp_group_name?: string | null;
     logo_url?: string | null;
+    /** The people who usually ask for trucks — offered as the @tag in the assignment message. */
+    primary_contact_person?: string | null;
+    primary_contact_phone?: string | null;
+    secondary_contact_person?: string | null;
+    secondary_contact_phone?: string | null;
   } | null;
   driver: {
     id: string;
@@ -115,6 +120,7 @@ export interface OperatorTripDetail {
     image_url?: string | null;
     trailer_number?: string | null;
     icces_device_id?: string | null;
+    has_tailgate?: boolean;
   } | null;
   stops: OperatorTripStop[];
   documents?: OperatorTripDocument[];
@@ -144,6 +150,9 @@ export interface OperatorTripDetail {
   quotationId?: string | null;
   quotation?: { id?: string; name?: string | null; rate?: number | null; driver_payout?: number | null; pricing_basis?: string | null } | null;
   rateCard?: { name?: string | null; rate_category?: string | null; vehicle_type?: string | null } | null;
+  /** Truck class and trip type as booked ("5 TON", "SINGLE_TRIP"). */
+  vehicle_type?: string | null;
+  rate_category?: string | null;
 
   // Third-party / subcontracted trips.
   is_third_party?: boolean;
@@ -1314,6 +1323,7 @@ export interface OperatorVehicle {
   trailer_type?: string | null;
   trailer_capacity_kg?: number | null;
   icces_device_id?: string | null;
+  has_tailgate?: boolean;
   assignedDriver?: { id: string; first_name: string; last_name: string; phone_primary?: string | null } | null;
 }
 
@@ -1384,6 +1394,8 @@ export interface CreateVehicleInput {
   trailer_number?: string | null;
   trailer_type?: 'Flatbed' | 'Reefer' | 'Box' | 'Tanker' | null;
   trailer_capacity_kg?: number | null;
+  /** Tailgate lift — the trip assignment message says "WITH TAILGATE". */
+  has_tailgate?: boolean;
 }
 
 export interface UpdateVehicleInput extends Partial<CreateVehicleInput> {

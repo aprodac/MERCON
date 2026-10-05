@@ -2,7 +2,7 @@
  * "Send update": pick who gets it, what goes in, check the message, open
  * WhatsApp. Photo updates are recorded on the server (same call as the web),
  * so every operator sees what was already sent; quick texts (status, ETA,
- * location, delay) just open WhatsApp with the message.
+ * location, delay, assignment) just open WhatsApp with the message.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, Image, ScrollView, Linking, Alert, Switch } from 'react-native';
@@ -12,7 +12,7 @@ import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { operatorService, type DriverUpdate, type OperatorTripDetail, type ShareRecipient, type TripPhase } from '../../../../lib/operator';
-import { digits, quickMessage, sortedStops, stopName, updateTitle, waLink, type Formatters, type QuickKind, type Remaining } from '../tripDetailsModel';
+import { customerContacts, digits, quickMessage, sortedStops, stopName, updateTitle, waLink, withTag, type Formatters, type QuickKind, type Remaining, type TagPerson } from '../tripDetailsModel';
 import { INK, MUTED, WA, tap } from './parts';
 import { shareMediaFiles } from '../shareMedia';
 
@@ -35,7 +35,7 @@ interface Props {
 
 type Who = 'customer_group' | 'customer_contact' | 'driver' | 'internal' | 'other';
 
-const QUICK_TITLE: Record<QuickKind, string> = { status: 'Send status', eta: 'Send ETA', location: 'Send location', delay: 'Send delay notice' };
+const QUICK_TITLE: Record<QuickKind, string> = { status: 'Send status', eta: 'Send ETA', location: 'Send location', delay: 'Send delay notice', assignment: 'Send assignment' };
 
 export function ShareSheet({ target, onClose, trip, phase, f, position, remaining, trackingUrl, onNeedTracking, whatsappApi, onShared }: Props) {
   const customerPhone = trip.customer?.whatsapp_number || trip.customer?.contact_phone || null;
@@ -49,6 +49,16 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   const [viaCompany, setViaCompany] = useState(true);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  // Assignment message: who at the customer gets @tagged — a saved contact, someone typed in, or nobody.
+  const contacts = useMemo(() => customerContacts(trip), [trip]);
+  const [tagPick, setTagPick] = useState<number | 'none' | 'other'>(0);
+  const [otherTag, setOtherTag] = useState('');
+  const isAssignment = target?.type === 'quick' && target.kind === 'assignment';
+  const tag: TagPerson | null = !isAssignment
+    ? null
+    : tagPick === 'other' ? (otherTag.trim() ? { name: otherTag.trim() } : null)
+    : tagPick === 'none' ? null
+    : contacts[tagPick] ?? null;
 
   const stops = sortedStops(trip);
   const nextIdx = stops.findIndex((s) => !s.actual_arrival);
@@ -70,6 +80,8 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   function resetFor(target: ShareTarget) {
     setWho(trip.customer?.whatsapp_group_name || !customerPhone ? 'customer_group' : 'customer_contact');
     setOtherPhone('');
+    setTagPick(contacts.length ? 0 : 'none');
+    setOtherTag('');
     setViaCompany(true);
     setWithNext(true);
     if (target.type === 'update') {
@@ -77,7 +89,8 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
       setChosen(new Set(unsent.length ? unsent : target.update.items.map((m) => m.id)));
       setText('');
     } else {
-      const msg = quickMessage(target.kind, { trip, phase, f, position, remaining, trackingUrl });
+      const first = target.kind === 'assignment' && contacts.length ? contacts[0] : null;
+      const msg = quickMessage(target.kind, { trip, phase, f, position, remaining, trackingUrl, tag: first });
       generated.current = msg;
       setText(msg);
     }
@@ -88,13 +101,23 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   useEffect(() => {
     if (!target || target.type !== 'quick') return;
     if (text !== generated.current) return;
-    const msg = quickMessage(target.kind, { trip, phase, f, position, remaining, trackingUrl });
+    const msg = quickMessage(target.kind, { trip, phase, f, position, remaining, trackingUrl, tag });
     if (msg !== text) {
       generated.current = msg;
       setText(msg);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackingUrl, remaining, position, phase]);
+
+  // A different @tag swaps only the top line, so the operator's other edits stay.
+  const pickTag = (pick: number | 'none' | 'other', typed = otherTag) => {
+    setTagPick(pick);
+    setOtherTag(typed);
+    const next: TagPerson | null = pick === 'other' ? (typed.trim() ? { name: typed.trim() } : null) : pick === 'none' ? null : contacts[pick] ?? null;
+    const msg = withTag(text, next);
+    if (text === generated.current) generated.current = msg;
+    setText(msg);
+  };
 
   // No link yet (it failed when the screen opened): ask again once the sheet is open.
   useEffect(() => {
@@ -286,8 +309,32 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
           </>
         ) : (
           <>
+            {isAssignment ? (
+              <>
+                <Text style={s.label}>Who asked for this truck?</Text>
+                <View style={s.chips}>
+                  {contacts.map((c, i) => (
+                    <TouchableOpacity key={c.name} style={[s.chip, tagPick === i && s.chipOn]} onPress={() => { tap(); pickTag(i); }}>
+                      <Text style={[s.chipText, tagPick === i && s.chipTextOn]} numberOfLines={1}>{c.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity style={[s.chip, tagPick === 'other' && s.chipOn]} onPress={() => { tap(); pickTag('other'); }}>
+                    <Text style={[s.chipText, tagPick === 'other' && s.chipTextOn]}>+ Someone else</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[s.chip, tagPick === 'none' && s.chipOn]} onPress={() => { tap(); pickTag('none'); }}>
+                    <Text style={[s.chipText, tagPick === 'none' && s.chipTextOn]}>No tag</Text>
+                  </TouchableOpacity>
+                </View>
+                {tagPick === 'other' ? (
+                  <TextInput style={s.input} value={otherTag} onChangeText={(v) => pickTag('other', v)} placeholder="Name, as in the group" placeholderTextColor="#9898A4" autoFocus />
+                ) : null}
+              </>
+            ) : null}
             <Text style={s.label}>Message</Text>
             <TextInput style={[s.input, s.message]} value={text} onChangeText={setText} multiline textAlignVertical="top" />
+            {isAssignment && tag ? (
+              <Text style={s.optDetail}>If @{tag.name} shows as plain text in WhatsApp, type @ and pick the name before sending.</Text>
+            ) : null}
           </>
         )}
 
@@ -316,6 +363,11 @@ const s = StyleSheet.create({
   pickImg: { width: '100%', height: '100%' },
   pickCheck: { position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: Colors.white, backgroundColor: 'rgba(0,0,0,0.25)', alignItems: 'center', justifyContent: 'center' },
   pickSent: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(20,20,26,0.55)', color: Colors.white, fontSize: 9, fontWeight: '700', textAlign: 'center' },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  chip: { borderRadius: 999, borderWidth: 1.5, borderColor: '#E4E7EE', paddingHorizontal: 12, paddingVertical: 8, maxWidth: '100%' },
+  chipOn: { borderColor: WA, backgroundColor: '#F2FBF5' },
+  chipText: { fontSize: 13, fontWeight: '700', color: INK },
+  chipTextOn: { color: '#0F6B37' },
   switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   switchText: { fontSize: 14, fontWeight: '600', color: INK },
   chat: { backgroundColor: '#E9E2D6', borderRadius: 16, padding: 12 },

@@ -657,7 +657,7 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
 
   /** Saves a newly defined quotation (if any), then creates the trip(s). Returns an error message or null. */
   const submit = useCallback(
-    async (pastChoice: 'Completed' | 'Incomplete' = 'Incomplete'): Promise<{ ok: boolean; partial?: boolean; message: string; step?: CreateTripStep }> => {
+    async (pastChoice: 'Completed' | 'Incomplete' = 'Incomplete'): Promise<{ ok: boolean; partial?: boolean; message: string; step?: CreateTripStep; tripId?: string }> => {
       if (allIssues.length > 0) {
         const first = allIssues[0];
         return { ok: false, message: first.message, step: STEP_OF[first.section] };
@@ -716,6 +716,8 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
         return {
           ok: true,
           message: (res.imported === 1 ? 'Trip created.' : `${res.imported} trips created.`) + quotationNote,
+          // The first trip — the assignment message goes out from it.
+          tripId: res.results?.find((r) => r.success && r.created_id)?.created_id,
         };
       } catch (e: any) {
         return { ok: false, message: e?.response?.data?.error?.message || e?.message || 'Trip not created' };

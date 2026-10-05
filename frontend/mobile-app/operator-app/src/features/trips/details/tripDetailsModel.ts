@@ -4,6 +4,7 @@
  * Mirrors the web's TripDetailsPage (tripStatus.ts, stopEvidence.ts,
  * utils/financialCalculations.ts) so both show the same thing.
  */
+import { lineTypeLabel } from '@mercon/shared-types';
 import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
 import { operatorService, type DriverUpdate, type LiveMediaStage, type OperatorTripDetail, type OperatorTripStop, type TripPhase } from '../../../lib/operator';
 
@@ -322,7 +323,34 @@ export function mapsLink(lat: number, lng: number): string {
   return `https://maps.google.com/?q=${lat},${lng}`;
 }
 
-export type QuickKind = 'status' | 'eta' | 'location' | 'delay';
+export type QuickKind = 'status' | 'eta' | 'location' | 'delay' | 'assignment';
+
+/** The person at the customer the assignment message @tags — whoever asked for the truck. */
+export interface TagPerson {
+  name: string;
+  phone?: string | null;
+}
+
+/** The customer's saved contacts, offered as the @tag (primary first). */
+export function customerContacts(trip: OperatorTripDetail): TagPerson[] {
+  const c = trip.customer;
+  if (!c) return [];
+  const out: TagPerson[] = [];
+  for (const [name, phone] of [
+    [c.primary_contact_person, c.primary_contact_phone],
+    [c.secondary_contact_person, c.secondary_contact_phone],
+  ] as const) {
+    const n = name?.trim();
+    if (n && !out.some((p) => p.name.toLowerCase() === n.toLowerCase())) out.push({ name: n, phone: phone?.trim() || null });
+  }
+  return out;
+}
+
+/** Puts the @tag line at the top of a message, replacing the one already there. */
+export function withTag(text: string, tag: TagPerson | null): string {
+  const body = text.replace(/^@[^\n]*\n?/, '');
+  return tag ? `@${tag.name}\n${body}` : body;
+}
 
 /** Road distance / drive time from the truck to the trip's destination. */
 export interface Remaining {
@@ -342,6 +370,8 @@ export interface QuickContext {
   remaining: Remaining | null;
   /** The customer tracking link, ending status messages when there is one. */
   trackingUrl?: string | null;
+  /** Assignment message only: who to @tag. */
+  tag?: TagPerson | null;
 }
 
 /** A stop as a short place code for the route line ("RUH"), else its name. */
@@ -368,8 +398,62 @@ export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; l
   return 2 * R * Math.asin(Math.sqrt(x));
 }
 
+/** A phone as the operators write it in the group: "+966 580130492". */
+export function groupPhone(p?: string | null): string {
+  const d = digits(p);
+  if (d.startsWith('966') && d.length > 3) return `+966 ${d.slice(3)}`;
+  if (d.length === 10 && d.startsWith('05')) return `+966 ${d.slice(1)}`;
+  if (d.length === 9 && d.startsWith('5')) return `+966 ${d}`;
+  return (p ?? '').trim();
+}
+
+/** "5 TON" → "05 TON", the way the group writes truck classes; others unchanged. */
+function truckClassText(v?: string | null): string {
+  const t = (v ?? '').trim().toUpperCase();
+  return t.replace(/^(\d)(\s*TON)$/, '0$1$2');
+}
+
+/** Both stops in the same city — the route then reads "RUH >>> RUH(LOCAL)". */
+function sameCity(a: Stop | undefined, b: Stop | undefined): boolean {
+  const key = (s: Stop | undefined) => (s?.location?.city || s?.location?.code || '').trim().toLowerCase();
+  return !!key(a) && key(a) === key(b);
+}
+
+/**
+ * The reply in the customer's group once a truck is assigned, in the operators' own format:
+ *   @Rashed Ahmed
+ *   1. RUH >>> RUH(LOCAL) 05 TON (SINGLE TRIP)
+ *   Driver Name # RIZWAN / Number # +966 580130492 / Truck no # DRA-9973
+ *   WITH TAILGATE (when the truck has one) · the tracking link
+ */
+function assignmentMessage(trip: OperatorTripDetail, trackingUrl: string | null | undefined, tag: TagPerson | null | undefined): string {
+  const stops = sortedStops(trip);
+  const last = stops.length - 1;
+  const route = last >= 0
+    ? `${placeCode(stops[0], 0)} >>> ${placeCode(stops[last], last)}${sameCity(stops[0], stops[last]) ? '(LOCAL)' : ''}`
+    : '';
+  const truckClass = truckClassText(trip.vehicle_type || trip.rateCard?.vehicle_type || trip.third_party_vehicle_type);
+  const tripType = lineTypeLabel(trip.rate_category || trip.rateCard?.rate_category || trip.quotation_line_type).toUpperCase();
+  const driver = trip.is_third_party
+    ? trip.third_party_driver_name
+    : trip.driver ? `${trip.driver.first_name} ${trip.driver.last_name}`.trim() : null;
+  const driverPhone = trip.is_third_party ? trip.third_party_driver_phone : trip.driver?.phone_primary;
+  const truck = trip.is_third_party ? trip.third_party_vehicle_plate : trip.vehicle?.plate_number;
+
+  const lines: string[] = [];
+  if (tag) lines.push(`@${tag.name}`);
+  lines.push(['1.', route, truckClass, tripType ? `(${tripType})` : ''].filter(Boolean).join(' '));
+  lines.push(`Driver Name # ${(driver || '—').toUpperCase()}`);
+  lines.push(`Number # ${groupPhone(driverPhone) || '—'}`);
+  lines.push(`Truck no # ${(truck || '—').toUpperCase()}`);
+  if (!trip.is_third_party && trip.vehicle?.has_tailgate) lines.push('', 'WITH TAILGATE');
+  if (trackingUrl) lines.push('', `Track live: ${trackingUrl}`);
+  return lines.join('\n');
+}
+
 /** The message for a quick send — every line the operator can still edit before sending. */
-export function quickMessage(kind: QuickKind, { trip, phase, f, position, remaining, trackingUrl }: QuickContext): string {
+export function quickMessage(kind: QuickKind, { trip, phase, f, position, remaining, trackingUrl, tag }: QuickContext): string {
+  if (kind === 'assignment') return assignmentMessage(trip, trackingUrl, tag);
   const stops = sortedStops(trip);
   const nextIdx = stops.findIndex((s) => !s.actual_arrival);
   const next = nextIdx >= 0 ? stops[nextIdx] : null;

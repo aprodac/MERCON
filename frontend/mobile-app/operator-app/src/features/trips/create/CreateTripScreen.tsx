@@ -6,10 +6,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
+import { Check, ChevronLeft, MessageCircle } from 'lucide-react-native';
 import Animated, { SlideInLeft, SlideInRight } from 'react-native-reanimated';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
+import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { useCreateTrip, type CreateTripStep } from './useCreateTrip';
 import { StepJob } from './components/StepJob';
 import { StepSchedule } from './components/StepSchedule';
@@ -18,6 +19,7 @@ import { ReviewSheet } from './components/ReviewSheet';
 import { PayoutMissingSheet } from './components/PayoutMissingSheet';
 import { getQuotationRoute, type OperatorQuotation } from '../../../lib/operator';
 import { SkeletonRows, fmtSar } from './components/ui';
+import { WA } from '../details/components/parts';
 
 const STEPS: Record<CreateTripStep, { title: string; short: string; next: string }> = {
   1: { title: 'Job details', short: 'Job', next: 'Continue' },
@@ -33,6 +35,8 @@ export default function CreateTripScreen() {
   const [showErrors, setShowErrors] = useState<Record<CreateTripStep, boolean>>({ 1: false, 2: false, 3: false });
   const [reviewOpen, setReviewOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+  // After creating: offer the assignment message to the customer's group before leaving.
+  const [created, setCreated] = useState<{ tripId: string; message: string } | null>(null);
   // Which way the steps slide: forward from the right, back from the left.
   const [direction, setDirection] = useState<1 | -1>(1);
 
@@ -99,8 +103,22 @@ export default function CreateTripScreen() {
       return;
     }
     setReviewOpen(false);
+    if (!res.partial && res.tripId) {
+      setCreated({ tripId: res.tripId, message: res.message });
+      return;
+    }
     setToast({ message: res.message, type: res.partial ? 'error' : 'success' });
     setTimeout(() => router.replace('/' as any), res.partial ? 3500 : 900);
+  };
+
+  const groupName = form.selectedCustomer?.whatsapp_group_name?.trim();
+  const sendAssignment = () => {
+    if (!created) return;
+    router.replace({ pathname: '/trip-details', params: { id: created.tripId, share: 'assignment' } } as any);
+  };
+  const finish = () => {
+    setCreated(null);
+    router.replace('/' as any);
   };
 
   const { money } = form;
@@ -182,6 +200,23 @@ export default function CreateTripScreen() {
         onClose={() => setPayoutOpen(false)}
         onSave={savePayout}
       />
+      <AppModal visible={!!created} onClose={finish} type="bottom-sheet" title="">
+        <View style={styles.doneWrap}>
+          <View style={styles.doneIcon}><Check size={26} color="#146C3C" strokeWidth={3} /></View>
+          <Text style={styles.doneTitle}>{created?.message.split('.')[0] || 'Trip created'}</Text>
+          {created && created.message.split('.').slice(1).join('.').trim() ? (
+            <Text style={styles.doneSub}>{created.message.split('.').slice(1).join('.').trim()}</Text>
+          ) : null}
+          <Text style={styles.doneSub}>Tell {groupName || form.selectedCustomer?.name || 'the customer'} which driver and truck are coming.</Text>
+          <TouchableOpacity style={styles.doneSend} onPress={sendAssignment} activeOpacity={0.85}>
+            <MessageCircle size={19} color={Colors.white} strokeWidth={2.3} />
+            <Text style={styles.doneSendText} numberOfLines={1}>Send to {groupName || 'customer group'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.doneLater} onPress={finish}>
+            <Text style={styles.doneLaterText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      </AppModal>
       <Toast visible={Boolean(toast)} message={toast?.message ?? ''} type={toast?.type ?? 'info'} onDismiss={() => setToast(null)} />
     </SafeAreaView>
   );
@@ -199,6 +234,14 @@ function MoneyCell({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  doneWrap: { alignItems: 'center', gap: 8, paddingTop: 4, paddingBottom: 8 },
+  doneIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#E8F5EE', alignItems: 'center', justifyContent: 'center' },
+  doneTitle: { fontSize: 19, fontWeight: '800', color: Colors.charcoal, marginTop: 4 },
+  doneSub: { fontSize: 13, color: '#6B6B76', textAlign: 'center' },
+  doneSend: { alignSelf: 'stretch', height: 52, borderRadius: 14, backgroundColor: WA, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10, paddingHorizontal: 16 },
+  doneSendText: { color: Colors.white, fontSize: 16, fontWeight: '800', flexShrink: 1 },
+  doneLater: { alignSelf: 'stretch', height: 48, alignItems: 'center', justifyContent: 'center' },
+  doneLaterText: { fontSize: 15, fontWeight: '700', color: Colors.charcoal },
   safe: { flex: 1, backgroundColor: Colors.coolGray },
   header: { backgroundColor: Colors.white, paddingHorizontal: Spacing.base, paddingTop: Spacing.sm, paddingBottom: 10 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
