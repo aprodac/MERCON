@@ -164,11 +164,11 @@ export default function CreateTripScreen() {
       </View>
 
       {form.loading ? (
-        <View style={styles.scroll}>
+        <View style={[styles.body, styles.scroll]}>
           <SkeletonRows rows={4} height={96} />
         </View>
       ) : (
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.body} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <ScrollView
             ref={scrollRef}
             contentContainerStyle={styles.scroll}
@@ -252,7 +252,9 @@ const styles = StyleSheet.create({
   doneSendText: { color: Colors.white, fontSize: 16, fontWeight: '800', flexShrink: 1 },
   doneLater: { alignSelf: 'stretch', height: 48, alignItems: 'center', justifyContent: 'center' },
   doneLaterText: { fontSize: 15, fontWeight: '700', color: Colors.charcoal },
-  safe: { flex: 1, backgroundColor: Colors.coolGray },
+  // White, so the status-bar area above the header matches the header; the form scrolls on gray.
+  safe: { flex: 1, backgroundColor: Colors.white },
+  body: { flex: 1, backgroundColor: Colors.coolGray },
   header: { backgroundColor: Colors.white, paddingHorizontal: Spacing.base, paddingTop: Spacing.sm, paddingBottom: 10 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   back: { marginLeft: -4, padding: 2 },
