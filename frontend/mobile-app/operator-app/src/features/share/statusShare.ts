@@ -12,7 +12,7 @@
 import { formatFleetStatusMessage } from '@mercon/shared-types';
 import { autoTrackingUrl, operatorService, type OperatorTripDetail } from '../../lib/operator';
 import { customerDetailApi } from '../customers/details/customerDetailApi';
-import { isMonthly, makeFormatters, phaseOf, statusTripOf, type Remaining } from '../trips/details/tripDetailsModel';
+import { destinationOf, isMonthly, makeFormatters, phaseOf, remainingTo, statusTripOf, type Remaining } from '../trips/details/tripDetailsModel';
 
 /** Each trip is a request; this many is plenty for one WhatsApp message. */
 export const MAX_STATUS_TRIPS = 30;
@@ -37,12 +37,13 @@ const safe = async <T,>(p: Promise<T>, fallback: T): Promise<T> => {
 };
 
 /**
- * One message per customer for these trips. `remaining` adds a live ETA for the
- * trips the caller has a road route for (the Fleet map does).
+ * One message per customer for these trips. `positions` (trip id → where its
+ * truck is now, e.g. from the Fleet map) adds a live road ETA to the trip's
+ * destination for trips on the road — the same estimate the trip page sends.
  */
 export async function buildStatusMessages(
   tripIds: string[],
-  opts: { remaining?: Record<string, Remaining | null> } = {},
+  opts: { positions?: Record<string, { lat: number; lng: number } | null> } = {},
 ): Promise<CustomerStatusMessage[]> {
   const ids = [...new Set(tripIds)].slice(0, MAX_STATUS_TRIPS);
   if (ids.length === 0) return [];
@@ -52,6 +53,14 @@ export async function buildStatusMessages(
     safe(operatorService.trackingLinks(ids), {} as Awaited<ReturnType<typeof operatorService.trackingLinks>>),
   ]);
   const f = makeFormatters(tz);
+
+  // Live ETAs, all at once — a trip without one just shows its planned arrival.
+  const remaining: Record<string, Remaining | null> = {};
+  await Promise.all(trips.map(async (t) => {
+    const pos = t ? opts.positions?.[t.id] : null;
+    const dest = t && pos && phaseOf(t.status) === 'active' ? destinationOf(t) : null;
+    if (t && pos && dest) remaining[t.id] = await safe(remainingTo(pos, dest, dest.name), null);
+  }));
 
   // Keep the order the trips were picked in, grouped by customer.
   const groups = new Map<string, OperatorTripDetail[]>();
@@ -71,7 +80,7 @@ export async function buildStatusMessages(
       list.map((t) => statusTripOf(t, {
         phase: phaseOf(t.status),
         f,
-        remaining: opts.remaining?.[t.id] ?? null,
+        remaining: remaining[t.id] ?? null,
         trackingUrl: links[t.id] ? autoTrackingUrl(links[t.id]) : null,
       })),
       {

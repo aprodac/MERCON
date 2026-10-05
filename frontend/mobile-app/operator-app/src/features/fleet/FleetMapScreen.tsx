@@ -38,10 +38,10 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import {
-  AlertTriangle, Compass, Focus, Info, List, LocateFixed, Map as MapIcon, Minus, Moon, Navigation, Plus, Search, Sun, Truck, X, type LucideIcon,
+  AlertTriangle, Compass, Focus, Info, List, LocateFixed, Map as MapIcon, MessageCircle, Minus, Moon, Navigation, Plus, Search, Sun, Truck, X, type LucideIcon,
 } from 'lucide-react-native';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
-import { operatorService } from '../../lib/operator';
+import { operatorService, type LiveUnit } from '../../lib/operator';
 import { AppTopBar } from '@/components/AppTopBar';
 import { makeTime } from '../trips/list/tripListModel';
 import { FleetMap, type FleetMapHandle, type FocusMode, type MapTheme, type MapView } from './FleetMap';
@@ -52,8 +52,11 @@ import { AttentionList, ListTabs, ScheduledList, attentionItems, matchesTripText
 import { useActionInbox } from '../dashboard/actions/useActionInbox';
 import { useActionIntent } from '../dashboard/actions/useActionIntent';
 import { MediaViewer, type ViewerItem } from '../trips/details/components/MediaViewer';
+import { niceName } from '../trips/create/components/ui';
+import type { QuickKind } from '../trips/details/tripDetailsModel';
+import { BulkStatusSheet, ShareKindSheet, TripShareFromMap } from './FleetShare';
 import {
-  NEAR_KM, agoText, computeEta, haversineKm, located, matchesFilter, matchesQuery, nextStop, onTrip, placeFromQuery, unitPriority, type FleetFilter,
+  NEAR_KM, agoText, computeEta, haversineKm, isDelayed, located, matchesFilter, matchesQuery, nextStop, onTrip, placeFromQuery, unitPriority, type FleetFilter,
 } from './fleetModel';
 
 const INK = '#3E3C3D';
@@ -135,6 +138,33 @@ export default function FleetMapScreen() {
   // Trip-changing actions: next step / cancel from the sheet, Find a truck from the lists.
   const tripActions = useTripActions((message) => setToast({ message, type: 'success' }));
   const [findFor, setFindFor] = useState<string | null>(null);
+
+  // WhatsApp (FleetShare.tsx): what to send about the picked truck, then the trip page's share sheet…
+  const [shareChoose, setShareChoose] = useState(false);
+  const [shareKind, setShareKind] = useState<QuickKind | null>(null);
+  // …and trucks picked in the list (long-press) for one status message per customer.
+  const [picked, setPicked] = useState<Set<string> | null>(null);
+  const [bulk, setBulk] = useState<{ ids: string[]; positions: Record<string, { lat: number; lng: number } | null> } | null>(null);
+  const togglePick = (u: LiveUnit) => {
+    if (!u.trip) return; // a free truck has no trip to report on
+    Haptics.selectionAsync().catch(() => {});
+    setPicked((prev) => {
+      const next = new Set(prev ?? []);
+      if (next.has(u.key)) next.delete(u.key); else next.add(u.key);
+      return next.size ? next : null;
+    });
+  };
+  const pickedUnits = useMemo(() => all.filter((u) => picked?.has(u.key) && u.trip), [all, picked]);
+  const lastCustomer = pickedUnits[pickedUnits.length - 1]?.trip?.customer_name ?? null;
+  const pickAllOf = (customer: string) =>
+    setPicked((prev) => new Set([...(prev ?? []), ...shown.filter((u) => u.trip?.customer_name === customer).map((u) => u.key)]));
+  const sendPicked = () => {
+    if (!pickedUnits.length) return;
+    setBulk({
+      ids: pickedUnits.map((u) => u.trip!.id),
+      positions: Object.fromEntries(pickedUnits.map((u) => [u.trip!.id, located(u) ? { lat: u.position!.lat, lng: u.position!.lng } : null])),
+    });
+  };
   // "Assign a truck" from an attention item opens Find a truck here instead of the trip page.
   const fleetIntent = (i: Parameters<typeof onIntent>[0]) => (i.type === 'trip' && i.assign === 'truck' ? setFindFor(i.tripId) : onIntent(i));
   const attention = useMemo(() => {
@@ -276,15 +306,44 @@ export default function FleetMapScreen() {
       ) : view === 'list' && listTab === 'scheduled' ? (
         <ScheduledList trips={scheduled} f={f} now={now} onOpenTrip={showTrip} onFindTruck={setFindFor} />
       ) : view === 'list' ? (
-        <FlatList
-          data={shown}
-          keyExtractor={(u) => u.key}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
-          ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#F1F1F3' }} />}
-          style={s.listBox}
-          renderItem={({ item }) => <UnitRow unit={item} now={now} km={place && item.position ? haversineKm(item.position, place) : null} onPress={() => pick(item.key)} />}
-          ListEmptyComponent={<Text style={s.empty}>{live.isLoading ? 'Loading trucks…' : 'No trucks match.'}</Text>}
-        />
+        <View style={{ flex: 1 }}>
+          {picked ? (
+            <View style={s.pickBar}>
+              <Text style={s.pickText}>{pickedUnits.length} picked</Text>
+              {lastCustomer ? (
+                <TouchableOpacity onPress={() => pickAllOf(lastCustomer)} style={s.pickChip} accessibilityLabel={`Pick every truck of ${lastCustomer}`}>
+                  <Text style={s.pickChipText} numberOfLines={1}>All of {niceName(lastCustomer)}</Text>
+                </TouchableOpacity>
+              ) : null}
+              <TouchableOpacity onPress={() => setPicked(null)} hitSlop={8}><Text style={s.pickCancel}>Cancel</Text></TouchableOpacity>
+            </View>
+          ) : null}
+          <FlatList
+            data={shown}
+            keyExtractor={(u) => u.key}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: picked ? 100 : 40 }}
+            ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: '#F1F1F3' }} />}
+            style={s.listBox}
+            ListHeaderComponent={!picked && shown.some((u) => u.trip) ? <Text style={s.listHint}>Long-press trucks to send several statuses on WhatsApp</Text> : null}
+            renderItem={({ item }) => (
+              <UnitRow
+                unit={item}
+                now={now}
+                km={place && item.position ? haversineKm(item.position, place) : null}
+                onPress={() => (picked ? togglePick(item) : pick(item.key))}
+                onLongPress={() => togglePick(item)}
+                selected={picked ? picked.has(item.key) : undefined}
+              />
+            )}
+            ListEmptyComponent={<Text style={s.empty}>{live.isLoading ? 'Loading trucks…' : 'No trucks match.'}</Text>}
+          />
+          {picked ? (
+            <TouchableOpacity style={s.sendBar} onPress={sendPicked} activeOpacity={0.85} accessibilityLabel="Send status on WhatsApp">
+              <MessageCircle size={18} color="#FFFFFF" />
+              <Text style={s.sendBarText}>Send status · {pickedUnits.length} truck{pickedUnits.length === 1 ? '' : 's'}</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
       ) : (
         <View style={{ flex: 1 }}>
           <FleetMap
@@ -394,6 +453,7 @@ export default function FleetMapScreen() {
               } : null}
               onCancelTrip={unit.trip ? () => tripActions.cancel(unit.trip!.id, unit.trip!.ref_id) : null}
               busy={tripActions.busy}
+              onShare={unit.trip ? () => setShareChoose(true) : null}
             />
           ) : unit ? null : groupUnits.length ? (
             <GroupSheet units={groupUnits} now={now} onPick={pick} onClose={() => setGroup(null)} onHeight={setSheetH} />
@@ -417,6 +477,18 @@ export default function FleetMapScreen() {
         </View>
       )}
 
+      {unit?.trip ? (
+        <ShareKindSheet
+          visible={shareChoose}
+          title={`WhatsApp · ${unit.vehicle?.plate_number ?? unit.trip.ref_id ?? 'truck'}`}
+          delayed={isDelayed(unit)}
+          // One sheet closes before the next opens (two modals at once don't show on iOS).
+          onPick={(k) => { setShareChoose(false); setTimeout(() => setShareKind(k), 300); }}
+          onClose={() => setShareChoose(false)}
+        />
+      ) : null}
+      {unit?.trip && shareKind ? <TripShareFromMap tripId={unit.trip.id} kind={shareKind} onClose={() => setShareKind(null)} /> : null}
+      {bulk ? <BulkStatusSheet key={bulk.ids.join(',')} tripIds={bulk.ids} positions={bulk.positions} onClose={() => { setBulk(null); setPicked(null); }} /> : null}
       <FindTruckSheet tripId={findFor} units={all} onClose={() => setFindFor(null)} onAssigned={(message) => setToast({ message, type: 'success' })} />
       <MediaViewer items={viewer?.items ?? null} startIndex={viewer?.index ?? 0} title={viewer?.title ?? ''} onClose={() => setViewer(null)} />
       <Toast visible={!!toast} message={toast?.message ?? ''} type={toast?.type ?? 'success'} onDismiss={() => setToast(null)} />
@@ -457,6 +529,14 @@ const s = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
   near: { fontSize: 13, fontWeight: '600', color: '#3F3F46' },
 
+  pickBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: LINE },
+  pickText: { fontSize: 14, fontWeight: '700', color: INK },
+  pickChip: { flexShrink: 1, borderRadius: 14, borderWidth: 1, borderColor: LINE, paddingHorizontal: 10, paddingVertical: 5 },
+  pickChipText: { fontSize: 12, fontWeight: '600', color: INK },
+  pickCancel: { fontSize: 13, fontWeight: '600', color: MUTED, marginLeft: 'auto' },
+  listHint: { fontSize: 12, color: MUTED, paddingTop: 10, paddingBottom: 2 },
+  sendBar: { position: 'absolute', left: 16, right: 16, bottom: 24, height: 52, borderRadius: 16, backgroundColor: '#25D366', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, ...shadow },
+  sendBarText: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
   listBox: { flex: 1, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: LINE },
   empty: { textAlign: 'center', color: MUTED, paddingTop: 40, fontSize: 14 },
 

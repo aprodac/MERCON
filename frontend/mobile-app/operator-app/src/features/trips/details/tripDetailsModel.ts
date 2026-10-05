@@ -360,6 +360,34 @@ export function hoursText(sec: number): string {
   return mm ? `${h} HRS ${mm} MIN` : `${h} HRS`;
 }
 
+/** Average truck speed for the straight-line guess when routing is down. */
+const FALLBACK_KMH = 70;
+/** Straight line → road distance, roughly. */
+const ROAD_FACTOR = 1.25;
+/**
+ * The router times a car; a loaded truck averages less. Same cap as the
+ * customer tracking page (backend `customerTracking.ts`), so the ETA in the
+ * status message matches what the customer's link shows.
+ */
+const TRUCK_MAX_AVG_KMH = 80;
+const truckDriveSeconds = (meters: number, providerSec: number) => Math.max(providerSec, meters / (TRUCK_MAX_AVG_KMH / 3.6));
+
+/** Road distance and truck drive time from a position to a place; a straight-line guess when routing is down. */
+export async function remainingTo(from: { lat: number; lng: number }, to: { lat: number; lng: number }, toName: string): Promise<Remaining> {
+  const r = await operatorService.routeEstimate(from, to).catch(() => null);
+  if (r) return { km: r.distanceMeters / 1000, sec: truckDriveSeconds(r.distanceMeters, r.durationSeconds), to: toName, approx: false };
+  const km = haversineKm(from, to) * ROAD_FACTOR;
+  return { km, sec: (km / FALLBACK_KMH) * 3600, to: toName, approx: true };
+}
+
+/** Where a trip ends — its last stop's position and the name customers use ("AL BAHA"). */
+export function destinationOf(t: OperatorTripDetail): { lat: number; lng: number; name: string } | null {
+  const stops = sortedStops(t);
+  const dest = stops[stops.length - 1];
+  if (!dest || !Number.isFinite(dest.location_lat) || (!dest.location_lat && !dest.location_lng)) return null;
+  return { lat: dest.location_lat, lng: dest.location_lng, name: (dest.location?.city || stopName(dest, stops.length - 1)).toUpperCase() };
+}
+
 /** Great-circle distance in km. */
 export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6371;

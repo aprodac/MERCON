@@ -17,16 +17,16 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  ActivityIndicator, Alert, Animated, Image, LayoutAnimation, Linking, PanResponder, ScrollView, Share, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
+  ActivityIndicator, Animated, Image, LayoutAnimation, Linking, PanResponder, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions,
 } from 'react-native';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
-import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Play, Smartphone, Truck, X } from 'lucide-react-native';
-import { operatorService, type LiveTripMedia, type LiveUnit, type TripMediaItem } from '../../lib/operator';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Play, Smartphone, Truck, X } from 'lucide-react-native';
+import type { LiveTripMedia, LiveUnit, TripMediaItem } from '../../lib/operator';
 import type { ViewerItem } from '../trips/details/components/MediaViewer';
 import { niceName } from '../trips/create/components/ui';
 import type { makeTime } from '../trips/list/tripListModel';
 import { STATE_STYLE, unitState } from './FleetMap';
-import { agoText, buildEtaShareText, formatDuration, formatKm, isFree, nextStop, onTrip, punctuality, type EtaInfo } from './fleetModel';
+import { agoText, formatDuration, formatKm, isFree, nextStop, punctuality, type EtaInfo } from './fleetModel';
 
 const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
@@ -71,10 +71,19 @@ export function StateChip({ unit, now }: { unit: LiveUnit; now: number }) {
   );
 }
 
-export function UnitRow({ unit: u, now, km, onPress }: { unit: LiveUnit; now: number; km: number | null; onPress: () => void }) {
+export function UnitRow({ unit: u, now, km, onPress, onLongPress, selected }: {
+  unit: LiveUnit; now: number; km: number | null; onPress: () => void;
+  /** Long-press starts picking trucks for a bulk status message. */
+  onLongPress?: () => void;
+  /** Picking mode: true / false shows a check box; undefined hides it. */
+  selected?: boolean;
+}) {
   const next = nextStop(u);
   return (
-    <TouchableOpacity style={s.row} onPress={onPress} activeOpacity={0.6}>
+    <TouchableOpacity style={[s.row, selected && s.rowPicked]} onPress={onPress} onLongPress={onLongPress} delayLongPress={350} activeOpacity={0.6}>
+      {selected !== undefined ? (
+        <View style={[s.check, selected && s.checkOn, !u.trip && { opacity: 0.3 }]}>{selected ? <Check size={13} color="#FFFFFF" strokeWidth={3} /> : null}</View>
+      ) : null}
       <View style={{ flex: 1, gap: 2 }}>
         <Text style={s.rowPlate}>{u.vehicle?.plate_number ?? 'No truck'}<Text style={s.rowDriver}>{u.driver ? `  ·  ${niceName(u.driver.name)}` : ''}</Text></Text>
         <Text style={s.rowSub} numberOfLines={2}>
@@ -86,7 +95,7 @@ export function UnitRow({ unit: u, now, km, onPress }: { unit: LiveUnit; now: nu
       </View>
       <View style={{ alignItems: 'flex-end', gap: 6 }}>
         <StateChip unit={u} now={now} />
-        <ChevronRight size={16} color="#A1A1AA" />
+        {selected === undefined ? <ChevronRight size={16} color="#A1A1AA" /> : null}
       </View>
     </TouchableOpacity>
   );
@@ -106,7 +115,7 @@ function SheetFrame({ children, onHeight, panHandlers, style }: {
 
 export function UnitSheet({
   unit: u, eta, routeLoading, now, f, expanded, onExpand, position, onPrev, onNext, onClose, onOpen, onHeight, media, onOpenMedia,
-  nextStep, onCancelTrip, busy,
+  nextStep, onCancelTrip, busy, onShare,
 }: {
   unit: LiveUnit; eta: EtaInfo | null; routeLoading: boolean; now: number; f: Time;
   expanded: boolean; onExpand: (v: boolean) => void;
@@ -122,6 +131,8 @@ export function UnitSheet({
   onCancelTrip?: (() => void) | null;
   /** A status change is on its way — the buttons wait. */
   busy?: boolean;
+  /** WhatsApp: status, location or delay notice for this truck's trip (FleetShare.tsx). */
+  onShare?: (() => void) | null;
 }) {
   const { width } = useWindowDimensions();
   const t = u.trip;
@@ -188,29 +199,6 @@ export function UnitSheet({
     },
   }));
 
-  // ETA + the customer's live tracking link (the same link the trip page shares). The
-  // link is skipped when the customer has tracking switched off or it can't be fetched.
-  const [sharing, setSharing] = useState(false);
-  const shareEta = async () => {
-    if (!t || sharing) return;
-    setSharing(true);
-    let url: string | null = null;
-    try {
-      const link = await operatorService.trackingLink(t.id);
-      url = link.enabled ? link.url : null;
-    } catch {
-      // share without the link
-    }
-    setSharing(false);
-    const text = buildEtaShareText(u, eta, (d) => f.time(d.toISOString()), url);
-    const viaWhatsApp = () => Linking.openURL(`https://wa.me/?text=${encodeURIComponent(text)}`).catch(() => Alert.alert("Couldn't open WhatsApp"));
-    Alert.alert(url ? 'Share ETA and live link' : 'Share ETA', url ? 'The customer can follow the truck live from the link.' : 'Live tracking is off for this customer — the ETA goes without a link.', [
-      { text: 'WhatsApp', onPress: viaWhatsApp },
-      { text: 'Other apps', onPress: () => { Share.share({ message: text }).catch(() => {}); } },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
-  };
-
   return (
     <SheetFrame onHeight={onHeight} panHandlers={pan.panHandlers} style={{ transform: [{ translateX: tx }, { translateY: ty }] }}>
       <View style={s.cardTop}>
@@ -262,9 +250,9 @@ export function UnitSheet({
             <Phone size={17} color="#3F3F46" strokeWidth={2.2} />
           </TouchableOpacity>
         ) : null}
-        {t && onTrip(u) ? (
-          <TouchableOpacity style={s.iconBtn} onPress={shareEta} disabled={sharing} accessibilityLabel="Share ETA and live tracking link">
-            {sharing ? <ActivityIndicator size="small" color="#3F3F46" /> : <MessageCircle size={17} color="#3F3F46" strokeWidth={2.2} />}
+        {t && onShare ? (
+          <TouchableOpacity style={s.iconBtn} onPress={onShare} accessibilityLabel="Send on WhatsApp">
+            <MessageCircle size={17} color="#3F3F46" strokeWidth={2.2} />
           </TouchableOpacity>
         ) : null}
         {t && nextStep ? (
@@ -470,6 +458,9 @@ const s = StyleSheet.create({
   stateText: { fontSize: 12, fontWeight: '600' },
 
   row: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 13 },
+  rowPicked: { backgroundColor: '#F6F6F7', marginHorizontal: -16, paddingHorizontal: 16 },
+  check: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#C4C4CC', alignItems: 'center', justifyContent: 'center' },
+  checkOn: { backgroundColor: INK, borderColor: INK },
   rowPlate: { fontSize: 15, fontWeight: '700', color: INK },
   rowDriver: { fontSize: 14, fontWeight: '500', color: '#3F3F46' },
   rowSub: { fontSize: 13, color: MUTED },
