@@ -235,6 +235,13 @@ Done on 2026-10-05:
   `tech.mercon.operator`. The driver app (`tech.merconapp.driver`) already has
   a push key on its Expo project (checked 2026-10-05), so nothing to add there. The `.p8` file itself never goes in git or chat.
 
+- Android signing (EAS default keystore for `tech.mercon.operator`, created
+  2026-10-05 on the first build): upload certificate
+  **SHA-1 `31:FF:48:2F:42:CF:72:6B:07:6E:58:4F:DF:19:53:EE:C2:08:25:97`**.
+  Never change it; check every operator AAB with
+  `keytool -printcert -jarfile <file>` before uploading to Play. First Play file:
+  1.1.0 (version code 104), built from `b46959a`, talks to `https://mercon.tech/api`.
+
 Still to do: tick **Push Notifications** on the `tech.mercon.operator`
 identifier (A2) and delete its old App Store profile; push code in the operator
 app; on the backend a device table for operators (a schema change — needs owner
