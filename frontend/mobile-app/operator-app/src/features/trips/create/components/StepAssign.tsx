@@ -1,15 +1,18 @@
 /** Step 3 — who: own driver and truck (or several, for a monthly contract), or a 3PL partner. */
 import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, TextInput, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, StyleSheet, ScrollView } from 'react-native';
+import { useRouter } from 'expo-router';
 import { CalendarDays, ChevronRight, Clock3, Handshake, SlidersHorizontal, Sparkles, Truck, User, Users, X } from 'lucide-react-native';
 import { Colors, Spacing } from '@mercon/mobile-shared/theme/tokens';
 import { truckClassOfVehicle } from '@mercon/shared-types';
 import { DriverAvatar } from '../../../drivers/components/DriverAvatar';
 import { UNASSIGNED, type CreateTripForm } from '../useCreateTrip';
+import { driverChoices, topPicks, truckChoices, truckGroupLabel } from '../assignModel';
 import type { OperatorDriverOption, OperatorVehicleOption } from '../../../../lib/operator';
 import {
   Card,
   Chip,
+  ChipRow,
   ErrorText,
   FieldButton,
   Label,
@@ -19,6 +22,7 @@ import {
   Segmented,
   TextField,
   fmtDay,
+  fmtSar,
   initialsOf,
   niceName,
   shortName,
@@ -29,13 +33,13 @@ import {
 type DriverTarget = { kind: 'master' } | { kind: 'co' } | { kind: 'rotation'; index: number } | { kind: 'day'; date: string };
 
 const fullName = (d?: { first_name?: string; last_name?: string } | null) => (d ? niceName(`${d.first_name || ''} ${d.last_name || ''}`.trim()) : '');
-const isFree = (status?: string | null) => !status || status.toLowerCase() === 'available';
 
 function Avatar({ d, size }: { d?: OperatorDriverOption | null; size: number }) {
   return <DriverAvatar initials={initialsOf(fullName(d))} avatarUrl={d?.avatar_url || d?.photo_url} size={size} />;
 }
 
 export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErrors: boolean }) {
+  const router = useRouter();
   const [driverTarget, setDriverTarget] = useState<DriverTarget | null>(null);
   const [truckSheet, setTruckSheet] = useState(false);
   const [providerSheet, setProviderSheet] = useState(false);
@@ -45,50 +49,55 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
   const err = (field: string) => (showErrors ? issues.find((i) => i.field === field)?.message : undefined);
   const payoutIssue = showErrors ? form.allIssues.find((i) => i.field.startsWith('driverPayout'))?.message : undefined;
 
-  const recMap = useMemo(() => new Map(form.recommended.map((r) => [r.driverId, r])), [form.recommended]);
   const truckOf = (driverId: string) => form.vehicles.find((v) => v.id === form.driverTruckId(driverId));
 
-  const driverOptions = (exclude?: string): PickerOption[] => {
-    const opts = form.drivers
-      .filter((d) => d.id !== exclude && !`${d.first_name} ${d.last_name}`.toLowerCase().includes('audit'))
-      .map((d) => {
-        const rec = recMap.get(d.id);
-        const truck = truckOf(d.id);
-        const free = isFree(d.status);
+  // The server's ranking, in its order and groups, with its reasons (same as the web picker).
+  const choices = useMemo(
+    () =>
+      driverChoices(form.drivers, form.recommended, {
+        tz: form.tz,
+        origin: niceName(form.slot.origin),
+        destination: niceName(form.slot.destination),
+        keepId: form.driverId,
+      }),
+    [form.drivers, form.recommended, form.tz, form.slot.origin, form.slot.destination, form.driverId],
+  );
+
+  const driverOptions = (exclude?: string): PickerOption[] =>
+    choices
+      .filter((c) => c.driver.id !== exclude)
+      .map((c) => {
+        const truck = truckOf(c.driver.id);
         return {
-          value: d.id,
-          label: fullName(d) || 'Driver',
-          sub: [truck ? `${truck.plate_number} · ${truckClassOfVehicle(truck)}` : 'No truck', rec?.routeTripCount ? `${rec.routeTripCount} trips on this route` : '', !free ? d.status : '']
-            .filter(Boolean)
-            .join(' · '),
-          group: rec && free ? 'Recommended' : free ? 'Available' : 'Busy',
-          badge: rec?.capacityMatch === false && truck ? { label: 'Other class', tone: 'warning' as const } : undefined,
-          leading: <Avatar d={d} size={32} />,
-          disabled: !free,
-          score: rec ? rec.score + (rec.capacityMatch ? 1000 : 0) : -1,
+          value: c.driver.id,
+          label: fullName(c.driver) || 'Driver',
+          sub: truck ? `${truck.plate_number} · ${truckClassOfVehicle(truck)}` : 'No truck',
+          group: c.groupLabel,
+          badge: { label: c.statusLabel, tone: c.statusLabel === 'Free' ? ('success' as const) : ('warning' as const) },
+          chips: c.chips.slice(0, 4),
+          leading: <Avatar d={c.driver} size={32} />,
+          disabled: c.blocked,
         };
       });
-    const order: Record<string, number> = { Recommended: 0, Available: 1, Busy: 2 };
-    opts.sort((a, b) => order[a.group] - order[b.group] || b.score - a.score || a.label.localeCompare(b.label));
-    return opts;
-  };
 
   const truckOptions: PickerOption[] = useMemo(() => {
-    const opts = form.vehicles.map((v) => {
-      const cls = truckClassOfVehicle(v);
-      const free = isFree(v.status) || v.id === form.vehicleId;
-      return {
-        value: v.id,
-        label: v.plate_number,
-        sub: [niceName(v.asset_type), cls, !free ? v.status : ''].filter(Boolean).join(' · '),
-        group: cls === form.vehicleType ? `${form.vehicleType} trucks` : 'Other classes',
-        disabled: !free,
-        leading: <Truck size={18} color={Colors.gray500} />,
-      };
-    });
-    opts.sort((a, b) => (a.group === b.group ? a.label.localeCompare(b.label) : a.group.startsWith(form.vehicleType) ? -1 : 1));
+    const opts = truckChoices(form.vehicles, {
+      tripClass: form.vehicleType,
+      rules: form.compatRules,
+      usualTruckId: form.driverId && form.driverId !== UNASSIGNED ? form.driverTruckId(form.driverId) : null,
+      driverName: form.selectedDriver?.first_name ? niceName(form.selectedDriver.first_name) : undefined,
+      selectedId: form.vehicleId,
+    }).map((t) => ({
+      value: t.vehicle.id,
+      label: t.vehicle.plate_number,
+      sub: [niceName(t.vehicle.asset_type), t.cls].filter(Boolean).join(' · '),
+      group: truckGroupLabel(t.group, form.vehicleType),
+      disabled: t.blocked,
+      chips: t.chips,
+      leading: <Truck size={18} color={Colors.gray500} />,
+    }));
     return [{ value: UNASSIGNED, label: 'Assign later', sub: 'Pick the truck before dispatch', leading: <Clock3 size={18} color={Colors.warning} /> }, ...opts];
-  }, [form.vehicles, form.vehicleType, form.vehicleId]);
+  }, [form]);
 
   const onPickDriver = (id: string) => {
     const t = driverTarget;
@@ -105,10 +114,7 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
   const own = form.assignmentType === 'own';
   const later = form.driverId === UNASSIGNED;
   const rotation = form.isMonthly && form.monthlyMode === 'rotation';
-  const top = form.recommended
-    .filter((r) => form.drivers.some((d) => d.id === r.driverId && isFree(d.status)))
-    .sort((a, b) => Number(b.capacityMatch) - Number(a.capacityMatch) || b.score - a.score)
-    .slice(0, 3);
+  const { picks: top, best: topIsBest } = topPicks(choices);
 
   return (
     <View style={{ gap: Spacing.sm }}>
@@ -139,7 +145,43 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
             placeholder="—"
             error={Boolean(err('thirdPartyCost'))}
           />
+          {form.partnerRate && Number(form.partnerRate.cost) > 0 ? (
+            <View style={[styles.rowCenter, { gap: 8, marginTop: 6 }]}>
+              <Chip label={`Partner rate SAR ${fmtSar(Number(form.partnerRate.cost))}`} tone="success" />
+              {Number(form.thirdPartyCost) !== Number(form.partnerRate.cost) ? (
+                <LinkButton label="Use it" onPress={() => form.setThirdPartyCost(String(Number(form.partnerRate!.cost)))} />
+              ) : null}
+            </View>
+          ) : null}
           <ErrorText>{err('thirdPartyCost')}</ErrorText>
+          {form.partnerDrivers.length > 0 ? (
+            <>
+              <Label>Sent before</Label>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                {form.partnerDrivers.map((d, i) => {
+                  const on = Boolean(d.driverName && d.driverName === form.thirdPartyDriverName && (d.vehiclePlate || '') === form.thirdPartyVehiclePlate);
+                  return (
+                    <TouchableOpacity
+                      key={`${d.driverName}-${d.vehiclePlate}-${i}`}
+                      onPress={() => {
+                        tap();
+                        form.usePartnerDriver(d);
+                      }}
+                      activeOpacity={0.75}
+                      style={[styles.pastDriver, on && styles.pastDriverOn]}
+                    >
+                      <Text style={styles.pastName} numberOfLines={1}>
+                        {niceName(d.driverName) || 'Driver'}
+                      </Text>
+                      <Text style={styles.pastSub} numberOfLines={1}>
+                        {[d.vehiclePlate, d.vehicleType].filter(Boolean).join(' · ') || d.driverPhone || '—'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </>
+          ) : null}
           <Label>Their driver and truck (optional)</Label>
           <View style={styles.row}>
             <TextField value={form.thirdPartyDriverName} onChangeText={form.setThirdPartyDriverName} placeholder="Driver name" style={{ flex: 1 }} />
@@ -182,36 +224,45 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
               <AssignedBody
                 driver={form.selectedDriver}
                 truck={form.vehicleId === UNASSIGNED ? null : form.selectedVehicle}
-                trips={recMap.get(form.selectedDriver.id)?.routeTripCount}
+                chips={choices.find((c) => c.driver.id === form.selectedDriver!.id)?.chips ?? []}
                 tripClass={form.vehicleType}
                 onChangeTruck={() => setTruckSheet(true)}
               />
             </Section>
           ) : (
-            <Section icon={Sparkles} tone="violet" title={top.length ? 'Recommended for this route' : 'Driver'}>
-              {top.map((r, i) => {
-                const d = form.drivers.find((x) => x.id === r.driverId)!;
-                const truck = truckOf(r.driverId);
+            <Section
+              icon={Sparkles}
+              tone="violet"
+              title={top.length ? (topIsBest ? 'Best for this trip' : 'Suggested drivers') : 'Driver'}
+              badge={form.recommendedLoading ? <Chip label="Checking…" /> : undefined}
+            >
+              {!form.slot.pickupTime && top.length ? <Text style={[styles.hint, { marginBottom: 6 }]}>Set the pickup time on step 2 to check clashes and rest.</Text> : null}
+              {top.map((c, i) => {
+                const truck = truckOf(c.driver.id);
                 return (
                   <TouchableOpacity
-                    key={r.driverId}
+                    key={c.driver.id}
                     onPress={() => {
                       tap();
-                      form.selectDriver(r.driverId);
+                      form.selectDriver(c.driver.id);
                     }}
                     activeOpacity={0.7}
                     style={[styles.driver, i === 0 && { marginTop: 0 }]}
                   >
-                    <Avatar d={d} size={38} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.driverName} numberOfLines={1}>
-                        {fullName(d)}
-                      </Text>
+                    <Avatar d={c.driver} size={38} />
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <View style={styles.rowCenter}>
+                        <Text style={[styles.driverName, { flex: 1 }]} numberOfLines={1}>
+                          {fullName(c.driver)}
+                        </Text>
+                        {c.rec?.score ? <Text style={styles.score}>{c.rec.score}</Text> : null}
+                      </View>
                       <Text style={styles.driverSub} numberOfLines={1}>
-                        {[truck ? `${truck.plate_number} · ${truckClassOfVehicle(truck)}` : 'No truck', r.routeTripCount ? `${r.routeTripCount} trips here` : ''].filter(Boolean).join(' · ')}
+                        {truck ? `${truck.plate_number} · ${truckClassOfVehicle(truck)}` : 'No truck'}
                       </Text>
+                      <ChipRow chips={c.chips.slice(0, 3)} style={{ marginTop: 5 }} />
                     </View>
-                    {!r.capacityMatch ? <Chip label="Other class" tone="warning" /> : <ChevronRight size={16} color={Colors.gray400} />}
+                    <ChevronRight size={16} color={Colors.gray400} />
                   </TouchableOpacity>
                 );
               })}
@@ -245,11 +296,12 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
         {own && !later && !rotation ? (
           <ExtraRow
             label="Co-driver"
-            value={form.coDriverId ? `${shortName(fullName(form.selectedCoDriver))} · payout split 50/50` : undefined}
+            value={form.coDriverId ? shortName(fullName(form.selectedCoDriver)) : undefined}
             onPress={() => setDriverTarget({ kind: 'co' })}
             onClear={form.coDriverId ? () => form.setCoDriverId('') : undefined}
           />
         ) : null}
+        {own && !later && !rotation && form.coDriverId ? <PaySplit form={form} /> : null}
         {showAwb ? (
           <View style={styles.extraRow}>
             <Text style={styles.extraLabel}>AWB number</Text>
@@ -288,6 +340,7 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
         onSelect={(v) => (v === '__default' && driverTarget?.kind === 'day' ? form.setDayOverride(driverTarget.date, null) : onPickDriver(v))}
         onClose={() => setDriverTarget(null)}
         searchPlaceholder="Name, phone or plate"
+        footerAction={{ label: '+ Add a new driver', onPress: () => router.push('/driver-edit' as any) }}
       />
       <PickerSheet
         visible={truckSheet}
@@ -297,6 +350,7 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
         onSelect={(v) => form.setVehicleId(v)}
         onClose={() => setTruckSheet(false)}
         searchPlaceholder="Plate or type"
+        footerAction={{ label: '+ Add a new truck', onPress: () => router.push('/vehicle-edit' as any) }}
       />
       <PickerSheet
         visible={providerSheet}
@@ -305,6 +359,7 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
         value={form.thirdPartyProviderId}
         onSelect={(v) => form.setThirdPartyProviderId(v)}
         onClose={() => setProviderSheet(false)}
+        footerAction={{ label: '+ Add a new partner', onPress: () => router.push('/third-party-edit' as any) }}
       />
     </View>
   );
@@ -314,16 +369,17 @@ export function StepAssign({ form, showErrors }: { form: CreateTripForm; showErr
 function AssignedBody({
   driver,
   truck,
-  trips,
+  chips,
   tripClass,
   onChangeTruck,
 }: {
   driver: OperatorDriverOption;
   truck: OperatorVehicleOption | null;
-  trips?: number;
+  chips: { label: string; tone?: 'neutral' | 'success' | 'warning' | 'accent' }[];
   tripClass: string;
   onChangeTruck: () => void;
 }) {
+  const onTrip = truck?.status === 'OnTrip';
   const truckClass = truck ? truckClassOfVehicle(truck) : null;
   return (
     <View>
@@ -334,10 +390,11 @@ function AssignedBody({
             {fullName(driver)}
           </Text>
           <Text style={styles.assignedSub} numberOfLines={1}>
-            {[driver.phone_primary, trips ? `${trips} trips on this route` : ''].filter(Boolean).join(' · ') || 'Driver'}
+            {driver.phone_primary || 'Driver'}
           </Text>
         </View>
       </View>
+      <ChipRow chips={chips.slice(0, 4)} style={{ marginTop: 8 }} />
       <TouchableOpacity style={styles.truckRow} onPress={onChangeTruck} activeOpacity={0.7}>
         <Truck size={16} color={Colors.gray600} />
         <Text style={styles.truckText} numberOfLines={1}>
@@ -347,6 +404,49 @@ function AssignedBody({
         <Text style={styles.link}>{truck ? 'Change' : 'Choose'}</Text>
       </TouchableOpacity>
       {truck && truckClass !== tripClass ? <Text style={styles.warnNote}>This trip is priced for {tripClass}.</Text> : null}
+      {onTrip ? <Text style={styles.warnNote}>This truck is on another trip right now — check it is back in time.</Text> : null}
+    </View>
+  );
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * How the trip's driver payout is shared with the co-driver — half each by
+ * default; changing one side moves the other so they add up to the payout (web's CoDriverPaySplit).
+ */
+function PaySplit({ form }: { form: CreateTripForm }) {
+  const total = Number(form.slot.driverPayout) || 0;
+  const v = form.coDriverSplit;
+  const half = round2(total / 2);
+  const auto = v.driverPayoutOverride === undefined && v.coDriverPayoutOverride === undefined;
+  const driverPay = v.driverPayoutOverride ?? (v.coDriverPayoutOverride !== undefined ? round2(total - v.coDriverPayoutOverride) : half);
+  const coPay = v.coDriverPayoutOverride ?? (v.driverPayoutOverride !== undefined ? round2(total - v.driverPayoutOverride) : half);
+  const sum = round2(driverPay + coPay);
+  const set = (side: 'driver' | 'co', raw: string) => {
+    const n = Math.max(0, Number(raw.replace(/[^0-9.]/g, '')) || 0);
+    const other = total > 0 ? Math.max(0, round2(total - n)) : undefined;
+    form.setCoDriverSplit(side === 'driver' ? { driverPayoutOverride: n, coDriverPayoutOverride: other } : { coDriverPayoutOverride: n, driverPayoutOverride: other });
+  };
+  return (
+    <View style={styles.split}>
+      <View style={styles.row}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.splitLabel}>Driver pay</Text>
+          <TextField prefix="SAR" value={String(driverPay)} onChangeText={(t) => set('driver', t)} keyboardType="decimal-pad" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.splitLabel}>Co-driver pay</Text>
+          <TextField prefix="SAR" value={String(coPay)} onChangeText={(t) => set('co', t)} keyboardType="decimal-pad" />
+        </View>
+      </View>
+      <View style={[styles.rowCenter, { marginTop: 6, justifyContent: 'space-between' }]}>
+        <Text style={[styles.hint, total > 0 && Math.abs(sum - total) > 0.001 && { color: Colors.warning }]}>
+          Per trip · payout SAR {fmtSar(total)}
+          {total > 0 && Math.abs(sum - total) > 0.001 ? ` (split adds up to SAR ${fmtSar(sum)})` : ''}
+        </Text>
+        {auto ? <Chip label="50/50" tone="success" /> : <LinkButton label="Reset 50/50" onPress={() => form.setCoDriverSplit({})} />}
+      </View>
     </View>
   );
 }
@@ -467,6 +567,13 @@ const styles = StyleSheet.create({
   },
   driverName: { fontSize: 14, fontWeight: '600', color: Colors.charcoal },
   driverSub: { fontSize: 12, color: Colors.gray500, marginTop: 1 },
+  score: { fontSize: 12, fontWeight: '800', color: Colors.success, marginLeft: 6 },
+  split: { paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.gray100 },
+  splitLabel: { fontSize: 11, color: Colors.gray500, fontWeight: '600', marginBottom: 4 },
+  pastDriver: { minWidth: 120, maxWidth: 180, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, backgroundColor: Colors.gray100, borderWidth: 1.5, borderColor: 'transparent' },
+  pastDriverOn: { borderColor: Colors.primary, backgroundColor: Colors.primaryLight },
+  pastName: { fontSize: 13, fontWeight: '700', color: Colors.charcoal },
+  pastSub: { fontSize: 11, color: Colors.gray500, marginTop: 1 },
   assignedName: { fontSize: 16, fontWeight: '700', color: Colors.charcoal },
   assignedSub: { fontSize: 12, color: Colors.gray500, marginTop: 2 },
   truckRow: {
