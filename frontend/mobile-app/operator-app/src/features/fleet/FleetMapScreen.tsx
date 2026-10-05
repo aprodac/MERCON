@@ -254,6 +254,10 @@ export default function FleetMapScreen() {
   });
   const [viewer, setViewer] = useState<{ items: ViewerItem[]; index: number; title: string } | null>(null);
 
+  // Delivery time at the last stop: the next-stop ETA plus road time through the rest of the trip
+  // (at truck speed — the router times a car, and a loaded truck averages at most ~80 km/h).
+  const lastStop = unit?.trip?.stops[unit.trip.stops.length - 1] ?? null;
+  const restSec = restQ.data ? Math.max(restQ.data.durationSeconds, restQ.data.distanceMeters / (80 / 3.6)) : null;
   const eta = unit && onTrip(unit) && (routeQ.isFetched || !target) ? computeEta(unit, routeQ.data ?? null, live.dataUpdatedAt || now) : null;
 
   const sheetOpen = (!!unit && focusMode === 'none') || (!unit && groupUnits.length > 0);
@@ -329,6 +333,7 @@ export default function FleetMapScreen() {
               <UnitRow
                 unit={item}
                 now={now}
+                time={f.time}
                 km={place && item.position ? haversineKm(item.position, place) : null}
                 onPress={() => (picked ? togglePick(item) : pick(item.key))}
                 onLongPress={() => togglePick(item)}
@@ -454,6 +459,9 @@ export default function FleetMapScreen() {
               onCancelTrip={unit.trip ? () => tripActions.cancel(unit.trip!.id, unit.trip!.ref_id) : null}
               busy={tripActions.busy}
               onShare={unit.trip ? () => setShareChoose(true) : null}
+              finalEta={eta?.arrival && restSec != null && restStops.length >= 2 && lastStop
+                ? { time: f.time(new Date(eta.arrival.getTime() + restSec * 1000).toISOString()), place: lastStop.name || lastStop.address }
+                : null}
             />
           ) : unit ? null : groupUnits.length ? (
             <GroupSheet units={groupUnits} now={now} onPick={pick} onClose={() => setGroup(null)} onHeight={setSheetH} />
