@@ -94,6 +94,8 @@ jobs:
           ICCES_ACCT: ${{ secrets.DEV_ICCES_ACCT }}
           GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ secrets.DEV_GEMINI_MODEL || 'gemini-flash-latest' }}
+          # Repo variable; set it to https://track-dev.mercon.tech once that address is live.
+          TRACKING_BASE_URL: ${{ vars.DEV_TRACKING_BASE_URL }}
         run: |
           echo "=== REBUILDING DEV STACK (mercon-dev) ==="
           echo "Target Project: mercon-dev (CLIENT_NAME=dev)"
@@ -228,6 +230,20 @@ jobs:
           if [ -f nginx/dev-mercon-api.conf ]; then
             sudo cp nginx/dev-mercon-api.conf /etc/nginx/sites-available/dev-mercon-api.conf
             sudo ln -sf /etc/nginx/sites-available/dev-mercon-api.conf /etc/nginx/sites-enabled/dev-mercon-api.conf
+          fi
+
+          # Customer-links address — only once its certificate exists.
+          # Its certificate is requested here the first time the name resolves
+          # (DNS A record in Hostinger). certbot's timer renews it after that.
+          # A failure only means the address stays off — never a failed deploy.
+          if [ ! -f /etc/letsencrypt/live/track-dev.mercon.tech/fullchain.pem ] && command -v certbot >/dev/null 2>&1 && getent hosts track-dev.mercon.tech >/dev/null; then
+            sudo certbot certonly --nginx -d track-dev.mercon.tech --non-interactive --agree-tos --register-unsafely-without-email || echo "::warning::Could not get a certificate for track-dev.mercon.tech — check its DNS record points at this server."
+          fi
+          if [ -f nginx/dev-mercon-track.conf ] && [ -f /etc/letsencrypt/live/track-dev.mercon.tech/fullchain.pem ]; then
+            sudo cp nginx/dev-mercon-track.conf /etc/nginx/sites-available/dev-mercon-track.conf
+            sudo ln -sf /etc/nginx/sites-available/dev-mercon-track.conf /etc/nginx/sites-enabled/dev-mercon-track.conf
+          else
+            echo "track-dev.mercon.tech certificate not found — customer-links address stays off."
           fi
 
           # Update dev nginx site configs strictly (*dev*) to proxy to dev API port 3051 and dev Frontend port 3061

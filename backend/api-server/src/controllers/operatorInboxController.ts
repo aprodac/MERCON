@@ -35,6 +35,16 @@ export const getDocumentExpiries = async (_req: Request, res: Response) => {
  * mercon.tech points at mercon.tech and one from dev points at dev — the
  * server's old default sent every environment's links to dev.
  */
+/**
+ * Where links handed to customers point (/t/, /c/, /s/). TRACKING_BASE_URL puts
+ * them on their own address (e.g. https://track.mercon.tech) that serves only
+ * those pages — no sign-in page behind them. Unset: the dashboard's address.
+ */
+export function trackingBaseUrl(req: Request): string {
+  const configured = process.env.TRACKING_BASE_URL?.trim();
+  return configured ? configured.replace(/\/+$/, '') : publicBaseUrl(req);
+}
+
 export function publicBaseUrl(req: Request): string {
   const configured = process.env.PUBLIC_BASE_URL?.trim();
   if (configured) return configured.replace(/\/+$/, '');
@@ -82,7 +92,7 @@ export const shareDriverUpdate = async (req: Request, res: Response) => {
     }
 
     const token = newShareToken();
-    const shareUrl = `${publicBaseUrl(req)}/s/${token}`;
+    const shareUrl = `${trackingBaseUrl(req)}/s/${token}`;
     const text = buildShareMessage(update, chosen, shareUrl);
 
     if (body.channel === 'whatsapp_api') {
