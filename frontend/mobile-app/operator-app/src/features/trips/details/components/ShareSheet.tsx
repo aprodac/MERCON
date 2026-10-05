@@ -16,7 +16,7 @@ import { operatorService, type DriverUpdate, type OperatorTripDetail, type Share
 import { customerContacts, digits, quickMessage, sortedStops, stopName, updateTitle, waLink, withTag, type Formatters, type QuickKind, type Remaining, type TagPerson } from '../tripDetailsModel';
 import { INK, MUTED, WA, tap } from './parts';
 import { shareMediaFiles } from '../shareMedia';
-import { batchMessage, batchSingle, loadBatch, type BatchItem } from '../assignmentBatch';
+import { batchMessage, batchSingle, loadBatch, type Batch } from '../assignmentBatch';
 
 export type ShareTarget = { type: 'update'; update: DriverUpdate } | { type: 'quick'; kind: QuickKind };
 
@@ -67,7 +67,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   const { batch } = useLocalSearchParams<{ batch?: string }>();
   const batchIds = useMemo(() => (batch ?? '').split(',').filter(Boolean), [batch]);
   const isBatch = isAssignment && batchIds.length > 1;
-  const [batchItems, setBatchItems] = useState<BatchItem[] | null>(null);
+  const [batchData, setBatchData] = useState<Batch | null>(null);
   const [batchError, setBatchError] = useState<string | null>(null);
   const [oneByOne, setOneByOne] = useState(false);
   const [step, setStep] = useState(0);
@@ -106,7 +106,7 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
       setStep(0);
       // Batch: the message is written once the trips have loaded.
       const msg = target.kind === 'assignment' && batchIds.length > 1
-        ? (batchItems ? batchMessage(batchItems, f, first) : '')
+        ? (batchData ? batchMessage(batchData, f, first) : '')
         : quickMessage(target.kind, { trip, phase, f, position, remaining, trackingUrl, tag: first });
       generated.current = msg;
       setText(msg);
@@ -128,13 +128,13 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
 
   // Load the batch's trips once; write the numbered message as soon as they arrive.
   useEffect(() => {
-    if (!isBatch || batchItems) return;
+    if (!isBatch || batchData) return;
     let live = true;
     loadBatch(batchIds)
-      .then((items) => {
+      .then((loaded) => {
         if (!live) return;
-        setBatchItems(items);
-        const msg = batchMessage(items, f, tag);
+        setBatchData(loaded);
+        const msg = batchMessage(loaded, f, tag);
         generated.current = msg;
         setText(msg);
       })
@@ -144,8 +144,8 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
   }, [isBatch, batchIds]);
 
   const writeBatch = (byOne: boolean, at: number) => {
-    if (!batchItems) return;
-    const msg = byOne ? batchSingle(batchItems, at, f, tag) : batchMessage(batchItems, f, tag);
+    if (!batchData) return;
+    const msg = byOne ? batchSingle(batchData, at, f, tag) : batchMessage(batchData, f, tag);
     generated.current = msg;
     setText(msg);
   };
@@ -213,10 +213,10 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
       return;
     }
     if (!update) {
-      if (isBatch && !batchItems) return;
+      if (isBatch && !batchData) return;
       Linking.openURL(waLink(phone, text)).catch(() => Alert.alert('Could not open WhatsApp'));
       // One by one: stay open on the next trip for when the operator comes back from WhatsApp.
-      if (isBatch && oneByOne && batchItems && step < batchItems.length - 1) {
+      if (isBatch && oneByOne && batchData && step < batchData.items.length - 1) {
         setStep(step + 1);
         writeBatch(true, step + 1);
         return;
@@ -389,11 +389,11 @@ export function ShareSheet({ target, onClose, trip, phase, f, position, remainin
                   <Text style={s.switchText}>Send one by one</Text>
                   <Text style={s.optDetail}>{oneByOne ? `${batchIds.length} separate messages, one per trip` : `All ${batchIds.length} trips in one message`}</Text>
                 </View>
-                <Switch value={oneByOne} onValueChange={switchOneByOne} trackColor={{ true: WA }} disabled={!batchItems} />
+                <Switch value={oneByOne} onValueChange={switchOneByOne} trackColor={{ true: WA }} disabled={!batchData} />
               </View>
             ) : null}
             <Text style={s.label}>{isBatch && oneByOne ? `Message · trip ${step + 1} of ${batchIds.length}` : 'Message'}</Text>
-            {isBatch && !batchItems ? (
+            {isBatch && !batchData ? (
               batchError
                 ? <Text style={s.optDetail}>Couldn’t load the trips: {batchError}</Text>
                 : <View style={[s.input, s.message, { alignItems: 'center', justifyContent: 'center' }]}><ActivityIndicator color={WA} /></View>
