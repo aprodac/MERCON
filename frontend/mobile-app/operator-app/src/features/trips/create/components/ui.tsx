@@ -225,6 +225,20 @@ export interface PickerOption {
   group?: string;
   leading?: React.ReactNode;
   disabled?: boolean;
+  /** Short "why" facts under the label (e.g. "Booked Sun 5 Oct 14:00", "12 trips on this lane"). */
+  chips?: { label: string; tone?: 'neutral' | 'success' | 'warning' | 'accent' }[];
+}
+
+/** A row of small fact chips. */
+export function ChipRow({ chips, style }: { chips: NonNullable<PickerOption['chips']>; style?: any }) {
+  if (chips.length === 0) return null;
+  return (
+    <View style={[ui.chipRow, style]}>
+      {chips.map((c, i) => (
+        <Chip key={`${c.label}-${i}`} label={c.label} tone={c.tone} />
+      ))}
+    </View>
+  );
 }
 
 /**
@@ -242,6 +256,7 @@ export function PickerSheet({
   onCreate,
   createLabel = 'Add',
   emptyText = 'Nothing found',
+  footerAction,
 }: {
   visible: boolean;
   title: string;
@@ -253,6 +268,8 @@ export function PickerSheet({
   onCreate?: (text: string) => void;
   createLabel?: string;
   emptyText?: string;
+  /** A link under the list, e.g. "+ Add a new driver". The sheet closes first. */
+  footerAction?: { label: string; onPress: () => void };
 }) {
   const [query, setQuery] = useState('');
   const filtered = useMemo(() => {
@@ -343,6 +360,7 @@ export function PickerSheet({
                     {o.sub}
                   </Text>
                 ) : null}
+                {o.chips?.length ? <ChipRow chips={o.chips} style={{ marginTop: 4 }} /> : null}
               </View>
               {o.badge ? <Chip label={o.badge.label} tone={o.badge.tone} /> : null}
               {on ? <Check size={16} color={Colors.primary} strokeWidth={2.5} /> : null}
@@ -350,6 +368,17 @@ export function PickerSheet({
           );
         }}
       />
+      {footerAction ? (
+        <TouchableOpacity
+          style={ui.footerRow}
+          onPress={() => {
+            close();
+            footerAction.onPress();
+          }}
+        >
+          <Text style={ui.createText}>{footerAction.label}</Text>
+        </TouchableOpacity>
+      ) : null}
     </AppModal>
   );
 }
@@ -471,6 +500,8 @@ export const ui = StyleSheet.create({
   searchInput: { flex: 1, fontSize: 14, color: Colors.charcoal, paddingVertical: 10 },
   createRow: { paddingVertical: 12, paddingHorizontal: Spacing.sm, borderBottomWidth: 1, borderBottomColor: Colors.gray100 },
   createText: { fontSize: 14, color: Colors.primary, fontWeight: '600' },
+  footerRow: { paddingVertical: 13, paddingHorizontal: Spacing.sm, borderTopWidth: 1, borderTopColor: Colors.gray100, marginTop: 4 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   groupLabel: { fontSize: 11, fontWeight: '700', color: Colors.gray500, paddingTop: Spacing.md, paddingBottom: 4, paddingHorizontal: Spacing.sm },
   option: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 11, paddingHorizontal: Spacing.sm, borderRadius: Radius.sm },
   optionOn: { backgroundColor: Colors.primaryLight },

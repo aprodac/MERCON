@@ -2,10 +2,10 @@
  * Create trip — three steps (job, when, who) and a review sheet, with the
  * trip's money always visible at the bottom.
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar, KeyboardAvoidingView, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Check, ChevronLeft, MessageCircle } from 'lucide-react-native';
 import Animated, { SlideInLeft, SlideInRight } from 'react-native-reanimated';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
@@ -29,9 +29,18 @@ const STEPS: Record<CreateTripStep, { title: string; short: string; next: string
 
 export default function CreateTripScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ customerId?: string; billingType?: string; assignment?: string }>();
-  const form = useCreateTrip({ customerId: params.customerId, billingType: params.billingType, assignment: params.assignment });
+  const params = useLocalSearchParams<{ customerId?: string; billingType?: string; assignment?: string; vehicleId?: string }>();
+  const form = useCreateTrip({ customerId: params.customerId, billingType: params.billingType, assignment: params.assignment, vehicleId: params.vehicleId });
   const scrollRef = useRef<ScrollView>(null);
+  // Back from adding a driver / truck / partner (the pickers' "+ Add" links): reload the fleet so it's listed.
+  const focusedOnce = useRef(false);
+  const { refreshFleet } = form;
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedOnce.current) refreshFleet();
+      focusedOnce.current = true;
+    }, [refreshFleet]),
+  );
   const [showErrors, setShowErrors] = useState<Record<CreateTripStep, boolean>>({ 1: false, 2: false, 3: false });
   const [reviewOpen, setReviewOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);

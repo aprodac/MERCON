@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, getApiErrorMessage } from '@mercon/mobile-shared/lib/api';
 import type { TripStatus } from '@mercon/mobile-shared/lib/trips';
+import type { DriverGroup, DriverReason } from '@mercon/shared-types';
 
 export interface Kpi { value: number; delta: number | null }
 
@@ -511,6 +512,47 @@ export interface RecommendedDriver {
   badges: string[];
   vehiclePlate?: string | null;
   vehicleClass?: string | null;
+  /** From the shared ranking (rankDrivers): picker group, "why" chips, truck fit, clashing trip start. */
+  group?: DriverGroup;
+  reasons?: DriverReason[];
+  truckFit?: 'exact' | 'bigger' | 'smaller' | 'none';
+  clashStart?: string;
+  /** Other trips this driver is still running (any date) — warn, don't block. */
+  openTrips?: Array<{ ref: string | null; status: string }>;
+}
+
+/** A 3PL partner's agreed cost for a lane (POST /third-party-providers/rates/match). */
+export interface ProviderRateMatch {
+  id: string;
+  cost: number | string;
+  vehicle_class?: string | null;
+  line_type?: string | null;
+  pricing_basis?: string | null;
+}
+
+/** A driver/truck a 3PL partner sent on an earlier trip. */
+export interface Previous3PLDriver {
+  driverName: string | null;
+  driverPhone: string | null;
+  vehiclePlate: string | null;
+  vehicleType: string | null;
+}
+
+/** A customer's standing surcharge (waiting, toll…) with its agreed rate. */
+export interface OperatorSurchargeRule {
+  id: string;
+  charge_type: string;
+  rate: number;
+  unit?: string | null;
+  quotationId?: string | null;
+}
+
+/** Which truck classes may run a trip priced for a class (Settings → vehicle compatibility). */
+export interface VehicleCompatibilityRule {
+  serviceVehicleClassCode: string;
+  preferredVehicleClassCodes: string[];
+  allowedVehicleClassCodes: string[];
+  isActive: boolean;
 }
 
 export interface OperatorLocation {
@@ -763,6 +805,7 @@ export const operatorService = {
     customer_id?: string;
     lat?: number;
     lng?: number;
+    coordinate_precision?: 'EXACT' | 'APPROXIMATE';
   }): Promise<OperatorLocation> {
     const { data } = await api.post('/locations', payload);
     return data.data as OperatorLocation;
@@ -870,12 +913,102 @@ export const operatorService = {
   },
 
   /** Drivers ranked for this route and truck class by the server (same as the web). */
-  async recommendedDrivers(params: { origin?: string; destination?: string; vehicleClass?: string; vehicleId?: string }): Promise<RecommendedDriver[]> {
+  async recommendedDrivers(params: {
+    origin?: string;
+    destination?: string;
+    vehicleClass?: string;
+    vehicleId?: string;
+    originLocationId?: string;
+    destinationLocationId?: string;
+    customerId?: string;
+    /** The trip's window (UTC ISO) — the ranking checks clashes, the 1 h gap and the 6 h rest against it. */
+    plannedStart?: string;
+    plannedEnd?: string;
+  }): Promise<RecommendedDriver[]> {
     try {
       const { data } = await api.get('/trips/recommendations/drivers', { params });
       return (data?.data ?? []) as RecommendedDriver[];
     } catch {
       return [];
+    }
+  },
+
+  /** The partner's agreed cost for this lane and class, or null. */
+  async thirdPartyMatchRate(payload: {
+    providerId: string;
+    origin: string;
+    destination: string;
+    vehicle_class: string;
+    line_type: string;
+    operation_type: string;
+    pricing_basis: string;
+    originLocationId?: string;
+    destinationLocationId?: string;
+    target_date?: string;
+  }): Promise<ProviderRateMatch | null> {
+    try {
+      const { data } = await api.post('/third-party-providers/rates/match', payload);
+      return (data?.data ?? null) as ProviderRateMatch | null;
+    } catch {
+      return null;
+    }
+  },
+
+  /** Drivers and trucks this partner sent before — tap one to fill the form. */
+  async thirdPartyPreviousDrivers(providerId: string): Promise<Previous3PLDriver[]> {
+    try {
+      const { data } = await api.get(`/third-party-providers/${providerId}/previous-drivers`);
+      return (data?.data ?? []) as Previous3PLDriver[];
+    } catch {
+      return [];
+    }
+  },
+
+  /** The customer's active standing surcharges (and the quotation's, when one is applied). */
+  async surchargeRules(params: { customerId: string; quotationId?: string }): Promise<OperatorSurchargeRule[]> {
+    try {
+      const { data } = await api.get('/surcharge-rules', {
+        params: {
+          customerId: params.customerId,
+          ...(params.quotationId ? { quotationId: params.quotationId, rateCardId: params.quotationId } : {}),
+          active_only: 'true',
+        },
+      });
+      return ((data?.data ?? []) as OperatorSurchargeRule[]).map((r) => ({ ...r, rate: Number(r.rate) || 0 }));
+    } catch {
+      return [];
+    }
+  },
+
+  async vehicleCompatibilityRules(): Promise<VehicleCompatibilityRule[]> {
+    try {
+      const { data } = await api.get('/vehicle-compatibility');
+      return (data?.data ?? []) as VehicleCompatibilityRule[];
+    } catch {
+      return [];
+    }
+  },
+
+  /** A customer's latest trips (light rows) — for recently used routes and quotations. */
+  async customerRecentTrips(customerId: string): Promise<OperatorTrip[]> {
+    try {
+      const { data } = await api.get('/trips', { params: { customer_id: customerId, per_page: 50, lite: true } });
+      return (data?.data ?? []) as OperatorTrip[];
+    } catch {
+      return [];
+    }
+  },
+
+  /**
+   * Saves the map pin on a saved place. An exact pin (pasted link / map moved by
+   * hand) goes through /pin, which also fixes the place's open trips; a search
+   * pick is only approximate and is stored as that.
+   */
+  async pinLocation(id: string, pin: { lat: number; lng: number; address?: string | null; exact: boolean }): Promise<void> {
+    if (pin.exact) {
+      await api.post(`/locations/${id}/pin`, { lat: pin.lat, lng: pin.lng, address: pin.address ?? null });
+    } else {
+      await api.patch(`/locations/${id}`, { lat: pin.lat, lng: pin.lng, coordinate_precision: 'APPROXIMATE' });
     }
   },
 
