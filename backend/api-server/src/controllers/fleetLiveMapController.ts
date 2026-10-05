@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { prisma } from '../db';
 import { logger } from '../utils/logger';
 import { loadLiveUnits, loadTripMedia } from '../services/fleetLiveMap';
+import { linkInlineImage } from '../services/inlineImages';
 import { loadTripOverview } from '../services/tripOverview';
 import { getDrivingRouteThrough, MAX_ROUTE_POINTS, RoutingUnavailableError, type GeoPoint } from '../services/routing/routeProvider';
 
@@ -9,6 +10,11 @@ import { getDrivingRouteThrough, MAX_ROUTE_POINTS, RoutingUnavailableError, type
 export const getFleetLiveMap = async (_req: Request, res: Response) => {
   try {
     const units = await loadLiveUnits(prisma);
+    // Every truck's photo and driver's photo inline was megabytes on each 30 s refresh — send links.
+    for (const u of units) {
+      linkInlineImage(u.vehicle, 'vehicle');
+      linkInlineImage(u.driver, 'driver');
+    }
     res.json({ success: true, data: { units, generated_at: new Date().toISOString() } });
   } catch (error) {
     logger.error({ err: error }, 'fleet live map failed');

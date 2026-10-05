@@ -7,8 +7,8 @@
  * so the map falls back to a plain card with an "Open in Maps" button instead
  * of crashing.
  */
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, TurboModuleRegistry } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, TurboModuleRegistry, ActivityIndicator } from 'react-native';
 import { MapPin, Truck } from 'lucide-react-native';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import type { TripOverview, TripPhase } from '../../../../lib/operator';
@@ -55,6 +55,15 @@ export function TripMap({ stops, overview, phase, height, interactive = false, p
   const truck = overview?.unit?.position ?? null;
   const path = useMemo(() => overview?.path ?? [], [overview?.path]);
   const nextIdx = phase === 'active' ? points.findIndex((s) => !s.actual_arrival) : -1;
+
+  // Tiles come from the internet: on a first open the map stays blank for a
+  // moment, which looked broken. Show a quiet loader until it has drawn (or
+  // give up after a few seconds so a slow network never leaves it stuck).
+  const [mapReady, setMapReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setMapReady(true), 8000);
+    return () => clearTimeout(t);
+  }, []);
 
   const bounds = useMemo(() => {
     const all: LngLat[] = [
@@ -118,6 +127,8 @@ export function TripMap({ stops, overview, phase, height, interactive = false, p
         doubleTapZoom={interactive}
         touchRotate={false}
         touchPitch={false}
+        onDidFinishRenderingMapFully={() => setMapReady(true)}
+        onDidFailLoadingMap={() => setMapReady(true)}
       >
         {interactive ? (
           // Frame the trip once and let the operator pan and zoom freely.
@@ -126,6 +137,8 @@ export function TripMap({ stops, overview, phase, height, interactive = false, p
           <Camera bounds={bounds} padding={{ top: padding.top, bottom: padding.bottom, left: 40, right: 40 }} duration={0} />
         )}
 
+        {/* A line needs two points; one stop drew an invalid line ("Invalid geometry in line layer"). */}
+        {points.length > 1 ? (
         <GeoJSONSource id="planned" data={planned}>
           <Layer id="planned-casing" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': '#FFFFFF', 'line-width': 8 }} />
           <Layer
@@ -135,6 +148,7 @@ export function TripMap({ stops, overview, phase, height, interactive = false, p
             paint={{ 'line-color': routeColor, 'line-width': 4, 'line-opacity': phase === 'active' ? 0.55 : 0.95, 'line-dasharray': phase === 'done' ? [1, 0] : [2, 1.6] }}
           />
         </GeoJSONSource>
+        ) : null}
 
         {path.length > 1 ? (
           <GeoJSONSource id="driven" data={driven}>
@@ -164,11 +178,19 @@ export function TripMap({ stops, overview, phase, height, interactive = false, p
           </ViewAnnotation>
         ) : null}
       </Map>
+      {!mapReady ? (
+        <View style={styles.loading} pointerEvents="none">
+          <ActivityIndicator color={Colors.gray500} />
+          <Text style={styles.loadingText}>Loading map…</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  loading: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#EFEBE3', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  loadingText: { fontSize: 13, fontWeight: '600', color: Colors.gray500 },
   fallback: { backgroundColor: '#EFEBE3', alignItems: 'center', justifyContent: 'center', gap: 10, paddingTop: 30 },
   fallbackIcon: { width: 44, height: 44, borderRadius: 22, backgroundColor: Colors.white, alignItems: 'center', justifyContent: 'center' },
   fallbackTitle: { fontSize: 13, fontWeight: '600', color: Colors.gray700 },

@@ -86,7 +86,7 @@ export const TRANSLATIONS: Record<string, TranslationItem> = {
   action_tap_to_retry: { en: 'Tap to retry', ur: 'دوبارہ کوشش کے لیے ٹیپ کریں' },
 
   // Authentication & Reset
-  label_phone: { en: 'Phone Number', ur: 'موبائل نمبر' },
+  label_phone: { en: 'Phone number', ur: 'موبائل نمبر' },
   placeholder_phone: { en: '50 000 0001', ur: '50 000 0001' },
   label_password: { en: 'Password or License Number', ur: 'پاس ورڈ یا لائسنس نمبر' },
   placeholder_password: { en: 'Enter password or license number', ur: 'پاس ورڈ یا لائسنس نمبر درج کریں' },

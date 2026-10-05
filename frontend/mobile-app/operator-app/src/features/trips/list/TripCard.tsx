@@ -64,7 +64,8 @@ function TripCardBase({ trip: t, f, now, showDay, onPress, onLongPress }: Props)
         <CompanyAvatar name={t.customer?.name} url={t.customer?.logo_url} size={38} />
         <View style={{ flex: 1 }}>
           <Text style={s.customer} numberOfLines={2}>{niceName(t.customer?.name) || 'No customer'}</Text>
-          <Text style={s.sub} numberOfLines={1}>{sub}</Text>
+          {/* Two lines: next to the status badge one line cut off the time ("Thu 10 Sep..."). */}
+          <Text style={s.sub} numberOfLines={2}>{sub}</Text>
         </View>
         <View style={[s.status, { backgroundColor: ps.bg }]}>
           <View style={[s.dot, { backgroundColor: ps.dot }]} />

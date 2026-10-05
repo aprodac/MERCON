@@ -112,7 +112,7 @@ export default (): ExpoConfig => ({
     ...(googleServicesFile ? { googleServicesFile } : {}),
   },
   web: {
-    output: 'static',
+    output: 'single',
     favicon: client.favicon,
   },
   plugins: [

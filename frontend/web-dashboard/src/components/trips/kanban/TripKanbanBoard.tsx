@@ -26,6 +26,7 @@ import {
 import { Trip, TripStatus, TripStop } from '@/services/tripService';
 import { openMultipleWhatsappMessages } from '@/utils/whatsappFormatter';
 import { useTrackingLinks } from '@/hooks/useTrackingLink';
+import { useDeploymentTimezone } from '@/lib/datetime';
 import TripKanbanCard from './TripKanbanCard';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -223,6 +224,7 @@ const TripKanbanBoard = forwardRef<TripKanbanBoardRef, TripKanbanBoardProps>(fun
   const [isBulkShareOpen, setIsBulkShareOpen] = useState(false);
   // Customer tracking links for the selected trips, ready before Send is clicked.
   const bulkTrackingLinks = useTrackingLinks(selectedTripIds, isBulkShareOpen);
+  const tz = useDeploymentTimezone();
 
   const handleToggleSelect = (trip: Trip) => {
     setSelectedTripIds((prev) => 
@@ -874,7 +876,7 @@ const TripKanbanBoard = forwardRef<TripKanbanBoardRef, TripKanbanBoardProps>(fun
                 onClick={() => {
                   const selectedTrips = trips.filter(t => selectedTripIds.includes(t.id));
                   if (selectedTrips.length > 0) {
-                    openMultipleWhatsappMessages(selectedTrips, 'separate', bulkTrackingLinks);
+                    openMultipleWhatsappMessages(selectedTrips, 'separate', bulkTrackingLinks, tz);
                   }
                   setIsBulkShareOpen(false);
                   handleClearSelection();
@@ -889,7 +891,7 @@ const TripKanbanBoard = forwardRef<TripKanbanBoardRef, TripKanbanBoardProps>(fun
               onClick={() => {
                 const selectedTrips = trips.filter(t => selectedTripIds.includes(t.id));
                 if (selectedTrips.length > 0) {
-                  openMultipleWhatsappMessages(selectedTrips, 'combined', bulkTrackingLinks);
+                  openMultipleWhatsappMessages(selectedTrips, 'combined', bulkTrackingLinks, tz);
                 }
                 setIsBulkShareOpen(false);
                 handleClearSelection();

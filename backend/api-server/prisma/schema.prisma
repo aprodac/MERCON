@@ -386,6 +386,9 @@ model Vehicle {
   trailer_number      String?
   trailer_type        AssetType?
   trailer_capacity_kg Int?
+  /// The truck has a tailgate lift — the trip assignment message to the
+  /// customer says "WITH TAILGATE" when this truck is on the trip.
+  has_tailgate        Boolean    @default(false)
 
   // Third-Party Tracking
   icces_device_id String? @unique

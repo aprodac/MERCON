@@ -62,6 +62,8 @@ export interface Vehicle {
   trailer_type: AssetType | null;
   trailer_capacity_kg: number | null;
   icces_device_id: string | null;
+  /** Tailgate lift — the trip assignment message says "WITH TAILGATE". */
+  has_tailgate?: boolean;
   last_lat?: number | null;
   last_lng?: number | null;
   last_speed_kph?: number | null;
@@ -88,6 +90,7 @@ export interface CreateVehiclePayload {
   trailer_capacity_kg?: number;
   icces_device_id?: string;
   image_url?: string | null;
+  has_tailgate?: boolean;
 }
 
 export interface VehicleFilters {
