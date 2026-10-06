@@ -2,7 +2,6 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput, StyleSheet, FlatList } from 'react-native';
 import { ArrowRight, Building2, CheckCircle2, Clock, FileText, MapPin, Pencil, Repeat, RotateCcw, Route, Search, X, Receipt, Plus, ChevronDown, type LucideIcon } from 'lucide-react-native';
-import Animated, { FadeIn, LinearTransition } from 'react-native-reanimated';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
 import { TRUCK_CLASSES, lineTypeLabel, filterQuotationsBySearch, pricingFromQuotation } from '@mercon/shared-types';
@@ -211,7 +210,7 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
   );
 
   return (
-    <Animated.View layout={LinearTransition.duration(220)} style={{ gap: Spacing.sm }}>
+    <View style={{ gap: Spacing.sm }}>
       <Section icon={Building2} tone="blue" title="Customer">
         <FieldButton
           icon={form.selectedCustomer ? <CompanyAvatar name={form.selectedCustomer.name} url={form.selectedCustomer.logo_url || form.selectedCustomer.avatar_url} size={28} /> : undefined}
@@ -225,7 +224,7 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
       </Section>
 
       {applied ? (
-        <Animated.View entering={FadeIn.duration(200)}>{priceSection}</Animated.View>
+        priceSection
       ) : form.customerId ? (
         <Section
           icon={FileText}
@@ -396,7 +395,7 @@ export function StepJob({ form, showErrors }: { form: CreateTripForm; showErrors
         onClose={() => setSheet(null)}
         onAdd={(charge_type, amount) => form.setCharges([...form.charges, { charge_type, amount }])}
       />
-    </Animated.View>
+    </View>
   );
 }
 

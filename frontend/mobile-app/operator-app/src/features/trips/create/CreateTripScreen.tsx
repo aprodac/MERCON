@@ -7,7 +7,6 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar, Keyboa
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Check, ChevronLeft, MessageCircle } from 'lucide-react-native';
-import Animated, { SlideInLeft, SlideInRight } from 'react-native-reanimated';
 import { Colors, Spacing, Radius } from '@mercon/mobile-shared/theme/tokens';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { AppModal } from '@mercon/mobile-shared/components/common/AppModal';
@@ -46,8 +45,6 @@ export default function CreateTripScreen() {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   // After creating: offer the assignment message to the customer's group before leaving.
   const [created, setCreated] = useState<{ tripIds: string[]; message: string } | null>(null);
-  // Which way the steps slide: forward from the right, back from the left.
-  const [direction, setDirection] = useState<1 | -1>(1);
 
   // Driver payout missing: ask once as soon as a quotation without one is picked,
   // and again whenever the user tries to move on to Review.
@@ -70,7 +67,6 @@ export default function CreateTripScreen() {
   };
 
   const goTo = (s: CreateTripStep) => {
-    setDirection(s >= form.step ? 1 : -1);
     form.setStep(s);
     scrollRef.current?.scrollTo({ y: 0, animated: false });
   };
@@ -134,7 +130,6 @@ export default function CreateTripScreen() {
   const { money } = form;
   const marginKnown = money.billing > 0 && money.costKnown;
   const marginTone = !marginKnown ? 'none' : money.marginPct >= 20 ? 'good' : money.marginPct >= 5 ? 'thin' : 'low';
-  const entering = (direction === 1 ? SlideInRight : SlideInLeft).duration(220);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -177,13 +172,15 @@ export default function CreateTripScreen() {
             automaticallyAdjustKeyboardInsets
           >
             {form.loadError ? <Text style={styles.error}>{form.loadError}</Text> : null}
-            <Animated.View key={form.step} entering={entering}>
+            {/* No Reanimated entering/layout animations here: on iOS they could leave the
+                step parked off-screen, so the form opened blank (iPhone 14 Pro). */}
+            <View key={form.step}>
               {form.step === 1 ? <StepJob form={form} showErrors={showErrors[1]} /> : null}
               {form.step === 2 ? <StepSchedule form={form} showErrors={showErrors[2]} /> : null}
               {form.step === 3 ? (
                 form.fleetLoading ? <SkeletonRows rows={3} height={96} /> : <StepAssign form={form} showErrors={showErrors[3]} />
               ) : null}
-            </Animated.View>
+            </View>
           </ScrollView>
 
           <View style={styles.bar}>
