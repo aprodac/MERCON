@@ -109,7 +109,7 @@ export function UnitRow({ unit: u, now, km, onPress, onLongPress, selected, time
 }
 
 /** Sheet chrome: white card pinned to the bottom with a grab handle; reports its height. */
-function SheetFrame({ children, onHeight, panHandlers, style }: {
+export function SheetFrame({ children, onHeight, panHandlers, style }: {
   children: React.ReactNode; onHeight: (h: number) => void; panHandlers?: object; style?: object;
 }) {
   return (

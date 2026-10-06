@@ -24,6 +24,9 @@
  *   Driver view   low behind the selected truck, facing where it's going
  *   Trip overview flat and north-up, framing the truck and every stop
  *   Fit all · Face north · Zoom in / out; light or dark basemap.
+ * Lane search ("riyadh to jeddah"): a green A and red B pin, the road
+ * between them in violet, the trucks that matter to the lane framed, and
+ * free trucks near A ringed green.
  * Used full-screen on the Fleet map page and as a small, non-interactive
  * preview on Home. Falls back to a plain panel on builds without MapLibre.
  */
@@ -74,6 +77,11 @@ const ICONS = {
   navInk: require('./icons/nav-ink.png'),
   navWhite: require('./icons/nav-white.png'),
 };
+
+/** Lane search: start, end and the road between them. */
+export const LANE_A = '#16A34A';
+export const LANE_B = '#D92D20';
+const LANE_VIOLET = '#7C5CFC';
 
 /** Trucks closer than this many screen pixels merge into a group. */
 const GROUP_RADIUS_PX = 50;
@@ -184,15 +192,26 @@ interface Props {
   follow?: boolean;
   /** The user moved the map by hand (the page turns follow off). */
   onUserMove?: () => void;
+  /** A lane search: its two ends and the road between them (null → straight dashed line). */
+  lane?: { from: { label: string; lat: number; lng: number }; to: { label: string; lat: number; lng: number }; line: LngLat[] | null } | null;
+  /** Trucks drawn with a green ring (free near the lane's start). */
+  ringed?: Set<string>;
 }
 
 export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   units, selected, onSelect, interactive = false, theme = 'light', tilted = false, focusMode = 'none',
-  routeLine, focus, padding = { top: 40, bottom: 40 }, onViewChange, onGroupPress, restLine, trail, follow = true, onUserMove,
+  routeLine, focus, padding = { top: 40, bottom: 40 }, onViewChange, onGroupPress, restLine, trail, follow = true, onUserMove, lane, ringed,
 }, ref) {
   const { height } = useWindowDimensions();
   const points = useMemo(() => units.filter(located), [units]);
-  const bounds = useMemo(() => boundsOf(points.map((u) => u.position!)), [points]);
+  // A lane's ends count as points too, so its map shows even with no truck on it.
+  const bounds = useMemo(() => boundsOf([...points.map((u) => u.position!), ...(lane ? [lane.from, lane.to] : [])]), [points, lane]);
+  const laneKey = lane ? `${lane.from.lat},${lane.from.lng}>${lane.to.lat},${lane.to.lng}` : null;
+  const laneFeature = useMemo<GeoJSON.Feature | null>(() => {
+    if (!lane) return null;
+    const coords = lane.line && lane.line.length > 1 ? lane.line : [[lane.from.lng, lane.from.lat], [lane.to.lng, lane.to.lat]];
+    return { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } };
+  }, [lane]);
   const sel = points.find((u) => u.key === selected) ?? null;
   const camera = useRef<any>(null);
   const mapRef = useRef<any>(null);
@@ -333,17 +352,20 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
     tripOverview,
   }));
 
-  // Picking a truck flies to it (tilted when 3D is on); a city search frames the city.
+  // Picking a truck flies to it (tilted when 3D is on); a lane frames both ends and its trucks; a city search frames the city.
   useEffect(() => {
     if (!interactive || !camera.current) return;
     if (sel?.position) flyToSelected(sel, tilted ? 55 : 0);
-    else if (focus) {
+    else if (lane) {
+      const b = boundsOf([lane.from, lane.to, ...points.map((u) => u.position!)], 0.2, 0.3);
+      if (b) camera.current.fitBounds(b, { padding: pad, pitch: 0, bearing: 0, duration: 800 });
+    } else if (focus) {
       const d = focus.km / 111;
       camera.current.fitBounds([focus.lng - d, focus.lat - d, focus.lng + d, focus.lat + d], { padding: pad, pitch: 0, bearing: 0, duration: 700 });
     }
     // Only a new selection or search moves the camera, not padding/tilt changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [interactive, sel?.key, focus?.lat, focus?.lng, focus?.km]);
+  }, [interactive, sel?.key, focus?.lat, focus?.lng, focus?.km, laneKey]);
 
   // Follow the selected truck as fresh positions arrive (a new pick is handled above).
   const followLat = sel?.position?.lat;
@@ -423,6 +445,28 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
         </GeoJSONSource>
       ) : null}
 
+      {laneFeature ? (
+        <GeoJSONSource id="lane" data={laneFeature}>
+          <Layer id="lane-casing" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': LANE_VIOLET, 'line-width': 12, 'line-opacity': 0.18, 'line-blur': 2 }} />
+          {/* Separate layers, not a toggled prop: a dash set once on a native layer isn't cleared by dropping it. */}
+          {lane?.line && lane.line.length > 1 ? (
+            <Layer key="road" id="lane-road" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': LANE_VIOLET, 'line-width': 4, 'line-opacity': 0.75 }} />
+          ) : (
+            <Layer key="straight" id="lane-straight" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': LANE_VIOLET, 'line-width': 3, 'line-opacity': 0.75, 'line-dasharray': [2, 1.5] }} />
+          )}
+        </GeoJSONSource>
+      ) : null}
+      {lane ? (
+        <>
+          <ViewAnnotation id="lane-a" lngLat={[lane.from.lng, lane.from.lat]} anchor="bottom">
+            <View style={st.laneEnd}><View style={[st.lanePin, { backgroundColor: LANE_A }]}><Text style={st.lanePinText}>A</Text></View><View style={[st.laneTip, { borderTopColor: LANE_A }]} /></View>
+          </ViewAnnotation>
+          <ViewAnnotation id="lane-b" lngLat={[lane.to.lng, lane.to.lat]} anchor="bottom">
+            <View style={st.laneEnd}><View style={[st.lanePin, { backgroundColor: LANE_B }]}><Text style={st.lanePinText}>B</Text></View><View style={[st.laneTip, { borderTopColor: LANE_B }]} /></View>
+          </ViewAnnotation>
+        </>
+      ) : null}
+
       {toNext ? (
         <GeoJSONSource id="to-next" data={toNext}>
           <Layer id="to-next-casing" type="line" layout={{ 'line-cap': 'round', 'line-join': 'round' }} paint={{ 'line-color': dark ? '#FF8A78' : '#FA634E', 'line-width': 12, 'line-opacity': 0.2, 'line-blur': 2 }} />
@@ -476,7 +520,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
             onPress={interactive && onSelect ? () => onSelect(u.key) : undefined}
           >
             <View style={{ alignItems: 'center' }}>
-              <View style={[st.pin, { backgroundColor: color }, free && st.pinFree, on && st.pinOn]}>
+              <View style={[st.pin, { backgroundColor: color }, free && st.pinFree, ringed?.has(u.key) && st.pinRinged, on && st.pinOn]}>
                 <Image
                   source={icon}
                   style={{ width: size, height: size, transform: moving ? [{ rotate: `${heading! - mapBearing}deg` }] : [] }}
@@ -505,6 +549,14 @@ const st = StyleSheet.create({
   },
   pinFree: { borderColor: '#3E3C3D', borderWidth: 2 },
   pinOn: { width: 42, height: 42, borderRadius: 21, borderWidth: 3 },
+  pinRinged: { borderColor: LANE_A, borderWidth: 3 },
+  laneEnd: { alignItems: 'center' },
+  lanePin: {
+    width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', borderWidth: 2.5, borderColor: '#FFFFFF',
+    shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 4,
+  },
+  lanePinText: { fontSize: 14, fontWeight: '800', color: '#FFFFFF' },
+  laneTip: { width: 0, height: 0, marginTop: -2, borderLeftWidth: 6, borderRightWidth: 6, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent' },
   silent: { position: 'absolute', top: -3, right: -3, width: 11, height: 11, borderRadius: 6, backgroundColor: '#9898A4', borderWidth: 2, borderColor: '#FFFFFF' },
   label: { marginTop: 3, backgroundColor: '#3E3C3D', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   labelText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF', fontFamily: 'monospace' },

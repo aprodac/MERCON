@@ -3,6 +3,10 @@
  *
  *   Search    plate, driver, trip no. or customer; or a city ("near Dammam",
  *             "jeddah") to see trucks within 50 km of it, closest first.
+ *   Lane      "riyadh to jeddah" (or ruh → jed): A and B on the map with the
+ *             road between, and a card (LaneSheet.tsx) with free trucks near
+ *             A, trips on the road A→B and trips booked on it; Book / Create
+ *             trip open Create trip with the lane (and truck) filled in.
  *   Filters   All · On trip · Delayed · Free · No GPS (same as the web).
  *   Map/List  toggle. The list has three tabs (FleetLists.tsx): Trucks
  *             (delayed → running → planned → free), Needs attention (Home's
@@ -35,7 +39,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import {
   AlertTriangle, Compass, Focus, Info, List, LocateFixed, Map as MapIcon, MessageCircle, Minus, Moon, Navigation, Plus, Search, Sun, Truck, X, type LucideIcon,
@@ -47,6 +51,8 @@ import { makeTime } from '../trips/list/tripListModel';
 import { FleetMap, type FleetMapHandle, type FocusMode, type MapTheme, type MapView } from './FleetMap';
 import { GroupSheet, UnitRow, UnitSheet } from './FleetSheet';
 import { FleetLegend } from './FleetLegend';
+import { LaneSheet } from './LaneSheet';
+import { LANE_KM, LANE_WIDE_KM, bookedOnLane, freeTrucksAt, lanesOnRoad, parseLaneQuery, truckSeconds } from './laneModel';
 import { FindTruckSheet, useTripActions } from './FleetActions';
 import { AttentionList, ListTabs, ScheduledList, attentionItems, matchesTripText, scheduledTrips, type ListTab } from './FleetLists';
 import { useActionInbox } from '../dashboard/actions/useActionInbox';
@@ -92,9 +98,20 @@ export default function FleetMapScreen() {
     return c;
   }, [all, now]);
 
-  // A city in the search box means "trucks near there"; anything else is a text match.
-  const place = useMemo(() => placeFromQuery(query), [query]);
+  // "riyadh to jeddah" is a lane; a city in the search box means "trucks near there"; anything else is a text match.
+  const laneQuery = useMemo(() => parseLaneQuery(query), [query]);
+  const lane = laneQuery?.kind === 'lane' ? laneQuery : null;
+  const laneKey = lane ? `${lane.from.label}>${lane.to.label}` : null;
+  // A widened catchment belongs to the lane it was widened on; a new lane starts at the default.
+  const [widened, setWidened] = useState<string | null>(null);
+  const laneKm = laneKey && widened === laneKey ? LANE_WIDE_KM : LANE_KM;
+  const runs = useMemo(() => (lane ? lanesOnRoad(all, lane.from, lane.to, laneKm) : []), [all, lane, laneKm]);
+  const free = useMemo(() => (lane ? freeTrucksAt(all, lane.from, laneKm, now) : { inRange: [], nearest: [] }), [all, lane, laneKm, now]);
+  const ringed = useMemo(() => new Set(free.inRange.map((c) => c.unit.key)), [free]);
+  const place = useMemo(() => (laneQuery ? null : placeFromQuery(query)), [laneQuery, query]);
   const shown = useMemo(() => {
+    // A lane shows only the trucks that matter to it: on the road A→B, and free near A (or the nearest free ones).
+    if (lane) return [...runs.map((r) => r.unit), ...(free.inRange.length ? free.inRange : free.nearest).map((c) => c.unit)];
     const byFilter = all.filter((u) => matchesFilter(u, filter, now));
     if (place) {
       return byFilter
@@ -105,7 +122,7 @@ export default function FleetMapScreen() {
         .map((x) => x.u);
     }
     return byFilter.filter((u) => matchesQuery(u, query)).sort((a, b) => unitPriority(b) - unitPriority(a));
-  }, [all, filter, place, query, now]);
+  }, [all, filter, place, query, now, lane, runs, free]);
 
   const unit = all.find((u) => u.key === selected) ?? null;
   // Trucks parked on one spot, opened from their map group.
@@ -168,10 +185,69 @@ export default function FleetMapScreen() {
   // "Assign a truck" from an attention item opens Find a truck here instead of the trip page.
   const fleetIntent = (i: Parameters<typeof onIntent>[0]) => (i.type === 'trip' && i.assign === 'truck' ? setFindFor(i.tripId) : onIntent(i));
   const attention = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = lane ? '' : query.trim().toLowerCase();
     return attentionItems(inbox.items).filter((i) => !q || `${i.title} ${i.detail}`.toLowerCase().includes(q));
-  }, [inbox.items, query]);
-  const scheduled = useMemo(() => scheduledTrips(inbox.scheduled, now).filter((t) => matchesTripText(t, query)), [inbox.scheduled, now, query]);
+  }, [inbox.items, query, lane]);
+  const scheduled = useMemo(() => {
+    const trips = scheduledTrips(inbox.scheduled, now);
+    return lane ? bookedOnLane(trips, lane.from, lane.to, laneKm) : trips.filter((t) => matchesTripText(t, query));
+  }, [inbox.scheduled, now, query, lane, laneKm]);
+
+  // The lane's road (A → B), the drive to A for the closest free trucks, and the arrival at B for trucks on the road.
+  const laneRoadQ = useQuery({
+    queryKey: ['fleet', 'lane-road', lane?.from.lat, lane?.from.lng, lane?.to.lat, lane?.to.lng],
+    queryFn: () => operatorService.liveRoute([lane!.from, lane!.to]),
+    enabled: !!lane,
+    staleTime: 60 * 60_000,
+  });
+  const round3 = (p: { lat: number; lng: number }) => ({ lat: +p.lat.toFixed(3), lng: +p.lng.toFixed(3) });
+  const toStartFor = lane ? free.inRange.slice(0, 5).filter((c) => c.km >= 1) : [];
+  const toStartQs = useQueries({
+    queries: toStartFor.map((c) => {
+      const p = round3(c.unit.position!);
+      return {
+        queryKey: ['fleet', 'lane-to-start', c.unit.key, p.lat, p.lng, lane?.from.label],
+        queryFn: () => operatorService.liveRoute([p, lane!.from]),
+        staleTime: 5 * 60_000,
+      };
+    }),
+  });
+  const arrivalFor = lane ? runs.filter((r) => located(r.unit) && r.stop.lat != null && r.stop.lng != null).slice(0, 8) : [];
+  const arrivalQs = useQueries({
+    queries: arrivalFor.map((r) => {
+      const p = round3(r.unit.position!);
+      return {
+        queryKey: ['fleet', 'lane-arrival', r.unit.key, p.lat, p.lng, r.stop.id],
+        queryFn: () => operatorService.liveRoute([p, { lat: r.stop.lat!, lng: r.stop.lng! }]),
+        staleTime: 60_000,
+      };
+    }),
+  });
+  const toStart = new Map<string, number>();
+  toStartFor.forEach((c, i) => { const d = toStartQs[i]?.data; if (d) toStart.set(c.unit.key, truckSeconds(d)); });
+  const arrivals = new Map<string, Date>();
+  arrivalFor.forEach((r, i) => { const d = arrivalQs[i]?.data; if (d) arrivals.set(r.unit.key, new Date((live.dataUpdatedAt || now) + truckSeconds(d) * 1000)); });
+  const laneRoad = lane
+    ? laneRoadQ.data
+      ? { km: laneRoadQ.data.distanceMeters / 1000, seconds: truckSeconds(laneRoadQ.data), isRoad: true }
+      : laneRoadQ.isFetched ? { km: haversineKm(lane.from, lane.to), seconds: null, isRoad: false } : null
+    : null;
+  const laneOnMap = useMemo(
+    () => (lane ? { from: lane.from, to: lane.to, line: laneRoadQ.data?.geometry ?? null } : null),
+    [lane, laneRoadQ.data],
+  );
+  /** Create trip with the lane (and a truck) filled in; everything stays editable there. */
+  const createOnLane = (vehicleId: string | null) => {
+    if (!lane) return;
+    router.push({
+      pathname: '/create-trip',
+      params: {
+        from: lane.from.label, fromLat: String(lane.from.lat), fromLng: String(lane.from.lng),
+        to: lane.to.label, toLat: String(lane.to.lat), toLng: String(lane.to.lng),
+        ...(vehicleId ? { vehicleId } : {}),
+      },
+    });
+  };
 
   /** A trip's truck on the map when it has a fix there; otherwise the trip's own page. */
   const showTrip = (tripId: string) => {
@@ -260,7 +336,7 @@ export default function FleetMapScreen() {
   const restSec = restQ.data ? Math.max(restQ.data.durationSeconds, restQ.data.distanceMeters / (80 / 3.6)) : null;
   const eta = unit && onTrip(unit) && (routeQ.isFetched || !target) ? computeEta(unit, routeQ.data ?? null, live.dataUpdatedAt || now) : null;
 
-  const sheetOpen = (!!unit && focusMode === 'none') || (!unit && groupUnits.length > 0);
+  const sheetOpen = (!!unit && focusMode === 'none') || (!unit && (groupUnits.length > 0 || !!lane));
   const lastUpdate = live.dataUpdatedAt ? agoText(new Date(live.dataUpdatedAt).toISOString(), now) : null;
 
   return (
@@ -277,7 +353,7 @@ export default function FleetMapScreen() {
           <TextInput
             value={query}
             onChangeText={(v) => { setQuery(v); if (selected || group) pick(null); }}
-            placeholder="Plate, driver, trip, customer or city"
+            placeholder="Plate, driver, trip, city or riyadh to jeddah"
             placeholderTextColor="#9898A4"
             style={s.searchInput}
             autoCorrect={false}
@@ -288,7 +364,7 @@ export default function FleetMapScreen() {
         {view === 'list' ? (
           <ListTabs tab={listTab} counts={{ trucks: shown.length, attention: attention.length, scheduled: scheduled.length }} onChange={setListTab} />
         ) : null}
-        {view === 'map' || listTab === 'trucks' ? (
+        {!lane && (view === 'map' || listTab === 'trucks') ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pills} style={{ marginHorizontal: -16 }}>
           {FILTERS.map((p) => {
             const on = filter === p.id;
@@ -303,6 +379,14 @@ export default function FleetMapScreen() {
         </ScrollView>
         ) : null}
         {place && (view === 'map' || listTab === 'trucks') ? <Text style={s.near}>{shown.length} {shown.length === 1 ? 'truck' : 'trucks'} within {NEAR_KM} km of {place.label}</Text> : null}
+        {lane && view === 'list' ? <Text style={s.near}>{lane.from.label} → {lane.to.label} · {laneKm} km around each end</Text> : null}
+        {laneQuery?.kind === 'unknown' ? (
+          laneQuery.suggestion ? (
+            <TouchableOpacity onPress={() => setQuery(query.replace(laneQuery.text, laneQuery.suggestion!))} accessibilityLabel={`Search ${laneQuery.suggestion} instead`}>
+              <Text style={s.near}>{`Couldn't find "${laneQuery.text}". Did you mean `}<Text style={s.suggest}>{laneQuery.suggestion}</Text>?</Text>
+            </TouchableOpacity>
+          ) : <Text style={s.near}>{`Couldn't find "${laneQuery.text}". Try a city name, like Jeddah or Dammam.`}</Text>
+        ) : null}
       </View>
 
       {view === 'list' && listTab === 'attention' ? (
@@ -362,6 +446,8 @@ export default function FleetMapScreen() {
             focusMode={focusMode}
             routeLine={routeQ.data?.geometry ?? null}
             focus={place ? { lat: place.lat, lng: place.lng, km: NEAR_KM } : null}
+            lane={laneOnMap}
+            ringed={lane ? ringed : undefined}
             padding={{ top: 70, bottom: sheetOpen ? sheetH + 30 : 70 }}
             onViewChange={setCamera}
             onGroupPress={openGroup}
@@ -465,6 +551,30 @@ export default function FleetMapScreen() {
             />
           ) : unit ? null : groupUnits.length ? (
             <GroupSheet units={groupUnits} now={now} onPick={pick} onClose={() => setGroup(null)} onHeight={setSheetH} />
+          ) : lane ? (
+            <LaneSheet
+              key={laneKey!}
+              from={lane.from}
+              to={lane.to}
+              road={laneRoad}
+              radiusKm={laneKm}
+              onWiden={() => setWidened(laneKey)}
+              free={free}
+              toStart={toStart}
+              runs={runs}
+              arrivals={arrivals}
+              booked={scheduled}
+              bookedCapped={inbox.scheduled.length >= 100}
+              f={f}
+              now={now}
+              onSwap={() => setQuery(`${lane.to.label} to ${lane.from.label}`)}
+              onClose={() => setQuery('')}
+              onPickTruck={pick}
+              onCreateTrip={createOnLane}
+              onOpenTrip={(id) => router.push({ pathname: '/trip-details', params: { id } })}
+              onFindTruck={setFindFor}
+              onHeight={setSheetH}
+            />
           ) : (
             <>
             {attention.length ? (
@@ -536,6 +646,7 @@ const s = StyleSheet.create({
   pillCount: { fontSize: 13, color: MUTED, fontVariant: ['tabular-nums'] },
   dot: { width: 8, height: 8, borderRadius: 4 },
   near: { fontSize: 13, fontWeight: '600', color: '#3F3F46' },
+  suggest: { color: BRAND, textDecorationLine: 'underline' },
 
   pickBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: LINE },
   pickText: { fontSize: 14, fontWeight: '700', color: INK },
