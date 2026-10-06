@@ -20,9 +20,9 @@ function Pin({ children }: { children: React.ReactNode }) {
   return <View style={s.pin}>{children}</View>;
 }
 
-function Badge({ truck, person }: { truck?: boolean; person?: boolean }) {
+function Badge({ truck, person, apart }: { truck?: boolean; person?: boolean; apart?: boolean }) {
   return (
-    <View style={s.badge}>
+    <View style={[s.badge, apart && { backgroundColor: '#D97706' }]}>
       {truck ? <Image source={ICONS.truck} style={s.badgeIcon} fadeDuration={0} /> : null}
       {person ? <Image source={ICONS.person} style={s.badgeIcon} fadeDuration={0} /> : null}
     </View>
@@ -69,6 +69,14 @@ export function FleetLegend({ style, onClose }: { style?: ViewStyle; onClose: ()
         <Row icon={<Badge person />}>Driver&apos;s phone (on trips only)</Row>
         <Row icon={<Badge truck person />}>Both — truck and driver together</Row>
 
+        <Text style={s.section}>Needs a look</Text>
+        <Row icon={<Text style={[s.chip, { backgroundColor: TONE.delayed.color }]}>+40m</Text>}>How late it is for its next stop</Row>
+        <Row icon={<Text style={[s.chip, { backgroundColor: '#D97706' }]}>45m</Text>}>Stopped 30 min+ away from its stops</Row>
+        <Row icon={<Badge truck person apart />}>Tracker and phone over 1 km apart — tap the truck to see both</Row>
+        <Row icon={<View style={s.ringDemo}>{[0, 1, 2, 3, 4].map((i) => <View key={i} style={[s.ringDot, { backgroundColor: i < 2 ? TONE.active.color : '#CBD5E1' }]} />)}</View>}>
+          Dots: stops done out of the trip&apos;s stops
+        </Row>
+
         <Text style={s.section}>Map</Text>
         <Row icon={<View style={s.group}><Text style={s.groupText}>5</Text><View style={s.mix}><View style={{ flex: 3, backgroundColor: TONE.active.color }} /><View style={{ flex: 2, backgroundColor: TONE.free.color }} /></View></View>}>
           Trucks close together — the bar shows the mix; tap for the list
@@ -78,6 +86,7 @@ export function FleetLegend({ style, onClose }: { style?: ViewStyle; onClose: ()
         <Row icon={<View style={[s.line, { opacity: 0.35 }]} />}>Rest of the trip</Row>
         <Row icon={<View style={[s.line, { backgroundColor: INK, opacity: 0.55, height: 3 }]} />}>Where it has driven on this trip</Row>
         <Row icon={<View style={[s.line, s.dashed]} />}>Straight line — road routing unavailable</Row>
+        <Row icon={<View style={s.area} />}>Search area — trucks near a city, an address, a dropped pin or you</Row>
         <Row icon={<View style={s.stopsRow}><View style={[s.stop, s.stopDone]} /><View style={[s.stop, s.stopNext]} /><View style={s.stop} /></View>}>
           Stops: done · next · still to come
         </Row>
@@ -112,6 +121,10 @@ const s = StyleSheet.create({
   ring: { width: 9, height: 9, borderRadius: 5, borderWidth: 2, borderColor: SILENT_COLOR },
   badge: { flexDirection: 'row', gap: 1, paddingHorizontal: 4, paddingVertical: 2, borderRadius: 8, backgroundColor: INK },
   badgeIcon: { width: 10, height: 10 },
+  chip: { fontSize: 9, fontWeight: '800', color: '#FFFFFF', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 4, overflow: 'hidden' },
+  ringDemo: { flexDirection: 'row', gap: 2 },
+  ringDot: { width: 5, height: 5, borderRadius: 2.5 },
+  area: { width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderStyle: 'dashed', borderColor: '#0284C7', backgroundColor: 'rgba(14,165,233,0.12)' },
   credit: { marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E4E4E7', fontSize: 11, color: MUTED, lineHeight: 16 },
   link: { textDecorationLine: 'underline' },
   group: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },

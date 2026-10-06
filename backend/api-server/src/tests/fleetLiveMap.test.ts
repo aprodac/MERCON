@@ -168,3 +168,38 @@ test('a delay reason sent in the workflow-state slot is recovered as the reason'
   assert.deepEqual(splitDelayReason('InTransit', 'GOING_TO_PICKUP', undefined), { workflowState: 'GOING_TO_PICKUP', delayReason: null });
   assert.deepEqual(splitDelayReason('InTransit', undefined, 'ignored'), { workflowState: undefined, delayReason: null });
 });
+
+test('fleet live map: customer id and stopped-since', async (t) => {
+  const stillLoc = (secondsAgo: number) => ({ ...loc('t1', secondsAgo), speed_kph: 0 });
+
+  await t.test('the trip carries its customer id', () => {
+    const [u] = buildLiveUnits({ vehicles: [vehicle('v1')], trips: [trip('t1', { vehicleId: 'v1', customerId: 'c1' })], tripLocations: [] }, NOW);
+    assert.equal(u.trip?.customer_id, 'c1');
+  });
+
+  await t.test('a running trip standing still reports since when', () => {
+    const since = ago(45 * 60);
+    const [u] = buildLiveUnits({
+      vehicles: [vehicle('v1', { last_speed_kph: 0 })],
+      trips: [trip('t1', { vehicleId: 'v1', driver: driver('d1') })],
+      tripLocations: [{ ...stillLoc(20), stoppedSince: since }],
+    }, NOW);
+    assert.equal(u.motion, 'idle');
+    assert.equal(u.stopped_since, since.toISOString());
+  });
+
+  await t.test('a moving truck, or one on a scheduled trip, has no stopped-since', () => {
+    const [moving] = buildLiveUnits({
+      vehicles: [vehicle('v1')],
+      trips: [trip('t1', { vehicleId: 'v1', driver: driver('d1') })],
+      tripLocations: [{ ...loc('t1', 20), stoppedSince: ago(3600) }],
+    }, NOW);
+    assert.equal(moving.stopped_since, null);
+    const [planned] = buildLiveUnits({
+      vehicles: [vehicle('v1', { last_speed_kph: 0 })],
+      trips: [trip('t1', { vehicleId: 'v1', status: 'Scheduled', driver: driver('d1') })],
+      tripLocations: [{ ...stillLoc(20), stoppedSince: ago(3600) }],
+    }, NOW);
+    assert.equal(planned.stopped_since, null);
+  });
+});

@@ -71,8 +71,10 @@ export function StateChip({ unit, now }: { unit: LiveUnit; now: number }) {
   );
 }
 
-export function UnitRow({ unit: u, now, km, onPress, onLongPress, selected, time }: {
+export function UnitRow({ unit: u, now, km, onPress, onLongPress, selected, time, note }: {
   unit: LiveUnit; now: number; km: number | null; onPress: () => void;
+  /** One short highlight for the last line, e.g. "35 min drive" or "free ~14:20". */
+  note?: { text: string; color?: string } | null;
   /** Formats a clock time in the deployment time zone — adds "due 14:20" for the next stop. */
   time?: (iso: string) => string;
   /** Long-press starts picking trucks for a bulk status message. */
@@ -97,6 +99,7 @@ export function UnitRow({ unit: u, now, km, onPress, onLongPress, selected, time
           ) : null}
         </Text>
         <Text style={s.rowSeen}>
+          {note ? <Text style={{ color: note.color ?? INK, fontWeight: '700' }}>{`${note.text} · `}</Text> : null}
           {km != null ? `${formatKm(km)} away · ` : ''}{u.position ? `Seen ${agoText(u.position.recorded_at, now)}` : 'No location'}
         </Text>
       </View>
@@ -109,7 +112,7 @@ export function UnitRow({ unit: u, now, km, onPress, onLongPress, selected, time
 }
 
 /** Sheet chrome: white card pinned to the bottom with a grab handle; reports its height. */
-function SheetFrame({ children, onHeight, panHandlers, style }: {
+export function SheetFrame({ children, onHeight, panHandlers, style }: {
   children: React.ReactNode; onHeight: (h: number) => void; panHandlers?: object; style?: object;
 }) {
   return (

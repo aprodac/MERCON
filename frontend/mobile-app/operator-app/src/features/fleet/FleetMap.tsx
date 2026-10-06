@@ -33,11 +33,11 @@
  * preview on Home. Falls back to a plain panel on builds without MapLibre.
  */
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { View, Text, Image, StyleSheet, TurboModuleRegistry, useWindowDimensions } from 'react-native';
+import { Animated, Easing, View, Text, Image, StyleSheet, TurboModuleRegistry, useWindowDimensions } from 'react-native';
 import { MapPin } from 'lucide-react-native';
 import Supercluster from 'supercluster';
 import type { LiveUnit } from '../../lib/operator';
-import { isDelayed, isFree, isSilent, located, shortAgo, unitPriority } from './fleetModel';
+import { feedsApart, isDelayed, isFree, isLongStop, isSilent, lateMin, lateText, located, minText, shortAgo, stoppedMin, tripProgress, unitPriority } from './fleetModel';
 import { quietOfflineTileErrors } from '../../lib/mapLogs';
 import { MAP_BG, MAP_STYLES, loadMapStyle, readyMapStyle, type MapTheme, type StyleJson } from './mapStyle';
 
@@ -154,14 +154,14 @@ function pickLabels(
 ): Set<string> {
   type Box = [number, number, number, number];
   const hit = (a: Box, b: Box) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
-  const pinBox = (p: { x: number; y: number }): Box => [p.x - 18, p.y - 18, p.x + 18, p.y + 18];
+  const pinBox = (p: { x: number; y: number }): Box => [p.x - 21, p.y - 21, p.x + 21, p.y + 21];
   const pins = items.map((i) => ({ key: i.key, box: pinBox(i) }));
   const groups = others.map(pinBox);
   const taken: Box[] = [];
   const out = new Set<string>();
   for (const i of [...items].sort((a, b) => b.priority - a.priority)) {
     const w = i.text.length * 7 + 12;
-    const box: Box = [i.x - w / 2, i.y + 18, i.x + w / 2, i.y + 38];
+    const box: Box = [i.x - w / 2, i.y + BOX / 2, i.x + w / 2, i.y + BOX / 2 + 20];
     if (taken.some((t) => hit(t, box)) || groups.some((g) => hit(g, box)) || pins.some((p) => p.key !== i.key && hit(p.box, box))) continue;
     taken.push(box);
     out.add(i.key);
@@ -175,6 +175,18 @@ function labelText(u: LiveUnit, now: number): string {
   return age ? `${u.vehicle!.plate_number} · ${age}` : u.vehicle!.plate_number;
 }
 
+/** A circle as a 64-point polygon — MapLibre has no geodesic circle (web FleetCommandMap `circlePolygon`). */
+function circleOf(a: { lat: number; lng: number; km: number }): GeoJSON.Feature {
+  const pts: LngLat[] = [];
+  const latR = a.km / 110.574;
+  const lngR = a.km / (111.32 * Math.cos((a.lat * Math.PI) / 180));
+  for (let i = 0; i <= 64; i++) {
+    const t = (i / 64) * 2 * Math.PI;
+    pts.push([a.lng + lngR * Math.cos(t), a.lat + latR * Math.sin(t)]);
+  }
+  return { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [pts] } };
+}
+
 /** Compass bearing from a to b, degrees clockwise from north. */
 function bearingBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const toRad = (x: number) => (x * Math.PI) / 180;
@@ -184,7 +196,7 @@ function bearingBetween(a: { lat: number; lng: number }, b: { lat: number; lng: 
 }
 
 /** The camera state the page shows controls for. */
-export interface MapView { zoom: number; pitch: number; bearing: number }
+export interface MapView { zoom: number; pitch: number; bearing: number; center?: LngLat }
 export type FocusMode = 'none' | 'driver' | 'overview';
 
 export interface FleetMapHandle {
@@ -213,7 +225,7 @@ interface Props {
   /** Road route from the selected truck to its next stop; null → dashed straight line. */
   routeLine?: LngLat[] | null;
   /** A place to frame (city search): its centre and radius in km. */
-  focus?: { lat: number; lng: number; km: number } | null;
+  focus?: { lat: number; lng: number; km: number; label?: string } | null;
   /** Extra space kept clear at the top/bottom (overlaid controls, the card). */
   padding?: { top: number; bottom: number };
   onViewChange?: (v: MapView) => void;
@@ -227,11 +239,16 @@ interface Props {
   follow?: boolean;
   /** The user moved the map by hand (the page turns follow off). */
   onUserMove?: () => void;
+  /** Where to open instead of framing every truck (the view saved from last time). */
+  initialCamera?: { center: LngLat; zoom: number } | null;
+  /** A long press on the map — "trucks near here". */
+  onLongPress?: (at: { lat: number; lng: number }) => void;
 }
 
 export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   units, selected, onSelect, interactive = false, theme = 'light', tilted = false, focusMode = 'none',
   routeLine, focus, padding = { top: 40, bottom: 40 }, onViewChange, onGroupPress, restLine, trail, follow = true, onUserMove,
+  initialCamera, onLongPress,
 }, ref) {
   const { height } = useWindowDimensions();
   const points = useMemo(() => units.filter(located), [units]);
@@ -443,6 +460,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
   }
   if (!style) return <View style={[StyleSheet.absoluteFill, { backgroundColor: MAP_BG[theme] }]} />;
   const { Map, Camera, GeoJSONSource, Layer, ViewAnnotation, Marker } = ML;
+  const apart = sel && feedsApart(sel) && sel.vehicle_gps && sel.driver_gps ? { v: sel.vehicle_gps, d: sel.driver_gps } : null;
   const dark = theme === 'dark';
   // Markers stand upright but a heading arrow turns with the map.
   const mapBearing = view.bearing;
@@ -463,8 +481,9 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       touchRotate={interactive}
       touchPitch={interactive}
       onPress={interactive && onSelect ? () => onSelect(null) : undefined}
+      onLongPress={interactive && onLongPress ? (e) => onLongPress({ lng: e.nativeEvent.lngLat[0], lat: e.nativeEvent.lngLat[1] }) : undefined}
       onRegionDidChange={(e) => {
-        const v = { zoom: e.nativeEvent.zoom, pitch: e.nativeEvent.pitch, bearing: e.nativeEvent.bearing };
+        const v = { zoom: e.nativeEvent.zoom, pitch: e.nativeEvent.pitch, bearing: e.nativeEvent.bearing, center: e.nativeEvent.center };
         zoomRef.current = v.zoom;
         setView(v);
         setArea({ bbox: e.nativeEvent.bounds, zoom: v.zoom });
@@ -473,7 +492,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
       }}
     >
       {interactive ? (
-        <Camera ref={camera} initialViewState={{ bounds, padding: pad }} />
+        <Camera ref={camera} initialViewState={initialCamera ? { center: initialCamera.center, zoom: initialCamera.zoom } : { bounds, padding: pad }} />
       ) : (
         <Camera bounds={bounds} padding={{ top: padding.top, bottom: padding.bottom, left: 30, right: 30 }} duration={0} />
       )}
@@ -503,6 +522,38 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
           )}
         </GeoJSONSource>
       ) : null}
+
+      {/* A place search: its catchment circle and centre, under the trucks */}
+      {focus ? (
+        <GeoJSONSource id="near-area" data={circleOf(focus)}>
+          <Layer id="near-area-fill" type="fill" paint={{ 'fill-color': '#0EA5E9', 'fill-opacity': 0.08 }} />
+          <Layer id="near-area-line" type="line" paint={{ 'line-color': '#0284C7', 'line-width': 1.5, 'line-opacity': 0.8, 'line-dasharray': [3, 2] }} />
+        </GeoJSONSource>
+      ) : null}
+      {focus ? (
+        <ViewAnnotation id="near-centre" lngLat={[focus.lng, focus.lat]} anchor="bottom">
+          <View style={{ alignItems: 'center' }}>
+            {focus.label ? <Text style={st.placeLabel} numberOfLines={1}>{focus.label} · {focus.km} km</Text> : null}
+            <View style={st.placePin}><View style={st.placePinDot} /></View>
+          </View>
+        </ViewAnnotation>
+      ) : null}
+
+      {/* Tracker and phone over a kilometre apart: both spots, joined, so it's plain the driver isn't with the truck. */}
+      {apart ? (
+        <GeoJSONSource id="feeds-apart" data={{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: [[apart.v.lng, apart.v.lat], [apart.d.lng, apart.d.lat]] } }}>
+          <Layer id="feeds-apart-line" type="line" layout={{ 'line-cap': 'round' }} paint={{ 'line-color': '#D97706', 'line-width': 3, 'line-dasharray': [1.5, 1.5] }} />
+        </GeoJSONSource>
+      ) : null}
+      {apart
+        ? (['v', 'd'] as const).map((k) => (
+          <ViewAnnotation key={`feed-${k}`} id={`feed-${k}`} lngLat={[apart[k].lng, apart[k].lat]} anchor="center">
+            <View style={st.feedSpot}>
+              <Image source={k === 'v' ? ICONS.truck : ICONS.person} style={{ width: 12, height: 12 }} fadeDuration={0} />
+            </View>
+          </ViewAnnotation>
+        ))
+        : null}
 
       {stops.map((s, i) => {
         const done = !!s.actual_arrival;
@@ -536,6 +587,7 @@ export const FleetMap = forwardRef<FleetMapHandle, Props>(function FleetMap({
           Marker={Marker}
           unit={u}
           selected={selected === u.key}
+          dimmed={!!selected && selected !== u.key}
           plate={labelled.has(u.key) ? u.vehicle?.plate_number ?? null : null}
           now={now}
           mapBearing={mapBearing}
@@ -584,11 +636,65 @@ function useGlide(lng: number, lat: number): LngLat {
 type MarkerComponent = NonNullable<typeof ML>['Marker'];
 type MapStyleSpec = Exclude<React.ComponentProps<NonNullable<typeof ML>['Map']>['mapStyle'], string>;
 
-/** One truck: white disc with its glyph, the live-GPS badge, and its plate (or age) below. */
-const UnitMarker = React.memo(function UnitMarker({ Marker, unit: u, selected: on, plate, now, mapBearing, onPress }: {
+/** Each truck sits centred in a box this size; the stop ring and the halo stay inside it. */
+const BOX = 52;
+
+/** The selected truck's halo: a soft ring in its colour, breathing out. */
+function Pulse({ color }: { color: string }) {
+  const [v] = useState(() => new Animated.Value(0));
+  useEffect(() => {
+    const loop = Animated.loop(Animated.timing(v, { toValue: 1, duration: 1600, easing: Easing.out(Easing.quad), useNativeDriver: true }));
+    loop.start();
+    return () => loop.stop();
+  }, [v]);
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[st.halo, {
+        backgroundColor: color,
+        opacity: v.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0] }),
+        transform: [{ scale: v.interpolate({ inputRange: [0, 1], outputRange: [0.6, 1] }) }],
+      }]}
+    />
+  );
+}
+
+/** How far along its stops a running trip is: a dot per stop around the pin, reached ones filled. */
+function StopRing({ done, total, radius, color }: { done: number; total: number; radius: number; color: string }) {
+  const n = Math.min(total, 12);
+  // Past 12 stops the dots stand for a share of the trip, not one stop each.
+  const filled = Math.round((done / total) * n);
+  return (
+    <>
+      {Array.from({ length: n }, (_, i) => {
+        const a = ((-90 + (i * 360) / n) * Math.PI) / 180;
+        return (
+          <View
+            key={i}
+            pointerEvents="none"
+            style={[st.ringDot, {
+              left: BOX / 2 + radius * Math.cos(a) - 2.5,
+              top: BOX / 2 + radius * Math.sin(a) - 2.5,
+              backgroundColor: i < filled ? color : '#CBD5E1',
+            }]}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/**
+ * One truck: white disc with its glyph, the live-GPS badge (amber when the
+ * tracker and phone disagree), a dot ring for its trip's stops, and below it
+ * the plate (or age) with a red "+40m" when late and an amber stop time when
+ * it has stood still too long. Others fade while one is picked.
+ */
+const UnitMarker = React.memo(function UnitMarker({ Marker, unit: u, selected: on, dimmed, plate, now, mapBearing, onPress }: {
   Marker: MarkerComponent;
   unit: LiveUnit;
   selected: boolean;
+  dimmed: boolean;
   plate: string | null;
   now: number;
   mapBearing: number;
@@ -601,34 +707,42 @@ const UnitMarker = React.memo(function UnitMarker({ Marker, unit: u, selected: o
   const moving = u.motion === 'moving' && heading != null && !silent;
   const feed = silent ? 'none' : u.feed ?? 'none';
   const age = silent ? shortAgo(u.position?.recorded_at, now) : '';
+  const late = lateMin(u, now);
+  const stopped = isLongStop(u, now) ? stoppedMin(u, now) : null;
+  const progress = tripProgress(u);
+  const apart = feedsApart(u);
   return (
     <Marker
       id={`unit-${u.key}`}
       lngLat={at}
-      // Pinned by the pin's centre, so a plate label below doesn't shift it.
+      // Pinned by the box's centre, so the chips below don't shift it.
       anchor="top"
-      offset={[0, -(on ? 19 : 16)]}
+      offset={[0, -BOX / 2]}
       onPress={onPress}
     >
-      <View style={{ alignItems: 'center' }}>
-        <View style={[st.pin, silent && st.pinSilent, on && st.pinOn, on && { borderColor: tone.color }]}>
-          {moving ? (
-            <Image
-              source={ICONS.nav}
-              style={{ width: 18, height: 18, tintColor: tone.color, transform: [{ rotate: `${heading! - mapBearing}deg` }] }}
-              fadeDuration={0}
-            />
-          ) : silent ? (
-            <View style={st.ring} />
-          ) : (
-            <View style={[st.square, { backgroundColor: tone.color }]} />
-          )}
-          {feed !== 'none' ? (
-            <View style={st.feed}>
-              {feed === 'vehicle' || feed === 'both' ? <Image source={ICONS.truck} style={st.feedIcon} fadeDuration={0} /> : null}
-              {feed === 'driver' || feed === 'both' ? <Image source={ICONS.person} style={st.feedIcon} fadeDuration={0} /> : null}
-            </View>
-          ) : null}
+      <View style={[{ alignItems: 'center' }, dimmed && { opacity: 0.35 }]}>
+        <View style={st.box}>
+          {on ? <Pulse color={tone.color} /> : null}
+          {progress ? <StopRing done={progress.done} total={progress.total} radius={on ? 24 : 21} color={tone.color} /> : null}
+          <View style={[st.pin, silent && st.pinSilent, on && st.pinOn, on && { borderColor: tone.color }]}>
+            {moving ? (
+              <Image
+                source={ICONS.nav}
+                style={{ width: 18, height: 18, tintColor: tone.color, transform: [{ rotate: `${heading! - mapBearing}deg` }] }}
+                fadeDuration={0}
+              />
+            ) : silent ? (
+              <View style={st.ring} />
+            ) : (
+              <View style={[st.square, { backgroundColor: tone.color }]} />
+            )}
+            {feed !== 'none' ? (
+              <View style={[st.feed, apart && st.feedApart]}>
+                {feed === 'vehicle' || feed === 'both' ? <Image source={ICONS.truck} style={st.feedIcon} fadeDuration={0} /> : null}
+                {feed === 'driver' || feed === 'both' ? <Image source={ICONS.person} style={st.feedIcon} fadeDuration={0} /> : null}
+              </View>
+            ) : null}
+          </View>
         </View>
         {plate ? (
           <View style={[st.label, !on && st.labelQuiet]}>
@@ -639,6 +753,12 @@ const UnitMarker = React.memo(function UnitMarker({ Marker, unit: u, selected: o
           </View>
         ) : age ? (
           <Text style={st.age}>{age}</Text>
+        ) : null}
+        {late != null || stopped != null ? (
+          <View style={st.chips}>
+            {late != null ? <Text style={[st.chip, st.chipLate]}>{lateText(late)}</Text> : null}
+            {stopped != null ? <Text style={[st.chip, st.chipStop]}>{`Stopped ${minText(stopped)}`}</Text> : null}
+          </View>
         ) : null}
       </View>
     </Marker>
@@ -656,6 +776,18 @@ const st = StyleSheet.create({
   },
   pinSilent: { backgroundColor: 'rgba(255,255,255,0.85)', shadowOpacity: 0.18, shadowRadius: 2, elevation: 2 },
   pinOn: { width: 38, height: 38, borderRadius: 19, borderWidth: 3 },
+  box: { width: BOX, height: BOX, alignItems: 'center', justifyContent: 'center' },
+  halo: { position: 'absolute', width: BOX, height: BOX, borderRadius: BOX / 2 },
+  ringDot: { position: 'absolute', width: 5, height: 5, borderRadius: 2.5, borderWidth: 0.5, borderColor: '#FFFFFF' },
+  feedApart: { backgroundColor: '#D97706' },
+  placeLabel: { maxWidth: 200, marginBottom: 3, fontSize: 11, fontWeight: '700', color: '#FFFFFF', backgroundColor: '#0369A1', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' },
+  placePin: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#0284C7', borderWidth: 3, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 3, shadowOffset: { width: 0, height: 1 }, elevation: 3 },
+  placePinDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FFFFFF' },
+  feedSpot: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#D97706', borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  chips: { flexDirection: 'row', gap: 3, marginTop: 2 },
+  chip: { fontSize: 10, fontWeight: '800', color: '#FFFFFF', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 5, overflow: 'hidden' },
+  chipLate: { backgroundColor: '#E11D48' },
+  chipStop: { backgroundColor: '#D97706' },
   square: { width: 12, height: 12, borderRadius: 4 },
   ring: { width: 12, height: 12, borderRadius: 6, borderWidth: 3, borderColor: SILENT_COLOR },
   feed: {
@@ -663,12 +795,12 @@ const st = StyleSheet.create({
     borderRadius: 8, backgroundColor: '#3E3C3D', borderWidth: 2, borderColor: '#FFFFFF',
   },
   feedIcon: { width: 9, height: 9 },
-  label: { marginTop: 4, backgroundColor: '#3E3C3D', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  label: { marginTop: -4, backgroundColor: '#3E3C3D', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   labelText: { fontSize: 11, fontWeight: '700', color: '#FFFFFF', fontFamily: 'monospace' },
   labelQuiet: { backgroundColor: 'rgba(255,255,255,0.95)', borderWidth: 1, borderColor: '#E4E4E7' },
   labelTextQuiet: { color: '#3E3C3D', fontWeight: '600' },
   labelAge: { fontFamily: undefined, fontWeight: '500', color: '#94A3B8' },
-  age: { marginTop: 2, fontSize: 9, fontWeight: '600', color: '#64748B' },
+  age: { marginTop: -4, fontSize: 9, fontWeight: '600', color: '#64748B' },
   group: {
     // White like the trucks, the count dark, the mix bar under it (web ClusterMarker).
     minWidth: 40, height: 40, borderRadius: 20, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center',
