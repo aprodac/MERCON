@@ -9,7 +9,8 @@ GitHub → Actions → "iOS Build (Xcode Cloud)" → Run workflow (pick branch +
    │  .github/scripts/xcode-cloud-build.mjs → App Store Connect API: start build
    ▼
 Xcode Cloud (Apple's Macs)
-   ci_post_clone.sh  → Node + CocoaPods, npm ci, API by branch, expo prebuild --clean, pod install
+   ci_post_clone.sh  → Node + CocoaPods, npm ci, API by branch, expo prebuild --clean, pod install,
+                     Swift packages resolved (operator: MapLibre → Package.resolved)
    Archive           → signed by Apple (cloud signing, no certificates to manage)
    ci_post_xcodebuild.sh → "What to Test" notes from the last commits
    Post-actions      → TestFlight internal group + external group
