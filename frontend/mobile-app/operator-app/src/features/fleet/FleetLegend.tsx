@@ -70,8 +70,10 @@ export function FleetLegend({ style, onClose }: { style?: ViewStyle; onClose: ()
         <Row icon={<Badge truck person />}>Both — truck and driver together</Row>
 
         <Text style={s.section}>Map</Text>
-        <Row icon={<View style={s.group}><Text style={s.groupText}>5</Text></View>}>Trucks close together — tap to zoom in</Row>
-        <Row icon={<View style={[s.group, { borderColor: BRAND }]}><Text style={s.groupText}>5</Text></View>}>Red ring — some of them are delayed</Row>
+        <Row icon={<View style={s.group}><Text style={s.groupText}>5</Text><View style={s.mix}><View style={{ flex: 3, backgroundColor: TONE.active.color }} /><View style={{ flex: 2, backgroundColor: TONE.free.color }} /></View></View>}>
+          Trucks close together — the bar shows the mix; tap for the list
+        </Row>
+        <Row icon={<Pin><View style={[s.square, { backgroundColor: TONE.delayed.color }]} /></Pin>}>Delayed trucks always stand on their own</Row>
         <Row icon={<View style={s.line} />}>Road route to the next stop</Row>
         <Row icon={<View style={[s.line, { opacity: 0.35 }]} />}>Rest of the trip</Row>
         <Row icon={<View style={[s.line, { backgroundColor: INK, opacity: 0.55, height: 3 }]} />}>Where it has driven on this trip</Row>
@@ -112,8 +114,9 @@ const s = StyleSheet.create({
   badgeIcon: { width: 10, height: 10 },
   credit: { marginTop: 8, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E4E4E7', fontSize: 11, color: MUTED, lineHeight: 16 },
   link: { textDecorationLine: 'underline' },
-  group: { width: 24, height: 24, borderRadius: 12, backgroundColor: INK, borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
-  groupText: { fontSize: 10, fontWeight: '800', color: '#FFFFFF' },
+  group: { width: 26, height: 26, borderRadius: 13, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: 'rgba(0,0,0,0.08)', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  groupText: { fontSize: 10, fontWeight: '800', color: '#1E293B', marginTop: -3 },
+  mix: { position: 'absolute', bottom: 4, width: 14, height: 3, borderRadius: 2, overflow: 'hidden', flexDirection: 'row' },
   line: { width: 26, height: 4, borderRadius: 2, backgroundColor: BRAND },
   dashed: { backgroundColor: 'transparent', height: 0, borderTopWidth: 3, borderStyle: 'dashed', borderColor: BRAND, borderRadius: 0 },
   stopsRow: { flexDirection: 'row', gap: 2 },
