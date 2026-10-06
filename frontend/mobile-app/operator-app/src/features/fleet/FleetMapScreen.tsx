@@ -1,13 +1,23 @@
 /**
  * Route: /fleet-map — the phone version of the web live map.
  *
- *   Search    plate, driver, trip no. or customer; or a city ("near Dammam",
- *             "jeddah") to see trucks within 50 km of it, closest first.
+ *   Search    plate, driver, trip no. or customer. A city ("near Dammam",
+ *             "jeddah"), an address picked from the suggestions, a long press
+ *             on the map or Near me searches around that place: a circle on
+ *             the map, radius chips (10–200 km), Free only, the trucks inside
+ *             closest first with road drive time, or the nearest outside and
+ *             a one-tap wider search (FleetSummary.tsx NearSheet).
  *   Lane      "riyadh to jeddah" (or ruh → jed): A and B on the map with the
  *             road between, and a card (LaneSheet.tsx) with free trucks near
  *             A, trips on the road A→B and trips booked on it; Book / Create
  *             trip open Create trip with the lane (and truck) filled in.
- *   Filters   All · On trip · Delayed · Free · No GPS (same as the web).
+ *   Summary   with nothing picked: trucks working, late, free soon, stopped
+ *             long, not live, and each customer's live page to share.
+ *   Changes   a toast and a buzz when a truck turns late, stops long, loses
+ *             GPS, starts or finishes its trip while the map is open.
+ *   Saved     filter, theme, 2D/3D and the camera come back next time.
+ *   Filters   All · On trip · Delayed · Free · Free soon · Stopped · No GPS
+ *             (Free soon and Stopped only while they have trucks).
  *   Map/List  toggle. The list has three tabs (FleetLists.tsx): Trucks
  *             (delayed → running → planned → free), Needs attention (Home's
  *             trip action items) and Scheduled (by start day). A red chip on
@@ -19,8 +29,10 @@
  *             up for the stop timeline (with the driver's photos per stop)
  *             and GPS feeds, swipe it sideways for
  *             the next truck (FleetSheet.tsx).
- *   Groups    nearby trucks merge into a numbered bubble; tap to zoom in, or
- *             to list trucks parked on the same spot.
+ *   Groups    nearby trucks merge into a numbered bubble (its bar shows the
+ *             mix; delayed trucks never merge); tap to list them, with Zoom.
+ *   Not live  the "N not live" pill lists trucks with only an old position
+ *             (tap to see it) and those that never reported.
  *   Trail     a grey line of where the picked truck has driven on its trip
  *             (the driver phone's GPS — the truck tracker keeps no history).
  *   Deep link /fleet-map?trip=<id> (from a "Trip delayed" / "Driver app
@@ -29,27 +41,30 @@
  *   Camera    follows the picked truck as it moves; dragging the map stops
  *             that and shows Recenter. Zoomed in, trucks carry their plates.
  *             The ⓘ control explains colours, shapes and lines.
- * Live feed refreshes every 30 s, the same one as Home.
+ * Live feed refreshes every 15 s here (the web map's rate), 30 s on Home.
  *   Actions   the truck sheet moves its trip to the next step or cancels it;
  *             a trip without a truck (Scheduled row, or a "no truck"
  *             attention item) gets Find a truck — nearest free trucks and a
  *             one-tap assign (FleetActions.tsx). Each asks to confirm first.
  */
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import {
-  AlertTriangle, Compass, Focus, Info, List, LocateFixed, Map as MapIcon, MessageCircle, Minus, Moon, Navigation, Plus, Search, Sun, Truck, X, type LucideIcon,
+  AlertTriangle, Compass, Focus, Info, List, LocateFixed, Map as MapIcon, MapPin, MessageCircle, Minus, Moon, Navigation, Plus, Search, Sun, X, type LucideIcon,
 } from 'lucide-react-native';
+import * as Location from 'expo-location';
 import { Toast } from '@mercon/mobile-shared/components/Toast';
 import { operatorService, type LiveUnit } from '../../lib/operator';
 import { AppTopBar } from '@/components/AppTopBar';
 import { makeTime } from '../trips/list/tripListModel';
-import { FleetMap, type FleetMapHandle, type FocusMode, type MapTheme, type MapView } from './FleetMap';
-import { GroupSheet, UnitRow, UnitSheet } from './FleetSheet';
+import { FleetMap, SILENT_COLOR, TONE, type FleetMapHandle, type FocusMode, type MapTheme, type MapView } from './FleetMap';
+import { GroupSheet, NotLiveSheet, UnitRow, UnitSheet } from './FleetSheet';
+import { CustomerPageSheet, NearSheet, SummarySheet, defaultRadiusKm, type PlaceSearch } from './FleetSummary';
+import { changeText, isBadChange, useFleetChanges, useFleetPrefs, type FleetChange } from './useFleetMapState';
 import { FleetLegend } from './FleetLegend';
 import { LaneSheet } from './LaneSheet';
 import { LANE_KM, LANE_WIDE_KM, bookedOnLane, freeTrucksAt, lanesOnRoad, parseLaneQuery, truckSeconds } from './laneModel';
@@ -62,35 +77,76 @@ import { niceName } from '../trips/create/components/ui';
 import type { QuickKind } from '../trips/details/tripDetailsModel';
 import { BulkStatusSheet, ShareKindSheet, TripShareFromMap } from './FleetShare';
 import {
-  NEAR_KM, agoText, computeEta, haversineKm, isDelayed, located, matchesFilter, matchesQuery, nextStop, onTrip, placeFromQuery, unitPriority, type FleetFilter,
+  agoText, computeEta, haversineKm, isDelayed, isFree, isSilent, located, matchesFilter, matchesQuery, nextStop, onTrip, placeFromQuery, unitPriority, type FleetFilter,
 } from './fleetModel';
 
 const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
 const LINE = '#E9E9EC';
-const BRAND = '#FA634E';
 
-const FILTERS: { id: FleetFilter; label: string; dot?: string }[] = [
+/** `whenAny`: shown only while it has trucks (or is the one picked) — the rest always. */
+const FILTERS: { id: FleetFilter; label: string; dot?: string; whenAny?: boolean }[] = [
   { id: 'all', label: 'All' },
-  { id: 'on_trip', label: 'On trip', dot: INK },
-  { id: 'delayed', label: 'Delayed', dot: BRAND },
-  { id: 'free', label: 'Free', dot: '#FFFFFF' },
-  { id: 'silent', label: 'No GPS', dot: '#9898A4' },
+  { id: 'on_trip', label: 'On trip', dot: TONE.active.color },
+  { id: 'delayed', label: 'Delayed', dot: TONE.delayed.color },
+  { id: 'free', label: 'Free', dot: TONE.free.color },
+  { id: 'free_soon', label: 'Free soon', dot: '#0284C7', whenAny: true },
+  { id: 'long_stop', label: 'Stopped', dot: '#D97706', whenAny: true },
+  { id: 'silent', label: 'No GPS', dot: SILENT_COLOR },
 ];
+/** Wait this long after typing before asking the server for an address. */
+const PLACE_SEARCH_DELAY_MS = 450;
 
 export default function FleetMapScreen() {
   const router = useRouter();
-  const live = useQuery({ queryKey: ['dashboard', 'actions', 'live-map'], queryFn: () => operatorService.liveMap(), refetchInterval: 30_000 });
+  const live = useQuery({ queryKey: ['dashboard', 'actions', 'live-map'], queryFn: () => operatorService.liveMap(), refetchInterval: 15_000 });
   const tzQ = useQuery({ queryKey: ['dashboard', 'tz'], queryFn: () => operatorService.deploymentTimezone(), staleTime: Infinity });
   const f = useMemo(() => makeTime(tzQ.data ?? 'Asia/Riyadh'), [tzQ.data]);
 
-  const [filter, setFilter] = useState<FleetFilter>('all');
+  const { onIntent, toast, setToast } = useActionIntent();
+  const [filter, setFilterRaw] = useState<FleetFilter>('all');
+  const [theme, setThemeRaw] = useState<MapTheme>('light');
+  // The 2D / 3D toggle; picking a truck switches it to 3D.
+  const [is3D, setIs3DRaw] = useState(false);
   const [query, setQuery] = useState('');
   const [view, setView] = useState<'map' | 'list'>('map');
   const [listTab, setListTab] = useState<ListTab>('trucks');
   const [selected, setSelected] = useState<string | null>(null);
-  const now = Date.now();
+  // The clock for ages, lateness and "free soon": moves on each refresh and every 30 s between.
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setClock(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const now = Math.max(clock, live.dataUpdatedAt || 0);
   const all = useMemo(() => live.data ?? [], [live.data]);
+
+  // The view to come back to: filter, theme, 2D/3D and camera (useFleetMapState.ts).
+  const prefs = useFleetPrefs();
+  const restored = useRef(false);
+  useEffect(() => {
+    if (!prefs.ready || restored.current) return;
+    restored.current = true;
+    const { filter: f0, theme: t0, is3D: d0 } = prefs.prefs;
+    // Restoring the saved view is a one-off when it loads; later changes are the user's.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (f0) setFilterRaw(f0); if (t0) setThemeRaw(t0); if (d0 != null) setIs3DRaw(d0);
+  }, [prefs.ready, prefs.prefs]);
+  const { save: savePrefs } = prefs;
+  const setFilter = (v: FleetFilter) => { setFilterRaw(v); savePrefs({ filter: v }); };
+  const setTheme = (v: MapTheme) => { setThemeRaw(v); savePrefs({ theme: v }); };
+  const setIs3D = (v: boolean) => { setIs3DRaw(v); savePrefs({ is3D: v }); };
+
+  // While the map is open, say when a truck turns late, stops long, loses GPS, or starts / finishes its trip.
+  const onChanges = useCallback((c: FleetChange[]) => {
+    const bad = c.some(isBadChange);
+    Haptics.notificationAsync(bad ? Haptics.NotificationFeedbackType.Warning : Haptics.NotificationFeedbackType.Success).catch(() => {});
+    setToast({ message: changeText(c), type: bad ? 'error' : 'success' });
+  }, [setToast]);
+  useFleetChanges(live.data, live.dataUpdatedAt, onChanges);
+
+  // A customer's all-trucks live page, to share (FleetSummary.tsx).
+  const [customerPage, setCustomerPage] = useState<{ id: string; name: string } | null>(null);
 
   const counts = useMemo(() => {
     const c = {} as Record<FleetFilter, number>;
@@ -98,9 +154,12 @@ export default function FleetMapScreen() {
     return c;
   }, [all, now]);
 
-  // "riyadh to jeddah" is a lane; a city in the search box means "trucks near there"; anything else is a text match.
+  // "riyadh to jeddah" is a lane (LaneSheet); otherwise see the place search below.
   const laneQuery = useMemo(() => parseLaneQuery(query), [query]);
-  const lane = laneQuery?.kind === 'lane' ? laneQuery : null;
+  // "Trucks near…": a city typed in the search box, or a place picked — an address
+  // suggestion, a long-press on the map, or my location (placePick wins, also over a lane).
+  const [placePick, setPlacePick] = useState<PlaceSearch | null>(null);
+  const lane = !placePick && laneQuery?.kind === 'lane' ? laneQuery : null;
   const laneKey = lane ? `${lane.from.label}>${lane.to.label}` : null;
   // A widened catchment belongs to the lane it was widened on; a new lane starts at the default.
   const [widened, setWidened] = useState<string | null>(null);
@@ -108,39 +167,99 @@ export default function FleetMapScreen() {
   const runs = useMemo(() => (lane ? lanesOnRoad(all, lane.from, lane.to, laneKm) : []), [all, lane, laneKm]);
   const free = useMemo(() => (lane ? freeTrucksAt(all, lane.from, laneKm, now) : { inRange: [], nearest: [] }), [all, lane, laneKm, now]);
   const ringed = useMemo(() => new Set(free.inRange.map((c) => c.unit.key)), [free]);
-  const place = useMemo(() => (laneQuery ? null : placeFromQuery(query)), [laneQuery, query]);
+  const typedCity = useMemo(() => {
+    if (laneQuery) return null;
+    const c = placeFromQuery(query);
+    return c ? ({ ...c, kind: 'city' } as PlaceSearch) : null;
+  }, [laneQuery, query]);
+  const place = placePick ?? typedCity;
+  const placeKey = place ? `${place.lat.toFixed(4)},${place.lng.toFixed(4)}` : '';
+  // Each new place starts from its own default radius.
+  const [radiusFor, setRadiusFor] = useState<{ key: string; km: number } | null>(null);
+  const radius = place ? (radiusFor?.key === placeKey ? radiusFor.km : defaultRadiusKm(place)) : 0;
+  const [freeOnly, setFreeOnly] = useState(false);
+  const byFilter = useMemo(
+    () => all.filter((u) => matchesFilter(u, filter, now) && (!place || !freeOnly || isFree(u))),
+    [all, filter, now, place, freeOnly],
+  );
   const shown = useMemo(() => {
     // A lane shows only the trucks that matter to it: on the road A→B, and free near A (or the nearest free ones).
     if (lane) return [...runs.map((r) => r.unit), ...(free.inRange.length ? free.inRange : free.nearest).map((c) => c.unit)];
-    const byFilter = all.filter((u) => matchesFilter(u, filter, now));
     if (place) {
       return byFilter
-        .filter((u) => u.position)
+        .filter(located)
         .map((u) => ({ u, km: haversineKm(u.position!, place) }))
-        .filter((x) => x.km <= NEAR_KM)
+        .filter((x) => x.km <= radius)
         .sort((a, b) => a.km - b.km)
         .map((x) => x.u);
     }
     return byFilter.filter((u) => matchesQuery(u, query)).sort((a, b) => unitPriority(b) - unitPriority(a));
-  }, [all, filter, place, query, now, lane, runs, free]);
+  }, [byFilter, place, radius, query, lane, runs, free]);
+  // Around a place the map keeps every truck, so the nearest ones outside the circle still show.
+  const mapUnits = place ? byFilter : shown;
+
+  // An address, landmark or customer site typed that matches no truck: offer places to search around.
+  const [debounced, setDebounced] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), PLACE_SEARCH_DELAY_MS);
+    return () => clearTimeout(t);
+  }, [query]);
+  const wantsPlaces = !placePick && !typedCity && !laneQuery && debounced.length >= 3 && debounced === query.trim()
+    && (/^(?:trucks?\s+)?(?:near|around|close to)\s+/i.test(debounced) || !all.some((u) => matchesQuery(u, debounced)));
+  const placesQ = useQuery({
+    queryKey: ['fleet', 'places', debounced.replace(/^(?:trucks?\s+)?(?:near|around|close to)\s+/i, '')],
+    queryFn: () => operatorService.searchPlaces(debounced.replace(/^(?:trucks?\s+)?(?:near|around|close to)\s+/i, '')),
+    enabled: wantsPlaces,
+    staleTime: 10 * 60_000,
+  });
+  const suggestions = wantsPlaces ? (placesQ.data ?? []).slice(0, 4) : [];
 
   const unit = all.find((u) => u.key === selected) ?? null;
   // Trucks parked on one spot, opened from their map group.
   const [group, setGroup] = useState<string[] | null>(null);
   const groupUnits = useMemo(() => (group ? all.filter((u) => group.includes(u.key)).sort((a, b) => unitPriority(b) - unitPriority(a)) : []), [all, group]);
   const [expanded, setExpanded] = useState(false);
+  // The "N not live" list (trucks with an old position, or none).
+  const [notLive, setNotLive] = useState(false);
   const [sheetH, setSheetH] = useState(0);
   // Driver view / trip overview, and whether the camera follows the picked truck (until the map is dragged by hand).
   const [focusMode, setFocusMode] = useState<FocusMode>('none');
   const [following, setFollowing] = useState(true);
   const pick = (key: string | null) => {
     if (key && key !== selected) Haptics.selectionAsync().catch(() => {});
-    setSelected(key); setFocusMode('none'); setGroup(null); setFollowing(true);
-    if (key) setView('map'); else setExpanded(false);
+    setSelected(key); setFocusMode('none'); setGroup(null); setNotLive(false); setFollowing(true);
+    // Like the web map: a picked truck is seen close up and tilted (2D stays one tap away).
+    // Not saved as the 2D / 3D preference — the toggle is.
+    if (key) { setView('map'); setIs3DRaw(true); } else setExpanded(false);
+  };
+  const searchAround = (p: PlaceSearch) => {
+    Haptics.selectionAsync().catch(() => {});
+    setSelected(null); setGroup(null); setNotLive(false);
+    setPlacePick(p);
+    setView('map');
+  };
+  const clearPlace = () => {
+    setPlacePick(null);
+    if (typedCity) setQuery('');
+    setFreeOnly(false);
+  };
+  const [locating, setLocating] = useState(false);
+  const nearMe = async () => {
+    setLocating(true);
+    try {
+      const perm = await Location.requestForegroundPermissionsAsync();
+      if (perm.status !== 'granted') { setToast({ message: 'Allow location to find trucks near you', type: 'error' }); return; }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      searchAround({ label: 'Your location', lat: pos.coords.latitude, lng: pos.coords.longitude, kind: 'me' });
+    } catch {
+      setToast({ message: 'Couldn’t get your location', type: 'error' });
+    } finally {
+      setLocating(false);
+    }
   };
   const openGroup = (keys: string[]) => {
     Haptics.selectionAsync().catch(() => {});
-    setSelected(null); setFocusMode('none'); setGroup(keys);
+    setSelected(null); setFocusMode('none'); setNotLive(false); setGroup(keys);
   };
 
   // Swiping the sheet walks the trucks on the map in the list's order.
@@ -151,7 +270,6 @@ export default function FleetMapScreen() {
 
   // The other lists: Home's trip action items and the not-started trips (same queries, same cache).
   const inbox = useActionInbox();
-  const { onIntent, toast, setToast } = useActionIntent();
   // Trip-changing actions: next step / cancel from the sheet, Find a truck from the lists.
   const tripActions = useTripActions((message) => setToast({ message, type: 'success' }));
   const [findFor, setFindFor] = useState<string | null>(null);
@@ -272,8 +390,6 @@ export default function FleetMapScreen() {
 
   // Map view state (the web map's controls): theme, 2D/3D, driver view / trip overview.
   const mapRef = useRef<FleetMapHandle>(null);
-  const [theme, setTheme] = useState<MapTheme>('light');
-  const [is3D, setIs3D] = useState(false);
   const [camera, setCamera] = useState<MapView>({ zoom: 5, pitch: 0, bearing: 0 });
   const [legend, setLegend] = useState(false);
   const enterView = (mode: FocusMode) => {
@@ -336,7 +452,9 @@ export default function FleetMapScreen() {
   const restSec = restQ.data ? Math.max(restQ.data.durationSeconds, restQ.data.distanceMeters / (80 / 3.6)) : null;
   const eta = unit && onTrip(unit) && (routeQ.isFetched || !target) ? computeEta(unit, routeQ.data ?? null, live.dataUpdatedAt || now) : null;
 
-  const sheetOpen = (!!unit && focusMode === 'none') || (!unit && (groupUnits.length > 0 || !!lane));
+  const quietUnits = useMemo(() => shown.filter((u) => isSilent(u, now)), [shown, now]);
+  // With nothing picked the summary (or a place's results) is up, so a sheet is open unless a focus view hides it.
+  const sheetOpen = !unit || focusMode === 'none';
   const lastUpdate = live.dataUpdatedAt ? agoText(new Date(live.dataUpdatedAt).toISOString(), now) : null;
 
   return (
@@ -352,25 +470,43 @@ export default function FleetMapScreen() {
           <Search size={17} color={MUTED} />
           <TextInput
             value={query}
-            onChangeText={(v) => { setQuery(v); if (selected || group) pick(null); }}
-            placeholder="Plate, driver, trip, city or riyadh to jeddah"
+            onChangeText={(v) => { setQuery(v); setPlacePick(null); if (selected || group) pick(null); }}
+            placeholder="Plate, driver, city, address or riyadh to jeddah"
             placeholderTextColor="#9898A4"
             style={s.searchInput}
             autoCorrect={false}
             returnKeyType="search"
           />
-          {query ? <TouchableOpacity onPress={() => setQuery('')} hitSlop={8} accessibilityLabel="Clear search"><X size={17} color={MUTED} /></TouchableOpacity> : null}
+          {query ? (
+            <TouchableOpacity onPress={() => { setQuery(''); setPlacePick(null); }} hitSlop={8} accessibilityLabel="Clear search"><X size={17} color={MUTED} /></TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={nearMe} disabled={locating} hitSlop={8} style={s.nearMe} accessibilityLabel="Trucks near me">
+              <LocateFixed size={15} color={locating ? MUTED : '#0284C7'} />
+              <Text style={s.nearMeText}>{locating ? 'Locating…' : 'Near me'}</Text>
+            </TouchableOpacity>
+          )}
         </View>
+        {suggestions.length ? (
+          <View style={s.suggest}>
+            <Text style={s.suggestHead}>Find trucks near</Text>
+            {suggestions.map((p) => (
+              <TouchableOpacity key={p.id} style={s.suggestRow} onPress={() => searchAround({ label: p.label.split(',')[0], lat: p.lat, lng: p.lng, kind: 'address' })} activeOpacity={0.6}>
+                <MapPin size={15} color="#0284C7" />
+                <Text style={s.suggestText} numberOfLines={1}>{p.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : null}
         {view === 'list' ? (
           <ListTabs tab={listTab} counts={{ trucks: shown.length, attention: attention.length, scheduled: scheduled.length }} onChange={setListTab} />
         ) : null}
         {!lane && (view === 'map' || listTab === 'trucks') ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pills} style={{ marginHorizontal: -16 }}>
-          {FILTERS.map((p) => {
+          {FILTERS.filter((p) => !p.whenAny || counts[p.id] > 0 || filter === p.id).map((p) => {
             const on = filter === p.id;
             return (
               <TouchableOpacity key={p.id} style={[s.pill, on && s.pillOn]} onPress={() => { setFilter(p.id); pick(null); }} activeOpacity={0.8}>
-                {p.dot ? <View style={[s.dot, { backgroundColor: p.dot }, p.id === 'free' && { borderWidth: 1.5, borderColor: on ? '#FFFFFF' : INK }]} /> : null}
+                {p.dot ? <View style={[s.dot, { backgroundColor: p.dot }]} /> : null}
                 <Text style={[s.pillText, on && { color: '#FFFFFF' }]}>{p.label}</Text>
                 <Text style={[s.pillCount, on && { color: 'rgba(255,255,255,0.7)' }]}>{counts[p.id]}</Text>
               </TouchableOpacity>
@@ -378,12 +514,18 @@ export default function FleetMapScreen() {
           })}
         </ScrollView>
         ) : null}
-        {place && (view === 'map' || listTab === 'trucks') ? <Text style={s.near}>{shown.length} {shown.length === 1 ? 'truck' : 'trucks'} within {NEAR_KM} km of {place.label}</Text> : null}
+        {place && view === 'list' && listTab === 'trucks' ? (
+          <View style={s.nearLine}>
+            <MapPin size={14} color="#0284C7" />
+            <Text style={s.near} numberOfLines={1}>{shown.length} {shown.length === 1 ? 'truck' : 'trucks'} within {radius} km of {place.kind === 'me' ? 'you' : place.label}</Text>
+            <TouchableOpacity onPress={clearPlace} hitSlop={8} accessibilityLabel="Clear the place search"><X size={15} color={MUTED} /></TouchableOpacity>
+          </View>
+        ) : null}
         {lane && view === 'list' ? <Text style={s.near}>{lane.from.label} → {lane.to.label} · {laneKm} km around each end</Text> : null}
-        {laneQuery?.kind === 'unknown' ? (
+        {!placePick && laneQuery?.kind === 'unknown' ? (
           laneQuery.suggestion ? (
             <TouchableOpacity onPress={() => setQuery(query.replace(laneQuery.text, laneQuery.suggestion!))} accessibilityLabel={`Search ${laneQuery.suggestion} instead`}>
-              <Text style={s.near}>{`Couldn't find "${laneQuery.text}". Did you mean `}<Text style={s.suggest}>{laneQuery.suggestion}</Text>?</Text>
+              <Text style={s.near}>{`Couldn't find "${laneQuery.text}". Did you mean `}<Text style={s.suggestLink}>{laneQuery.suggestion}</Text>?</Text>
             </TouchableOpacity>
           ) : <Text style={s.near}>{`Couldn't find "${laneQuery.text}". Try a city name, like Jeddah or Dammam.`}</Text>
         ) : null}
@@ -435,9 +577,10 @@ export default function FleetMapScreen() {
         </View>
       ) : (
         <View style={{ flex: 1 }}>
+          {prefs.ready ? (
           <FleetMap
             ref={mapRef}
-            units={shown}
+            units={mapUnits}
             selected={selected}
             onSelect={pick}
             interactive
@@ -445,22 +588,25 @@ export default function FleetMapScreen() {
             tilted={is3D}
             focusMode={focusMode}
             routeLine={routeQ.data?.geometry ?? null}
-            focus={place ? { lat: place.lat, lng: place.lng, km: NEAR_KM } : null}
+            focus={place ? { lat: place.lat, lng: place.lng, km: radius, label: place.kind === 'me' ? 'You' : place.label } : null}
+            initialCamera={!params.trip && !place && !lane ? prefs.prefs.camera ?? null : null}
+            onLongPress={(at) => searchAround({ label: 'Dropped pin', lat: at.lat, lng: at.lng, kind: 'pin' })}
             lane={laneOnMap}
             ringed={lane ? ringed : undefined}
             padding={{ top: 70, bottom: sheetOpen ? sheetH + 30 : 70 }}
-            onViewChange={setCamera}
+            onViewChange={(v) => { setCamera(v); if (v.center) savePrefs({ camera: { center: v.center, zoom: v.zoom } }); }}
             onGroupPress={openGroup}
             restLine={restStops.length >= 2 ? restQ.data?.geometry ?? null : null}
             trail={trail}
             follow={following}
             onUserMove={() => { if (unit) setFollowing(false); }}
           />
+          ) : <View style={{ flex: 1, backgroundColor: '#f6f4ef' }} />}
 
           {/* Top-left: live status (and speed while a picked truck is moving) */}
           <View style={s.topLeft} pointerEvents="none">
             <View style={s.live}>
-              <View style={[s.liveDot, { backgroundColor: live.isError ? '#9898A4' : BRAND }]} />
+              <View style={[s.liveDot, { backgroundColor: live.isError ? '#E11D48' : '#10B981' }]} />
               <Text style={s.liveText}>{live.isError ? 'Connection lost' : 'Live'}</Text>
               {lastUpdate && !live.isError ? <Text style={s.liveAgo}>· {lastUpdate}</Text> : null}
             </View>
@@ -550,7 +696,7 @@ export default function FleetMapScreen() {
                 : null}
             />
           ) : unit ? null : groupUnits.length ? (
-            <GroupSheet units={groupUnits} now={now} onPick={pick} onClose={() => setGroup(null)} onHeight={setSheetH} />
+            <GroupSheet units={groupUnits} now={now} onPick={pick} onZoom={() => mapRef.current?.fitKeys(group ?? [])} onClose={() => setGroup(null)} onHeight={setSheetH} />
           ) : lane ? (
             <LaneSheet
               key={laneKey!}
@@ -575,21 +721,41 @@ export default function FleetMapScreen() {
               onFindTruck={setFindFor}
               onHeight={setSheetH}
             />
+          ) : notLive && quietUnits.length ? (
+            <NotLiveSheet units={quietUnits} now={now} onPick={pick} onClose={() => setNotLive(false)} onHeight={setSheetH} />
           ) : (
             <>
-            {attention.length ? (
-              <TouchableOpacity style={s.attn} onPress={() => { Haptics.selectionAsync().catch(() => {}); setView('list'); setListTab('attention'); }} activeOpacity={0.85} accessibilityLabel="Show what needs attention">
-                <AlertTriangle size={14} color="#FFFFFF" strokeWidth={2.4} />
-                <Text style={s.attnText}>{attention.length} need{attention.length === 1 ? 's' : ''} attention</Text>
-              </TouchableOpacity>
-            ) : null}
-            <View style={s.hint} pointerEvents="none">
-              <Truck size={15} color="#FFFFFF" strokeWidth={2.3} />
-              <Text style={s.hintText}>
-                {live.isLoading ? 'Loading trucks…' : `${shown.filter((u) => u.position).length} on the map`}
-                {!live.isLoading && shown.filter((u) => !u.position).length ? `  ·  ${shown.filter((u) => !u.position).length} without location` : ''}
-              </Text>
-            </View>
+              {attention.length ? (
+                <TouchableOpacity style={[s.attn, { bottom: sheetH + 32 }]} onPress={() => { Haptics.selectionAsync().catch(() => {}); setView('list'); setListTab('attention'); }} activeOpacity={0.85} accessibilityLabel="Show what needs attention">
+                  <AlertTriangle size={14} color="#FFFFFF" strokeWidth={2.4} />
+                  <Text style={s.attnText}>{attention.length} need{attention.length === 1 ? 's' : ''} attention</Text>
+                </TouchableOpacity>
+              ) : null}
+              {place ? (
+                <NearSheet
+                  place={place}
+                  radius={radius}
+                  onRadius={(km) => setRadiusFor({ key: placeKey, km })}
+                  freeOnly={freeOnly}
+                  onFreeOnly={setFreeOnly}
+                  units={byFilter}
+                  now={now}
+                  onPick={pick}
+                  onClose={clearPlace}
+                  onHeight={setSheetH}
+                />
+              ) : (
+                <SummarySheet
+                  units={all}
+                  now={now}
+                  f={f}
+                  onFilter={(v) => { setFilter(v); setView('map'); }}
+                  onPick={pick}
+                  onNotLive={() => { setGroup(null); setNotLive(true); }}
+                  onCustomerPage={setCustomerPage}
+                  onHeight={setSheetH}
+                />
+              )}
             </>
           )}
         </View>
@@ -600,6 +766,8 @@ export default function FleetMapScreen() {
           visible={shareChoose}
           title={`WhatsApp · ${unit.vehicle?.plate_number ?? unit.trip.ref_id ?? 'truck'}`}
           delayed={isDelayed(unit)}
+          customer={unit.trip.customer_id ? { id: unit.trip.customer_id, name: unit.trip.customer_name ?? 'Customer' } : null}
+          onCustomerPage={(c) => { setShareChoose(false); setTimeout(() => setCustomerPage(c), 300); }}
           // One sheet closes before the next opens (two modals at once don't show on iOS).
           onPick={(k) => { setShareChoose(false); setTimeout(() => setShareKind(k), 300); }}
           onClose={() => setShareChoose(false)}
@@ -608,6 +776,7 @@ export default function FleetMapScreen() {
       {unit?.trip && shareKind ? <TripShareFromMap tripId={unit.trip.id} kind={shareKind} onClose={() => setShareKind(null)} /> : null}
       {bulk ? <BulkStatusSheet key={bulk.ids.join(',')} tripIds={bulk.ids} positions={bulk.positions} onClose={() => { setBulk(null); setPicked(null); }} /> : null}
       <FindTruckSheet tripId={findFor} units={all} onClose={() => setFindFor(null)} onAssigned={(message) => setToast({ message, type: 'success' })} />
+      <CustomerPageSheet customer={customerPage} onClose={() => setCustomerPage(null)} onToast={(message) => setToast({ message, type: 'success' })} />
       <MediaViewer items={viewer?.items ?? null} startIndex={viewer?.index ?? 0} title={viewer?.title ?? ''} onClose={() => setViewer(null)} />
       <Toast visible={!!toast} message={toast?.message ?? ''} type={toast?.type ?? 'success'} onDismiss={() => setToast(null)} />
     </SafeAreaView>
@@ -645,8 +814,15 @@ const s = StyleSheet.create({
   pillText: { fontSize: 13, fontWeight: '600', color: '#3F3F46' },
   pillCount: { fontSize: 13, color: MUTED, fontVariant: ['tabular-nums'] },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  near: { fontSize: 13, fontWeight: '600', color: '#3F3F46' },
-  suggest: { color: BRAND, textDecorationLine: 'underline' },
+  near: { flex: 1, fontSize: 13, fontWeight: '600', color: '#3F3F46' },
+  nearLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  nearMe: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, height: 28, borderRadius: 14, backgroundColor: '#E0F2FE' },
+  nearMeText: { fontSize: 12, fontWeight: '700', color: '#0369A1' },
+  suggest: { backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: LINE, paddingHorizontal: 12, paddingVertical: 6 },
+  suggestHead: { fontSize: 11, fontWeight: '700', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.5, paddingVertical: 4 },
+  suggestRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9 },
+  suggestText: { flex: 1, fontSize: 14, color: INK },
+  suggestLink: { color: '#FA634E', textDecorationLine: 'underline' },
 
   pickBar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: LINE },
   pickText: { fontSize: 14, fontWeight: '700', color: INK },
@@ -659,10 +835,8 @@ const s = StyleSheet.create({
   listBox: { flex: 1, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: LINE },
   empty: { textAlign: 'center', color: MUTED, paddingTop: 40, fontSize: 14 },
 
-  hint: { position: 'absolute', bottom: 24, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: INK, borderRadius: 20, paddingHorizontal: 14, height: 40, ...shadow },
-  attn: { position: 'absolute', bottom: 74, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#D92D20', borderRadius: 18, paddingHorizontal: 12, height: 34, ...shadow },
+  attn: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#D92D20', borderRadius: 18, paddingHorizontal: 12, height: 34, ...shadow },
   attnText: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
-  hintText: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
 
 
   // map overlays

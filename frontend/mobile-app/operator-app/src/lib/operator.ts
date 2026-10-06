@@ -265,6 +265,8 @@ export interface LiveUnit {
     ref_id: string | null;
     status: string;
     phase: 'upcoming' | 'active' | 'delayed';
+    /** Absent from servers older than the live map's customer link (2026-10). */
+    customer_id?: string | null;
     customer_name: string | null;
     planned_start: string | null;
     planned_end: string | null;
@@ -278,6 +280,8 @@ export interface LiveUnit {
   /** Which GPS feeds are live, and whether the truck is moving (same as the web live map). */
   feed?: 'both' | 'vehicle' | 'driver' | 'none';
   motion?: 'moving' | 'idle' | 'stale' | 'no_signal';
+  /** Since when a running trip's truck has stood within ~300 m of where it is (driver app GPS); null while moving. */
+  stopped_since?: string | null;
 }
 
 /** What a driver sent from a trip's stops (backend services/fleetLiveMap.ts `LiveTripMedia`). */

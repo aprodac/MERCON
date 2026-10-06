@@ -21,6 +21,8 @@ export interface RawCustomer {
   id: string;
   name: string;
   contact_phone: string;
+  /** A /uploads path, a link, or an inline `data:image/...` picture. */
+  logo_url?: string | null;
   isActive: boolean;
   createdAt: string;
 }

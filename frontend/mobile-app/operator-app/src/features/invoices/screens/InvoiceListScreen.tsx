@@ -36,7 +36,7 @@ function formatDate(iso?: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
 const InvoiceCard = ({ item, onMarkPaid }: { item: OperatorInvoice; onMarkPaid: (id: string) => void }) => {

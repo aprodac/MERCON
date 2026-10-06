@@ -96,6 +96,7 @@ function RootNavigator() {
         <Stack.Screen name="user-edit" />
         <Stack.Screen name="quotation-details" />
         <Stack.Screen name="quotation-edit" />
+        <Stack.Screen name="rate-finder" />
         <Stack.Screen name="trip-edit" />
         <Stack.Screen name="third-party-details" />
         <Stack.Screen name="third-party-edit" />

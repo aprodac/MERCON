@@ -246,7 +246,7 @@ function initialSlot(p: RoutePreset): TripSlotDraft {
   };
 }
 
-export function useCreateTrip(params: { customerId?: string; billingType?: string; assignment?: string; vehicleId?: string } & RoutePreset) {
+export function useCreateTrip(params: { customerId?: string; billingType?: string; assignment?: string; vehicleId?: string; quotationId?: string } & RoutePreset) {
   const [tz, setTz] = useState('Asia/Riyadh');
   const [today, setToday] = useState(() => dateInZone(Date.now(), 'Asia/Riyadh'));
 
@@ -451,6 +451,16 @@ export function useCreateTrip(params: { customerId?: string; billingType?: strin
   }, []);
 
   const clearQuotation = useCallback(() => setSlot((s) => clearPrice(s, false)), []);
+
+  // Opened from a quotation (Quotations → Create trip): its route, trip type,
+  // billing, truck class and price, once the customer's quotations are here.
+  // Everything stays editable; it's only the starting point.
+  const [quotationPresetDone, setQuotationPresetDone] = useState(false);
+  if (!quotationPresetDone && params.quotationId && quotations.length > 0) {
+    setQuotationPresetDone(true);
+    const q = quotations.find((x) => x.id === params.quotationId);
+    if (q) applyQuotation(q, { fillRoute: true });
+  }
 
   const routeComplete = Boolean(slot.origin.trim() && slot.destination.trim());
 
