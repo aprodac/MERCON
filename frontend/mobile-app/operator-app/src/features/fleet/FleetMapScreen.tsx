@@ -15,8 +15,10 @@
  *             up for the stop timeline (with the driver's photos per stop)
  *             and GPS feeds, swipe it sideways for
  *             the next truck (FleetSheet.tsx).
- *   Groups    nearby trucks merge into a numbered bubble; tap to zoom in, or
- *             to list trucks parked on the same spot.
+ *   Groups    nearby trucks merge into a numbered bubble (its bar shows the
+ *             mix; delayed trucks never merge); tap to list them, with Zoom.
+ *   Not live  the "N not live" pill lists trucks with only an old position
+ *             (tap to see it) and those that never reported.
  *   Trail     a grey line of where the picked truck has driven on its trip
  *             (the driver phone's GPS — the truck tracker keeps no history).
  *   Deep link /fleet-map?trip=<id> (from a "Trip delayed" / "Driver app
@@ -25,7 +27,7 @@
  *   Camera    follows the picked truck as it moves; dragging the map stops
  *             that and shows Recenter. Zoomed in, trucks carry their plates.
  *             The ⓘ control explains colours, shapes and lines.
- * Live feed refreshes every 30 s, the same one as Home.
+ * Live feed refreshes every 15 s here (the web map's rate), 30 s on Home.
  *   Actions   the truck sheet moves its trip to the next step or cancels it;
  *             a trip without a truck (Scheduled row, or a "no truck"
  *             attention item) gets Find a truck — nearest free trucks and a
@@ -45,7 +47,7 @@ import { operatorService, type LiveUnit } from '../../lib/operator';
 import { AppTopBar } from '@/components/AppTopBar';
 import { makeTime } from '../trips/list/tripListModel';
 import { FleetMap, SILENT_COLOR, TONE, type FleetMapHandle, type FocusMode, type MapTheme, type MapView } from './FleetMap';
-import { GroupSheet, UnitRow, UnitSheet } from './FleetSheet';
+import { GroupSheet, NotLiveSheet, UnitRow, UnitSheet } from './FleetSheet';
 import { FleetLegend } from './FleetLegend';
 import { FindTruckSheet, useTripActions } from './FleetActions';
 import { AttentionList, ListTabs, ScheduledList, attentionItems, matchesTripText, scheduledTrips, type ListTab } from './FleetLists';
@@ -56,13 +58,12 @@ import { niceName } from '../trips/create/components/ui';
 import type { QuickKind } from '../trips/details/tripDetailsModel';
 import { BulkStatusSheet, ShareKindSheet, TripShareFromMap } from './FleetShare';
 import {
-  NEAR_KM, agoText, computeEta, haversineKm, isDelayed, located, matchesFilter, matchesQuery, nextStop, onTrip, placeFromQuery, unitPriority, type FleetFilter,
+  NEAR_KM, agoText, computeEta, haversineKm, isDelayed, isSilent, located, matchesFilter, matchesQuery, nextStop, onTrip, placeFromQuery, unitPriority, type FleetFilter,
 } from './fleetModel';
 
 const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
 const LINE = '#E9E9EC';
-const BRAND = '#FA634E';
 
 const FILTERS: { id: FleetFilter; label: string; dot?: string }[] = [
   { id: 'all', label: 'All' },
@@ -74,7 +75,7 @@ const FILTERS: { id: FleetFilter; label: string; dot?: string }[] = [
 
 export default function FleetMapScreen() {
   const router = useRouter();
-  const live = useQuery({ queryKey: ['dashboard', 'actions', 'live-map'], queryFn: () => operatorService.liveMap(), refetchInterval: 30_000 });
+  const live = useQuery({ queryKey: ['dashboard', 'actions', 'live-map'], queryFn: () => operatorService.liveMap(), refetchInterval: 15_000 });
   const tzQ = useQuery({ queryKey: ['dashboard', 'tz'], queryFn: () => operatorService.deploymentTimezone(), staleTime: Infinity });
   const f = useMemo(() => makeTime(tzQ.data ?? 'Asia/Riyadh'), [tzQ.data]);
 
@@ -112,6 +113,8 @@ export default function FleetMapScreen() {
   const [group, setGroup] = useState<string[] | null>(null);
   const groupUnits = useMemo(() => (group ? all.filter((u) => group.includes(u.key)).sort((a, b) => unitPriority(b) - unitPriority(a)) : []), [all, group]);
   const [expanded, setExpanded] = useState(false);
+  // The "N not live" list (trucks with an old position, or none).
+  const [notLive, setNotLive] = useState(false);
   const [sheetH, setSheetH] = useState(0);
   // Driver view / trip overview, and whether the camera follows the picked truck (until the map is dragged by hand).
   const [focusMode, setFocusMode] = useState<FocusMode>('none');
@@ -120,13 +123,13 @@ export default function FleetMapScreen() {
   const [is3D, setIs3D] = useState(false);
   const pick = (key: string | null) => {
     if (key && key !== selected) Haptics.selectionAsync().catch(() => {});
-    setSelected(key); setFocusMode('none'); setGroup(null); setFollowing(true);
+    setSelected(key); setFocusMode('none'); setGroup(null); setNotLive(false); setFollowing(true);
     // Like the web map: a picked truck is seen close up and tilted (2D stays one tap away).
     if (key) { setView('map'); setIs3D(true); } else setExpanded(false);
   };
   const openGroup = (keys: string[]) => {
     Haptics.selectionAsync().catch(() => {});
-    setSelected(null); setFocusMode('none'); setGroup(keys);
+    setSelected(null); setFocusMode('none'); setNotLive(false); setGroup(keys);
   };
 
   // Swiping the sheet walks the trucks on the map in the list's order.
@@ -262,7 +265,8 @@ export default function FleetMapScreen() {
   const restSec = restQ.data ? Math.max(restQ.data.durationSeconds, restQ.data.distanceMeters / (80 / 3.6)) : null;
   const eta = unit && onTrip(unit) && (routeQ.isFetched || !target) ? computeEta(unit, routeQ.data ?? null, live.dataUpdatedAt || now) : null;
 
-  const sheetOpen = (!!unit && focusMode === 'none') || (!unit && groupUnits.length > 0);
+  const quietUnits = useMemo(() => shown.filter((u) => isSilent(u, now)), [shown, now]);
+  const sheetOpen = (!!unit && focusMode === 'none') || (!unit && (groupUnits.length > 0 || (notLive && quietUnits.length > 0)));
   const lastUpdate = live.dataUpdatedAt ? agoText(new Date(live.dataUpdatedAt).toISOString(), now) : null;
 
   return (
@@ -376,7 +380,7 @@ export default function FleetMapScreen() {
           {/* Top-left: live status (and speed while a picked truck is moving) */}
           <View style={s.topLeft} pointerEvents="none">
             <View style={s.live}>
-              <View style={[s.liveDot, { backgroundColor: live.isError ? '#9898A4' : BRAND }]} />
+              <View style={[s.liveDot, { backgroundColor: live.isError ? '#E11D48' : '#10B981' }]} />
               <Text style={s.liveText}>{live.isError ? 'Connection lost' : 'Live'}</Text>
               {lastUpdate && !live.isError ? <Text style={s.liveAgo}>· {lastUpdate}</Text> : null}
             </View>
@@ -466,7 +470,9 @@ export default function FleetMapScreen() {
                 : null}
             />
           ) : unit ? null : groupUnits.length ? (
-            <GroupSheet units={groupUnits} now={now} onPick={pick} onClose={() => setGroup(null)} onHeight={setSheetH} />
+            <GroupSheet units={groupUnits} now={now} onPick={pick} onZoom={() => mapRef.current?.fitKeys(group ?? [])} onClose={() => setGroup(null)} onHeight={setSheetH} />
+          ) : notLive && quietUnits.length ? (
+            <NotLiveSheet units={quietUnits} now={now} onPick={pick} onClose={() => setNotLive(false)} onHeight={setSheetH} />
           ) : (
             <>
             {attention.length ? (
@@ -475,13 +481,19 @@ export default function FleetMapScreen() {
                 <Text style={s.attnText}>{attention.length} need{attention.length === 1 ? 's' : ''} attention</Text>
               </TouchableOpacity>
             ) : null}
-            <View style={s.hint} pointerEvents="none">
+            <TouchableOpacity
+              style={s.hint}
+              disabled={live.isLoading || !quietUnits.length}
+              onPress={() => { Haptics.selectionAsync().catch(() => {}); setGroup(null); setNotLive(true); }}
+              activeOpacity={0.85}
+              accessibilityLabel={quietUnits.length ? `${quietUnits.length} trucks not live — show the list` : undefined}
+            >
               <Truck size={15} color="#FFFFFF" strokeWidth={2.3} />
               <Text style={s.hintText}>
-                {live.isLoading ? 'Loading trucks…' : `${shown.filter((u) => u.position).length} on the map`}
-                {!live.isLoading && shown.filter((u) => !u.position).length ? `  ·  ${shown.filter((u) => !u.position).length} without location` : ''}
+                {live.isLoading ? 'Loading trucks…' : `${shown.filter(located).length} on the map`}
+                {!live.isLoading && quietUnits.length ? `  ·  ${quietUnits.length} not live` : ''}
               </Text>
-            </View>
+            </TouchableOpacity>
             </>
           )}
         </View>
