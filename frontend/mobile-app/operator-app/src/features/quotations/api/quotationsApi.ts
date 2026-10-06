@@ -23,6 +23,7 @@ export interface RawQuotationStop {
 export interface RawQuotationCustomer {
   id: string;
   name: string;
+  logo_url?: string | null;
 }
 
 export interface RawQuotation {
@@ -47,6 +48,10 @@ export interface RawQuotation {
   updatedAt: string;
   customer?: RawQuotationCustomer | null;
   stops?: RawQuotationStop[];
+  /** Trips booked on this rate (list endpoint only). */
+  trip_count?: number;
+  /** Date of the latest trip on this rate (list endpoint only). */
+  last_trip_at?: string | null;
 }
 
 export interface RawQuotationListResponse {

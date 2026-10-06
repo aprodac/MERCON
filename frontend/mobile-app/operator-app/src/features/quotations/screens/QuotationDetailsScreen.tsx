@@ -3,32 +3,34 @@
  * route drawer shows: the lane and its commercial terms, the stop sequence,
  * the customer's extra charges, and the trips billed on this rate.
  *
- * A white summary card (number, status, from → to, customer) with the money
- * strip, then tabs: Terms · Route · Charges · Trips. Edit sits top-right.
+ * A ticket (company logo, status, from → to, price), the actions (Create trip
+ * on this rate · Duplicate · Share), the same route in other truck sizes, the
+ * terms (with margin % and usage), the route drawn from its pins plus every
+ * stop, the price history, extra charges and trips. Edit sits top-right.
  * The quotation itself comes from the same cached list as the quotations page.
  */
 import React, { useMemo } from 'react';
 import { formatQuotationRef } from '@mercon/shared-types';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, RefreshControl, Share } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, SquarePen, Tag, Truck } from 'lucide-react-native';
-import { EmptyHint, PageTitle, SectionLabel, TabIcon, Tile, FactRow } from '@/components/pageCues';
+import { ArrowLeft, Copy, History, Share2, SquarePen, Tag, TrendingDown, TrendingUp, Truck, TruckIcon } from 'lucide-react-native';
+import { EmptyHint, PageTitle, SectionLabel, FactRow } from '@/components/pageCues';
 import { Colors } from '@mercon/mobile-shared/theme/tokens';
 import { EmptyState, ErrorState, SkeletonBlock } from '@mercon/mobile-shared/ui';
 import { niceName } from '@/features/trips/create/components/ui';
 import { Card, INK, MUTED, PAGE } from '@/features/trips/details/components/parts';
 import { statusChip } from '@/features/trips/details/tripDetailsModel';
+import { operatorService } from '@/lib/operator';
 import { quotationsApi } from '../api/quotationsApi';
+import { CompanyLogo, QuotationBadges, RouteSketch, expiryText, pinnedStops, truckOrder } from '../components';
 import { useQuotations } from '../hooks';
-import { formatCurrency, formatValidityRange } from '../services/quotationsService';
-import type { QuotationValidityStatus } from '../types';
+import { agoText, formatCurrency, formatValidityRange, marginOf, outboundStops } from '../services/quotationsService';
+import type { QuotationListItem, QuotationValidityStatus } from '../types';
 
-const initialsOf = (name: string) => {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '?';
-};
+const pathKey = (x: QuotationListItem) => outboundStops(x).map((st) => st.shortName.trim().toLowerCase()).join('>');
+const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number(v));
 
 const STATUS_LABEL: Record<QuotationValidityStatus, string> = { Active: 'Active', Future: 'Starts later', Expired: 'Expired', Inactive: 'Inactive' };
 
@@ -54,9 +56,39 @@ export default function QuotationDetailsScreen() {
     [tripsQ.data],
   );
   const charges = chargesQ.data ?? [];
+  const historyQ = useQuery({
+    queryKey: ['quotations', 'detail', id, 'history'],
+    queryFn: () => operatorService.quotationHistory(q!.id),
+    enabled: !!q,
+  });
+  const changes = (historyQ.data ?? []).filter((c) => {
+    const [r0, r1, p0, p1] = [num(c.old_rate), num(c.new_rate), num(c.old_driver_payout), num(c.new_driver_payout)];
+    return (r1 !== null && r1 !== r0) || (p1 !== null && p1 !== p0);
+  });
+
+  // The same route (stops, line type, billing) for this customer in other truck sizes.
+  const siblings = useMemo(() => {
+    if (!q) return [];
+    const key = pathKey(q);
+    return quotations
+      .filter((x) => x.id !== q.id && x.customerId === q.customerId && x.lineTypeKey === q.lineTypeKey && x.operationKey === q.operationKey && pathKey(x) === key)
+      .sort((a, b) => truckOrder(a.vehicleClass) - truckOrder(b.vehicleClass) || a.rate - b.rate);
+  }, [quotations, q]);
 
   const back = () => (router.canGoBack() ? router.back() : router.replace('/quotations'));
-  const reload = () => { refresh(); chargesQ.refetch(); tripsQ.refetch(); };
+  const reload = () => { refresh(); chargesQ.refetch(); tripsQ.refetch(); historyQ.refetch(); };
+
+  const share = (x: QuotationListItem) => {
+    const cur = x.currency || 'SAR';
+    const lines = [
+      `${niceName(x.customerName)} — ${formatQuotationRef(x.quotationNumber) ?? 'Quotation'}`,
+      outboundStops(x).map((st) => niceName(st.shortName)).join(' → '),
+      `${x.vehicleClass} · ${x.lineType} · ${x.operationKey}`,
+      `Rate: ${formatCurrency(x.rate, cur)} ${x.isMonthly ? 'per month' : 'per trip'}`,
+      `Valid: ${formatValidityRange(x.validFrom, x.validTo)}`,
+    ];
+    Share.share({ message: lines.join('\n') }).catch(() => {});
+  };
 
   const body = () => {
     if (loading && !q) return <View style={[s.pad16, { gap: 10 }]}><SkeletonBlock height={220} radius={16} /><SkeletonBlock height={44} radius={12} /><SkeletonBlock height={200} radius={16} /></View>;
@@ -66,18 +98,22 @@ export default function QuotationDetailsScreen() {
     const cur = q.currency || 'SAR';
     const live = q.validityStatus === 'Active';
     // Only meaningful for a per-trip rate; a monthly rate and a per-trip pay don't compare.
-    const margin = !q.isMonthly && q.driverPayout !== null ? q.rate - q.driverPayout : null;
+    const margin = marginOf(q);
+    const marginPct = margin !== null && q.rate > 0 ? Math.round((margin / q.rate) * 100) : null;
     const via = q.stops.slice(1, -1).map((x) => x.shortName);
+    const expiry = expiryText(q);
+    const showRoute = q.stops.length > 2 || pinnedStops(outboundStops(q)).length >= 2;
 
     const facts: { label: string; value: string; accent?: boolean }[] = [
       { label: 'Truck type', value: q.vehicleClass || '—' },
       { label: 'Line type', value: q.lineType || '—' },
       { label: 'Operation', value: q.operationType || '—' },
       { label: 'Rate basis', value: q.isMonthly ? 'Per month' : 'Per trip' },
-      ...(q.driverPayout !== null ? [{ label: 'Driver pay', value: formatCurrency(q.driverPayout, cur) }] : []),
-      ...(margin !== null ? [{ label: 'Margin', value: formatCurrency(margin, cur), accent: true }] : []),
+      { label: 'Driver pay', value: q.driverPayout !== null ? formatCurrency(q.driverPayout, cur) : 'Not set', accent: q.driverPayout === null },
+      ...(margin !== null ? [{ label: 'Margin', value: `${formatCurrency(margin, cur)}${marginPct !== null ? `  (${marginPct}%)` : ''}`, accent: true }] : []),
       ...(q.dailyEquivalent !== null ? [{ label: 'About per day', value: formatCurrency(q.dailyEquivalent, cur) }] : []),
-      { label: 'Valid', value: formatValidityRange(q.validFrom, q.validTo) },
+      { label: 'Valid', value: expiry ? `${formatValidityRange(q.validFrom, q.validTo)} · ${expiry.toLowerCase()}` : formatValidityRange(q.validFrom, q.validTo), accent: !!expiry },
+      { label: 'Trips on this rate', value: q.tripCount > 0 ? `${q.tripCount}${q.lastTripAt ? `  ·  last ${agoText(q.lastTripAt)}` : ''}` : 'None yet' },
     ];
     const tripTotal = tripsQ.data?.total ?? 0;
 
@@ -86,7 +122,7 @@ export default function QuotationDetailsScreen() {
         {/* 0 · the quotation as a ticket: who, the lane, the price */}
         <View style={s.ticket}>
           <TouchableOpacity style={s.who} activeOpacity={0.6} onPress={() => router.push({ pathname: '/customer-details', params: { id: q.customerId } })}>
-            <View style={s.logo}><Text style={s.logoText}>{initialsOf(q.customerName)}</Text></View>
+            <CompanyLogo name={q.customerName} uri={q.customerLogo} size={42} />
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={s.rowTitle} numberOfLines={1}>{niceName(q.customerName)}</Text>
               <Text style={s.sub}>{formatQuotationRef(q.quotationNumber) ?? 'Quotation'}</Text>
@@ -140,16 +176,56 @@ export default function QuotationDetailsScreen() {
           </View>
         </View>
 
+        {/* actions: book on this rate, copy it for another truck, send it */}
+        <View style={s.actions}>
+          {live ? (
+            <TouchableOpacity style={[s.action, s.actionMain]} activeOpacity={0.85} onPress={() => router.push({ pathname: '/create-trip', params: { customerId: q.customerId, quotationId: q.id } })} accessibilityRole="button">
+              <TruckIcon size={17} color={Colors.white} strokeWidth={2.3} />
+              <Text style={[s.actionText, { color: Colors.white }]}>Create trip</Text>
+            </TouchableOpacity>
+          ) : null}
+          <TouchableOpacity style={s.action} activeOpacity={0.8} onPress={() => router.push({ pathname: '/quotation-edit', params: { copyFrom: q.id } })} accessibilityRole="button">
+            <Copy size={16} color={INK} strokeWidth={2.3} />
+            <Text style={s.actionText}>Duplicate</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.action} activeOpacity={0.8} onPress={() => share(q)} accessibilityRole="button">
+            <Share2 size={16} color={INK} strokeWidth={2.3} />
+            <Text style={s.actionText}>Share</Text>
+          </TouchableOpacity>
+        </View>
+
+        <QuotationBadges q={q} />
+
+        {/* the same route in other truck sizes — tap to switch */}
+        {siblings.length > 0 ? (
+          <Card style={{ paddingBottom: 12 }}>
+            <SectionLabel>Other truck sizes on this route</SectionLabel>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              <View style={[s.sib, s.sibOn]}>
+                <Text style={[s.sibTruck, { color: 'rgba(255,255,255,0.75)' }]}>{q.vehicleClass}</Text>
+                <Text style={[s.sibRate, { color: Colors.white }]}>{q.rate.toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
+              </View>
+              {siblings.map((x) => (
+                <TouchableOpacity key={x.id} style={[s.sib, x.validityStatus !== 'Active' && { opacity: 0.55 }]} activeOpacity={0.75} onPress={() => router.setParams({ id: x.id })} accessibilityRole="button" accessibilityLabel={`${x.vehicleClass}, ${formatCurrency(x.rate, x.currency)}`}>
+                  <Text style={s.sibTruck}>{x.vehicleClass}</Text>
+                  <Text style={s.sibRate}>{x.rate.toLocaleString('en-US', { maximumFractionDigits: 0 })}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </Card>
+        ) : null}
+
         {/* 1 · the terms */}
         <Card style={{ paddingVertical: 4 }}>
           {facts.map((f, i) => <FactRow key={f.label} label={f.label} value={f.value} accent={f.accent} first={i === 0} />)}
         </Card>
 
-        {/* 2 · every stop, only when the lane has more than its two ends */}
-        {q.stops.length > 2 ? (
+        {/* 2 · the route drawn from its pins, and every stop when the lane has more than its two ends */}
+        {showRoute ? (
           <Card style={{ paddingBottom: 4 }}>
-            <SectionLabel>Stops</SectionLabel>
-            {q.stops.map((stop, i) => {
+            <SectionLabel>{q.stops.length > 2 ? 'Stops' : 'Route'}</SectionLabel>
+            <RouteSketch stops={outboundStops(q)} />
+            {q.stops.length <= 2 ? <View style={{ height: 12 }} /> : q.stops.map((stop, i) => {
               const last = i === q.stops.length - 1;
               const end = i === 0 || last;
               return (
@@ -172,6 +248,36 @@ export default function QuotationDetailsScreen() {
             })}
           </Card>
         ) : null}
+
+        {/* price history: every change to the rate or the driver's pay */}
+        <Card style={{ paddingBottom: 4 }}>
+          <View style={s.row}>
+            <SectionLabel flat>Price history</SectionLabel>
+            {changes.length ? <Text style={s.count}>{changes.length}</Text> : null}
+          </View>
+          {historyQ.isLoading ? <EmptyHint>Loading…</EmptyHint>
+            : historyQ.isError ? <EmptyHint>Couldn’t load. Pull down to try again.</EmptyHint>
+            : changes.length === 0 ? <EmptyHint>Never changed since it was created.</EmptyHint>
+            : changes.slice(0, 8).map((c, i) => {
+              const [r0, r1, p0, p1] = [num(c.old_rate), num(c.new_rate), num(c.old_driver_payout), num(c.new_driver_payout)];
+              const d = new Date(c.createdAt);
+              return (
+                <View key={c.id} style={[s.line, i > 0 && s.lineBorder]}>
+                  <View style={s.date}>
+                    <Text style={s.dateDay}>{d.getDate()}</Text>
+                    <Text style={s.dateMonth}>{d.toLocaleDateString(undefined, { month: 'short' })}</Text>
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
+                    {r1 !== null && r1 !== r0 ? <PriceChange label="Rate" from={r0} to={r1} cur={cur} /> : null}
+                    {p1 !== null && p1 !== p0 ? <PriceChange label="Driver pay" from={p0} to={p1} cur={cur} /> : null}
+                    <Text style={s.sub} numberOfLines={1}>
+                      {[d.getFullYear() !== new Date().getFullYear() ? String(d.getFullYear()) : '', niceName(c.changed_by_name || c.changed_by || ''), c.source === 'TRIP_CREATION' ? 'from a trip' : '', c.reason || ''].filter(Boolean).join('  ·  ')}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+        </Card>
 
         {/* 3 · extra charges agreed with the customer — only when there are some */}
         {charges.length > 0 ? (
@@ -258,11 +364,17 @@ export default function QuotationDetailsScreen() {
   );
 }
 
-function Split({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+function PriceChange({ label, from, to, cur }: { label: string; from: number | null; to: number; cur: string }) {
+  const up = from !== null && to > from;
+  const Icon = from === null ? History : up ? TrendingUp : TrendingDown;
+  const color = from === null ? MUTED : up ? '#146C3C' : '#B42318';
   return (
-    <View style={s.splitItem}>
-      <Text style={s.rowLabel}>{label}</Text>
-      <Text style={[s.splitValue, accent && { color: Colors.primary }]} numberOfLines={1}>{value}</Text>
+    <View style={s.change}>
+      <Icon size={14} color={color} strokeWidth={2.4} />
+      <Text style={s.changeText} numberOfLines={1}>
+        {label}  <Text style={{ color: MUTED }}>{from !== null ? `${formatCurrency(from, cur)} → ` : ''}</Text>
+        <Text style={{ fontWeight: '700', color: INK }}>{formatCurrency(to, cur)}</Text>
+      </Text>
     </View>
   );
 }
@@ -354,4 +466,15 @@ const s = StyleSheet.create({
   stopLine: { flex: 1, width: 2, backgroundColor: '#E4E4E8', marginTop: 4, marginBottom: -10 },
   stopText: { flex: 1, minWidth: 0, gap: 2, minHeight: 26, justifyContent: 'center', paddingBottom: 12 },
   kind: { fontSize: 11, fontWeight: '700', color: MUTED, backgroundColor: '#F1F1F3', borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
+
+  actions: { flexDirection: 'row', gap: 8 },
+  action: { flex: 1, height: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 14, backgroundColor: Colors.white, borderWidth: 1, borderColor: '#E9E9EC' },
+  actionMain: { flex: 1.3, backgroundColor: Colors.primary, borderColor: Colors.primary },
+  actionText: { fontSize: 14, fontWeight: '700', color: INK },
+  sib: { minWidth: 84, gap: 1, borderRadius: 12, backgroundColor: '#F6F6F7', paddingHorizontal: 12, paddingVertical: 8 },
+  sibOn: { backgroundColor: INK },
+  sibTruck: { fontSize: 11, fontWeight: '700', color: MUTED, letterSpacing: 0.3 },
+  sibRate: { fontSize: 16, fontWeight: '800', color: INK, fontVariant: ['tabular-nums'] },
+  change: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  changeText: { flexShrink: 1, fontSize: 14, color: INK, fontVariant: ['tabular-nums'] },
 });

@@ -264,9 +264,28 @@ export const getQuotations = async (req: Request, res: Response) => {
       prisma.quotation.count({ where: whereClause }),
     ]);
 
+    // How often each rate is actually booked: trip count and the latest trip date,
+    // so the app can sort by "most used" and flag rates nobody uses any more.
+    const usage = quotations.length
+      ? await prisma.trip.groupBy({
+          by: ['quotationId'],
+          where: { quotationId: { in: quotations.map((q) => q.id) }, deletedAt: null },
+          _count: { _all: true },
+          _max: { planned_start: true, createdAt: true },
+        })
+      : [];
+    const usageById = new Map(usage.map((u) => [u.quotationId, u]));
+
     res.json({
       success: true,
-      data: quotations,
+      data: quotations.map((q) => {
+        const u = usageById.get(q.id);
+        return {
+          ...q,
+          trip_count: u?._count._all ?? 0,
+          last_trip_at: u ? (u._max.planned_start ?? u._max.createdAt) : null,
+        };
+      }),
       meta: {
         page: isPaginated ? pageNumber : 1,
         per_page: isPaginated ? limit : total,
