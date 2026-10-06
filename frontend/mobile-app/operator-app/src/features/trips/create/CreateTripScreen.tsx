@@ -28,8 +28,8 @@ const STEPS: Record<CreateTripStep, { title: string; short: string; next: string
 
 export default function CreateTripScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ customerId?: string; billingType?: string; assignment?: string; vehicleId?: string }>();
-  const form = useCreateTrip({ customerId: params.customerId, billingType: params.billingType, assignment: params.assignment, vehicleId: params.vehicleId });
+  const params = useLocalSearchParams<{ customerId?: string; billingType?: string; assignment?: string; vehicleId?: string; quotationId?: string }>();
+  const form = useCreateTrip({ customerId: params.customerId, billingType: params.billingType, assignment: params.assignment, vehicleId: params.vehicleId, quotationId: params.quotationId });
   const scrollRef = useRef<ScrollView>(null);
   // Back from adding a driver / truck / partner (the pickers' "+ Add" links): reload the fleet so it's listed.
   const focusedOnce = useRef(false);
