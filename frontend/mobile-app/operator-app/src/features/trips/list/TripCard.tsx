@@ -1,6 +1,6 @@
 /**
  * One trip as a card, top to bottom:
- *   customer (logo, name, trip no. · time)                    status
+ *   customer (logo, name, trip no. · time — finished: started → delivered)   status
  *   route panel   ○ from
  *                 ● to                                     +N stops
  *   delay reason bar (only when the driver gave one)
@@ -47,8 +47,11 @@ function TripCardBase({ trip: t, f, now, showDay, onPress, onLongPress }: Props)
   const reason = phase === 'delayed' ? delayReasonOf(t) : null;
 
   const when = done && t.actual_end ? t.actual_end : t.planned_start ?? t.createdAt ?? null;
-  const sameDay = when ? f.dayKey(when) === f.dayKey(now) : true;
-  const timeLabel = when ? (showDay && !sameDay ? `${f.day(when)} · ${f.time(when)}` : f.time(when)) : '';
+  const at = (iso: string) => (showDay && f.dayKey(iso) !== f.dayKey(now) ? `${f.day(iso)} · ${f.time(iso)}` : f.time(iso));
+  // Finished trips: started → delivered. The start gets its day when the trip ran overnight.
+  const start = done && t.actual_end ? t.actual_start : null;
+  const startLabel = start ? (f.dayKey(start) !== f.dayKey(t.actual_end!) ? `${f.day(start)} · ${f.time(start)}` : f.time(start)) : '';
+  const timeLabel = start ? `${startLabel} → ${at(t.actual_end!)}` : when ? at(when) : '';
   const sub = [t.ref_id ?? t.id.slice(0, 8), timeLabel].filter(Boolean).join('  ·  ');
 
   return (
