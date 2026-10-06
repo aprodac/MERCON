@@ -854,6 +854,11 @@ model TripLocation {
   accuracy_m Float?
   recordedAt DateTime @db.Timestamptz
   createdAt  DateTime @default(now()) @db.Timestamptz
+  // Which GPS sent it: "driver" (the driver app) or "vehicle" (the truck's
+  // tracker, saved during a trip by services/icces/fleetPoller.ts so a trip
+  // has a path and its stops/breaks even when the phone isn't sending).
+  // Readers that mean the phone filter on "driver".
+  source     String   @default("driver")
 
   @@index([tripId, recordedAt])
 }
@@ -2607,4 +2612,13 @@ model EtaPrediction {
 
   @@index([stopId])
   @@index([predictedAt])
+}
+
+// Place names for map points ("Route 40, near Al Quwayiyah"), so a break on a
+// trip reads as a place, not coordinates. Looked up once per ~100 m (key:
+// lat,lng to 3 decimals) from OpenStreetMap and kept (services/geo/placeNames.ts).
+model PlaceName {
+  key       String   @id
+  name      String
+  createdAt DateTime @default(now()) @db.Timestamptz
 }

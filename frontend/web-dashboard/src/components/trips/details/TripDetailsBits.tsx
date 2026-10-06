@@ -525,7 +525,10 @@ export function TimeOnRoad({ overview, formatTime }: { overview: TripOverview | 
           {breaks.map((h) => (
             <li key={h.from} className="flex items-center gap-2 text-[12px]">
               <Coffee className={cn('size-3.5 shrink-0', h.ongoing ? 'text-amber-600' : 'text-muted-foreground')} />
-              <span className="flex-1 tabular-nums text-foreground">{formatTime(h.from)} – {h.ongoing ? 'now' : formatTime(h.to)}</span>
+              <span className="flex-1 truncate tabular-nums text-foreground">
+                {formatTime(h.from)} – {h.ongoing ? 'now' : formatTime(h.to)}
+                {h.place ? <span className="text-muted-foreground"> · {h.place}</span> : null}
+              </span>
               <span className={cn('font-semibold tabular-nums', h.ongoing ? 'text-amber-600' : 'text-foreground')}>{d(h.minutes)}{h.ongoing ? ' so far' : ''}</span>
             </li>
           ))}

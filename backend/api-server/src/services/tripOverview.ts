@@ -17,7 +17,8 @@ import {
   type LiveStop, type LiveTripRow, type LiveUnit, type LiveVehicleRow,
 } from './fleetLiveMap';
 import { DOC_TYPE_LABEL, daysUntil, latestPerSlot, type ExpiryDocRow } from './operatorInbox';
-import { detectHalts, type TripHalt, type TripTimeSplit } from './tracking/tripHalts';
+import { detectHalts, mergeFeeds, type TripHalt, type TripTimeSplit } from './tracking/tripHalts';
+import { namesFor, placeKey } from './geo/placeNames';
 
 export type TripPhase = 'planned' | 'active' | 'done' | 'cancelled';
 
@@ -109,13 +110,15 @@ export async function loadTripOverview(db: PrismaClient, tripId: string, now = n
     ? await db.tripLocation.findMany({
         where: { tripId },
         orderBy: { recordedAt: 'asc' },
-        select: { lat: true, lng: true, speed_kph: true, heading: true, accuracy_m: true, recordedAt: true },
+        select: { lat: true, lng: true, speed_kph: true, heading: true, accuracy_m: true, recordedAt: true, source: true },
       })
     : [];
 
   // Reuse the fleet map's builder so the unit, feeds and stop ordering match it exactly.
   const tripRow = { ...trip, driver: trip.driver } as unknown as LiveTripRow;
-  const latest = locations.length ? { ...locations[locations.length - 1], tripId } : undefined;
+  // The unit's phone feed is the driver app's latest fix — not a tracker row.
+  const phoneFixes = locations.filter((l) => l.source === 'driver');
+  const latest = phoneFixes.length ? { ...phoneFixes[phoneFixes.length - 1], tripId } : undefined;
   const built = buildLiveUnits(
     {
       vehicles: trip.vehicle ? [trip.vehicle as unknown as LiveVehicleRow] : [],
@@ -128,9 +131,14 @@ export async function loadTripOverview(db: PrismaClient, tripId: string, now = n
   const formatted = tripOut(tripRow);
   const stops = formatted?.stops ?? [];
 
-  const valid = locations.filter((l) => Number.isFinite(l.lat) && Number.isFinite(l.lng) && !(l.lat === 0 && l.lng === 0));
+  // The road driven: the phone's fixes, with the tracker's filling its silences.
+  const valid = mergeFeeds(locations).filter((l) => Number.isFinite(l.lat) && Number.isFinite(l.lng) && !(l.lat === 0 && l.lng === 0));
   const path = thinPath(valid.map((l) => [l.lng, l.lat] as [number, number]));
   const { halts, split } = detectHalts(valid, stops.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng })), now);
+  // Where each break was, by name (known ones now; the rest are looked up for the next refresh).
+  const breaks = halts.filter((h) => h.kind === 'break');
+  const names = await namesFor(db, breaks);
+  for (const h of breaks) h.place = names.get(placeKey(h.lat, h.lng)) ?? null;
 
   return {
     trip_id: trip.id,

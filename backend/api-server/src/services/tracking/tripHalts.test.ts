@@ -47,7 +47,49 @@ describe('trip halts', () => {
     assert.ok(halts[0].minutes > 60 && halts[0].minutes < 80, `about 73 min, got ${halts[0].minutes}`);
   });
 
+  it('a phone switched off while driving is no signal, not a break', () => {
+    const pts = [...drive(0, 30, 24.1), at(80, 24.6), ...drive(81, 90, 24.61)];
+    assert.equal(detectHalts(pts, [], new Date(T0 + 91 * 60_000)).halts.length, 0);
+  });
+
   it('no history, nothing to say', () => {
     assert.deepEqual(detectHalts([], []), { halts: [], split: null });
+  });
+});
+
+import { mergeFeeds } from './tripHalts';
+import { worthKeeping, MIN_MOVE_M, STILL_EVERY_MS } from './trackerHistory';
+import { shortPlaceName } from '../geo/placeNames';
+
+describe('both GPS feeds', () => {
+  const p = (min: number, source: 'driver' | 'vehicle') => ({ lat: 24, lng: 46 + min * 0.001, recordedAt: new Date(T0 + min * 60_000), source });
+
+  it('uses the phone where it sends, and the tracker only in its silences', () => {
+    const merged = mergeFeeds([p(0, 'driver'), p(1, 'vehicle'), p(2, 'driver'), p(10, 'vehicle'), p(20, 'vehicle'), p(21, 'driver')]);
+    assert.deepEqual(merged.map((m) => `${(m.recordedAt.getTime() - T0) / 60_000}${m.source[0]}`), ['0d', '2d', '10v', '21d']);
+  });
+
+  it('a trip with only the tracker still has a history', () => {
+    assert.equal(mergeFeeds([p(0, 'vehicle'), p(5, 'vehicle')]).length, 2);
+  });
+
+  it('keeps a tracker fix when the truck moved, or every 5 min while it stands', () => {
+    const prev = { at: T0, lat: 24, lng: 46 };
+    const later = (sec: number, dLat = 0) => ({ lat: 24 + dLat, lng: 46, recordedAt: new Date(T0 + sec * 1000) });
+    assert.equal(worthKeeping(undefined, later(0)), true);
+    assert.equal(worthKeeping(prev, later(30, 0.001)), true, `moved ~110 m > ${MIN_MOVE_M} m`);
+    assert.equal(worthKeeping(prev, later(30)), false, 'standing, 30 s later');
+    assert.equal(worthKeeping(prev, later(STILL_EVERY_MS / 1000)), true, 'standing, 5 min later');
+    assert.equal(worthKeeping(prev, later(-30, 0.01)), false, 'older than the last kept');
+    assert.equal(worthKeeping(prev, { lat: 0, lng: 0, recordedAt: new Date(T0 + 600_000) }), false, 'a dead tracker’s 0,0');
+  });
+});
+
+describe('place names', () => {
+  it('reads as road, near town', () => {
+    assert.equal(shortPlaceName({ road: 'Route 40', village: 'Al Quwayiyah', state: 'Riyadh Region' }), 'Route 40, near Al Quwayiyah');
+    assert.equal(shortPlaceName({ town: 'Ad Duwadimi' }), 'Near Ad Duwadimi');
+    assert.equal(shortPlaceName({}, 'Somewhere, Riyadh Region, Saudi Arabia'), 'Somewhere, Riyadh Region');
+    assert.equal(shortPlaceName(null, null), null);
   });
 });

@@ -200,6 +200,8 @@ export interface TripHalt {
   stop_id: string | null;
   /** Still standing there. */
   ongoing: boolean;
+  /** "Route 40, near Al Quwayiyah" for a break, once the API has looked it up. */
+  place?: string | null;
 }
 
 /** The trip so far, split into driving, at stops and breaks (minutes). */

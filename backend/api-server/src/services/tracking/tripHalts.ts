@@ -11,6 +11,11 @@
  * still there.
  *
  * Totals split the trip so far into driving, at stops and breaks.
+ *
+ * The history has two feeds: the driver app and, since the tracker's trip
+ * positions are kept too (trackerHistory.ts), the truck. mergeFeeds uses the
+ * phone where it has fixes and fills its silences from the tracker — never
+ * both at once, since the two can sit a little apart and would zigzag.
  */
 import { AT_STOP_KM, haversineKm } from '@mercon/shared-types';
 
@@ -26,6 +31,23 @@ const SILENT_GAP_MIN = 10;
 const LEAVE_KPH = 70;
 
 export interface HaltPoint { lat: number; lng: number; recordedAt: Date }
+
+/** A tracker fix this close in time to a phone fix is left out (the phone wins). */
+const FEED_OVERLAP_MS = 3 * 60_000;
+
+/** One history from both feeds: the phone's fixes, and the tracker's where the phone has none nearby in time. */
+export function mergeFeeds<P extends HaltPoint & { source?: string | null }>(points: P[]): P[] {
+  const phone = points.filter((p) => (p.source ?? 'driver') === 'driver').sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
+  const tracker = points.filter((p) => p.source === 'vehicle');
+  if (!tracker.length) return phone;
+  const times = phone.map((p) => p.recordedAt.getTime());
+  const near = (t: number) => {
+    let lo = 0, hi = times.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (times[mid] < t) lo = mid + 1; else hi = mid; }
+    return (lo < times.length && times[lo] - t <= FEED_OVERLAP_MS) || (lo > 0 && t - times[lo - 1] <= FEED_OVERLAP_MS);
+  };
+  return [...phone, ...tracker.filter((p) => !near(p.recordedAt.getTime()))].sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
+}
 export interface HaltStop { id: string; lat: number | null; lng: number | null }
 
 export interface TripHalt {
@@ -39,6 +61,8 @@ export interface TripHalt {
   stop_id: string | null;
   /** The truck is still standing here (latest fix). */
   ongoing: boolean;
+  /** "Route 40, near Al Quwayiyah" for a break, once looked up (services/geo/placeNames.ts); null until then. */
+  place: string | null;
 }
 
 export interface TripTimeSplit {
@@ -67,7 +91,10 @@ export function detectHalts(points: HaltPoint[], stops: HaltStop[], now = new Da
     const ongoing = isLatest && minutesBetween(last.recordedAt, now) <= ONGOING_MAX_AGE_MIN;
     let end = ongoing ? now : last.recordedAt;
     const next = pts[j + 1];
-    if (next && minutesBetween(last.recordedAt, next.recordedAt) > SILENT_GAP_MIN) {
+    // Only when it was seen standing first (2+ fixes, 2+ min): a phone switched off while
+    // driving goes quiet too, and must not turn into a break.
+    const seenStanding = j > i && minutesBetween(anchor.recordedAt, last.recordedAt) >= 2;
+    if (next && seenStanding && minutesBetween(last.recordedAt, next.recordedAt) > SILENT_GAP_MIN) {
       // Phones send little while parked: if the next fix came long after and only so far away,
       // the truck stood here until about (next fix − the time to drive there).
       const left = new Date(next.recordedAt.getTime() - (haversineKm(last, next) / LEAVE_KPH) * 3600_000);
@@ -87,6 +114,7 @@ export function detectHalts(points: HaltPoint[], stops: HaltStop[], now = new Da
         kind: stop ? 'at_stop' : 'break',
         stop_id: stop?.id ?? null,
         ongoing,
+        place: null,
       });
     }
     i = j + 1;

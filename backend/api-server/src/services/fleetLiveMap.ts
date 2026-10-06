@@ -404,6 +404,8 @@ export const DRIVER_SELECT = {
  * Latest phone fix per trip, with when it stopped moving (see LatestTripFix).
  */
 export async function loadLatestTripFixes(db: PrismaClient, tripIds: string[]): Promise<LatestTripFix[]> {
+  // The driver app's fixes only (source 'driver'): the tracker's history rows are
+  // the vehicle feed, which the live map takes from the vehicle itself.
   // Latest phone fix per trip. Prisma's `distinct` runs in memory — it read every
   // GPS ping of every live trip (thousands per multi-day trip) on each 15 s map
   // refresh. One index-backed LIMIT 1 per trip instead.
@@ -416,10 +418,10 @@ export async function loadLatestTripFixes(db: PrismaClient, tripIds: string[]): 
     ? await db.$queryRaw<LatestTripFix[]>(Prisma.sql`
         SELECT l."tripId", l.lat, l.lng, l.speed_kph, l.heading, l.accuracy_m, l."recordedAt",
           (SELECT min(p."recordedAt") FROM "TripLocation" p
-            WHERE p."tripId" = t.id
+            WHERE p."tripId" = t.id AND p."source" = 'driver'
               AND p."recordedAt" > COALESCE(
                 (SELECT max(q."recordedAt") FROM "TripLocation" q
-                  WHERE q."tripId" = t.id
+                  WHERE q."tripId" = t.id AND q."source" = 'driver'
                     AND q."recordedAt" > l."recordedAt" - ${lookback}
                     AND power(q.lat - l.lat, 2) + power((q.lng - l.lng) * cos(radians(l.lat)), 2) > ${stopDeg * stopDeg}),
                 l."recordedAt" - ${lookback})
@@ -428,7 +430,7 @@ export async function loadLatestTripFixes(db: PrismaClient, tripIds: string[]): 
         CROSS JOIN LATERAL (
           SELECT "tripId", lat, lng, speed_kph, heading, accuracy_m, "recordedAt"
           FROM "TripLocation"
-          WHERE "tripId" = t.id
+          WHERE "tripId" = t.id AND "source" = 'driver'
           ORDER BY "recordedAt" DESC
           LIMIT 1
         ) l

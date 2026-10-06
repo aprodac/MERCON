@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { haltActivityLabel, insertByTime } from '@mercon/shared-types';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   Copy, Check, CornerUpLeft, Smartphone, XCircle, AlertTriangle, MoreHorizontal, MapPin, ArrowRight,
@@ -444,11 +445,13 @@ export default function TripDetailsPage() {
   })();
 
   // Dynamically build real activity steps from trip metadata and actual stops
-  const activitySteps: { label: string; time: string | null; done: boolean }[] = [
+  const at = (iso: string | null | undefined) => (iso ? new Date(iso).getTime() : null);
+  const activitySteps: { label: string; time: string | null; done: boolean; at: number | null; tone?: 'break' | 'break-now' }[] = [
     {
       label: 'Trip created',
       time: trip.createdAt ? formatInDeploymentTz(trip.createdAt, tz, 'dd MMM yyyy, hh:mm a') : null,
       done: true,
+      at: at(trip.createdAt),
     },
   ];
 
@@ -457,6 +460,7 @@ export default function TripDetailsPage() {
       label: 'Trip started (In Transit)',
       time: formatInDeploymentTz(trip.actual_start, tz, 'dd MMM yyyy, hh:mm a'),
       done: true,
+      at: at(trip.actual_start),
     });
   }
 
@@ -473,6 +477,7 @@ export default function TripDetailsPage() {
         ? formatInDeploymentTz(stop.planned_arrival, tz, 'dd MMM yyyy, hh:mm a')
         : null,
       done: isArrived,
+      at: isArrived ? at(stop.actual_arrival) : null,
     });
 
     if (stop.delay_reason) {
@@ -482,6 +487,7 @@ export default function TripDetailsPage() {
           ? formatInDeploymentTz(stop.delay_logged_at, tz, 'dd MMM yyyy, hh:mm a')
           : null,
         done: true,
+        at: at(stop.delay_logged_at),
       });
     }
 
@@ -490,6 +496,7 @@ export default function TripDetailsPage() {
         label: `Departed ${stopName}`,
         time: formatInDeploymentTz(stop.actual_departure, tz, 'dd MMM yyyy, hh:mm a'),
         done: true,
+        at: at(stop.actual_departure),
       });
     }
   });
@@ -502,7 +509,21 @@ export default function TripDetailsPage() {
       ? formatInDeploymentTz(trip.planned_end, tz, 'dd MMM yyyy, hh:mm a')
       : null,
     done: trip.status === 'Completed',
+    at: trip.status === 'Completed' ? at(trip.actual_end) : null,
   });
+
+  // Every stop and break on the way, from the GPS history (overview `halts`), in time order.
+  const stopNames = new Map<string, string>((trip.stops || []).map((st: any, i: number) => [st.id, resolveStopName(st, `Stop ${i + 1}`)]));
+  const activityLog = insertByTime(
+    activitySteps,
+    (overview?.halts ?? []).map((h) => ({
+      label: haltActivityLabel(h, h.stop_id ? stopNames.get(h.stop_id) : null),
+      time: `${formatInDeploymentTz(h.from, tz, 'dd MMM yyyy, hh:mm a')} – ${h.ongoing ? 'now' : formatInDeploymentTz(h.to, tz, 'hh:mm a')}`,
+      done: true,
+      at: at(h.from),
+      tone: h.kind === 'break' ? (h.ongoing ? 'break-now' as const : 'break' as const) : undefined,
+    })),
+  );
 
   return (
     <DashboardLayout active="Trips" title="Trip Details">
@@ -801,15 +822,15 @@ export default function TripDetailsPage() {
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {activitySteps.map((step, idx) => (
+            {activityLog.map((step, idx) => (
               <div key={idx} className="relative flex items-start gap-3">
                 <div className="relative flex flex-col items-center shrink-0 w-3.5">
                   <div
                     className={`w-2.5 h-2.5 rounded-full mt-1 ${
-                      step.done ? 'bg-emerald-600' : 'bg-slate-300'
+                      step.tone === 'break-now' ? 'bg-amber-500' : step.tone === 'break' ? 'bg-slate-400' : step.done ? 'bg-emerald-600' : 'bg-slate-300'
                     }`}
                   />
-                  {idx !== activitySteps.length - 1 && (
+                  {idx !== activityLog.length - 1 && (
                     <div className="w-[1px] bg-[#E5E7EB] absolute top-3 bottom-[-16px]" />
                   )}
                 </div>

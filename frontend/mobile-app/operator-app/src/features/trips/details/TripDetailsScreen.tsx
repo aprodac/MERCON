@@ -440,7 +440,7 @@ export default function TripDetailsScreen() {
         tracking={tracking?.enabled && tracking.url ? { sub: trackingSub(tracking.open_count, tracking.last_opened_at), onPress: trackingActions } : null}
       />
       <UploadSheet visible={sheet === 'upload'} onClose={() => setSheet(null)} onPick={upload} />
-      <ActivitySheet visible={sheet === 'activity'} trip={trip} f={f} onClose={() => setSheet(null)} />
+      <ActivitySheet visible={sheet === 'activity'} trip={trip} f={f} halts={overview?.halts ?? null} onClose={() => setSheet(null)} />
       <ChargesSheet visible={sheet === 'charges'} trip={trip} onClose={() => setSheet(null)} onSaved={reload} />
       <PickerSheet
         visible={!!picker}

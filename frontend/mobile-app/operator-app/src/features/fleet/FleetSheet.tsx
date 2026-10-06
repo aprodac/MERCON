@@ -361,7 +361,10 @@ function BreakList({ halts, f }: { halts: TripHalt[]; f: Time }) {
       {halts.map((h) => (
         <View key={h.from} style={s.breakRow}>
           <View style={[s.breakDot, h.ongoing && { backgroundColor: '#D97706' }]} />
-          <Text style={s.breakTime}>{f.time(h.from)} – {h.ongoing ? 'now' : f.time(h.to)}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={s.breakTime}>{f.time(h.from)} – {h.ongoing ? 'now' : f.time(h.to)}</Text>
+            {h.place ? <Text style={s.breakPlace} numberOfLines={1}>{h.place}</Text> : null}
+          </View>
           <Text style={[s.breakMin, h.ongoing && { color: '#D97706' }]}>{formatDuration(h.minutes * 60)}{h.ongoing ? ' so far' : ''}</Text>
         </View>
       ))}
@@ -657,7 +660,8 @@ const s = StyleSheet.create({
   breaksHead: { fontSize: 12, fontWeight: '700', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.4 },
   breakRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   breakDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#9898A4' },
-  breakTime: { flex: 1, fontSize: 13, color: INK, fontVariant: ['tabular-nums'] },
+  breakTime: { fontSize: 13, color: INK, fontVariant: ['tabular-nums'] },
+  breakPlace: { fontSize: 12, color: MUTED },
   breakMin: { fontSize: 13, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
   eta: { flexDirection: 'row', gap: 8 },
   etaCard: { backgroundColor: '#F6F6F7', borderRadius: 14, padding: 12, gap: 6 },
