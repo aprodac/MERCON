@@ -107,13 +107,13 @@ jobs:
         run: |
           set -euo pipefail
           # gzip, not zstd: the VPS is sure to have gzip.
-          tar -I pigz -cf /mnt/osrm-data.tar.gz map.osrm*
-          ls -lh /mnt/osrm-data.tar.gz
+          tar -I pigz -cf /mnt/osrm/osrm-data.tar.gz map.osrm*
+          ls -lh /mnt/osrm/osrm-data.tar.gz
 
       - uses: actions/upload-artifact@v4
         with:
           name: osrm-data
-          path: /mnt/osrm-data.tar.gz
+          path: /mnt/osrm/osrm-data.tar.gz
           compression-level: 0 # already gzip
           retention-days: 2
 
