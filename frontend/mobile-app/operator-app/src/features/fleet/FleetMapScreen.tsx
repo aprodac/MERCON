@@ -608,6 +608,7 @@ export default function FleetMapScreen() {
             onGroupPress={openGroup}
             restLine={restStops.length >= 2 ? restQ.data?.geometry ?? null : null}
             trail={trail}
+            halts={unit ? trailQ.data?.halts?.filter((h) => h.kind === 'break') ?? null : null}
             follow={following}
             onUserMove={() => { if (unit) setFollowing(false); }}
           />
@@ -705,6 +706,8 @@ export default function FleetMapScreen() {
               onShare={unit.trip ? () => setShareChoose(true) : null}
               onShowRoute={unit.trip && unit.position ? toggleRoute : null}
               routeShown={focusMode === 'overview'}
+              halts={trailQ.data?.halts ?? null}
+              timeSplit={trailQ.data?.time_split ?? null}
               finalEta={eta?.arrival && restSec != null && restStops.length >= 2 && lastStop
                 ? { time: f.time(new Date(eta.arrival.getTime() + restSec * 1000).toISOString()), place: lastStop.name || lastStop.address }
                 : null}

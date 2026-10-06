@@ -11,6 +11,10 @@
  *               expanded part, out of reach of a stray tap (FleetActions.tsx
  *               confirms both). With no road route the ETA is an estimate
  *               (≈); a next stop too far to be real says so instead.
+ *               How long the truck has stood still shows on its status
+ *               line; under the trip, the time so far split into driving
+ *               and breaks, and expanded, each break on the way (when,
+ *               how long; from the driver app's GPS — API tripHalts.ts).
  *               Swipe sideways — or the ‹ › arrows — for the
  *               next / previous truck in the current filter; drag down to
  *               shrink, then to close.
@@ -24,12 +28,12 @@ import {
 } from 'react-native';
 import { resolveMediaUrl } from '@mercon/mobile-shared/lib/media';
 import { Check, ChevronDown, Route, ChevronLeft, ChevronRight, ChevronUp, MessageCircle, Phone, Play, Smartphone, Truck, X, ZoomIn } from 'lucide-react-native';
-import type { LiveTripMedia, LiveUnit, TripMediaItem } from '../../lib/operator';
+import type { LiveTripMedia, LiveUnit, TripHalt, TripMediaItem, TripTimeSplit } from '../../lib/operator';
 import type { ViewerItem } from '../trips/details/components/MediaViewer';
 import { niceName } from '../trips/create/components/ui';
 import type { makeTime } from '../trips/list/tripListModel';
 import { SILENT_COLOR, STATE_STYLE, TONE, unitState, unitTone, type UnitTone } from './FleetMap';
-import { agoText, formatDuration, formatKm, isFree, isSilent, located, nextStop, punctuality, type EtaInfo } from './fleetModel';
+import { agoText, formatDuration, formatKm, isFree, isSilent, located, nextStop, punctuality, stoppedMin, type EtaInfo } from './fleetModel';
 
 const INK = '#3E3C3D';
 const MUTED = '#6B6B76';
@@ -128,7 +132,7 @@ export function SheetFrame({ children, onHeight, panHandlers, style }: {
 
 export function UnitSheet({
   unit: u, eta, routeLoading, now, f, expanded, onExpand, position, onPrev, onNext, onClose, onOpen, onHeight, media, onOpenMedia,
-  nextStep, onCancelTrip, busy, onShare, finalEta, onShowRoute, routeShown,
+  nextStep, onCancelTrip, busy, onShare, finalEta, onShowRoute, routeShown, halts, timeSplit,
 }: {
   unit: LiveUnit; eta: EtaInfo | null; routeLoading: boolean; now: number; f: Time;
   expanded: boolean; onExpand: (v: boolean) => void;
@@ -148,6 +152,9 @@ export function UnitSheet({
   onShare?: (() => void) | null;
   /** Arrival at the trip's last stop (next-stop ETA + road time for the rest), when it isn't the next one. */
   finalEta?: { time: string; place: string | null } | null;
+  /** Where the truck stood still on this trip, and the time so far split into driving and breaks. */
+  halts?: TripHalt[] | null;
+  timeSplit?: TripTimeSplit | null;
   /** Frame the whole trip on the map (a toggle — routeShown says it's on). */
   onShowRoute?: (() => void) | null;
   routeShown?: boolean;
@@ -223,7 +230,7 @@ export function UnitSheet({
         <View style={{ flex: 1, gap: 2 }}>
           <Text style={s.plate}>{u.vehicle?.plate_number ?? 'No truck'}</Text>
           <Text style={s.driver}>{u.driver ? niceName(u.driver.name) : 'No driver'}</Text>
-          <MotionLine unit={u} now={now} />
+          <MotionLine unit={u} now={now} stoppedFor={stoppedMin(u, now) ?? (halts?.length && halts[halts.length - 1].ongoing ? halts[halts.length - 1].minutes : null)} />
         </View>
         <StateChip unit={u} now={now} />
         <TouchableOpacity onPress={onClose} hitSlop={8} style={s.close} accessibilityLabel="Close"><X size={16} color={MUTED} /></TouchableOpacity>
@@ -235,6 +242,7 @@ export function UnitSheet({
           {t.stops.length ? `  ·  ${done} of ${t.stops.length} stops done` : ''}
         </Text>
       ) : <Text style={s.line}>Free — no trip right now</Text>}
+      {t && timeSplit && timeSplit.total_min >= 1 ? <TimeSplitLine split={timeSplit} /> : null}
 
       {eta ? (
         <View style={s.etaCard}>
@@ -275,6 +283,7 @@ export function UnitSheet({
           </View>
           {u.feeds_gap_m != null && u.feeds_gap_m > 1000 ? <Text style={[s.note, { color: BRAND, fontWeight: '600' }]}>Tracker and phone are {formatKm(u.feeds_gap_m / 1000)} apart</Text> : null}
           {t && t.stops.length ? <StopTimeline stops={t.stops} nextId={next?.id ?? null} f={f} media={media ?? null} onOpenMedia={onOpenMedia} /> : null}
+          {t && halts?.some((h) => h.kind === 'break') ? <BreakList halts={halts.filter((h) => h.kind === 'break')} f={f} /> : null}
         </>
       ) : null}
 
@@ -334,11 +343,38 @@ export function UnitSheet({
   );
 }
 
+/** "Driving 6 h 10 min · 2 breaks 1 h 5 min · at stops 2 h" — the trip so far. */
+function TimeSplitLine({ split }: { split: TripTimeSplit }) {
+  const parts = [
+    `Driving ${formatDuration(split.driving_min * 60)}`,
+    split.breaks ? `${split.breaks} ${split.breaks === 1 ? 'break' : 'breaks'} ${formatDuration(split.breaks_min * 60)}` : 'no breaks',
+    split.at_stops_min ? `at stops ${formatDuration(split.at_stops_min * 60)}` : null,
+  ].filter(Boolean);
+  return <Text style={s.line} numberOfLines={2}>{parts.join('  ·  ')}</Text>;
+}
+
+/** Each break on the way: when, and how long (the one going on now says so). */
+function BreakList({ halts, f }: { halts: TripHalt[]; f: Time }) {
+  return (
+    <View style={s.breaks}>
+      <Text style={s.breaksHead}>Breaks on the way</Text>
+      {halts.map((h) => (
+        <View key={h.from} style={s.breakRow}>
+          <View style={[s.breakDot, h.ongoing && { backgroundColor: '#D97706' }]} />
+          <Text style={s.breakTime}>{f.time(h.from)} – {h.ongoing ? 'now' : f.time(h.to)}</Text>
+          <Text style={[s.breakMin, h.ongoing && { color: '#D97706' }]}>{formatDuration(h.minutes * 60)}{h.ongoing ? ' so far' : ''}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /** "● Moving · 72 km/h · GPS 1 min ago" */
-function MotionLine({ unit: u, now }: { unit: LiveUnit; now: number }) {
+function MotionLine({ unit: u, now, stoppedFor }: { unit: LiveUnit; now: number; stoppedFor?: number | null }) {
   const m = u.motion ? MOTION[u.motion] : null;
   const parts = [
-    m?.label,
+    // "Stopped 25 min", not just "Stopped".
+    u.motion === 'idle' && stoppedFor != null && stoppedFor >= 1 ? `${m?.label} ${formatDuration(stoppedFor * 60)}` : m?.label,
     u.motion === 'moving' && u.position?.speed_kph != null ? `${Math.round(u.position.speed_kph)} km/h` : null,
     u.position ? `GPS ${agoText(u.position.recorded_at, now)}` : 'No GPS yet',
   ].filter(Boolean);
@@ -617,6 +653,12 @@ const s = StyleSheet.create({
   motionText: { fontSize: 12, color: MUTED },
   close: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F1F1F3', alignItems: 'center', justifyContent: 'center' },
   line: { fontSize: 13, color: MUTED, lineHeight: 19 },
+  breaks: { gap: 6, paddingTop: 4 },
+  breaksHead: { fontSize: 12, fontWeight: '700', color: MUTED, textTransform: 'uppercase', letterSpacing: 0.4 },
+  breakRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  breakDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#9898A4' },
+  breakTime: { flex: 1, fontSize: 13, color: INK, fontVariant: ['tabular-nums'] },
+  breakMin: { fontSize: 13, fontWeight: '700', color: INK, fontVariant: ['tabular-nums'] },
   eta: { flexDirection: 'row', gap: 8 },
   etaCard: { backgroundColor: '#F6F6F7', borderRadius: 14, padding: 12, gap: 6 },
   etaHead: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },

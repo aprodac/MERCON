@@ -17,6 +17,7 @@ import {
   type LiveStop, type LiveTripRow, type LiveUnit, type LiveVehicleRow,
 } from './fleetLiveMap';
 import { DOC_TYPE_LABEL, daysUntil, latestPerSlot, type ExpiryDocRow } from './operatorInbox';
+import { detectHalts, type TripHalt, type TripTimeSplit } from './tracking/tripHalts';
 
 export type TripPhase = 'planned' | 'active' | 'done' | 'cancelled';
 
@@ -40,6 +41,10 @@ export interface TripOverview {
   /** [lng, lat] points driven, oldest first. Empty when the driver app sent none. */
   path: [number, number][];
   path_distance_m: number | null;
+  /** Where the truck stood still 5 min+ on this trip — at its stops or on a break (tracking/tripHalts.ts). */
+  halts: TripHalt[];
+  /** The trip so far: driving vs at stops vs breaks. Null without GPS history. */
+  time_split: TripTimeSplit | null;
   checks: {
     driver_assigned: boolean;
     truck_assigned: boolean;
@@ -125,6 +130,7 @@ export async function loadTripOverview(db: PrismaClient, tripId: string, now = n
 
   const valid = locations.filter((l) => Number.isFinite(l.lat) && Number.isFinite(l.lng) && !(l.lat === 0 && l.lng === 0));
   const path = thinPath(valid.map((l) => [l.lng, l.lat] as [number, number]));
+  const { halts, split } = detectHalts(valid, stops.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng })), now);
 
   return {
     trip_id: trip.id,
@@ -135,6 +141,8 @@ export async function loadTripOverview(db: PrismaClient, tripId: string, now = n
     unit,
     path,
     path_distance_m: valid.length >= 2 ? pathDistanceMeters(valid) : null,
+    halts,
+    time_split: split,
     checks: phase === 'planned' ? await preTripChecks(db, trip, now) : null,
   };
 }

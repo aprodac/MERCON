@@ -40,7 +40,7 @@ import { DriverPhoneLine, TripDriverTrailList, currentAcknowledgement } from '@/
 import { driverPhoneKey } from '@/components/drivers/phone/DriverPhoneSheet';
 import { driverPhoneService } from '@/services/driverPhoneService';
 import { useModuleEnabled } from '@/components/auth/RequireModule';
-import { Banner, FinancialSummary, PaperworkSection, PreTripChecks, TripSummary, TruckDriverOverlay } from '@/components/trips/details/TripDetailsBits';
+import { Banner, FinancialSummary, PaperworkSection, PreTripChecks, TimeOnRoad, TripSummary, TruckDriverOverlay } from '@/components/trips/details/TripDetailsBits';
 import { statusChip, tripPhaseOf } from '@/components/trips/details/tripStatus';
 import { fleetLiveService } from '@/services/fleetLiveService';
 import { buildEtaShareText, formatDuration, timeAgo, type EtaInfo } from '@/lib/fleetLive';
@@ -205,6 +205,8 @@ export default function TripDetailsPage() {
     queryKey: ['trip-overview', tripEntityId],
     queryFn: () => fleetLiveService.getTripOverview(tripEntityId!),
     enabled: !!tripEntityId && !!trip,
+    // A running trip's breaks and time on the road keep moving.
+    refetchInterval: (q) => (q.state.data?.phase === 'active' ? 60_000 : false),
   });
 
   // Mutations
@@ -764,6 +766,7 @@ export default function TripDetailsPage() {
                   : phase === 'cancelled' ? <Banner tone="muted">Cancelled{trip.updatedAt ? ` on ${formatDateTime(trip.updatedAt)}` : ''}. The planned route is shown for reference.</Banner>
                   : trip.status === 'Delayed' ? <Banner tone="danger"><strong>Delayed.</strong> {delayReason ?? 'No reason reported yet.'}</Banner>
                   : null}
+                  {phase === 'active' || phase === 'done' ? <TimeOnRoad overview={overview} formatTime={formatTime} /> : null}
                   {trip.media_purged && (
                     <Banner tone="muted">
                       {trip.media_purged.count} photo{trip.media_purged.count === 1 ? '' : 's'}/video{trip.media_purged.count === 1 ? '' : 's'} from this trip
